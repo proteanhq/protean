@@ -76,6 +76,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("abstract", False),
         ("part_of", None),
+        ("suppress_checks", ()),
     ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQuery":

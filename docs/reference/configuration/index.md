@@ -678,6 +678,38 @@ format = "auto"
 
 Full key reference, redaction rules, and tail sampling: [Logging](../logging.md).
 
+### `lint`
+
+This section configures the diagnostics reported by `protean check`. All keys
+are optional.
+
+```toml
+[lint]
+level = "warn"                        # exit-code severity floor
+aggregate_size_limit = 5              # entities before AGGREGATE_TOO_LARGE
+handler_breadth_limit = 5             # message types before HANDLER_TOO_BROAD
+rules = ["my_app.lint.check_names"]   # dotted paths to custom rule callables
+
+[lint.suppressions]
+UNHANDLED_EVENT = 3                    # grandfather the first 3 findings
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `level` | str | `"warn"` | Exit-code severity floor for `protean check`. `"error"` fails only on errors; `"warn"` fails on errors and warnings; `"info"` fails on any error, warning, or info finding. Errors always exit `1`; a gating non-error finding exits `2`. |
+| `aggregate_size_limit` | int | `5` | Entity count above which an aggregate emits `AGGREGATE_TOO_LARGE`. |
+| `handler_breadth_limit` | int | `5` | Message-type count above which a handler emits `HANDLER_TOO_BROAD`. |
+| `rules` | list[str] | `[]` | Dotted import paths to custom lint callables with the signature `(ir: dict) -> list[dict]`. |
+| `suppressions` | table | `{}` | A `{CODE: N}` map that grandfathers the first `N` findings of each code, in a deterministic `(code, element, field, message)` order. Findings beyond `N` are still reported. |
+
+`level` sets the CI failure floor without hiding findings; the `--level` CLI
+flag only filters what is displayed and never changes the exit code.
+
+Individual elements can silence specific codes for themselves with the
+`suppress_checks` decorator option (for example
+`@domain.aggregate(suppress_checks=["AGGREGATE_TOO_LARGE"])`), which takes
+precedence over the `[lint.suppressions]` allow-list.
+
 ## Custom Attributes
 
 Custom attributes can be defined in toml under the `[custom]` section (or

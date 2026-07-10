@@ -121,6 +121,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         ("subscription_type", None),  # SubscriptionType enum or None for default
         ("subscription_profile", None),  # SubscriptionProfile enum or None
         ("subscription_config", {}),  # Dict of custom config overrides
+        ("suppress_checks", ()),
     ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseCommandHandler":

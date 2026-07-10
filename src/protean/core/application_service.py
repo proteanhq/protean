@@ -53,7 +53,10 @@ class BaseApplicationService(Element, OptionsMixin):
             raise NotSupportedError("BaseApplicationService cannot be instantiated")
         return object.__new__(cls, *args, **kwargs)
 
-    _default_options: ClassVar[list[tuple[str, Any]]] = [("part_of", None)]
+    _default_options: ClassVar[list[tuple[str, Any]]] = [
+        ("part_of", None),
+        ("suppress_checks", ()),
+    ]
 
 
 _T = TypeVar("_T", bound=BaseApplicationService)

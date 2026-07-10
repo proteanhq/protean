@@ -315,6 +315,7 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         ("part_of", None),
         ("is_fact_event", False),
         ("published", False),
+        ("suppress_checks", ()),
         ("version", None),
         # The replacement for a deprecated event (an Event class or a name
         # string). `deprecated` itself is the universal element option.

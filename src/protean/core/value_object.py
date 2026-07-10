@@ -94,6 +94,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
     _default_options: ClassVar[list[tuple[str, Any]]] = [
         ("abstract", False),
         ("part_of", None),
+        ("suppress_checks", ()),
     ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:

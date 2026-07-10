@@ -82,3 +82,21 @@ def error_level_rule(ir: dict) -> list[dict]:
 def non_dict_item_rule(ir: dict) -> list[dict]:
     """Returns a list containing a non-dict item."""
     return ["not a dict"]
+
+
+def repeated_code_rule(ir: dict) -> list[dict]:
+    """Returns three findings of the same code on distinct elements.
+
+    Carries only the minimal required keys (no ``category``/``rule``/
+    ``suggestion``) to prove the suppression stage tolerates their absence and
+    still subjects custom findings to the ``[lint].suppressions`` allow-list.
+    """
+    return [
+        {
+            "code": "REPEATED",
+            "element": f"test.element{i}",
+            "level": "info",
+            "message": f"Repeated finding {i}",
+        }
+        for i in range(3)
+    ]

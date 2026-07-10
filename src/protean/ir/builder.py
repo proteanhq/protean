@@ -1445,6 +1445,75 @@ class IRBuilder:
         self._diagnose_email_deprecated(ir)
         # Custom lint rules from config
         self._run_custom_lint_rules(ir)
+        # Suppression stage — runs last so custom-rule findings are also
+        # subject to per-element ``suppress_checks`` and ``[lint].suppressions``.
+        self._apply_suppressions()
+
+    def _apply_suppressions(self) -> None:
+        """Filter collected diagnostics through the two suppression channels.
+
+        Mutates :attr:`_diagnostics` in place. Runs at the tail of
+        :meth:`_collect_diagnostics` (after custom rules), *before* the final
+        code-only sort in :meth:`build`.
+
+        Two channels, applied in order:
+
+        1. **Per-element ``suppress_checks``** — each element may name codes to
+           silence for itself. Resolved from the *registry* (not the IR) so
+           events/commands/value-objects, which carry no IR ``options`` block,
+           are covered identically to aggregates.
+        2. **``[lint].suppressions`` allow-list** — a ``{code: N}`` map that
+           grandfathers the first ``N`` findings per code in a deterministic
+           ``(code, element, field, message)`` total order, letting a codebase
+           adopt a rule without failing on pre-existing violations.
+        """
+        registry = self._domain._domain_registry
+
+        # 1. FQN -> suppressed codes. ``getattr(..., ()) or ()`` is defensive:
+        #    element types that never gained the ``suppress_checks`` option
+        #    (EMAIL, UPCASTER, internal aggregates) have no ``meta_`` attribute,
+        #    so the stage must not assume its presence.
+        fqn_suppress: dict[str, set[str]] = {}
+        for records in registry._elements.values():
+            for record in records.values():
+                if record.internal:
+                    continue
+                codes = getattr(record.cls.meta_, "suppress_checks", ()) or ()
+                if codes:
+                    fqn_suppress[fqn(record.cls)] = set(codes)
+
+        survivors = [
+            d
+            for d in self._diagnostics
+            if d.get("code", "")
+            not in fqn_suppress.get(d.get("element", ""), frozenset())
+        ]
+
+        # 2. Total order first, then grandfather the first N per code. Ordering
+        #    the survivors *before* counting makes "the first N" deterministic
+        #    and independent of the order rules happened to run in.
+        survivors.sort(
+            key=lambda d: (
+                d.get("code", ""),
+                d.get("element", ""),
+                d.get("field", ""),
+                d.get("message", ""),
+            )
+        )
+
+        suppressions: dict[str, int] = self._domain.config.get("lint", {}).get(
+            "suppressions", {}
+        )
+        seen: dict[str, int] = {}
+        kept: list[dict[str, Any]] = []
+        for d in survivors:
+            code = d.get("code", "")
+            seen[code] = seen.get(code, 0) + 1
+            if seen[code] <= suppressions.get(code, 0):
+                continue
+            kept.append(d)
+
+        self._diagnostics = kept
 
     def _diagnose_unhandled_events(self, ir: dict[str, Any]) -> None:
         """UNHANDLED_EVENT: events with no registered handler.
@@ -1484,12 +1553,26 @@ class IRBuilder:
 
                 event_type = event.get("__type__", "")
                 if event_type and event_type not in handled_event_types:
+                    rule = {
+                        "rationale": (
+                            "An event with no registered handler is published "
+                            "but never consumed, so a state change goes unobserved."
+                        ),
+                        "fix": (
+                            "Register an event handler, projector, or process "
+                            "manager for this event, or mark it `published=True` "
+                            "if it is intentionally external."
+                        ),
+                    }
                     self._diagnostics.append(
                         {
+                            "category": "handler_completeness",
                             "code": "UNHANDLED_EVENT",
                             "element": event["fqn"],
                             "level": "warning",
                             "message": f"Event {event['name']} has no registered handler",
+                            "rule": rule,
+                            "suggestion": rule["fix"],
                         }
                     )
 
@@ -1507,12 +1590,25 @@ class IRBuilder:
             for command in cluster["commands"].values():
                 command_type = command.get("__type__", "")
                 if command_type and command_type not in handled_command_types:
+                    rule = {
+                        "rationale": (
+                            "A command with no handler cannot be processed, so "
+                            "the intent it represents can never be fulfilled."
+                        ),
+                        "fix": (
+                            "Add a command handler method for this command, or "
+                            "remove the command if it is unused."
+                        ),
+                    }
                     self._diagnostics.append(
                         {
+                            "category": "handler_completeness",
                             "code": "UNUSED_COMMAND",
                             "element": command["fqn"],
                             "level": "warning",
                             "message": f"Command {command['name']} has no registered handler",
+                            "rule": rule,
+                            "suggestion": rule["fix"],
                         }
                     )
 
@@ -1541,8 +1637,17 @@ class IRBuilder:
 
                 event_fqn = event["fqn"]
                 if event_fqn not in apply_handlers:
+                    rule = {
+                        "rationale": (
+                            "An event-sourced aggregate rebuilds its state by "
+                            "applying events; an event without an @apply handler "
+                            "is never folded into state."
+                        ),
+                        "fix": "Add an @apply method on the aggregate for this event.",
+                    }
                     self._diagnostics.append(
                         {
+                            "category": "handler_completeness",
                             "code": "ES_EVENT_MISSING_APPLY",
                             "element": event_fqn,
                             "level": "warning",
@@ -1550,6 +1655,8 @@ class IRBuilder:
                                 f"Event {event['name']} has no @apply handler "
                                 f"on aggregate {aggregate['name']}"
                             ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
                         }
                     )
 
@@ -1572,8 +1679,20 @@ class IRBuilder:
             for event in cluster["events"].values()
         )
         if has_published:
+            rule = {
+                "rationale": (
+                    "Events marked published are meant to leave the bounded "
+                    "context, but with no external broker configured they are "
+                    "only dispatched internally."
+                ),
+                "fix": (
+                    "Configure `outbox.external_brokers`, or remove "
+                    "`published=True` if the events are internal."
+                ),
+            }
             self._diagnostics.append(
                 {
+                    "category": "handler_completeness",
                     "code": "PUBLISHED_NO_EXTERNAL_BROKER",
                     "element": self._domain.name,
                     "level": "warning",
@@ -1582,6 +1701,8 @@ class IRBuilder:
                         "configured in outbox settings. Published events will "
                         "only be dispatched internally."
                     ),
+                    "rule": rule,
+                    "suggestion": rule["fix"],
                 }
             )
 
@@ -1598,8 +1719,19 @@ class IRBuilder:
             if aggregate["fqn"].startswith("protean.adapters."):
                 continue
             if not cluster["command_handlers"]:
+                rule = {
+                    "rationale": (
+                        "An aggregate with no command handler has no write "
+                        "path — nothing can change its state."
+                    ),
+                    "fix": (
+                        "Add a command handler for the aggregate, or model it "
+                        "as a read-only projection if no writes are expected."
+                    ),
+                }
                 self._diagnostics.append(
                     {
+                        "category": "handler_completeness",
                         "code": "AGGREGATE_WITHOUT_COMMAND_HANDLER",
                         "element": aggregate["fqn"],
                         "level": "warning",
@@ -1607,6 +1739,8 @@ class IRBuilder:
                             f"Aggregate `{aggregate['name']}` has no command handler "
                             f"— no write path exists"
                         ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
                     }
                 )
 
@@ -1620,8 +1754,20 @@ class IRBuilder:
             if proj.get("options", {}).get("externally_populated"):
                 continue
             if not proj_entry["projectors"]:
+                rule = {
+                    "rationale": (
+                        "A projection with no projector is never populated, so "
+                        "queries against it will always return empty."
+                    ),
+                    "fix": (
+                        "Add a projector for the projection, or set "
+                        "`externally_populated=True` if it is filled by a "
+                        "subscriber."
+                    ),
+                }
                 self._diagnostics.append(
                     {
+                        "category": "handler_completeness",
                         "code": "PROJECTION_WITHOUT_PROJECTOR",
                         "element": proj["fqn"],
                         "level": "warning",
@@ -1629,6 +1775,8 @@ class IRBuilder:
                             f"Projection `{proj['name']}` has no projector "
                             f"to populate it"
                         ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
                     }
                 )
 
@@ -1673,8 +1821,17 @@ class IRBuilder:
             )
             if missing:
                 versions = ", ".join(f"v{v}" for v in missing)
+                rule = {
+                    "rationale": (
+                        "Stored payloads at older versions with no upcaster "
+                        "path to the current version fail to deserialize at "
+                        "read time."
+                    ),
+                    "fix": "Add upcasters covering the missing source versions.",
+                }
                 self._diagnostics.append(
                     {
+                        "category": "versioning",
                         "code": "UPCASTER_GAP",
                         "element": fqn(event_cls),
                         "level": "warning",
@@ -1685,6 +1842,8 @@ class IRBuilder:
                             f"v{current_version} and would fail to deserialize. "
                             f"Add upcasters covering the missing versions."
                         ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
                     }
                 )
 
@@ -1706,8 +1865,21 @@ class IRBuilder:
                 continue
             entity_count = len(cluster["entities"])
             if entity_count > limit:
+                rule = {
+                    "rationale": (
+                        "A large aggregate is a consistency boundary and "
+                        "contention hotspot; oversized clusters are hard to "
+                        "keep transactionally consistent."
+                    ),
+                    "fix": (
+                        "Split the aggregate into smaller aggregates, or raise "
+                        "`[lint] aggregate_size_limit` if the size is "
+                        "intentional."
+                    ),
+                }
                 self._diagnostics.append(
                     {
+                        "category": "aggregate_design",
                         "code": "AGGREGATE_TOO_LARGE",
                         "element": aggregate["fqn"],
                         "level": "info",
@@ -1715,6 +1887,8 @@ class IRBuilder:
                             f"Aggregate `{aggregate['name']}` has {entity_count} "
                             f"entities (limit: {limit})"
                         ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
                     }
                 )
 
@@ -1725,6 +1899,16 @@ class IRBuilder:
         (default 5).
         """
         limit = self._domain.config.get("lint", {}).get("handler_breadth_limit", 5)
+        rule = {
+            "rationale": (
+                "A handler that handles many message types accretes unrelated "
+                "responsibilities and becomes hard to reason about."
+            ),
+            "fix": (
+                "Split the handler into focused handlers, or raise "
+                "`[lint] handler_breadth_limit` if the breadth is intentional."
+            ),
+        }
         for cluster in ir["clusters"].values():
             # Check command handlers
             for ch in cluster["command_handlers"].values():
@@ -1732,6 +1916,7 @@ class IRBuilder:
                 if handler_count > limit:
                     self._diagnostics.append(
                         {
+                            "category": "aggregate_design",
                             "code": "HANDLER_TOO_BROAD",
                             "element": ch["fqn"],
                             "level": "info",
@@ -1739,6 +1924,8 @@ class IRBuilder:
                                 f"Handler `{ch['name']}` handles {handler_count} "
                                 f"message types (limit: {limit})"
                             ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
                         }
                     )
             # Check event handlers
@@ -1747,6 +1934,7 @@ class IRBuilder:
                 if handler_count > limit:
                     self._diagnostics.append(
                         {
+                            "category": "aggregate_design",
                             "code": "HANDLER_TOO_BROAD",
                             "element": eh["fqn"],
                             "level": "info",
@@ -1754,6 +1942,8 @@ class IRBuilder:
                                 f"Handler `{eh['name']}` handles {handler_count} "
                                 f"message types (limit: {limit})"
                             ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
                         }
                     )
 
@@ -1778,14 +1968,28 @@ class IRBuilder:
                     if name not in auto_field_names
                 }
                 if not user_fields:
+                    rule = {
+                        "rationale": (
+                            "An event with no fields carries no information "
+                            "beyond its name, so consumers cannot react to what "
+                            "actually changed."
+                        ),
+                        "fix": (
+                            "Add fields capturing the state change, or confirm "
+                            "the event is intentionally a bare signal."
+                        ),
+                    }
                     self._diagnostics.append(
                         {
+                            "category": "aggregate_design",
                             "code": "EVENT_WITHOUT_DATA",
                             "element": event["fqn"],
                             "level": "info",
                             "message": (
                                 f"Event `{event['name']}` has no user-defined fields"
                             ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
                         }
                     )
 
@@ -1848,12 +2052,25 @@ class IRBuilder:
             if superseded_by:
                 msg += f"; superseded by `{superseded_by}`"
 
+            rule = {
+                "rationale": (
+                    "A deprecated element is scheduled for removal; code "
+                    "depending on it will break at the removal version."
+                ),
+                "fix": (
+                    "Migrate to the replacement element before the scheduled "
+                    "removal version."
+                ),
+            }
             self._diagnostics.append(
                 {
+                    "category": "deprecation",
                     "code": "DEPRECATED_ELEMENT",
                     "element": fqn_val,
                     "level": "info",
                     "message": msg,
+                    "rule": rule,
+                    "suggestion": rule["fix"],
                 }
             )
 
@@ -1872,13 +2089,26 @@ class IRBuilder:
                     f_msg = (
                         f"Field `{name}.{field_name}` is deprecated since v{f_since}"
                     )
+                f_rule = {
+                    "rationale": (
+                        "A deprecated field is scheduled for removal; code "
+                        "reading or writing it will break at the removal version."
+                    ),
+                    "fix": (
+                        "Migrate to the replacement field before the scheduled "
+                        "removal version."
+                    ),
+                }
                 self._diagnostics.append(
                     {
+                        "category": "deprecation",
                         "code": "DEPRECATED_FIELD",
                         "element": fqn_val,
                         "field": field_name,
                         "level": "info",
                         "message": f_msg,
+                        "rule": f_rule,
+                        "suggestion": f_rule["fix"],
                     }
                 )
 
@@ -1887,8 +2117,16 @@ class IRBuilder:
         # deprecated element, the option is inert today and becomes a hard
         # ``IncorrectUsageError`` at v1.0.0.
         for opt in element.get("deprecated_options", []):
+            opt_rule = {
+                "rationale": (
+                    "The option is inert today and becomes a hard "
+                    "IncorrectUsageError at v1.0.0."
+                ),
+                "fix": (f"Remove the `{opt}` option from `{name}`; it has no effect."),
+            }
             self._diagnostics.append(
                 {
+                    "category": "deprecation",
                     "code": "DEPRECATED_OPTION",
                     "element": fqn_val,
                     "level": "warning",
@@ -1898,6 +2136,8 @@ class IRBuilder:
                         f"to the bounded context and carry no published-language "
                         f"or fact-event semantics, so it has no effect."
                     ),
+                    "rule": opt_rule,
+                    "suggestion": opt_rule["fix"],
                 }
             )
 
@@ -1915,8 +2155,15 @@ class IRBuilder:
             # subclass of an alias-using aggregate is not wrongly flagged.
             used = record.cls.__dict__.get("_deprecated_options_used", ())
             for option in used:
+                rule = {
+                    "rationale": (
+                        "The option is a deprecated alias scheduled for removal."
+                    ),
+                    "fix": "Use `event_sourced` instead of the deprecated alias.",
+                }
                 self._diagnostics.append(
                     {
+                        "category": "deprecation",
                         "code": "DEPRECATED_OPTION",
                         "element": fqn(record.cls),
                         "level": "info",
@@ -1924,6 +2171,8 @@ class IRBuilder:
                             f"Option `{option}` is deprecated; "
                             f"use `event_sourced` instead."
                         ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
                     }
                 )
 
@@ -1943,8 +2192,19 @@ class IRBuilder:
             if record.internal or record.auto_generated:
                 continue
             email_cls = record.cls
+            rule = {
+                "rationale": (
+                    "The email subsystem is deprecated and scheduled for "
+                    "removal in v1.0.0."
+                ),
+                "fix": (
+                    "Notify from an event handler or subscriber that calls an "
+                    "application-level notification service instead."
+                ),
+            }
             self._diagnostics.append(
                 {
+                    "category": "deprecation",
                     "code": "DEPRECATED_EMAIL",
                     "element": fqn(email_cls),
                     "level": "info",
@@ -1955,6 +2215,8 @@ class IRBuilder:
                         f"that calls an application-level notification service "
                         f"instead."
                     ),
+                    "rule": rule,
+                    "suggestion": rule["fix"],
                 }
             )
 
@@ -2027,6 +2289,10 @@ class IRBuilder:
                         item["level"],
                     )
                     continue
+                # Custom findings default to the ``custom`` category so they
+                # carry the same schema shape as built-in diagnostics; the
+                # forward-compat ``rule``/``suggestion`` keys stay optional.
+                item.setdefault("category", "custom")
                 self._diagnostics.append(item)
 
     @staticmethod

@@ -1058,3 +1058,263 @@ class TestCustomLintRules:
         assert "CUSTOM_CHECK" in codes
         assert "CUSTOM_A" in codes
         assert "CUSTOM_B" in codes
+
+
+# ── Enriched diagnostic schema (category / rule / suggestion) ────────
+
+
+def build_all_categories_domain() -> Domain:
+    """A domain that emits at least one diagnostic per built-in category."""
+    domain = Domain(name="AllCategories", root_path=".")
+
+    @domain.aggregate(deprecated={"since": "0.15", "removal": "1.0"})
+    class Order:  # deprecation + handler_completeness (no command handler)
+        name = String(max_length=100)
+
+    @domain.event(part_of=Order)
+    class OrderNudged:  # aggregate_design (EVENT_WITHOUT_DATA) + UNHANDLED_EVENT
+        pass
+
+    @domain.event(part_of=Order)
+    class OrderPlaced:  # versioning (UPCASTER_GAP) + UNHANDLED_EVENT
+        __version__ = 2
+        name = String()
+
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.mark.no_test_domain
+class TestDiagnosticSchemaEnrichment:
+    """Every built-in diagnostic carries category, rule, and suggestion."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.domain = build_all_categories_domain()
+        self.ir = IRBuilder(self.domain).build()
+        self.diagnostics = self.ir["diagnostics"]
+
+    def test_every_diagnostic_carries_the_enriched_keys(self):
+        assert len(self.diagnostics) > 0, "Expected diagnostics but got none"
+        for d in self.diagnostics:
+            assert d.get("category"), f"{d['code']} missing category"
+            rule = d.get("rule")
+            assert isinstance(rule, dict), f"{d['code']} missing rule dict"
+            assert rule.get("rationale"), f"{d['code']} rule missing rationale"
+            assert rule.get("fix"), f"{d['code']} rule missing fix"
+            assert d.get("suggestion"), f"{d['code']} missing suggestion"
+
+    def test_suggestion_defaults_to_rule_fix(self):
+        # The separate ``suggestion`` key is the forward-compat AI-override
+        # hook; for shipped rules it equals ``rule["fix"]`` (no override yet).
+        assert len(self.diagnostics) > 0
+        for d in self.diagnostics:
+            assert d["suggestion"] == d["rule"]["fix"]
+
+    def test_code_to_category_mapping(self):
+        by_code = {d["code"]: d["category"] for d in self.diagnostics}
+        assert by_code["AGGREGATE_WITHOUT_COMMAND_HANDLER"] == "handler_completeness"
+        assert by_code["EVENT_WITHOUT_DATA"] == "aggregate_design"
+        assert by_code["UPCASTER_GAP"] == "versioning"
+        assert by_code["DEPRECATED_ELEMENT"] == "deprecation"
+
+    def test_all_four_categories_present(self):
+        categories = {d["category"] for d in self.diagnostics}
+        assert {
+            "handler_completeness",
+            "aggregate_design",
+            "versioning",
+            "deprecation",
+        } <= categories
+
+
+# ── Per-element suppress_checks ─────────────────────────────────────
+
+
+def _codes_for(ir: dict, element_substr: str) -> list[str]:
+    """Codes of diagnostics whose element FQN contains ``element_substr``."""
+    return [
+        d["code"] for d in ir["diagnostics"] if element_substr in d.get("element", "")
+    ]
+
+
+@pytest.mark.no_test_domain
+class TestSuppressChecksOption:
+    """The per-element ``suppress_checks`` option drops the named codes."""
+
+    def test_aggregate_suppresses_its_own_code(self):
+        domain = Domain(name="SuppressAgg", root_path=".")
+
+        @domain.aggregate(suppress_checks=["AGGREGATE_WITHOUT_COMMAND_HANDLER"])
+        class Suppressed:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class Kept:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        # Suppressed aggregate: its finding is gone; Kept still has it. This
+        # also proves one element's suppression does not affect another.
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" not in _codes_for(ir, "Suppressed")
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" in _codes_for(ir, "Kept")
+
+    def test_event_suppression_via_registry_no_options_block(self):
+        """Events carry no IR ``options`` block, so suppression must resolve
+        from the registry — this is the load-bearing no-options-block path."""
+        domain = Domain(name="SuppressEvent", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order, suppress_checks=["UNHANDLED_EVENT"])
+        class OrderPlaced:
+            name = String()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "UNHANDLED_EVENT" not in _codes_for(ir, "OrderPlaced")
+
+    def test_command_inherits_suppress_checks(self):
+        """Commands pick up ``suppress_checks`` via the inherited option set
+        (``BaseMessageType`` → filtered comprehension in command.py)."""
+        domain = Domain(name="SuppressCommand", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.command(part_of=Order, suppress_checks=["UNUSED_COMMAND"])
+        class PlaceOrder:
+            name = String(required=True)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "UNUSED_COMMAND" not in _codes_for(ir, "PlaceOrder")
+
+    def test_unmatched_code_removes_nothing(self):
+        domain = Domain(name="SuppressNoMatch", root_path=".")
+
+        @domain.aggregate(suppress_checks=["NONEXISTENT_CODE"])
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" in _codes_for(ir, "Order")
+
+
+# ── [lint].suppressions allow-list ──────────────────────────────────
+
+
+def _build_five_finding_domain(suppressions: dict | None = None) -> Domain:
+    """Domain with five AGGREGATE_WITHOUT_COMMAND_HANDLER findings.
+
+    One per aggregate (OrderA..OrderE), so the total order over survivors is
+    by aggregate FQN — deterministic and independent of rule execution order.
+    """
+    domain = Domain(name="AllowList", root_path=".")
+
+    @domain.aggregate
+    class OrderA:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderB:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderC:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderD:
+        name = String(max_length=50)
+
+    @domain.aggregate
+    class OrderE:
+        name = String(max_length=50)
+
+    if suppressions is not None:
+        domain.config["lint"] = {"suppressions": suppressions}
+
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.mark.no_test_domain
+class TestSuppressionAllowList:
+    """``[lint].suppressions`` grandfathers the first N findings per code."""
+
+    def _handler_gap_elements(self, ir: dict) -> list[str]:
+        return sorted(
+            d["element"]
+            for d in ir["diagnostics"]
+            if d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER"
+        )
+
+    def test_count_grandfathers_first_n(self):
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
+        ir = IRBuilder(domain).build()
+        survivors = self._handler_gap_elements(ir)
+        assert len(survivors) == 3
+
+    def test_survivors_are_the_deterministic_tail(self):
+        """The survivors are exactly those ranked *after* position N in the
+        (code, element, field, message) total order — not merely count − N."""
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
+        ir = IRBuilder(domain).build()
+
+        all_elements = sorted(
+            fqn
+            for fqn in {
+                d["element"]
+                for d in IRBuilder(_build_five_finding_domain()).build()["diagnostics"]
+                if d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER"
+            }
+        )
+        assert len(all_elements) == 5
+        expected_survivors = all_elements[2:]  # first 2 grandfathered away
+        assert self._handler_gap_elements(ir) == expected_survivors
+
+    def test_build_is_deterministic(self):
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
+        first = IRBuilder(domain).build()["diagnostics"]
+        second = IRBuilder(domain).build()["diagnostics"]
+        assert first == second
+
+    def test_absent_suppressions_keeps_all(self):
+        domain = _build_five_finding_domain()
+        ir = IRBuilder(domain).build()
+        assert len(self._handler_gap_elements(ir)) == 5
+
+    def test_zero_count_suppresses_nothing(self):
+        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 0})
+        ir = IRBuilder(domain).build()
+        assert len(self._handler_gap_elements(ir)) == 5
+
+    def test_custom_rule_findings_are_subject_to_allow_list(self):
+        """Custom findings with only the minimal keys are still allow-listed
+        and default to category='custom' — no KeyError on the absent keys."""
+        domain = Domain(name="CustomAllowList", root_path=".")
+        domain.config["lint"] = {
+            "rules": [f"{_FIXTURES}.repeated_code_rule"],
+            "suppressions": {"REPEATED": 1},
+        }
+
+        @domain.aggregate
+        class Widget:
+            label = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        repeated = [d for d in ir["diagnostics"] if d["code"] == "REPEATED"]
+        assert len(repeated) == 2  # 3 emitted, first 1 grandfathered
+        assert all(d["category"] == "custom" for d in repeated)

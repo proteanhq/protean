@@ -91,6 +91,7 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
         # read-model write, so a redelivered event is applied exactly once
         # on a transactional provider. See ADR-0017.
         ("idempotent", False),
+        ("suppress_checks", ()),
     ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseProjector":
