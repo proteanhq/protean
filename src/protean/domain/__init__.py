@@ -87,6 +87,7 @@ if TYPE_CHECKING:
 
 from inflection import parameterize, titleize, transliterate, underscore
 
+from protean._deprecation import deprecated, warn_deprecated
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
 from protean.core.aggregate import aggregate_factory
@@ -168,7 +169,7 @@ from protean.utils.telemetry import (
     init_telemetry,
 )
 
-from .config import Config2, ConfigAttribute
+from .config import Config2, ConfigAttribute, _default_config
 from .context import DomainContext, _DomainContextGlobals
 from .command_processor import CommandProcessor
 from .handler_setup import HandlerConfigurator
@@ -191,6 +192,17 @@ _T = TypeVar("_T")
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
+
+# Shared "what to do instead" clause for every email-subsystem deprecation
+# warning (registration, ``send_email``, ``get_email_provider``, and a
+# non-default ``email_providers`` config block). The email subsystem is
+# deprecated in the 0.x series and removed at v1.0.0 (epic #1102); notify from
+# an event handler or subscriber that calls an application-level notification
+# service instead.
+_EMAIL_DEPRECATION_ALTERNATIVE = (
+    "Notify from an event handler or subscriber that calls an "
+    "application-level notification service instead."
+)
 
 
 class _Closeable(Protocol):
@@ -898,6 +910,21 @@ class Domain:
             for constant, value in config_obj["custom"].items():
                 setattr(self, constant, value)
 
+        # The email subsystem is deprecated (epic #1102, removed at v1.0.0).
+        # ``load_config`` runs in ``__init__``, so this fires uniformly through
+        # every bootstrap path (programmatic ``Domain()``, ``protean server``,
+        # ``protean shell``, ``protean test``, FastAPI). The default
+        # ``email_providers`` block is always present via ``_deep_merge``, so
+        # the equality guard is what keeps an untouched config silent: warn only
+        # when the operator has configured a non-default block.
+        if config_obj.get("email_providers") != _default_config()["email_providers"]:
+            warn_deprecated(
+                "Configuring `email_providers`",
+                removal="1.0.0",
+                alternative=_EMAIL_DEPRECATION_ALTERNATIVE,
+                stacklevel=3,
+            )
+
         return config_obj
 
     def domain_context(self, **kwargs: Any) -> DomainContext:
@@ -1000,6 +1027,18 @@ class Domain:
         **opts: Any,
     ) -> type[_T]:  # noqa: C901
         """Register class into the domain"""
+        # The email subsystem is deprecated (epic #1102, removed at v1.0.0).
+        # This is the single funnel for both ``@domain.email`` (via
+        # ``_domain_element``) and ``domain.register(SomeEmail)``, so one guard
+        # here covers every registration path. Framework code registers no
+        # email elements, so this only fires on user code.
+        if element_type == DomainObjects.EMAIL:
+            warn_deprecated(
+                "The `@domain.email` element",
+                removal="1.0.0",
+                alternative=_EMAIL_DEPRECATION_ALTERNATIVE,
+            )
+
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
         #
@@ -2476,9 +2515,11 @@ class Domain:
     # Email Functionality #
     #######################
 
+    @deprecated(removal="1.0.0", alternative=_EMAIL_DEPRECATION_ALTERNATIVE)
     def get_email_provider(self, provider_name: str) -> Any:
         return self.email_providers.get_email_provider(provider_name)
 
+    @deprecated(removal="1.0.0", alternative=_EMAIL_DEPRECATION_ALTERNATIVE)
     def send_email(self, email: Any) -> Any:
         return self.email_providers.send_email(email)
 

@@ -1435,6 +1435,7 @@ class IRBuilder:
         self._diagnose_event_without_data(ir)
         self._diagnose_deprecated_elements(ir)
         self._diagnose_deprecated_options(ir)
+        self._diagnose_email_deprecated(ir)
         # Custom lint rules from config
         self._run_custom_lint_rules(ir)
 
@@ -1899,6 +1900,37 @@ class IRBuilder:
                         ),
                     }
                 )
+
+    def _diagnose_email_deprecated(self, ir: dict[str, Any]) -> None:
+        """DEPRECATED_EMAIL: registered ``@domain.email`` elements.
+
+        The email subsystem is deprecated (epic #1102, removed at v1.0.0).
+        Email elements are not projected into the IR (they appear in no
+        cluster/projection/flow), so ``_diagnose_deprecated_elements`` cannot
+        see them. Read the registry directly, mirroring
+        ``_diagnose_upcaster_gap``, and emit one INFO-level diagnostic per
+        registered email element (INFO keeps ``check``'s exit code at 0 for a
+        deprecation, matching the ``DEPRECATED_ELEMENT`` convention).
+        """
+        registry = self._domain._domain_registry
+        for record in registry._elements.get("EMAIL", {}).values():
+            if record.internal or record.auto_generated:
+                continue
+            email_cls = record.cls
+            self._diagnostics.append(
+                {
+                    "code": "DEPRECATED_EMAIL",
+                    "element": fqn(email_cls),
+                    "level": "info",
+                    "message": (
+                        f"Email element `{email_cls.__name__}` uses the "
+                        f"deprecated email subsystem, scheduled for removal in "
+                        f"v1.0.0. Notify from an event handler or subscriber "
+                        f"that calls an application-level notification service "
+                        f"instead."
+                    ),
+                }
+            )
 
     # ------------------------------------------------------------------
     # Custom lint rules
