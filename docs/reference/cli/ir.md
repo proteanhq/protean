@@ -191,6 +191,12 @@ protean ir check --domain my_app.domain --format json
 | 0 | IR is fresh (matches live domain) |
 | 1 | IR is stale (domain has changed) |
 | 2 | No materialized IR found |
+| 3 | Schema version mismatch (baseline built against a different schema version) |
+
+A version mismatch (code 3) means the stored baseline's `ir_version` differs
+from the current schema version, so its checksum is not comparable. The `json`
+output reports `stored_version` and `current_version`. Regenerate the baseline
+against the current schema to clear it.
 
 ## Programmatic access
 

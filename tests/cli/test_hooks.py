@@ -608,6 +608,70 @@ class TestCheckStalenessHookNoIR:
 
 
 # ---------------------------------------------------------------------------
+# TestCheckStalenessHook — version mismatch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestCheckStalenessHookVersionMismatch:
+    """check_staleness_hook() reports a schema version mismatch distinctly."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_exits_1_on_version_mismatch(self):
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                check_staleness_hook()
+            assert exc_info.value.code == 1
+
+    def test_prints_version_mismatch_not_missing_ir(self, capsys):
+        # The message must name the version mismatch, NOT claim "no materialized
+        # IR found" — the file exists; the real problem is the schema version.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+        )
+        with patch(
+            "sys.argv",
+            [
+                "protean-check-staleness",
+                "-d",
+                "publishing7.py",
+                "--dir",
+                str(self._protean_dir),
+            ],
+        ):
+            with pytest.raises(SystemExit):
+                check_staleness_hook()
+
+        captured = capsys.readouterr()
+        assert "version mismatch" in captured.err.lower()
+        assert "0.0.9" in captured.err
+        assert "no materialized ir" not in captured.err.lower()
+
+
+# ---------------------------------------------------------------------------
 # TestCheckStalenessHook — error paths
 # ---------------------------------------------------------------------------
 
