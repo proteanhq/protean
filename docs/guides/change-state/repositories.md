@@ -208,7 +208,7 @@ order = repo.get(order_id)
 
 How it works:
 
-- If the aggregate has `is_event_sourced=True`, `repository_for()` returns an
+- If the aggregate has `event_sourced=True`, `repository_for()` returns an
   **event-sourced repository** backed by the event store. The event-sourced
   repository reconstructs aggregate state by replaying events from the
   aggregate's stream — it does not read from a database table.

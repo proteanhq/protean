@@ -48,7 +48,7 @@ what number it was assigned, and how much was deposited.
 
 ## Defining the Account Aggregate
 
-Now let's define the `Account` aggregate with `is_event_sourced=True`:
+Now let's define the `Account` aggregate with `event_sourced=True`:
 
 ```python
 --8<-- "guides/getting-started/es-tutorial/ch01.py:aggregate"
@@ -56,7 +56,7 @@ Now let's define the `Account` aggregate with `is_event_sourced=True`:
 
 There is a lot happening here. Let's break it down:
 
-- **`is_event_sourced=True`** tells Protean this aggregate derives its
+- **`event_sourced=True`** tells Protean this aggregate derives its
   state from events, not from a database row.
 - **`Account.open()`** is a class-level factory method. It calls
   `_create_new()` to create a blank aggregate with only an

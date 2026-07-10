@@ -216,10 +216,10 @@ Learn more in [Subscriptions](./subscriptions.md#stream-categories).
 
 ## Stream Categories and Event Sourcing
 
-For event-sourced aggregates (marked with `is_event_sourced=True`), stream categories become even more critical:
+For event-sourced aggregates (marked with `event_sourced=True`), stream categories become even more critical:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     account_number: String(required=True)
     balance: Float(default=0.0)

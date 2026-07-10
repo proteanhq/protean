@@ -1434,6 +1434,7 @@ class IRBuilder:
         self._diagnose_handler_too_broad(ir)
         self._diagnose_event_without_data(ir)
         self._diagnose_deprecated_elements(ir)
+        self._diagnose_deprecated_options(ir)
         # Custom lint rules from config
         self._run_custom_lint_rules(ir)
 
@@ -1870,6 +1871,32 @@ class IRBuilder:
                         "field": field_name,
                         "level": "info",
                         "message": f_msg,
+                    }
+                )
+
+    def _diagnose_deprecated_options(self, ir: dict[str, Any]) -> None:
+        """DEPRECATED_OPTION: a deprecated decorator/register option was used.
+
+        Reads the aggregate registry (the deprecated-option marker is not
+        projected into the IR, keeping the IR wire format unchanged) and emits
+        an INFO-level diagnostic per aggregate that used a deprecated option
+        alias, e.g. ``is_event_sourced=`` instead of ``event_sourced=``.
+        """
+        registry = self._domain._domain_registry
+        for record in registry._elements.get("AGGREGATE", {}).values():
+            # Read the class's own attribute (not an inherited one) so a
+            # subclass of an alias-using aggregate is not wrongly flagged.
+            used = record.cls.__dict__.get("_deprecated_options_used", ())
+            for option in used:
+                self._diagnostics.append(
+                    {
+                        "code": "DEPRECATED_OPTION",
+                        "element": fqn(record.cls),
+                        "level": "info",
+                        "message": (
+                            f"Option `{option}` is deprecated; "
+                            f"use `event_sourced` instead."
+                        ),
                     }
                 )
 

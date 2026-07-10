@@ -139,9 +139,13 @@ class TypeManager:
         for _, element in registry._elements[DomainObjects.AGGREGATE.value].items():
             if element.cls.meta_.fact_events:
                 event_cls = element_to_fact_event(element.cls)
-                self._domain.register(
+                registered = self._domain.register(
                     event_cls,
                     auto_generated=True,
                     part_of=element.cls,
-                    is_fact_event=True,
                 )
+                # ``is_fact_event`` is framework-internal (rejected as a
+                # register option), so mark the generated class directly. It is
+                # only read at check/runtime, so setting it after registration
+                # is safe.
+                registered.meta_.is_fact_event = True

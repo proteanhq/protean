@@ -156,7 +156,7 @@ class AccountSuspended:
     suspended_at = DateTime()
 
 
-@compliance.aggregate(is_event_sourced=True)
+@compliance.aggregate(event_sourced=True)
 class Account:
     account_id = Auto(identifier=True)
     holder_name = String()

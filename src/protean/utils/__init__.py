@@ -447,6 +447,16 @@ def derive_element_class(
     if not all(opt in known_options for opt in opts):
         raise ConfigurationError(f"Unknown option(s) {set(opts) - set(known_options)}")
 
+    # Reject framework-internal options. These carry a default (so ``meta_``
+    # always exposes them) but are set by the framework, not by user code.
+    internal_supplied = set(opts) & base_cls._internal_options
+    if internal_supplied:
+        names = ", ".join(f"`{name}`" for name in sorted(internal_supplied))
+        raise ConfigurationError(
+            f"Option(s) {names} are set by the framework and cannot be "
+            f"provided directly."
+        )
+
     if not issubclass(element_cls, base_cls):
         try:
             original_cls = element_cls

@@ -76,7 +76,7 @@ scenarios like projection rebuilds, test teardown, and compliance requirements.
 
 ### Event-sourced aggregates get a different repository. { data-toc-label="Event Sourced" }
 
-When an aggregate is configured with `is_event_sourced=True`,
+When an aggregate is configured with `event_sourced=True`,
 `domain.repository_for()` transparently returns an event-sourced repository
 that reconstructs state by replaying events from the aggregate's stream,
 rather than reading from a database table. The calling code does not change.

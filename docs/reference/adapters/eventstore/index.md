@@ -72,7 +72,7 @@ Events are written to streams by the framework as part of aggregate
 persistence. You do not typically call the event store directly:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     balance: Float(default=0.0)
 

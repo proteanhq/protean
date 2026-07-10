@@ -25,7 +25,7 @@ stand.
 Add `fact_events=True` to the aggregate:
 
 ```python
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Account:
     account_number: String(max_length=20, required=True)
     holder_name: String(max_length=100, required=True)

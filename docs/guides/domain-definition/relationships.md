@@ -283,7 +283,7 @@ and its children.
 
 ## Event Sourcing Considerations
 
-For **event-sourced aggregates** (`is_event_sourced=True`), associations
+For **event-sourced aggregates** (`event_sourced=True`), associations
 behave differently because state is reconstructed from events rather than
 loaded from a database:
 

@@ -168,7 +168,7 @@ class Order(BaseAggregate):
     total = Float()
 
 # After (Event Sourcing)
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order(BaseAggregate):
     customer_id = Identifier(required=True)
     status = String(default="draft")
@@ -181,7 +181,7 @@ Event-sourced aggregates must define `@apply` methods that reconstruct state
 from events. These are the **only** place where state changes happen.
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order(BaseAggregate):
     customer_id = Identifier(required=True)
     status = String(default="draft")
@@ -242,7 +242,7 @@ persistence strategy.
 
 ```python
 # This aggregate uses event sourcing (full audit trail needed)
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account(BaseAggregate):
     ...
 
@@ -259,7 +259,7 @@ guide for criteria on which aggregates benefit from event sourcing.
 ### Migration checklist
 
 - [ ] Identify aggregates that need audit trails or temporal queries
-- [ ] Add `is_event_sourced=True` to those aggregates
+- [ ] Add `event_sourced=True` to those aggregates
 - [ ] Ensure every state mutation goes through `raise_()` + `@apply`
 - [ ] Configure the event store in `domain.toml`
 - [ ] Verify projections still populate correctly (they consume events, so

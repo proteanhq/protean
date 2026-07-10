@@ -127,7 +127,7 @@ them even after restarts.
 
 ## Event Sourced Aggregates: `raise_()` and `@apply` {#es-raise-apply}
 
-For **event-sourced aggregates** (`is_event_sourced=True`), `raise_()`
+For **event-sourced aggregates** (`event_sourced=True`), `raise_()`
 does more than collect events — it automatically invokes the
 corresponding `@apply` handler to mutate the aggregate's state in-place.
 This makes `@apply` the **single source of truth** for all state
@@ -137,7 +137,7 @@ reconstructed from stored events.
 ```python
 from protean import apply
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     customer_name: String(max_length=150, required=True)
     status: String(max_length=20, default="PENDING")

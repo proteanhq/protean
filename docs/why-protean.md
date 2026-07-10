@@ -138,7 +138,7 @@ audit trails, temporal queries, or complex state reconstruction, switch to
 event sourcing -- without rewriting the rest of your system.
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     balance: Float(default=0.0)
 

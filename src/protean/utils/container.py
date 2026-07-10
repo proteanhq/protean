@@ -97,6 +97,13 @@ class OptionsMixin:
     # specific runs at class-definition time.
     _default_options: ClassVar[list[tuple[str, Any]]] = []
 
+    # Option names that are framework-internal metadata: they carry a default
+    # (via ``_default_options``) so ``meta_`` always exposes them, but users may
+    # not set them directly. Element Roots override this to declare their own
+    # internal options; :func:`protean.utils.derive_element_class` rejects any
+    # such key passed through the decorator or ``domain.register``.
+    _internal_options: ClassVar[frozenset[str]] = frozenset()
+
     @classmethod
     def _set_defaults(cls) -> None:
         # Assign default options for remaining items from the declarative

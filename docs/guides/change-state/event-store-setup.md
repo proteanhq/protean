@@ -60,11 +60,11 @@ database_uri = "${MESSAGEDB_URL}"
 
 ## Marking aggregates as event-sourced
 
-Only aggregates marked with `is_event_sourced=True` use the event store
+Only aggregates marked with `event_sourced=True` use the event store
 for persistence:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     balance = Float(default=0.0)
 

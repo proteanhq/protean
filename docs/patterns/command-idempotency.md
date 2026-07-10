@@ -421,7 +421,7 @@ matches what was expected. If the command was already processed (meaning the
 aggregate has moved forward), the version check fails.
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class BankAccount(BaseAggregate):
     account_id: Identifier(identifier=True)
     balance: Float(default=0.0)

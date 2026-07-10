@@ -383,7 +383,7 @@ For event-sourced aggregates, methods and events are even more tightly coupled.
 The method raises an event, and the `@apply` handler mutates state:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account(BaseAggregate):
     account_id: Auto(identifier=True)
     balance: Float(default=0.0)
