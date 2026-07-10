@@ -106,8 +106,6 @@ class TestEngineExceptionHandlerLogs:
 
     def test_exception_handler_with_exception_logs_exc_info(self, test_domain, caplog):
         """An exception in the event loop logs engine.unhandled_exception with exc_info."""
-        import asyncio
-
         engine = Engine(test_domain, test_mode=True)
 
         async def faulty_task():
@@ -133,7 +131,8 @@ class TestEngineExceptionHandlerLogs:
                 )
 
             error_records = [
-                r for r in caplog.records
+                r
+                for r in caplog.records
                 if "engine.unhandled_exception" in r.getMessage()
             ]
             assert len(error_records) >= 1
@@ -150,8 +149,7 @@ class TestEngineExceptionHandlerLogs:
             )
 
         error_records = [
-            r for r in caplog.records
-            if "engine.unhandled_exception" in r.getMessage()
+            r for r in caplog.records if "engine.unhandled_exception" in r.getMessage()
         ]
         assert len(error_records) >= 1
         assert error_records[0].error == "Some async warning"

@@ -298,7 +298,9 @@ class TestRedisDataReset:
                 # Should log error message
                 assert len(caplog.records) == 1
                 assert caplog.records[0].levelname == "ERROR"
-                assert "broker.redis_pubsub.data_reset_failed" in caplog.records[0].message
+                assert (
+                    "broker.redis_pubsub.data_reset_failed" in caplog.records[0].message
+                )
 
 
 @pytest.mark.redis

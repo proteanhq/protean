@@ -163,11 +163,21 @@ all infrastructure adapters exercised**.
 
 ### Pipeline Steps
 
-1. Start all 5 backing service containers
-2. Install dependencies via uv
-3. Run the full test suite (`protean test -c FULL`)
-4. Upload coverage to Codecov
-5. Deploy documentation (on merge to `main`)
+Each pull request runs these gates, all in CI so none can be bypassed by a
+missing pre-commit hook, a `--no-verify`, or a web edit:
+
+1. **Lint.** `ruff check` and `ruff format --check`, the same checks as the
+   pre-commit hook.
+2. **Type check.** `mypy --strict` over `src/protean`.
+3. **Full test suite.** `protean test -c FULL` across 4 Python versions with all
+   5 backing service containers running.
+4. **Coverage floor.** Overall coverage must stay at or above 94%
+   (`coverage report --fail-under=94`); patch coverage is enforced separately by
+   Codecov, and results are uploaded to Codecov on every run.
+5. **Security scanning.** CodeQL (SAST) and a dependency-review check on any
+   changed dependencies.
+
+Documentation is deployed on merge to `main`.
 
 ### Documentation
 

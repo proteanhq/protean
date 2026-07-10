@@ -105,9 +105,7 @@ def test_engine_run_non_test_mode(test_domain, caplog):
             engine.run()
 
     mock_run_forever.assert_called_once()
-    assert any(
-        "engine.started" in record.message for record in caplog.records
-    )
+    assert any("engine.started" in record.message for record in caplog.records)
 
 
 def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):

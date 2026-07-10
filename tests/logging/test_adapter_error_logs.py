@@ -41,7 +41,8 @@ class TestSqlAlchemyCredentialRedaction:
         assert result is False
 
         error_records = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if "repository.sqlalchemy.connection_failed" in r.getMessage()
         ]
         assert len(error_records) >= 1, (
@@ -69,9 +70,7 @@ class TestSqlAlchemyCredentialRedaction:
             pytest.skip("sqlalchemy not installed")
 
         provider = MagicMock(spec=SAProvider)
-        provider.conn_info = {
-            "database_uri": "not-a-valid-uri"
-        }
+        provider.conn_info = {"database_uri": "not-a-valid-uri"}
 
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
@@ -83,7 +82,8 @@ class TestSqlAlchemyCredentialRedaction:
         assert result is False
 
         error_records = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if "repository.sqlalchemy.connection_failed" in r.getMessage()
         ]
         assert len(error_records) >= 1

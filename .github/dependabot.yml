@@ -46,3 +46,22 @@ updates:
       # the adapter is pinned to the 8.x line, and CI runs against ES 8.7.
       - dependency-name: "elasticsearch"
         versions: [">=9.0.0"]
+
+  # Keep the pinned GitHub Actions (checkout, setup-uv, codeql-action, …) current
+  # so security fixes to the actions themselves land as PRs. Grouped into one PR
+  # per run, mirroring the pip ecosystem above.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    groups:
+      all-actions:
+        patterns:
+          - "*"
+      security-updates:
+        patterns:
+          - "*"
+        applies-to: security-updates

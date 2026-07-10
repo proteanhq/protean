@@ -1,0 +1,23 @@
+name: Dependency Review
+
+# On every PR, diff the dependency graph and block the merge if it introduces a
+# package with a known high-severity vulnerability. PR-only: the action needs a
+# pull request's base and head refs to compute the dependency delta.
+on:
+  pull_request:
+    branches: [main, "release/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

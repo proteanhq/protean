@@ -31,9 +31,7 @@ def _init_telemetry_in_memory(domain):
     """Set up in-memory OTEL metric reader on the domain for testing."""
     resource = Resource.create({"service.name": domain.normalized_name})
     metric_reader = InMemoryMetricReader()
-    meter_provider = SDKMeterProvider(
-        resource=resource, metric_readers=[metric_reader]
-    )
+    meter_provider = SDKMeterProvider(resource=resource, metric_readers=[metric_reader])
 
     domain._otel_meter_provider = meter_provider
     domain._otel_init_attempted = True
@@ -413,9 +411,7 @@ class TestDBPoolOTELGauges:
             assert len(points) >= 1
             assert points[0].value == 2
 
-            points = _get_metric_data_points(
-                metric_reader, "protean.db.pool_overflow"
-            )
+            points = _get_metric_data_points(metric_reader, "protean.db.pool_overflow")
             assert len(points) >= 1
             assert points[0].value == 1
 
@@ -484,9 +480,7 @@ class TestBackpressureOTELGauges:
 
         _register_infrastructure_gauges([test_domain])
 
-        points = _get_metric_data_points(
-            metric_reader, "protean.outbox.pending_count"
-        )
+        points = _get_metric_data_points(metric_reader, "protean.outbox.pending_count")
         # test_domain with memory adapters: count_by_status returns {}
         # pending_total = 0
         assert len(points) >= 1
@@ -711,12 +705,15 @@ class TestHandRolledPoolMetrics:
         domain._get_outbox_repo.return_value = mock_outbox
         domain.brokers.get.return_value = None
 
-        with patch(
-            "protean.server.observatory.metrics._collect_pool_stats",
-            return_value=[],
-        ), patch(
-            "protean.server.observatory.metrics._collect_broker_pool_stats",
-            return_value=[],
+        with (
+            patch(
+                "protean.server.observatory.metrics._collect_pool_stats",
+                return_value=[],
+            ),
+            patch(
+                "protean.server.observatory.metrics._collect_broker_pool_stats",
+                return_value=[],
+            ),
         ):
             output = _hand_rolled_metrics([domain])
 
@@ -770,8 +767,8 @@ class TestHandRolledPoolMetrics:
         assert "protean_subscription_pending_messages" in output
         lines = output.split("\n")
         lag_data_lines = [
-            l
-            for l in lines
-            if l.startswith("protean_subscription_consumer_lag{")
+            line
+            for line in lines
+            if line.startswith("protean_subscription_consumer_lag{")
         ]
         assert len(lag_data_lines) == 0
