@@ -41,6 +41,12 @@ you. The contributions below are genuinely valuable and actively wanted.
   you invest time. Unsolicited large pull requests may not be merged, however
   good the code; the cost of a change is in its design fit and long-term
   maintenance, not the diff.
+- **AI-assisted contributions** are held to the same bar, and the bar is
+  understanding, not output. A PR must be tied to an agreed issue, and you must
+  be able to explain every part of the change and why it fits Protean's design.
+  Pull requests that read as unreviewed AI output — no linked issue, generated
+  boilerplate, or changes the author cannot speak to — will be closed. Judgment
+  about design fit is the actual work here, and it cannot be delegated to a tool.
 
 This is not a reflection on your work. It is how the project keeps a single,
 coherent design under one maintainer. If that trade-off does not suit you, the
