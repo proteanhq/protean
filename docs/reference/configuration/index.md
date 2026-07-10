@@ -37,7 +37,6 @@ identity_strategy = "uuid"
 identity_type = "string"
 event_processing = "sync"
 command_processing = "sync"
-message_processing = "sync"
 
 [databases.default]
 provider = "memory"
@@ -664,6 +663,20 @@ batch_size = 5000      # Rows deleted per bounded cleanup batch
 
 Read more in [Projectors](../../guides/consume-state/projectors.md) and the
 [`protean data idempotency`](../cli/data/idempotency.md) CLI command.
+
+### `logging`
+
+This section configures Protean's structured logging: level, output format,
+file rotation, slow-handler/slow-query thresholds, and redaction of sensitive
+fields.
+
+```toml
+[logging]
+level = "INFO"
+format = "auto"
+```
+
+Full key reference, redaction rules, and tail sampling: [Logging](../logging.md).
 
 ## Custom Attributes
 

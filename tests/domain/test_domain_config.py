@@ -5,6 +5,8 @@ from protean.domain import Domain
 from protean.domain.config import Config2, _default_config
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto
+from protean.server.outbox_processor import OutboxProcessor
+from protean.server.subscription.stream_subscription import StreamSubscription
 
 
 def test_invalid_identity_strategy():
@@ -75,3 +77,54 @@ class TestPriorityLanesDefaults:
 
         domain.register(AutoTest)
         domain.init(traverse=False)  # Should not raise
+
+        assert domain.config["server"]["priority_lanes"] == {
+            "enabled": False,
+            "threshold": 0,
+            "backfill_suffix": "backfill",
+        }
+
+
+class _MockEngine:
+    """Minimal stand-in for `Engine` — enough for `OutboxProcessor` /
+    `StreamSubscription.__init__` to read `engine.domain.config` and
+    `engine.loop`."""
+
+    def __init__(self, domain):
+        self.domain = domain
+        self.loop = None
+
+
+class _FakeHandler:
+    """Minimal stand-in for an event/command handler class."""
+
+    __name__ = "FakeHandler"
+    __module__ = "tests.domain"
+    __qualname__ = "FakeHandler"
+
+
+@pytest.mark.no_test_domain
+class TestPriorityLanesConsumersReadDefault:
+    """Couples the `_default_config()` `priority_lanes` default to the actual
+    runtime consumers (`OutboxProcessor`, `StreamSubscription`), so a `.get()`
+    fallback drifting from the explicit default is caught here, not just by
+    manual inspection of the two literals."""
+
+    def test_outbox_processor_reads_default_lanes_config(self):
+        domain = Domain(config=_default_config())
+        processor = OutboxProcessor(_MockEngine(domain), "default", "default")
+
+        assert processor._lanes_enabled is False
+        assert processor._lane_threshold == 0
+        assert processor._backfill_suffix == "backfill"
+
+    def test_stream_subscription_reads_default_lanes_config(self):
+        domain = Domain(config=_default_config())
+        subscription = StreamSubscription(
+            engine=_MockEngine(domain),
+            stream_category="orders",
+            handler=_FakeHandler,
+        )
+
+        assert subscription._lanes_enabled is False
+        assert subscription._backfill_suffix == "backfill"
