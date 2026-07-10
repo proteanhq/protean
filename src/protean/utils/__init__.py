@@ -727,8 +727,10 @@ def __getattr__(name: str) -> Any:
     This fires only when normal attribute lookup misses the module globals, so
     the underscore-prefixed implementations used throughout the framework never
     reach here. A deprecated public name warns and returns its implementation;
-    every other unknown attribute raises ``AttributeError`` so ``hasattr``/
-    ``dir()`` probing and ``--doctest-modules`` collection behave as usual.
+    every other unknown attribute raises ``AttributeError`` so ``hasattr``
+    probing and ``--doctest-modules`` collection behave as usual. (``dir()``
+    reads ``__dict__`` and never invokes ``__getattr__``, so the deprecated
+    names do not appear in it — they stay importable, just not enumerable.)
     """
     impl = _DEPRECATED_PLUMBING.get(name)
     if impl is not None:

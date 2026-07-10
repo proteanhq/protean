@@ -1,3 +1,4 @@
+import inspect
 import pickle
 
 import pytest
@@ -108,10 +109,35 @@ class TestPublicSurface:
         exec("from protean.exceptions import *", namespace)
         return {name for name in namespace if not name.startswith("__")}
 
-    def test_star_import_matches_all(self):
+    def _defined_exception_classes(self):
+        # Exception classes *defined in this module* (not imported into it).
         from protean import exceptions
 
-        assert self._star_import() == set(exceptions.__all__)
+        return {
+            name
+            for name, obj in inspect.getmembers(exceptions, inspect.isclass)
+            if issubclass(obj, exceptions.ProteanException)
+            and obj.__module__ == exceptions.__name__
+        }
+
+    def test_all_reconciles_with_defined_exceptions(self):
+        # The guard that actually catches drift: `__all__` must be exactly the
+        # exception classes defined here plus the re-exported deprecation
+        # category. Adding a `class FooError(ProteanException)` without listing
+        # it, or dropping a public exception from `__all__`, fails here.
+        from protean import exceptions
+
+        assert set(exceptions.__all__) == self._defined_exception_classes() | {
+            "ProteanDeprecationWarning"
+        }
+
+    def test_star_import_binds_exactly_the_public_surface(self):
+        # Not `set(__all__)` on the RHS — that would be tautological. Pin to the
+        # independently-derived surface so a name silently dropped from `__all__`
+        # (and thus from `import *`) is caught here too.
+        assert self._star_import() == self._defined_exception_classes() | {
+            "ProteanDeprecationWarning"
+        }
 
     def test_every_exported_name_is_a_deprecation_category_or_exception(self):
         from protean import exceptions
@@ -125,13 +151,10 @@ class TestPublicSurface:
             else:
                 assert issubclass(obj, exceptions.ProteanException)
 
-    def test_deprecation_category_is_exported(self):
-        # The re-exported filter target is public and must survive `import *`.
-        assert "ProteanDeprecationWarning" in self._star_import()
-
     def test_incidental_imports_are_not_exported(self):
-        # `logging` and `datetime` are module-level imports, not public API;
-        # `__all__` must keep them out of the star-export.
+        # `logging`, `datetime`, and `Any` are non-underscore module-level
+        # imports that `import *` would drag in without an explicit `__all__`;
+        # their absence proves the guard actually filters.
         exported = self._star_import()
         assert "logging" not in exported
         assert "datetime" not in exported

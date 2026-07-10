@@ -62,10 +62,19 @@ def test_deprecated_plumbing_warns_and_delegates(name, impl):
 
     # Returns the live implementation, identity-equal to the underscore spelling.
     assert obj is impl
-    # The warning names the attribute and cites the 1.0 removal.
-    message = str(record[0].message)
-    assert name in message
-    assert "1.0.0" in message
+    # The warning message is fully pinned: the qualified name, the "no public
+    # replacement" clause, and the 1.0 removal version. Asserting only
+    # `name in message` would be trivially satisfied since the message is built
+    # from `name`.
+    assert str(record[0].message) == (
+        f"`protean.utils.{name}` is deprecated. "
+        f"It is internal plumbing with no public replacement. "
+        f"Will be removed in v1.0.0."
+    )
+    # The warning is attributed to the caller's frame (this test file), not to
+    # `utils/__init__.py` or `_deprecation.py`. A wrong stacklevel on a
+    # module-level PEP-562 `__getattr__` would otherwise ship undetected.
+    assert record[0].filename == __file__
 
 
 @pytest.mark.parametrize("name, impl", sorted(DEPRECATED.items()))

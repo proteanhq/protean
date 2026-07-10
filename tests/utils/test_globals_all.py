@@ -2,6 +2,8 @@
 three request-scoped proxies, keeping the lookup helpers and context stacks
 internal (#1110)."""
 
+EXPECTED = {"current_domain", "current_uow", "g"}
+
 
 def _star_import():
     namespace: dict[str, object] = {}
@@ -15,16 +17,21 @@ def test_all_lists_only_the_public_proxies():
     assert globals_mod.__all__ == ["current_domain", "current_uow", "g"]
 
 
-def test_star_import_matches_all():
-    from protean.utils import globals as globals_mod
+def test_star_import_binds_exactly_the_public_proxies():
+    # RHS is the independently-derived surface, not `set(__all__)`: dropping a
+    # proxy from `__all__` would then break `import *` and fail here too.
+    assert _star_import() == EXPECTED
 
-    assert _star_import() == set(globals_mod.__all__)
 
-
-def test_internal_helpers_are_not_exported():
+def test_incidental_imports_are_not_exported():
+    # Non-underscore module-level names (imports and the module logger) that
+    # `import *` would pull in without an explicit `__all__`. Underscore names
+    # (`_find_domain`, the context stacks) are excluded by `import *` regardless,
+    # so asserting on them would prove nothing — these do.
     exported = _star_import()
-    assert "_find_domain" not in exported
-    assert "_find_uow" not in exported
-    assert "_lookup_domain_object" not in exported
-    assert "_domain_context_stack" not in exported
-    assert "_uow_context_stack" not in exported
+    assert "logging" not in exported
+    assert "warnings" not in exported
+    assert "partial" not in exported
+    assert "LocalProxy" not in exported
+    assert "LocalStack" not in exported
+    assert "logger" not in exported
