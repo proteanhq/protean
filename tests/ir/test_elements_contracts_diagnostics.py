@@ -12,7 +12,11 @@ from protean.ir.builder import IRBuilder
 from protean.utils import fqn
 
 from .elements import build_published_event_domain
-from .support import infra_import_domain
+from .support import (
+    infra_from_import_domain,
+    infra_guarded_domain,
+    infra_import_domain,
+)
 
 
 def build_diagnostics_test_domain() -> Domain:
@@ -2245,8 +2249,9 @@ class TestCircularClusterDependency:
         for d in findings:
             assert d["level"] == "warning"
             assert d["category"] == "bounded_context"
-            # The message names the whole chain, including the wrap-around.
-            assert f"{fqn(Order)} -> {fqn(Customer)}" in d["message"]
+            # The message names the whole mutually-dependent group.
+            assert fqn(Order) in d["message"]
+            assert fqn(Customer) in d["message"]
             assert d["element"] in d["message"]
 
     def test_three_cluster_cycle_is_deterministic(self):
@@ -2277,6 +2282,112 @@ class TestCircularClusterDependency:
         # The reported chain is byte-identical across independent builds.
         second = _circular_findings(build())
         assert [d["message"] for d in first] == [d["message"] for d in second]
+
+    def test_node_reachable_only_through_finalized_node_is_flagged(self):
+        """SCC membership, not first-cycle discovery: in ``A->B, B->C, C->A,
+        B->D, D->C`` every cluster is in one strongly-connected component
+        (``D->C->A->B->D`` is a genuine cycle through ``D``). A plain DFS that
+        only closes on an on-stack neighbour would miss ``D`` once ``C`` is
+        finalized; SCC membership reports all four, each exactly once."""
+        domain = Domain(name="SccReach", root_path=".")
+
+        @domain.aggregate
+        class A:
+            name = String(max_length=50)
+            b = Reference("B")
+
+        @domain.aggregate
+        class B:
+            name = String(max_length=50)
+            c = Reference("C")
+            d = Reference("D")
+
+        @domain.aggregate
+        class C:
+            name = String(max_length=50)
+            a = Reference("A")
+
+        @domain.aggregate
+        class D:
+            name = String(max_length=50)
+            c = Reference("C")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        findings = _circular_findings(ir)
+        elements = [d["element"] for d in findings]
+        assert sorted(elements) == sorted([fqn(A), fqn(B), fqn(C), fqn(D)])
+        # Each cluster reported exactly once, no duplicates.
+        assert len(elements) == len(set(elements))
+
+    def test_cluster_on_two_cycles_is_reported_once(self):
+        """A figure-eight — ``A<->B`` and ``A<->C`` — puts ``A`` on two distinct
+        cycles. Frozenset-per-cycle dedup would emit ``A`` twice; SCC membership
+        (all three are one component) emits each exactly once."""
+        domain = Domain(name="FigureEight", root_path=".")
+
+        @domain.aggregate
+        class A:
+            name = String(max_length=50)
+            b = Reference("B")
+            c = Reference("C")
+
+        @domain.aggregate
+        class B:
+            name = String(max_length=50)
+            a = Reference("A")
+
+        @domain.aggregate
+        class C:
+            name = String(max_length=50)
+            a = Reference("A")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _circular_findings(ir)]
+        assert sorted(elements) == sorted([fqn(A), fqn(B), fqn(C)])
+        assert elements.count(fqn(A)) == 1, "cluster on two cycles reported once"
+
+    def test_two_disjoint_cycles_do_not_bleed(self):
+        """Two independent 2-cycles plus an acyclic bridge: each cycle is its
+        own component, the bridge cluster is in neither, so exactly the four
+        cyclic clusters are flagged."""
+        domain = Domain(name="TwoDisjoint", root_path=".")
+
+        @domain.aggregate
+        class A:
+            name = String(max_length=50)
+            b = Reference("B")
+
+        @domain.aggregate
+        class B:
+            name = String(max_length=50)
+            a = Reference("A")
+            bridge = Reference("Bridge")
+
+        @domain.aggregate
+        class Bridge:
+            name = String(max_length=50)
+            c = Reference("C")
+
+        @domain.aggregate
+        class C:
+            name = String(max_length=50)
+            d = Reference("D")
+
+        @domain.aggregate
+        class D:
+            name = String(max_length=50)
+            c = Reference("C")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _circular_findings(ir)]
+        assert sorted(elements) == sorted([fqn(A), fqn(B), fqn(C), fqn(D)])
+        assert fqn(Bridge) not in elements, "acyclic bridge is not part of a cycle"
 
     def test_acyclic_chain_is_not_flagged(self):
         domain = Domain(name="Acyclic", root_path=".")
@@ -2473,3 +2584,44 @@ class TestInfraImportInDomain:
         )
         # First in (code, element, ...) order is grandfathered; the tail lives.
         assert survivors == all_elements[1:]
+
+    def test_non_cluster_element_is_scanned(self):
+        """A repository is not an aggregate-cluster member, yet it lives in the
+        infra-importing module. The scan covers *every* registered domain
+        element, so the repository is flagged too — not just the aggregate and
+        value object inside the cluster."""
+        domain = _build_infra_domain("InfraRepo", {"check_infra_imports": True})
+        domain.register(
+            infra_import_domain.InfraOrderRepository,
+            part_of=infra_import_domain.InfraOrder,
+        )
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _infra_findings(ir)]
+        assert fqn(infra_import_domain.InfraOrderRepository) in elements
+
+    def test_from_import_alias_form_is_detected(self):
+        """``from protean import adapters`` (module ``protean``, alias
+        ``adapters``) must be caught — the rule inspects imported alias names,
+        not only ``ImportFrom.module``."""
+        domain = Domain(name="InfraFromForm", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        domain.register(infra_from_import_domain.FromFormOrder)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _infra_findings(ir)]
+        assert fqn(infra_from_import_domain.FromFormOrder) in elements
+
+    def test_guarded_and_lazy_imports_are_not_flagged(self):
+        """An adapter import reachable only under ``TYPE_CHECKING`` or inside a
+        method body introduces no module-level runtime coupling, so it must not
+        be flagged — those are the idiomatic ways to avoid coupling."""
+        domain = Domain(name="InfraGuarded", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        domain.register(infra_guarded_domain.GuardedOrder)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []

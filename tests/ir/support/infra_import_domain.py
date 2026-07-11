@@ -16,6 +16,7 @@ that both live in this infra-importing module.
 
 from protean.adapters.broker.inline import InlineBroker  # noqa: F401
 from protean.core.aggregate import BaseAggregate
+from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
 from protean.fields import String, ValueObject
 
@@ -27,3 +28,8 @@ class Money(BaseValueObject):
 class InfraOrder(BaseAggregate):
     name = String(max_length=50)
     money = ValueObject(Money)
+
+
+class InfraOrderRepository(BaseRepository):
+    """A repository is *not* a cluster member, so it exercises the scan over
+    all registered domain elements — not just aggregate-cluster members."""
