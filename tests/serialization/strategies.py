@@ -23,15 +23,17 @@ element kind, so the invariant asserted differs:
   plus object equality.
 
 The models below exercise every serializable field type in
-``protean.fields.__all__`` except: ``Reference`` (navigation, not data),
-``Method`` (behavior), ``Nested`` (schema-only), and ``ValueObjectList`` — a
-legacy raw ``Field`` that pydantic-based elements reject (it predates the
+``protean.fields.__all__``. ``Auto`` is covered as the auto-generated surrogate
+identity of the entity/aggregate models (its ``id`` value is in ``to_dict()``
+and pinned by the idempotence tests). Excluded: ``Reference`` (navigation, not
+data), ``Method`` (behavior), ``Nested`` (schema-only), and ``ValueObjectList``
+— a legacy raw ``Field`` that pydantic-based elements reject (it predates the
 ``FieldSpec`` serialization path these tests cover).
 """
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -204,8 +206,20 @@ decimals = st.decimals(
 )
 booleans = st.booleans()
 dates = st.dates()
-# Cover both naive and tz-aware datetimes; both isoformat/round-trip cleanly.
-datetimes = st.datetimes(timezones=st.sampled_from([None, UTC]))
+# Cover naive plus a spread of fixed UTC offsets (not just UTC), so non-UTC
+# offsets exercise the isoformat/round-trip path. Fixed offsets (rather than
+# named ``st.timezones()`` zones) keep the suite deterministic and free of a
+# ``tzdata`` dependency, while still varying the serialized offset.
+timezones = st.sampled_from(
+    [
+        None,
+        UTC,
+        timezone(timedelta(hours=5, minutes=30)),  # +05:30
+        timezone(timedelta(hours=-8)),  # -08:00
+        timezone(timedelta(hours=13)),  # +13:00
+    ]
+)
+datetimes = st.datetimes(timezones=timezones)
 identifiers = st.uuids().map(str)
 statuses = st.sampled_from([p.value for p in Priority])
 string_lists = st.lists(strings, max_size=5)
@@ -320,13 +334,16 @@ def assert_entity_roundtrip(obj: Any) -> None:
 
 
 def assert_message_roundtrip(msg: Any) -> None:
-    """Event/command: payload idempotence + object equality.
+    """Event/command: payload idempotence.
 
-    ``_metadata`` is rebuilt on reconstruction (fresh timestamps/versions), so
-    it is excluded; the schema payload must be byte-for-byte stable.
+    ``_metadata`` is rebuilt on reconstruction (fresh timestamps/versions) and,
+    for a message constructed directly rather than raised through an aggregate,
+    its ``headers.id`` is ``None`` — so ``rebuilt == msg`` (event/command
+    equality compares that id) would assert ``None == None`` and pass
+    vacuously. The meaningful invariant is that every schema payload field
+    survives the round-trip byte-for-byte.
     """
 
     serialized = msg.to_dict()
     rebuilt = type(msg)(**serialized)
     assert _payload(rebuilt.to_dict()) == _payload(serialized)
-    assert rebuilt == msg
