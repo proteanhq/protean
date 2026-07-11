@@ -3473,28 +3473,41 @@ class TestEventNotPastTense:
         assert findings == []
 
     def test_framework_events_skipped(self):
-        """A fact event is iterated but skipped; a user gerund event is flagged.
+        """The ``auto_generated``/``is_fact_event`` guard is load-bearing.
 
-        Exercises the ``is_fact_event`` skip branch — the auto-generated fact
-        event (``OrderFactEvent``) is never flagged, while the user-defined
-        gerund event alongside it is.
+        An auto-generated event ending in ``-ing`` is framework-synthesized,
+        not user-named, so it is skipped; the user-defined gerund event
+        alongside it is flagged. This is the only branch of the guard that can
+        be exercised behaviourally — fact events are always named
+        ``<Aggregate>FactEvent`` and never end in ``-ing``, so the
+        ``is_fact_event`` half is untestable defensive code. Reverting the
+        guard turns the ``OrderSyncing`` assertion red.
         """
-        domain = Domain(name="EventNamingFact", root_path=".")
+        from protean.core.event import BaseEvent
+
+        domain = Domain(name="EventNamingFramework", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
 
         @domain.event(part_of="Order")
         class OrderShipping:
             order_id = Identifier(identifier=True)
 
-        @domain.aggregate(fact_events=True)
-        class Order:
-            name = String(max_length=50, required=True)
+        class OrderSyncing(BaseEvent):
+            order_id = Identifier(identifier=True)
+
+        domain.register(OrderSyncing, part_of="Order", auto_generated=True)
 
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
         findings = [d for d in ir["diagnostics"] if d["code"] == "EVENT_NOT_PAST_TENSE"]
         flagged = {d["element"] for d in findings}
+        # User-named gerund event IS flagged.
         assert any("OrderShipping" in f for f in flagged)
-        assert not any("FactEvent" in f for f in flagged)
+        # Auto-generated (framework) gerund event is skipped by the guard.
+        assert not any("OrderSyncing" in f for f in flagged)
 
 
 @pytest.mark.no_test_domain
@@ -3579,12 +3592,56 @@ class TestCommandNotImperative:
         ]
         assert findings == []
 
+    def test_pinned_verbs_not_flagged(self):
+        """Every verb the issue pins must pass. Guards against a membership
+        drift that drops a listed verb and flags a textbook imperative command
+        (e.g. `TransferFunds`, `ActivateAccount`, `ResetPassword`)."""
+        domain = Domain(name="CommandNamingPinned", root_path=".")
+
+        @domain.command(part_of="Order")
+        class TransferFunds:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class ActivateAccount:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class RequestRefund:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class ResetPassword:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class MergeAccounts:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class SplitInvoice:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [
+            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
+        ]
+        assert findings == []
+
 
 @pytest.mark.no_test_domain
 class TestAggregateNotNoun:
     """Verify AGGREGATE_NOT_NOUN naming diagnostics."""
 
-    def test_verb_and_gerund_aggregates_flagged(self):
+    def test_verb_gerund_and_adjective_aggregates_flagged(self):
+        """Gerund (`OrderProcessing`), verb (`Notify`), and adjective
+        (`Recursive` via `-ive`, `Cancelable` via `-able`) names are all
+        flagged — the adjective suffixes are the issue's required examples."""
         domain = Domain(name="AggNaming", root_path=".")
 
         @domain.aggregate
@@ -3595,18 +3652,30 @@ class TestAggregateNotNoun:
         class Notify:
             reference = String(max_length=50)
 
+        @domain.aggregate
+        class Recursive:
+            reference = String(max_length=50)
+
+        @domain.aggregate
+        class Cancelable:
+            reference = String(max_length=50)
+
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
         findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
-        assert len(findings) == 2
+        assert len(findings) == 4
         flagged = {d["element"] for d in findings}
         assert any("OrderProcessing" in f for f in flagged)
         assert any("Notify" in f for f in flagged)
+        assert any("Recursive" in f for f in flagged)
+        assert any("Cancelable" in f for f in flagged)
         for diag in findings:
             _assert_naming_diagnostic_shape(diag)
 
     def test_agent_nouns_not_flagged(self):
-        """Load-bearing regression guard: `-er`/`-or` agent nouns must pass."""
+        """`-er`/`-or` agent nouns must pass — they are absent from the pinned
+        suffix set, not guarded by an allow-list. Regression net: trips only if
+        someone *adds* an agent-noun suffix to ``NON_NOUN_AGGREGATE_SUFFIXES``."""
         domain = Domain(name="AggNamingAgents", root_path=".")
 
         @domain.aggregate
@@ -3655,6 +3724,34 @@ class TestAggregateNotNoun:
         findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
         assert findings == []
 
+    def test_ate_nouns_not_flagged(self):
+        """Regression guard for the pinned set: `-ate` is deliberately NOT a
+        flagged suffix, so common domain nouns ending in `-ate` (`State`,
+        `Certificate`, `Template`, `Estimate`) must pass. Adding `-ate` back
+        would reintroduce false positives on these legitimate nouns."""
+        domain = Domain(name="AggNamingAte", root_path=".")
+
+        @domain.aggregate
+        class State:
+            reference = String(max_length=50)
+
+        @domain.aggregate
+        class Certificate:
+            reference = String(max_length=50)
+
+        @domain.aggregate
+        class Template:
+            reference = String(max_length=50)
+
+        @domain.aggregate
+        class Estimate:
+            reference = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
+        assert findings == []
+
     def test_infrastructure_aggregate_skipped(self):
         """An aggregate whose FQN is under ``protean.adapters.`` is skipped even
         when its name (`Shipping`) ends in a flagged suffix."""
@@ -3675,12 +3772,12 @@ class TestAggregateNotNoun:
         assert findings == []
 
     def test_name_equal_to_suffix_not_flagged(self):
-        """Length guard: a name exactly equal to a suffix (`Ate`) must not
-        self-match."""
+        """Length guard: a name exactly equal to a suffix (`Able`) must not
+        self-match (name length must strictly exceed the suffix length)."""
         domain = Domain(name="AggNamingGuard", root_path=".")
 
         @domain.aggregate
-        class Ate:
+        class Able:
             reference = String(max_length=50)
 
         domain.init(traverse=False)

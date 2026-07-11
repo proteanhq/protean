@@ -62,61 +62,62 @@ if TYPE_CHECKING:
 #
 # Imperative verbs a well-named command is expected to begin with. The check is
 # case-insensitive: the (lowercased) command name is compared against these
-# prefixes, so every entry is stored lowercase. This is a heuristic floor — not
-# an exhaustive lexicon — tuned to keep common command verbs from being flagged.
+# prefixes, so every entry is stored lowercase. This is a closed, pinned
+# heuristic floor — not an exhaustive lexicon — so teams whose ubiquitous
+# language uses verbs outside this set will see advisory (info) findings they
+# can silence per-element via ``suppress_checks``.
 IMPERATIVE_VERBS = {
+    "activate",
     "add",
-    "apply",
     "approve",
     "archive",
     "assign",
     "cancel",
-    "change",
-    "close",
     "complete",
     "confirm",
+    "convert",
     "create",
+    "deactivate",
     "delete",
-    "disable",
-    "enable",
     "generate",
-    "move",
-    "open",
+    "mark",
+    "merge",
     "place",
     "process",
     "publish",
     "register",
     "reject",
-    "release",
     "remove",
-    "reserve",
+    "request",
+    "reset",
+    "restore",
     "send",
     "set",
-    "ship",
+    "split",
     "start",
     "stop",
     "submit",
+    "transfer",
     "update",
     "validate",
 }
 
-# Verb/gerund suffixes that signal an aggregate is named after an action or a
-# process rather than a thing. Agent-noun suffixes (``-er``/``-or``/``-ator``)
-# are deliberately excluded so ``Customer``, ``Supplier``, ``Vendor``, and
-# ``Auditor`` pass without an allow-list. Matched case-insensitively against a
-# lowercased name, with a length guard so a name equal to a suffix never
-# self-matches. Both bare and third-person forms are listed so a stray
-# ``Notifies``/``Validates`` is caught alongside ``Notify``/``Validate``.
+# Suffixes that signal an aggregate is named as a verb, gerund, or adjective
+# rather than a domain-concept noun. Agent-noun suffixes (``-er``/``-or``/
+# ``-ator``) are deliberately excluded so ``Customer``, ``Supplier``,
+# ``Vendor``, and ``Auditor`` pass without an allow-list. Matched
+# case-insensitively against a lowercased name, with a length guard so a name
+# equal to a suffix never self-matches.
 NON_NOUN_AGGREGATE_SUFFIXES = (
-    "ing",
-    "ify",
-    "ifies",
-    "ize",
-    "izes",
-    "ise",
-    "ises",
-    "ate",
-    "ates",
+    "ing",  # gerund / present participle: Processing, Shipping
+    "ify",  # verb infinitive:            Notify, Classify
+    "ize",  # verb infinitive (US):       Serialize, Authorize
+    "ise",  # verb infinitive (UK):       Serialise, Authorise
+    "ive",  # adjective:                  Recursive, Directive
+    "ous",  # adjective:                  Continuous, Ambiguous
+    "able",  # adjective:                  Cancelable, Schedulable
+    "ible",  # adjective:                  Convertible, Divisible
+    "ful",  # adjective:                  Delightful, Successful
 )
 
 
@@ -3167,25 +3168,25 @@ class IRBuilder:
                     )
 
     def _diagnose_aggregate_not_noun(self, ir: dict[str, Any]) -> None:
-        """AGGREGATE_NOT_NOUN: aggregate named as a verb or gerund, not a noun.
+        """AGGREGATE_NOT_NOUN: aggregate named as a verb, gerund, or adjective.
 
         Advisory (info-level) naming check. An aggregate models a *thing* in
         the domain, so it reads best as a noun (``Order``, ``Customer``). A
-        verb or gerund name (``OrderProcessing``, ``Notify``) reads like a
-        process or an action. Agent nouns legitimately end in
-        ``-er``/``-or``/``-ator`` (``Customer``, ``Auditor``) and are *not*
-        flagged. Infrastructure aggregates under ``protean.adapters.`` are
-        skipped.
+        gerund, verb, or adjective name (``OrderProcessing``, ``Notify``,
+        ``Recursive``) reads like a process or a capability rather than a
+        concept. Agent nouns legitimately end in ``-er``/``-or``/``-ator``
+        (``Customer``, ``Auditor``) and are *not* flagged. Infrastructure
+        aggregates under ``protean.adapters.`` are skipped.
         """
         rule = {
             "rationale": (
                 "An aggregate models a thing in the domain, so a noun name "
-                "(`Order`) reads truthfully; a verb or gerund "
-                "(`OrderProcessing`) reads like a process rather than an "
-                "entity."
+                "(`Order`) reads truthfully; a gerund, verb, or adjective "
+                "(`OrderProcessing`) reads like a process or capability rather "
+                "than an entity."
             ),
             "fix": (
-                "Rename the aggregate to the noun it represents "
+                "Rename the aggregate to the domain-concept noun it represents "
                 "(e.g. `Order` rather than `OrderProcessing`)."
             ),
         }
@@ -3206,8 +3207,9 @@ class IRBuilder:
                             "element": aggregate["fqn"],
                             "level": "info",
                             "message": (
-                                f"Aggregate `{name}` is named as a verb or "
-                                f"gerund; aggregates read best as nouns"
+                                f"Aggregate `{name}` is named as a verb, "
+                                f"gerund, or adjective; aggregates read best "
+                                f"as nouns"
                             ),
                             "rule": rule,
                             "suggestion": rule["fix"],
