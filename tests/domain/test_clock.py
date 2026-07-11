@@ -84,3 +84,44 @@ class TestDomainNowNormalizesInjectedClock:
         assert resolved.tzinfo is not None
         assert resolved.utcoffset() == timedelta(0)
         assert resolved == naive.replace(tzinfo=UTC)
+
+    def test_explicit_naive_now_is_made_tz_aware(self):
+        # An explicit ``now`` argument is normalized just like a clock reading,
+        # so a caller (e.g. the outbox processor) that passes a naive value
+        # never leaks it into deadline/lock comparisons or serialization.
+        from protean.utils.globals import _domain_now
+
+        naive = datetime(2026, 1, 1, 12, 0, 0)  # no tzinfo
+
+        resolved = _domain_now(naive)
+
+        assert resolved.tzinfo is not None
+        assert resolved == naive.replace(tzinfo=UTC)
+
+    def test_explicit_aware_now_is_returned_unchanged(self):
+        from protean.utils.globals import _domain_now
+
+        aware = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+        assert _domain_now(aware) == aware
+
+    def test_falls_back_to_real_utc_without_a_domain_context(self):
+        # With no active domain context, no clock is reachable, so ``_domain_now``
+        # returns the real current UTC time (a plain script, or a worker before
+        # bootstrap).
+        from protean.utils.globals import _domain_context_stack, _domain_now
+
+        # Suspend the autouse domain context(s) for the duration of the call.
+        suspended = []
+        while _domain_context_stack.top is not None:
+            suspended.append(_domain_context_stack.pop())
+        try:
+            before = datetime.now(UTC)
+            resolved = _domain_now()
+            after = datetime.now(UTC)
+        finally:
+            for ctx in reversed(suspended):
+                _domain_context_stack.push(ctx)
+
+        assert resolved.tzinfo is not None
+        assert before <= resolved <= after

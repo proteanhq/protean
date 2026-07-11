@@ -141,6 +141,24 @@ class TestResolveDeadline:
         assert resolved == aware  # same instant
         assert resolved == datetime(2030, 1, 1, 12, 0, 0, tzinfo=UTC)
 
+    def test_naive_now_reference_is_coerced_to_utc(self):
+        # A naive ``now`` (e.g. from a stub clock returning a naive datetime)
+        # must not leak into a naive deadline — the absolute deadline computed
+        # from a timeout stays tz-aware UTC.
+        naive_now = datetime(2030, 1, 1, 12, 0, 0)
+        resolved = resolve_deadline(None, timedelta(seconds=30), now=naive_now)
+        assert resolved.tzinfo is UTC
+        assert resolved == datetime(2030, 1, 1, 12, 0, 30, tzinfo=UTC)
+
+    def test_tz_aware_now_reference_is_normalized_to_utc(self):
+        # A non-UTC tz-aware ``now`` is converted to UTC before adding the
+        # timeout, preserving the instant.
+        tz = timezone(timedelta(hours=5, minutes=30))  # IST
+        aware_now = datetime(2030, 1, 1, 17, 30, 0, tzinfo=tz)
+        resolved = resolve_deadline(None, timedelta(seconds=30), now=aware_now)
+        assert resolved.tzinfo is UTC
+        assert resolved == datetime(2030, 1, 1, 12, 0, 30, tzinfo=UTC)
+
     def test_both_raises(self):
         with pytest.raises(IncorrectUsageError, match="not both"):
             resolve_deadline(datetime.now(UTC), timedelta(seconds=1))

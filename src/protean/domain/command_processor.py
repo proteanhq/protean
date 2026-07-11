@@ -72,7 +72,7 @@ def resolve_deadline(
     if timeout is not None:
         if not isinstance(timeout, timedelta):
             raise IncorrectUsageError("`timeout` must be a `datetime.timedelta`.")
-        reference = now if now is not None else datetime.now(UTC)
+        reference = ensure_utc(now) if now is not None else datetime.now(UTC)
         return reference + timeout
 
     if deadline is not None:
