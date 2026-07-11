@@ -1756,6 +1756,7 @@ class TestOutboxProcessorMetrics:
 
     def _make_processor(self):
         """Helper to build a minimal OutboxProcessor with mocked dependencies."""
+        import datetime
         from unittest.mock import MagicMock
 
         from protean.server.outbox_processor import OutboxProcessor
@@ -1764,6 +1765,12 @@ class TestOutboxProcessorMetrics:
         mock_engine.domain.config = {"outbox": {}, "server": {}}
         mock_engine.domain.brokers = {}
         mock_engine.domain.normalized_name = "test"
+        # The processor now reads publish time through the domain clock; make the
+        # mocked clock return real UTC time so latency math sees a datetime, not a
+        # MagicMock (matches the pre-seam `datetime.now(UTC)` behaviour).
+        mock_engine.domain.clock.now.side_effect = lambda: datetime.datetime.now(
+            datetime.UTC
+        )
         mock_engine.emitter = MagicMock()
 
         processor = OutboxProcessor.__new__(OutboxProcessor)
