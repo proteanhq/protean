@@ -2345,8 +2345,8 @@ class IRBuilder:
         """QUERY_HANDLER_WITHOUT_QUERY: projection with query handlers but no queries.
 
         A projection wiring a query handler but declaring no ``Query`` has a
-        read path that nothing can invoke — the query handler's methods are
-        keyed on query types that were never registered.
+        read path that nothing can invoke — the projection registers no query
+        for the handler to serve.
         """
         for proj in ir["projections"].values():
             if len(proj["query_handlers"]) > 0 and len(proj["queries"]) == 0:
@@ -2354,8 +2354,8 @@ class IRBuilder:
                 rule = {
                     "rationale": (
                         "A projection with a query handler but no query has a "
-                        "read path that nothing can invoke — the handler waits "
-                        "on query types that were never registered."
+                        "read path that nothing can invoke — no query is "
+                        "registered for the handler to serve."
                     ),
                     "fix": (
                         "Register a `Query(part_of=<projection>)` for the "
@@ -2429,16 +2429,18 @@ class IRBuilder:
     def _diagnose_projector_handles_orphaned_event(self, ir: dict[str, Any]) -> None:
         """PROJECTOR_HANDLES_ORPHANED_EVENT: projector handling an unregistered event.
 
-        A projector whose handler map keys on an event ``__type__`` that no
-        cluster registers is wired to an event that can never be dispatched —
-        typically a stale reference after the event was renamed or removed.
-        The lookup spans *all* clusters' events, since a projector legitimately
-        handles events owned by other aggregates.
+        A projector whose handler map keys on an event ``__type__`` that the
+        domain does not register is wired to an event that can never be
+        dispatched — typically a stale reference after the event was renamed or
+        removed. The registered-type set spans *every* registered event, since a
+        projector legitimately handles events owned by other aggregates — and
+        includes events on ``internal`` aggregates (which are excluded from
+        clusters but are still registered and dispatchable).
         """
+        registry = self._domain._domain_registry
         registered = {
-            event["__type__"]
-            for cluster in ir["clusters"].values()
-            for event in cluster["events"].values()
+            getattr(record.cls, "__type__", "")
+            for record in registry._elements.get("EVENT", {}).values()
         }
         for proj in ir["projections"].values():
             for projector in proj["projectors"].values():
@@ -2446,10 +2448,10 @@ class IRBuilder:
                     if event_type not in registered:
                         rule = {
                             "rationale": (
-                                "A projector handling an event that no cluster "
-                                "registers is wired to a type that can never be "
-                                "dispatched — usually a stale reference after a "
-                                "rename or removal."
+                                "A projector handling an event the domain does "
+                                "not register is wired to a type that can never "
+                                "be dispatched — usually a stale reference after "
+                                "a rename or removal."
                             ),
                             "fix": (
                                 "Register the event, or remove the handler for "
@@ -2464,8 +2466,8 @@ class IRBuilder:
                                 "level": "warning",
                                 "message": (
                                     f"Projector `{projector['name']}` handles "
-                                    f"event `{event_type}` which no cluster "
-                                    f"registers"
+                                    f"event `{event_type}` which the domain does "
+                                    f"not register"
                                 ),
                                 "rule": rule,
                                 "suggestion": rule["fix"],
@@ -2701,13 +2703,14 @@ class IRBuilder:
     def _diagnose_process_manager_unclosed(self, ir: dict[str, Any]) -> None:
         """PROCESS_MANAGER_UNCLOSED: process manager with no terminating handler.
 
-        A process manager with a start handler but no handler marked
-        ``end=True`` has no explicit completion, so instances accumulate
-        without ever being retired.
+        A process manager that has handlers but none marked ``end=True`` has no
+        explicit completion, so instances accumulate without ever being retired.
+        A handler-less process manager is not flagged here — it has no flow to
+        close and is a different (empty-definition) smell.
         """
         for pm in ir["flows"]["process_managers"].values():
             handlers = pm["handlers"]
-            if not any(h.get("end") for h in handlers.values()):
+            if handlers and not any(h.get("end") for h in handlers.values()):
                 rule = {
                     "rationale": (
                         "A process manager with no `end=True` handler never "

@@ -1246,9 +1246,8 @@ def _build_es_domain() -> Domain:
 
 def _build_flow_fitness_domain() -> Domain:
     """Emits QUERY_HANDLER_WITHOUT_QUERY, PROJECTOR_HANDLES_ORPHANED_EVENT,
-    and PROCESS_MANAGER_UNCLOSED (the naturally-reachable 3.5.4 rules)."""
-    from protean.core.aggregate import BaseAggregate
-
+    and PROCESS_MANAGER_UNCLOSED (the 3.5.4 rules exercised for schema
+    enrichment)."""
     domain = Domain(name="EnrichFlowFitness", root_path=".")
 
     @domain.aggregate
@@ -1259,17 +1258,6 @@ def _build_flow_fitness_domain() -> Domain:
     class OrderPlaced:
         order_id = Identifier(identifier=True)
 
-    # An internal aggregate is excluded from clusters, so a projector handling
-    # its event references a type no cluster registers → orphan.
-    class InternalTracker(BaseAggregate):
-        name = String(max_length=50)
-
-    @domain.event(part_of=InternalTracker)
-    class TrackerFired:
-        tracker_id = Identifier(identifier=True)
-
-    domain.register(InternalTracker, internal=True)
-
     @domain.projection
     class OrderView:
         order_id = Identifier(identifier=True)
@@ -1278,10 +1266,6 @@ def _build_flow_fitness_domain() -> Domain:
     class OrderViewProjector:
         @handle(OrderPlaced)
         def on_placed(self, event):
-            pass
-
-        @handle(TrackerFired)  # orphan → PROJECTOR_HANDLES_ORPHANED_EVENT
-        def on_tracker(self, event):
             pass
 
     @domain.query_handler(part_of=OrderView)  # no query → QUERY_HANDLER_WITHOUT_QUERY
@@ -1299,6 +1283,13 @@ def _build_flow_fitness_domain() -> Domain:
             self.order_id = event.order_id
 
     domain.init(traverse=False)
+
+    # An orphaned projector handler key (a stale ``__type__`` no live domain can
+    # register) only exists in materialized IR — inject it so the enrichment
+    # sweep covers the PROJECTOR_HANDLES_ORPHANED_EVENT emit site.
+    method = next(iter(OrderViewProjector._handlers[OrderPlaced.__type__]))
+    OrderViewProjector._handlers["EnrichFlowFitness.RemovedEvent.v1"].add(method)
+
     return domain
 
 
@@ -2948,8 +2939,6 @@ class TestProjectorHandlesOrphanedEvent:
     cluster registers is wired to a type that can never be dispatched."""
 
     def test_orphaned_event_flagged(self):
-        from protean.core.aggregate import BaseAggregate
-
         domain = Domain(name="Orphan", root_path=".")
 
         @domain.aggregate
@@ -2960,9 +2949,50 @@ class TestProjectorHandlesOrphanedEvent:
         class OrderPlaced:
             order_id = Identifier(identifier=True)
 
-        # An internal aggregate is excluded from clusters, so its events never
-        # enter the registered-type set — a projector handling one references an
-        # event no cluster registers (the orphan the rule guards).
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @domain.projector(projector_for=OrderView, aggregates=[Order])
+        class OrderViewProjector:
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+        domain.init(traverse=False)
+
+        # A live domain cannot wire a projector to an unregistered event (the
+        # ``@handle`` decorator requires a registered event class). The orphan
+        # the rule guards — a stale ``__type__`` left after a rename or removal —
+        # appears only in materialized IR loaded from an older or hand-edited
+        # source, so inject the ghost type into the handler map to exercise it.
+        method = next(iter(OrderViewProjector._handlers[OrderPlaced.__type__]))
+        OrderViewProjector._handlers["Orphan.RemovedEvent.v1"].add(method)
+
+        ir = IRBuilder(domain).build()
+
+        findings = _findings(ir, "PROJECTOR_HANDLES_ORPHANED_EVENT")
+        assert len(findings) > 0
+        finding = findings[0]
+        assert "OrderViewProjector" in finding["element"]
+        assert finding["level"] == "warning"
+        # The orphaned type is named; the registered OrderPlaced is not flagged.
+        assert "RemovedEvent" in finding["message"]
+        assert not any("OrderPlaced" in f["message"] for f in findings)
+
+    def test_internal_aggregate_event_not_flagged(self):
+        """An ``internal`` aggregate is excluded from clusters, but its events
+        are still registered and dispatchable — a projector handling one is not
+        an orphan. The registered-type set must span all registered events, not
+        just clustered ones."""
+        from protean.core.aggregate import BaseAggregate
+
+        domain = Domain(name="InternalEvt", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
         class InternalTracker(BaseAggregate):
             name = String(max_length=50)
 
@@ -2978,10 +3008,6 @@ class TestProjectorHandlesOrphanedEvent:
 
         @domain.projector(projector_for=OrderView, aggregates=[Order])
         class OrderViewProjector:
-            @handle(OrderPlaced)
-            def on_placed(self, event):
-                pass
-
             @handle(TrackerFired)
             def on_tracker(self, event):
                 pass
@@ -2989,14 +3015,7 @@ class TestProjectorHandlesOrphanedEvent:
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
-        findings = _findings(ir, "PROJECTOR_HANDLES_ORPHANED_EVENT")
-        assert len(findings) > 0
-        finding = findings[0]
-        assert "OrderViewProjector" in finding["element"]
-        assert finding["level"] == "warning"
-        # The orphaned type is named; the registered OrderPlaced is not flagged.
-        assert "TrackerFired" in finding["message"]
-        assert not any("OrderPlaced" in f["message"] for f in findings)
+        assert _findings(ir, "PROJECTOR_HANDLES_ORPHANED_EVENT") == []
 
     def test_registered_events_not_flagged(self):
         domain = Domain(name="NoOrphan", root_path=".")
@@ -3114,9 +3133,15 @@ class TestCommandHandlerCrossCluster:
         finding = findings[0]
         assert "OrderCommandHandler" in finding["element"]
         assert finding["level"] == "warning"
-        # Both the handler's cluster and the owning cluster are named.
-        assert "Order" in finding["message"]
-        assert "Shipment" in finding["message"]
+        # Pin the cluster *attribution*, not just any "Order"/"Shipment"
+        # substring (the handler name and command type contain those already):
+        # the message must name both distinct cluster FQNs — the handler's own
+        # cluster and the command's owning cluster.
+        order_cluster = next(k for k in ir["clusters"] if k.endswith(".Order"))
+        shipment_cluster = next(k for k in ir["clusters"] if k.endswith(".Shipment"))
+        assert order_cluster != shipment_cluster
+        assert order_cluster in finding["message"]
+        assert shipment_cluster in finding["message"]
 
     def test_same_cluster_command_not_flagged(self):
         domain = Domain(name="SameCluster", root_path=".")
@@ -3263,12 +3288,69 @@ class TestProcessManagerUnclosed:
 
         assert _findings(ir, "PROCESS_MANAGER_UNCLOSED") == []
 
+    def test_handlerless_pm_not_flagged(self):
+        """A process manager with no handlers has no flow to close — it is not
+        reported ``PROCESS_MANAGER_UNCLOSED`` (which would carry a misleading
+        "no ``end=True`` handler" message). Only a PM that *has* handlers, none
+        terminating, is flagged."""
+        domain = Domain(name="HandlerlessPM", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @domain.process_manager(stream_categories=["order"])
+        class OrderSaga:
+            order_id = Identifier()
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                self.order_id = event.order_id
+
+        domain.init(traverse=False)
+
+        # A handler-less PM only appears in materialized IR (a live PM keeps its
+        # registered handlers) — drop the handler map to exercise that state.
+        OrderSaga._handlers = {}
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "PROCESS_MANAGER_UNCLOSED") == []
+
 
 @pytest.mark.no_test_domain
 class TestHandlerCompletenessSuppression:
     """A representative new rule flows through the #774 suppression path."""
 
     def test_suppress_process_manager_unclosed(self):
+        # Positive control: the identical PM without ``suppress_checks`` *is*
+        # flagged — so the negative assertion below proves suppression, not a
+        # rule that silently stopped firing.
+        control = Domain(name="ControlPM", root_path=".")
+
+        @control.aggregate
+        class ControlOrder:
+            name = String(max_length=50)
+
+        @control.event(part_of=ControlOrder)
+        class ControlOrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @control.process_manager(stream_categories=["order"])
+        class ControlSaga:
+            order_id = Identifier()
+
+            @handle(ControlOrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                self.order_id = event.order_id
+
+        control.init(traverse=False)
+        control_ir = IRBuilder(control).build()
+        assert "PROCESS_MANAGER_UNCLOSED" in _codes_for(control_ir, "ControlSaga")
+
         domain = Domain(name="SuppressPM", root_path=".")
 
         @domain.aggregate
@@ -3293,5 +3375,6 @@ class TestHandlerCompletenessSuppression:
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
-        # Unsuppressed this PM would be flagged; ``suppress_checks`` removes it.
+        # Unsuppressed this PM would be flagged (see control); ``suppress_checks``
+        # removes it.
         assert "PROCESS_MANAGER_UNCLOSED" not in _codes_for(ir, "OrderSaga")
