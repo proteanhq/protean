@@ -10,9 +10,11 @@ Usage::
 
 from __future__ import annotations
 
+import ast
 import datetime as _dt
 import hashlib
 import importlib
+import importlib.util
 import json
 import logging
 import types as _types
@@ -1492,6 +1494,8 @@ class IRBuilder:
         self._diagnose_cross_aggregate_reference(ir)
         self._diagnose_es_aggregate_no_events(ir)
         self._diagnose_value_object_mutable_field(ir)
+        self._diagnose_circular_cluster_dependencies(ir)
+        self._diagnose_infra_imports(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
@@ -1505,6 +1509,210 @@ class IRBuilder:
         # Suppression stage — runs last so custom-rule findings are also
         # subject to per-element ``suppress_checks`` and ``[lint].suppressions``.
         self._apply_suppressions()
+
+    def _diagnose_circular_cluster_dependencies(self, ir: dict[str, Any]) -> None:
+        """CIRCULAR_CLUSTER_DEPENDENCY: aggregate clusters whose cross-aggregate
+        identity references form a directed cycle.
+
+        Edges are genuine inter-cluster dependencies only: a field of
+        kind "reference" whose target is another cluster's aggregate root. The
+        within-aggregate child->root back-pointer (auto-generated Reference) and
+        any intra-cluster reference are excluded by the ``target != cluster_fqn``
+        guard, because every element in a cluster shares that cluster's FQN.
+
+        Cycles are found with an iterative three-colour DFS over a graph whose
+        node and neighbour orderings are both sorted, so the reported cycle is
+        deterministic.
+        """
+        cluster_fqns = set(ir["clusters"].keys())
+
+        # 1. Build adjacency: cluster_fqn -> sorted list of target cluster FQNs.
+        adjacency: dict[str, list[str]] = {}
+        for cluster_fqn, cluster in ir["clusters"].items():
+            targets: set[str] = set()
+            entities = [cluster["aggregate"], *cluster["entities"].values()]
+            for element in entities:
+                for field in element.get("fields", {}).values():
+                    if field.get("kind") != "reference":
+                        continue
+                    target = field.get("target")
+                    if target in cluster_fqns and target != cluster_fqn:
+                        targets.add(target)
+            adjacency[cluster_fqn] = sorted(targets)
+
+        # 2. Iterative three-colour DFS. WHITE = unvisited, GREY = on the
+        #    current stack, BLACK = fully explored. A GREY neighbour closes a
+        #    cycle.
+        WHITE, GREY, BLACK = 0, 1, 2
+        colour = dict.fromkeys(adjacency, WHITE)
+        reported: set[frozenset[str]] = set()  # dedupe cycles by node set
+
+        for root in sorted(adjacency):  # deterministic start order
+            if colour[root] != WHITE:
+                continue
+            # stack frames: (node, index-into-its-neighbour-list)
+            stack: list[list[Any]] = [[root, 0]]
+            path: list[str] = [root]
+            colour[root] = GREY
+            while stack:
+                node, idx = stack[-1]
+                neighbours = adjacency[node]
+                if idx < len(neighbours):
+                    stack[-1][1] += 1
+                    nxt = neighbours[idx]
+                    if colour[nxt] == GREY:
+                        # Cycle: from nxt's position in path to the end, + nxt.
+                        start = path.index(nxt)
+                        cycle = path[start:]
+                        key = frozenset(cycle)
+                        if key not in reported:
+                            reported.add(key)
+                            self._emit_cluster_cycle(cycle)
+                    elif colour[nxt] == WHITE:
+                        colour[nxt] = GREY
+                        path.append(nxt)
+                        stack.append([nxt, 0])
+                    # BLACK neighbour: already fully explored, skip.
+                else:
+                    colour[node] = BLACK
+                    path.pop()
+                    stack.pop()
+
+    def _emit_cluster_cycle(self, cycle: list[str]) -> None:
+        """Append one CIRCULAR_CLUSTER_DEPENDENCY diagnostic per participating
+        cluster, in cycle order so the reported chain is stable."""
+        chain = " -> ".join([*cycle, cycle[0]])
+        for cluster_fqn in cycle:
+            self._diagnostics.append(
+                {
+                    "code": "CIRCULAR_CLUSTER_DEPENDENCY",
+                    "category": "bounded_context",
+                    "element": cluster_fqn,
+                    "level": "warning",
+                    "message": (
+                        f"Cluster `{cluster_fqn}` participates in a circular "
+                        f"dependency: {chain}"
+                    ),
+                    "rule": {
+                        "rationale": (
+                            "Circular identity references between aggregate "
+                            "clusters prevent independent decomposition, "
+                            "deployment, and event sourcing of the aggregates."
+                        ),
+                        "fix": (
+                            "Break the cycle by replacing one direction of the "
+                            "reference with a domain event or a process manager "
+                            "that coordinates the two aggregates asynchronously."
+                        ),
+                    },
+                    "suggestion": (
+                        "Break the cycle by replacing one direction of the "
+                        "reference with a domain event or a process manager "
+                        "that coordinates the two aggregates asynchronously."
+                    ),
+                }
+            )
+
+    def _diagnose_infra_imports(self, ir: dict[str, Any]) -> None:
+        """INFRA_IMPORT_IN_DOMAIN (opt-in): a domain element's source module
+        imports from ``protean.adapters``, coupling the domain layer to a
+        concrete adapter.
+
+        Off by default; runs only when ``[lint].check_infra_imports`` is true,
+        because it reads and AST-parses source files.
+        """
+        if not self._domain.config.get("lint", {}).get("check_infra_imports", False):
+            return
+
+        INFRA_PREFIX = "protean.adapters"
+        # module -> True/False cache of "imports infra", to parse each file once.
+        module_flags: dict[str, bool] = {}
+
+        def _module_imports_infra(module: str) -> bool:
+            if module in module_flags:
+                return module_flags[module]
+            flag = False
+            try:
+                spec = importlib.util.find_spec(module)
+            except (ImportError, ValueError, AttributeError):
+                spec = None
+            origin = getattr(spec, "origin", None) if spec else None
+            if origin and origin not in ("built-in", "frozen"):
+                try:
+                    with open(origin, encoding="utf-8") as fh:
+                        tree = ast.parse(fh.read())
+                except (OSError, SyntaxError, ValueError):
+                    tree = None
+                if tree is not None:
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.Import):
+                            names = [a.name for a in node.names]
+                        elif isinstance(node, ast.ImportFrom):
+                            names = [node.module or ""]
+                        else:
+                            continue
+                        if any(
+                            n == INFRA_PREFIX or n.startswith(INFRA_PREFIX + ".")
+                            for n in names
+                        ):
+                            flag = True
+                            break
+            module_flags[module] = flag
+            return flag
+
+        # Iterate elements in a stable order so emitted diagnostics are
+        # deterministic.
+        for cluster_fqn in sorted(ir["clusters"]):
+            cluster = ir["clusters"][cluster_fqn]
+            elements = (
+                [cluster["aggregate"]]
+                + [cluster["entities"][k] for k in sorted(cluster["entities"])]
+                + [
+                    cluster["value_objects"][k]
+                    for k in sorted(cluster["value_objects"])
+                ]
+            )
+            for element in elements:
+                module = element.get("module")
+                if not module:
+                    continue
+                if _module_imports_infra(module):
+                    self._diagnostics.append(
+                        {
+                            "code": "INFRA_IMPORT_IN_DOMAIN",
+                            "category": "bounded_context",
+                            "element": element["fqn"],
+                            "level": "warning",
+                            "message": (
+                                f"Domain element `{element['name']}` "
+                                f"(module `{module}`) imports from "
+                                f"`protean.adapters`."
+                            ),
+                            "rule": {
+                                "rationale": (
+                                    "Domain elements must not depend on concrete "
+                                    "infrastructure adapters; importing from "
+                                    "`protean.adapters` couples the domain layer "
+                                    "to a specific adapter and breaks the "
+                                    "ports-and-adapters boundary."
+                                ),
+                                "fix": (
+                                    "Remove the `protean.adapters` import from "
+                                    "the domain module. Depend on domain-layer "
+                                    "abstractions and let the adapter be wired "
+                                    "through the domain's provider configuration "
+                                    "instead."
+                                ),
+                            },
+                            "suggestion": (
+                                "Remove the `protean.adapters` import from the "
+                                "domain module. Depend on domain-layer "
+                                "abstractions and let the adapter be wired "
+                                "through the domain's provider configuration "
+                                "instead."
+                            ),
+                        }
+                    )
 
     def _apply_suppressions(self) -> None:
         """Filter collected diagnostics through the two suppression channels.
