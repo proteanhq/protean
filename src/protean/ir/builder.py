@@ -1496,10 +1496,15 @@ class IRBuilder:
         self._diagnose_value_object_mutable_field(ir)
         self._diagnose_circular_cluster_dependencies(ir)
         self._diagnose_infra_imports(ir)
+        self._diagnose_query_handler_without_query(ir)
+        self._diagnose_projector_handles_orphaned_event(ir)
+        self._diagnose_command_handler_cross_cluster(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
         self._diagnose_event_without_data(ir)
+        self._diagnose_subscriber_no_streams(ir)
+        self._diagnose_process_manager_unclosed(ir)
         self._diagnose_deprecated_elements(ir)
         self._diagnose_deprecated_options(ir)
         self._diagnose_email_deprecated(ir)
@@ -2336,6 +2341,43 @@ class IRBuilder:
                     }
                 )
 
+    def _diagnose_query_handler_without_query(self, ir: dict[str, Any]) -> None:
+        """QUERY_HANDLER_WITHOUT_QUERY: projection with query handlers but no queries.
+
+        A projection wiring a query handler but declaring no ``Query`` has a
+        read path that nothing can invoke — the projection registers no query
+        for the handler to serve.
+        """
+        for proj in ir["projections"].values():
+            if len(proj["query_handlers"]) > 0 and len(proj["queries"]) == 0:
+                projection = proj["projection"]
+                rule = {
+                    "rationale": (
+                        "A projection with a query handler but no query has a "
+                        "read path that nothing can invoke — no query is "
+                        "registered for the handler to serve."
+                    ),
+                    "fix": (
+                        "Register a `Query(part_of=<projection>)` for the "
+                        "handler to serve, or remove the query handler if the "
+                        "projection needs no read path."
+                    ),
+                }
+                self._diagnostics.append(
+                    {
+                        "category": "handler_completeness",
+                        "code": "QUERY_HANDLER_WITHOUT_QUERY",
+                        "element": projection["fqn"],
+                        "level": "warning",
+                        "message": (
+                            f"Projection `{projection['name']}` has a query "
+                            f"handler but no query to serve"
+                        ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
+                    }
+                )
+
     def _diagnose_value_object_mutable_field(self, ir: dict[str, Any]) -> None:
         """VALUE_OBJECT_MUTABLE_FIELD: a value object with a ``list``/``dict``
         field, which gives it mutable state and breaks equality-by-value.
@@ -2383,6 +2425,102 @@ class IRBuilder:
                             "suggestion": rule["fix"],
                         }
                     )
+
+    def _diagnose_projector_handles_orphaned_event(self, ir: dict[str, Any]) -> None:
+        """PROJECTOR_HANDLES_ORPHANED_EVENT: projector handling an unregistered event.
+
+        A projector whose handler map keys on an event ``__type__`` that the
+        domain does not register is wired to an event that can never be
+        dispatched — typically a stale reference after the event was renamed or
+        removed. The registered-type set spans *every* registered event, since a
+        projector legitimately handles events owned by other aggregates — and
+        includes events on ``internal`` aggregates (which are excluded from
+        clusters but are still registered and dispatchable).
+        """
+        registry = self._domain._domain_registry
+        registered = {
+            getattr(record.cls, "__type__", "")
+            for record in registry._elements.get("EVENT", {}).values()
+        }
+        for proj in ir["projections"].values():
+            for projector in proj["projectors"].values():
+                for event_type in projector.get("handlers", {}):
+                    if event_type not in registered:
+                        rule = {
+                            "rationale": (
+                                "A projector handling an event the domain does "
+                                "not register is wired to a type that can never "
+                                "be dispatched — usually a stale reference after "
+                                "a rename or removal."
+                            ),
+                            "fix": (
+                                "Register the event, or remove the handler for "
+                                "the orphaned type from the projector."
+                            ),
+                        }
+                        self._diagnostics.append(
+                            {
+                                "category": "handler_completeness",
+                                "code": "PROJECTOR_HANDLES_ORPHANED_EVENT",
+                                "element": projector["fqn"],
+                                "level": "warning",
+                                "message": (
+                                    f"Projector `{projector['name']}` handles "
+                                    f"event `{event_type}` which the domain does "
+                                    f"not register"
+                                ),
+                                "rule": rule,
+                                "suggestion": rule["fix"],
+                            }
+                        )
+
+    def _diagnose_command_handler_cross_cluster(self, ir: dict[str, Any]) -> None:
+        """COMMAND_HANDLER_CROSS_CLUSTER: handler processing another cluster's command.
+
+        A command handler in cluster A that handles a command owned by cluster
+        B crosses an aggregate boundary — the write path for B's command lives
+        outside B's cluster. Commands registered in *no* cluster are out of
+        scope (they cannot be attributed to an owner), and same-cluster commands
+        are the expected case. Only commands are considered — event handlers may
+        legitimately react across clusters (the #824 boundary).
+        """
+        cmd_type_to_cluster = {
+            command["__type__"]: agg_fqn
+            for agg_fqn, cluster in ir["clusters"].items()
+            for command in cluster["commands"].values()
+        }
+        for agg_fqn, cluster in ir["clusters"].items():
+            for ch in cluster["command_handlers"].values():
+                for command_type in ch.get("handlers", {}):
+                    owner = cmd_type_to_cluster.get(command_type)
+                    if owner is not None and owner != agg_fqn:
+                        rule = {
+                            "rationale": (
+                                "A command handler that processes another "
+                                "cluster's command puts that aggregate's write "
+                                "path outside its consistency boundary."
+                            ),
+                            "fix": (
+                                "Move the command handler into the owning "
+                                "cluster, or model the interaction as an event "
+                                "reaction across the boundary."
+                            ),
+                        }
+                        self._diagnostics.append(
+                            {
+                                "category": "handler_completeness",
+                                "code": "COMMAND_HANDLER_CROSS_CLUSTER",
+                                "element": ch["fqn"],
+                                "level": "warning",
+                                "message": (
+                                    f"Command handler `{ch['name']}` in cluster "
+                                    f"`{agg_fqn}` handles command `{command_type}` "
+                                    f"owned by cluster `{owner}`"
+                                ),
+                                "rule": rule,
+                                "suggestion": rule["fix"],
+                            }
+                        )
 
     # ------------------------------------------------------------------
     # Info-level diagnostics (design smells)
@@ -2529,6 +2667,75 @@ class IRBuilder:
                             "suggestion": rule["fix"],
                         }
                     )
+
+    def _diagnose_subscriber_no_streams(self, ir: dict[str, Any]) -> None:
+        """SUBSCRIBER_NO_STREAMS: subscriber with no stream to consume.
+
+        A subscriber whose ``stream`` is empty or unset has nothing to
+        subscribe to, so it will never be invoked.
+        """
+        for sub in ir["flows"]["subscribers"].values():
+            if not sub.get("stream"):
+                rule = {
+                    "rationale": (
+                        "A subscriber with no stream has nothing to consume, so "
+                        "it is registered but can never be invoked."
+                    ),
+                    "fix": (
+                        "Set the subscriber's `stream`, or remove the "
+                        "subscriber if it is unused."
+                    ),
+                }
+                self._diagnostics.append(
+                    {
+                        "category": "handler_completeness",
+                        "code": "SUBSCRIBER_NO_STREAMS",
+                        "element": sub["fqn"],
+                        "level": "info",
+                        "message": (
+                            f"Subscriber `{sub['name']}` declares no stream to consume"
+                        ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
+                    }
+                )
+
+    def _diagnose_process_manager_unclosed(self, ir: dict[str, Any]) -> None:
+        """PROCESS_MANAGER_UNCLOSED: process manager with no terminating handler.
+
+        A process manager that has handlers but none marked ``end=True`` has no
+        explicit completion, so instances accumulate without ever being retired.
+        A handler-less process manager is not flagged here — it has no flow to
+        close and is a different (empty-definition) smell.
+        """
+        for pm in ir["flows"]["process_managers"].values():
+            handlers = pm["handlers"]
+            if handlers and not any(h.get("end") for h in handlers.values()):
+                rule = {
+                    "rationale": (
+                        "A process manager with no `end=True` handler never "
+                        "signals completion, so its instances accumulate "
+                        "without being retired."
+                    ),
+                    "fix": (
+                        "Mark the terminating handler with `end=True` so the "
+                        "process manager closes its instances."
+                    ),
+                }
+                self._diagnostics.append(
+                    {
+                        "category": "handler_completeness",
+                        "code": "PROCESS_MANAGER_UNCLOSED",
+                        "element": pm["fqn"],
+                        "level": "info",
+                        "message": (
+                            f"Process manager `{pm['name']}` has no handler "
+                            f"marked `end=True` to close its instances"
+                        ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
+                    }
+                )
 
     def _diagnose_deprecated_elements(self, ir: dict[str, Any]) -> None:
         """DEPRECATED_ELEMENT: elements or fields marked as deprecated.
