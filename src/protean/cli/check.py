@@ -35,6 +35,7 @@ which sets the severity floor that fails CI. ``--level`` only affects display.
 
 import importlib.util
 import json
+import os
 from typing import Annotated, Any
 
 import typer
@@ -166,6 +167,11 @@ def check(
 
     # Preserve unfiltered counts for exit code — --level only affects display
     unfiltered_counts = dict(result["counts"])
+    # Preserve the unfiltered diagnostics too: the SARIF/annotation formats are
+    # consumed by machines (Code Scanning upload, CI annotations) where a
+    # display-level filter must not silently drop findings. --level only shapes
+    # the human-facing rich/json/quiet views below.
+    unfiltered_diagnostics = list(result["diagnostics"])
 
     # Apply --level filter to displayed diagnostics
     threshold = _LEVEL_ORDER[level]
@@ -196,11 +202,18 @@ def check(
     elif format == "json":
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     elif format == "sarif":
+        # Machine formats ignore --level (see unfiltered_diagnostics above).
+        machine_result = {**result, "diagnostics": unfiltered_diagnostics}
         typer.echo(
-            json.dumps(_format_sarif(result, derived_domain), indent=2, sort_keys=True)
+            json.dumps(
+                _format_sarif(machine_result, derived_domain),
+                indent=2,
+                sort_keys=True,
+            )
         )
     elif format == "github-annotations":
-        typer.echo(_format_github_annotations(result, derived_domain))
+        machine_result = {**result, "diagnostics": unfiltered_diagnostics}
+        typer.echo(_format_github_annotations(machine_result, derived_domain))
     else:
         _print_rich(result)
 
@@ -306,6 +319,24 @@ def _element_module_map(domain: Any) -> dict[str, str]:
     return module_map
 
 
+def _workspace_relative_uri(origin: str) -> str:
+    """Return a workspace-root-relative POSIX path for a resolved module origin.
+
+    GitHub Code Scanning resolves SARIF ``artifactLocation.uri`` — and GitHub
+    Actions resolves an annotation's ``file=`` — against the workspace root
+    (``GITHUB_WORKSPACE``, the current working directory in CI). An absolute
+    filesystem path matches no file in the checked-out PR, so the finding is
+    dropped. Emit a path relative to the current directory instead, using ``/``
+    separators per the SARIF spec. Falls back to the absolute path only when a
+    relative path is impossible (e.g. a different drive on Windows).
+    """
+    try:
+        rel = os.path.relpath(origin)
+    except ValueError:
+        return origin
+    return rel.replace(os.sep, "/")
+
+
 def _resolve_sarif_location(
     element_fqn: str, module_map: dict[str, str]
 ) -> dict[str, Any] | None:
@@ -314,7 +345,8 @@ def _resolve_sarif_location(
     Returns ``None`` (a location-less, run-level result — valid SARIF) whenever
     the FQN is not a registered public element (validator errors and
     domain-scoped diagnostics), or its module cannot be resolved to a file. Never
-    raises: import/attribute/value failures all degrade to ``None``.
+    raises: import/attribute/value failures all degrade to ``None``. The
+    resolved path is workspace-relative so it maps to the PR diff on GitHub.
     """
     module = module_map.get(element_fqn)
     if not module:
@@ -326,7 +358,11 @@ def _resolve_sarif_location(
         return None
     if not origin:
         return None
-    return {"physicalLocation": {"artifactLocation": {"uri": origin}}}
+    return {
+        "physicalLocation": {
+            "artifactLocation": {"uri": _workspace_relative_uri(origin)}
+        }
+    }
 
 
 def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
@@ -423,6 +459,18 @@ def _escape_annotation(text: str) -> str:
     return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
 
+def _escape_property(value: str) -> str:
+    """Escape a GitHub Actions annotation *property* value (e.g. ``file=``).
+
+    Properties are delimited by ``,`` and the ``::`` message boundary, so a
+    property value carries two more escapes than a message body — ``:`` and
+    ``,`` — matching GitHub's own ``@actions/core`` toolkit. Without this a path
+    containing a comma (``src/orders,v2/model.py``) or a Windows drive colon
+    (``C:\\proj\\model.py``) mis-parses and corrupts the annotation.
+    """
+    return _escape_annotation(value).replace(":", "%3A").replace(",", "%2C")
+
+
 def _format_github_annotations(result: dict[str, Any], domain: Any) -> str:
     """Render a check result as GitHub Actions workflow-command annotations.
 
@@ -443,7 +491,7 @@ def _format_github_annotations(result: dict[str, Any], domain: Any) -> str:
         file_param = ""
         if loc:
             path = loc["physicalLocation"]["artifactLocation"]["uri"]
-            file_param = f" file={path}"
+            file_param = f" file={_escape_property(path)}"
         msg = _escape_annotation(f"RULE [{diag['code']}] {diag['message']}")
         lines.append(f"::{gha}{file_param}::{msg}")
 

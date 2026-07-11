@@ -4,13 +4,19 @@ Covers exit codes, output formats, error handling, --level filter, and --quiet m
 """
 
 import json
+import os
 
 import pytest
 from typer.testing import CliRunner
 
 import protean
 from protean.cli import app
-from protean.cli.check import _escape_annotation
+from protean.cli.check import (
+    _escape_annotation,
+    _escape_property,
+    _format_sarif,
+    _resolve_sarif_location,
+)
 
 runner = CliRunner()
 
@@ -357,6 +363,22 @@ class TestCheckLintLevelExitCode:
 
 
 _CLEAN_DOMAIN = "tests/support/domains/test19/domain19.py:domain"
+# Two bare aggregates → a code that repeats across two elements (test38)
+_DEDUP_DOMAIN = "tests/support/domains/test38/domain38.py:domain"
+# Published event with no external brokers → a warning whose ``element`` is the
+# domain name, which does not resolve to a source file (test39)
+_DOMAIN_SCOPED_DOMAIN = "tests/support/domains/test39/domain39.py:domain"
+
+
+class _EmptyRegistryDomain:
+    """Minimal stand-in for a domain with no registered elements.
+
+    ``_format_sarif`` only reads ``domain._domain_registry._elements`` (via
+    ``_element_module_map``); an empty registry keeps these descriptor-shaping
+    unit tests hermetic — no real ``Domain`` is constructed or activated."""
+
+    class _domain_registry:
+        _elements: dict = {}
 
 
 @pytest.mark.no_test_domain
@@ -389,12 +411,26 @@ class TestCheckSarifOutput:
             assert res["ruleId"] in descriptor_ids
 
     def test_sarif_dedup_collapses_repeated_codes(self):
-        """test25 emits two AGGREGATE/UNUSED warnings plus an info; each unique
-        code yields exactly one descriptor even when a code repeats."""
-        result = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
+        """test34's two bare aggregates each emit AGGREGATE_WITHOUT_COMMAND_HANDLER,
+        so the code genuinely repeats across results — yet it collapses to a
+        single reportingDescriptor whose shortDescription is the first occurrence."""
+        result = runner.invoke(app, ["check", "-d", _DEDUP_DOMAIN, "-f", "sarif"])
         run = json.loads(result.output)["runs"][0]
+
+        code = "AGGREGATE_WITHOUT_COMMAND_HANDLER"
+        repeated = [r for r in run["results"] if r["ruleId"] == code]
+        # The code must actually repeat, or the dedup path is never exercised.
+        assert len(repeated) == 2, "Expected the code to repeat across two elements"
+
+        descriptors = [r for r in run["tool"]["driver"]["rules"] if r["id"] == code]
+        assert len(descriptors) == 1, "Repeated code must collapse to one descriptor"
+        # First occurrence wins: the descriptor keeps the first result's message.
+        assert (
+            descriptors[0]["shortDescription"]["text"] == repeated[0]["message"]["text"]
+        )
+
+        # And no descriptor is duplicated overall.
         descriptor_ids = [r["id"] for r in run["tool"]["driver"]["rules"]]
-        # No duplicate descriptors even though multiple results may share a code.
         assert len(descriptor_ids) == len(set(descriptor_ids))
 
     def test_sarif_empty_domain(self):
@@ -440,6 +476,10 @@ class TestCheckSarifOutput:
         assert len(loc) == 1
         uri = loc[0]["physicalLocation"]["artifactLocation"]["uri"]
         assert uri.endswith("domain28.py")
+        # GitHub Code Scanning resolves the uri against the workspace root, so it
+        # must be workspace-relative, not an absolute filesystem path.
+        assert not os.path.isabs(uri)
+        assert not uri.startswith("/")
 
     def test_sarif_validator_errors_path(self):
         """A validator-error run (test30) emits error results with no location
@@ -469,10 +509,94 @@ class TestCheckSarifOutput:
 
     def test_sarif_exit_code_matches_rich(self):
         """The new format does not alter the exit-code block: a warning domain
-        exits 2 under both rich and sarif."""
+        exits 2 under both rich and sarif — and the output really is SARIF (an
+        unimplemented format would degrade to rich and pass this vacuously)."""
         rich = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN])
         sarif = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
         assert sarif.exit_code == rich.exit_code == 2
+        # Assert the SARIF branch actually ran, not the rich fallback.
+        assert json.loads(sarif.output)["version"] == "2.1.0"
+
+    def test_sarif_ignores_level_filter(self):
+        """SARIF is machine-consumed (Code Scanning upload); a display --level
+        must not strip findings. test25 warnings/info survive --level error."""
+        unfiltered = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
+        filtered = runner.invoke(
+            app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif", "--level", "error"]
+        )
+        unfiltered_ids = {
+            r["ruleId"] for r in json.loads(unfiltered.output)["runs"][0]["results"]
+        }
+        filtered_ids = {
+            r["ruleId"] for r in json.loads(filtered.output)["runs"][0]["results"]
+        }
+        assert len(unfiltered_ids) > 0, "Expected findings to survive the filter"
+        assert filtered_ids == unfiltered_ids
+
+    def test_sarif_domain_scoped_diagnostic_has_no_location(self):
+        """A diagnostic whose element is the domain name (not a class FQN) does
+        not resolve to a file, so its result carries an empty locations list."""
+        result = runner.invoke(
+            app, ["check", "-d", _DOMAIN_SCOPED_DOMAIN, "-f", "sarif"]
+        )
+        run = json.loads(result.output)["runs"][0]
+        scoped = [
+            r for r in run["results"] if r["ruleId"] == "PUBLISHED_NO_EXTERNAL_BROKER"
+        ]
+        assert len(scoped) == 1, "Expected the domain-scoped diagnostic"
+        assert scoped[0]["locations"] == []
+
+    def test_sarif_help_text_merges_suggestion_distinct_from_fix(self):
+        """When a diagnostic's suggestion differs from its rule.fix, the
+        descriptor help text carries both (fixture diagnostics always have
+        suggestion == fix, so this is asserted on a synthetic result)."""
+        derived = _EmptyRegistryDomain()
+        result = {
+            "errors": [],
+            "diagnostics": [
+                {
+                    "code": "X_RULE",
+                    "element": "not.registered.Elem",
+                    "level": "warning",
+                    "message": "something is off",
+                    "rule": {"rationale": "why", "fix": "do the fix"},
+                    "suggestion": "a different suggestion",
+                }
+            ],
+        }
+        sarif = _format_sarif(result, derived)
+        descriptor = sarif["runs"][0]["tool"]["driver"]["rules"][0]
+        assert descriptor["help"]["text"] == "do the fix\na different suggestion"
+
+    def test_sarif_help_text_no_duplication_when_suggestion_equals_fix(self):
+        """When suggestion == fix (the common case) the help text is just the fix,
+        with no duplicated line."""
+        derived = _EmptyRegistryDomain()
+        result = {
+            "errors": [],
+            "diagnostics": [
+                {
+                    "code": "X_RULE",
+                    "element": "not.registered.Elem",
+                    "level": "warning",
+                    "message": "something is off",
+                    "rule": {"rationale": "why", "fix": "do the fix"},
+                    "suggestion": "do the fix",
+                }
+            ],
+        }
+        sarif = _format_sarif(result, derived)
+        descriptor = sarif["runs"][0]["tool"]["driver"]["rules"][0]
+        assert descriptor["help"]["text"] == "do the fix"
+
+    def test_resolve_location_unknown_fqn_returns_none(self):
+        """An FQN absent from the module map (validator errors, domain-scoped
+        diagnostics) resolves to None, never raising."""
+        assert _resolve_sarif_location("no.Such.Element", {}) is None
+
+    def test_resolve_location_unresolvable_module_returns_none(self):
+        """A mapped module that find_spec cannot locate degrades to None."""
+        assert _resolve_sarif_location("x.Y", {"x.Y": "no_such_module_zzz"}) is None
 
 
 @pytest.mark.no_test_domain
@@ -525,12 +649,64 @@ class TestCheckGithubAnnotations:
         assert result.output.strip() == ""
 
     def test_annotation_exit_code_matches_rich(self):
-        """The new format shares the exit-code block with rich."""
+        """The new format shares the exit-code block with rich, and the output
+        really is annotation lines (an unimplemented format would degrade to rich
+        and pass this vacuously)."""
         rich = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN])
         gha = runner.invoke(
             app, ["check", "-d", _DIAG_DOMAIN, "-f", "github-annotations"]
         )
         assert gha.exit_code == rich.exit_code == 2
+        lines = [ln for ln in gha.output.splitlines() if ln]
+        assert lines and all(ln.startswith("::") for ln in lines)
+
+    def test_annotation_ignores_level_filter(self):
+        """--level must not strip machine-consumed annotation lines."""
+        unfiltered = runner.invoke(
+            app, ["check", "-d", _DIAG_DOMAIN, "-f", "github-annotations"]
+        )
+        filtered = runner.invoke(
+            app,
+            [
+                "check",
+                "-d",
+                _DIAG_DOMAIN,
+                "-f",
+                "github-annotations",
+                "--level",
+                "error",
+            ],
+        )
+        unfiltered_lines = [ln for ln in unfiltered.output.splitlines() if ln]
+        filtered_lines = [ln for ln in filtered.output.splitlines() if ln]
+        assert len(unfiltered_lines) > 0
+        assert filtered_lines == unfiltered_lines
+
+    def test_annotation_domain_scoped_diagnostic_has_no_file(self):
+        """A diagnostic whose element does not resolve emits no file= parameter."""
+        result = runner.invoke(
+            app, ["check", "-d", _DOMAIN_SCOPED_DOMAIN, "-f", "github-annotations"]
+        )
+        lines = [ln for ln in result.output.splitlines() if ln]
+        scoped = [ln for ln in lines if "PUBLISHED_NO_EXTERNAL_BROKER" in ln]
+        assert len(scoped) == 1
+        head = scoped[0].split("::", 2)[1]
+        assert " file=" not in head
+        assert head == "warning"
+
+    def test_annotation_resolvable_element_uses_relative_file(self):
+        """The file= path is workspace-relative, not absolute, so GitHub can map
+        it to the PR diff."""
+        result = runner.invoke(
+            app, ["check", "-d", _DEPRECATED_DOMAIN, "-f", "github-annotations"]
+        )
+        line = next(
+            ln for ln in result.output.splitlines() if "DEPRECATED_ELEMENT" in ln
+        )
+        head = line.split("::", 2)[1]
+        path = head.split(" file=", 1)[1]
+        assert not os.path.isabs(path)
+        assert not path.startswith("/")
 
 
 class TestEscapeAnnotation:
@@ -558,3 +734,23 @@ class TestEscapeAnnotation:
         # The wrong order (\n first) would turn a real newline into %0A and then
         # re-escape its % to %250A; assert a real newline is NOT double-escaped.
         assert _escape_annotation("\n") == "%0A"
+
+
+class TestEscapeProperty:
+    """``_escape_property`` escapes a ``file=`` value with the two extra
+    delimiters (``:`` and ``,``) that would otherwise corrupt the annotation."""
+
+    def test_comma_escaped(self):
+        assert _escape_property("a,b") == "a%2Cb"
+
+    def test_colon_escaped(self):
+        assert _escape_property("C:/x") == "C%3A/x"
+
+    def test_inherits_message_escapes(self):
+        # % / CR / LF still escaped, and % first (no double-escaping).
+        assert _escape_property("a%\r\nb") == "a%25%0D%0Ab"
+
+    def test_windows_path_and_comma_together(self):
+        assert (
+            _escape_property("C:\\proj\\a,b\\model.py") == "C%3A\\proj\\a%2Cb\\model.py"
+        )
