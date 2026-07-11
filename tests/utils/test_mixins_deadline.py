@@ -18,6 +18,10 @@ from protean.utils.mixins import _deadline_exceeded_after
 from tests.shared import FrozenClock
 
 T0 = datetime(2030, 6, 1, 12, 0, 0, tzinfo=UTC)
+# A deadline in the real past: with a bare ``datetime.now()`` the wall clock is
+# already well beyond it, so freezing the clock *before* it is the only way the
+# "not exceeded" verdict can hold. That divergence is what pins the seam.
+PAST = datetime(2020, 6, 1, 12, 0, 0, tzinfo=UTC)
 
 
 def _set_in_context_message(deadline):
@@ -49,6 +53,42 @@ class TestDeadlineExceededAfterBoundary:
         _set_in_context_message(T0 + timedelta(seconds=10))
         # now (T0) + 10s == deadline exactly; expiry is strict `>`, so an
         # attempt starting exactly at the deadline is still in time.
+        assert _deadline_exceeded_after(10) is False
+
+
+class TestDeadlineExceededAfterSeamDivergence:
+    """Cases where the frozen-clock and wall-clock verdicts disagree.
+
+    ``T0`` sits in the future, so the boundary tests above hold under a bare
+    ``datetime.now()`` too — they guard the ``>`` operator but not that the
+    injected clock is actually read. Here the deadline is in the real past with
+    the clock frozen just before it: the "not exceeded" result is true *only*
+    under the frozen clock (real-now is long past the deadline). Dropping the
+    ``_domain_now()`` read therefore flips these to "exceeded", so they guard the
+    seam itself.
+    """
+
+    @pytest.fixture
+    def frozen_past_domain(self, test_domain):
+        test_domain.clock = FrozenClock(PAST)
+        yield test_domain
+        g.pop("message_in_context", None)
+
+    def test_before_past_deadline_is_not_exceeded_only_under_clock(
+        self, frozen_past_domain
+    ):
+        _set_in_context_message(PAST + timedelta(seconds=10))
+        # Frozen now (PAST) + 9s < PAST+10 deadline -> not exceeded. A wall clock
+        # (years later) would report exceeded, so this only passes via the clock.
+        assert _deadline_exceeded_after(9) is False
+
+    def test_at_exact_past_deadline_is_not_exceeded_only_under_clock(
+        self, frozen_past_domain
+    ):
+        _set_in_context_message(PAST + timedelta(seconds=10))
+        # Frozen now (PAST) + 10s == deadline exactly; strict `>` keeps it in
+        # time. Wall-clock now is far past the deadline, so the exact-instant
+        # verdict is reachable only through the injected clock.
         assert _deadline_exceeded_after(10) is False
 
 

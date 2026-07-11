@@ -428,6 +428,51 @@ class TestMarkAbandoned:
         assert sample_outbox.last_error["retry_count"] == 2
 
 
+class TestMarkMethodsRecordInjectedClock:
+    """The ``mark_*`` methods stamp their timestamps from the injected clock.
+
+    The wall-clock tolerance tests above only prove the recorded instant is
+    "roughly now". Freezing the clock at a fixed future instant pins the exact
+    value each method records, so a regression that stopped threading the clock
+    reading into ``published_at`` / ``failed_at`` / ``next_retry_at`` /
+    ``abandoned_at`` (falling back to a bare ``datetime.now()``) is caught — the
+    recorded value would no longer equal the frozen instant.
+    """
+
+    FIXED = datetime(2030, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+    @pytest.fixture
+    def frozen(self, test_domain):
+        test_domain.clock = FrozenClock(self.FIXED)
+        return test_domain
+
+    def test_mark_published_records_frozen_instant(self, sample_outbox, frozen):
+        sample_outbox.status = OutboxStatus.PROCESSING.value
+
+        sample_outbox.mark_published()
+
+        assert sample_outbox.published_at == self.FIXED
+        assert sample_outbox.last_processed_at == self.FIXED
+
+    def test_mark_failed_records_frozen_instant_and_backoff(
+        self, sample_outbox, frozen
+    ):
+        sample_outbox.retry_count = 0
+
+        sample_outbox.mark_failed(ValueError("boom"), base_delay_seconds=30)
+
+        # last_processed_at and the recorded failed_at both come from the clock.
+        assert sample_outbox.last_processed_at == self.FIXED
+        assert sample_outbox.last_error["failed_at"] == self.FIXED.isoformat()
+        # Backoff is measured from the frozen instant: 30 * 2**1 = 60 seconds.
+        assert sample_outbox.next_retry_at == self.FIXED + timedelta(seconds=60)
+
+    def test_mark_abandoned_records_frozen_instant(self, sample_outbox, frozen):
+        sample_outbox.mark_abandoned("done")
+
+        assert sample_outbox.last_error["abandoned_at"] == self.FIXED.isoformat()
+
+
 class TestResetForRetry:
     """Test reset_for_retry method."""
 
@@ -686,9 +731,14 @@ class TestBoundaryClockConditions:
     the only input that distinguishes ``<`` from ``<=`` — so these tests kill the
     ``<`` -> ``<=`` mutants that no wall-clock test can reach, without
     monkeypatching the module-level ``datetime``.
+
+    ``FIXED`` sits in the future so the tests also guard the seam itself: with a
+    bare ``datetime.now()`` real-now falls *before* the boundary, flipping every
+    "due / expired / reclaimable" assertion, so removing the injected-clock reads
+    turns these red instead of passing tautologically.
     """
 
-    FIXED = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    FIXED = datetime(2030, 1, 1, 12, 0, 0, tzinfo=UTC)
 
     @pytest.fixture
     def frozen(self, test_domain):
@@ -754,6 +804,19 @@ class TestBoundaryClockConditions:
 
         assert success is False
         assert result == ProcessingResult.RETRY_NOT_DUE
+
+    def test_not_ready_one_second_before_next_retry(self, sample_outbox, frozen):
+        """is_ready_for_processing is False one second before next_retry_at.
+
+        Exercises the ``now < next_retry_at`` branch through the clock so a
+        regression that stopped reading the injected clock in
+        ``is_ready_for_processing`` is caught by an explicit negative, not only by
+        the exact-instant case.
+        """
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.next_retry_at = self.FIXED + timedelta(seconds=1)
+
+        assert sample_outbox.is_ready_for_processing() is False
 
 
 class TestFieldDefaults:

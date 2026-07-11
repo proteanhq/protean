@@ -57,3 +57,30 @@ class TestClockSeam:
         after = datetime.now(UTC)
         assert value.tzinfo is UTC
         assert before <= value <= after
+
+
+class TestDomainNowNormalizesInjectedClock:
+    """``_domain_now`` normalizes a clock reading to tz-aware UTC.
+
+    A stub clock that returns a naive datetime (as a DB round-trip might) is
+    made timezone-aware at the seam, matching how an explicit ``now`` argument is
+    normalized at the call sites — so the injected-clock default is no less safe
+    than the ``datetime.now(UTC)`` it replaced.
+    """
+
+    def test_naive_clock_reading_is_made_tz_aware(self, test_domain):
+        from protean.utils.globals import _domain_now
+
+        naive = datetime(2026, 1, 1, 12, 0, 0)  # no tzinfo
+
+        class _NaiveClock:
+            def now(self):
+                return naive
+
+        test_domain.clock = _NaiveClock()
+
+        resolved = _domain_now()
+
+        assert resolved.tzinfo is not None
+        assert resolved.utcoffset() == timedelta(0)
+        assert resolved == naive.replace(tzinfo=UTC)

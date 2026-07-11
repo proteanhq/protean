@@ -63,6 +63,11 @@ def _domain_now(now: datetime | None = None) -> datetime:
     Unlike accessing ``current_domain`` directly, this reads the context stack
     without emitting the "working outside of domain context" warning, so the
     no-context fallback stays silent on every timestamp.
+
+    A value read from an injected clock is normalized to timezone-aware UTC
+    (naive datetimes are assumed UTC), matching how an explicit ``now`` is
+    handled at the call sites — so a stub clock that returns a naive datetime
+    fails no more loudly than the ``datetime.now(UTC)`` it replaces.
     """
     if now is not None:
         return now
@@ -70,7 +75,9 @@ def _domain_now(now: datetime | None = None) -> datetime:
     if top is not None:
         clock = getattr(top.domain, "clock", None)
         if clock is not None:
-            return cast(datetime, clock.now())
+            from protean.utils import ensure_utc_aware  # noqa: PLC0415
+
+            return ensure_utc_aware(cast(datetime, clock.now()))
     return datetime.now(UTC)
 
 
