@@ -11,6 +11,7 @@ from protean.fields import Dict, HasMany, HasOne, Identifier, List, Reference
 from protean.fields.simple import Float, String
 from protean.ir.builder import IRBuilder
 from protean.utils import fqn
+from protean.utils.mixins import read
 
 from .elements import build_published_event_domain
 from .support import (
@@ -1118,6 +1119,11 @@ _BUILTIN_CODES = frozenset(
         "AGGREGATE_NO_INVARIANTS",
         "CIRCULAR_CLUSTER_DEPENDENCY",
         "INFRA_IMPORT_IN_DOMAIN",
+        "QUERY_HANDLER_WITHOUT_QUERY",
+        "PROJECTOR_HANDLES_ORPHANED_EVENT",
+        "COMMAND_HANDLER_CROSS_CLUSTER",
+        "SUBSCRIBER_NO_STREAMS",
+        "PROCESS_MANAGER_UNCLOSED",
     }
 )
 
@@ -1238,6 +1244,64 @@ def _build_es_domain() -> Domain:
     return domain
 
 
+def _build_flow_fitness_domain() -> Domain:
+    """Emits QUERY_HANDLER_WITHOUT_QUERY, PROJECTOR_HANDLES_ORPHANED_EVENT,
+    and PROCESS_MANAGER_UNCLOSED (the naturally-reachable 3.5.4 rules)."""
+    from protean.core.aggregate import BaseAggregate
+
+    domain = Domain(name="EnrichFlowFitness", root_path=".")
+
+    @domain.aggregate
+    class Order:
+        name = String(max_length=50)
+
+    @domain.event(part_of=Order)
+    class OrderPlaced:
+        order_id = Identifier(identifier=True)
+
+    # An internal aggregate is excluded from clusters, so a projector handling
+    # its event references a type no cluster registers → orphan.
+    class InternalTracker(BaseAggregate):
+        name = String(max_length=50)
+
+    @domain.event(part_of=InternalTracker)
+    class TrackerFired:
+        tracker_id = Identifier(identifier=True)
+
+    domain.register(InternalTracker, internal=True)
+
+    @domain.projection
+    class OrderView:
+        order_id = Identifier(identifier=True)
+
+    @domain.projector(projector_for=OrderView, aggregates=[Order])
+    class OrderViewProjector:
+        @handle(OrderPlaced)
+        def on_placed(self, event):
+            pass
+
+        @handle(TrackerFired)  # orphan → PROJECTOR_HANDLES_ORPHANED_EVENT
+        def on_tracker(self, event):
+            pass
+
+    @domain.query_handler(part_of=OrderView)  # no query → QUERY_HANDLER_WITHOUT_QUERY
+    class OrderViewQueryHandler:
+        pass
+
+    @domain.process_manager(
+        stream_categories=["order"]
+    )  # no end → PROCESS_MANAGER_UNCLOSED
+    class OrderSaga:
+        order_id = Identifier()
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_placed(self, event):
+            self.order_id = event.order_id
+
+    domain.init(traverse=False)
+    return domain
+
+
 def _all_builtin_diagnostics() -> list[dict]:
     """Diagnostics covering every built-in code, merged from focused domains.
 
@@ -1309,6 +1373,54 @@ def _all_builtin_diagnostics() -> list[dict]:
     infra_domain.register(infra_import_domain.InfraOrder)
     infra_domain.init(traverse=False)
     diagnostics += IRBuilder(infra_domain).build()["diagnostics"]
+
+    # 3.5.4 flow-fitness rules reachable from a live domain.
+    diagnostics += IRBuilder(_build_flow_fitness_domain()).build()["diagnostics"]
+
+    # SUBSCRIBER_NO_STREAMS — the subscriber factory hard-requires a stream, so
+    # null it post-init to reach the materialized-IR state the rule guards.
+    sub_domain = Domain(name="EnrichSubscriber", root_path=".")
+
+    @sub_domain.subscriber(broker="default", stream="payments")
+    class PaymentSubscriber:
+        def __call__(self, payload):
+            pass
+
+    sub_domain.init(traverse=False)
+    PaymentSubscriber.meta_.stream = None
+    diagnostics += IRBuilder(sub_domain).build()["diagnostics"]
+
+    # COMMAND_HANDLER_CROSS_CLUSTER — handler_setup forbids a handler targeting
+    # another cluster's command, so inject the foreign command type into the
+    # handler map (the state stored/hand-edited IR can carry).
+    xc_domain = Domain(name="EnrichCrossCluster", root_path=".")
+
+    @xc_domain.aggregate
+    class Order:
+        name = String(max_length=50)
+
+    @xc_domain.aggregate
+    class Shipment:
+        name = String(max_length=50)
+
+    @xc_domain.command(part_of=Order)
+    class PlaceOrder:
+        order_id = Identifier(identifier=True)
+
+    @xc_domain.command(part_of=Shipment)
+    class DispatchShipment:
+        shipment_id = Identifier(identifier=True)
+
+    @xc_domain.command_handler(part_of=Order)
+    class OrderCommandHandler:
+        @handle(PlaceOrder)
+        def place(self, command):
+            pass
+
+    xc_domain.init(traverse=False)
+    method = next(iter(OrderCommandHandler._handlers[PlaceOrder.__type__]))
+    OrderCommandHandler._handlers[DispatchShipment.__type__].add(method)
+    diagnostics += IRBuilder(xc_domain).build()["diagnostics"]
 
     return diagnostics
 
@@ -2700,3 +2812,486 @@ class TestInfraImportInDomain:
         ir = IRBuilder(domain).build()
 
         assert _infra_findings(ir) == []
+
+
+# ── Handler completeness & flow fitness rules (3.5.4) ───────────────
+
+
+def _findings(ir: dict, code: str) -> list[dict]:
+    """Diagnostics carrying the given code."""
+    return [d for d in ir["diagnostics"] if d["code"] == code]
+
+
+@pytest.mark.no_test_domain
+class TestQueryHandlerWithoutQuery:
+    """QUERY_HANDLER_WITHOUT_QUERY: a projection wiring a query handler but
+    declaring no query has a read path nothing can invoke."""
+
+    def test_query_handler_without_query_flagged(self):
+        domain = Domain(name="QHNoQuery", root_path=".")
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        # A query handler needs only a projection (no ``@read`` method is
+        # required); with no ``Query`` declared, its read path is unreachable.
+        @domain.query_handler(part_of=OrderView)
+        class OrderViewQueryHandler:
+            pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        findings = _findings(ir, "QUERY_HANDLER_WITHOUT_QUERY")
+        assert len(findings) > 0
+        finding = findings[0]
+        assert "OrderView" in finding["element"]
+        assert finding["level"] == "warning"
+
+    def test_query_handler_with_query_not_flagged(self):
+        domain = Domain(name="QHWithQuery", root_path=".")
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @domain.query(part_of=OrderView)
+        class GetOrder:
+            order_id = Identifier(required=True)
+
+        @domain.query_handler(part_of=OrderView)
+        class OrderViewQueryHandler:
+            @read(GetOrder)
+            def by_order(self, query):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "QUERY_HANDLER_WITHOUT_QUERY") == []
+
+    def test_projection_without_query_handler_not_flagged(self):
+        domain = Domain(name="QHNeither", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @domain.projector(projector_for=OrderView, aggregates=[Order])
+        class OrderViewProjector:
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "QUERY_HANDLER_WITHOUT_QUERY") == []
+
+
+@pytest.mark.no_test_domain
+class TestSubscriberNoStreams:
+    """SUBSCRIBER_NO_STREAMS: a subscriber with no stream has nothing to
+    consume. Keys off ``stream`` (not the removed ``stream_category``)."""
+
+    def test_streamless_subscriber_flagged(self):
+        domain = Domain(name="NoStreamSub", root_path=".")
+
+        @domain.subscriber(broker="default", stream="payments")
+        class PaymentSubscriber:
+            def __call__(self, payload):
+                pass
+
+        domain.init(traverse=False)
+
+        # The subscriber factory hard-requires a stream, so a streamless
+        # subscriber cannot be registered. It can still appear in materialized
+        # IR (loaded or hand-edited), which is what this info rule guards — null
+        # the stream post-init to exercise that path.
+        PaymentSubscriber.meta_.stream = None
+        ir = IRBuilder(domain).build()
+
+        findings = _findings(ir, "SUBSCRIBER_NO_STREAMS")
+        assert len(findings) > 0
+        finding = findings[0]
+        assert "PaymentSubscriber" in finding["element"]
+        assert finding["level"] == "info"
+
+    def test_subscriber_with_stream_not_flagged(self):
+        """A subscriber with a real ``stream`` produces zero findings — guards
+        against a ``stream_category`` regression (the check reads ``stream``)."""
+        domain = Domain(name="StreamSub", root_path=".")
+
+        @domain.subscriber(broker="default", stream="payment_gateway")
+        class PaymentSubscriber:
+            def __call__(self, payload):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "SUBSCRIBER_NO_STREAMS") == []
+
+
+@pytest.mark.no_test_domain
+class TestProjectorHandlesOrphanedEvent:
+    """PROJECTOR_HANDLES_ORPHANED_EVENT: a projector handling an event that no
+    cluster registers is wired to a type that can never be dispatched."""
+
+    def test_orphaned_event_flagged(self):
+        from protean.core.aggregate import BaseAggregate
+
+        domain = Domain(name="Orphan", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        # An internal aggregate is excluded from clusters, so its events never
+        # enter the registered-type set — a projector handling one references an
+        # event no cluster registers (the orphan the rule guards).
+        class InternalTracker(BaseAggregate):
+            name = String(max_length=50)
+
+        @domain.event(part_of=InternalTracker)
+        class TrackerFired:
+            tracker_id = Identifier(identifier=True)
+
+        domain.register(InternalTracker, internal=True)
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @domain.projector(projector_for=OrderView, aggregates=[Order])
+        class OrderViewProjector:
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+            @handle(TrackerFired)
+            def on_tracker(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        findings = _findings(ir, "PROJECTOR_HANDLES_ORPHANED_EVENT")
+        assert len(findings) > 0
+        finding = findings[0]
+        assert "OrderViewProjector" in finding["element"]
+        assert finding["level"] == "warning"
+        # The orphaned type is named; the registered OrderPlaced is not flagged.
+        assert "TrackerFired" in finding["message"]
+        assert not any("OrderPlaced" in f["message"] for f in findings)
+
+    def test_registered_events_not_flagged(self):
+        domain = Domain(name="NoOrphan", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @domain.event(part_of=Order)
+        class OrderShipped:
+            order_id = Identifier(identifier=True)
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @domain.projector(projector_for=OrderView, aggregates=[Order])
+        class OrderViewProjector:
+            @handle(OrderPlaced)
+            def on_placed(self, event):
+                pass
+
+            @handle(OrderShipped)
+            def on_shipped(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "PROJECTOR_HANDLES_ORPHANED_EVENT") == []
+
+    def test_cross_aggregate_registered_event_not_flagged(self):
+        """A projector legitimately handles events from other aggregates; the
+        registered-type lookup spans all clusters, so a foreign-but-registered
+        event is not an orphan."""
+        domain = Domain(name="CrossAgg", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class Payment:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Payment)
+        class PaymentReceived:
+            payment_id = Identifier(identifier=True)
+
+        @domain.projection
+        class OrderView:
+            order_id = Identifier(identifier=True)
+
+        @domain.projector(projector_for=OrderView, aggregates=[Order])
+        class OrderViewProjector:
+            @handle(PaymentReceived)
+            def on_payment(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "PROJECTOR_HANDLES_ORPHANED_EVENT") == []
+
+
+@pytest.mark.no_test_domain
+class TestCommandHandlerCrossCluster:
+    """COMMAND_HANDLER_CROSS_CLUSTER: a command handler processing another
+    cluster's command puts that aggregate's write path outside its boundary."""
+
+    def test_cross_cluster_command_flagged(self):
+        domain = Domain(name="CrossCluster", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class Shipment:
+            name = String(max_length=50)
+
+        @domain.command(part_of=Order)
+        class PlaceOrder:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of=Shipment)
+        class DispatchShipment:
+            shipment_id = Identifier(identifier=True)
+
+        @domain.command_handler(part_of=Order)
+        class OrderCommandHandler:
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        domain.init(traverse=False)
+
+        # The framework forbids a command handler from targeting another
+        # cluster's command (handler_setup validates command/handler part_of
+        # equality), so this cannot come from registration. It can appear in
+        # materialized IR loaded from an older or hand-edited source — the state
+        # the diagnostic guards — so inject the foreign command type into the
+        # handler map to exercise that path.
+        method = next(iter(OrderCommandHandler._handlers[PlaceOrder.__type__]))
+        OrderCommandHandler._handlers[DispatchShipment.__type__].add(method)
+
+        ir = IRBuilder(domain).build()
+
+        findings = _findings(ir, "COMMAND_HANDLER_CROSS_CLUSTER")
+        assert len(findings) > 0
+        finding = findings[0]
+        assert "OrderCommandHandler" in finding["element"]
+        assert finding["level"] == "warning"
+        # Both the handler's cluster and the owning cluster are named.
+        assert "Order" in finding["message"]
+        assert "Shipment" in finding["message"]
+
+    def test_same_cluster_command_not_flagged(self):
+        domain = Domain(name="SameCluster", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.command(part_of=Order)
+        class PlaceOrder:
+            order_id = Identifier(identifier=True)
+
+        @domain.command_handler(part_of=Order)
+        class OrderCommandHandler:
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "COMMAND_HANDLER_CROSS_CLUSTER") == []
+
+    def test_unregistered_command_type_skipped(self):
+        """A command type in the handler map but registered in no cluster is
+        attributable to no owner and must be skipped, not flagged."""
+        domain = Domain(name="UnregisteredCmd", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.command(part_of=Order)
+        class PlaceOrder:
+            order_id = Identifier(identifier=True)
+
+        @domain.command_handler(part_of=Order)
+        class OrderCommandHandler:
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        domain.init(traverse=False)
+
+        # Inject a command type owned by no registered cluster.
+        method = next(iter(OrderCommandHandler._handlers[PlaceOrder.__type__]))
+        OrderCommandHandler._handlers["Ghost.Unknown.v1"].add(method)
+
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "COMMAND_HANDLER_CROSS_CLUSTER") == []
+
+    def test_cross_cluster_event_handler_not_flagged(self):
+        """An event handler reacting across clusters is legitimate (the #824
+        boundary); the command-only rule must ignore event handlers."""
+        domain = Domain(name="EventCross", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class Shipment:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Shipment)
+        class ShipmentDispatched:
+            shipment_id = Identifier(identifier=True)
+
+        @domain.event_handler(part_of=Order)
+        class OrderReactsToShipment:
+            @handle(ShipmentDispatched)
+            def on_dispatched(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "COMMAND_HANDLER_CROSS_CLUSTER") == []
+
+
+@pytest.mark.no_test_domain
+class TestProcessManagerUnclosed:
+    """PROCESS_MANAGER_UNCLOSED: a process manager with no ``end=True`` handler
+    never signals completion, so its instances accumulate."""
+
+    def test_unclosed_pm_flagged(self):
+        domain = Domain(name="UnclosedPM", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @domain.process_manager(stream_categories=["order"])
+        class OrderSaga:
+            order_id = Identifier()
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                self.order_id = event.order_id
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        findings = _findings(ir, "PROCESS_MANAGER_UNCLOSED")
+        assert len(findings) > 0
+        finding = findings[0]
+        assert "OrderSaga" in finding["element"]
+        assert finding["level"] == "info"
+
+    def test_closed_pm_not_flagged(self):
+        domain = Domain(name="ClosedPM", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @domain.event(part_of=Order)
+        class OrderCompleted:
+            order_id = Identifier(identifier=True)
+
+        @domain.process_manager(stream_categories=["order"])
+        class OrderSaga:
+            order_id = Identifier()
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                self.order_id = event.order_id
+
+            @handle(OrderCompleted, correlate="order_id", end=True)
+            def on_completed(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _findings(ir, "PROCESS_MANAGER_UNCLOSED") == []
+
+
+@pytest.mark.no_test_domain
+class TestHandlerCompletenessSuppression:
+    """A representative new rule flows through the #774 suppression path."""
+
+    def test_suppress_process_manager_unclosed(self):
+        domain = Domain(name="SuppressPM", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        @domain.event(part_of=Order)
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @domain.process_manager(
+            stream_categories=["order"],
+            suppress_checks=["PROCESS_MANAGER_UNCLOSED"],
+        )
+        class OrderSaga:
+            order_id = Identifier()
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                self.order_id = event.order_id
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        # Unsuppressed this PM would be flagged; ``suppress_checks`` removes it.
+        assert "PROCESS_MANAGER_UNCLOSED" not in _codes_for(ir, "OrderSaga")
