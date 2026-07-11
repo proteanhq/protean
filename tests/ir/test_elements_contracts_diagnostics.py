@@ -3,8 +3,9 @@
 import pytest
 
 from protean import Domain, handle
-from protean.core.aggregate import apply
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.entity import invariant
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, ValidationError
 from protean.fields import Dict, HasMany, HasOne, Identifier, List, Reference
 from protean.fields.simple import Float, String
@@ -2621,6 +2622,80 @@ class TestInfraImportInDomain:
         domain = Domain(name="InfraGuarded", root_path=".")
         domain.config["lint"] = {"check_infra_imports": True}
         domain.register(infra_guarded_domain.GuardedOrder)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_unresolvable_module_fails_open(self):
+        """When ``find_spec`` raises (e.g. a ``__module__`` whose parent is not a
+        package), the rule fails open — the module is skipped, no diagnostic is
+        emitted, and the diagnostics pass is not aborted."""
+        domain = Domain(name="InfraUnresolvable", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        # ``os`` is a module, not a package, so ``find_spec('os.no_such_sub')``
+        # raises ModuleNotFoundError.
+        broken = type(
+            "BrokenModuleVO",
+            (BaseValueObject,),
+            {"__module__": "os.no_such_sub", "amount": String(max_length=5)},
+        )
+        domain.register(broken)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_unparseable_source_fails_open(self, monkeypatch):
+        """When a resolved source file cannot be AST-parsed, the rule fails open:
+        the module is treated as not importing infra rather than crashing the
+        build."""
+        monkeypatch.setattr(
+            "protean.ir.builder.ast.parse",
+            lambda *a, **k: (_ for _ in ()).throw(SyntaxError("boom")),
+        )
+        domain = _build_infra_domain("InfraUnparseable", {"check_infra_imports": True})
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_duplicate_fqn_is_scanned_once(self):
+        """Two distinct classes sharing a fully-qualified name (same module and
+        name, different element buckets) are scanned once, not twice — the
+        ``seen`` guard dedupes by FQN, so the infra-importing FQN is flagged a
+        single time."""
+        domain = Domain(name="InfraDup", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        module = infra_import_domain.__name__
+        vo = type(
+            "DupElement",
+            (BaseValueObject,),
+            {"__module__": module, "amount": String(max_length=5)},
+        )
+        agg = type(
+            "DupElement",
+            (BaseAggregate,),
+            {"__module__": module, "name": String(max_length=5)},
+        )
+        domain.register(vo)
+        domain.register(agg)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        dup_fqn = f"{module}.DupElement"
+        assert [d["element"] for d in _infra_findings(ir)].count(dup_fqn) == 1
+
+    def test_element_without_module_is_skipped(self):
+        """An element whose ``__module__`` is empty contributes no source file to
+        scan, so it is skipped without error."""
+        domain = Domain(name="InfraNoModule", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        no_module = type(
+            "NoModuleVO",
+            (BaseValueObject,),
+            {"__module__": "", "amount": String(max_length=5)},
+        )
+        domain.register(no_module)
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 

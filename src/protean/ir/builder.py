@@ -1698,7 +1698,9 @@ class IRBuilder:
                 return [module] + [
                     f"{module}.{a.name}" if module else a.name for a in node.names
                 ]
-            return []
+            # Unreachable: callers only pass ``ast.Import``/``ast.ImportFrom``
+            # nodes filtered by ``_module_level_imports``.
+            return []  # pragma: no cover
 
         def _module_imports_infra(module: str) -> bool:
             if module in module_flags:
