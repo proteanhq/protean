@@ -1562,6 +1562,7 @@ class IRBuilder:
         self._diagnose_query_handler_without_query(ir)
         self._diagnose_projector_handles_orphaned_event(ir)
         self._diagnose_command_handler_cross_cluster(ir)
+        self._diagnose_unbounded_indexed_string(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
@@ -2200,6 +2201,98 @@ class IRBuilder:
                         "suggestion": rule["fix"],
                     }
                 )
+
+    def _diagnose_unbounded_indexed_string(self, ir: dict[str, Any]) -> None:
+        """UNBOUNDED_INDEXED_STRING: an aggregate field that is both included in
+        a declared index and an unbounded string.
+
+        A field is unbounded when it is string-typed and carries no bound: IR
+        ``type == "Text"`` (unbounded by construction) or ``type == "String"``
+        with no ``max_length`` key (the ``String(max_length=None)`` escape
+        hatch — a normal ``String()`` defaults to ``max_length=255`` and so is
+        bounded). Indexing such a field produces DDL that fails on SQL Server,
+        needs a prefix length on MySQL, and is inefficient on PostgreSQL.
+
+        One finding is emitted per flagged field per index occurrence: a field
+        in two indexes yields two findings; a composite index over one bounded
+        and one unbounded field yields one finding for the unbounded field only.
+        """
+        abstract_fqns = self._abstract_aggregate_fqns()
+        for cluster in ir["clusters"].values():
+            aggregate = cluster["aggregate"]
+            # Abstract aggregates are non-instantiable bases: they emit no DDL,
+            # and their indexes describe a shape no table is built from (the
+            # concrete subclass does not carry them). Skip them, matching the
+            # other cluster-walking design rules.
+            if aggregate["fqn"] in abstract_fqns:
+                continue
+            fields = aggregate.get("fields", {})
+
+            for index in aggregate.get("indexes", []):
+                # Only ``Index`` entries carry a ``fields`` key; ``RawIndex``
+                # entries carry verbatim, opaque DDL and no ``fields``. The
+                # missing key is therefore exactly the RawIndex signal, and it
+                # also guards the lookup below from raising.
+                if "fields" not in index:
+                    continue
+
+                index_name = index.get("name", "(unnamed)")
+
+                # A field listed twice within one index is a single occurrence;
+                # dedupe (preserving declaration order) so a degenerate
+                # ``Index("body", "body")`` yields one finding, not two.
+                for field_name in dict.fromkeys(index["fields"]):
+                    # A field name may reference a value-object or association
+                    # attribute absent from the scalar fields dict; skip it
+                    # rather than raise.
+                    field = fields.get(field_name)
+                    if field is None:
+                        continue
+
+                    field_type = field.get("type")
+                    unbounded = field_type == "Text" or (
+                        field_type == "String" and "max_length" not in field
+                    )
+                    if not unbounded:
+                        continue
+
+                    rule = {
+                        "rationale": (
+                            "An index over an unbounded string field is "
+                            "unportable: the DDL fails on SQL Server, needs a "
+                            "prefix length on MySQL, and is inefficient on "
+                            "PostgreSQL."
+                        ),
+                        "fix": (
+                            "Give the field a bounded length "
+                            "(`String(max_length=N)`) sized to its domain, or "
+                            "remove it from the index if it does not need to be "
+                            "indexed."
+                        ),
+                    }
+                    self._diagnostics.append(
+                        {
+                            "code": "UNBOUNDED_INDEXED_STRING",
+                            "category": "persistence",
+                            "element": aggregate["fqn"],
+                            "level": "warning",
+                            "field": field_name,
+                            "message": (
+                                f"Field `{field_name}` on aggregate "
+                                f"`{aggregate['name']}` is included in index "
+                                f"`{index_name}` but is an unbounded string "
+                                f"(`{field_type}`). SQL Server rejects indexes "
+                                f"on unbounded strings, MySQL requires an "
+                                f"explicit prefix length, and PostgreSQL builds "
+                                f"the index with storage and performance overhead."
+                            ),
+                            "rule": rule,
+                            "suggestion": (
+                                f"{field_name} = String(max_length=255)  "
+                                f"# size to the field's domain"
+                            ),
+                        }
+                    )
 
     def _diagnose_upcaster_gap(self, ir: dict[str, Any]) -> None:
         """UPCASTER_GAP: an event at version N>1 whose stored predecessors have
