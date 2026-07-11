@@ -1915,6 +1915,23 @@ class IRBuilder:
                     }
                 )
 
+    def _abstract_aggregate_fqns(self) -> set[str]:
+        """FQNs of registered aggregates flagged ``abstract`` in their metadata.
+
+        ``abstract`` is not projected into the aggregate IR ``options`` block, so
+        the registry is the source of truth (mirroring
+        ``_diagnose_aggregate_no_invariants``). Abstract aggregates still get
+        clusters (``_build_clusters`` skips only ``record.internal``), so the
+        cluster-walking design rules must filter them out here to avoid flagging
+        a shape that only exists on a non-instantiable base.
+        """
+        registry = self._domain._domain_registry
+        return {
+            fqn(record.cls)
+            for record in registry._elements.get("AGGREGATE", {}).values()
+            if getattr(record.cls.meta_, "abstract", False)
+        }
+
     def _diagnose_cross_aggregate_reference(self, ir: dict[str, Any]) -> None:
         """CROSS_AGGREGATE_REFERENCE: a ``Reference`` field pointing at a
         *different* aggregate's root (Vernon's Rule 3).
@@ -1923,9 +1940,11 @@ class IRBuilder:
         aggregate root, where ``target`` equals the enclosing cluster key; that
         case must never be flagged. Only ``kind == "reference"`` fields are
         evaluated — ``has_one``/``has_many`` associations are out of scope.
-        Framework-injected back-references (``auto_generated``) are skipped.
+        Framework-injected back-references (``auto_generated``) are skipped, as
+        are abstract aggregates.
         """
         cluster_keys = set(ir["clusters"])
+        abstract_fqns = self._abstract_aggregate_fqns()
         rule = {
             "rationale": (
                 "Aggregates coordinate other aggregates by identity, not by "
@@ -1943,8 +1962,10 @@ class IRBuilder:
             ),
         }
         for own, cluster in ir["clusters"].items():
-            # Skip infrastructure aggregates
+            # Skip infrastructure and abstract aggregates
             if cluster["aggregate"]["fqn"].startswith("protean.adapters."):
+                continue
+            if cluster["aggregate"]["fqn"] in abstract_fqns:
                 continue
             # The root and every child entity belong to *this* cluster, so the
             # "own cluster" of any field found here is the current cluster key.
@@ -1981,8 +2002,14 @@ class IRBuilder:
 
     def _diagnose_es_aggregate_no_events(self, ir: dict[str, Any]) -> None:
         """ES_AGGREGATE_NO_EVENTS: an ``event_sourced=True`` aggregate with no
-        events. It has no state history and cannot be rebuilt by replay.
+        *domain* events. It has no state history and cannot be rebuilt by replay.
+
+        Framework-generated events (the ``fact_events`` snapshot, which carries
+        ``auto_generated``) do not count: a fact-event snapshot cannot
+        reconstitute an event-sourced aggregate by replay. Abstract aggregates
+        are skipped.
         """
+        abstract_fqns = self._abstract_aggregate_fqns()
         rule = {
             "rationale": (
                 "An event-sourced aggregate reconstitutes its state by replaying "
@@ -1998,12 +2025,19 @@ class IRBuilder:
         }
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
-            # Skip infrastructure aggregates
+            # Skip infrastructure and abstract aggregates
             if aggregate["fqn"].startswith("protean.adapters."):
+                continue
+            if aggregate["fqn"] in abstract_fqns:
                 continue
             if not aggregate["options"].get("is_event_sourced"):
                 continue
-            if len(cluster["events"]) == 0:
+            domain_events = [
+                event
+                for event in cluster["events"].values()
+                if not event.get("auto_generated", False)
+            ]
+            if len(domain_events) == 0:
                 self._diagnostics.append(
                     {
                         "category": "aggregate_design",
@@ -2024,9 +2058,12 @@ class IRBuilder:
         """VALUE_OBJECT_MUTABLE_FIELD: a value object with a ``list``/``dict``
         field, which gives it mutable state and breaks equality-by-value.
 
+        Only value objects reachable from a (non-abstract) aggregate cluster are
+        checked — a VO is embedded in an aggregate/entity or carries ``part_of``.
         Emits one finding per offending field, naming it in the optional
         ``field`` key (mirroring ``DEPRECATED_FIELD``).
         """
+        abstract_fqns = self._abstract_aggregate_fqns()
         rule = {
             "rationale": (
                 "Value objects are compared by value and must be immutable. A "
@@ -2042,6 +2079,8 @@ class IRBuilder:
             ),
         }
         for cluster in ir["clusters"].values():
+            if cluster["aggregate"]["fqn"] in abstract_fqns:
+                continue
             for vo in cluster["value_objects"].values():
                 for field_name, field in vo["fields"].items():
                     if field.get("kind") not in ("list", "dict"):
@@ -2478,9 +2517,9 @@ class IRBuilder:
                         "element": agg_fqn,
                         "level": "info",
                         "message": (
-                            f"Aggregate `{record.cls.__name__}` declares no "
-                            f"pre/post invariants; it enforces no business rules "
-                            f"and may be an anemic data holder."
+                            f"Aggregate `{record.cls.__name__}` has no pre/post "
+                            f"invariants (own or inherited); it enforces no "
+                            f"business rules and may be an anemic data holder."
                         ),
                         "rule": rule,
                         "suggestion": rule["fix"],

@@ -1740,6 +1740,51 @@ class TestCrossAggregateReference:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "CROSS_AGGREGATE_REFERENCE" not in codes
 
+    def test_reference_to_entity_not_flagged(self):
+        """The ``target in cluster_keys`` guard: a ``Reference`` whose target is
+        another aggregate's child *entity* (not a cluster key / root) is out of
+        scope and never flagged. Deleting that guard must fail this test."""
+        domain = Domain(name="RefToEntity", root_path=".")
+
+        @domain.aggregate
+        class Catalog:
+            name = String()
+            products = HasMany("Product")
+
+        @domain.entity(part_of=Catalog)
+        class Product:
+            sku = String()
+
+        @domain.aggregate
+        class Wishlist:
+            product = Reference(Product)  # target is an entity, not a root
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "CROSS_AGGREGATE_REFERENCE" not in codes
+
+    def test_abstract_aggregate_not_flagged(self):
+        """An abstract aggregate carrying a cross-aggregate ``Reference`` is
+        skipped — the shape only exists on a non-instantiable base."""
+        domain = Domain(name="CrossRefAbstract", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.aggregate(abstract=True)
+        class BaseCustomer:
+            name = String()
+            order = Reference(Order)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "CROSS_AGGREGATE_REFERENCE" not in codes
+
     def test_suppress_checks_drops_code(self):
         domain = Domain(name="CrossRefSuppress", root_path=".")
 
@@ -1752,10 +1797,17 @@ class TestCrossAggregateReference:
             name = String()
             order = Reference(Order)
 
+        @domain.aggregate
+        class Invoice:
+            order = Reference(Order)  # identical shape, not suppressed
+
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
+        # Suppressed on Customer, yet the identical shape on Invoice still fires:
+        # the rule is active and suppression is selective, not a global no-op.
         assert "CROSS_AGGREGATE_REFERENCE" not in _codes_for(ir, "Customer")
+        assert "CROSS_AGGREGATE_REFERENCE" in _codes_for(ir, "Invoice")
 
 
 @pytest.mark.no_test_domain
@@ -1814,6 +1866,38 @@ class TestESAggregateNoEvents:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "ES_AGGREGATE_NO_EVENTS" not in codes
 
+    def test_fact_events_do_not_count_as_domain_events(self):
+        """The framework-generated ``FactEvent`` (``auto_generated``) lands in
+        ``cluster["events"]`` but cannot reconstitute an ES aggregate by replay,
+        so an ES aggregate with only fact events is still flagged."""
+        domain = Domain(name="ESFactOnly", root_path=".")
+
+        @domain.aggregate(event_sourced=True, fact_events=True)
+        class Account:
+            balance = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "ES_AGGREGATE_NO_EVENTS"]
+        assert len(diags) == 1
+        assert diags[0]["element"] == fqn(Account)
+
+    def test_abstract_es_aggregate_not_flagged(self):
+        """An abstract ``event_sourced=True`` aggregate with no events is skipped
+        — the missing-events shape only exists on a non-instantiable base."""
+        domain = Domain(name="ESAbstract", root_path=".")
+
+        @domain.aggregate(event_sourced=True, abstract=True)
+        class BaseAccount:
+            balance = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "ES_AGGREGATE_NO_EVENTS" not in codes
+
     def test_suppress_checks_drops_code(self):
         domain = Domain(name="ESSuppress", root_path=".")
 
@@ -1823,10 +1907,16 @@ class TestESAggregateNoEvents:
         class Account:
             balance = Float()
 
+        @domain.aggregate(event_sourced=True)
+        class Ledger:
+            balance = Float()
+
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
+        # Suppressed on Account, yet the identical shape on Ledger still fires.
         assert "ES_AGGREGATE_NO_EVENTS" not in _codes_for(ir, "Account")
+        assert "ES_AGGREGATE_NO_EVENTS" in _codes_for(ir, "Ledger")
 
 
 @pytest.mark.no_test_domain
@@ -1902,6 +1992,26 @@ class TestValueObjectMutableField:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "VALUE_OBJECT_MUTABLE_FIELD" not in codes
 
+    def test_abstract_aggregate_vo_not_flagged(self):
+        """A mutable-field VO reachable only through an abstract aggregate is
+        skipped along with its (non-instantiable) enclosing cluster."""
+        domain = Domain(name="VOAbstract", root_path=".")
+
+        @domain.aggregate(abstract=True)
+        class BaseOrder:
+            total = Float()
+
+        @domain.value_object(part_of=BaseOrder)
+        class ShippingLabel:
+            carrier = String()
+            tags = List()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "VALUE_OBJECT_MUTABLE_FIELD" not in codes
+
     def test_suppress_checks_drops_code(self):
         domain = Domain(name="VOSuppress", root_path=".")
 
@@ -1916,10 +2026,18 @@ class TestValueObjectMutableField:
             carrier = String()
             tags = List()
 
+        @domain.value_object(part_of=Order)
+        class Manifest:
+            ref = String()
+            items = List()
+
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
+        # Suppressed on ShippingLabel, yet the identical shape on Manifest still
+        # fires: the rule is active and suppression is selective.
         assert "VALUE_OBJECT_MUTABLE_FIELD" not in _codes_for(ir, "ShippingLabel")
+        assert "VALUE_OBJECT_MUTABLE_FIELD" in _codes_for(ir, "Manifest")
 
 
 @pytest.mark.no_test_domain
@@ -2005,7 +2123,13 @@ class TestAggregateNoInvariants:
         class Order:
             total = Float()
 
+        @domain.aggregate
+        class Shipment:
+            weight = Float()
+
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
+        # Suppressed on Order, yet the identical shape on Shipment still fires.
         assert "AGGREGATE_NO_INVARIANTS" not in _codes_for(ir, "Order")
+        assert "AGGREGATE_NO_INVARIANTS" in _codes_for(ir, "Shipment")
