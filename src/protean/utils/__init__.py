@@ -17,10 +17,12 @@ from typing import (
     Annotated,
     Any,
     ClassVar,
+    Protocol,
     TypeVar,
     cast,
     get_args,
     get_origin,
+    runtime_checkable,
 )
 from uuid import UUID, uuid4
 
@@ -96,6 +98,32 @@ class _TypeMatcher:
 def _utcnow_func() -> datetime:
     """Return the current time in UTC with timezone information"""
     return datetime.now(UTC)
+
+
+@runtime_checkable
+class Clock(Protocol):
+    """A source of the current time.
+
+    Implementations return a timezone-aware UTC :class:`~datetime.datetime`.
+    Every :class:`~protean.domain.Domain` holds one on ``domain.clock`` (default
+    :class:`SystemClock`). Injecting a stub clock lets tests freeze time so that
+    deadline, lock, and retry-backoff boundaries become deterministic without
+    monkeypatching the module-level ``datetime``.
+    """
+
+    def now(self) -> datetime: ...
+
+
+class SystemClock:
+    """Default :class:`Clock` — returns the real wall-clock time in UTC.
+
+    ``now()`` is byte-for-byte equivalent to the ``datetime.now(UTC)`` calls it
+    replaces, so wiring the seam through :class:`SystemClock` leaves default
+    behavior unchanged until a test overrides ``domain.clock``.
+    """
+
+    def now(self) -> datetime:
+        return datetime.now(UTC)
 
 
 def get_version() -> str:
@@ -692,11 +720,13 @@ def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
 
 __all__ = [
     "Cache",
+    "Clock",
     "Database",
     "DomainObjects",
     "IdentityStrategy",
     "IdentityType",
     "Processing",
+    "SystemClock",
     "get_version",
 ]
 

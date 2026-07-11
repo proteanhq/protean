@@ -1,6 +1,6 @@
 """Projector for updating ExampleSummary projection."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from protean import on
 
@@ -44,7 +44,7 @@ class ExampleProjector:
             projection.updated_at = event.activated_at
 
             # Recalculate days since creation
-            days_since = (datetime.now() - projection.created_at).days
+            days_since = (datetime.now(UTC) - projection.created_at).days
             projection.days_since_creation = days_since
 
             repo.add(projection)
@@ -61,7 +61,7 @@ class ExampleProjector:
             projection.updated_at = event.archived_at
 
             # Recalculate days since creation
-            days_since = (datetime.now() - projection.created_at).days
+            days_since = (datetime.now(UTC) - projection.created_at).days
             projection.days_since_creation = days_since
 
             repo.add(projection)

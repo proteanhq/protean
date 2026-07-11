@@ -18,6 +18,7 @@ from protean.fields import Identifier, String
 from protean.utils.eventing import Message, MessageHeaders
 from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle
+from tests.shared import FrozenClock
 
 handled = []
 
@@ -139,6 +140,24 @@ class TestResolveDeadline:
         assert resolved.tzinfo is UTC
         assert resolved == aware  # same instant
         assert resolved == datetime(2030, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+    def test_naive_now_reference_is_coerced_to_utc(self):
+        # A naive ``now`` (e.g. from a stub clock returning a naive datetime)
+        # must not leak into a naive deadline — the absolute deadline computed
+        # from a timeout stays tz-aware UTC.
+        naive_now = datetime(2030, 1, 1, 12, 0, 0)
+        resolved = resolve_deadline(None, timedelta(seconds=30), now=naive_now)
+        assert resolved.tzinfo is UTC
+        assert resolved == datetime(2030, 1, 1, 12, 0, 30, tzinfo=UTC)
+
+    def test_tz_aware_now_reference_is_normalized_to_utc(self):
+        # A non-UTC tz-aware ``now`` is converted to UTC before adding the
+        # timeout, preserving the instant.
+        tz = timezone(timedelta(hours=5, minutes=30))  # IST
+        aware_now = datetime(2030, 1, 1, 17, 30, 0, tzinfo=tz)
+        resolved = resolve_deadline(None, timedelta(seconds=30), now=aware_now)
+        assert resolved.tzinfo is UTC
+        assert resolved == datetime(2030, 1, 1, 12, 0, 30, tzinfo=UTC)
 
     def test_both_raises(self):
         with pytest.raises(IncorrectUsageError, match="not both"):
@@ -305,6 +324,59 @@ class TestDeadlinePropagation:
             g.pop("message_in_context", None)
 
         assert child._metadata.headers.deadline == explicit
+
+
+class TestClockDrivenDeadline:
+    """The injected ``domain.clock`` — not wall-clock time — governs deadline
+    resolution and expiry, proving the seam is wired end-to-end
+    (``resolve_deadline`` -> ``raise_if_expired`` -> ``is_expired``).
+    """
+
+    # A fixed instant far in the future so real wall-clock time can never make
+    # these deadlines expire on its own — only the injected clock can.
+    T0 = datetime(2030, 6, 1, 12, 0, 0, tzinfo=UTC)
+
+    def test_timeout_deadline_is_measured_from_the_injected_clock(self, test_domain):
+        test_domain.clock = FrozenClock(self.T0)
+        command = Register(user_id=str(uuid4()), email="john@example.com")
+
+        test_domain.process(command, timeout=timedelta(seconds=30))
+
+        stored = test_domain.event_store.store.read("user:command")[0]
+        # Exact, not "close to": the frozen clock removes scheduling slack, so
+        # the deadline lands on the precise instant T0 + 30s.
+        assert stored.metadata.headers.deadline == self.T0 + timedelta(seconds=30)
+
+    def test_command_expires_when_clock_advances_past_deadline(self, test_domain):
+        clock = FrozenClock(self.T0)
+        test_domain.clock = clock
+        deadline = self.T0 + timedelta(seconds=30)
+        command = Register(user_id=str(uuid4()), email="john@example.com")
+
+        # Advance one second past the deadline. The real wall clock is years
+        # behind this instant, so only the injected clock can trigger expiry.
+        clock.advance(timedelta(seconds=31))
+
+        with pytest.raises(CommandExpiredError) as exc_info:
+            test_domain.process(command, asynchronous=False, deadline=deadline)
+
+        assert exc_info.value.command_type == Register.__type__
+        assert handled == []  # rejected before the handler ran
+
+    def test_command_runs_when_clock_is_before_deadline(self, test_domain):
+        # Negative branch: one second short of the deadline the command is not
+        # expired, so the synchronous handler runs normally.
+        clock = FrozenClock(self.T0)
+        test_domain.clock = clock
+        deadline = self.T0 + timedelta(seconds=30)
+        identifier = str(uuid4())
+        command = Register(user_id=identifier, email="john@example.com")
+
+        clock.advance(timedelta(seconds=29))
+
+        test_domain.process(command, asynchronous=False, deadline=deadline)
+
+        assert identifier in handled
 
 
 class TestCoerceTimeout:

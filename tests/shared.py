@@ -7,12 +7,35 @@ import stat
 import sys
 import tempfile
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 
 from protean.domain import Domain
+
+
+class FrozenClock:
+    """A :class:`protean.utils.Clock` pinned to a fixed instant.
+
+    Assign it to ``domain.clock`` to make deadline, lock, and retry-backoff
+    boundaries deterministic — every ``now()`` returns the same instant until
+    :meth:`advance` moves it forward. This exercises the injectable clock seam
+    the same way production code does, with no monkeypatching of the module-level
+    ``datetime``.
+    """
+
+    def __init__(self, instant: datetime) -> None:
+        self._instant = instant
+
+    def now(self) -> datetime:
+        return self._instant
+
+    def advance(self, delta: timedelta) -> None:
+        """Move the frozen instant forward by ``delta``."""
+        self._instant += delta
+
 
 # ---------------------------------------------------------------------------
 # Service ports for Protean's Docker development environment

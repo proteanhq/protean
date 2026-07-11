@@ -61,6 +61,9 @@ class ProcessedMessage(BaseAggregate):
     # same 255 ceiling as the outbox table for the (message_id, handler) index.
     message_id: Annotated[str, Field(max_length=255)]
     handler: Annotated[str, Field(max_length=255)]
+    # Out of scope for the injectable clock (issue 9.1.7): a default_factory has
+    # no ``now`` argument and this is a creation timestamp, not a time-boundary
+    # comparison. Left as real UTC deliberately (same class as ``Outbox.created_at``).
     processed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -104,7 +107,7 @@ class ProcessedMessageRepository(BaseRepository):
         if retention_hours < 0:
             raise ValueError("retention_hours cannot be negative")
 
-        threshold = datetime.now(UTC) - timedelta(hours=retention_hours)
+        threshold = self._dao.domain.clock.now() - timedelta(hours=retention_hours)
         return self._delete_in_batches(Q(processed_at__lt=threshold), batch_size)
 
 

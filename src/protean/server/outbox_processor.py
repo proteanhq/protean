@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import logging
 from typing import TYPE_CHECKING, cast
 
@@ -411,7 +410,10 @@ class OutboxProcessor(BaseSubscription):
                     # Update final status based on broker publish result
                     metrics = get_domain_metrics(self.engine.domain)
                     if publish_success:
-                        message.mark_published()
+                        # One clock reading drives both the published-at
+                        # timestamp and the latency measurement below.
+                        now = self.engine.domain.clock.now()
+                        message.mark_published(now=now)
                         logger.debug(
                             "outbox.message_published",
                             extra={
@@ -424,7 +426,6 @@ class OutboxProcessor(BaseSubscription):
                         metrics.outbox_published.add(1)
                         # Compute outbox latency from created_at to now
                         if hasattr(message, "created_at") and message.created_at:
-                            now = datetime.datetime.now(datetime.UTC)
                             created = ensure_utc_aware(message.created_at)
                             latency_s = (now - created).total_seconds()
                             if latency_s >= 0:
@@ -597,6 +598,7 @@ class OutboxProcessor(BaseSubscription):
             error,
             base_delay_seconds=self.retry_config["base_delay_seconds"],
             max_retries=self.retry_config["max_attempts"],
+            now=self.engine.domain.clock.now(),
         )
 
         # Emit trace event — distinguish internal from external

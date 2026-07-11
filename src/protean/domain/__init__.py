@@ -144,7 +144,9 @@ from protean.ir.builder import IRBuilder
 from protean.port.event_store import CausationNode
 from protean.server.tracing import TraceEmitter
 from protean.utils import (
+    Clock,
     DomainObjects,
+    SystemClock,
     fqn,
 )
 from protean.utils import (
@@ -362,6 +364,11 @@ class Domain:
 
         # The function to invoke to generate identity
         self._identity_function = identity_function
+
+        # Injectable source of "now" for deadline, lock, and retry-backoff time
+        # comparisons. Defaults to real UTC; tests assign a stub clock to make
+        # boundary behavior deterministic. See :class:`protean.utils.Clock`.
+        self.clock: Clock = SystemClock()
 
         self.providers: Providers = Providers(self)
         self.event_store: EventStore = EventStore(self)

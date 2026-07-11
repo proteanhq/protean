@@ -25,7 +25,7 @@ from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.globals import current_domain
+from protean.utils.globals import _domain_now, current_domain
 from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, fields
 
 if TYPE_CHECKING:
@@ -157,13 +157,16 @@ class MessageHeaders(BaseValueObject):
         """Return ``True`` when a deadline is set and has already passed.
 
         Args:
-            now: Reference time to compare against. Defaults to the current
-                UTC time. Naive deadlines are treated as UTC.
+            now: Reference time to compare against. Defaults to the active
+                domain's clock (``current_domain.clock``) when a domain context
+                is active, or the real current UTC time otherwise, so the method
+                stays usable in a plain script. Naive deadlines are treated as
+                UTC.
         """
         if self.deadline is None:
             return False
 
-        reference = ensure_utc(now) if now else datetime.now(UTC)
+        reference = ensure_utc(now) if now else _domain_now()
         return reference > ensure_utc(self.deadline)
 
 

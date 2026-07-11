@@ -1,6 +1,7 @@
 import logging
 import traceback
 import warnings
+from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
@@ -47,6 +48,38 @@ def _find_domain() -> "Domain | None":
 
 def _find_uow() -> "UnitOfWork":
     return cast("UnitOfWork", _uow_context_stack.top)
+
+
+def _domain_now(now: datetime | None = None) -> datetime:
+    """Return the current UTC time from the active domain's injectable clock.
+
+    Reads ``current_domain.clock`` when a domain context is active, so tests can
+    freeze time by assigning ``domain.clock`` a stub clock and have deadline,
+    lock, and retry boundaries move deterministically. Falls back to real UTC
+    time when no domain context is active (a plain script, or a worker before
+    bootstrap), keeping the timestamp helpers usable outside a domain. An
+    explicit ``now`` short-circuits both — the caller has already read a clock.
+
+    Unlike accessing ``current_domain`` directly, this reads the context stack
+    without emitting the "working outside of domain context" warning, so the
+    no-context fallback stays silent on every timestamp.
+
+    Both an explicit ``now`` and a value read from an injected clock are
+    normalized to timezone-aware UTC (naive datetimes are assumed UTC), so a
+    stub clock that returns a naive datetime fails no more loudly than the
+    ``datetime.now(UTC)`` it replaces and callers that pass ``now=`` never leak
+    a naive value into deadline/lock comparisons or serialization.
+    """
+    from protean.utils import ensure_utc_aware  # noqa: PLC0415
+
+    if now is not None:
+        return ensure_utc_aware(now)
+    top = _domain_context_stack.top
+    if top is not None:
+        clock = getattr(top.domain, "clock", None)
+        if clock is not None:
+            return ensure_utc_aware(cast(datetime, clock.now()))
+    return datetime.now(UTC)
 
 
 # context locals

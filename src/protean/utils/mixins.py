@@ -4,7 +4,7 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any, ClassVar
 
 from protean.core.command import BaseCommand
@@ -19,7 +19,7 @@ from protean.exceptions import (
 from protean.utils import DomainObjects
 from protean.utils.consume_idempotency import resolve_dispatch_context
 from protean.utils.eventing import Message
-from protean.utils.globals import current_domain, g
+from protean.utils.globals import _domain_now, current_domain, g
 from protean.utils.logging import access_log_handler
 from protean.utils.telemetry import get_domain_metrics, set_span_error
 
@@ -287,7 +287,7 @@ def _deadline_exceeded_after(delay: float) -> bool:
     headers = getattr(getattr(msg, "metadata", None), "headers", None)
     if headers is None or getattr(headers, "deadline", None) is None:
         return False
-    next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay)
+    next_attempt_at = _domain_now() + timedelta(seconds=delay)
     return bool(headers.is_expired(next_attempt_at))
 
 

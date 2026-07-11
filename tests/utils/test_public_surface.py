@@ -1,6 +1,7 @@
 """`protean.utils` public surface.
 
-`__all__` is trimmed to the config enums, ``DomainObjects`` and ``get_version``.
+`__all__` is trimmed to the config enums, ``DomainObjects``, ``get_version`` and
+the injectable clock seam (``Clock`` / ``SystemClock``).
 Six plumbing helpers that were historically importable stay reachable through a
 module ``__getattr__`` for one deprecation window, each emitting
 ``RemovedInProtean10Warning`` on access and delegating to its underscore-prefixed
@@ -17,11 +18,13 @@ from protean._deprecation import RemovedInProtean10Warning
 
 KEPT = {
     "Cache",
+    "Clock",
     "Database",
     "DomainObjects",
     "IdentityStrategy",
     "IdentityType",
     "Processing",
+    "SystemClock",
     "get_version",
 }
 
