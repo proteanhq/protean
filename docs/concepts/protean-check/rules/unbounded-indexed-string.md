@@ -21,6 +21,23 @@ A normal `String()` defaults to `max_length=255` and is therefore bounded — it
 is never flagged. Non-string fields (`Integer`, `Date`, and so on) are never
 flagged.
 
+## Scope and limits
+
+The rule reads each aggregate root's own scalar fields and the indexes declared
+on it. It deliberately does **not** cover:
+
+- **Abstract aggregates.** A non-instantiable base emits no table, so its
+  declared indexes are never flagged; the concrete subclass is checked instead.
+- **Other string-like types.** Only `String` and `Text` are inspected.
+  `Identifier` and `Status` fields are string-backed and can be unbounded, but
+  are out of scope for this rule.
+- **Value-object attributes.** An index over a value object's mapped column
+  name (for example `Index("address_street")`) is not flagged.
+- **Field-level `unique=True`.** An implicit unique index created by
+  `String(max_length=None, unique=True)` without a declared `Index` is not
+  flagged; only fields named in a declared `Index` are read.
+- **Child entities and projections.** Only the aggregate root is walked.
+
 ## Why it matters
 
 An index over a genuinely unbounded string is not portable across the engines

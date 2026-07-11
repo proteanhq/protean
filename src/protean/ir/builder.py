@@ -2217,20 +2217,31 @@ class IRBuilder:
         in two indexes yields two findings; a composite index over one bounded
         and one unbounded field yields one finding for the unbounded field only.
         """
+        abstract_fqns = self._abstract_aggregate_fqns()
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
+            # Abstract aggregates are non-instantiable bases: they emit no DDL,
+            # and their indexes describe a shape no table is built from (the
+            # concrete subclass does not carry them). Skip them, matching the
+            # other cluster-walking design rules.
+            if aggregate["fqn"] in abstract_fqns:
+                continue
             fields = aggregate.get("fields", {})
 
             for index in aggregate.get("indexes", []):
-                # RawIndex entries carry ``raw: True`` and no ``fields`` key;
-                # verbatim DDL is opaque, so skip it. Guard on both so the
-                # ``fields`` lookup below never raises.
-                if index.get("raw") or "fields" not in index:
+                # Only ``Index`` entries carry a ``fields`` key; ``RawIndex``
+                # entries carry verbatim, opaque DDL and no ``fields``. The
+                # missing key is therefore exactly the RawIndex signal, and it
+                # also guards the lookup below from raising.
+                if "fields" not in index:
                     continue
 
                 index_name = index.get("name", "(unnamed)")
 
-                for field_name in index["fields"]:
+                # A field listed twice within one index is a single occurrence;
+                # dedupe (preserving declaration order) so a degenerate
+                # ``Index("body", "body")`` yields one finding, not two.
+                for field_name in dict.fromkeys(index["fields"]):
                     # A field name may reference a value-object or association
                     # attribute absent from the scalar fields dict; skip it
                     # rather than raise.
