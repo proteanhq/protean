@@ -62,13 +62,13 @@ class TestProteanPluginGetFunctionHook:
         return ctx, mock_type
 
     def test_canonical_name_returns_hook(self):
-        """Lines 96-103: Canonical fullname returns a hook."""
+        """Canonical fullname returns a hook."""
         plugin = self._make_plugin()
         hook = plugin.get_function_hook("protean.fields.simple.String")
         assert hook is not None
 
     def test_canonical_hook_invocation_required(self):
-        """Line 100-101: Calling hook from canonical path with required=True."""
+        """Calling hook from canonical path with required=True."""
         from mypy.nodes import NameExpr
 
         plugin = self._make_plugin()
@@ -83,13 +83,13 @@ class TestProteanPluginGetFunctionHook:
         assert result is mock_type
 
     def test_reexport_name_returns_hook(self):
-        """Lines 108-114: Re-exported fullname returns a hook."""
+        """Re-exported fullname returns a hook."""
         plugin = self._make_plugin()
         hook = plugin.get_function_hook("protean.fields.String")
         assert hook is not None
 
     def test_reexport_hook_invocation_required(self):
-        """Lines 111-112: Calling hook from re-export path with required=True."""
+        """Calling hook from re-export path with required=True."""
         from mypy.nodes import NameExpr
 
         plugin = self._make_plugin()
@@ -103,7 +103,7 @@ class TestProteanPluginGetFunctionHook:
         assert result is mock_type
 
     def test_unknown_name_returns_none(self):
-        """Line 116: Unknown fullname returns None."""
+        """Unknown fullname returns None."""
         plugin = self._make_plugin()
         hook = plugin.get_function_hook("unknown.module.Unknown")
         assert hook is None
@@ -111,7 +111,7 @@ class TestProteanPluginGetFunctionHook:
 
 class TestFieldFactoryHook:
     def test_type_not_available_fallback(self):
-        """Lines 135-137: KeyError/AssertionError falls back to default."""
+        """KeyError/AssertionError falls back to default."""
         ctx = MagicMock()
         ctx.api.named_generic_type.side_effect = KeyError("not found")
         ctx.default_return_type = MagicMock(name="default_return")
@@ -122,7 +122,7 @@ class TestFieldFactoryHook:
         assert result is ctx.default_return_type
 
     def test_assertion_error_fallback(self):
-        """Lines 135-137: AssertionError also falls back."""
+        """AssertionError also falls back."""
         ctx = MagicMock()
         ctx.api.named_generic_type.side_effect = AssertionError("assertion failed")
         ctx.default_return_type = MagicMock(name="default_return")
@@ -141,7 +141,7 @@ class TestGetKwargBool:
         return ctx
 
     def test_true_value(self):
-        """Line 172: NameExpr.name == 'True' returns True."""
+        """NameExpr.name == 'True' returns True."""
         expr = MagicMock()
         expr.__class__.__name__ = "NameExpr"
         # Use actual NameExpr-like check
@@ -155,7 +155,7 @@ class TestGetKwargBool:
         assert result is True
 
     def test_false_value(self):
-        """Lines 173-175: NameExpr.name == 'False' returns False."""
+        """NameExpr.name == 'False' returns False."""
         from mypy.nodes import NameExpr
 
         name_expr = NameExpr("False")
@@ -166,14 +166,14 @@ class TestGetKwargBool:
         assert result is False
 
     def test_non_name_expr_returns_default(self):
-        """Line 175: Non-NameExpr returns default."""
+        """Non-NameExpr returns default."""
         expr = MagicMock()  # Not a NameExpr
         ctx = self._make_ctx([["required"]], [[expr]])
         result = _get_kwarg_bool(ctx, "required", default=False)
         assert result is False
 
     def test_missing_arg_returns_default(self):
-        """Line 176: Missing arg returns default."""
+        """Missing arg returns default."""
         ctx = self._make_ctx([["other"]], [[MagicMock()]])
         result = _get_kwarg_bool(ctx, "required", default=True)
         assert result is True

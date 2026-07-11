@@ -86,13 +86,13 @@ class TestEquality:
         pm1 = OrderFulfillmentPM._load_or_create("order-1", is_start=True)
         pm2 = OrderFulfillmentPM._load_or_create("order-1", is_start=True)
 
-        # __eq__ returns False when _ID_FIELD_NAME is not set (line 275-276)
+        # __eq__ returns False when _ID_FIELD_NAME is not set
         assert pm1 != pm2
 
     def test_pm_not_equal_to_different_type(self, test_domain):
         """A PM should not be equal to an object of a different type."""
         pm = OrderFulfillmentPM._load_or_create("order-1", is_start=True)
-        # Covers line 272-273: type check
+        # Covers the type check
         assert pm != "not-a-pm"
         assert pm != 42
         assert pm != None  # noqa: E711
@@ -128,7 +128,7 @@ class TestEquality:
             pm1 = TaskPM._load_or_create("TASK-1", is_start=True)
             pm2 = TaskPM._load_or_create("TASK-1", is_start=True)
 
-            # Covers line 277: identity-based equality
+            # Covers identity-based equality
             assert pm1 == pm2
 
     @pytest.mark.no_test_domain
@@ -170,7 +170,7 @@ class TestHash:
         pm1 = OrderFulfillmentPM._load_or_create("order-1", is_start=True)
         pm2 = OrderFulfillmentPM._load_or_create("order-1", is_start=True)
 
-        # Covers line 281-282: fallback to id(self)
+        # Covers the fallback to id(self)
         assert hash(pm1) != hash(pm2)
 
     @pytest.mark.no_test_domain
@@ -204,7 +204,7 @@ class TestHash:
             pm2 = HashPM._load_or_create("REF-1", is_start=True)
             pm3 = HashPM._load_or_create("REF-2", is_start=True)
 
-            # Covers line 283: hash(getattr(self, id_field_name))
+            # Covers hash(getattr(self, id_field_name))
             assert hash(pm1) == hash(pm2)
             assert hash(pm1) != hash(pm3)
 

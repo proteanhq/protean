@@ -507,8 +507,8 @@ _DOMAIN_METRICS_KEY = "_otel_domain_metrics"
 class DomainMetrics:
     """Lazily created, domain-scoped OTel metric instruments.
 
-    One instance per domain.  All counters and histograms specified in
-    issue #749 are created here and cached for the domain's lifetime.
+    One instance per domain.  All counters and histograms are created
+    here and cached for the domain's lifetime.
     """
 
     def __init__(self, domain: Domain) -> None:

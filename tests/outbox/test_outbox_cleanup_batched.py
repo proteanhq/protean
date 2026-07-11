@@ -1,4 +1,4 @@
-"""Tests for batched outbox cleanup (#947).
+"""Tests for batched outbox cleanup.
 
 ``cleanup_old_published`` / ``cleanup_old_abandoned`` delete in bounded batches
 via ``BaseDAO._delete_top`` instead of one unbounded ``DELETE``. The batch size

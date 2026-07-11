@@ -143,7 +143,7 @@ class TestChecksum:
     def test_checksum_ignores_every_volatile_key(self):
         """Mutating *any* volatile/derived key must not change the checksum.
 
-        Regression for #1012: ``ir check`` (staleness) reported a domain as
+        Regression guard: ``ir check`` (staleness) reported a domain as
         stale on a framework-version-only difference while ``ir diff`` reported
         no changes. The checksum must reflect domain *content* only. Drives the
         full exclusion set from ``VOLATILE_IR_KEYS`` so it can't silently miss a
@@ -174,7 +174,7 @@ class TestChecksum:
     def test_checksum_and_diff_agree_on_volatile_only_change(self):
         """A framework-version-only difference is not a change to either path.
 
-        Enforces the #1012 lockstep across both code paths (``diff_ir`` and the
+        Enforces the lockstep across both code paths (``diff_ir`` and the
         staleness checksum) using the shared exclusion set.
         """
         domain = Domain(name="Lockstep")
@@ -194,7 +194,7 @@ class TestChecksum:
 
 @pytest.mark.no_test_domain
 class TestCanonicalIR:
-    """Tests for ``canonical_ir`` — the no-timestamp baseline output (#1064)."""
+    """Tests for ``canonical_ir`` — the no-timestamp baseline output."""
 
     @pytest.fixture(autouse=True)
     def setup(self):

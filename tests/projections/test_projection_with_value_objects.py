@@ -340,7 +340,7 @@ class TestVOPersistence:
         """An all-default (all empty-string, hence falsy) VO on a projection
         round-trips rather than collapsing to None. Projection hydration already
         handled this, but the all-default case was previously untested; pinned
-        alongside the aggregate fix and the aligned identity guard (#1078)."""
+        alongside the aggregate fix and the aligned identity guard."""
         addr = Address(street="", city="", zip_code="")
         view = CustomerView(customer_id="C3", name="Carol", billing_address=addr)
         test_domain.repository_for(CustomerView).add(view)

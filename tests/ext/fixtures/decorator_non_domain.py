@@ -1,7 +1,7 @@
 """Fixture: non-Domain object with aggregate() method should NOT inject base classes.
 
-This tests lines 204-209 of mypy_plugin.py: when a decorator receiver
-resolves to a type that is NOT protean.domain.Domain, the plugin skips
+This tests the mypy_plugin branch where a decorator receiver
+resolves to a type that is NOT protean.domain.Domain: the plugin skips
 base class injection.
 """
 

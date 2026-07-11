@@ -1,4 +1,4 @@
-"""Consume-side idempotency for projectors (issue #1042, ADR-0017).
+"""Consume-side idempotency for projectors (ADR-0017).
 
 Event delivery is at-least-once. A non-idempotent accumulating projector
 (``total_reviews += 1``) double-applies a redelivered event. An
@@ -342,7 +342,7 @@ def _old_marker(repo, message_id, handler="h", hours_ago=200):
 
 
 class TestMarkerCleanup:
-    """Retention/cleanup for the ProcessedMessage marker (issue #1068)."""
+    """Retention/cleanup for the ProcessedMessage marker."""
 
     def test_cleanup_deletes_markers_older_than_retention(self, test_domain):
         _register(test_domain, idempotent=True)

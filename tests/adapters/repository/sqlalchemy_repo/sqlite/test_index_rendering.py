@@ -1,4 +1,4 @@
-"""SQLAlchemy rendering of portable Index declarations (issue #944).
+"""SQLAlchemy rendering of portable Index declarations.
 
 Covers table-level index emission (create_all), partial/unique/desc handling,
 the per-dialect ``render_index_ddl`` output, RawIndex escape-hatch emission,

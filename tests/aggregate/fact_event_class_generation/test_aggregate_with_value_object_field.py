@@ -1,7 +1,6 @@
 """Test fact event class generation for aggregate with ValueObject field.
 
-Covers uncovered lines 286-289 in aggregate.py:
-- ValueObject descriptor handling in _pydantic_element_to_fact_event
+Covers ValueObject descriptor handling in _pydantic_element_to_fact_event.
 """
 
 import pytest
@@ -31,7 +30,7 @@ def register_elements(test_domain):
 
 
 def test_fact_event_includes_value_object_field():
-    """Lines 286-289: ValueObject field is included in fact event."""
+    """ValueObject field is included in fact event."""
     event_cls = element_to_fact_event(Resource)
 
     assert event_cls.__name__ == "ResourceFactEvent"

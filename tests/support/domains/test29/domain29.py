@@ -1,7 +1,7 @@
 """Test domain with a valid, registered upcaster.
 
 Used to assert upcasters register through the standard element lifecycle and
-therefore appear in the IR elements index and in ``protean ir show`` (#1109).
+therefore appear in the IR elements index and in ``protean ir show``.
 """
 
 from protean import Domain

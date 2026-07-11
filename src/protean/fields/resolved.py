@@ -193,11 +193,11 @@ class ResolvedField:
             # path, rather than the space-separated ``str(value)``. The
             # naive/aware distinction and the UTC offset are preserved, so the
             # instant round-trips unchanged (a named zone is serialized as its
-            # fixed offset, not the original tzinfo object). See #1039.
+            # fixed offset, not the original tzinfo object).
             return value.isoformat()
         # ``datetime`` subclasses ``date``, so this must come *after* the
         # datetime check. Without it a plain ``date`` flows unserialized into
-        # ``json.dumps`` (e.g. checksum computation) and raises. See #1046.
+        # ``json.dumps`` (e.g. checksum computation) and raises.
         if isinstance(value, date):
             return value.isoformat()
         # Decimals are string-encoded so JSON/event payloads never round-trip

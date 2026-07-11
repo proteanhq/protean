@@ -1,4 +1,4 @@
-"""#1078: an event-sourced aggregate whose ``@apply`` sets an embedded VO to
+"""An event-sourced aggregate whose ``@apply`` sets an embedded VO to
 all-default (falsy) values must reload as that VO, not ``None``.
 
 Reconstitution replays events through ``@apply``; the handler assigns
@@ -76,7 +76,7 @@ class TestAllDefaultValueObjectRoundTrip:
         # initial_quantity=0 -> every StockLevels field is its 0 default.
         reloaded = _round_trip(test_domain, initial_quantity=0)
 
-        # Before the fix this was ``None`` (#1078).
+        # Before the fix this was ``None``.
         assert reloaded.levels is not None
         assert reloaded.levels == StockLevels(on_hand=0, reserved=0, available=0)
 

@@ -219,7 +219,7 @@ class TestTransactionCapabilityWarnings:
 
 
 class TestQuerySetRawCapabilityGatingForced:
-    """Force the RAW_QUERIES guard in QuerySet.raw() to cover line 291."""
+    """Force the RAW_QUERIES guard in QuerySet.raw()."""
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):

@@ -1,4 +1,4 @@
-"""Tests for swimlane layout and fan-out polish (issue #861).
+"""Tests for swimlane layout and fan-out polish.
 
 Covers:
 - Swimlane CSS classes present in stylesheet

@@ -1,6 +1,5 @@
 """`protean.testing.__all__` freezes the public testing DSL surface, keeping
-incidental imports and the deprecated invariant helpers out of `import *`
-(#1110)."""
+incidental imports and the deprecated invariant helpers out of `import *`."""
 
 
 def _star_import():

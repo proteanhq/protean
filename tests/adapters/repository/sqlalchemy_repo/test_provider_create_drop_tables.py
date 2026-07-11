@@ -141,7 +141,7 @@ def test_create_artifacts_skips_cache_backed_projections():
     """Cache-backed projections persist to a cache (provider is None), not a SQL
     table. _create_database_artifacts must skip them; otherwise repository_for
     raises ConfigurationError ("No provider configured with name 'None'") and the
-    whole database setup fails. See #1034."""
+    whole database setup fails."""
     from protean import Domain
 
     domain = Domain(__file__, "Cache-Proj-Test")

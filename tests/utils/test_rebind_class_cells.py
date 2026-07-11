@@ -202,31 +202,31 @@ class TestRebuildFunctionEdgeCases:
     """Unit tests for _rebuild_function_with_new_class_cell edge cases."""
 
     def test_none_func_returns_none(self):
-        """Line 127: func is None."""
+        """func is None."""
         assert _rebuild_function_with_new_class_cell(None, object, object) is None
 
     def test_non_function_returns_none(self):
-        """Line 127: func is not a FunctionType."""
+        """func is not a FunctionType."""
         assert (
             _rebuild_function_with_new_class_cell("not a function", object, object)
             is None
         )
 
     def test_no_class_freevar_returns_none(self):
-        """Line 131: __class__ not in co_freevars — regular function."""
+        """__class__ not in co_freevars — regular function."""
 
         def plain():
             pass
 
         assert _rebuild_function_with_new_class_cell(plain, object, object) is None
 
-    # Note: The `closure is None` guard (line 135-136 in utils/__init__.py) is
-    # defensive code.  CPython never creates a function with `__class__` in
+    # Note: The `closure is None` guard is defensive code.
+    # CPython never creates a function with `__class__` in
     # co_freevars but no closure, and `__closure__` is a read-only attribute on
     # the immutable `function` type, so it cannot be mocked.
 
     def test_empty_cell_returns_none(self):
-        """Lines 142-144: cell exists but is empty (ValueError on cell_contents)."""
+        """cell exists but is empty (ValueError on cell_contents)."""
         # Create an empty cell
         empty_cell = types.CellType()
 
@@ -251,7 +251,7 @@ class TestRebuildFunctionEdgeCases:
         )
 
     def test_cell_points_to_different_class_returns_none(self):
-        """Line 146-147: cell contents is not original_cls."""
+        """cell contents is not original_cls."""
 
         class Original:
             def method(self):
@@ -265,7 +265,7 @@ class TestRebuildFunctionEdgeCases:
         assert _rebuild_function_with_new_class_cell(func, object, Unrelated) is None
 
     def test_qualname_without_class_prefix(self):
-        """Line 175-176: qualname doesn't start with original class prefix."""
+        """qualname doesn't start with original class prefix."""
 
         class Original:
             def method(self):
@@ -287,7 +287,7 @@ class TestFixFunctionClassCellEdgeCases:
     """Unit tests for _fix_function_class_cell descriptor handling."""
 
     def test_classmethod_with_super(self):
-        """Line 197-198: classmethod with super() gets unwrapped, fixed, re-wrapped."""
+        """classmethod with super() gets unwrapped, fixed, re-wrapped."""
 
         class Original:
             @classmethod
@@ -303,7 +303,7 @@ class TestFixFunctionClassCellEdgeCases:
         assert isinstance(result, classmethod)
 
     def test_staticmethod_without_super_returns_none(self):
-        """Line 199: staticmethod without super() returns None."""
+        """staticmethod without super() returns None."""
 
         class Original:
             @staticmethod
@@ -318,7 +318,7 @@ class TestFixFunctionClassCellEdgeCases:
         assert result is None
 
     def test_property_getter_with_super(self):
-        """Lines 206-208, 218-219: property getter uses super()."""
+        """property getter uses super()."""
 
         class Base:
             @property
@@ -336,7 +336,7 @@ class TestFixFunctionClassCellEdgeCases:
         assert isinstance(result, property)
 
     def test_property_setter_with_super(self):
-        """Lines 210-212: property setter uses super()."""
+        """property setter uses super()."""
 
         class Base:
             @property
@@ -359,7 +359,7 @@ class TestFixFunctionClassCellEdgeCases:
         assert isinstance(result, property)
 
     def test_property_deleter_with_super(self):
-        """Lines 214-216: property deleter uses super()."""
+        """property deleter uses super()."""
 
         class Base:
             @property
@@ -382,7 +382,7 @@ class TestFixFunctionClassCellEdgeCases:
         assert isinstance(result, property)
 
     def test_property_without_super_returns_none(self):
-        """Line 220: property without super() returns None."""
+        """property without super() returns None."""
 
         class Original:
             @property
@@ -393,7 +393,7 @@ class TestFixFunctionClassCellEdgeCases:
         assert result is None
 
     def test_non_descriptor_returns_none(self):
-        """Line 226: non-function, non-descriptor attribute returns None."""
+        """non-function, non-descriptor attribute returns None."""
         assert _fix_function_class_cell(42, object, object) is None
         assert _fix_function_class_cell("string", object, object) is None
         assert _fix_function_class_cell([1, 2, 3], object, object) is None

@@ -1,6 +1,6 @@
 """SQLite coverage for Outbox column DDL.
 
-Verifies that the ``max_length`` bounds on Outbox string fields (issue #948)
+Verifies that the ``max_length`` bounds on Outbox string fields
 flow through the SQLAlchemy adapter as ``VARCHAR(N)`` columns, while the JSON
 blob fields stay unbounded.
 """
@@ -56,5 +56,5 @@ class TestOutboxColumnDDL:
 
     def test_target_broker_column_is_not_null(self, outbox_columns):
         # NOT NULL so a NULL target_broker can't bypass the (message_id,
-        # target_broker) unique index (issue #1041).
+        # target_broker) unique index.
         assert outbox_columns["target_broker"].nullable is False

@@ -557,7 +557,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # so every entry is a ``ValueObject`` at runtime; narrow the
             # base-typed reflection return so the VO-only attributes resolve.
             field_obj = cast(ValueObject, base_field_obj)
-            # Identity, not truthiness (#1078): an already-set all-default VO is
+            # Identity, not truthiness: an already-set all-default VO is
             # falsy but present and must not be clobbered by a shadow rebuild.
             if (
                 field_name not in descriptor_kwargs
@@ -1019,7 +1019,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             value = getattr(self, fname, None)
 
             if isinstance(field_obj, ValueObject):
-                # Present, not truthy (#1078): ``as_dict`` returns ``None`` only
+                # Present, not truthy: ``as_dict`` returns ``None`` only
                 # when the VO is ``None``, so an all-default VO is still included.
                 dict_value = field_obj.as_dict(value)
                 if dict_value is not None:

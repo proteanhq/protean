@@ -1,9 +1,9 @@
 """Tests for edge cases in core/event.py.
 
-Covers uncovered lines:
-- Line 58: AssertionError for non-dict positional arg
-- Line 76: expected_version from template metadata
-- Line 82: ConfigurationError when event not registered with domain
+Covers uncovered paths:
+- AssertionError for non-dict positional arg
+- expected_version from template metadata
+- ConfigurationError when event not registered with domain
 """
 
 import pytest
@@ -30,7 +30,7 @@ class OrderPlaced(BaseEvent):
 # ---------------------------------------------------------------------------
 class TestEventTemplateDictPattern:
     def test_non_dict_positional_arg_raises(self, test_domain):
-        """Line 58: AssertionError for non-dict positional arg."""
+        """AssertionError for non-dict positional arg."""
         test_domain.register(Order)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
@@ -52,7 +52,7 @@ class TestEventTemplateDictPattern:
 
 class TestEventExpectedVersion:
     def test_expected_version_from_template_dict(self, test_domain):
-        """Line 76: expected_version from template_expected_version."""
+        """expected_version from template_expected_version."""
         test_domain.register(Order)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
@@ -75,7 +75,7 @@ class TestEventExpectedVersion:
 
 class TestEventModelPostInit:
     def test_unregistered_event_raises_configuration_error(self):
-        """Line 82: ConfigurationError when event has no __type__."""
+        """ConfigurationError when event has no __type__."""
         with pytest.raises(
             ConfigurationError, match="should be registered with a domain"
         ):

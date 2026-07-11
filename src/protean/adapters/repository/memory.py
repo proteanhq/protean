@@ -392,7 +392,7 @@ class DictDAO(BaseDAO):
 
         Relational adapters get this for free from the DDL they render; the
         in-memory store renders no DDL, so the check is replicated here to keep
-        memory mode a faithful stand-in for uniqueness invariants (issue #1071).
+        memory mode a faithful stand-in for uniqueness invariants.
         It guards the row-at-a-time write paths (``_create`` and ``_update``,
         which back ``repository.add``/``save``); the bulk paths (``_update_all``
         and ``_claim``/``update_all``, which delegate to it) are not covered,

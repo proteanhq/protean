@@ -1,8 +1,8 @@
-"""Tests for #1134: opt-in lenient deserialization of legacy payloads.
+"""Opt-in lenient deserialization of legacy payloads.
 
 Strict `extra="forbid"` stays the default. Opt-in (config key or per-event
 `lenient` option) drops fields no longer on the class and records them on the
-message metadata; the current-name-wins alias resolution (#1139) still runs
+message metadata; the current-name-wins alias resolution still runs
 first, so a renamed old key is kept rather than dropped.
 """
 
@@ -166,7 +166,7 @@ class TestPerEventOverride:
 
 class TestLenientWithRename:
     def test_alias_is_kept_only_truly_unknown_is_dropped(self, test_domain):
-        """Alias resolution (#1139) runs before the lenient drop, so a renamed
+        """Alias resolution runs before the lenient drop, so a renamed
         old key loads into the new field and only genuinely-unknown keys drop."""
         test_domain.config["lenient_deserialization"] = True
 

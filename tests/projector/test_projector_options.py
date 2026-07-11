@@ -95,7 +95,7 @@ class TestAggregatesOption:
 class TestTransientRetryOptions:
     """Projectors accept the same transient-retry options as event and command
     handlers; the shared handler wrapper (``protean.utils.mixins``) consumes
-    them. See issue #1076."""
+    them."""
 
     def test_retry_options_default_to_none(self, test_domain):
         test_domain.register(

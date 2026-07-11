@@ -390,8 +390,8 @@ class TestDecoratorCrossUsage:
 class TestDecoratorNonDomain:
     """Non-Domain object with aggregate() method should not inject base classes.
 
-    Exercises lines 204-209 of mypy_plugin.py: when the decorator receiver
-    resolves to a non-Domain type, _extract_decorator_name_from_expr returns None.
+    Exercises the mypy_plugin branch where the decorator receiver
+    resolves to a non-Domain type, so _extract_decorator_name_from_expr returns None.
     """
 
     def test_no_base_injection_for_non_domain(self) -> None:
@@ -407,11 +407,11 @@ class TestDecoratorNonDomain:
 
 
 class TestMypyDebugPrints:
-    """Running with PROTEAN_MYPY_DEBUG=1 covers debug print lines (295, 321, 329).
+    """Running with PROTEAN_MYPY_DEBUG=1 covers the debug print statements.
 
     Exercises the _DEBUG gated print statements in:
-    - _customize_class_mro_callback (line 295)
-    - _inject_base_class (lines 321, 329)
+    - _customize_class_mro_callback
+    - _inject_base_class
     """
 
     def test_debug_output_on_stderr(self) -> None:

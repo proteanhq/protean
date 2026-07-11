@@ -2,7 +2,7 @@
 attribute: both declare an event's schema version, both feed the ``vN`` type
 string, and declaring the version *both* ways is an error.
 
-Regression coverage for #1159 — ``version=`` was silently ignored because
+This is regression coverage — ``version=`` was silently ignored because
 ``__version__`` was resolved in ``__init_subclass__`` (at class creation),
 before the decorator populated ``meta_``.
 """
@@ -24,7 +24,7 @@ class Order(BaseAggregate):
 
 class TestVersionOption:
     def test_version_option_sets_version(self, test_domain):
-        """`version=N` sets `__version__` — the bug that #1159 fixes."""
+        """`version=N` sets `__version__` — the bug this fixes."""
 
         @test_domain.event(part_of=Order, version=3)
         class OrderPlaced(BaseEvent):
@@ -45,7 +45,7 @@ class TestVersionOption:
     def test_version_option_on_plain_class(self, test_domain):
         """`version=N` also works for a plain class that does not subclass
         `BaseEvent` — the recreation path in `_derive_element_class`. (Every
-        other test here uses the mutate path — the one #1159 broke — so this
+        other test here uses the mutate path — the one the bug broke — so this
         guards both branches in one file.)"""
 
         @test_domain.event(part_of=Order, version=3)

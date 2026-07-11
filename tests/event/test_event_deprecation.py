@@ -1,4 +1,4 @@
-"""Tests for #1133: event deprecation completion.
+"""Tests for event deprecation completion.
 
 Covers the `superseded_by` event option and the raise-time
 `DeprecationWarning` emitted through `raise_()` — which must fire **exactly
@@ -263,7 +263,7 @@ class TestSupersededByOption:
     def test_superseded_by_rejects_non_class_non_string(self, test_domain):
         """A `superseded_by` that is neither an Event class nor a name string
         is rejected at registration, so a non-serializable value cannot reach
-        IR serialization or warning text (#1148)."""
+        IR serialization or warning text."""
 
         class Order(BaseAggregate):
             name = String()

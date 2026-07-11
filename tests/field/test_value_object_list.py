@@ -24,7 +24,7 @@ from protean.fields.embedded import ValueObject
 
 class TestValueObjectListInit:
     def test_unsupported_content_type_raises_error(self):
-        """Line 56: ValidationError when content_type is not supported."""
+        """ValidationError when content_type is not supported."""
 
         class Dummy:
             pass
@@ -67,13 +67,13 @@ class TestValueObjectListInit:
 
 class TestValueObjectListCastToType:
     def test_non_list_value_fails(self):
-        """Lines 66-67: fail('invalid') when value is not a list."""
+        """fail('invalid') when value is not a list."""
         field = ValueObjectList(content_type=str)
         with pytest.raises(ValidationError):
             field._cast_to_type("not a list")
 
     def test_value_object_content_type_cast(self):
-        """Lines 69-76: ValueObject content type path - valid data."""
+        """ValueObject content type path - valid data."""
 
         class Inner(BaseValueObject):
             name: str | None = None
@@ -86,7 +86,7 @@ class TestValueObjectListCastToType:
         assert result[1].name == "Bob"
 
     def test_value_object_content_type_invalid_data(self):
-        """Lines 74-75: fail('invalid_content') for invalid VO data."""
+        """fail('invalid_content') for invalid VO data."""
 
         class Inner(BaseValueObject):
             name: str
@@ -97,7 +97,7 @@ class TestValueObjectListCastToType:
             field._cast_to_type(["not a valid vo input"])
 
     def test_primitive_content_type_cast(self):
-        """Lines 78-85: Python primitive type cast."""
+        """Python primitive type cast."""
         field = ValueObjectList(content_type=int)
         result = field._cast_to_type([1, 2, 3])
         assert result == [1, 2, 3]
@@ -109,7 +109,7 @@ class TestValueObjectListCastToType:
         assert result == [1, 2, 3]
 
     def test_primitive_content_type_invalid_data(self):
-        """Lines 83-84: fail('invalid_content') for bad primitive cast."""
+        """fail('invalid_content') for bad primitive cast."""
         field = ValueObjectList(content_type=int)
         with pytest.raises(ValidationError):
             field._cast_to_type(["not_a_number"])
@@ -117,7 +117,7 @@ class TestValueObjectListCastToType:
 
 class TestValueObjectListAsDict:
     def test_as_dict_with_value_object_content(self):
-        """Lines 89-90: ValueObject content path in as_dict."""
+        """ValueObject content path in as_dict."""
 
         class Inner(BaseValueObject):
             name: str | None = None
@@ -129,7 +129,7 @@ class TestValueObjectListAsDict:
         assert result == [{"name": "Alice"}, {"name": "Bob"}]
 
     def test_as_dict_with_datetime_content(self):
-        """Lines 93-94: datetime content type path in as_dict."""
+        """datetime content type path in as_dict."""
         field = ValueObjectList(content_type=datetime.datetime)
         dt1 = datetime.datetime(2024, 1, 1, 12, 0)
         dt2 = datetime.datetime(2024, 6, 15, 18, 30)
@@ -151,7 +151,7 @@ class TestValueObjectListAsDict:
         assert result == [None]
 
     def test_as_dict_with_primitive_content(self):
-        """Line 96: primitive content returns list(value)."""
+        """primitive content returns list(value)."""
         field = ValueObjectList(content_type=str)
         result = field.as_dict(["hello", "world"])
         assert result == ["hello", "world"]

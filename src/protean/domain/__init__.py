@@ -196,7 +196,7 @@ _sentinel = object()
 # Shared "what to do instead" clause for every email-subsystem deprecation
 # warning (registration, ``send_email``, ``get_email_provider``, and a
 # non-default ``email_providers`` config block). The email subsystem is
-# deprecated in the 0.x series and removed at v1.0.0 (epic #1102); notify from
+# deprecated in the 0.x series and removed at v1.0.0; notify from
 # an event handler or subscriber that calls an application-level notification
 # service instead.
 _EMAIL_DEPRECATION_ALTERNATIVE = (
@@ -910,7 +910,7 @@ class Domain:
             for constant, value in config_obj["custom"].items():
                 setattr(self, constant, value)
 
-        # The email subsystem is deprecated (epic #1102, removed at v1.0.0).
+        # The email subsystem is deprecated, removed at v1.0.0.
         # ``load_config`` runs in ``__init__``, so this fires uniformly through
         # every bootstrap path (programmatic ``Domain()``, ``protean server``,
         # ``protean shell``, ``protean test``, FastAPI). The default
@@ -1027,7 +1027,7 @@ class Domain:
         **opts: Any,
     ) -> type[_T]:
         """Register class into the domain"""
-        # The email subsystem is deprecated (epic #1102, removed at v1.0.0).
+        # The email subsystem is deprecated, removed at v1.0.0.
         # This is the single funnel for both ``@domain.email`` (via
         # ``_domain_element``) and ``domain.register(SomeEmail)``, so one guard
         # here covers every registration path. Framework code registers no

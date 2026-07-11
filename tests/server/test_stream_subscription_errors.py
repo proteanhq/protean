@@ -1,8 +1,8 @@
 """Tests for StreamSubscription error handling — retry, DLQ, traces, priority lanes.
 
-Fills gaps identified in step 10 of issue #489. Uses a FakeBroker to avoid
-requiring Redis, since the internal retry/DLQ logic operates on the broker
-interface (ack, nack, publish) without needing Redis Streams.
+Uses a FakeBroker to avoid requiring Redis, since the internal retry/DLQ
+logic operates on the broker interface (ack, nack, publish) without needing
+Redis Streams.
 """
 
 import logging

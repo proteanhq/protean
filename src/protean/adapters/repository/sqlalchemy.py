@@ -107,7 +107,7 @@ def _maybe_log_query(
     Uses stdlib loggers so the ``ProteanCorrelationFilter`` installed on the
     root logger automatically injects ``correlation_id`` / ``causation_id``
     onto the record. Parameters are passed through unchanged here — redaction
-    is applied by the shared redaction filter/processor (see #919).
+    is applied by the shared redaction filter/processor.
     """
     try:
         threshold_ms = float(get_logging_config_value("slow_query_threshold_ms", 100))

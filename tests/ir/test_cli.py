@@ -52,7 +52,7 @@ class TestIRShowJSON:
 
 
 class TestIRShowCanonical:
-    """Tests for `protean ir show --canonical` (#1064)."""
+    """Tests for `protean ir show --canonical`."""
 
     @pytest.fixture(autouse=True)
     def reset_path(self):
@@ -171,7 +171,7 @@ class TestIRShowSummary:
 
 class TestIRShowUpcasters:
     """Upcasters register through the standard lifecycle, so they appear in the
-    IR that `protean ir show` renders (#1109).
+    IR that `protean ir show` renders.
 
     Asserts against ``load_domain_ir`` (exactly the data `ir show` prints)
     rather than the CliRunner-captured stdout: capturing a subprocess-free

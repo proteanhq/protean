@@ -339,7 +339,7 @@ class TestWriteIR:
         assert "domain" in parsed
 
     def test_writes_canonical_baseline(self, tmp_path: Path):
-        """`protean schema generate` writes a no-timestamp baseline (#1064)."""
+        """`protean schema generate` writes a no-timestamp baseline."""
         output = tmp_path / ".protean"
         ir = _ir_for(build_cluster_test_domain)
         assert "generated_at" in ir  # the source IR carries it ...

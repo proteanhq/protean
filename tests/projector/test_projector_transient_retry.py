@@ -5,7 +5,7 @@ The wrapper (``protean.utils.mixins.handle``) already reads ``retries`` /
 ``backoff`` / ``retry_exceptions`` off ``meta_`` for any handler. Projectors
 use that exact wrapper, so once the projector factory accepts the options, a
 projector retries transient failures in place — mirroring event and command
-handlers. See issue #1076.
+handlers.
 """
 
 from unittest.mock import patch

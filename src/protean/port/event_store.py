@@ -453,7 +453,7 @@ class BaseEventStore(metaclass=ABCMeta):
         records, not an aggregate instance's events. This is only consulted for
         aggregates with ``fact_events=True`` (see :meth:`create_snapshots`), so
         an ordinary instance whose identifier starts with ``fact-`` is unaffected
-        unless its own aggregate also emits fact events. See #1028.
+        unless its own aggregate also emits fact events.
         """
         return identifier.startswith("fact-")
 
@@ -500,7 +500,7 @@ class BaseEventStore(metaclass=ABCMeta):
         # ``{category}-fact-{id}`` stream that shares the category prefix. Those
         # are not aggregate instances and have no ``@apply`` handler, so exclude
         # them. Scoped to fact_events so an ordinary instance whose identifier
-        # happens to start with ``fact-`` is never wrongly skipped. See #1028.
+        # happens to start with ``fact-`` is never wrongly skipped.
         if part_of.meta_.fact_events:
             identifiers = [
                 identifier

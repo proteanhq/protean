@@ -1,4 +1,4 @@
-"""Guard tests for suite descriptor hermeticity (issue #1168).
+"""Guard tests for suite descriptor hermeticity.
 
 The autouse fixtures in ``tests/conftest.py`` track every event loop and every
 Starlette/FastAPI ``TestClient`` created during a test and close them at

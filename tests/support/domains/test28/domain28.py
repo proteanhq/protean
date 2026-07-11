@@ -5,7 +5,7 @@
 - Command is handled so UNUSED_COMMAND doesn't fire
 
 Used by ``tests/cli/test_check.py`` to assert the deprecated-element diagnostic
-surfaces end-to-end through ``protean check`` (see #999).
+surfaces end-to-end through ``protean check``.
 """
 
 from protean import Domain

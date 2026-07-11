@@ -453,7 +453,7 @@ class TestIRBuilderDeprecated:
 
 
 # =====================================================================
-# IR Builder — event superseded_by (#1133)
+# IR Builder — event superseded_by
 # =====================================================================
 
 
@@ -1368,7 +1368,7 @@ class TestIRBuilderFieldDeprecatedResolvedField:
 
 
 # =====================================================================
-# IR Diagnostics — DEPRECATED_EMAIL (email subsystem, epic #1102)
+# IR Diagnostics — DEPRECATED_EMAIL (email subsystem)
 # =====================================================================
 
 

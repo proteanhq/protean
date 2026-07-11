@@ -1,7 +1,7 @@
 """Tests for the (deprecated) ``assert_invalid`` / ``assert_valid`` helpers.
 
 These helpers were removed in 0.16.0 without a deprecation cycle and restored
-in 0.16.1 as deprecated shims (see #1011). They now emit ``DeprecationWarning``
+in 0.16.1 as deprecated shims. They now emit ``DeprecationWarning``
 and will be removed in v0.18.0.
 """
 

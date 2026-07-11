@@ -1,4 +1,4 @@
-"""Tests for IRBuilder index extraction and schema metadata (issue #944)."""
+"""Tests for IRBuilder index extraction and schema metadata."""
 
 import pytest
 

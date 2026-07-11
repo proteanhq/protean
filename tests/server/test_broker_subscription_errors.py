@@ -1,8 +1,8 @@
 """Tests for BrokerSubscription retry tracking and DLQ routing.
 
-Covers the error handling pipeline added in Steps 5-9 of issue #489:
-retry counting, NACK on transient failure, DLQ routing after exhaustion,
-configuration overrides, and trace event emission.
+Covers the error handling pipeline: retry counting, NACK on transient
+failure, DLQ routing after exhaustion, configuration overrides, and trace
+event emission.
 """
 
 import logging

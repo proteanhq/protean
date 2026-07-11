@@ -310,7 +310,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             # so every entry is a ``ValueObject`` at runtime; narrow the
             # base-typed reflection return so the VO-only attributes resolve.
             field_obj = cast(ValueObject, base_field_obj)
-            # Identity, not truthiness (#1078): an already-set all-default VO is
+            # Identity, not truthiness: an already-set all-default VO is
             # falsy but present and must not be clobbered by a shadow rebuild.
             if (
                 field_name not in descriptor_kwargs

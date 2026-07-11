@@ -186,7 +186,7 @@ class TestCreateArtifactsCacheBackedProjectionFilter:
         """A cache-backed projection carries ``meta_.provider is None``. Before the
         consolidation onto ``BaseProvider.owns()``, the Elasticsearch index loops
         resolved ``providers[None]`` unconditionally and raised ``KeyError``,
-        breaking index setup for the whole domain (an analogue of the break #1034
+        breaking index setup for the whole domain (an analogue of the break
         fixed for SQLAlchemy). Index setup must skip it and succeed for the real
         aggregate."""
         domain = initialize_domain(name="ES-Cache-Projection-Test", root_path=__file__)

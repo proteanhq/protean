@@ -45,7 +45,7 @@ class TypeManager:
     def upcasters(self) -> list[type[BaseUpcaster]]:
         """Registered upcaster classes, sourced from the domain registry.
 
-        Upcasters register through the standard element lifecycle (see #1109),
+        Upcasters register through the standard element lifecycle,
         so the registry is the single source of truth rather than a separate
         list on this manager.
         """

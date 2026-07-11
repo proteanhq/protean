@@ -25,7 +25,7 @@ DEFAULT_TARGET_BROKER = "default"
 
 
 def _coerce_target_broker(value: Any) -> Any:
-    """Coerce a NULL ``target_broker`` to the default broker name (#1041).
+    """Coerce a NULL ``target_broker`` to the default broker name.
 
     The column is NOT NULL, but outbox rows written before the field was
     populated may hold NULL. Coercing on read lets those legacy rows load

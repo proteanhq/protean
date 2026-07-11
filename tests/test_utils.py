@@ -62,14 +62,14 @@ def test_unknown_identity_type_raises_exception():
 
 
 def test_unknown_identity_strategy_raises_exception():
-    """Line 449: Unknown identity strategy raises ConfigurationError."""
+    """Unknown identity strategy raises ConfigurationError."""
     with pytest.raises(ConfigurationError) as exc:
         _generate_identity(identity_strategy="unknown")
     assert "Unknown Identity Strategy" in str(exc.value)
 
 
 def test_function_identity_strategy_with_invalid_function():
-    """Line 446: Invalid identity function raises ConfigurationError."""
+    """Invalid identity function raises ConfigurationError."""
     with pytest.raises(ConfigurationError) as exc:
         _generate_identity(
             identity_strategy="function", identity_function="not_callable"
@@ -78,7 +78,7 @@ def test_function_identity_strategy_with_invalid_function():
 
 
 def test_function_identity_strategy_with_valid_function():
-    """Lines 443-444: Valid identity function is called."""
+    """Valid identity function is called."""
     counter = [0]
 
     def custom_id_fn():
@@ -92,7 +92,7 @@ def test_function_identity_strategy_with_valid_function():
 
 
 def test_get_version():
-    """Line 72: get_version returns a version string."""
+    """get_version returns a version string."""
     version = get_version()
     assert isinstance(version, str)
     assert len(version) > 0
@@ -103,7 +103,7 @@ def test_get_version():
 # ---------------------------------------------------------------------------
 class TestCloneClassSlotsAsString:
     def test_clone_class_with_string_slots(self):
-        """Lines 524-525: clone_class handles __slots__ as a single string."""
+        """clone_class handles __slots__ as a single string."""
 
         class SlottedClass:
             __slots__ = "value"

@@ -1,4 +1,4 @@
-"""Tests for the Decimal field (#1038).
+"""Tests for the Decimal field.
 
 Money and other fixed-precision values must not be modelled as ``Float`` (binary
 float drift). The ``Decimal`` field stores ``decimal.Decimal``, validates

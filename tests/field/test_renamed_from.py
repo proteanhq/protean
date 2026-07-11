@@ -1,4 +1,4 @@
-"""Tests for #1139: the ``renamed_from`` field metadata.
+"""Tests for the ``renamed_from`` field metadata.
 
 Covers normalization, the kwarg on the classic ``Field`` (with clone
 preservation) and on ``FieldSpec`` (threaded through ``json_schema_extra`` and

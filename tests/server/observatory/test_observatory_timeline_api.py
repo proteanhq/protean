@@ -460,7 +460,7 @@ class TestCollectAllEvents:
         assert events[0]["type"] == UserRenamed.__type__
 
     def test_filter_by_stream_category(self, domain_with_events):
-        """Covers line 198: stream_category filter excludes non-matching events."""
+        """stream_category filter excludes non-matching events."""
         domain, _, _ = domain_with_events
         events, _ = collect_all_events(
             [domain], stream_category="nonexistent::category"
@@ -473,7 +473,7 @@ class TestCollectAllEvents:
         assert len(events) == 3  # All are events
 
     def test_filter_by_kind_excludes_mismatch(self, domain_with_events):
-        """Covers line 204: kind filter excludes non-matching events."""
+        """kind filter excludes non-matching events."""
         domain, _, _ = domain_with_events
         events, _ = collect_all_events([domain], kind="COMMAND")
         assert len(events) == 0  # All events are EVENT, not COMMAND
@@ -740,7 +740,7 @@ class TestCollectTimelineStatsEdgeCases:
     """Tests targeting uncovered lines and partial branches in collect_timeline_stats."""
 
     def test_snapshot_excluded_from_stats(self, domain_with_events):
-        """Covers line 270: snapshot messages skipped in stats loop."""
+        """snapshot messages skipped in stats loop."""
         domain, user1_id, _ = domain_with_events
 
         # Write a snapshot message
@@ -755,7 +755,7 @@ class TestCollectTimelineStatsEdgeCases:
         assert stats["total_events"] == 3
 
     def test_datetime_object_time(self, event_domain):
-        """Covers line 280: isinstance(raw_time, datetime) branch."""
+        """isinstance(raw_time, datetime) branch."""
         fake_messages = [
             {
                 "stream_name": "test::manual-1",
@@ -783,7 +783,7 @@ class TestCollectTimelineStatsEdgeCases:
         assert stats["events_per_minute"] is not None
 
     def test_invalid_time_format(self, event_domain):
-        """Covers lines 284-285: ValueError from fromisoformat."""
+        """ValueError from fromisoformat."""
         fake_messages = [
             {
                 "stream_name": "test::badtime-1",
@@ -802,7 +802,7 @@ class TestCollectTimelineStatsEdgeCases:
         assert stats["last_event_time"] is None
 
     def test_non_string_non_datetime_time(self, event_domain):
-        """Covers lines 286-287: else branch for unrecognized time type."""
+        """else branch for unrecognized time type."""
         fake_messages = [
             {
                 "stream_name": "test::weirdtime-1",

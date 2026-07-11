@@ -1,4 +1,4 @@
-"""The Outbox aggregate declares the recommended indexes (issue #944)."""
+"""The Outbox aggregate declares the recommended indexes."""
 
 from datetime import UTC
 
@@ -21,7 +21,7 @@ class TestOutboxIndexDeclarations:
         # target broker (internal + every external broker), so message_id is not
         # unique on its own across those per-broker rows. The framework always
         # writes a non-NULL target_broker, so the composite still enforces one row
-        # per (message_id, broker). See issue #1009 (dual-write regression).
+        # per (message_id, broker). Dual-write regression guard.
         assert any(
             ix.unique and ix.fields == ("message_id", "target_broker")
             for ix in OUTBOX_INDEXES
@@ -71,7 +71,7 @@ class TestOutboxIndexCreation:
 class TestOutboxDualWriteUniqueness:
     """The composite unique index must permit the framework's own dual-write:
     one outbox row per target broker for a single event, all sharing one
-    ``message_id`` and distinguished only by ``target_broker`` (issue #1009)."""
+    ``message_id`` and distinguished only by ``target_broker``."""
 
     def _sample_metadata(self):
         from datetime import datetime
@@ -141,7 +141,7 @@ class TestOutboxDualWriteUniqueness:
         ``message_id`` and ``target_broker`` violate the composite unique index.
         This is the guarantee a non-NULL ``target_broker`` restores for
         single-broker mode, where rows would otherwise carry NULL and escape
-        uniqueness (issue #1009)."""
+        uniqueness."""
         from sqlalchemy.exc import IntegrityError
 
         from protean.core.unit_of_work import UnitOfWork
@@ -191,7 +191,7 @@ class TestOutboxDualWriteUniqueness:
 
 class TestTargetBrokerNotNull:
     """target_broker is NOT NULL so it can never bypass the composite unique
-    index (issue #1041). It defaults to the internal broker name, and legacy
+    index. It defaults to the internal broker name, and legacy
     NULL rows are coerced to it on read."""
 
     def _metadata(self):

@@ -764,7 +764,7 @@ class TestRecordHandlerRetry:
 
 
 # ---------------------------------------------------------------------------
-# Interaction with the command deadline (#906 x #907)
+# Interaction with the command deadline
 #
 # A retrying handler must never sleep into an attempt that would start past
 # the command's deadline — that would execute the handler after its timeout,

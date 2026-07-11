@@ -2,10 +2,10 @@
 
 The ``generate docker-compose`` command was a no-op stub (it wrote no file and
 ended at a ``# FIXME``); it was removed outright in the 1.0 CLI surface
-consolidation (#1113). Real Dockerfile/compose generation is tracked separately
-under #397. These tests ensure the command does not silently reappear and that
-the ``protean.cli.generate`` module stays inert (a reserved namespace, exposing
-no commands and unregistered on the top-level app) until #397 revives it.
+consolidation. Real Dockerfile/compose generation is tracked separately. These
+tests ensure the command does not silently reappear and that the
+``protean.cli.generate`` module stays inert (a reserved namespace, exposing no
+commands and unregistered on the top-level app) until it is revived.
 """
 
 import re

@@ -2,7 +2,7 @@
 
 Covers the HTML template structure, CSS styles, and JavaScript logic
 for the correlation chain view, aggregate history view, and view management
-features added in issue #740.
+features.
 
 Uses standalone in-memory domains to avoid Redis dependency.
 """
@@ -527,7 +527,7 @@ class TestTimelineJSAccessibility:
 
 
 # ---------------------------------------------------------------------------
-# Enhanced correlation view — HTML stat cards (#859)
+# Enhanced correlation view — HTML stat cards
 # ---------------------------------------------------------------------------
 
 
@@ -551,7 +551,7 @@ class TestEnhancedCorrelationViewHTML:
 
 
 # ---------------------------------------------------------------------------
-# Enhanced correlation view — CSS classes (#859)
+# Enhanced correlation view — CSS classes
 # ---------------------------------------------------------------------------
 
 
@@ -580,7 +580,7 @@ class TestEnhancedCorrelationCSS:
 
 
 # ---------------------------------------------------------------------------
-# Enhanced correlation view — JavaScript rendering (#859)
+# Enhanced correlation view — JavaScript rendering
 # ---------------------------------------------------------------------------
 
 

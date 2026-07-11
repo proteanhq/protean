@@ -119,9 +119,7 @@ def test_that_all_streams_handler_is_always_returned_with_other_handlers(test_do
 
 
 def test_that_part_of_any_handler_is_returned_for_its_streams_events(test_domain):
-    """Regression for #1023.
-
-    A ``@handle("$any")`` handler scoped to an aggregate via ``part_of`` is keyed
+    """A ``@handle("$any")`` handler scoped to an aggregate via ``part_of`` is keyed
     under ``"$any"`` in ``_handlers``, not the concrete event ``__type__``. It
     was filtered out by ``handlers_for``, so it never fired under synchronous
     dispatch (``event_processing="sync"``), which routes through ``handlers_for``

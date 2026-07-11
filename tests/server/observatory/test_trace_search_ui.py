@@ -1,4 +1,4 @@
-"""Tests for Trace Search UI and Recent Traces List View (#858).
+"""Tests for Trace Search UI and Recent Traces List View.
 
 Covers:
 - Timeline page renders with Events/Traces tab bar

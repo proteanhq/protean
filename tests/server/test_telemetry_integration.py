@@ -11,8 +11,6 @@ Validates:
 - Observatory traces (via TraceEmitter) are emitted alongside OTel spans
   and tell a consistent story for the same message lifecycle.
 - Everything works correctly both with OTel enabled and disabled.
-
-References: #767 (6.1.9: Unify OTel span hierarchy and Observatory trace emission)
 """
 
 from unittest.mock import patch

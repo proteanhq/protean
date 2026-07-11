@@ -1,5 +1,5 @@
 """Reconciliation of the ADR-0015 crash window: events durable in the event
-store whose relational outbox row did not land (#1040)."""
+store whose relational outbox row did not land."""
 
 import pytest
 
@@ -176,7 +176,7 @@ class TestOutboxReconciliation:
 @pytest.mark.message_db
 @pytest.mark.no_test_domain
 class TestOutboxReconciliationOnMessageDB:
-    """#1073: reconcile_outbox was a permanent no-op on Message-DB because
+    """reconcile_outbox was a permanent no-op on Message-DB because
     ``read_last_message("$all")`` returned None. It must now recover the crash
     window end-to-end against a real Message-DB event store."""
 

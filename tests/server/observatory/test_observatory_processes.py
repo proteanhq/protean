@@ -830,7 +830,7 @@ class TestProcessesRouteWiring:
 
 class TestGetRedis:
     def test_returns_none_when_broker_raises_exception(self):
-        """Lines 63-67: broker raises exception, _get_redis returns None."""
+        """broker raises exception, _get_redis returns None."""
         domain = MagicMock()
         domain.name = "TestDomain"
         domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
@@ -841,7 +841,7 @@ class TestGetRedis:
         assert result is None
 
     def test_returns_none_when_domain_context_raises(self):
-        """Lines 65-66: domain_context itself raises, _get_redis continues."""
+        """domain_context itself raises, _get_redis continues."""
         domain = MagicMock()
         domain.name = "TestDomain"
         domain.domain_context.side_effect = Exception("context error")
@@ -893,26 +893,26 @@ class TestGetRedis:
 
 class TestDecodeStreamId:
     def test_bytes_input(self):
-        """Lines 72-73: bytes stream ID is decoded to utf-8 string."""
+        """bytes stream ID is decoded to utf-8 string."""
         result = _decode_stream_id(b"1234567890-0")
         assert result == "1234567890-0"
         assert isinstance(result, str)
 
     def test_string_input(self):
-        """Line 74: string stream ID is passed through."""
+        """string stream ID is passed through."""
         result = _decode_stream_id("1234567890-0")
         assert result == "1234567890-0"
         assert isinstance(result, str)
 
 
 # ---------------------------------------------------------------------------
-# _extract_handled_messages — fallback type key (line 94)
+# _extract_handled_messages — fallback type key
 # ---------------------------------------------------------------------------
 
 
 class TestExtractHandledMessagesFallback:
     def test_type_key_without_dots(self):
-        """Line 94: type key with no dots falls through to append(type_key)."""
+        """type key with no dots falls through to append(type_key)."""
         handlers = defaultdict(set)
         handlers["SimpleEvent"] = {MagicMock()}
         cls = _make_mock_pm_cls(handlers=handlers)
@@ -942,7 +942,7 @@ class TestExtractTimeProcesses:
         assert _extract_time(msg) == "2024-01-01T00:00:00Z"
 
     def test_falls_back_to_metadata_timestamp(self):
-        """Lines 378-381: message has no time, falls back to metadata.timestamp."""
+        """message has no time, falls back to metadata.timestamp."""
         msg = MagicMock()
         msg.time = None
         msg.metadata = MagicMock()
@@ -985,13 +985,13 @@ class TestExtractTimeProcesses:
 
 
 # ---------------------------------------------------------------------------
-# _build_summary — unknown subscription status (line 402)
+# _build_summary — unknown subscription status
 # ---------------------------------------------------------------------------
 
 
 class TestBuildSummaryUnknownStatus:
     def test_unknown_subscription_status(self):
-        """Line 402: subscription status that is neither 'ok' nor 'lagging'
+        """subscription status that is neither 'ok' nor 'lagging'
         is counted as unknown."""
         pms = [
             {
@@ -1007,13 +1007,13 @@ class TestBuildSummaryUnknownStatus:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/processes/{name}/instances — get_pm_instances fails (line 517-520)
+# Endpoint: /api/processes/{name}/instances — get_pm_instances fails
 # ---------------------------------------------------------------------------
 
 
 class TestProcessesInstancesGetPMInstancesFails:
     def test_pm_instances_endpoint_when_get_pm_instances_raises(self):
-        """Lines 517-520: get_pm_instances raises inside the endpoint handler,
+        """get_pm_instances raises inside the endpoint handler,
         endpoint catches and returns empty list."""
         pm_cls = MagicMock()
         pm_cls.__name__ = "TestPM"
@@ -1058,13 +1058,13 @@ class TestProcessesInstancesGetPMInstancesFails:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/processes/{name}/instances — stream read fails (line 336-338)
+# Endpoint: /api/processes/{name}/instances — stream read fails
 # ---------------------------------------------------------------------------
 
 
 class TestGetPMInstancesStreamReadFails:
     def test_stream_read_exception_skips_instance(self):
-        """Lines 336-338: individual stream read fails, that instance is skipped."""
+        """individual stream read fails, that instance is skipped."""
         cls = MagicMock()
         cls.__name__ = "TestPM"
         cls.meta_ = MagicMock()
@@ -1091,13 +1091,13 @@ class TestGetPMInstancesStreamReadFails:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/processes — collect_subscription_statuses raises (line 459-460)
+# Endpoint: /api/processes — collect_subscription_statuses raises
 # ---------------------------------------------------------------------------
 
 
 class TestProcessesEndpointSubscriptionStatusException:
     def test_processes_endpoint_when_merge_subscription_status_raises(self):
-        """Lines 459-460: merge_pm_subscription_status raises at the endpoint level."""
+        """merge_pm_subscription_status raises at the endpoint level."""
         pm_cls = _make_mock_pm_cls(
             name="TestPM",
             stream_category="test::pm",
@@ -1122,13 +1122,13 @@ class TestProcessesEndpointSubscriptionStatusException:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/processes — collect_pm_trace_metrics raises (line 464-480)
+# Endpoint: /api/processes — collect_pm_trace_metrics raises
 # ---------------------------------------------------------------------------
 
 
 class TestProcessesEndpointTraceMetricsException:
     def test_processes_endpoint_when_trace_metrics_raises(self):
-        """Lines 472-473: collect_pm_trace_metrics raises inside the endpoint."""
+        """collect_pm_trace_metrics raises inside the endpoint."""
         pm_cls = _make_mock_pm_cls(
             name="TestPM",
             stream_category="test::pm",
@@ -1156,7 +1156,7 @@ class TestProcessesEndpointTraceMetricsException:
             assert len(data["processes"]) == 1
 
     def test_processes_endpoint_when_instance_count_raises(self):
-        """Lines 477-482: get_pm_instance_count raises for a PM."""
+        """get_pm_instance_count raises for a PM."""
         pm_cls = _make_mock_pm_cls(
             name="TestPM",
             stream_category="test::pm",
@@ -1180,7 +1180,7 @@ class TestProcessesEndpointTraceMetricsException:
 
 # ---------------------------------------------------------------------------
 # get_pm_instance_count / get_pm_instances — event store not yet initialized
-# (store is None) — lines 294, 324
+# (store is None)
 # ---------------------------------------------------------------------------
 
 
@@ -1190,7 +1190,7 @@ class TestPMInstancesStoreUnavailable:
     gracefully rather than raise."""
 
     def test_get_pm_instance_count_returns_none_when_store_is_none(self):
-        """Line 294: ``store is None`` short-circuits to ``None``."""
+        """``store is None`` short-circuits to ``None``."""
         pm_cls = _make_mock_pm_cls(name="TestPM", stream_category="test::pm")
         domain = _make_mock_domain()
         domain.event_store.store = None
@@ -1198,7 +1198,7 @@ class TestPMInstancesStoreUnavailable:
         assert get_pm_instance_count(domain, pm_cls) is None
 
     def test_get_pm_instances_returns_empty_when_store_is_none(self):
-        """Line 324: ``store is None`` short-circuits to ``[]``."""
+        """``store is None`` short-circuits to ``[]``."""
         pm_cls = _make_mock_pm_cls(name="TestPM", stream_category="test::pm")
         domain = _make_mock_domain()
         domain.event_store.store = None

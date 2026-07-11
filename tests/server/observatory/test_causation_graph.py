@@ -1,4 +1,4 @@
-"""Tests for the D3-based interactive causation graph (issue #860).
+"""Tests for the D3-based interactive causation graph.
 
 Covers:
 - causation-graph.js script is included in the timeline page
