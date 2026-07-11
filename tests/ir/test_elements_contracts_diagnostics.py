@@ -1124,6 +1124,9 @@ _BUILTIN_CODES = frozenset(
         "COMMAND_HANDLER_CROSS_CLUSTER",
         "SUBSCRIBER_NO_STREAMS",
         "PROCESS_MANAGER_UNCLOSED",
+        "EVENT_NOT_PAST_TENSE",
+        "COMMAND_NOT_IMPERATIVE",
+        "AGGREGATE_NOT_NOUN",
     }
 )
 
@@ -1413,6 +1416,24 @@ def _all_builtin_diagnostics() -> list[dict]:
     OrderCommandHandler._handlers[DispatchShipment.__type__].add(method)
     diagnostics += IRBuilder(xc_domain).build()["diagnostics"]
 
+    # Naming conventions — one domain emits all three info-level naming codes.
+    naming_domain = Domain(name="EnrichNaming", root_path=".")
+
+    @naming_domain.event(part_of="OrderProcessing")
+    class OrderShipping:  # gerund → EVENT_NOT_PAST_TENSE
+        order_id = Identifier(identifier=True)
+
+    @naming_domain.command(part_of="OrderProcessing")
+    class OrderCommand:  # non-imperative → COMMAND_NOT_IMPERATIVE
+        order_id = Identifier(identifier=True)
+
+    @naming_domain.aggregate
+    class OrderProcessing:  # gerund → AGGREGATE_NOT_NOUN
+        name = String(max_length=50)
+
+    naming_domain.init(traverse=False)
+    diagnostics += IRBuilder(naming_domain).build()["diagnostics"]
+
     return diagnostics
 
 
@@ -1429,7 +1450,7 @@ class TestDiagnosticSchemaEnrichment:
     def test_every_builtin_emit_site_carries_enriched_keys(self):
         """Assert across *all* built-in codes — not just the five
         ``build_all_categories_domain`` produces. A missing/typo ``rule``/
-        ``suggestion`` key at any of the 16 emit sites fails here."""
+        ``suggestion`` key at any of the 19 emit sites fails here."""
         diagnostics = _all_builtin_diagnostics()
         observed = {d["code"] for d in diagnostics}
         assert observed >= _BUILTIN_CODES, (
@@ -3378,3 +3399,291 @@ class TestHandlerCompletenessSuppression:
         # Unsuppressed this PM would be flagged (see control); ``suppress_checks``
         # removes it.
         assert "PROCESS_MANAGER_UNCLOSED" not in _codes_for(ir, "OrderSaga")
+
+
+# ── Naming-convention fitness functions (#778) ───────────────────────
+
+
+def _assert_naming_diagnostic_shape(diag: dict) -> None:
+    """Assert a naming-convention diagnostic carries the full #774 key set."""
+    assert diag["category"] == "naming_conventions"
+    assert diag["level"] == "info"
+    assert diag["element"], "element FQN must be non-empty"
+    assert diag["message"], "message must be non-empty"
+    assert diag["rule"]["rationale"], "rule.rationale must be non-empty"
+    assert diag["rule"]["fix"], "rule.fix must be non-empty"
+    assert diag["suggestion"] == diag["rule"]["fix"]
+
+
+@pytest.mark.no_test_domain
+class TestEventNotPastTense:
+    """Verify EVENT_NOT_PAST_TENSE naming diagnostics."""
+
+    def test_gerund_events_flagged(self):
+        domain = Domain(name="EventNaming", root_path=".")
+
+        @domain.event(part_of="Order")
+        class OrderCreating:
+            order_id = Identifier(identifier=True)
+
+        @domain.event(part_of="Order")
+        class OrderProcessing:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "EVENT_NOT_PAST_TENSE"]
+        assert len(findings) == 2
+        flagged = {d["element"] for d in findings}
+        assert any("OrderCreating" in f for f in flagged)
+        assert any("OrderProcessing" in f for f in flagged)
+        for diag in findings:
+            _assert_naming_diagnostic_shape(diag)
+
+    def test_past_tense_events_not_flagged(self):
+        domain = Domain(name="EventNamingClean", root_path=".")
+
+        @domain.event(part_of="Order")
+        class OrderPlaced:
+            order_id = Identifier(identifier=True)
+
+        @domain.event(part_of="Order")
+        class OrderCreated:
+            order_id = Identifier(identifier=True)
+
+        @domain.event(part_of="Order")
+        class OrderCancelled:
+            order_id = Identifier(identifier=True)
+
+        @domain.event(part_of="Order")
+        class OrderStatus:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "EVENT_NOT_PAST_TENSE"]
+        assert findings == []
+
+    def test_framework_events_skipped(self):
+        """A fact event is iterated but skipped; a user gerund event is flagged.
+
+        Exercises the ``is_fact_event`` skip branch — the auto-generated fact
+        event (``OrderFactEvent``) is never flagged, while the user-defined
+        gerund event alongside it is.
+        """
+        domain = Domain(name="EventNamingFact", root_path=".")
+
+        @domain.event(part_of="Order")
+        class OrderShipping:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate(fact_events=True)
+        class Order:
+            name = String(max_length=50, required=True)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "EVENT_NOT_PAST_TENSE"]
+        flagged = {d["element"] for d in findings}
+        assert any("OrderShipping" in f for f in flagged)
+        assert not any("FactEvent" in f for f in flagged)
+
+
+@pytest.mark.no_test_domain
+class TestCommandNotImperative:
+    """Verify COMMAND_NOT_IMPERATIVE naming diagnostics."""
+
+    def test_non_imperative_commands_flagged(self):
+        domain = Domain(name="CommandNaming", root_path=".")
+
+        @domain.command(part_of="Order")
+        class OrderCreation:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class OrderCommand:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [
+            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
+        ]
+        assert len(findings) == 2
+        flagged = {d["element"] for d in findings}
+        assert any("OrderCreation" in f for f in flagged)
+        assert any("OrderCommand" in f for f in flagged)
+        for diag in findings:
+            _assert_naming_diagnostic_shape(diag)
+
+    def test_imperative_commands_not_flagged(self):
+        domain = Domain(name="CommandNamingClean", root_path=".")
+
+        @domain.command(part_of="Order")
+        class CreateOrder:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class PlaceOrder:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class CancelReservation:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class ProcessPayment:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [
+            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
+        ]
+        assert findings == []
+
+    def test_prefix_match_is_case_insensitive(self):
+        """A CapWords name (`CreateOrder`) starts with `C`, not the lowercased
+        prefix `create` — so a naive case-sensitive ``startswith`` would flag it.
+        Its absence from the findings proves the match lowercases both sides."""
+        domain = Domain(name="CommandNamingCase", root_path=".")
+
+        @domain.command(part_of="Order")
+        class CreateOrder:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [
+            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
+        ]
+        assert findings == []
+
+
+@pytest.mark.no_test_domain
+class TestAggregateNotNoun:
+    """Verify AGGREGATE_NOT_NOUN naming diagnostics."""
+
+    def test_verb_and_gerund_aggregates_flagged(self):
+        domain = Domain(name="AggNaming", root_path=".")
+
+        @domain.aggregate
+        class OrderProcessing:
+            reference = String(max_length=50)
+
+        @domain.aggregate
+        class Notify:
+            reference = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
+        assert len(findings) == 2
+        flagged = {d["element"] for d in findings}
+        assert any("OrderProcessing" in f for f in flagged)
+        assert any("Notify" in f for f in flagged)
+        for diag in findings:
+            _assert_naming_diagnostic_shape(diag)
+
+    def test_agent_nouns_not_flagged(self):
+        """Load-bearing regression guard: `-er`/`-or` agent nouns must pass."""
+        domain = Domain(name="AggNamingAgents", root_path=".")
+
+        @domain.aggregate
+        class Customer:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class User:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class Supplier:
+            name = String(max_length=50)
+
+        @domain.aggregate
+        class Auditor:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
+        flagged = {d["element"] for d in findings}
+        assert not any("Customer" in f for f in flagged)
+        assert not any("User" in f for f in flagged)
+        assert not any("Supplier" in f for f in flagged)
+        assert not any("Auditor" in f for f in flagged)
+        assert findings == []
+
+    def test_plain_noun_aggregates_not_flagged(self):
+        domain = Domain(name="AggNamingNouns", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            reference = String(max_length=50)
+
+        @domain.aggregate
+        class Invoice:
+            reference = String(max_length=50)
+
+        @domain.aggregate
+        class Vendor:
+            reference = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
+        assert findings == []
+
+    def test_infrastructure_aggregate_skipped(self):
+        """An aggregate whose FQN is under ``protean.adapters.`` is skipped even
+        when its name (`Shipping`) ends in a flagged suffix."""
+        from protean.core.aggregate import BaseAggregate
+
+        domain = Domain(name="AggNamingInfra", root_path=".")
+
+        class Shipping(BaseAggregate):
+            reference = String(max_length=50)
+
+        Shipping.__module__ = "protean.adapters.fake"
+        domain.register(Shipping)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
+        assert not any("Shipping" in d["element"] for d in findings)
+        assert findings == []
+
+    def test_name_equal_to_suffix_not_flagged(self):
+        """Length guard: a name exactly equal to a suffix (`Ate`) must not
+        self-match."""
+        domain = Domain(name="AggNamingGuard", root_path=".")
+
+        @domain.aggregate
+        class Ate:
+            reference = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
+        assert findings == []
