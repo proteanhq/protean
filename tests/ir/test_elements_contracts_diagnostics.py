@@ -4,10 +4,12 @@ import pytest
 
 from protean import Domain, handle
 from protean.core.aggregate import apply
-from protean.exceptions import ConfigurationError
-from protean.fields import Identifier
+from protean.core.entity import invariant
+from protean.exceptions import ConfigurationError, ValidationError
+from protean.fields import Dict, HasMany, HasOne, Identifier, List, Reference
 from protean.fields.simple import Float, String
 from protean.ir.builder import IRBuilder
+from protean.utils import fqn
 
 from .elements import build_published_event_domain
 
@@ -1104,8 +1106,45 @@ _BUILTIN_CODES = frozenset(
         "DEPRECATED_FIELD",
         "DEPRECATED_OPTION",
         "DEPRECATED_EMAIL",
+        "CROSS_AGGREGATE_REFERENCE",
+        "ES_AGGREGATE_NO_EVENTS",
+        "VALUE_OBJECT_MUTABLE_FIELD",
+        "AGGREGATE_NO_INVARIANTS",
     }
 )
+
+
+def _build_aggregate_design_domain() -> Domain:
+    """Emits all four aggregate-design fitness-function codes so the shared
+    schema-enrichment assertions cover their emit sites too.
+
+    ``CROSS_AGGREGATE_REFERENCE`` (Customer→Order), ``ES_AGGREGATE_NO_EVENTS``
+    (event-sourced Ledger with no events), ``VALUE_OBJECT_MUTABLE_FIELD``
+    (a VO with a ``List`` field), and ``AGGREGATE_NO_INVARIANTS`` (every
+    aggregate here lacks invariants).
+    """
+    domain = Domain(name="AggregateDesign", root_path=".")
+
+    @domain.aggregate
+    class Order:
+        total = Float()
+
+    @domain.aggregate
+    class Customer:
+        name = String()
+        order = Reference(Order)  # CROSS_AGGREGATE_REFERENCE
+
+    @domain.aggregate(event_sourced=True)
+    class Ledger:  # ES_AGGREGATE_NO_EVENTS — no events declared
+        balance = Float()
+
+    @domain.value_object(part_of=Order)
+    class ShippingLabel:
+        carrier = String()
+        tags = List()  # VALUE_OBJECT_MUTABLE_FIELD
+
+    domain.init(traverse=False)
+    return domain
 
 
 def _build_completeness_domain() -> Domain:
@@ -1207,6 +1246,7 @@ def _all_builtin_diagnostics() -> list[dict]:
     diagnostics += IRBuilder(build_all_categories_domain()).build()["diagnostics"]
     diagnostics += IRBuilder(_build_completeness_domain()).build()["diagnostics"]
     diagnostics += IRBuilder(_build_es_domain()).build()["diagnostics"]
+    diagnostics += IRBuilder(_build_aggregate_design_domain()).build()["diagnostics"]
 
     # DEPRECATED_OPTION — command ``published`` emit site (distinct dict from
     # the aggregate-alias site above; both are hand-copied and must be checked).
@@ -1257,7 +1297,7 @@ class TestDiagnosticSchemaEnrichment:
         ``suggestion`` key at any of the 16 emit sites fails here."""
         diagnostics = _all_builtin_diagnostics()
         observed = {d["code"] for d in diagnostics}
-        assert _BUILTIN_CODES <= observed, (
+        assert observed >= _BUILTIN_CODES, (
             f"emit sites not exercised: {sorted(_BUILTIN_CODES - observed)}"
         )
         for d in diagnostics:
@@ -1614,3 +1654,358 @@ class TestLintTableConfigValidation:
         domain.init(traverse=False)
         with pytest.raises(ConfigurationError, match=r"\[lint\] must be a table"):
             IRBuilder(domain).build()
+
+
+# ── Aggregate & value-object fitness functions (#775) ────────────────
+
+
+@pytest.mark.no_test_domain
+class TestCrossAggregateReference:
+    """CROSS_AGGREGATE_REFERENCE flags a ``Reference`` to a different
+    aggregate's root, but never a child→own-root back-pointer."""
+
+    def test_reference_to_other_aggregate_flagged(self):
+        domain = Domain(name="CrossRef", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.aggregate
+        class Customer:
+            name = String()
+            order = Reference(Order)  # points at a *different* aggregate's root
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [
+            d for d in ir["diagnostics"] if d["code"] == "CROSS_AGGREGATE_REFERENCE"
+        ]
+        assert len(diags) == 1
+        d = diags[0]
+        assert d["element"] == fqn(Customer)
+        assert d["field"] == "order"
+        assert d["level"] == "warning"
+        # #774 schema
+        assert d["category"] == "aggregate_design"
+        assert d["rule"]["rationale"]
+        assert d["rule"]["fix"]
+        assert d["suggestion"] == d["rule"]["fix"]
+
+    def test_child_back_pointer_not_flagged(self):
+        """The load-bearing compliant case: a child entity referencing its own
+        aggregate root (target == own cluster key) is never flagged, and the
+        root's ``HasMany`` is out of scope."""
+        domain = Domain(name="PostBlog", root_path=".")
+
+        @domain.aggregate
+        class Post:
+            title = String()
+            comments = HasMany("Comment")  # root→child composition, out of scope
+
+        @domain.entity(part_of=Post)
+        class Comment:
+            content = String()
+            post = Reference(Post)  # child→own-root back-pointer, target == own
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "CROSS_AGGREGATE_REFERENCE" not in codes
+
+    def test_associations_only_not_flagged(self):
+        """An aggregate holding only ``HasOne``/``HasMany`` (no ``Reference``)
+        is never flagged, regardless of target."""
+        domain = Domain(name="OnlyAssoc", root_path=".")
+
+        @domain.aggregate
+        class Basket:
+            label = String()
+            item = HasOne("BasketItem")
+            extras = HasMany("BasketExtra")
+
+        @domain.entity(part_of=Basket)
+        class BasketItem:
+            sku = String()
+
+        @domain.entity(part_of=Basket)
+        class BasketExtra:
+            note = String()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "CROSS_AGGREGATE_REFERENCE" not in codes
+
+    def test_suppress_checks_drops_code(self):
+        domain = Domain(name="CrossRefSuppress", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.aggregate(suppress_checks=["CROSS_AGGREGATE_REFERENCE"])
+        class Customer:
+            name = String()
+            order = Reference(Order)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "CROSS_AGGREGATE_REFERENCE" not in _codes_for(ir, "Customer")
+
+
+@pytest.mark.no_test_domain
+class TestESAggregateNoEvents:
+    """ES_AGGREGATE_NO_EVENTS flags an ``event_sourced=True`` aggregate with no
+    events (it cannot reconstitute state)."""
+
+    def test_es_aggregate_without_events_flagged(self):
+        domain = Domain(name="ESNoEvents", root_path=".")
+
+        @domain.aggregate(event_sourced=True)
+        class Account:
+            balance = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "ES_AGGREGATE_NO_EVENTS"]
+        assert len(diags) == 1
+        d = diags[0]
+        assert d["element"] == fqn(Account)
+        assert d["level"] == "warning"
+        assert d["category"] == "aggregate_design"
+        assert d["rule"]["rationale"]
+        assert d["rule"]["fix"]
+        assert d["suggestion"] == d["rule"]["fix"]
+
+    def test_es_aggregate_with_event_not_flagged(self):
+        domain = Domain(name="ESWithEvent", root_path=".")
+
+        @domain.aggregate(event_sourced=True)
+        class Account:
+            balance = Float()
+
+        @domain.event(part_of=Account)
+        class Deposited:
+            amount = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "ES_AGGREGATE_NO_EVENTS" not in codes
+
+    def test_non_event_sourced_without_events_not_flagged(self):
+        """The ``is_event_sourced`` guard fails first for a plain aggregate."""
+        domain = Domain(name="NonESNoEvents", root_path=".")
+
+        @domain.aggregate
+        class Account:
+            balance = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "ES_AGGREGATE_NO_EVENTS" not in codes
+
+    def test_suppress_checks_drops_code(self):
+        domain = Domain(name="ESSuppress", root_path=".")
+
+        @domain.aggregate(
+            event_sourced=True, suppress_checks=["ES_AGGREGATE_NO_EVENTS"]
+        )
+        class Account:
+            balance = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "ES_AGGREGATE_NO_EVENTS" not in _codes_for(ir, "Account")
+
+
+@pytest.mark.no_test_domain
+class TestValueObjectMutableField:
+    """VALUE_OBJECT_MUTABLE_FIELD flags a value object with a ``list``/``dict``
+    field (mutable state breaks equality-by-value)."""
+
+    def test_list_field_flagged(self):
+        domain = Domain(name="VOList", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.value_object(part_of=Order)
+        class ShippingLabel:
+            carrier = String()
+            tags = List()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [
+            d for d in ir["diagnostics"] if d["code"] == "VALUE_OBJECT_MUTABLE_FIELD"
+        ]
+        assert len(diags) == 1
+        d = diags[0]
+        assert d["element"] == fqn(ShippingLabel)
+        assert d["field"] == "tags"
+        assert d["level"] == "warning"
+        assert d["category"] == "aggregate_design"
+        assert d["rule"]["rationale"]
+        assert d["rule"]["fix"]
+        assert d["suggestion"] == d["rule"]["fix"]
+
+    def test_dict_field_flagged(self):
+        domain = Domain(name="VODict", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.value_object(part_of=Order)
+        class Metadata:
+            label = String()
+            attrs = Dict()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [
+            d for d in ir["diagnostics"] if d["code"] == "VALUE_OBJECT_MUTABLE_FIELD"
+        ]
+        assert len(diags) == 1
+        assert diags[0]["element"] == fqn(Metadata)
+        assert diags[0]["field"] == "attrs"
+
+    def test_scalar_only_vo_not_flagged(self):
+        domain = Domain(name="VOScalar", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.value_object(part_of=Order)
+        class Money:
+            amount = Float()
+            currency = String()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "VALUE_OBJECT_MUTABLE_FIELD" not in codes
+
+    def test_suppress_checks_drops_code(self):
+        domain = Domain(name="VOSuppress", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.value_object(
+            part_of=Order, suppress_checks=["VALUE_OBJECT_MUTABLE_FIELD"]
+        )
+        class ShippingLabel:
+            carrier = String()
+            tags = List()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "VALUE_OBJECT_MUTABLE_FIELD" not in _codes_for(ir, "ShippingLabel")
+
+
+@pytest.mark.no_test_domain
+class TestAggregateNoInvariants:
+    """AGGREGATE_NO_INVARIANTS is an INFO-level nudge for an aggregate with no
+    pre/post invariants; abstract aggregates are skipped."""
+
+    def test_aggregate_without_invariants_flagged(self):
+        domain = Domain(name="NoInvariants", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        diags = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NO_INVARIANTS"]
+        assert len(diags) == 1
+        d = diags[0]
+        assert d["element"] == fqn(Order)
+        assert d["level"] == "info"
+        assert d["category"] == "aggregate_design"
+        assert d["rule"]["rationale"]
+        assert d["rule"]["fix"]
+        assert d["suggestion"] == d["rule"]["fix"]
+
+    def test_post_invariant_not_flagged(self):
+        domain = Domain(name="PostInvariant", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+            @invariant.post
+            def total_is_non_negative(self):
+                if self.total is not None and self.total < 0:
+                    raise ValidationError({"total": ["must be non-negative"]})
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "AGGREGATE_NO_INVARIANTS" not in codes
+
+    def test_pre_invariant_not_flagged(self):
+        domain = Domain(name="PreInvariant", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+            @invariant.pre
+            def total_present(self):
+                if self.total is None:
+                    raise ValidationError({"total": ["is required"]})
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "AGGREGATE_NO_INVARIANTS" not in codes
+
+    def test_abstract_aggregate_not_flagged(self):
+        """``abstract`` is sourced from ``meta_`` via the registry; an abstract
+        aggregate with no invariants is skipped before the invariants check."""
+        domain = Domain(name="AbstractAgg", root_path=".")
+
+        @domain.aggregate(abstract=True)
+        class BaseThing:
+            total = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        codes = [d["code"] for d in ir["diagnostics"]]
+        assert "AGGREGATE_NO_INVARIANTS" not in codes
+
+    def test_suppress_checks_drops_code(self):
+        domain = Domain(name="NoInvariantsSuppress", root_path=".")
+
+        @domain.aggregate(suppress_checks=["AGGREGATE_NO_INVARIANTS"])
+        class Order:
+            total = Float()
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert "AGGREGATE_NO_INVARIANTS" not in _codes_for(ir, "Order")

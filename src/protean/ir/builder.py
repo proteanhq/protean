@@ -23,11 +23,11 @@ from typing import TYPE_CHECKING, Any
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index, RawIndex
+from protean.exceptions import ConfigurationError
 from protean.fields.association import HasMany, HasOne, Reference
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
-from protean.exceptions import ConfigurationError
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
 from protean.ir.constants import VOLATILE_IR_KEYS
@@ -1489,6 +1489,9 @@ class IRBuilder:
         self._diagnose_aggregate_without_command_handler(ir)
         self._diagnose_projection_without_projector(ir)
         self._diagnose_upcaster_gap(ir)
+        self._diagnose_cross_aggregate_reference(ir)
+        self._diagnose_es_aggregate_no_events(ir)
+        self._diagnose_value_object_mutable_field(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
@@ -1496,6 +1499,7 @@ class IRBuilder:
         self._diagnose_deprecated_elements(ir)
         self._diagnose_deprecated_options(ir)
         self._diagnose_email_deprecated(ir)
+        self._diagnose_aggregate_no_invariants(ir)
         # Custom lint rules from config
         self._run_custom_lint_rules(ir)
         # Suppression stage — runs last so custom-rule findings are also
@@ -1911,6 +1915,154 @@ class IRBuilder:
                     }
                 )
 
+    def _diagnose_cross_aggregate_reference(self, ir: dict[str, Any]) -> None:
+        """CROSS_AGGREGATE_REFERENCE: a ``Reference`` field pointing at a
+        *different* aggregate's root (Vernon's Rule 3).
+
+        The compliant, dominant shape is a child entity pointing back at its own
+        aggregate root, where ``target`` equals the enclosing cluster key; that
+        case must never be flagged. Only ``kind == "reference"`` fields are
+        evaluated — ``has_one``/``has_many`` associations are out of scope.
+        Framework-injected back-references (``auto_generated``) are skipped.
+        """
+        cluster_keys = set(ir["clusters"])
+        rule = {
+            "rationale": (
+                "Aggregates coordinate other aggregates by identity, not by "
+                "object reference (Vernon's Rule 3). A `Reference` to another "
+                "aggregate's root couples the two into one object graph and "
+                "invites a single transaction to span both clusters. The "
+                "compliant reference is a child entity pointing back at its own "
+                "aggregate root, where the target is the element's own cluster."
+            ),
+            "fix": (
+                "Hold the other aggregate by its identifier instead of a "
+                "`Reference`. Replace `Reference(<Other>)` with an `Identifier` "
+                "field (for example `<other>_id: Identifier()`) and load the "
+                "other aggregate through its own repository when needed."
+            ),
+        }
+        for own, cluster in ir["clusters"].items():
+            # Skip infrastructure aggregates
+            if cluster["aggregate"]["fqn"].startswith("protean.adapters."):
+                continue
+            # The root and every child entity belong to *this* cluster, so the
+            # "own cluster" of any field found here is the current cluster key.
+            owners = [(cluster["aggregate"]["fqn"], cluster["aggregate"]["fields"])]
+            owners.extend(
+                (entity["fqn"], entity["fields"])
+                for entity in cluster["entities"].values()
+            )
+            for element_fqn, fields in owners:
+                for field_name, field in fields.items():
+                    if field.get("kind") != "reference":
+                        continue
+                    if field.get("auto_generated"):
+                        continue
+                    target = field.get("target")
+                    if target in cluster_keys and target != own:
+                        self._diagnostics.append(
+                            {
+                                "category": "aggregate_design",
+                                "code": "CROSS_AGGREGATE_REFERENCE",
+                                "element": element_fqn,
+                                "field": field_name,
+                                "level": "warning",
+                                "message": (
+                                    f"Reference `{field_name}` points at a "
+                                    f"different aggregate's root `{target}`; "
+                                    f"aggregates should reference each other by "
+                                    f"identity, not by `Reference`."
+                                ),
+                                "rule": rule,
+                                "suggestion": rule["fix"],
+                            }
+                        )
+
+    def _diagnose_es_aggregate_no_events(self, ir: dict[str, Any]) -> None:
+        """ES_AGGREGATE_NO_EVENTS: an ``event_sourced=True`` aggregate with no
+        events. It has no state history and cannot be rebuilt by replay.
+        """
+        rule = {
+            "rationale": (
+                "An event-sourced aggregate reconstitutes its state by replaying "
+                "its events. With no events registered it can record no state "
+                "changes and cannot be rebuilt from its stream."
+            ),
+            "fix": (
+                "Declare at least one domain event with `part_of=<Aggregate>` and "
+                "raise it from the aggregate's behaviour, or drop "
+                "`event_sourced=True` if the aggregate is not meant to be "
+                "event-sourced."
+            ),
+        }
+        for cluster in ir["clusters"].values():
+            aggregate = cluster["aggregate"]
+            # Skip infrastructure aggregates
+            if aggregate["fqn"].startswith("protean.adapters."):
+                continue
+            if not aggregate["options"].get("is_event_sourced"):
+                continue
+            if len(cluster["events"]) == 0:
+                self._diagnostics.append(
+                    {
+                        "category": "aggregate_design",
+                        "code": "ES_AGGREGATE_NO_EVENTS",
+                        "element": aggregate["fqn"],
+                        "level": "warning",
+                        "message": (
+                            f"Event-sourced aggregate `{aggregate['name']}` has "
+                            f"no events; it records no state changes and cannot "
+                            f"be rebuilt from its stream."
+                        ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
+                    }
+                )
+
+    def _diagnose_value_object_mutable_field(self, ir: dict[str, Any]) -> None:
+        """VALUE_OBJECT_MUTABLE_FIELD: a value object with a ``list``/``dict``
+        field, which gives it mutable state and breaks equality-by-value.
+
+        Emits one finding per offending field, naming it in the optional
+        ``field`` key (mirroring ``DEPRECATED_FIELD``).
+        """
+        rule = {
+            "rationale": (
+                "Value objects are compared by value and must be immutable. A "
+                "`List` or `Dict` field gives the value object mutable internal "
+                "state, so two instances that should be equal can diverge and "
+                "value equality no longer holds."
+            ),
+            "fix": (
+                "Replace the mutable collection with an immutable representation, "
+                "or move the collection onto the containing entity or aggregate. "
+                "If the values form a concept, model them as their own value "
+                "object referenced by identity."
+            ),
+        }
+        for cluster in ir["clusters"].values():
+            for vo in cluster["value_objects"].values():
+                for field_name, field in vo["fields"].items():
+                    if field.get("kind") not in ("list", "dict"):
+                        continue
+                    self._diagnostics.append(
+                        {
+                            "category": "aggregate_design",
+                            "code": "VALUE_OBJECT_MUTABLE_FIELD",
+                            "element": vo["fqn"],
+                            "field": field_name,
+                            "level": "warning",
+                            "message": (
+                                f"Value object `{vo['name']}` has mutable field "
+                                f"`{field_name}` (`{field['kind']}`); value "
+                                f"objects must be immutable."
+                            ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
+                        }
+                    )
+
     # ------------------------------------------------------------------
     # Info-level diagnostics (design smells)
     # ------------------------------------------------------------------
@@ -2283,6 +2435,57 @@ class IRBuilder:
                     "suggestion": rule["fix"],
                 }
             )
+
+    def _diagnose_aggregate_no_invariants(self, ir: dict[str, Any]) -> None:
+        """AGGREGATE_NO_INVARIANTS: an aggregate with no pre/post invariants,
+        usually an anemic data holder rather than a true consistency boundary.
+        INFO-level design nudge, not a build failure.
+
+        ``abstract`` is not projected into the aggregate IR ``options`` block, so
+        it is sourced from the registry (mirroring ``_diagnose_upcaster_gap`` /
+        ``_diagnose_email_deprecated``). Internal and abstract aggregates are
+        skipped. ``invariants`` is the dict ``{"pre": [...], "post": [...]}``;
+        flag only when *both* lists are empty.
+        """
+        registry = self._domain._domain_registry
+        rule = {
+            "rationale": (
+                "An aggregate is a consistency boundary. With no pre- or "
+                "post-invariants it enforces no business rules and is usually an "
+                "anemic data holder rather than a true aggregate."
+            ),
+            "fix": (
+                "Add one or more `@invariant.pre` or `@invariant.post` methods "
+                "expressing the business rules the aggregate must always satisfy, "
+                "or reconsider whether this concept is an aggregate at all."
+            ),
+        }
+        for record in registry._elements.get("AGGREGATE", {}).values():
+            if record.internal:
+                continue
+            if getattr(record.cls.meta_, "abstract", False):
+                continue
+            agg_fqn = fqn(record.cls)
+            cluster = ir["clusters"].get(agg_fqn)
+            if cluster is None:
+                continue
+            invariants = cluster["aggregate"]["invariants"]
+            if not invariants["pre"] and not invariants["post"]:
+                self._diagnostics.append(
+                    {
+                        "category": "aggregate_design",
+                        "code": "AGGREGATE_NO_INVARIANTS",
+                        "element": agg_fqn,
+                        "level": "info",
+                        "message": (
+                            f"Aggregate `{record.cls.__name__}` declares no "
+                            f"pre/post invariants; it enforces no business rules "
+                            f"and may be an anemic data holder."
+                        ),
+                        "rule": rule,
+                        "suggestion": rule["fix"],
+                    }
+                )
 
     # ------------------------------------------------------------------
     # Custom lint rules

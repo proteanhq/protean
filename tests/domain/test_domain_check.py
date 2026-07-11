@@ -13,9 +13,10 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
-from protean.core.entity import BaseEntity
+from protean.core.entity import BaseEntity, invariant
 from protean.core.event import BaseEvent
 from protean.domain import Domain
+from protean.exceptions import ValidationError
 from protean.fields import HasOne, String
 from protean.utils.mixins import handle
 
@@ -24,6 +25,14 @@ from protean.utils.mixins import handle
 
 class Order(BaseAggregate):
     name: String(required=True)
+
+    # A pre/post invariant keeps this a genuinely "clean" aggregate: without one
+    # the AGGREGATE_NO_INVARIANTS design nudge (info) would fire and the domain
+    # would no longer report status=pass with an empty diagnostics list.
+    @invariant.post
+    def name_is_present(self):
+        if not self.name:
+            raise ValidationError({"name": ["must be present"]})
 
 
 class OrderPlaced(BaseEvent):
