@@ -354,6 +354,51 @@ class TestEventHandlerForeignEvent:
         assert diags[0]["element"] == fqn(FulfillmentEventHandler)
         assert diags[0]["element"] != fqn(OrderCommandHandler)
 
+    def test_event_without_type_is_skipped_from_ownership(self):
+        """An event carrying no ``__type__`` contributes no ownership entry, so
+        a handler handling it has nothing to compare against and is not flagged.
+        Exercises the ``if not event_type`` guard in the ownership scan — a real
+        event always carries a ``__type__``, so the typeless entry is forced by
+        clearing it on the built IR before re-running the diagnostic."""
+        domain = Domain(name="FENoType", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            total = Float()
+
+        @domain.aggregate
+        class Fulfillment:
+            status = String(max_length=20)
+
+        @domain.event(part_of=Order)
+        class OrderShipped:
+            order_id = Identifier(required=True)
+
+        @domain.event_handler(part_of=Fulfillment)
+        class FulfillmentHandler:
+            @handle(OrderShipped)
+            def on_order_shipped(self, event):
+                pass
+
+        domain.init(traverse=False)
+        builder = IRBuilder(domain)
+        ir = builder.build()
+
+        # Sanity: with an intact __type__ this is a genuine foreign-event finding.
+        assert any(
+            d["code"] == "EVENT_HANDLER_FOREIGN_EVENT" for d in ir["diagnostics"]
+        )
+
+        # Strip __type__ from Order's event so it registers no owner.
+        for event in ir["clusters"][fqn(Order)]["events"].values():
+            event["__type__"] = None
+
+        builder._diagnostics = []
+        builder._diagnose_event_handler_foreign_event(ir)
+
+        codes = [d["code"] for d in builder._diagnostics]
+        assert "EVENT_HANDLER_FOREIGN_EVENT" not in codes
+
     def test_suppress_checks_drops_finding(self):
         domain = Domain(name="FESuppress", root_path=".")
 
