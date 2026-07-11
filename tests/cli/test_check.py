@@ -5,6 +5,7 @@ Covers exit codes, output formats, error handling, --level filter, and --quiet m
 
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -12,11 +13,14 @@ from typer.testing import CliRunner
 import protean
 from protean.cli import app
 from protean.cli.check import (
+    _element_module_map,
     _escape_annotation,
     _escape_property,
     _format_sarif,
     _resolve_sarif_location,
+    _workspace_relative_uri,
 )
+from protean.utils import fqn
 
 runner = CliRunner()
 
@@ -411,7 +415,7 @@ class TestCheckSarifOutput:
             assert res["ruleId"] in descriptor_ids
 
     def test_sarif_dedup_collapses_repeated_codes(self):
-        """test34's two bare aggregates each emit AGGREGATE_WITHOUT_COMMAND_HANDLER,
+        """test38's two bare aggregates each emit AGGREGATE_WITHOUT_COMMAND_HANDLER,
         so the code genuinely repeats across results — yet it collapses to a
         single reportingDescriptor whose shortDescription is the first occurrence."""
         result = runner.invoke(app, ["check", "-d", _DEDUP_DOMAIN, "-f", "sarif"])
@@ -597,6 +601,72 @@ class TestCheckSarifOutput:
     def test_resolve_location_unresolvable_module_returns_none(self):
         """A mapped module that find_spec cannot locate degrades to None."""
         assert _resolve_sarif_location("x.Y", {"x.Y": "no_such_module_zzz"}) is None
+
+    def test_resolve_location_find_spec_error_returns_none(self):
+        """A module name whose parent package cannot be imported makes find_spec
+        raise (ModuleNotFoundError); the failure degrades to None, never raises."""
+        assert (
+            _resolve_sarif_location("x.Y", {"x.Y": "no_such_parent_zzz.child"}) is None
+        )
+
+    def test_resolve_location_spec_without_origin_returns_none(self, monkeypatch):
+        """A module whose spec has no origin (e.g. a namespace package) resolves
+        to None rather than emitting a location with a null uri."""
+        import importlib.util
+
+        monkeypatch.setattr(
+            importlib.util, "find_spec", lambda _m: SimpleNamespace(origin=None)
+        )
+        assert _resolve_sarif_location("x.Y", {"x.Y": "some_module"}) is None
+
+    def test_element_module_map_skips_internal_elements(self):
+        """Internal (platform-generated) elements are excluded from the module
+        map, so they never surface a SARIF location."""
+
+        class _Public:
+            pass
+
+        class _Internal:
+            pass
+
+        domain = SimpleNamespace(
+            _domain_registry=SimpleNamespace(
+                _elements={
+                    "AGGREGATE": {
+                        "pub": SimpleNamespace(cls=_Public, internal=False),
+                        "int": SimpleNamespace(cls=_Internal, internal=True),
+                    }
+                }
+            )
+        )
+        module_map = _element_module_map(domain)
+        assert fqn(_Public) in module_map
+        assert fqn(_Internal) not in module_map
+
+    def test_workspace_relative_uri_resolves_against_github_workspace(
+        self, monkeypatch
+    ):
+        """When GITHUB_WORKSPACE is set, the emitted path is relative to it — not
+        the process's current directory — so a step that ``cd``s into a
+        subdirectory still maps onto the checked-out repo."""
+        monkeypatch.setenv("GITHUB_WORKSPACE", "/workspace/repo")
+        assert (
+            _workspace_relative_uri("/workspace/repo/src/protean/foo.py")
+            == "src/protean/foo.py"
+        )
+
+    def test_workspace_relative_uri_falls_back_to_absolute_on_valueerror(
+        self, monkeypatch
+    ):
+        """When a relative path is impossible (e.g. a different drive on Windows,
+        which raises ValueError), the absolute origin is returned unchanged."""
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+
+        def _raise(*_a, **_k):
+            raise ValueError("path on mount 'C:' can't be relative to 'D:'")
+
+        monkeypatch.setattr(os.path, "relpath", _raise)
+        assert _workspace_relative_uri("/abs/origin.py") == "/abs/origin.py"
 
 
 @pytest.mark.no_test_domain

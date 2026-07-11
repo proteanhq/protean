@@ -324,14 +324,17 @@ def _workspace_relative_uri(origin: str) -> str:
 
     GitHub Code Scanning resolves SARIF ``artifactLocation.uri`` — and GitHub
     Actions resolves an annotation's ``file=`` — against the workspace root
-    (``GITHUB_WORKSPACE``, the current working directory in CI). An absolute
-    filesystem path matches no file in the checked-out PR, so the finding is
-    dropped. Emit a path relative to the current directory instead, using ``/``
-    separators per the SARIF spec. Falls back to the absolute path only when a
+    (``GITHUB_WORKSPACE``). An absolute filesystem path matches no file in the
+    checked-out PR, so the finding is dropped. Emit a path relative to
+    ``GITHUB_WORKSPACE`` when it is set (so a workflow step that ``cd``s into a
+    subdirectory before running ``protean check`` still maps to the repo root),
+    falling back to the current working directory otherwise. Uses ``/``
+    separators per the SARIF spec, and returns the absolute path only when a
     relative path is impossible (e.g. a different drive on Windows).
     """
+    base = os.environ.get("GITHUB_WORKSPACE") or None
     try:
-        rel = os.path.relpath(origin)
+        rel = os.path.relpath(origin, start=base)
     except ValueError:
         return origin
     return rel.replace(os.sep, "/")
