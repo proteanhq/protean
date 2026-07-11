@@ -24,7 +24,7 @@ class Order(BaseAggregate):
 
 class TestVersionOption:
     def test_version_option_sets_version(self, test_domain):
-        """`version=N` sets `__version__` — the bug this fixes."""
+        """`version=N` sets `__version__` (previously it was silently ignored)."""
 
         @test_domain.event(part_of=Order, version=3)
         class OrderPlaced(BaseEvent):
