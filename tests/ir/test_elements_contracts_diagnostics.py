@@ -3633,6 +3633,34 @@ class TestCommandNotImperative:
         ]
         assert findings == []
 
+    def test_verb_prefix_requires_camelcase_boundary(self):
+        """`AddressChange` lowercases to `addresschange`, a naive substring
+        prefix match would see it starts with `add` and wrongly treat it as
+        imperative. It must still be flagged since `Address` is not `Add`
+        followed by a capitalized word."""
+        domain = Domain(name="CommandNamingBoundary", root_path=".")
+
+        @domain.command(part_of="Order")
+        class AddressChange:
+            order_id = Identifier(identifier=True)
+
+        @domain.command(part_of="Order")
+        class AddItem:
+            order_id = Identifier(identifier=True)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        findings = [
+            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
+        ]
+        flagged = {d["element"] for d in findings}
+        assert any("AddressChange" in f for f in flagged)
+        assert not any("AddItem" in f for f in flagged)
+
 
 @pytest.mark.no_test_domain
 class TestAggregateNotNoun:

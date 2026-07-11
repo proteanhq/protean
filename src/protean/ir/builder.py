@@ -3134,7 +3134,9 @@ class IRBuilder:
         act, so it reads best as an imperative verb phrase (``PlaceOrder``). A
         name that does not begin with a known imperative verb (``OrderCreation``,
         ``OrderCommand``) reads like a noun or an event. The prefix match is
-        case-insensitive.
+        case-insensitive and requires a CamelCase token boundary right after
+        the verb, so ``AddressChange`` is not mistaken for ``Add``-prefixed
+        (``AddItem``).
         """
         rule = {
             "rationale": (
@@ -3149,8 +3151,13 @@ class IRBuilder:
         }
         for cluster in ir["clusters"].values():
             for command in cluster["commands"].values():
-                name = command["name"].lower()
-                if not any(name.startswith(verb) for verb in IMPERATIVE_VERBS):
+                raw_name = command["name"]
+                name = raw_name.lower()
+                if not any(
+                    name.startswith(verb)
+                    and (len(raw_name) == len(verb) or raw_name[len(verb)].isupper())
+                    for verb in IMPERATIVE_VERBS
+                ):
                     self._diagnostics.append(
                         {
                             "category": "naming_conventions",
