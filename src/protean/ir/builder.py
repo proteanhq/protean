@@ -58,6 +58,69 @@ if TYPE_CHECKING:
         """
 
 
+# Naming-convention fitness functions (info-level advisory diagnostics).
+#
+# Imperative verbs a well-named command is expected to begin with. The check is
+# case-insensitive: the (lowercased) command name is compared against these
+# prefixes, so every entry is stored lowercase. This is a closed, pinned
+# heuristic floor — not an exhaustive lexicon — so teams whose ubiquitous
+# language uses verbs outside this set will see advisory (info) findings they
+# can silence per-element via ``suppress_checks``.
+IMPERATIVE_VERBS = {
+    "activate",
+    "add",
+    "approve",
+    "archive",
+    "assign",
+    "cancel",
+    "complete",
+    "confirm",
+    "convert",
+    "create",
+    "deactivate",
+    "delete",
+    "generate",
+    "mark",
+    "merge",
+    "place",
+    "process",
+    "publish",
+    "register",
+    "reject",
+    "remove",
+    "request",
+    "reset",
+    "restore",
+    "send",
+    "set",
+    "split",
+    "start",
+    "stop",
+    "submit",
+    "transfer",
+    "update",
+    "validate",
+}
+
+# Suffixes that signal an aggregate is named as a verb, gerund, or adjective
+# rather than a domain-concept noun. Agent-noun suffixes (``-er``/``-or``/
+# ``-ator``) are deliberately excluded so ``Customer``, ``Supplier``,
+# ``Vendor``, and ``Auditor`` pass without an allow-list. Matched
+# case-insensitively against a lowercased name, with a length guard so a name
+# equal to a suffix never self-matches.
+NON_NOUN_AGGREGATE_SUFFIXES = (
+    "ing",  # gerund / present participle: Processing, Shipping
+    "ify",  # verb infinitive:            Notify, Classify
+    "ize",  # verb infinitive (US):       Serialize, Authorize
+    "ise",  # verb infinitive (UK):       Serialise, Authorise
+    "ive",  # adjective:                  Recursive, Directive
+    "ous",  # adjective:                  Continuous, Ambiguous
+    "able",  # adjective:                  Cancelable, Schedulable
+    "ible",  # adjective:                  Convertible, Divisible
+    "ful",  # adjective:                  Delightful, Successful
+)
+
+
 def validate_lint_suppressions(suppressions: Any) -> str | None:
     """Return an error message if ``[lint].suppressions`` is malformed, else ``None``.
 
@@ -1509,6 +1572,9 @@ class IRBuilder:
         self._diagnose_deprecated_options(ir)
         self._diagnose_email_deprecated(ir)
         self._diagnose_aggregate_no_invariants(ir)
+        self._diagnose_event_not_past_tense(ir)
+        self._diagnose_command_not_imperative(ir)
+        self._diagnose_aggregate_not_noun(ir)
         # Custom lint rules from config
         self._run_custom_lint_rules(ir)
         # Suppression stage — runs last so custom-rule findings are also
@@ -3017,6 +3083,146 @@ class IRBuilder:
                         "suggestion": rule["fix"],
                     }
                 )
+
+    def _diagnose_event_not_past_tense(self, ir: dict[str, Any]) -> None:
+        """EVENT_NOT_PAST_TENSE: domain event named as a gerund, not past tense.
+
+        Advisory (info-level) naming check. A domain event records a fact that
+        has already happened, so it reads best in the past tense
+        (``OrderPlaced``). A gerund name (``OrderPlacing``) describes an
+        in-flight action and reads like a command. Framework-managed events —
+        fact events and auto-generated process-manager events — are not
+        user-named and are skipped.
+        """
+        rule = {
+            "rationale": (
+                "A domain event records a fact that has already happened, so a "
+                "past-tense name (`OrderPlaced`) reads truthfully; a gerund "
+                "(`OrderPlacing`) describes an in-flight action and reads like "
+                "a command."
+            ),
+            "fix": "Rename the event to the past tense (e.g. `OrderPlaced`).",
+        }
+        for cluster in ir["clusters"].values():
+            for event in cluster["events"].values():
+                # Framework-managed events (fact events, PM-generated events)
+                # are not user-named — skip them.
+                if event.get("is_fact_event", False) or event.get(
+                    "auto_generated", False
+                ):
+                    continue
+                if event["name"].lower().endswith("ing"):
+                    self._diagnostics.append(
+                        {
+                            "category": "naming_conventions",
+                            "code": "EVENT_NOT_PAST_TENSE",
+                            "element": event["fqn"],
+                            "level": "info",
+                            "message": (
+                                f"Event `{event['name']}` is named as a gerund; "
+                                f"domain events read best in the past tense"
+                            ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
+                        }
+                    )
+
+    def _diagnose_command_not_imperative(self, ir: dict[str, Any]) -> None:
+        """COMMAND_NOT_IMPERATIVE: command not named as an imperative verb phrase.
+
+        Advisory (info-level) naming check. A command expresses an intent to
+        act, so it reads best as an imperative verb phrase (``PlaceOrder``). A
+        name that does not begin with a known imperative verb (``OrderCreation``,
+        ``OrderCommand``) reads like a noun or an event. The prefix match is
+        case-insensitive and requires a CamelCase token boundary right after
+        the verb, so ``AddressChange`` is not mistaken for ``Add``-prefixed
+        (``AddItem``).
+        """
+        rule = {
+            "rationale": (
+                "A command expresses an intent to act, so a verb-first "
+                "imperative name (`PlaceOrder`) reads truthfully; a noun-like "
+                "name (`OrderCreation`) obscures the intent."
+            ),
+            "fix": (
+                "Rename the command to a verb-first imperative phrase "
+                "(e.g. `PlaceOrder`)."
+            ),
+        }
+        for cluster in ir["clusters"].values():
+            for command in cluster["commands"].values():
+                raw_name = command["name"]
+                name = raw_name.lower()
+                if not any(
+                    name.startswith(verb)
+                    and (len(raw_name) == len(verb) or raw_name[len(verb)].isupper())
+                    for verb in IMPERATIVE_VERBS
+                ):
+                    self._diagnostics.append(
+                        {
+                            "category": "naming_conventions",
+                            "code": "COMMAND_NOT_IMPERATIVE",
+                            "element": command["fqn"],
+                            "level": "info",
+                            "message": (
+                                f"Command `{command['name']}` does not start "
+                                f"with an imperative verb; commands read best "
+                                f"as verb-first phrases"
+                            ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
+                        }
+                    )
+
+    def _diagnose_aggregate_not_noun(self, ir: dict[str, Any]) -> None:
+        """AGGREGATE_NOT_NOUN: aggregate named as a verb, gerund, or adjective.
+
+        Advisory (info-level) naming check. An aggregate models a *thing* in
+        the domain, so it reads best as a noun (``Order``, ``Customer``). A
+        gerund, verb, or adjective name (``OrderProcessing``, ``Notify``,
+        ``Recursive``) reads like a process or a capability rather than a
+        concept. Agent nouns legitimately end in ``-er``/``-or``/``-ator``
+        (``Customer``, ``Auditor``) and are *not* flagged. Infrastructure
+        aggregates under ``protean.adapters.`` are skipped.
+        """
+        rule = {
+            "rationale": (
+                "An aggregate models a thing in the domain, so a noun name "
+                "(`Order`) reads truthfully; a gerund, verb, or adjective "
+                "(`OrderProcessing`) reads like a process or capability rather "
+                "than an entity."
+            ),
+            "fix": (
+                "Rename the aggregate to the domain-concept noun it represents "
+                "(e.g. `Order` rather than `OrderProcessing`)."
+            ),
+        }
+        for cluster in ir["clusters"].values():
+            aggregate = cluster["aggregate"]
+            # Skip infrastructure aggregates
+            if aggregate["fqn"].startswith("protean.adapters."):
+                continue
+            name = aggregate["name"]
+            lowered = name.lower()
+            for suffix in NON_NOUN_AGGREGATE_SUFFIXES:
+                # Length guard: a name equal to a suffix must not self-match.
+                if lowered.endswith(suffix) and len(name) > len(suffix):
+                    self._diagnostics.append(
+                        {
+                            "category": "naming_conventions",
+                            "code": "AGGREGATE_NOT_NOUN",
+                            "element": aggregate["fqn"],
+                            "level": "info",
+                            "message": (
+                                f"Aggregate `{name}` is named as a verb, "
+                                f"gerund, or adjective; aggregates read best "
+                                f"as nouns"
+                            ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
+                        }
+                    )
+                    break
 
     # ------------------------------------------------------------------
     # Custom lint rules
