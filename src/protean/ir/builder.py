@@ -2283,8 +2283,8 @@ class IRBuilder:
                                 f"`{index_name}` but is an unbounded string "
                                 f"(`{field_type}`). SQL Server rejects indexes "
                                 f"on unbounded strings, MySQL requires an "
-                                f"explicit prefix length, and PostgreSQL indexes "
-                                f"with storage and performance overhead."
+                                f"explicit prefix length, and PostgreSQL builds "
+                                f"the index with storage and performance overhead."
                             ),
                             "rule": rule,
                             "suggestion": (
