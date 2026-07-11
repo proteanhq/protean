@@ -10,9 +10,11 @@ Usage::
 
 from __future__ import annotations
 
+import ast
 import datetime as _dt
 import hashlib
 import importlib
+import importlib.util
 import json
 import logging
 import types as _types
@@ -1492,6 +1494,8 @@ class IRBuilder:
         self._diagnose_cross_aggregate_reference(ir)
         self._diagnose_es_aggregate_no_events(ir)
         self._diagnose_value_object_mutable_field(ir)
+        self._diagnose_circular_cluster_dependencies(ir)
+        self._diagnose_infra_imports(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
@@ -1505,6 +1509,284 @@ class IRBuilder:
         # Suppression stage — runs last so custom-rule findings are also
         # subject to per-element ``suppress_checks`` and ``[lint].suppressions``.
         self._apply_suppressions()
+
+    def _diagnose_circular_cluster_dependencies(self, ir: dict[str, Any]) -> None:
+        """CIRCULAR_CLUSTER_DEPENDENCY: aggregate clusters whose cross-aggregate
+        identity references form a directed cycle.
+
+        Edges are genuine inter-cluster dependencies only: a field of
+        kind "reference" whose target is another cluster's aggregate root. The
+        within-aggregate child->root back-pointer (auto-generated Reference) and
+        any intra-cluster reference are excluded by the ``target != cluster_fqn``
+        guard, because every element in a cluster shares that cluster's FQN.
+
+        Cyclic clusters are found by strongly-connected-component membership,
+        not by first-cycle discovery: every cluster in a strongly-connected
+        component of size >= 2 is mutually reachable from every other, so each
+        is genuinely part of a directed cycle and is reported exactly once —
+        even when it sits on a second cycle or is only reachable through an
+        already-finalized node. Node and neighbour orderings are sorted, so the
+        reported set and message are deterministic.
+        """
+        cluster_fqns = set(ir["clusters"].keys())
+
+        # 1. Build adjacency: cluster_fqn -> sorted list of target cluster FQNs.
+        adjacency: dict[str, list[str]] = {}
+        for cluster_fqn, cluster in ir["clusters"].items():
+            targets: set[str] = set()
+            entities = [cluster["aggregate"], *cluster["entities"].values()]
+            for element in entities:
+                for field in element.get("fields", {}).values():
+                    if field.get("kind") != "reference":
+                        continue
+                    target = field.get("target")
+                    if target in cluster_fqns and target != cluster_fqn:
+                        targets.add(target)
+            adjacency[cluster_fqn] = sorted(targets)
+
+        # 2. One diagnostic per cluster in each cyclic component. A component of
+        #    size >= 2 is exactly the set of mutually-dependent clusters (a
+        #    self-loop is impossible here — ``target != cluster_fqn`` guards it).
+        for component in self._strongly_connected_components(adjacency):
+            if len(component) >= 2:
+                self._emit_cluster_cycle(component)
+
+    @staticmethod
+    def _strongly_connected_components(
+        adjacency: dict[str, list[str]],
+    ) -> list[list[str]]:
+        """Tarjan's SCC algorithm, iterative (no recursion-limit risk on deep
+        graphs).
+
+        Returns each strongly-connected component as a sorted member list, and
+        the components themselves in sorted order, so the caller emits a stable,
+        byte-identical result across builds. Every node appears in exactly one
+        component, so a cluster on two overlapping cycles is reported once.
+        """
+        index_of: dict[str, int] = {}
+        lowlink: dict[str, int] = {}
+        on_stack: dict[str, bool] = {}
+        tarjan_stack: list[str] = []
+        components: list[list[str]] = []
+        counter = 0
+
+        for start in sorted(adjacency):
+            if start in index_of:
+                continue
+            # Explicit work stack of [node, next-neighbour-index] frames.
+            work: list[list[Any]] = [[start, 0]]
+            while work:
+                node, i = work[-1]
+                if i == 0:
+                    index_of[node] = lowlink[node] = counter
+                    counter += 1
+                    tarjan_stack.append(node)
+                    on_stack[node] = True
+                neighbours = adjacency[node]
+                recursed = False
+                while i < len(neighbours):
+                    nxt = neighbours[i]
+                    i += 1
+                    if nxt not in index_of:
+                        work[-1][1] = i  # resume after this neighbour
+                        work.append([nxt, 0])
+                        recursed = True
+                        break
+                    if on_stack.get(nxt):
+                        lowlink[node] = min(lowlink[node], index_of[nxt])
+                if recursed:
+                    continue
+                # Node fully explored: close a component if it is a root.
+                if lowlink[node] == index_of[node]:
+                    component: list[str] = []
+                    while True:
+                        w = tarjan_stack.pop()
+                        on_stack[w] = False
+                        component.append(w)
+                        if w == node:
+                            break
+                    components.append(sorted(component))
+                work.pop()
+                if work:  # propagate lowlink up to the parent frame
+                    parent = work[-1][0]
+                    lowlink[parent] = min(lowlink[parent], lowlink[node])
+
+        return sorted(components)
+
+    def _emit_cluster_cycle(self, component: list[str]) -> None:
+        """Append one CIRCULAR_CLUSTER_DEPENDENCY diagnostic per cluster in the
+        strongly-connected component, naming the whole mutually-dependent group
+        so the reported set is stable and each cluster is reported once."""
+        group = ", ".join(f"`{fqn}`" for fqn in component)
+        for cluster_fqn in component:
+            self._diagnostics.append(
+                {
+                    "code": "CIRCULAR_CLUSTER_DEPENDENCY",
+                    "category": "bounded_context",
+                    "element": cluster_fqn,
+                    "level": "warning",
+                    "message": (
+                        f"Cluster `{cluster_fqn}` participates in a circular "
+                        f"dependency among clusters: {group}"
+                    ),
+                    "rule": {
+                        "rationale": (
+                            "Circular identity references between aggregate "
+                            "clusters prevent independent decomposition, "
+                            "deployment, and event sourcing of the aggregates."
+                        ),
+                        "fix": (
+                            "Break the cycle by replacing one direction of the "
+                            "reference with a domain event or a process manager "
+                            "that coordinates the two aggregates asynchronously."
+                        ),
+                    },
+                    "suggestion": (
+                        "Break the cycle by replacing one direction of the "
+                        "reference with a domain event or a process manager "
+                        "that coordinates the two aggregates asynchronously."
+                    ),
+                }
+            )
+
+    def _diagnose_infra_imports(self, ir: dict[str, Any]) -> None:
+        """INFRA_IMPORT_IN_DOMAIN (opt-in): a domain element's source module
+        imports from ``protean.adapters``, coupling the domain layer to a
+        concrete adapter.
+
+        Off by default; runs only when ``[lint].check_infra_imports`` is true,
+        because it reads and AST-parses source files.
+
+        Scans *every* registered domain element — aggregates, entities, value
+        objects, repositories, handlers, domain services, process managers,
+        subscribers, and so on — not just aggregate-cluster members, because
+        infrastructure coupling is at least as likely in a repository or a
+        handler as in an aggregate.
+        """
+        if not self._domain.config.get("lint", {}).get("check_infra_imports", False):
+            return
+
+        INFRA_PREFIX = "protean.adapters"
+        # module -> True/False cache of "imports infra", to parse each file once.
+        module_flags: dict[str, bool] = {}
+
+        def _module_level_imports(tree: ast.Module) -> list[ast.stmt]:
+            """Import statements at the module's top level only.
+
+            Nested imports are deliberately excluded: a ``TYPE_CHECKING`` guard,
+            an ``except ImportError`` fallback, or a function-local lazy import
+            introduce no runtime coupling — they are the idiomatic ways to
+            *avoid* it — so flagging them would be a false positive.
+            """
+            return [
+                node
+                for node in tree.body
+                if isinstance(node, (ast.Import, ast.ImportFrom))
+            ]
+
+        def _import_names(node: ast.AST) -> list[str]:
+            """Dotted names an import statement brings the adapter package under.
+
+            ``ast.ImportFrom`` must also contribute the imported alias names so
+            ``from protean import adapters`` (module ``protean``, alias
+            ``adapters``) is matched, not just ``from protean.adapters import``.
+            """
+            if isinstance(node, ast.Import):
+                return [a.name for a in node.names]
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                return [module] + [
+                    f"{module}.{a.name}" if module else a.name for a in node.names
+                ]
+            # Unreachable: callers only pass ``ast.Import``/``ast.ImportFrom``
+            # nodes filtered by ``_module_level_imports``.
+            return []  # pragma: no cover
+
+        def _module_imports_infra(module: str) -> bool:
+            if module in module_flags:
+                return module_flags[module]
+            flag = False
+            try:
+                spec = importlib.util.find_spec(module)
+            # Broad by design: ``find_spec`` may import a not-yet-loaded parent
+            # package and re-execute its ``__init__``, which can raise anything.
+            # Fail open (skip the module) rather than abort the diagnostics pass.
+            except Exception:
+                spec = None
+            origin = getattr(spec, "origin", None) if spec else None
+            if origin and origin not in ("built-in", "frozen"):
+                try:
+                    with open(origin, encoding="utf-8") as fh:
+                        tree = ast.parse(fh.read())
+                except (OSError, SyntaxError, ValueError):
+                    tree = None
+                if tree is not None:
+                    for node in _module_level_imports(tree):
+                        names = _import_names(node)
+                        if any(
+                            n == INFRA_PREFIX or n.startswith(INFRA_PREFIX + ".")
+                            for n in names
+                        ):
+                            flag = True
+                            break
+            module_flags[module] = flag
+            return flag
+
+        # Iterate every non-internal registered element in a stable (fqn) order
+        # so emitted diagnostics are deterministic.
+        registry = self._domain._domain_registry
+        seen: set[str] = set()
+        scanned: list[tuple[str, str, str]] = []  # (fqn, name, module)
+        for records in registry._elements.values():
+            for record in records.values():
+                if record.internal:
+                    continue
+                element_fqn = fqn(record.cls)
+                if element_fqn in seen:
+                    continue
+                seen.add(element_fqn)
+                module = getattr(record.cls, "__module__", None)
+                if module:
+                    scanned.append((element_fqn, record.cls.__name__, module))
+
+        for element_fqn, name, module in sorted(scanned):
+            if _module_imports_infra(module):
+                self._diagnostics.append(
+                    {
+                        "code": "INFRA_IMPORT_IN_DOMAIN",
+                        "category": "bounded_context",
+                        "element": element_fqn,
+                        "level": "warning",
+                        "message": (
+                            f"Domain element `{name}` "
+                            f"(module `{module}`) imports from "
+                            f"`protean.adapters`."
+                        ),
+                        "rule": {
+                            "rationale": (
+                                "Domain elements must not depend on concrete "
+                                "infrastructure adapters; importing from "
+                                "`protean.adapters` couples the domain layer "
+                                "to a specific adapter and breaks the "
+                                "ports-and-adapters boundary."
+                            ),
+                            "fix": (
+                                "Remove the `protean.adapters` import from "
+                                "the domain module. Depend on domain-layer "
+                                "abstractions and let the adapter be wired "
+                                "through the domain's provider configuration "
+                                "instead."
+                            ),
+                        },
+                        "suggestion": (
+                            "Remove the `protean.adapters` import from the "
+                            "domain module. Depend on domain-layer "
+                            "abstractions and let the adapter be wired "
+                            "through the domain's provider configuration "
+                            "instead."
+                        ),
+                    }
+                )
 
     def _apply_suppressions(self) -> None:
         """Filter collected diagnostics through the two suppression channels.

@@ -3,8 +3,9 @@
 import pytest
 
 from protean import Domain, handle
-from protean.core.aggregate import apply
+from protean.core.aggregate import BaseAggregate, apply
 from protean.core.entity import invariant
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, ValidationError
 from protean.fields import Dict, HasMany, HasOne, Identifier, List, Reference
 from protean.fields.simple import Float, String
@@ -12,6 +13,11 @@ from protean.ir.builder import IRBuilder
 from protean.utils import fqn
 
 from .elements import build_published_event_domain
+from .support import (
+    infra_from_import_domain,
+    infra_guarded_domain,
+    infra_import_domain,
+)
 
 
 def build_diagnostics_test_domain() -> Domain:
@@ -1110,6 +1116,8 @@ _BUILTIN_CODES = frozenset(
         "ES_AGGREGATE_NO_EVENTS",
         "VALUE_OBJECT_MUTABLE_FIELD",
         "AGGREGATE_NO_INVARIANTS",
+        "CIRCULAR_CLUSTER_DEPENDENCY",
+        "INFRA_IMPORT_IN_DOMAIN",
     }
 )
 
@@ -1277,6 +1285,30 @@ def _all_builtin_diagnostics() -> list[dict]:
 
     email_domain.init(traverse=False)
     diagnostics += IRBuilder(email_domain).build()["diagnostics"]
+
+    # CIRCULAR_CLUSTER_DEPENDENCY — a 2-cluster identity-reference cycle.
+    cycle_domain = Domain(name="EnrichCycle", root_path=".")
+
+    @cycle_domain.aggregate
+    class CycleOrder:
+        name = String(max_length=10)
+        customer = Reference("CycleCustomer")
+
+    @cycle_domain.aggregate
+    class CycleCustomer:
+        name = String(max_length=10)
+        order = Reference("CycleOrder")
+
+    cycle_domain.init(traverse=False)
+    diagnostics += IRBuilder(cycle_domain).build()["diagnostics"]
+
+    # INFRA_IMPORT_IN_DOMAIN — opt-in; the fixture module imports protean.adapters.
+    infra_domain = Domain(name="EnrichInfra", root_path=".")
+    infra_domain.config["lint"] = {"check_infra_imports": True}
+    infra_domain.register(infra_import_domain.Money)
+    infra_domain.register(infra_import_domain.InfraOrder)
+    infra_domain.init(traverse=False)
+    diagnostics += IRBuilder(infra_domain).build()["diagnostics"]
 
     return diagnostics
 
@@ -2180,3 +2212,491 @@ class TestAggregateNoInvariants:
         # Suppressed on Order, yet the identical shape on Shipment still fires.
         assert "AGGREGATE_NO_INVARIANTS" not in _codes_for(ir, "Order")
         assert "AGGREGATE_NO_INVARIANTS" in _codes_for(ir, "Shipment")
+
+
+# ── CIRCULAR_CLUSTER_DEPENDENCY ─────────────────────────────────────
+
+
+def _circular_findings(ir: dict) -> list[dict]:
+    return [d for d in ir["diagnostics"] if d["code"] == "CIRCULAR_CLUSTER_DEPENDENCY"]
+
+
+@pytest.mark.no_test_domain
+class TestCircularClusterDependency:
+    """CIRCULAR_CLUSTER_DEPENDENCY flags aggregate clusters whose cross-cluster
+    identity references form a directed cycle, and only those."""
+
+    def test_two_cluster_cycle_flags_both(self):
+        domain = Domain(name="TwoCycle", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+            customer = Reference("Customer")
+
+        @domain.aggregate
+        class Customer:
+            name = String(max_length=50)
+            latest_order = Reference("Order")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        findings = _circular_findings(ir)
+        assert len(findings) == 2, "one diagnostic per participating cluster"
+        assert sorted(d["element"] for d in findings) == sorted(
+            [fqn(Order), fqn(Customer)]
+        )
+        for d in findings:
+            assert d["level"] == "warning"
+            assert d["category"] == "bounded_context"
+            # The message names the whole mutually-dependent group.
+            assert fqn(Order) in d["message"]
+            assert fqn(Customer) in d["message"]
+            assert d["element"] in d["message"]
+
+    def test_three_cluster_cycle_is_deterministic(self):
+        def build() -> dict:
+            domain = Domain(name="ThreeCycle", root_path=".")
+
+            @domain.aggregate
+            class A:
+                name = String(max_length=50)
+                b = Reference("B")
+
+            @domain.aggregate
+            class B:
+                name = String(max_length=50)
+                c = Reference("C")
+
+            @domain.aggregate
+            class C:
+                name = String(max_length=50)
+                a = Reference("A")
+
+            domain.init(traverse=False)
+            return IRBuilder(domain).build()
+
+        first = _circular_findings(build())
+        assert len(first) == 3, "one diagnostic per cluster in the 3-cycle"
+
+        # The reported chain is byte-identical across independent builds.
+        second = _circular_findings(build())
+        assert [d["message"] for d in first] == [d["message"] for d in second]
+
+    def test_node_reachable_only_through_finalized_node_is_flagged(self):
+        """SCC membership, not first-cycle discovery: in ``A->B, B->C, C->A,
+        B->D, D->C`` every cluster is in one strongly-connected component
+        (``D->C->A->B->D`` is a genuine cycle through ``D``). A plain DFS that
+        only closes on an on-stack neighbour would miss ``D`` once ``C`` is
+        finalized; SCC membership reports all four, each exactly once."""
+        domain = Domain(name="SccReach", root_path=".")
+
+        @domain.aggregate
+        class A:
+            name = String(max_length=50)
+            b = Reference("B")
+
+        @domain.aggregate
+        class B:
+            name = String(max_length=50)
+            c = Reference("C")
+            d = Reference("D")
+
+        @domain.aggregate
+        class C:
+            name = String(max_length=50)
+            a = Reference("A")
+
+        @domain.aggregate
+        class D:
+            name = String(max_length=50)
+            c = Reference("C")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        findings = _circular_findings(ir)
+        elements = [d["element"] for d in findings]
+        assert sorted(elements) == sorted([fqn(A), fqn(B), fqn(C), fqn(D)])
+        # Each cluster reported exactly once, no duplicates.
+        assert len(elements) == len(set(elements))
+
+    def test_cluster_on_two_cycles_is_reported_once(self):
+        """A figure-eight — ``A<->B`` and ``A<->C`` — puts ``A`` on two distinct
+        cycles. Frozenset-per-cycle dedup would emit ``A`` twice; SCC membership
+        (all three are one component) emits each exactly once."""
+        domain = Domain(name="FigureEight", root_path=".")
+
+        @domain.aggregate
+        class A:
+            name = String(max_length=50)
+            b = Reference("B")
+            c = Reference("C")
+
+        @domain.aggregate
+        class B:
+            name = String(max_length=50)
+            a = Reference("A")
+
+        @domain.aggregate
+        class C:
+            name = String(max_length=50)
+            a = Reference("A")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _circular_findings(ir)]
+        assert sorted(elements) == sorted([fqn(A), fqn(B), fqn(C)])
+        assert elements.count(fqn(A)) == 1, "cluster on two cycles reported once"
+
+    def test_two_disjoint_cycles_do_not_bleed(self):
+        """Two independent 2-cycles plus an acyclic bridge: each cycle is its
+        own component, the bridge cluster is in neither, so exactly the four
+        cyclic clusters are flagged."""
+        domain = Domain(name="TwoDisjoint", root_path=".")
+
+        @domain.aggregate
+        class A:
+            name = String(max_length=50)
+            b = Reference("B")
+
+        @domain.aggregate
+        class B:
+            name = String(max_length=50)
+            a = Reference("A")
+            bridge = Reference("Bridge")
+
+        @domain.aggregate
+        class Bridge:
+            name = String(max_length=50)
+            c = Reference("C")
+
+        @domain.aggregate
+        class C:
+            name = String(max_length=50)
+            d = Reference("D")
+
+        @domain.aggregate
+        class D:
+            name = String(max_length=50)
+            c = Reference("C")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _circular_findings(ir)]
+        assert sorted(elements) == sorted([fqn(A), fqn(B), fqn(C), fqn(D)])
+        assert fqn(Bridge) not in elements, "acyclic bridge is not part of a cycle"
+
+    def test_acyclic_chain_is_not_flagged(self):
+        domain = Domain(name="Acyclic", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+            customer = Reference("Customer")
+
+        @domain.aggregate
+        class Customer:
+            name = String(max_length=50)
+            region = Reference("Region")
+
+        @domain.aggregate
+        class Region:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _circular_findings(ir) == []
+
+    def test_auto_generated_back_pointer_is_not_an_edge(self):
+        """The false-edge guard: an entity declared with ``part_of`` gets an
+        auto-generated Reference back at its own root, targeting the entity's
+        own cluster FQN. ``target != cluster_fqn`` must drop it, so no self-loop
+        cycle is reported."""
+        domain = Domain(name="BackPointer", root_path=".")
+
+        @domain.entity(part_of="Order")
+        class LineItem:
+            sku = String(max_length=50)
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _circular_findings(ir) == []
+
+    def test_intra_cluster_explicit_reference_is_not_an_edge(self):
+        """An entity holding an *explicit* Reference to its own aggregate root
+        is intra-cluster (shares the root's FQN as its cluster), so it must not
+        become a graph edge either."""
+        domain = Domain(name="IntraRef", root_path=".")
+
+        @domain.entity(part_of="Order")
+        class LineItem:
+            sku = String(max_length=50)
+            parent = Reference("Order")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _circular_findings(ir) == []
+
+    def test_per_element_suppression_removes_only_that_cluster(self):
+        domain = Domain(name="CycleSuppress", root_path=".")
+
+        @domain.aggregate(suppress_checks=["CIRCULAR_CLUSTER_DEPENDENCY"])
+        class Order:
+            name = String(max_length=50)
+            customer = Reference("Customer")
+
+        @domain.aggregate
+        class Customer:
+            name = String(max_length=50)
+            latest_order = Reference("Order")
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _circular_findings(ir)]
+        assert fqn(Order) not in elements, "suppressed cluster is gone"
+        assert elements == [fqn(Customer)], "the other cluster survives"
+
+
+# ── INFRA_IMPORT_IN_DOMAIN ──────────────────────────────────────────
+
+
+def _infra_findings(ir: dict) -> list[dict]:
+    return [d for d in ir["diagnostics"] if d["code"] == "INFRA_IMPORT_IN_DOMAIN"]
+
+
+def _build_infra_domain(name: str, lint: dict | None = None, **register_kwargs):
+    """Register the infra-importing fixture aggregate (and its embedded value
+    object) onto a fresh domain. ``register_kwargs`` flow to the aggregate."""
+    domain = Domain(name=name, root_path=".")
+    if lint is not None:
+        domain.config["lint"] = lint
+    domain.register(infra_import_domain.Money)
+    domain.register(infra_import_domain.InfraOrder, **register_kwargs)
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.mark.no_test_domain
+class TestInfraImportInDomain:
+    """INFRA_IMPORT_IN_DOMAIN (opt-in) flags domain elements whose source module
+    imports from ``protean.adapters``."""
+
+    def test_on_path_flags_infra_importing_aggregate(self):
+        domain = _build_infra_domain("InfraOn", {"check_infra_imports": True})
+        ir = IRBuilder(domain).build()
+
+        agg_fqn = fqn(infra_import_domain.InfraOrder)
+        agg = [d for d in _infra_findings(ir) if d["element"] == agg_fqn]
+        assert len(agg) == 1
+        d = agg[0]
+        assert d["level"] == "warning"
+        assert d["category"] == "bounded_context"
+        assert infra_import_domain.InfraOrder.__module__ in d["message"]
+        assert "protean.adapters" in d["message"]
+
+    def test_emits_once_per_element_in_the_module(self):
+        """The aggregate and the value object both live in the infra-importing
+        module, so each is flagged with its own FQN."""
+        domain = _build_infra_domain("InfraPerElement", {"check_infra_imports": True})
+        ir = IRBuilder(domain).build()
+
+        elements = sorted(d["element"] for d in _infra_findings(ir))
+        assert elements == sorted(
+            [
+                fqn(infra_import_domain.InfraOrder),
+                fqn(infra_import_domain.Money),
+            ]
+        )
+
+    def test_default_off_emits_nothing(self):
+        """With the flag absent the method returns immediately — no file is
+        parsed, no diagnostic is emitted, even though the module does import
+        infra."""
+        domain = _build_infra_domain("InfraOff")
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_clean_domain_with_flag_on_is_not_flagged(self):
+        """An element module importing only ``protean.fields`` (this test
+        module) must not be flagged, even with the rule on — no over-flagging on
+        legitimate framework imports."""
+        domain = Domain(name="CleanInfra", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_per_element_suppression_removes_only_that_element(self):
+        domain = _build_infra_domain(
+            "InfraSuppress",
+            {"check_infra_imports": True},
+            suppress_checks=["INFRA_IMPORT_IN_DOMAIN"],
+        )
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _infra_findings(ir)]
+        assert fqn(infra_import_domain.InfraOrder) not in elements
+        # The value object in the same module is untouched by the aggregate's
+        # per-element suppression.
+        assert fqn(infra_import_domain.Money) in elements
+
+    def test_suppressions_allow_list_grandfathers_first_n(self):
+        """Two infra-importing elements with ``suppressions = {code: 1}`` leaves
+        exactly one survivor — the deterministically-ranked tail."""
+        domain = _build_infra_domain(
+            "InfraAllowList",
+            {
+                "check_infra_imports": True,
+                "suppressions": {"INFRA_IMPORT_IN_DOMAIN": 1},
+            },
+        )
+        ir = IRBuilder(domain).build()
+
+        survivors = [d["element"] for d in _infra_findings(ir)]
+        assert len(survivors) == 1
+        all_elements = sorted(
+            [
+                fqn(infra_import_domain.InfraOrder),
+                fqn(infra_import_domain.Money),
+            ]
+        )
+        # First in (code, element, ...) order is grandfathered; the tail lives.
+        assert survivors == all_elements[1:]
+
+    def test_non_cluster_element_is_scanned(self):
+        """A repository is not an aggregate-cluster member, yet it lives in the
+        infra-importing module. The scan covers *every* registered domain
+        element, so the repository is flagged too — not just the aggregate and
+        value object inside the cluster."""
+        domain = _build_infra_domain("InfraRepo", {"check_infra_imports": True})
+        domain.register(
+            infra_import_domain.InfraOrderRepository,
+            part_of=infra_import_domain.InfraOrder,
+        )
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _infra_findings(ir)]
+        assert fqn(infra_import_domain.InfraOrderRepository) in elements
+
+    def test_from_import_alias_form_is_detected(self):
+        """``from protean import adapters`` (module ``protean``, alias
+        ``adapters``) must be caught — the rule inspects imported alias names,
+        not only ``ImportFrom.module``."""
+        domain = Domain(name="InfraFromForm", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        domain.register(infra_from_import_domain.FromFormOrder)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        elements = [d["element"] for d in _infra_findings(ir)]
+        assert fqn(infra_from_import_domain.FromFormOrder) in elements
+
+    def test_guarded_and_lazy_imports_are_not_flagged(self):
+        """An adapter import reachable only under ``TYPE_CHECKING`` or inside a
+        method body introduces no module-level runtime coupling, so it must not
+        be flagged — those are the idiomatic ways to avoid coupling."""
+        domain = Domain(name="InfraGuarded", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        domain.register(infra_guarded_domain.GuardedOrder)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_unresolvable_module_fails_open(self):
+        """When ``find_spec`` raises (e.g. a ``__module__`` whose parent is not a
+        package), the rule fails open — the module is skipped, no diagnostic is
+        emitted, and the diagnostics pass is not aborted."""
+        domain = Domain(name="InfraUnresolvable", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        # ``os`` is a module, not a package, so ``find_spec('os.no_such_sub')``
+        # raises ModuleNotFoundError.
+        broken = type(
+            "BrokenModuleVO",
+            (BaseValueObject,),
+            {"__module__": "os.no_such_sub", "amount": String(max_length=5)},
+        )
+        domain.register(broken)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_unparseable_source_fails_open(self, monkeypatch):
+        """When a resolved source file cannot be AST-parsed, the rule fails open:
+        the module is treated as not importing infra rather than crashing the
+        build."""
+        monkeypatch.setattr(
+            "protean.ir.builder.ast.parse",
+            lambda *a, **k: (_ for _ in ()).throw(SyntaxError("boom")),
+        )
+        domain = _build_infra_domain("InfraUnparseable", {"check_infra_imports": True})
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
+
+    def test_duplicate_fqn_is_scanned_once(self):
+        """Two distinct classes sharing a fully-qualified name (same module and
+        name, different element buckets) are scanned once, not twice — the
+        ``seen`` guard dedupes by FQN, so the infra-importing FQN is flagged a
+        single time."""
+        domain = Domain(name="InfraDup", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        module = infra_import_domain.__name__
+        vo = type(
+            "DupElement",
+            (BaseValueObject,),
+            {"__module__": module, "amount": String(max_length=5)},
+        )
+        agg = type(
+            "DupElement",
+            (BaseAggregate,),
+            {"__module__": module, "name": String(max_length=5)},
+        )
+        domain.register(vo)
+        domain.register(agg)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        dup_fqn = f"{module}.DupElement"
+        assert [d["element"] for d in _infra_findings(ir)].count(dup_fqn) == 1
+
+    def test_element_without_module_is_skipped(self):
+        """An element whose ``__module__`` is empty contributes no source file to
+        scan, so it is skipped without error."""
+        domain = Domain(name="InfraNoModule", root_path=".")
+        domain.config["lint"] = {"check_infra_imports": True}
+        no_module = type(
+            "NoModuleVO",
+            (BaseValueObject,),
+            {"__module__": "", "amount": String(max_length=5)},
+        )
+        domain.register(no_module)
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        assert _infra_findings(ir) == []
