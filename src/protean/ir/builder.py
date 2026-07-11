@@ -1563,6 +1563,7 @@ class IRBuilder:
         self._diagnose_projector_handles_orphaned_event(ir)
         self._diagnose_command_handler_cross_cluster(ir)
         self._diagnose_unbounded_indexed_string(ir)
+        self._diagnose_event_handler_foreign_event(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
@@ -1859,6 +1860,80 @@ class IRBuilder:
                         ),
                     }
                 )
+
+    def _diagnose_event_handler_foreign_event(self, ir: dict[str, Any]) -> None:
+        """EVENT_HANDLER_FOREIGN_EVENT: an event handler whose ``part_of``
+        cluster differs from the cluster that owns an event it handles.
+
+        Scope is ``event_handlers`` only. Projectors and process managers are
+        designed to consume events across clusters, so they are excluded by
+        construction — this rule never reads ``ir["projections"]`` or
+        ``ir["flows"]``. A handled ``__type__`` owned by no cluster, or owned
+        ambiguously by more than one cluster (``__type__`` encodes only the
+        domain and class name, so same-named events in different clusters
+        collide), is not flagged — there is no single deterministic owner to
+        compare against.
+        """
+        type_to_owner: dict[str, tuple[str, str, str] | None] = {}
+        for cluster_fqn, cluster in ir["clusters"].items():
+            for event in cluster["events"].values():
+                event_type = event.get("__type__")
+                if not event_type:
+                    continue
+                if event_type in type_to_owner:
+                    # Collision: __type__ owned by more than one cluster.
+                    # No single deterministic owner — treat like an orphan.
+                    type_to_owner[event_type] = None
+                else:
+                    type_to_owner[event_type] = (
+                        cluster_fqn,
+                        cluster["aggregate"]["name"],
+                        event["name"],
+                    )
+
+        rule = {
+            "rationale": (
+                "An event handler should react to events of its own "
+                "aggregate cluster. Handling another cluster's event "
+                "couples two aggregates through the handler and is often "
+                "better expressed as a Process Manager coordinating the two."
+            ),
+            "fix": (
+                "Move the handler into the owning cluster, or introduce a "
+                "ProcessManager that reacts to the source event and issues "
+                "a command into this cluster."
+            ),
+        }
+
+        for handler_cluster_fqn, cluster in ir["clusters"].items():
+            handler_cluster_name = cluster["aggregate"]["name"]
+            for eh in cluster["event_handlers"].values():
+                for handled_type in eh.get("handlers", {}):
+                    owner = type_to_owner.get(handled_type)
+                    if owner is None:
+                        continue
+                    owner_cluster_fqn, owner_cluster_name, event_name = owner
+                    if owner_cluster_fqn == handler_cluster_fqn:
+                        continue
+                    self._diagnostics.append(
+                        {
+                            "category": "handler_completeness",
+                            "code": "EVENT_HANDLER_FOREIGN_EVENT",
+                            "element": eh["fqn"],
+                            "level": "warning",
+                            "message": (
+                                f"{eh['name']} (part_of {handler_cluster_name}) "
+                                f"handles event {event_name}, owned by "
+                                f"cluster {owner_cluster_name}. Cross-cluster "
+                                f"event handling couples two aggregates; "
+                                f"consider a ProcessManager to mediate the "
+                                f"interaction if the events have causal "
+                                f"dependencies."
+                            ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
+                        }
+                    )
 
     def _apply_suppressions(self) -> None:
         """Filter collected diagnostics through the two suppression channels.
