@@ -2074,8 +2074,8 @@ class IRBuilder:
             "fix": (
                 "Replace the mutable collection with an immutable representation, "
                 "or move the collection onto the containing entity or aggregate. "
-                "If the values form a concept, model them as their own value "
-                "object referenced by identity."
+                "If the values form a concept with its own identity, model them "
+                "as an entity referenced by the aggregate instead."
             ),
         }
         for cluster in ir["clusters"].values():
