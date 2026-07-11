@@ -1,10 +1,10 @@
-"""Opt-in microbenchmark for the outbox poll-path query/round-trip counts (#942).
+"""Opt-in microbenchmark for the outbox poll-path query/round-trip counts.
 
 Gated behind ``@pytest.mark.database`` so it runs only against a real SQL
 provider (e.g. ``protean test --sqlite`` / ``--postgresql``), where emitted
 statements are observable and meaningful. The tests use the query-shape
 primitives from :mod:`protean.integrations.pytest` to assert the performance
-contract introduced by #942:
+contract:
 
 - ``find_unprocessed`` issues a single ``SELECT`` and does not over-fetch (the
   3x over-fetch loop is gone — lock/retry-window predicates are evaluated in the

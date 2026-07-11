@@ -338,7 +338,7 @@ class FieldSpec:
                 # Skip validators for empty values, matching the legacy field
                 # system and the documented order (empty -> choices -> cast ->
                 # validators). An optional field left unset arrives here as None
-                # and must not be validated. See #1025.
+                # and must not be validated.
                 if v in EMPTY_VALUES:
                     return v
                 for validator_fn in validators:

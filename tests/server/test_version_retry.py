@@ -179,7 +179,7 @@ class TestVersionRetryDefaults:
 
     def test_config_falls_back_to_defaults_on_error(self, test_domain):
         """Falls back to defaults when config access raises an exception."""
-        # Make config.get raise to exercise the except branch (lines 55-57)
+        # Make config.get raise to exercise the except branch
         original_config = test_domain.config
         with patch.object(
             type(original_config),

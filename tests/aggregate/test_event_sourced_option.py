@@ -1,5 +1,5 @@
 """Tests for the ``event_sourced`` aggregate option and its deprecated
-``is_event_sourced`` alias (#1107).
+``is_event_sourced`` alias.
 
 ``event_sourced`` is the canonical, user-facing spelling. ``is_event_sourced``
 is retained as a deprecated alias that maps to the same internal

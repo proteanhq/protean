@@ -1,4 +1,4 @@
-"""Tests for Process Manager State Machine View and Domain Stats (#879).
+"""Tests for Process Manager State Machine View and Domain Stats.
 
 Covers:
 - domain-processes.js static asset serving

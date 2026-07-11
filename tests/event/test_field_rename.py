@@ -1,4 +1,4 @@
-"""Tests for #1139: field renames resolve old stored payloads and appear in IR.
+"""Field renames resolve old stored payloads and appear in IR.
 
 A field declaring ``renamed_from`` loads a payload written under the old key
 without an upcaster, and the rename metadata is emitted into the IR.

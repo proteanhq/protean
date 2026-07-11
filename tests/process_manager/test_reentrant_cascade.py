@@ -1,4 +1,4 @@
-"""Re-entrant cascade under synchronous processing (issue #1048, ADR-0016).
+"""Re-entrant cascade under synchronous processing (ADR-0016).
 
 A multi-step process manager whose handler dispatches the next command with
 ``current_domain.process(..., asynchronous=False)`` must advance past step 1

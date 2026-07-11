@@ -1,4 +1,4 @@
-"""Tests for #1109: upcasters register through the standard element lifecycle.
+"""Upcasters register through the standard element lifecycle.
 
 Covers registry / ``element_type`` integration, IR elements-index appearance,
 and ``domain.check()`` reporting a malformed chain as a structured error
@@ -51,8 +51,8 @@ class TestUpcasterStandardLifecycle:
         assert UpcastOrderPlacedV1ToV2 in test_domain._upcasters
 
     def test_imperative_register_routes_like_the_decorator(self, test_domain):
-        """`domain.register(UpcasterClass, ...)` now works because the class
-        carries `element_type`; before #1109 it was rejected as "not a valid
+        """`domain.register(UpcasterClass, ...)` works because the class
+        carries `element_type`; previously it was rejected as "not a valid
         element". It lands the same registry entry as `@domain.upcaster`."""
         test_domain.register(Order, is_event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
@@ -75,7 +75,7 @@ class TestUpcasterInIR:
         assert any("UpcastOrderPlacedV1ToV2" in fqn for fqn in upcasters)
 
     def test_upcaster_chain_is_projected_into_the_ir(self, test_domain):
-        """#1132: the ``upcasters`` section carries per-event version edges so
+        """The ``upcasters`` section carries per-event version edges so
         the compatibility checker can consult upcaster coverage without a live
         domain."""
         _register_valid(test_domain)
@@ -175,7 +175,7 @@ class TestMalformedChainReportedByCheck:
 
     def test_string_event_type_resolves_for_a_registered_event(self, test_domain):
         """A string event_type resolves by name to the registered event (a
-        forward reference), building the chain with no error (#1131)."""
+        forward reference), building the chain with no error."""
         test_domain.register(Order, is_event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
 
@@ -200,7 +200,7 @@ class TestMalformedChainReportedByCheck:
     ):
         """A string event_type naming an unregistered event fails cleanly via
         the unreachable-terminal check — a structured error, not an
-        `AttributeError` crash (#1131)."""
+        `AttributeError` crash."""
         test_domain.register(Order, is_event_sourced=True)
 
         class UpcastByName(BaseUpcaster):

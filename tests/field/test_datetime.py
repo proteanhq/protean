@@ -29,7 +29,7 @@ def test_datetime_repr_and_str():
     assert repr(dt_obj4) == str(dt_obj4) == "DateTime(default=utc_now)"
 
 
-# --- #1039: datetime payloads use isoformat(), not str() ---
+# --- datetime payloads use isoformat(), not str() ---
 
 
 def test_naive_datetime_serialized_as_isoformat():

@@ -1641,7 +1641,7 @@ class TestLintTableConfigValidation:
             IRBuilder(domain).build()
 
     def test_non_table_lint_raises_before_aggregate_size_limit_read(self):
-        """``aggregate_size_limit`` (line ~1900) runs before the suppression
+        """``aggregate_size_limit`` runs before the suppression
         stage in ``_collect_diagnostics`` — the guard must fire before *any*
         rule reads ``[lint]``, not just before ``_apply_suppressions``."""
         domain = Domain(name="BadLintTableEarly", root_path=".")
@@ -1656,7 +1656,7 @@ class TestLintTableConfigValidation:
             IRBuilder(domain).build()
 
 
-# ── Aggregate & value-object fitness functions (#775) ────────────────
+# ── Aggregate & value-object fitness functions ────────────────
 
 
 @pytest.mark.no_test_domain
@@ -1687,7 +1687,7 @@ class TestCrossAggregateReference:
         assert d["element"] == fqn(Customer)
         assert d["field"] == "order"
         assert d["level"] == "warning"
-        # #774 schema
+        # diagnostic schema
         assert d["category"] == "aggregate_design"
         assert d["rule"]["rationale"]
         assert d["rule"]["fix"]

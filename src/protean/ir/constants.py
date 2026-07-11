@@ -5,7 +5,7 @@ derived** and therefore excluded from content comparison. Both the content
 checksum (:meth:`protean.ir.builder.IRBuilder._compute_checksum`) and the diff
 (:func:`protean.ir.diff.diff_ir`) must treat exactly these keys as non-content,
 otherwise ``protean ir check`` (staleness) and ``protean ir diff`` can disagree
-on whether a domain changed — the bug fixed in #1012. Centralising the set here
+on whether a domain changed. Centralising the set here
 keeps the two in lockstep by construction rather than by comment.
 """
 

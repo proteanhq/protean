@@ -125,7 +125,7 @@ class TestMessageDBEventStore:
         """read_last_message resolves a category stream (not just category-id).
 
         ``get_last_stream_message()`` returns None for category streams; the
-        adapter must fall back to reading the category. Regression for #1073.
+        adapter must fall back to reading the category.
         """
         for i in range(5):
             test_domain.event_store.store._write(
@@ -139,7 +139,7 @@ class TestMessageDBEventStore:
     def test_read_last_message_all_stream(self, test_domain):
         """read_last_message('$all') returns the newest global message.
 
-        The exact #1073 failure: this returned None on Message-DB, making
+        The exact failure: this returned None on Message-DB, making
         reconcile_outbox a permanent no-op (ADR-0015 crash-window recovery).
         """
         test_domain.event_store.store._write("streamA-1", "EventA", {"n": 1})
@@ -158,8 +158,8 @@ class TestMessageDBEventStore:
     def test_read_last_message_empty_category_and_all(self, test_domain):
         """The category fallback returns None (not IndexError) on an empty store.
 
-        Guards the ``else None`` branch for the category/`$all` path that #1073
-        added — the existing None test only covers a *specific* stream.
+        Guards the ``else None`` branch for the category/`$all` path that the
+        fallback added — the existing None test only covers a *specific* stream.
         """
         store = test_domain.event_store.store
         assert store._read_last_message("$all") is None

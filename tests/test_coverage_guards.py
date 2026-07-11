@@ -214,7 +214,6 @@ class TestFieldMappingForNoneType:
         # The field_mapping_for function is nested inside __init_subclass__,
         # so we test the logic directly: when _resolve_python_type returns None
         # and it's not a VO subclass, field_mapping_for should return sa_types.String
-        # This is verified via _resolve_python_type returning None → line 214-215 coverage
 
 
 class TestElasticsearchExpressionRefactoring:
@@ -546,10 +545,10 @@ class TestElasticsearchModelAsserts:
 
 
 class TestEventingVOAnnotationStyle:
-    """Tests for VO annotation style in _convert_vo_descriptors (eventing.py 260-265)."""
+    """Tests for VO annotation style in _convert_vo_descriptors."""
 
     def test_command_with_vo_annotation_style_required(self, test_domain):
-        """Command with `email: ValueObject(Email)` annotation exercises lines 260-262."""
+        """Command with `email: ValueObject(Email)` annotation."""
         from protean.core.aggregate import BaseAggregate
         from protean.core.command import BaseCommand
         from protean.core.value_object import BaseValueObject
@@ -574,7 +573,7 @@ class TestEventingVOAnnotationStyle:
         assert cmd.email.address == "alice@example.com"
 
     def test_command_with_vo_annotation_style_optional(self, test_domain):
-        """Command with optional `profile: ValueObject(Profile)` exercises lines 263-265."""
+        """Command with optional `profile: ValueObject(Profile)`."""
         from protean.core.aggregate import BaseAggregate
         from protean.core.command import BaseCommand
         from protean.core.value_object import BaseValueObject
@@ -658,7 +657,7 @@ class TestMessageDeserializationFallbackId:
         test_domain.register(FallbackRegistered, part_of=FallbackUser)
         test_domain.init(traverse=False)
 
-        # Message with headers.id=None and unregistered type → hits line 664
+        # Message with headers.id=None and unregistered type
         message = Message(
             data={"test": "data"},
             metadata=Metadata(
@@ -722,12 +721,12 @@ class TestMessageDeserializationFallbackId:
 
 
 class TestRepositoryLazyInit:
-    """Tests for Providers lazy initialization (repository/__init__.py 129-136, 141)."""
+    """Tests for Providers lazy initialization."""
 
     def test_get_connection_lazy_initializes_providers(self, test_domain):
         """get_connection() triggers lazy init when _providers is None."""
         with test_domain.domain_context():
-            # Reset providers to None to exercise lazy init path (lines 129-134)
+            # Reset providers to None to exercise lazy init path
             test_domain.providers._providers = None
             conn = test_domain.providers.get_connection()
             assert conn is not None
@@ -745,7 +744,7 @@ class TestRepositoryLazyInit:
         test_domain.init(traverse=False)
 
         with test_domain.domain_context():
-            # Reset providers to None to exercise lazy init path (line 141)
+            # Reset providers to None to exercise lazy init path
             test_domain.providers._providers = None
             repo = test_domain.providers.repository_for(LazyInitAgg)
             assert repo is not None
@@ -762,7 +761,7 @@ class TestRepositoryLazyInit:
 
 
 class TestRepositoryMissingDefault:
-    """Tests for missing 'default' provider (repository/__init__.py line 103)."""
+    """Tests for missing 'default' provider."""
 
     def test_missing_default_provider_raises_configuration_error(self):
         """_initialize raises ConfigurationError when no 'default' provider."""

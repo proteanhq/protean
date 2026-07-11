@@ -1381,8 +1381,7 @@ def get_generic_test_dir() -> Path:
 # These were removed in 0.16.0 without a deprecation cycle, breaking downstream
 # test suites at import time. They are restored here as deprecated shims so the
 # 0.16.0 removal honours the breaking-change policy (ADR-0004: minimum two
-# minor versions). Prefer ``pytest.raises(ValidationError, match=...)``. See
-# #1011.
+# minor versions). Prefer ``pytest.raises(ValidationError, match=...)``.
 
 
 @deprecated(

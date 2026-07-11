@@ -1,4 +1,4 @@
-"""SQLite coverage for the Decimal field → NUMERIC(precision, scale) mapping (#1038)."""
+"""SQLite coverage for the Decimal field → NUMERIC(precision, scale) mapping."""
 
 import pytest
 from sqlalchemy import Numeric

@@ -1,6 +1,6 @@
 """`protean.utils.globals.__all__` narrows the module's star-export to the
 three request-scoped proxies, keeping the lookup helpers and context stacks
-internal (#1110)."""
+internal."""
 
 EXPECTED = {"current_domain", "current_uow", "g"}
 

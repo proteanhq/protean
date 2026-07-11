@@ -418,7 +418,7 @@ class TestClassifyAggregateFieldChanges:
 
 
 # ------------------------------------------------------------------
-# Field renames (#1139)
+# Field renames
 # ------------------------------------------------------------------
 
 
@@ -677,7 +677,7 @@ class TestContractFieldRename:
 
 
 # ------------------------------------------------------------------
-# Evolution-aware compatibility (#1132)
+# Evolution-aware compatibility
 # ------------------------------------------------------------------
 
 
@@ -1006,7 +1006,7 @@ class TestUpcasterMitigation:
 
 
 class TestRenameOnEventStillSafe:
-    """Deliverable 3: the #1139 rename signal holds for event-sourced events."""
+    """Deliverable 3: the rename signal holds for event-sourced events."""
 
     def test_declared_rename_on_es_event_is_safe(self):
         left = _minimal_ir(

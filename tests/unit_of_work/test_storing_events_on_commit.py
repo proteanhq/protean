@@ -93,7 +93,7 @@ def test_persisting_events_on_commit(test_domain):
 
 
 def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch):
-    """ADR-0015 / #1040: the event-store append is the durable anchor of the
+    """ADR-0015: the event-store append is the durable anchor of the
     commit and must run before the relational session commit. A crash between
     the two then leaves the events durable (recoverable) rather than leaving the
     store missing an event whose state/outbox already committed.
@@ -132,7 +132,7 @@ def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch)
 
 
 def test_uow_rollback_does_not_pop_a_parent_unit_of_work(test_domain):
-    """Guard for the reordered pop (#1057): a UnitOfWork only pops itself off the
+    """Guard for the reordered pop: a UnitOfWork only pops itself off the
     context stack. After ``_do_commit`` pops this UoW, a failing relational
     commit triggers ``__exit__`` -> ``rollback()``, which also pops; the identity
     guard ensures that second pop cannot remove a *parent* UoW in a nested

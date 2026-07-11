@@ -1,4 +1,4 @@
-"""Tests for #1137: IR -> Avro and Protobuf schema emission.
+"""Tests for IR -> Avro and Protobuf schema emission.
 
 Covers field-type mapping, optional handling (Avro unions / proto3 `optional`),
 logical / well-known types, deterministic Protobuf field numbers, per-version
@@ -244,7 +244,7 @@ class TestAvroComplexFields:
     def test_cross_namespace_value_object_referenced_twice_is_valid(self):
         # A shared-kernel value object reused across clusters must be referenced
         # by fullname; a bare short name would resolve against the enclosing
-        # namespace and yield an invalid, non-existent type (#1137 blocker).
+        # namespace and yield an invalid, non-existent type.
         fastavro = pytest.importorskip("fastavro")
         money = {
             "element_type": "VALUE_OBJECT",

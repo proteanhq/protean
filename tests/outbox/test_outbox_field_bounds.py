@@ -2,7 +2,7 @@
 
 These bounds make SQL providers emit ``VARCHAR(N)`` instead of unbounded
 ``TEXT`` / ``VARCHAR(MAX)``, which unblocks index creation on the outbox
-table. See issue #948 and the v0.16 migration guide.
+table. See the v0.16 migration guide.
 """
 
 from datetime import UTC, datetime
@@ -14,7 +14,7 @@ from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox
 from protean.utils.reflection import fields
 
-# Field -> expected max_length, per the design in issue #948.
+# Field -> expected max_length, per the design.
 EXPECTED_BOUNDS = {
     "message_id": 255,
     "stream_name": 255,
@@ -103,7 +103,7 @@ class TestOutboxFieldBoundsValidation:
             "data": {"key": "value"},
             "metadata_": sample_metadata,
             # Required (NOT NULL) — keep it valid so the parameterized field is
-            # the only one that can drive the ValidationError (#1041).
+            # the only one that can drive the ValidationError.
             "target_broker": "b",
         }
         valid[field_name] = "x" * (bound + 1)

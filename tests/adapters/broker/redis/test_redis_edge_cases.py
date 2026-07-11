@@ -638,7 +638,7 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
 
 @pytest.mark.redis
 class TestRedisReconnectAfterClose:
-    """Reviving a closed Redis connection against a live server (#1055).
+    """Reviving a closed Redis connection against a live server.
 
     Engine shutdown closes the broker (``redis_instance`` becomes ``None``).
     Reusing the broker afterwards — a straggler poll read, a publish, or a

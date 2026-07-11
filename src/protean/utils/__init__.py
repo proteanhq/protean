@@ -525,7 +525,7 @@ def _derive_element_class(
     # funnel both the decorator and `register` paths pass through — wiring it
     # here (rather than in the individual Event/Command factories) keeps the
     # option working on every path, including a class that explicitly subclasses
-    # ``BaseEvent`` / ``BaseCommand`` (see #1159). Only message-type classes
+    # ``BaseEvent`` / ``BaseCommand``. Only message-type classes
     # define the resolver; other element types skip it.
     resolve_version = getattr(element_with_meta, "_resolve_declared_version", None)
     if resolve_version is not None:
@@ -702,7 +702,7 @@ __all__ = [
 
 
 # Plumbing helpers that were historically importable from ``protean.utils`` but
-# are not part of the 1.0 public surface (epic #1102, sub-issue 7). Their live
+# are not part of the 1.0 public surface. Their live
 # implementations are the underscore-prefixed definitions above; framework code
 # imports those directly and never self-warns. The old public spellings remain
 # importable for one deprecation window through the module ``__getattr__`` below,

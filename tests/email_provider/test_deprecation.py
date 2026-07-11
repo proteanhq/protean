@@ -1,4 +1,4 @@
-"""Deprecation warnings for the email subsystem (epic #1102, removed at v1.0.0).
+"""Deprecation warnings for the email subsystem (removed at v1.0.0).
 
 Every email entry point emits ``RemovedInProtean10Warning``:
 

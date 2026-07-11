@@ -447,13 +447,13 @@ class TestInfrastructureRouteWiring:
 
 
 # ---------------------------------------------------------------------------
-# Config objects without .get() method (lines 117-122, 146-151, 198-201, 225-230)
+# Config objects without .get() method
 # ---------------------------------------------------------------------------
 
 
 class TestDatabaseStatusConfigWithoutGet:
     def test_database_config_without_get_method(self):
-        """Lines 117-122: databases config is a non-dict object (no .get()),
+        """databases config is a non-dict object (no .get()),
         provider stays at 'none'."""
         domain = MagicMock()
         domain.name = "TestDomain"
@@ -470,7 +470,7 @@ class TestDatabaseStatusConfigWithoutGet:
         assert result["status"] == "healthy"
 
     def test_database_default_config_without_get_method(self):
-        """Lines 119-120: default sub-config has no .get(), provider stays 'none'."""
+        """default sub-config has no .get(), provider stays 'none'."""
         domain = MagicMock()
         domain.name = "TestDomain"
         # databases has .get() but default value is not a dict
@@ -488,7 +488,7 @@ class TestDatabaseStatusConfigWithoutGet:
 
 class TestBrokerStatusConfigWithoutGet:
     def test_broker_config_without_get_method(self):
-        """Lines 146-151: brokers config is a non-dict object (no .get()),
+        """brokers config is a non-dict object (no .get()),
         provider stays at 'none'."""
         domain = MagicMock()
         domain.name = "TestDomain"
@@ -503,7 +503,7 @@ class TestBrokerStatusConfigWithoutGet:
         assert result["provider"] == "none"
 
     def test_broker_default_config_without_get_method(self):
-        """Lines 148-149: default broker sub-config has no .get()."""
+        """default broker sub-config has no .get()."""
         domain = MagicMock()
         domain.name = "TestDomain"
         domain.config = MagicMock()
@@ -519,7 +519,7 @@ class TestBrokerStatusConfigWithoutGet:
 
 class TestEventStoreStatusConfigWithoutGet:
     def test_event_store_config_without_get_method(self):
-        """Lines 198-201: event_store config is a non-dict object,
+        """event_store config is a non-dict object,
         provider stays at 'none'."""
         domain = MagicMock()
         domain.name = "TestDomain"
@@ -537,7 +537,7 @@ class TestEventStoreStatusConfigWithoutGet:
 
 class TestCacheStatusConfigWithoutGet:
     def test_cache_config_without_get_method(self):
-        """Lines 225-230: caches config is a non-dict object,
+        """caches config is a non-dict object,
         provider stays at 'none'."""
         domain = MagicMock()
         domain.name = "TestDomain"
@@ -554,7 +554,7 @@ class TestCacheStatusConfigWithoutGet:
         assert result["status"] == "healthy"
 
     def test_cache_default_config_without_get_method(self):
-        """Lines 227-228: default cache sub-config has no .get()."""
+        """default cache sub-config has no .get()."""
         domain = MagicMock()
         domain.name = "TestDomain"
         domain.config = MagicMock()
@@ -569,7 +569,7 @@ class TestCacheStatusConfigWithoutGet:
         assert result["provider"] == "none"
 
     def test_cache_is_none(self):
-        """Lines 239-240: caches.get('default') returns None."""
+        """caches.get('default') returns None."""
         domain = MagicMock()
         domain.name = "TestDomain"
         domain.config = MagicMock()

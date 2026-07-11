@@ -66,7 +66,7 @@ class TestMetadataVersion:
         assert command._metadata.domain.version == 2
 
     def test_version_option(self, test_domain):
-        """`version=N` on the command decorator sets `__version__` (#1159)."""
+        """`version=N` on the command decorator sets `__version__`."""
 
         @test_domain.command(part_of=User, version=3)
         class Login(BaseCommand):

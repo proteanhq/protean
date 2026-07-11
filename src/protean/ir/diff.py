@@ -40,7 +40,7 @@ def diff_ir(
     :data:`protean.ir.constants.VOLATILE_IR_KEYS` (``$schema``, ``ir_version``,
     ``generated_at``, ``checksum``, ``elements``) are ignored. The content
     checksum excludes the same set, keeping ``ir check`` and ``ir diff`` in
-    agreement (see #1012).
+    agreement.
 
     Args:
         current_version: When provided, used to classify removals of

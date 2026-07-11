@@ -1,4 +1,4 @@
-"""Tests for ``protean schema render --indexes`` (issue #944)."""
+"""Tests for ``protean schema render --indexes``."""
 
 from pathlib import Path
 

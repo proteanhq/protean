@@ -200,7 +200,7 @@ class ValueObject(Field):
                 )
                 for field_name, shadow_field_obj in self.embedded_fields.items()
             }
-            # Presence is identity, not truthiness (#1078): an all-default VO
+            # Presence is identity, not truthiness: an all-default VO
             # (e.g. all zeros) is falsy per ``__bool__`` but was explicitly set,
             # so it must serialize to its dict rather than to ``None``.
             if value is not None
@@ -211,7 +211,7 @@ class ValueObject(Field):
         """Override `__set__` to coordinate between value object and its embedded fields"""
         value = self._load(value)
 
-        # Identity, not truthiness — see ``as_dict`` (#1078). ``if value`` would
+        # Identity, not truthiness — see ``as_dict``. ``if value`` would
         # reset an all-default (falsy) VO, erasing "all-defaults" vs "never set".
         if value is not None:
             # Check if the reference object has been saved. Otherwise, throw ValueError

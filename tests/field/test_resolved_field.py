@@ -230,7 +230,7 @@ class TestResolvedFieldAsDict:
         assert rf.as_dict(dt) == dt.isoformat()
 
     def test_as_dict_with_date(self):
-        # A plain date must serialize to an ISO string (#1046); datetime
+        # A plain date must serialize to an ISO string; datetime
         # subclasses date, so the date branch sits after the datetime one.
         rf = self._make_field()
         d = datetime.date(2024, 1, 2)

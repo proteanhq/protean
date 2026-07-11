@@ -124,7 +124,7 @@ class TestSchemaCompleteness:
     def test_generated_at_is_optional(self):
         """`generated_at` is a documented property but NOT required.
 
-        Canonical baselines (`protean ir show --canonical`) omit it (#1064);
+        Canonical baselines (`protean ir show --canonical`) omit it;
         keeping it out of ``required`` lets those files stay schema-conformant
         while still carrying a ``$schema`` pointer.
         """

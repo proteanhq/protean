@@ -1,4 +1,4 @@
-"""Tests for the Event Flow View — D3 DAG visualization (#878).
+"""Tests for the Event Flow View — D3 DAG visualization.
 
 Covers:
 - domain-flows.js static asset serving

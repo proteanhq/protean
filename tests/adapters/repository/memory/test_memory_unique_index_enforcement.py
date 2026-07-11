@@ -2,7 +2,7 @@
 
 Relational adapters reject duplicate rows via the DDL they render for a unique
 index. The memory store renders no DDL, so it replicates the check in the DAO
-to stay a faithful stand-in for uniqueness invariants (issue #1071). A duplicate
+to stay a faithful stand-in for uniqueness invariants. A duplicate
 that violates a declared unique index raises ``ValidationError``, matching the
 logical error relational adapters surface. NULLs are treated as distinct.
 """

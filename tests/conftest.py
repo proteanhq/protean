@@ -360,7 +360,7 @@ def auto_set_and_close_loop(monkeypatch):
     # thread's current loop, the previous teardown here — which only closed the
     # *current* loop — never reclaimed them. Across the ~11k-test suite these
     # accumulate until the process exhausts its descriptor limit
-    # ("OSError: Too many open files"). See #1168.
+    # ("OSError: Too many open files").
     #
     # We wrap ``asyncio.new_event_loop`` for the duration of the test so every
     # loop created — the test's own, Engine's private loops, ad-hoc loops in
@@ -423,7 +423,7 @@ def _close_test_clients(monkeypatch):
     # sockets open until ``close()`` is called. Observatory and FastAPI
     # integration tests build ~185 clients in fixtures and inline without ever
     # closing them, so their descriptors accumulate across the suite and drive
-    # the exhaustion in #1168. Tracking construction and closing at teardown
+    # the exhaustion. Tracking construction and closing at teardown
     # makes the suite hermetic without editing every call site. ``fastapi``'s
     # ``TestClient`` is a re-export of Starlette's, so patching the one class
     # covers both import paths.
@@ -453,7 +453,7 @@ def _close_test_clients(monkeypatch):
 def _fd_report(request):
     # Opt-in file-descriptor probe. Set ``PROTEAN_FD_REPORT=1`` to log the
     # change in open descriptors across each test module, used to locate the
-    # descriptor leaks in #1168. ``num_fds()`` covers Linux and macOS (unlike
+    # descriptor leaks. ``num_fds()`` covers Linux and macOS (unlike
     # ``/proc/self/fd``); on Windows psutil exposes ``num_handles()`` instead.
     if not os.environ.get("PROTEAN_FD_REPORT"):
         yield

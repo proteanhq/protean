@@ -1,6 +1,6 @@
 """An embedded ValueObject whose every field holds a default/falsy value is
 still *present*, not absent. It must survive assignment and serialization
-instead of collapsing to ``None`` (#1078).
+instead of collapsing to ``None``.
 
 ``BaseValueObject.__bool__`` reports an all-default VO as falsy, so the
 ``ValueObject`` field's truthiness gates used to reset it to ``None`` on
@@ -152,7 +152,7 @@ class TestAllNoneVOBoundary:
     only NULL shadow columns, which are byte-identical to "never set." Flattened
     storage cannot tell them apart without a presence marker, so such a VO reads
     back as ``None`` on relational/document retrieval. Pinned so the boundary is
-    an intended, documented contract rather than a silent surprise (#1078).
+    an intended, documented contract rather than a silent surprise.
     """
 
     @pytest.fixture(autouse=True)
@@ -182,7 +182,7 @@ class TestAllNoneVOBoundary:
 class TestCrossDatabaseRoundTrip:
     """The all-default VO round-trip against real relational providers
     (sqlite / postgresql via ``--db``), not only the in-memory adapter — the
-    fix lives in adapter-agnostic core, and this proves it end-to-end (#1078)."""
+    fix lives in adapter-agnostic core, and this proves it end-to-end."""
 
     @pytest.fixture(autouse=True)
     def register(self, test_domain):

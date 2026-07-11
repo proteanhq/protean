@@ -1,4 +1,4 @@
-"""Tests for CommandDispatcher (engine.py lines 27-116).
+"""Tests for CommandDispatcher.
 
 Covers initialization, domain object caching, handler resolution,
 message dispatch, and error delegation using pure mocks (no infrastructure).

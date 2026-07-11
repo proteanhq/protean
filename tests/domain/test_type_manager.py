@@ -278,7 +278,7 @@ class TestPropertyProxies:
 
     def test_upcasters_proxy(self, test_domain):
         """domain._upcasters and the TypeManager both source upcasters from the
-        registry (registered via the standard element lifecycle, #1109).
+        registry (registered via the standard element lifecycle).
 
         Registration alone is exercised here (no init()/check()), so the
         AccountCreated version vs upcaster to_version convergence is not

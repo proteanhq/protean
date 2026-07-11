@@ -122,7 +122,7 @@ class TestUpcasterValidation:
 
     def test_error_event_type_not_an_event(self, test_domain):
         # The message names both accepted forms (Event class or string
-        # reference) so a user passing a string is not misled (#1147).
+        # reference) so a user passing a string is not misled.
         with pytest.raises(
             IncorrectUsageError,
             match="must be an Event class or a string reference to one",

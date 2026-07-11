@@ -2434,7 +2434,7 @@ class IRBuilder:
     def _diagnose_email_deprecated(self, ir: dict[str, Any]) -> None:
         """DEPRECATED_EMAIL: registered ``@domain.email`` elements.
 
-        The email subsystem is deprecated (epic #1102, removed at v1.0.0).
+        The email subsystem is deprecated, removed at v1.0.0.
         Email elements are not projected into the IR (they appear in no
         cluster/projection/flow), so ``_diagnose_deprecated_elements`` cannot
         see them. Read the registry directly, mirroring

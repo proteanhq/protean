@@ -1,4 +1,4 @@
-"""`protean.utils` public surface (#1110).
+"""`protean.utils` public surface.
 
 `__all__` is trimmed to the config enums, ``DomainObjects`` and ``get_version``.
 Six plumbing helpers that were historically importable stay reachable through a

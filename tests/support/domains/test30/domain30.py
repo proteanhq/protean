@@ -2,7 +2,7 @@
 
 Two upcasters target the same event + from_version, so the chain build raises
 ``ConfigurationError``. ``protean check`` must report this as a structured
-error (exit 1), not crash with a traceback (#1109).
+error (exit 1), not crash with a traceback.
 """
 
 from protean import Domain

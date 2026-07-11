@@ -1,4 +1,4 @@
-"""Regression for #1028.
+"""Regression test.
 
 Bulk ``create_snapshots()`` failed for event-sourced aggregates with
 ``fact_events=True``: persisting also writes a ``{category}-fact-{id}`` stream,
@@ -93,7 +93,7 @@ def test_is_fact_stream_identifier(identifier, expected):
 
 @pytest.mark.eventstore
 def test_create_snapshots_handles_fact_events_aggregate(test_domain):
-    """Bulk snapshotting succeeds and snapshots only real instances (#1028)."""
+    """Bulk snapshotting succeeds and snapshots only real instances."""
     repo = test_domain.repository_for(Promo)
     ids = []
     for i in range(3):

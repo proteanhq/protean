@@ -273,7 +273,7 @@ class TestBackwardCompatibility:
         assert len(placed) == 1
         # Even with no external brokers, the internal row carries the configured
         # internal broker name ("default"), so the composite unique index stays
-        # effective and message_id idempotency holds (issue #1009).
+        # effective and message_id idempotency holds.
         assert placed[0].target_broker == "default"
 
     def test_find_unprocessed_no_filter_returns_all(self, test_domain):
@@ -654,7 +654,7 @@ class TestOutboxTargetBrokerField:
 
     def test_create_message_default_target_broker(self):
         # target_broker is NOT NULL and defaults to the internal broker name,
-        # never None, so it can't bypass the composite unique index (#1041).
+        # never None, so it can't bypass the composite unique index.
         from protean.utils.outbox import DEFAULT_TARGET_BROKER
 
         msg = Outbox.create_message(

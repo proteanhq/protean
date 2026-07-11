@@ -1,4 +1,4 @@
-"""``is_fact_event`` is framework-internal (#1107).
+"""``is_fact_event`` is framework-internal.
 
 It remains present on ``meta_`` (defaulting to ``False``) so every read site
 keeps working, but user code may not set it directly — the framework assigns it

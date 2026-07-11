@@ -423,13 +423,13 @@ class TestEventStoreRouteWiring:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: enrich_with_event_store_stats exception (lines 258-259)
+# Endpoint: enrich_with_event_store_stats exception
 # ---------------------------------------------------------------------------
 
 
 class TestEventStoreStreamsEndpointEnrichException:
     def test_enrich_exception_does_not_break_endpoint(self):
-        """Lines 258-259: enrich_with_event_store_stats raises at the
+        """enrich_with_event_store_stats raises at the
         endpoint level, endpoint catches and continues."""
         from unittest.mock import patch
 

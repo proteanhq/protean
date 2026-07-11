@@ -160,7 +160,7 @@ class TestPerConsumerMetrics:
 
 
 class TestConsumerMetricsWithMockRedis:
-    """Tests for per-consumer metrics with mock Redis (lines 230-272)."""
+    """Tests for per-consumer metrics with mock Redis."""
 
     def _make_client_with_mock_redis(self, groups, consumers_by_group=None):
         """Create a TestClient with mock Redis returning specified groups/consumers."""
@@ -319,7 +319,7 @@ class TestConsumerMetricsWithMockRedis:
 
 
 class TestConsumerMetricsOuterException:
-    """Test the outer exception handler for consumer metrics (lines 271-272)."""
+    """Test the outer exception handler for consumer metrics."""
 
     def test_consumer_metrics_handles_get_redis_exception(self):
         """Metrics endpoint handles _get_redis exception in consumer section."""

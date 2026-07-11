@@ -195,7 +195,7 @@ class TestResolveAggregateClsStringReference:
 
 
 # ============================================================================
-# resolve_references -- AggregateCls for handlers and repositories (#969)
+# resolve_references -- AggregateCls for handlers and repositories
 #
 # command_handler, event_handler, and repository previously rejected a string
 # ``part_of`` because their factories dereferenced it eagerly at registration.

@@ -1,4 +1,4 @@
-"""Regression for #1025.
+"""Regression for validators skipping empty values.
 
 Per-field ``validators=[...]`` must not run against empty values (notably ``None``
 for an omitted optional field). The legacy field system skipped validators for

@@ -457,11 +457,11 @@ class TestHelperExtractors:
 
 
 class TestResolveAndLoadGroupEdgeCases:
-    """Tests for edge cases in _resolve_and_load_group (lines 544, 546)."""
+    """Tests for edge cases in _resolve_and_load_group."""
 
     @pytest.mark.eventstore
     def test_message_with_no_headers_raises(self, test_domain):
-        """A Message with no metadata raises ValueError (line 544)."""
+        """A Message with no metadata raises ValueError."""
         store = test_domain.event_store.store
         msg = MagicMock(spec=Message)
         msg.metadata = None
@@ -471,7 +471,7 @@ class TestResolveAndLoadGroupEdgeCases:
 
     @pytest.mark.eventstore
     def test_message_with_no_correlation_id_returns_empty_group(self, test_domain):
-        """A Message with headers but no domain returns empty group (line 546)."""
+        """A Message with headers but no domain returns empty group."""
         store = test_domain.event_store.store
         msg = MagicMock(spec=Message)
         msg.metadata = MagicMock()
@@ -490,7 +490,7 @@ class TestResolveAndLoadGroupEdgeCases:
 
 
 class TestTraceCausationEdgeCases:
-    """Tests for edge cases in trace_causation (lines 595, 607)."""
+    """Tests for edge cases in trace_causation."""
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -504,7 +504,7 @@ class TestTraceCausationEdgeCases:
 
     @pytest.mark.eventstore
     def test_causation_id_pointing_outside_group(self, test_domain):
-        """When causation_id points to a message outside the group, chain stops (line 607).
+        """When causation_id points to a message outside the group, chain stops.
 
         Root commands have causation_id=None so they stop naturally.
         This test verifies that trace_causation handles the root correctly
@@ -531,7 +531,7 @@ class TestTraceCausationEdgeCases:
     @pytest.mark.eventstore
     def test_message_with_no_correlation_returns_only_self(self, test_domain):
         """A Message object with no domain metadata returns empty group,
-        leading to an empty chain (exercises line 546 via trace_causation)."""
+        leading to an empty chain."""
         store = test_domain.event_store.store
         msg = MagicMock(spec=Message)
         msg.metadata = MagicMock()
@@ -545,7 +545,7 @@ class TestTraceCausationEdgeCases:
 
     @pytest.mark.eventstore
     def test_group_member_with_no_headers_id_skipped_in_lookup(self, test_domain):
-        """A group member with no headers.id is skipped in by_id (line 595->593)."""
+        """A group member with no headers.id is skipped in by_id."""
         store = test_domain.event_store.store
 
         original = store._resolve_and_load_group
@@ -584,7 +584,7 @@ class TestTraceCausationEdgeCases:
 
 
 class TestTraceEffectsEdgeCases:
-    """Tests for edge cases in trace_effects (line 660->658)."""
+    """Tests for edge cases in trace_effects."""
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -596,7 +596,7 @@ class TestTraceEffectsEdgeCases:
 
     @pytest.mark.eventstore
     def test_child_with_no_headers_id_skipped_in_bfs(self, test_domain):
-        """A child with no headers.id is skipped during BFS (line 660->658)."""
+        """A child with no headers.id is skipped during BFS."""
         store = test_domain.event_store.store
 
         original = store._resolve_and_load_group
@@ -642,7 +642,7 @@ class TestTraceEffectsEdgeCases:
 
 
 class TestBuildCausationTreeEdgeCases:
-    """Tests for edge cases in build_causation_tree (lines 691, 711, 714, 717)."""
+    """Tests for edge cases in build_causation_tree."""
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -653,7 +653,7 @@ class TestBuildCausationTreeEdgeCases:
         test_domain.init(traverse=False)
 
     def test_build_node_with_malformed_metadata_string(self, test_domain):
-        """_build_node handles metadata that is a string, not a dict (line 711)."""
+        """_build_node handles metadata that is a string, not a dict."""
         store = test_domain.event_store.store
 
         # Monkey-patch _load_correlation_group to return malformed data
@@ -677,7 +677,7 @@ class TestBuildCausationTreeEdgeCases:
             store._load_correlation_group = original
 
     def test_build_node_with_malformed_headers_string(self, test_domain):
-        """_build_node handles headers that is a string, not a dict (line 714)."""
+        """_build_node handles headers that is a string, not a dict."""
         store = test_domain.event_store.store
 
         original = store._load_correlation_group
@@ -699,7 +699,7 @@ class TestBuildCausationTreeEdgeCases:
             store._load_correlation_group = original
 
     def test_build_node_with_malformed_domain_string(self, test_domain):
-        """_build_node handles domain that is a string, not a dict (line 717)."""
+        """_build_node handles domain that is a string, not a dict."""
         store = test_domain.event_store.store
 
         original = store._load_correlation_group
@@ -725,8 +725,7 @@ class TestBuildCausationTreeEdgeCases:
 
     def test_build_tree_with_message_missing_headers_id(self, test_domain):
         """Message with no headers.id in group: not added to by_id, and skipped
-        as a child because _extract_message_id returns None (falsy) at line 729.
-        This exercises the branch at line 691 where hid is falsy."""
+        as a child because _extract_message_id returns None (falsy)."""
         store = test_domain.event_store.store
 
         original = store._load_correlation_group
@@ -762,7 +761,7 @@ class TestBuildCausationTreeEdgeCases:
             assert root.message_id == "root-msg"
             # The orphan child has no headers.id so _extract_message_id returns
             # None (falsy) — it's skipped by the `if child_id and ...` guard
-            # in _build_node (line 729-730). The root has no children.
+            # in _build_node. The root has no children.
             assert len(root.children) == 0
         finally:
             store._load_correlation_group = original

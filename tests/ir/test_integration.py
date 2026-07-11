@@ -42,7 +42,7 @@ class TestSchemaValidation:
             )
 
     def test_canonical_ir_validates_against_schema(self, ir, schema):
-        """A canonical baseline (no generated_at) is still schema-conformant (#1064)."""
+        """A canonical baseline (no generated_at) is still schema-conformant."""
         from protean.ir.constants import canonical_ir
 
         canonical = canonical_ir(ir)

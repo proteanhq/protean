@@ -2,7 +2,7 @@
 
 Covers the warning-class hierarchy, the ``warn_deprecated`` helper, the
 ``@deprecated`` decorator, and the fail-loud behaviour on an unknown removal
-version. See #999.
+version.
 """
 
 import pathlib
@@ -23,7 +23,7 @@ from protean._deprecation import (
 
 
 class TestMechanismIsTheSingleDeprecationSource:
-    """Regression guard for #999's core promise: no deprecation may be
+    """Regression guard for the core promise: no deprecation may be
     hand-rolled with a bare ``DeprecationWarning`` and bypass the mechanism.
 
     A suite-wide ``filterwarnings = error::DeprecationWarning`` flip is not

@@ -94,7 +94,7 @@ _UPCASTER_ERR_DOMAIN = "tests/support/domains/test30/domain30.py:domain"
 @pytest.mark.no_test_domain
 class TestCheckMalformedUpcasterChain:
     """A malformed upcaster chain is a structured error (exit 1), not a Python
-    traceback (#1109) — the chain build used to crash `protean check`."""
+    traceback — the chain build used to crash `protean check`."""
 
     def test_malformed_chain_json_reports_structured_error(self):
         result = runner.invoke(app, ["check", "-d", _UPCASTER_ERR_DOMAIN, "-f", "json"])
@@ -119,7 +119,7 @@ class TestCheckMalformedUpcasterChain:
 @pytest.mark.no_test_domain
 class TestCheckDeprecatedElement:
     """A deprecated element surfaces as a DEPRECATED_ELEMENT diagnostic through
-    the CLI (the IR wiring landed in #812; this pins the end-to-end path)."""
+    the CLI; this pins the end-to-end path."""
 
     def test_deprecated_element_in_json_output(self):
         result = runner.invoke(app, ["check", "-d", _DEPRECATED_DOMAIN, "-f", "json"])

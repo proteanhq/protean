@@ -1,4 +1,4 @@
-"""Tests for the Domain Topology D3 force-directed graph (#876).
+"""Tests for the Domain Topology D3 force-directed graph.
 
 Covers:
 - domain-topology.js static asset serving

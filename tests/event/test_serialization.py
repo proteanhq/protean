@@ -144,7 +144,7 @@ def test_that_dates_in_message_are_serialized_and_deserialized():
 
 
 def test_that_date_field_in_message_is_serialized_and_deserialized():
-    # Regression for #1046: a Date field used to raise "Object of type date is
+    # Regression: a Date field used to raise "Object of type date is
     # not JSON serializable" because as_dict had no branch for plain dates, so
     # the raw date reached compute_checksum's json.dumps.
     scheduled_on = date(2024, 1, 2)

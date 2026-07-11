@@ -1,4 +1,4 @@
-"""End-to-end regression for #1023.
+"""End-to-end regression test.
 
 A ``@handle("$any")`` event handler scoped to an aggregate fired under async
 (Engine) dispatch but was silently skipped under ``event_processing="sync"``

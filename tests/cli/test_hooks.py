@@ -107,7 +107,7 @@ class TestBuildStalenessParser:
 
     def test_fix_help_advertises_canonical_output(self):
         """The --fix help makes the canonical-baseline guarantee discoverable so
-        projects committing canonical baselines know it is safe to enable (#1080).
+        projects committing canonical baselines know it is safe to enable.
         """
         help_text = _build_staleness_parser().format_help()
         assert "canonical" in help_text
@@ -289,7 +289,7 @@ class TestRegenerateIr:
             _regenerate_ir("publishing7.py", tmp_path / ".protean")
 
     def test_written_baseline_is_canonical(self, tmp_path):
-        """The staleness --fix hook writes a no-timestamp baseline (#1064)."""
+        """The staleness --fix hook writes a no-timestamp baseline."""
         protean_dir = tmp_path / ".protean"
         ir = _regenerate_ir("publishing7.py", protean_dir)
         stored = json.loads((protean_dir / "ir.json").read_text(encoding="utf-8"))
@@ -392,9 +392,9 @@ class TestCheckStalenessHookFresh:
     def test_canonical_baseline_reads_as_fresh(self):
         """A canonical baseline (no generated_at) is still detected as fresh.
 
-        Regression for #1064: the baseline written by --fix omits
-        ``generated_at``; staleness must still match it against the live
-        domain (both sides ignore the timestamp).
+        The baseline written by --fix omits ``generated_at``; staleness must
+        still match it against the live domain (both sides ignore the
+        timestamp).
         """
         _regenerate_ir("publishing7.py", self._protean_dir)
         stored = json.loads((self._protean_dir / "ir.json").read_text(encoding="utf-8"))

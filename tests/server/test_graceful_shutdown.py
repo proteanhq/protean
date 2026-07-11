@@ -1,4 +1,4 @@
-"""Tests for graceful resource cleanup on Engine shutdown (#792)."""
+"""Tests for graceful resource cleanup on Engine shutdown."""
 
 import asyncio
 import logging
@@ -505,7 +505,7 @@ class TestRedisBrokerCloseEdgeCases:
 
 @pytest.mark.no_test_domain
 class TestRedisBrokerReconnectAfterClose:
-    """Reviving a closed Redis connection (#1055).
+    """Reviving a closed Redis connection.
 
     Engine shutdown calls ``close()``, which sets ``redis_instance`` to ``None``.
     Under CI timing a straggler poll read or a test-teardown ``_data_reset`` can

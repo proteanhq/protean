@@ -88,7 +88,7 @@ class RedisBroker(BaseBroker):
 
         ``close()`` sets ``redis_instance`` to ``None``; a straggler poll read or
         a test-teardown ``_data_reset`` running afterwards would otherwise raise
-        ``AttributeError: 'NoneType' object has no attribute ...`` (#1055). Every
+        ``AttributeError: 'NoneType' object has no attribute ...``. Every
         Redis call inside this broker goes through here so those paths revive
         instead of crashing the subscription's poll loop.
         """

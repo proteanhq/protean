@@ -261,7 +261,7 @@ class TestEmailRegistration:
 # ---------------------------------------------------------------------------
 class TestEmailTemplateDictPattern:
     def test_positional_dict_merged_with_kwargs(self):
-        """Lines 94-104: Positional dict is merged with kwargs."""
+        """Positional dict is merged with kwargs."""
         template = {"subject": "Test", "to": ["a@b.com"]}
         email = NotificationEmail(template, from_email="sender@b.com")
         assert email.subject == "Test"
@@ -283,7 +283,7 @@ class TestEmailTemplateDictPattern:
         assert email.from_email == "sender@b.com"
 
     def test_non_dict_positional_arg_raises(self):
-        """Lines 96-101: AssertionError for non-dict positional arg."""
+        """AssertionError for non-dict positional arg."""
         with pytest.raises(AssertionError) as exc_info:
             NotificationEmail("not a dict")
         assert "must be a dict" in str(exc_info.value)
@@ -294,7 +294,7 @@ class TestEmailTemplateDictPattern:
 # ---------------------------------------------------------------------------
 class TestEmailHash:
     def test_hash_is_id_based(self):
-        """Line 150: __hash__ returns id(self)."""
+        """__hash__ returns id(self)."""
         email = NotificationEmail(subject="Test")
         assert hash(email) == id(email)
 

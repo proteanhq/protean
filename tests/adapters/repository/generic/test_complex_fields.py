@@ -174,7 +174,7 @@ class TestComplexFieldUpdate:
 @pytest.mark.basic_storage
 class TestDecimalFieldPersistence:
     """Persist a Decimal field and verify it round-trips losslessly on every
-    database provider (#1038)."""
+    database provider."""
 
     def test_persist_and_retrieve_decimal(self, test_domain):
         money = Money(label="invoice", amount="10.2500")
@@ -208,7 +208,7 @@ class TestDecimalFieldPersistence:
 @pytest.mark.basic_storage
 class TestDateFieldPersistence:
     """Persist a Date field and verify it round-trips on every database
-    provider (#1046)."""
+    provider."""
 
     def test_persist_and_retrieve_date(self, test_domain):
         campaign = Campaign(label="summer", starts_on=date(2024, 6, 1))

@@ -1,4 +1,4 @@
-"""Tests for #1131: the UPCASTER_GAP build-time diagnostic and its
+"""Tests for the UPCASTER_GAP build-time diagnostic and its
 missing-version coverage helper.
 
 An event whose ``__version__`` has outrun its upcasters fails only at *read*
