@@ -148,6 +148,8 @@ test = [
     "fastavro>=1.12.2",
     # Portable open-file-descriptor probe for the fd-leak guard (PROTEAN_FD_REPORT); see #1168
     "psutil>=7.2.2",
+    # Property-based testing (the serialization round-trip suite under tests/serialization/).
+    "hypothesis>=6,<7",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",
