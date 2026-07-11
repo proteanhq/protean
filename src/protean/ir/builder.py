@@ -2506,7 +2506,10 @@ class IRBuilder:
                 continue
             agg_fqn = fqn(record.cls)
             cluster = ir["clusters"].get(agg_fqn)
-            if cluster is None:
+            if cluster is None:  # pragma: no cover
+                # Defensive: ``_build_clusters`` clusters every non-internal
+                # aggregate, so a non-internal, non-abstract record always has a
+                # cluster. Unreachable given the current builder, kept as a guard.
                 continue
             invariants = cluster["aggregate"]["invariants"]
             if not invariants["pre"] and not invariants["post"]:
