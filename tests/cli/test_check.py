@@ -8,7 +8,9 @@ import json
 import pytest
 from typer.testing import CliRunner
 
+import protean
 from protean.cli import app
+from protean.cli.check import _escape_annotation
 
 runner = CliRunner()
 
@@ -352,3 +354,207 @@ class TestCheckLintLevelExitCode:
         result = runner.invoke(app, ["check", "-d", _LEVEL_INVALID_DOMAIN])
         assert result.exit_code == 1
         assert "Invalid [lint].level" in result.output
+
+
+_CLEAN_DOMAIN = "tests/support/domains/test19/domain19.py:domain"
+
+
+@pytest.mark.no_test_domain
+class TestCheckSarifOutput:
+    """``--format sarif`` emits a pinned SARIF 2.1.0 document."""
+
+    def test_sarif_well_formed(self):
+        """A run with diagnostics produces a valid SARIF 2.1.0 shell with the
+        pinned schema, protean driver, and one deduplicated rule per ruleId."""
+        result = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
+        data = json.loads(result.output)
+
+        assert data["version"] == "2.1.0"
+        assert data["$schema"] == (
+            "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/"
+            "Schemata/sarif-schema-2.1.0.json"
+        )
+        run = data["runs"][0]
+        driver = run["tool"]["driver"]
+        assert driver["name"] == "protean"
+        assert driver["version"] == protean.__version__
+        assert driver["informationUri"] == "https://docs.protean.io/reference/cli/check"
+
+        # Dedup invariant: one reportingDescriptor per unique ruleId.
+        rule_ids = {r["ruleId"] for r in run["results"]}
+        assert len(rule_ids) > 0, "Expected SARIF results but got none"
+        assert len(driver["rules"]) == len(rule_ids)
+        descriptor_ids = {r["id"] for r in driver["rules"]}
+        for res in run["results"]:
+            assert res["ruleId"] in descriptor_ids
+
+    def test_sarif_dedup_collapses_repeated_codes(self):
+        """test25 emits two AGGREGATE/UNUSED warnings plus an info; each unique
+        code yields exactly one descriptor even when a code repeats."""
+        result = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
+        run = json.loads(result.output)["runs"][0]
+        descriptor_ids = [r["id"] for r in run["tool"]["driver"]["rules"]]
+        # No duplicate descriptors even though multiple results may share a code.
+        assert len(descriptor_ids) == len(set(descriptor_ids))
+
+    def test_sarif_empty_domain(self):
+        """A clean domain yields empty results and rules, exit 0."""
+        result = runner.invoke(app, ["check", "-d", _CLEAN_DOMAIN, "-f", "sarif"])
+        assert result.exit_code == 0
+        run = json.loads(result.output)["runs"][0]
+        assert run["results"] == []
+        assert run["tool"]["driver"]["rules"] == []
+
+    def test_sarif_diagnostics_path_has_metadata_and_safe_location(self):
+        """A warning diagnostic surfaces with mapped level, a non-empty
+        fullDescription (from #774 rule.rationale), and a location that is either
+        a real path or [] — never a KeyError."""
+        result = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
+        run = json.loads(result.output)["runs"][0]
+        warnings = [r for r in run["results"] if r["level"] == "warning"]
+        assert len(warnings) > 0, "Expected a warning-level SARIF result"
+        for res in warnings:
+            locations = res["locations"]
+            assert isinstance(locations, list)
+            for loc in locations:
+                uri = loc["physicalLocation"]["artifactLocation"]["uri"]
+                assert isinstance(uri, str) and uri
+
+        descriptors = {r["id"]: r for r in run["tool"]["driver"]["rules"]}
+        # At least one warning descriptor carries a rationale from #774.
+        rationales = [
+            descriptors[r["ruleId"]]["fullDescription"]["text"] for r in warnings
+        ]
+        assert any(text for text in rationales), (
+            "Expected a non-empty fullDescription from #774 rule.rationale"
+        )
+
+    def test_sarif_resolvable_element_yields_physical_location(self):
+        """test28's DEPRECATED_ELEMENT points at the registered ``Order``
+        aggregate, whose FQN resolves to a real source file."""
+        result = runner.invoke(app, ["check", "-d", _DEPRECATED_DOMAIN, "-f", "sarif"])
+        run = json.loads(result.output)["runs"][0]
+        deprecated = [r for r in run["results"] if r["ruleId"] == "DEPRECATED_ELEMENT"]
+        assert len(deprecated) == 1
+        loc = deprecated[0]["locations"]
+        assert len(loc) == 1
+        uri = loc[0]["physicalLocation"]["artifactLocation"]["uri"]
+        assert uri.endswith("domain28.py")
+
+    def test_sarif_validator_errors_path(self):
+        """A validator-error run (test30) emits error results with no location
+        and no physicalLocation, and does not raise on missing rule metadata."""
+        result = runner.invoke(
+            app, ["check", "-d", _UPCASTER_ERR_DOMAIN, "-f", "sarif"]
+        )
+        assert result.exit_code == 1
+        run = json.loads(result.output)["runs"][0]
+        assert len(run["results"]) > 0, "Expected error results"
+        for res in run["results"]:
+            assert res["level"] == "error"
+            assert res["locations"] == []
+        # Descriptors for validator errors carry no #774 metadata.
+        for descriptor in run["tool"]["driver"]["rules"]:
+            assert descriptor["fullDescription"]["text"] == ""
+            assert descriptor["help"]["text"] == ""
+
+    def test_sarif_level_mapping_info_becomes_note(self):
+        """An info diagnostic maps to SARIF ``note`` (never ``info``)."""
+        result = runner.invoke(app, ["check", "-d", _INFO_DOMAIN, "-f", "sarif"])
+        run = json.loads(result.output)["runs"][0]
+        levels = {r["level"] for r in run["results"]}
+        assert len(run["results"]) > 0, "Expected info-level results"
+        assert "note" in levels
+        assert "info" not in levels
+
+    def test_sarif_exit_code_matches_rich(self):
+        """The new format does not alter the exit-code block: a warning domain
+        exits 2 under both rich and sarif."""
+        rich = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN])
+        sarif = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
+        assert sarif.exit_code == rich.exit_code == 2
+
+
+@pytest.mark.no_test_domain
+class TestCheckGithubAnnotations:
+    """``--format github-annotations`` emits workflow-command lines."""
+
+    def test_annotation_levels(self):
+        """Warnings map to ::warning, info to ::notice."""
+        result = runner.invoke(
+            app, ["check", "-d", _DIAG_DOMAIN, "-f", "github-annotations"]
+        )
+        lines = [ln for ln in result.output.splitlines() if ln]
+        assert len(lines) > 0, "Expected annotation lines"
+        assert any(ln.startswith("::warning") for ln in lines)
+        assert any(ln.startswith("::notice") for ln in lines)
+        for ln in lines:
+            assert ln.startswith(("::warning", "::notice", "::error"))
+
+    def test_annotation_error_level(self):
+        """Validator errors map to ::error with no file= parameter."""
+        result = runner.invoke(
+            app, ["check", "-d", _UPCASTER_ERR_DOMAIN, "-f", "github-annotations"]
+        )
+        lines = [ln for ln in result.output.splitlines() if ln]
+        assert len(lines) > 0, "Expected annotation lines"
+        for ln in lines:
+            assert ln.startswith("::error")
+            # The command head (between the two ``::``) carries no file= param.
+            assert ln.split("::", 2)[1] == "error"
+
+    def test_annotation_resolvable_element_includes_file(self):
+        """A diagnostic on a registered element carries file= before the second
+        ``::`` separator."""
+        result = runner.invoke(
+            app, ["check", "-d", _DEPRECATED_DOMAIN, "-f", "github-annotations"]
+        )
+        lines = [ln for ln in result.output.splitlines() if ln]
+        deprecated = [ln for ln in lines if "DEPRECATED_ELEMENT" in ln]
+        assert len(deprecated) == 1
+        head = deprecated[0].split("::", 2)[1]
+        assert " file=" in head
+        assert head.startswith("notice")
+
+    def test_annotation_empty_domain(self):
+        """A clean domain produces no annotation lines, exit 0."""
+        result = runner.invoke(
+            app, ["check", "-d", _CLEAN_DOMAIN, "-f", "github-annotations"]
+        )
+        assert result.exit_code == 0
+        assert result.output.strip() == ""
+
+    def test_annotation_exit_code_matches_rich(self):
+        """The new format shares the exit-code block with rich."""
+        rich = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN])
+        gha = runner.invoke(
+            app, ["check", "-d", _DIAG_DOMAIN, "-f", "github-annotations"]
+        )
+        assert gha.exit_code == rich.exit_code == 2
+
+
+class TestEscapeAnnotation:
+    """``_escape_annotation`` escapes %, CR, LF in the order that avoids
+    double-escaping. Fixtures cannot easily carry these bytes in a diagnostic
+    message, so the escaping branch is unit-tested directly."""
+
+    def test_percent_escaped(self):
+        assert _escape_annotation("100%") == "100%25"
+
+    def test_carriage_return_escaped(self):
+        assert _escape_annotation("a\rb") == "a%0Db"
+
+    def test_newline_escaped(self):
+        assert _escape_annotation("a\nb") == "a%0Ab"
+
+    def test_all_three(self):
+        assert _escape_annotation("a%\r\nb") == "a%25%0D%0Ab"
+
+    def test_percent_escaped_before_newline(self):
+        """A literal ``%0A`` in the input must not be double-escaped: because
+        ``%`` is replaced first, the input's ``%`` becomes ``%25`` and the
+        digits are untouched — the result is ``%250A``, not ``%25%0A``."""
+        assert _escape_annotation("%0A") == "%250A"
+        # The wrong order (\n first) would turn a real newline into %0A and then
+        # re-escape its % to %250A; assert a real newline is NOT double-escaped.
+        assert _escape_annotation("\n") == "%0A"

@@ -8,6 +8,12 @@ Usage::
     # JSON output (CI-friendly)
     protean check --domain=my_app --format=json
 
+    # SARIF 2.1.0 (GitHub Code Scanning / IDE problems panel)
+    protean check --domain=my_app --format=sarif
+
+    # GitHub Actions annotations (inline PR ::error/::warning/::notice)
+    protean check --domain=my_app --format=github-annotations
+
     # Filter by severity level
     protean check --domain=my_app --level=warning
 
@@ -27,6 +33,7 @@ which sets the severity floor that fails CI. ``--level`` only affects display.
     "info"  — errors, warnings, and info all gate
 """
 
+import importlib.util
 import json
 from typing import Annotated, Any
 
@@ -34,6 +41,7 @@ import typer
 from rich import print
 from rich.console import Console
 
+import protean
 from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
@@ -48,6 +56,21 @@ _LEVEL_ORDER = {"error": 0, "warning": 1, "info": 2}
 
 # Valid values for the ``[lint].level`` config key (the exit-code severity floor)
 _LINT_LEVELS = frozenset({"error", "warn", "info"})
+
+# Maps a check ``level`` to the SARIF 2.1.0 ``result.level`` vocabulary. SARIF has
+# no "warning"→"info" split; an info finding becomes ``note``. ``.get(level, "note")``
+# is used at call sites so an unexpected level degrades rather than raising.
+_SARIF_LEVEL = {"error": "error", "warning": "warning", "info": "note"}
+
+# Maps a check ``level`` to the GitHub Actions workflow-command verb. ``info``
+# becomes ``notice``. ``.get(level, "notice")`` is used at call sites.
+_GHA_LEVEL = {"error": "error", "warning": "warning", "info": "notice"}
+
+# Pinned SARIF 2.1.0 schema URI (top-level ``$schema``).
+_SARIF_SCHEMA = (
+    "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/"
+    "Schemata/sarif-schema-2.1.0.json"
+)
 
 
 @handle_cli_exceptions("check")
@@ -65,7 +88,7 @@ def check(
         typer.Option(
             "--format",
             "-f",
-            help="Output format: 'rich' (default) or 'json'",
+            help="Output format: 'rich' (default), 'json', 'sarif', or 'github-annotations'",
         ),
     ] = "rich",
     level: Annotated[
@@ -172,6 +195,12 @@ def check(
         _print_quiet(result)
     elif format == "json":
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    elif format == "sarif":
+        typer.echo(
+            json.dumps(_format_sarif(result, derived_domain), indent=2, sort_keys=True)
+        )
+    elif format == "github-annotations":
+        typer.echo(_format_github_annotations(result, derived_domain))
     else:
         _print_rich(result)
 
@@ -256,3 +285,166 @@ def _print_rich(result: dict[str, Any]) -> None:
         print("\n  [cyan]All checks passed with informational findings.[/cyan]")
 
     print()
+
+
+def _element_module_map(domain: Any) -> dict[str, str]:
+    """Build an FQN → defining-module map from the domain registry.
+
+    Rule diagnostics carry ``element`` as a fully-qualified name (``fqn(cls)``);
+    the registry keys elements by that same FQN. This mirrors how the IR builder
+    walks the registry, skipping ``internal`` records. Used to resolve a
+    diagnostic's element to a source file for SARIF/annotation locations.
+    """
+    from protean.utils import fqn  # noqa: PLC0415
+
+    module_map: dict[str, str] = {}
+    for records in domain._domain_registry._elements.values():
+        for record in records.values():
+            if getattr(record, "internal", False):
+                continue
+            module_map[fqn(record.cls)] = record.cls.__module__
+    return module_map
+
+
+def _resolve_sarif_location(
+    element_fqn: str, module_map: dict[str, str]
+) -> dict[str, Any] | None:
+    """Resolve an element FQN to a SARIF ``location`` dict, or ``None``.
+
+    Returns ``None`` (a location-less, run-level result — valid SARIF) whenever
+    the FQN is not a registered public element (validator errors and
+    domain-scoped diagnostics), or its module cannot be resolved to a file. Never
+    raises: import/attribute/value failures all degrade to ``None``.
+    """
+    module = module_map.get(element_fqn)
+    if not module:
+        return None
+    try:
+        spec = importlib.util.find_spec(module)
+        origin = spec.origin if spec else None
+    except (ImportError, AttributeError, ValueError):
+        return None
+    if not origin:
+        return None
+    return {"physicalLocation": {"artifactLocation": {"uri": origin}}}
+
+
+def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
+    """Render a check result as a SARIF 2.1.0 document.
+
+    ``errors`` and ``diagnostics`` are mutually exclusive per run and carry
+    different shapes, so each list is handled separately: validator ``errors``
+    become location-less ``error`` results with no rule metadata; rule
+    ``diagnostics`` carry the #774 metadata and attempt FQN-based location
+    resolution. ``reportingDescriptor`` objects are deduplicated by code across
+    both lists (first occurrence wins).
+    """
+    module_map = _element_module_map(domain)
+    rules: dict[str, dict[str, Any]] = {}
+    sarif_results: list[dict[str, Any]] = []
+
+    def _descriptor(
+        code: str,
+        message: str,
+        rule: dict[str, Any] | None,
+        suggestion: str | None,
+    ) -> None:
+        if code in rules:
+            return
+        fix = (rule or {}).get("fix", "")
+        help_text = fix
+        if suggestion and suggestion != fix:
+            help_text = f"{fix}\n{suggestion}".strip()
+        rules[code] = {
+            "id": code,
+            "shortDescription": {"text": message or code},
+            "fullDescription": {"text": (rule or {}).get("rationale", "")},
+            "help": {"text": help_text},
+            "helpUri": (
+                "https://docs.protean.io/reference/fitness-functions#"
+                f"{code.lower().replace('_', '-')}"
+            ),
+        }
+
+    # Validator errors: no FQN, no rule metadata, always error, no location.
+    for err in result.get("errors", []):
+        code = err["code"]
+        _descriptor(code, err.get("message", code), None, None)
+        sarif_results.append(
+            {
+                "ruleId": code,
+                "level": "error",
+                "message": {"text": err["message"]},
+                "locations": [],
+            }
+        )
+
+    # Rule diagnostics: #774 schema, FQN-resolvable location.
+    for diag in result.get("diagnostics", []):
+        code = diag["code"]
+        _descriptor(
+            code, diag.get("message", code), diag.get("rule"), diag.get("suggestion")
+        )
+        loc = _resolve_sarif_location(diag.get("element", ""), module_map)
+        sarif_results.append(
+            {
+                "ruleId": code,
+                "level": _SARIF_LEVEL.get(diag.get("level"), "note"),
+                "message": {"text": diag["message"]},
+                "locations": [loc] if loc else [],
+            }
+        )
+
+    return {
+        "version": "2.1.0",
+        "$schema": _SARIF_SCHEMA,
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "protean",
+                        "version": protean.__version__,
+                        "informationUri": "https://docs.protean.io/reference/cli/check",
+                        "rules": list(rules.values()),
+                    }
+                },
+                "results": sarif_results,
+            }
+        ],
+    }
+
+
+def _escape_annotation(text: str) -> str:
+    """Escape a GitHub Actions annotation message body.
+
+    ``%`` is replaced first so the ``%`` introduced by the ``\\r``/``\\n``
+    replacements is not itself re-escaped (double-escaping).
+    """
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _format_github_annotations(result: dict[str, Any], domain: Any) -> str:
+    """Render a check result as GitHub Actions workflow-command annotations.
+
+    One ``::error``/``::warning``/``::notice`` command per finding. Validator
+    ``errors`` emit ``::error`` with no ``file=`` (no resolvable FQN); rule
+    ``diagnostics`` include ``file=<path>`` when the element resolves to a file.
+    """
+    module_map = _element_module_map(domain)
+    lines: list[str] = []
+
+    for err in result.get("errors", []):
+        msg = _escape_annotation(f"RULE [{err['code']}] {err['message']}")
+        lines.append(f"::error::{msg}")
+
+    for diag in result.get("diagnostics", []):
+        gha = _GHA_LEVEL.get(diag.get("level"), "notice")
+        loc = _resolve_sarif_location(diag.get("element", ""), module_map)
+        file_param = ""
+        if loc:
+            path = loc["physicalLocation"]["artifactLocation"]["uri"]
+            file_param = f" file={path}"
+        msg = _escape_annotation(f"RULE [{diag['code']}] {diag['message']}")
+        lines.append(f"::{gha}{file_param}::{msg}")
+
+    return "\n".join(lines)
