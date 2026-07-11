@@ -51,13 +51,20 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_deadline(
-    deadline: datetime | None, timeout: timedelta | None
+    deadline: datetime | None,
+    timeout: timedelta | None,
+    now: datetime | None = None,
 ) -> datetime | None:
     """Resolve an absolute UTC deadline from ``deadline`` or ``timeout``.
 
     ``deadline`` and ``timeout`` are mutually exclusive. A ``timeout`` is
     converted to an absolute deadline (``now + timeout``) so it survives
     queue delays. Naive deadlines are assumed to be UTC.
+
+    ``now`` is the reference time a ``timeout`` is measured from. It defaults to
+    the real current UTC time, keeping this a pure, context-free function;
+    domain callers pass ``domain.clock.now()`` so an injected clock governs the
+    deadline. When only ``deadline`` is given, ``now`` is unused.
     """
     if deadline is not None and timeout is not None:
         raise IncorrectUsageError("Specify either `deadline` or `timeout`, not both.")
@@ -65,7 +72,8 @@ def resolve_deadline(
     if timeout is not None:
         if not isinstance(timeout, timedelta):
             raise IncorrectUsageError("`timeout` must be a `datetime.timedelta`.")
-        return datetime.now(UTC) + timeout
+        reference = now if now is not None else datetime.now(UTC)
+        return reference + timeout
 
     if deadline is not None:
         if not isinstance(deadline, datetime):
@@ -131,7 +139,9 @@ class CommandProcessor:
             timeout = self._domain.config.get("command_default_timeout")
         if timeout is None:
             return None
-        return resolve_deadline(None, coerce_timeout(timeout))
+        return resolve_deadline(
+            None, coerce_timeout(timeout), now=self._domain.clock.now()
+        )
 
     def enrich(
         self,
@@ -374,8 +384,11 @@ class CommandProcessor:
             # Resolve priority: explicit param > context var > default (0)
             resolved_priority = priority if priority is not None else current_priority()
 
-            # Resolve an absolute deadline from deadline/timeout (mutually exclusive)
-            resolved_deadline = resolve_deadline(deadline, timeout)
+            # Resolve an absolute deadline from deadline/timeout (mutually
+            # exclusive), measuring any timeout from the domain's clock.
+            resolved_deadline = resolve_deadline(
+                deadline, timeout, now=domain.clock.now()
+            )
 
             command_with_metadata = self.enrich(
                 command,

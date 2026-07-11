@@ -13,8 +13,9 @@ import json
 import logging
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
 from typing import Any
+
+from protean.utils.globals import _domain_now
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class MessageTrace:
 
     def __post_init__(self) -> None:
         if not self.timestamp:
-            self.timestamp = datetime.now(UTC).isoformat()
+            self.timestamp = _domain_now().isoformat()
 
     def to_json(self) -> str:
         """Serialize to JSON for transport."""

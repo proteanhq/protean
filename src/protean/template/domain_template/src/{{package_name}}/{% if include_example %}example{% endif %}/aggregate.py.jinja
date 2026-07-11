@@ -1,6 +1,6 @@
 """Example aggregate demonstrating the pattern."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from pydantic import Field
@@ -21,8 +21,8 @@ class Example:
     name: Annotated[str, Field(max_length=100)]
     description: Annotated[str, Field(max_length=500)] | None = None
     status: str | None = "DRAFT"
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Business methods
     @classmethod
@@ -47,7 +47,7 @@ class Example:
             raise ValueError("Cannot activate an archived example")
 
         self.status = "ACTIVE"
-        self.updated_at = datetime.now()
+        self.updated_at = datetime.now(UTC)
 
         self.raise_(
             ExampleActivated(
@@ -59,7 +59,7 @@ class Example:
     def archive(self) -> None:
         """Archive the example."""
         self.status = "ARCHIVED"
-        self.updated_at = datetime.now()
+        self.updated_at = datetime.now(UTC)
 
         self.raise_(
             ExampleArchived(

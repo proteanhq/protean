@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
@@ -22,7 +21,7 @@ from protean.utils.eventing import (
     MessageHeaders,
     Metadata,
 )
-from protean.utils.globals import g
+from protean.utils.globals import _domain_now, g
 
 # The ``published`` option a command silently inherited from ``BaseMessageType``
 # but never acted on: commands are internal and take no part in the published
@@ -179,7 +178,7 @@ class BaseCommand(BaseMessageType):
             if not headers.type:
                 headers = MessageHeaders(
                     id=headers.id,
-                    time=headers.time or datetime.now(UTC),
+                    time=headers.time or _domain_now(),
                     type=self.__class__.__type__,
                     stream=headers.stream,
                     traceparent=headers.traceparent,
@@ -187,9 +186,7 @@ class BaseCommand(BaseMessageType):
                     deadline=headers.deadline,
                 )
         else:
-            headers = MessageHeaders(
-                type=self.__class__.__type__, time=datetime.now(UTC)
-            )
+            headers = MessageHeaders(type=self.__class__.__type__, time=_domain_now())
 
         # If metadata already has domain with sequence_id and asynchronous set (from enrich),
         # preserve those values

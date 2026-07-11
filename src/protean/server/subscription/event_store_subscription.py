@@ -4,7 +4,6 @@ import os
 import secrets
 import socket
 import time
-from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -368,7 +367,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": "Read",
-                    "time": datetime.now(UTC).isoformat(),
+                    "time": self.engine.domain.clock.now().isoformat(),
                     "stream": self.subscriber_stream_name,
                 },
                 "domain": {
@@ -605,7 +604,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": FailedPositionStatus.FAILED.value,
-                    "time": datetime.now(UTC).isoformat(),
+                    "time": self.engine.domain.clock.now().isoformat(),
                     "stream": self.failed_positions_stream,
                 },
                 "domain": {
@@ -646,7 +645,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": status.value,
-                    "time": datetime.now(UTC).isoformat(),
+                    "time": self.engine.domain.clock.now().isoformat(),
                     "stream": self.failed_positions_stream,
                 },
                 "domain": {
@@ -768,7 +767,7 @@ class EventStoreSubscription(BaseSubscription):
                 "headers": {
                     "id": str(uuid4()),
                     "type": "Checkpoint",
-                    "time": datetime.now(UTC).isoformat(),
+                    "time": self.engine.domain.clock.now().isoformat(),
                     "stream": self.recovery_checkpoint_stream,
                 },
                 "domain": {

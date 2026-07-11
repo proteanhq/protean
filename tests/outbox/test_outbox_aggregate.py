@@ -7,6 +7,7 @@ import pytest
 
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus, ProcessingResult
+from tests.shared import FrozenClock
 
 
 @pytest.fixture(autouse=True)
@@ -632,65 +633,48 @@ class TestPrivateHelperMethods:
         assert sample_outbox.locked_by is None
         assert sample_outbox.locked_until is None
 
-    def test_calculate_next_retry_exponential_backoff(self, sample_outbox):
-        """Test _calculate_next_retry implements exponential backoff."""
+    def test_calculate_next_retry_exponential_backoff(self, sample_outbox, test_domain):
+        """Test _calculate_next_retry implements exponential backoff.
+
+        The injected clock lets us assert the exact next-retry instant instead
+        of a wall-clock tolerance window.
+        """
+        instant = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        test_domain.clock = FrozenClock(instant)
         base_delay = 30
         sample_outbox.retry_count = 2
 
-        before_calc = datetime.now(UTC)
         sample_outbox._calculate_next_retry(base_delay)
 
-        # Expected delay = 30 * (2 ^ 2) = 120 seconds
-        expected_time = before_calc + timedelta(seconds=120)
-        time_diff = abs((sample_outbox.next_retry_at - expected_time).total_seconds())
-        assert time_diff < 1  # Less than 1 second difference
+        # Expected delay = 30 * (2 ^ 2) = 120 seconds, measured from the clock.
+        assert sample_outbox.next_retry_at == instant + timedelta(seconds=120)
 
-    def test_calculate_next_retry_with_max_backoff(self, sample_outbox):
+    def test_calculate_next_retry_with_max_backoff(self, sample_outbox, test_domain):
         """Test _calculate_next_retry respects max backoff limit."""
+        instant = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        test_domain.clock = FrozenClock(instant)
         base_delay = 30
         max_backoff = 300  # 5 minutes
         sample_outbox.retry_count = 10
 
-        before_calc = datetime.now(UTC)
         sample_outbox._calculate_next_retry(base_delay, max_backoff_seconds=max_backoff)
 
-        # Expected delay should not exceed max_backoff
-        expected_time = before_calc + timedelta(seconds=max_backoff)
-        time_diff = abs((sample_outbox.next_retry_at - expected_time).total_seconds())
-        assert time_diff < 1  # Less than 1 second difference
+        # Expected delay is capped at max_backoff.
+        assert sample_outbox.next_retry_at == instant + timedelta(seconds=max_backoff)
 
-    def test_calculate_next_retry_with_default_max_backoff(self, sample_outbox):
+    def test_calculate_next_retry_with_default_max_backoff(
+        self, sample_outbox, test_domain
+    ):
         """Test _calculate_next_retry uses default max backoff if not provided."""
+        instant = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        test_domain.clock = FrozenClock(instant)
         base_delay = 30
         sample_outbox.retry_count = 10
 
-        before_calc = datetime.now(UTC)
         sample_outbox._calculate_next_retry(base_delay)
 
-        # Default max backoff is 3600 seconds (1 hour)
-        expected_time = before_calc + timedelta(seconds=3600)
-        time_diff = abs((sample_outbox.next_retry_at - expected_time).total_seconds())
-        assert time_diff < 1  # Less than 1 second difference
-
-
-def _freeze_outbox_now(monkeypatch, instant):
-    """Freeze ``datetime.now()`` inside the outbox module to ``instant``.
-
-    The outbox compares ``datetime.now(...)`` against ``next_retry_at`` /
-    ``locked_until`` with a strict ``<``. The *only* input that distinguishes
-    ``<`` from ``<=`` is the exact boundary instant (now == the stored time), and
-    the outbox has no injectable clock — so pinning that instant requires
-    patching the module-level ``datetime``. These boundary tests exist to lock in
-    the "due/expired at the exact instant" semantics (and to kill the
-    ``<`` -> ``<=`` mutants that no wall-clock test can reach).
-    """
-
-    class _FrozenDatetime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return instant
-
-    monkeypatch.setattr("protean.utils.outbox.datetime", _FrozenDatetime)
+        # Default max backoff is 3600 seconds (1 hour).
+        assert sample_outbox.next_retry_at == instant + timedelta(seconds=3600)
 
 
 class TestBoundaryClockConditions:
@@ -698,47 +682,51 @@ class TestBoundaryClockConditions:
 
     ``next_retry_at`` and ``locked_until`` use a strict ``<`` against "now", so
     at the exact stored instant the retry is *due* and the lock is *expired*.
+    The injectable ``domain.clock`` pins "now" to the exact boundary instant —
+    the only input that distinguishes ``<`` from ``<=`` — so these tests kill the
+    ``<`` -> ``<=`` mutants that no wall-clock test can reach, without
+    monkeypatching the module-level ``datetime``.
     """
 
     FIXED = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
-    def test_retry_due_at_exact_next_retry_instant(self, sample_outbox, monkeypatch):
+    @pytest.fixture
+    def frozen(self, test_domain):
+        """Freeze the domain clock at the exact boundary instant."""
+        test_domain.clock = FrozenClock(self.FIXED)
+        return test_domain
+
+    def test_retry_due_at_exact_next_retry_instant(self, sample_outbox, frozen):
         """At now == next_retry_at the retry is due; start_processing proceeds."""
         sample_outbox.status = OutboxStatus.FAILED.value
         sample_outbox.retry_count = 1
         sample_outbox.next_retry_at = self.FIXED
-        _freeze_outbox_now(monkeypatch, self.FIXED)
 
         success, result = sample_outbox.start_processing("worker-1")
 
         assert success is True
         assert result == ProcessingResult.SUCCESS
 
-    def test_ready_at_exact_next_retry_instant(self, sample_outbox, monkeypatch):
+    def test_ready_at_exact_next_retry_instant(self, sample_outbox, frozen):
         """is_ready_for_processing is True at now == next_retry_at."""
         sample_outbox.status = OutboxStatus.FAILED.value
         sample_outbox.next_retry_at = self.FIXED
-        _freeze_outbox_now(monkeypatch, self.FIXED)
 
         assert sample_outbox.is_ready_for_processing() is True
 
-    def test_lock_expired_at_exact_locked_until_instant(
-        self, sample_outbox, monkeypatch
-    ):
+    def test_lock_expired_at_exact_locked_until_instant(self, sample_outbox, frozen):
         """A lock is already free at now == locked_until (reclaimable)."""
         sample_outbox.status = OutboxStatus.PROCESSING.value
         sample_outbox.locked_until = self.FIXED
-        _freeze_outbox_now(monkeypatch, self.FIXED)
 
         assert sample_outbox._is_locked() is False
 
     def test_start_processing_reclaims_at_exact_lock_expiry(
-        self, sample_outbox, monkeypatch
+        self, sample_outbox, frozen
     ):
         """start_processing is not blocked by a lock that expires at this instant."""
         sample_outbox.status = OutboxStatus.PENDING.value
         sample_outbox.locked_until = self.FIXED
-        _freeze_outbox_now(monkeypatch, self.FIXED)
 
         # Lock is free at the exact instant, so the PENDING row is claimable and
         # does not report ALREADY_LOCKED.
@@ -746,6 +734,26 @@ class TestBoundaryClockConditions:
 
         assert result != ProcessingResult.ALREADY_LOCKED
         assert success is True
+
+    def test_lock_still_held_one_second_before_expiry(self, sample_outbox, frozen):
+        """A lock one second in the future is still held (negative boundary)."""
+        sample_outbox.status = OutboxStatus.PROCESSING.value
+        sample_outbox.locked_until = self.FIXED + timedelta(seconds=1)
+
+        # now (FIXED) < locked_until -> still locked, so the mutant that flips
+        # `<` to `<=` at the exact instant is distinguished from this case.
+        assert sample_outbox._is_locked() is True
+
+    def test_retry_not_due_one_second_before_next_retry(self, sample_outbox, frozen):
+        """A retry one second in the future is not yet due (negative boundary)."""
+        sample_outbox.status = OutboxStatus.FAILED.value
+        sample_outbox.retry_count = 1
+        sample_outbox.next_retry_at = self.FIXED + timedelta(seconds=1)
+
+        success, result = sample_outbox.start_processing("worker-3")
+
+        assert success is False
+        assert result == ProcessingResult.RETRY_NOT_DUE
 
 
 class TestFieldDefaults:

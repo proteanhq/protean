@@ -1,5 +1,5 @@
 import threading
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
@@ -9,7 +9,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.port.event_store import BaseEventStore
 from protean.utils.eventing import Metadata
-from protean.utils.globals import current_domain
+from protean.utils.globals import _domain_now, current_domain
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -103,7 +103,7 @@ class MemoryMessageRepository(BaseRepository):
                     metadata=Metadata.model_validate(metadata)
                     if metadata is not None
                     else None,
-                    time=datetime.now(UTC),
+                    time=_domain_now(),
                 )
             )
 

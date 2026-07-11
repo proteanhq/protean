@@ -1,5 +1,4 @@
 import logging
-from datetime import UTC, datetime
 from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
@@ -22,7 +21,7 @@ from protean.utils.eventing import (
     MessageHeaders,
     Metadata,
 )
-from protean.utils.globals import g
+from protean.utils.globals import _domain_now, g
 from protean.utils.telemetry import inject_traceparent_from_context
 
 logger = logging.getLogger(__name__)
@@ -166,7 +165,7 @@ class BaseEvent(BaseMessageType):
             traceparent = inject_traceparent_from_context()
             headers = MessageHeaders(
                 type=self.__class__.__type__,
-                time=datetime.now(UTC),
+                time=_domain_now(),
                 traceparent=traceparent,
             )
 

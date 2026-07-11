@@ -407,6 +407,55 @@ class TestTemplateGeneration:
             assert (example_path / "value_objects.py").exists()
             assert (example_path / "repository.py").exists()
 
+    def test_generated_example_timestamps_are_tz_aware(self):
+        """Generated example code must use tz-aware UTC timestamps.
+
+        Issue 9.1.7 makes the scaffold teaching-correct: no bare
+        ``datetime.now()`` (which yields naive local time), and every generated
+        timestamp is ``datetime.now(UTC)``.
+        """
+        bare_now = re.compile(r"datetime\.now\(\s*\)")
+
+        with isolated_filesystem() as project_dir:
+            args = [
+                "new",
+                "test_tz_example",
+                "-o",
+                project_dir,
+                "--defaults",
+                "--skip-setup",
+                "-d",
+                "author_name=Test",
+                "-d",
+                "author_email=test@test.com",
+                "-d",
+                "include_example=true",
+            ]
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0
+
+            example_path = (
+                Path(project_dir) / "test_tz_example" / "src" / "test_tz_example"
+            ) / "example"
+
+            checked = 0
+            for filename in ("aggregate.py", "events.py", "projectors.py"):
+                source_file = example_path / filename
+                if not source_file.exists():
+                    continue
+                checked += 1
+                content = source_file.read_text()
+                if "datetime.now" in content:
+                    # The tz-aware form must be present and the bare form absent.
+                    assert "datetime.now(UTC)" in content, filename
+                    assert "from datetime import UTC" in content, filename
+                    assert not bare_now.search(content), (
+                        f"{filename} still uses bare datetime.now()"
+                    )
+
+            # Guard against the render silently producing none of these files.
+            assert checked > 0, "expected generated example modules to check"
+
     def test_no_example_code_when_disabled(self):
         """Test that example code is not generated when include_example is false."""
         with isolated_filesystem() as project_dir:

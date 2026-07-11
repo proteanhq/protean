@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from protean.server.subscription.config_resolver import ConfigResolver
@@ -106,7 +106,7 @@ def collect_projection_statuses(
     """
     statuses: list[ProjectionStatus] = []
     config_resolver = ConfigResolver(domain)
-    now = datetime.now(UTC)
+    now = domain.clock.now()
 
     for record in domain.registry.projections.values():
         projection_cls = record.cls

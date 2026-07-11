@@ -14,6 +14,7 @@ from protean.core.repository import BaseRepository
 from protean.fields import Auto
 from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Metadata
+from protean.utils.globals import _domain_now
 from protean.utils.query import F, Q
 
 PAGE_SIZE = 50  # Default page size for fetching messages
@@ -76,6 +77,10 @@ class Outbox(BaseAggregate):
     type: Annotated[str, Field(max_length=255)]
     data: dict[str, Any]
     metadata_: Metadata
+    # Out of scope for the injectable clock (issue 9.1.7): a default_factory runs
+    # at field-definition time with no ``now`` argument and no reliable domain
+    # context, and this is a creation timestamp (aggregate identity), not a
+    # deadline/lock boundary. Left as real UTC deliberately.
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     published_at: datetime | None = None
     retry_count: int = 0
@@ -175,19 +180,28 @@ class Outbox(BaseAggregate):
         )
 
     def start_processing(
-        self, worker_id: str, lock_duration_minutes: int = 5
+        self,
+        worker_id: str,
+        lock_duration_minutes: int = 5,
+        now: datetime | None = None,
     ) -> tuple[bool, ProcessingResult]:
         """Attempt to acquire lock and start processing the message.
 
         Args:
             worker_id: Identifier of the worker processing this message
             lock_duration_minutes: How long to hold the lock
+            now: Reference time for the lock/retry comparisons. Defaults to the
+                active domain's clock (or real UTC with no context). A single
+                reading is used for every comparison and timestamp below so the
+                lock window is computed against one consistent instant.
 
         Returns:
             Tuple of (success: bool, result: ProcessingResult) indicating outcome
         """
+        now = _domain_now(now)
+
         # Check if message is locked first (for PROCESSING status)
-        if self._is_locked():
+        if self._is_locked(now):
             return False, ProcessingResult.ALREADY_LOCKED
 
         # Check if message is eligible for processing
@@ -198,23 +212,26 @@ class Outbox(BaseAggregate):
             return False, ProcessingResult.MAX_RETRIES_EXCEEDED
 
         # Check if enough time has passed for retry
-        if self.next_retry_at:
-            current_time = datetime.now(UTC)
-            if current_time < ensure_utc_aware(self.next_retry_at):
-                return False, ProcessingResult.RETRY_NOT_DUE
+        if self.next_retry_at and now < ensure_utc_aware(self.next_retry_at):
+            return False, ProcessingResult.RETRY_NOT_DUE
 
         # Acquire lock and mark as processing
         self.status = OutboxStatus.PROCESSING.value
         self.locked_by = worker_id
-        self.locked_until = datetime.now(UTC) + timedelta(minutes=lock_duration_minutes)
-        self.last_processed_at = datetime.now(UTC)
+        self.locked_until = now + timedelta(minutes=lock_duration_minutes)
+        self.last_processed_at = now
         return True, ProcessingResult.SUCCESS
 
-    def mark_published(self) -> None:
-        """Mark message as successfully published."""
+    def mark_published(self, now: datetime | None = None) -> None:
+        """Mark message as successfully published.
+
+        Args:
+            now: Timestamp to record. Defaults to the active domain's clock.
+        """
+        now = _domain_now(now)
         self.status = OutboxStatus.PUBLISHED.value
-        self.published_at = datetime.now(UTC)
-        self.last_processed_at = datetime.now(UTC)
+        self.published_at = now
+        self.last_processed_at = now
         self.last_error = None
         # Clear lock
         self._clear_lock()
@@ -224,6 +241,7 @@ class Outbox(BaseAggregate):
         error: Exception,
         base_delay_seconds: int = 60,
         max_retries: int | None = None,
+        now: datetime | None = None,
     ) -> None:
         """Mark processing as failed and schedule retry if applicable.
 
@@ -231,13 +249,16 @@ class Outbox(BaseAggregate):
             error: The error that occurred during processing
             base_delay_seconds: Base delay for exponential backoff
             max_retries: Override max retries (uses self.max_retries if None)
+            now: Reference time for the failure timestamp and the retry-backoff
+                schedule. Defaults to the active domain's clock.
         """
+        now = _domain_now(now)
         self.retry_count += 1
-        self.last_processed_at = datetime.now(UTC)
+        self.last_processed_at = now
         self.last_error = {
             "message": str(error),
             "traceback": traceback.format_exc(),
-            "failed_at": datetime.now(UTC).isoformat(),
+            "failed_at": now.isoformat(),
             "retry_count": self.retry_count,
         }
 
@@ -252,22 +273,24 @@ class Outbox(BaseAggregate):
         # Determine next action based on retry eligibility
         if self.retry_count < effective_max_retries:
             self.status = OutboxStatus.FAILED.value
-            self._calculate_next_retry(base_delay_seconds)
+            self._calculate_next_retry(base_delay_seconds, now=now)
         else:
             # Max retries exceeded
             self.status = OutboxStatus.ABANDONED.value
             self.last_error["reason"] = "Max retries exceeded"
 
-    def mark_abandoned(self, reason: str) -> None:
+    def mark_abandoned(self, reason: str, now: datetime | None = None) -> None:
         """Mark message as permanently failed.
 
         Args:
             reason: Reason for abandoning the message
+            now: Timestamp to record. Defaults to the active domain's clock.
         """
+        now = _domain_now(now)
         self.status = OutboxStatus.ABANDONED.value
         self.last_error = {
             "message": reason,
-            "abandoned_at": datetime.now(UTC).isoformat(),
+            "abandoned_at": now.isoformat(),
             "retry_count": self.retry_count,
             "reason": "Manually abandoned",
         }
@@ -296,32 +319,39 @@ class Outbox(BaseAggregate):
         if self.status in [OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]:
             self.priority = new_priority
 
-    def is_ready_for_processing(self) -> bool:
+    def is_ready_for_processing(self, now: datetime | None = None) -> bool:
         """Check if message is ready to be processed now.
+
+        Args:
+            now: Reference time for the lock/retry comparisons. Defaults to the
+                active domain's clock.
 
         Returns:
             True if message can be processed immediately
         """
+        now = _domain_now(now)
+
         if self.status not in [OutboxStatus.PENDING.value, OutboxStatus.FAILED.value]:
             return False
 
-        if self._is_locked() or not self._can_retry():
+        if self._is_locked(now) or not self._can_retry():
             return False
 
-        # Check if enough time has passed for retry
-        if self.next_retry_at:
-            current_time = datetime.now(UTC)
-            if current_time < ensure_utc_aware(self.next_retry_at):
-                return False
-
-        return True
+        # Ready unless a retry time is set and still in the future.
+        return not (self.next_retry_at and now < ensure_utc_aware(self.next_retry_at))
 
     # Private helper methods
-    def _is_locked(self) -> bool:
-        """Check if message is currently locked for processing."""
+    def _is_locked(self, now: datetime | None = None) -> bool:
+        """Check if message is currently locked for processing.
+
+        Args:
+            now: Reference time for the lock-window comparison. Defaults to the
+                active domain's clock.
+        """
+        now = _domain_now(now)
         return bool(
             self.locked_until
-            and datetime.now(UTC) < ensure_utc_aware(self.locked_until)
+            and now < ensure_utc_aware(self.locked_until)
             and self.status == OutboxStatus.PROCESSING.value
         )
 
@@ -335,15 +365,21 @@ class Outbox(BaseAggregate):
         self.locked_by = None
 
     def _calculate_next_retry(
-        self, base_delay_seconds: int = 60, max_backoff_seconds: int = 3600
+        self,
+        base_delay_seconds: int = 60,
+        max_backoff_seconds: int = 3600,
+        now: datetime | None = None,
     ) -> None:
         """Calculate next retry time using exponential backoff.
         Args:
             base_delay_seconds: Base delay in seconds for the backoff calculation.
             max_backoff_seconds: Maximum allowable delay in seconds to cap the backoff.
+            now: Reference time the backoff is measured from. Defaults to the
+                active domain's clock.
         """
+        now = _domain_now(now)
         delay = min(base_delay_seconds * (2**self.retry_count), max_backoff_seconds)
-        self.next_retry_at = datetime.now(UTC) + timedelta(seconds=delay)
+        self.next_retry_at = now + timedelta(seconds=delay)
 
 
 # Recommended indexes for the outbox table. Applied when the framework
@@ -472,7 +508,7 @@ class OutboxRepository(BaseRepository):
         if limit is not None and limit == 0:
             return []
 
-        now = datetime.now(UTC)
+        now = self._dao.domain.clock.now()
         query = self._dao.query.filter(self._eligibility_criteria(now, target_broker))
 
         # Order by priority (higher first)
@@ -516,7 +552,7 @@ class OutboxRepository(BaseRepository):
         if limit <= 0:
             return []
 
-        now = datetime.now(UTC)
+        now = self._dao.domain.clock.now()
 
         return cast(
             list[Outbox],
@@ -723,7 +759,9 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages that are stale
         """
-        threshold_time = datetime.now(UTC) - timedelta(minutes=stale_threshold_minutes)
+        threshold_time = self._dao.domain.clock.now() - timedelta(
+            minutes=stale_threshold_minutes
+        )
 
         query = self._dao.query.filter(
             status=OutboxStatus.PROCESSING.value, last_processed_at__lt=threshold_time
@@ -744,7 +782,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of recent Outbox messages
         """
-        threshold_time = datetime.now(UTC) - timedelta(hours=hours)
+        threshold_time = self._dao.domain.clock.now() - timedelta(hours=hours)
 
         query = self._dao.query.filter(created_at__gte=threshold_time)
         query = query.order_by("-created_at")
@@ -760,7 +798,7 @@ class OutboxRepository(BaseRepository):
         Returns:
             List of Outbox messages ready for retry
         """
-        current_time = datetime.now(UTC)
+        current_time = self._dao.domain.clock.now()
 
         query = self._dao.query.filter(
             status=OutboxStatus.FAILED.value, next_retry_at__lte=current_time
@@ -806,7 +844,9 @@ class OutboxRepository(BaseRepository):
         Returns:
             Number of messages deleted
         """
-        threshold_time = datetime.now(UTC) - timedelta(hours=older_than_hours)
+        threshold_time = self._dao.domain.clock.now() - timedelta(
+            hours=older_than_hours
+        )
 
         return self._delete_in_batches(
             Q(status=OutboxStatus.PUBLISHED.value, published_at__lt=threshold_time),
@@ -829,7 +869,9 @@ class OutboxRepository(BaseRepository):
         Returns:
             Number of messages deleted
         """
-        threshold_time = datetime.now(UTC) - timedelta(hours=older_than_hours)
+        threshold_time = self._dao.domain.clock.now() - timedelta(
+            hours=older_than_hours
+        )
 
         return self._delete_in_batches(
             Q(
