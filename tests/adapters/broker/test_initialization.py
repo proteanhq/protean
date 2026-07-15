@@ -74,3 +74,95 @@ class TestBrokerInitialization:
         except Exception:
             pytest.fail("Deleting an unknown broker should not raise an exception")
         assert len(test_domain.brokers) == 1
+
+
+class TestNonDestructiveReinitialization:
+    """Re-running ``domain.init()`` must not tear down live brokers.
+
+    Regression tests for #1213: a process that both runs the Engine and
+    re-initializes the domain (e.g. a scheduler cron tick) would otherwise
+    close the broker the Engine is actively consuming through, permanently
+    halting consumption.
+    """
+
+    def test_reinit_reuses_broker_instance_when_config_unchanged(self, test_domain):
+        original = test_domain.brokers["default"]
+
+        test_domain.brokers._initialize()
+
+        assert test_domain.brokers["default"] is original
+
+    def test_reinit_via_domain_init_reuses_broker_instance(self, test_domain):
+        original = test_domain.brokers["default"]
+
+        # The full public path that a scheduler cron job would exercise.
+        test_domain.init(traverse=False)
+
+        assert test_domain.brokers["default"] is original
+
+    def test_reinit_does_not_close_reused_broker(self, mocker, test_domain):
+        original = test_domain.brokers["default"]
+        spy = mocker.spy(original, "close")
+
+        test_domain.brokers._initialize()
+
+        assert spy.call_count == 0
+
+    def test_reused_broker_keeps_working_after_reinit(self, test_domain):
+        """A reference captured before re-init (as the Engine holds) still works."""
+        broker = test_domain.brokers["default"]
+
+        identifier = broker.publish("test_stream", {"foo": "bar"})
+        assert identifier is not None
+
+        # Domain re-initialized while the reference is held.
+        test_domain.init(traverse=False)
+
+        # The captured reference is still the live broker and still functions.
+        assert test_domain.brokers["default"] is broker
+        message = broker.get_next("test_stream", "test_group")
+        assert message is not None
+        assert message[1] == {"foo": "bar"}
+
+    def test_reinit_recreates_broker_when_config_changes(self, mocker, test_domain):
+        original = test_domain.brokers["default"]
+        spy = mocker.spy(original, "close")
+
+        # Replace with a differently-configured (but valid) broker config.
+        test_domain.config["brokers"]["default"] = {
+            "provider": "inline",
+            "max_retries": 99,
+        }
+        test_domain.brokers._initialize()
+
+        # A fresh instance replaced the old one, and the old one was closed.
+        assert test_domain.brokers["default"] is not original
+        assert spy.call_count == 1
+
+    def test_reinit_drops_and_closes_removed_brokers(self, mocker, test_domain):
+        from protean.adapters.broker.inline import InlineBroker
+
+        secondary = InlineBroker("secondary", test_domain, {"provider": "inline"})
+        test_domain.brokers["secondary"] = secondary
+        spy = mocker.spy(secondary, "close")
+
+        # "secondary" is not in configured brokers, so re-init should drop it.
+        test_domain.brokers._initialize()
+
+        assert "secondary" not in test_domain.brokers
+        assert spy.call_count == 1
+
+    def test_reinit_leaves_default_broker_intact_when_dropping_others(
+        self, test_domain
+    ):
+        from protean.adapters.broker.inline import InlineBroker
+
+        default = test_domain.brokers["default"]
+        test_domain.brokers["secondary"] = InlineBroker(
+            "secondary", test_domain, {"provider": "inline"}
+        )
+
+        test_domain.brokers._initialize()
+
+        assert test_domain.brokers["default"] is default
+        assert "secondary" not in test_domain.brokers
