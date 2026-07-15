@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-07-15
+
+### Changed
+
+- Add Redis broker DLQ management tests (`dlq_list`, `dlq_inspect`, `dlq_replay`, `dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`) against real Redis, backfilling coverage for the `_client` accessor refactor in #1086. (#1090)
+
+### Fixed
+
+- Fix foreign-key violations when persisting an aggregate with `HasMany`/`HasOne` children in one `repository.add` inside a `UnitOfWork`. The parent row is now flushed into the transaction before its FK-referencing children are written, so databases that enforce foreign keys immediately (MSSQL, MySQL/InnoDB, SQLite with `PRAGMA foreign_keys=ON`) accept the child inserts. Child-bearing aggregate saves now emit their buffered SQL at flush time rather than only at commit, so any constraint violation on such a save may surface at `add()` time instead of `commit()` time. (#1043)
+- The Redis Streams broker now transparently reconnects if its connection was closed (e.g. `redis_instance` set to `None` by engine shutdown) before a later operation runs, instead of raising `AttributeError: 'NoneType' object has no attribute ...` and killing a subscription's poll loop. This makes `Engine(test_mode=True).run()` against a Redis broker reliable in CI. (#1055)
+- Fix re-running `domain.init()` in a live process closing the running brokers out from under the Engine, which permanently halted message consumption (with the Redis broker, an unrecoverable flood of `AttributeError: 'NoneType' object has no attribute 'xreadgroup'`). This surfaced in a process that both runs the Engine and re-initializes the domain — e.g. an APScheduler cron job calling `domain.init()` on every tick. `Brokers._initialize()` is now non-destructive: a broker whose configuration is unchanged is reused in place rather than closed and recreated, so the instance the Engine holds stays alive. Only brokers whose configuration changed, or that are no longer configured, are closed. Regression from #885 (0.16.0), whose broker cleanup turned a previously-silent connection leak on re-init into a hard, consumption-halting crash. (#1213)
+
 ## [0.16.2] - 2026-07-05
 
 ### Fixed
