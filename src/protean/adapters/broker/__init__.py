@@ -67,19 +67,36 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
 
         existing_brokers = self._brokers
         broker_objects: dict[str, BaseBroker] = {}
+        newly_created: list[BaseBroker] = []
 
-        for broker_name, conn_info in configured_brokers.items():
-            current = existing_brokers.get(broker_name)
-            if current is not None and current.conn_info == conn_info:
-                # Configuration unchanged — reuse the live instance so we never
-                # disturb a connection the Engine may be actively consuming.
-                broker_objects[broker_name] = current
-            else:
-                provider = conn_info["provider"]
-                broker_cls = registry.get(provider)
-                broker_objects[broker_name] = broker_cls(
-                    broker_name, self.domain, conn_info
-                )
+        try:
+            for broker_name, conn_info in configured_brokers.items():
+                current = existing_brokers.get(broker_name)
+                if current is not None and current.conn_info == conn_info:
+                    # Configuration unchanged — reuse the live instance so we
+                    # never disturb a connection the Engine may be actively
+                    # consuming. Note the broker enriches ``conn_info`` in place
+                    # (e.g. adds ``IS_ASYNC``), and it holds the same dict object
+                    # the config does; replacing the config entry with a new dict
+                    # is therefore what signals a real change and forces a rebuild.
+                    broker_objects[broker_name] = current
+                else:
+                    provider = conn_info["provider"]
+                    broker_cls = registry.get(provider)
+                    broker = broker_cls(broker_name, self.domain, conn_info)
+                    broker_objects[broker_name] = broker
+                    newly_created.append(broker)
+        except Exception:
+            # A construction failure partway through (e.g. an unreachable broker
+            # on a re-init tick) must not leak the connections already opened
+            # this pass. Roll back only the brokers created here; reused live
+            # instances are left untouched.
+            for broker in newly_created:
+                try:
+                    broker.close()
+                except Exception:
+                    logger.exception("broker.reinit.rollback_close_failed")
+            raise
 
         # Close brokers that are being replaced (config changed) or dropped
         # (no longer configured). Reused instances are left untouched.

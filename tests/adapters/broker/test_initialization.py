@@ -1,5 +1,6 @@
 import pytest
 
+from protean.adapters import broker as broker_module
 from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import ConfigurationError
 from protean.port.broker import BaseBroker
@@ -166,3 +167,65 @@ class TestNonDestructiveReinitialization:
 
         assert test_domain.brokers["default"] is default
         assert "secondary" not in test_domain.brokers
+
+    def test_reinit_survives_a_broker_that_raises_on_close(self, mocker, test_domain):
+        """A failing close() on a dropped broker is logged, not propagated."""
+        from protean.adapters.broker.inline import InlineBroker
+
+        default = test_domain.brokers["default"]
+        secondary = InlineBroker("secondary", test_domain, {"provider": "inline"})
+        test_domain.brokers["secondary"] = secondary
+        mocker.patch.object(secondary, "close", side_effect=RuntimeError("boom"))
+        log_spy = mocker.spy(broker_module.logger, "exception")
+
+        # Dropping "secondary" triggers its failing close(); re-init must not raise.
+        test_domain.brokers._initialize()
+
+        assert test_domain.brokers["default"] is default
+        assert "secondary" not in test_domain.brokers
+        assert log_spy.call_count == 1
+
+    def test_reinit_rolls_back_newly_created_brokers_on_failure(
+        self, mocker, test_domain
+    ):
+        """A construction failure closes brokers already built this pass."""
+        from protean.adapters.broker.inline import InlineBroker
+
+        original_default = test_domain.brokers["default"]
+
+        # Two new brokers get built (default config changed + a new "secondary").
+        # Make the *second* construction fail, after the first has been created.
+        test_domain.config["brokers"]["default"] = {
+            "provider": "inline",
+            "max_retries": 3,
+        }
+        test_domain.config["brokers"]["secondary"] = {"provider": "inline"}
+
+        built: list[InlineBroker] = []
+        real_ctor = InlineBroker
+
+        def flaky_ctor(name, domain, conn_info):
+            if name == "secondary":
+                raise RuntimeError("cannot connect")
+            broker = real_ctor(name, domain, conn_info)
+            # A rollback-close that itself fails must not mask the original
+            # construction error, and must be logged rather than propagated.
+            mocker.patch.object(
+                broker, "close", side_effect=RuntimeError("close failed")
+            )
+            built.append(broker)
+            return broker
+
+        mocker.patch.object(broker_module.registry, "get", return_value=flaky_ctor)
+        log_spy = mocker.spy(broker_module.logger, "exception")
+
+        with pytest.raises(RuntimeError, match="cannot connect"):
+            test_domain.brokers._initialize()
+
+        # The one broker constructed this pass was rolled back (its close was
+        # attempted); its failure was logged, and the original error propagated.
+        assert len(built) == 1
+        assert log_spy.call_count == 1
+        # The exception propagated before the broker map was swapped, so the
+        # pre-existing live broker is still in place and untouched.
+        assert test_domain.brokers["default"] is original_default
