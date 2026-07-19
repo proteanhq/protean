@@ -280,6 +280,7 @@ nav:
       - guides/compose-a-domain/schema-generation.md
       - guides/evolving-events.md
       - guides/compatibility-checking.md
+      - guides/architecture-fitness-functions.md
       - guides/pathways/migrating-between-architectures.md
     - Test Your Application:
       - guides/testing/index.md
@@ -311,6 +312,7 @@ nav:
     - Logging: reference/logging.md
     - CLI:
       - reference/cli/index.md
+      - reference/cli/check.md
       - reference/cli/upgrade-check.md
       - Project:
         - reference/cli/project/index.md
@@ -336,6 +338,8 @@ nav:
         - reference/cli/data/projection.md
         - reference/cli/data/outbox.md
         - reference/cli/data/idempotency.md
+    - Fitness Functions:
+      - reference/fitness-functions.md
     - Server:
       - reference/server/index.md
       - reference/server/subscription-types.md
@@ -458,6 +462,8 @@ nav:
       - concepts/internals/event-sourcing.md
       - concepts/internals/event-upcasting.md
       - concepts/internals/ir-specification.md
+    - Architecture Checks:
+      - concepts/protean-check/rules/unbounded-indexed-string.md
 
   - Patterns & Recipes:
     - patterns/index.md
