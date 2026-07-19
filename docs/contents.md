@@ -184,6 +184,7 @@ specific area.
 **CLI**
 
 - [CLI Overview](./reference/cli/index.md) -- The `protean` command-line interface for scaffolding and management.
+- [`protean check`](./reference/cli/check.md) -- Validate a domain and report architecture fitness diagnostics as rich, JSON, SARIF, or GitHub annotations.
 - [`protean upgrade-check`](./reference/cli/upgrade-check.md) -- Read-only diagnostic that reports the 0.16 upgrade actions for a domain (elements, config, infra) and generates the outbox migration SQL.
 - [Domain Discovery](./reference/cli/project/discovery.md) -- Use `--domain` to load and initialize domains.
 - [`protean new`](./reference/cli/project/new.md) -- Initialize new projects.
@@ -197,6 +198,8 @@ specific area.
 - [`protean projection`](./reference/cli/data/projection.md) -- Rebuild projections by replaying events from the event store.
 - [`protean events`](./reference/cli/data/events.md) -- Inspect the event store: read streams, view stats, search events, trace aggregate history, and follow causal chains as a tree or flat table.
 - [Type Checking](./reference/type-checking/index.md) -- Static type checking with the Protean mypy plugin.
+- [Architecture Fitness Functions](./guides/architecture-fitness-functions.md) -- Enforce DDD architectural decisions on every commit with `protean check`.
+- [Fitness Function Catalog](./reference/fitness-functions.md) -- Every diagnostic rule, its rationale, and its fix.
 
 ### Test Your Application
 
