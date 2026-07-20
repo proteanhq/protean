@@ -21,7 +21,20 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
-    name: Python ${{ matrix.python-version }} Tests
+        resolution: ["highest"]
+        # Floor-proving leg. Every other leg installs the latest compatible
+        # versions (via uv.lock); this one installs the *lowest* version each
+        # declared floor permits (`--resolution lowest-direct`: our own deps at
+        # their floor, transitives at latest — the worst-case a downstream app
+        # can hit). It runs the full suite so a floor that no longer resolves,
+        # lacks a wheel for the newest Python, or has drifted out of API
+        # compatibility fails CI instead of silently rotting. Newest Python
+        # (3.14) because it is the binding constraint for C-extension wheels.
+        # See ADR-0020.
+        include:
+          - python-version: "3.14"
+            resolution: "lowest-direct"
+    name: Python ${{ matrix.python-version }} Tests (${{ matrix.resolution }})
 
     # one place to set the PyO3 flag; every step inherits it automatically
     env:
@@ -166,7 +179,9 @@ jobs:
           echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
-        run: uv sync --all-extras --all-groups
+        # The floor-proving leg re-resolves to the lowest permitted versions;
+        # every other leg uses the locked (latest-compatible) resolution.
+        run: uv sync --all-extras --all-groups ${{ matrix.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
 
       - name: Mypy Plugin Tests
         run: uv run pytest tests/ext/ -v

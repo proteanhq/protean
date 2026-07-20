@@ -184,7 +184,9 @@ class TestObservatoryCommand:
             )
 
             assert result.exit_code == 2
-            assert "No such option: --debug" in _ANSI_RE.sub("", result.output)
+            assert re.search(
+                r"No such option:? '?--debug'?", _ANSI_RE.sub("", result.output)
+            )
 
     def test_observatory_default_logging_level(self):
         """Test that observatory uses INFO logging by default."""

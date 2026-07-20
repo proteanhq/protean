@@ -228,7 +228,9 @@ class TestRemovedDebugFlag:
             )
 
             assert result.exit_code == 2
-            assert "No such option: --debug" in _ANSI_RE.sub("", result.output)
+            assert re.search(
+                r"No such option:? '?--debug'?", _ANSI_RE.sub("", result.output)
+            )
 
     def test_env_log_level_debug_replaces_debug_flag(self):
         """PROTEAN_LOG_LEVEL=DEBUG drives the server bootstrap to DEBUG.
