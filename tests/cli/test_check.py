@@ -404,12 +404,22 @@ class TestCheckSarifOutput:
         driver = run["tool"]["driver"]
         assert driver["name"] == "protean"
         assert driver["version"] == protean.__version__
-        assert driver["informationUri"] == "https://docs.protean.io/reference/cli/check"
+        assert (
+            driver["informationUri"] == "https://docs.proteanhq.com/reference/cli/check"
+        )
 
         # Dedup invariant: one reportingDescriptor per unique ruleId.
         rule_ids = {r["ruleId"] for r in run["results"]}
         assert len(rule_ids) > 0, "Expected SARIF results but got none"
         assert len(driver["rules"]) == len(rule_ids)
+
+        # Every rule helpUri points at the live docs domain so Code Scanning
+        # resolves it (docs.proteanhq.com, not the retired docs.protean.io).
+        assert len(driver["rules"]) > 0
+        for descriptor in driver["rules"]:
+            assert descriptor["helpUri"].startswith(
+                "https://docs.proteanhq.com/reference/fitness-functions#"
+            )
         descriptor_ids = {r["id"] for r in driver["rules"]}
         for res in run["results"]:
             assert res["ruleId"] in descriptor_ids

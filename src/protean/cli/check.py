@@ -400,7 +400,7 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
             "fullDescription": {"text": (rule or {}).get("rationale", "")},
             "help": {"text": help_text},
             "helpUri": (
-                "https://docs.protean.io/reference/fitness-functions#"
+                "https://docs.proteanhq.com/reference/fitness-functions#"
                 f"{code.lower().replace('_', '-')}"
             ),
         }
@@ -443,7 +443,7 @@ def _format_sarif(result: dict[str, Any], domain: Any) -> dict[str, Any]:
                     "driver": {
                         "name": "protean",
                         "version": protean.__version__,
-                        "informationUri": "https://docs.protean.io/reference/cli/check",
+                        "informationUri": "https://docs.proteanhq.com/reference/cli/check",
                         "rules": list(rules.values()),
                     }
                 },

@@ -85,3 +85,8 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0012](0012-health-check-architecture.md) | Health Check Architecture |
 | [0013](0013-optimistic-concurrency-and-claim-contract.md) | Optimistic Concurrency and Claim Contract |
 | [0014](0014-aggregate-metadata-decorator-params-over-meta-class.md) | Aggregate Metadata via Decorator Parameters |
+| [0015](0015-event-store-append-as-durable-anchor.md) | Event-Store Append as the Durable Anchor in the Commit Sequence |
+| [0016](0016-breadth-first-synchronous-event-dispatch.md) | Breadth-First Synchronous Event Dispatch |
+| [0017](0017-consume-side-idempotency-for-projectors.md) | Consume-Side Idempotency for Projectors |
+| [0018](0018-type-safety-strategy.md) | Type-safety adoption strategy |
+| [0019](0019-check-engine-determinism-boundary-and-behavioral-substrate.md) | Check-engine determinism boundary and a behavioral analysis substrate |

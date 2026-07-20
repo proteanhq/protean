@@ -8,6 +8,7 @@ load the domain.
 
 | Command                        |                                    |
 | :----------------------------- | :----------------------------------|
+| [`protean check`](check.md)            | Validate a domain and report architecture fitness diagnostics |
 | [`protean new`](project/new.md)        | Creating a domain                  |
 | [`protean shell`](project/shell.md)    | Working with the shell             |
 | [`protean server`](runtime/server.md)  | Running an async background server |

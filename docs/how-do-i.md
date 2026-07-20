@@ -210,11 +210,24 @@ need by what you're trying to accomplish.
 | Check multiple domains with one hook entry      | [Compatibility Checking](./guides/compatibility-checking.md#multi-domain-support) |
 | Add IR compatibility checks to CI               | [Compatibility Checking](./guides/compatibility-checking.md#step-4-add-ci-checks) |
 
+## Enforce Architecture
+
+| I want to...                                    | Guide |
+|-------------------------------------------------|-------|
+| Enforce DDD architectural rules on every commit | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md) |
+| Look up a specific `protean check` rule         | [Fitness Function Catalog](./reference/fitness-functions.md) |
+| Suppress a fitness finding on one element       | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#the-suppression-system) |
+| Adopt a rule on a legacy domain gradually       | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#config-level-lintsuppressions) |
+| Fail CI on architecture violations              | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#strictness-and-ci-gating) |
+| Upload SARIF to GitHub Code Scanning            | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#sarif-github-code-scanning) |
+| Write a custom fitness rule                      | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#writing-custom-rules) |
+
 ## Use the CLI
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
 | Scaffold a new Protean project                  | [`protean new`](./reference/cli/project/new.md) |
+| Validate a domain and see fitness diagnostics   | [`protean check`](./reference/cli/check.md) |
 | Understand domain and element discovery         | [`protean` discovery](./reference/cli/project/discovery.md) |
 | Open an interactive shell                       | [`protean shell`](./reference/cli/project/shell.md) |
 | Run the async background server                 | [`protean server`](./reference/cli/runtime/server.md) |
