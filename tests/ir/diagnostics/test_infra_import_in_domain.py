@@ -224,3 +224,53 @@ class TestInfraImportInDomain:
         ir = IRBuilder(domain).build()
 
         assert _infra_findings(ir) == []
+
+    def test_emitted_diagnostics_match_the_frozen_expectation(self):
+        """The full emitted payload for the infra fixtures — codes, elements,
+        order, levels, messages and rule text — pinned verbatim.
+
+        The rule reads source through a shared provider rather than parsing
+        inline; this freezes the output so any change to how source is located,
+        parsed or cached shows up as a diff instead of passing silently.
+        """
+        domain = _build_infra_domain("InfraFrozen", {"check_infra_imports": True})
+        ir = IRBuilder(domain).build()
+
+        module = infra_import_domain.__name__
+        rationale = (
+            "Domain elements must not depend on concrete infrastructure "
+            "adapters; importing from `protean.adapters` couples the domain "
+            "layer to a specific adapter and breaks the ports-and-adapters "
+            "boundary."
+        )
+        fix = (
+            "Remove the `protean.adapters` import from the domain module. "
+            "Depend on domain-layer abstractions and let the adapter be wired "
+            "through the domain's provider configuration instead."
+        )
+        assert _infra_findings(ir) == [
+            {
+                "code": "INFRA_IMPORT_IN_DOMAIN",
+                "category": "bounded_context",
+                "element": f"{module}.InfraOrder",
+                "level": "warning",
+                "message": (
+                    f"Domain element `InfraOrder` (module `{module}`) "
+                    "imports from `protean.adapters`."
+                ),
+                "rule": {"rationale": rationale, "fix": fix},
+                "suggestion": fix,
+            },
+            {
+                "code": "INFRA_IMPORT_IN_DOMAIN",
+                "category": "bounded_context",
+                "element": f"{module}.Money",
+                "level": "warning",
+                "message": (
+                    f"Domain element `Money` (module `{module}`) "
+                    "imports from `protean.adapters`."
+                ),
+                "rule": {"rationale": rationale, "fix": fix},
+                "suggestion": fix,
+            },
+        ]
