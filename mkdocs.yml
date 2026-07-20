@@ -402,6 +402,7 @@ nav:
       - adr/0016-breadth-first-synchronous-event-dispatch.md
       - adr/0017-consume-side-idempotency-for-projectors.md
       - adr/0018-type-safety-strategy.md
+      - adr/0019-check-engine-determinism-boundary-and-behavioral-substrate.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
