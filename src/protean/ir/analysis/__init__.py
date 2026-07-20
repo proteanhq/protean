@@ -7,6 +7,18 @@ build on, not a public surface.
 
 from __future__ import annotations
 
+from protean.ir.analysis.element_index import (
+    ClassEntry,
+    ElementIndex,
+    MethodEntry,
+    MethodRole,
+)
 from protean.ir.analysis.source_provider import SourceProvider
 
-__all__ = ["SourceProvider"]
+__all__ = [
+    "ClassEntry",
+    "ElementIndex",
+    "MethodEntry",
+    "MethodRole",
+    "SourceProvider",
+]
