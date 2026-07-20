@@ -195,10 +195,11 @@ class IRBuilder:
     def index(self) -> ElementIndex:
         """Class/method index over the parsed sources, for behavioral rules.
 
-        One index per builder, sharing this builder's :attr:`source` provider so
-        a module is parsed once for both. Created on first use, and it walks the
-        domain's package only when first queried, so a build whose rules never
-        ask for it costs nothing.
+        One index per builder, sharing this builder's :attr:`source` provider,
+        so a module the index has already read is not parsed again for a rule
+        that asks the provider for it under the same name. Created on first
+        use, and it walks the domain's package only when first queried, so a
+        build whose rules never ask for it costs nothing.
         """
         if self._index is None:
             self._index = ElementIndex(self._domain, self.source)

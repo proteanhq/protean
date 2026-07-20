@@ -1,6 +1,7 @@
 """ElementIndex: class/method indexing, element resolution, and role tags."""
 
 import ast
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from textwrap import dedent
 
@@ -8,6 +9,7 @@ import pytest
 
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
+from protean.fields import Identifier
 from protean.ir.analysis import ElementIndex, MethodRole, SourceProvider
 from protean.ir.builder import IRBuilder
 from tests.ir.support import behavioral_domain
@@ -41,6 +43,34 @@ class Duplicate:
         pass
 
 
+class Rebuilt:
+    """A module-level decoy for the *rebuilt* element test.
+
+    ``derive_element_class`` flattens a rebuilt element's ``__qualname__`` to
+    the bare class name, so a function-local ``Rebuilt`` registered through a
+    decorator arrives claiming to be this one.
+    """
+
+    def decoy(self) -> None:
+        pass
+
+
+class Fieldless:
+    """The same decoy, for an element that carries no methods of its own and
+    so cannot be told apart from this class."""
+
+    def decoy(self) -> None:
+        pass
+
+
+class Wrapped:
+    """The same decoy again, for an element whose only functions are hidden
+    behind a ``classmethod``/``property`` descriptor."""
+
+    def decoy(self) -> None:
+        pass
+
+
 @pytest.fixture(scope="module")
 def domain():
     """The fixture package registered as a real domain, rooted at the package."""
@@ -49,9 +79,12 @@ def domain():
     domain.register(elements.WalletOpened, part_of=elements.Wallet)
     domain.register(elements.FundsDeposited, part_of=elements.Wallet)
     domain.register(elements.OpenWallet, part_of=elements.Wallet)
+    domain.register(elements.CloseWallet, part_of=elements.Wallet)
     domain.register(elements.WalletRepository, part_of=elements.Wallet)
+    domain.register(elements.WalletEventSourcedRepository, part_of=elements.Wallet)
     domain.register(elements.WalletCommandHandler, part_of=elements.Wallet)
     domain.register(elements.WalletEventHandler, part_of=elements.Wallet)
+    domain.register(elements.WalletProcessManager)
     domain.register(elements.WalletView)
     domain.register(
         elements.WalletProjector,
@@ -83,11 +116,21 @@ class TestElementResolution:
         assert all(m.node in node.body for m in methods)
         assert methods[1].node.lineno > node.lineno
 
-    def test_methods_are_only_direct_children_of_the_class_body(self, index):
-        """A function nested inside a method is not a method of the class."""
+    def test_methods_belong_to_the_class_that_wrote_them(self, index):
+        """A function nested inside a method, or in a nested class, is not a
+        method of the enclosing class."""
         names = [m.name for m in index.element_methods(elements.Wallet)]
 
-        assert names == ["_normalize", "opened", "rename"]
+        assert names == [
+            "__str__",
+            "_normalize",
+            "balance_non_negative",
+            "deposited",
+            "describe",
+            "label",
+            "opened",
+            "rename",
+        ]
         assert "evaluate" not in names  # lives on the nested Policy class
 
     def test_nested_class_is_reachable_under_its_dotted_qualname(self, index):
@@ -103,14 +146,14 @@ class TestElementResolution:
         assert index.class_node(WALKED_ELEMENTS, "NoSuchClass") is None
         assert index.methods(WALKED_ELEMENTS, "NoSuchClass") == ()
 
-    def test_class_recreation_preserves_the_names_the_index_keys_on(self, domain):
-        """Protean rebuilds element classes via ``type()`` in places, so the
-        registered class is not necessarily the one written down. The index
-        keys on ``(__module__, __qualname__)`` because that survives."""
+    def test_a_registered_subclass_is_not_rebuilt_and_keeps_its_names(self, domain):
+        """The easy half: an element that already subclasses its base is
+        registered as-is, so ``(__module__, __qualname__)`` still names it."""
         record = domain._domain_registry._elements["AGGREGATE"][
             f"{ELEMENTS_MODULE}.Wallet"
         ]
 
+        assert record.cls is elements.Wallet
         assert record.cls.__module__ == ELEMENTS_MODULE
         assert record.cls.__qualname__ == "Wallet"
         assert ElementIndex(domain).element_class_node(record.cls) is not None
@@ -139,13 +182,18 @@ class TestPackageScope:
         assert [(c.module, c.qualname) for c in index.classes()] == before
         assert all(module != ELEMENTS_MODULE for module, _ in before)
 
-    def test_both_resolution_doors_answer(self, index):
-        """The walked name and the importable name reach the same file."""
+    def test_both_resolution_doors_answer_with_separate_nodes(self, index):
+        """The walked name and the importable name reach the same file, but
+        they are different module *names*, so the file is parsed once per name
+        and the nodes are equal in position without being the same object.
+        A rule joining the two surfaces has to join on
+        ``(module, qualname, lineno)``, never on node identity."""
         walked = index.class_entry(WALKED_ELEMENTS, "Wallet")
         resolved = index.class_entry(ELEMENTS_MODULE, "Wallet")
 
         assert walked is not None and resolved is not None
         assert walked.node.lineno == resolved.node.lineno
+        assert walked.node is not resolved.node
 
     def test_package_walk_runs_before_a_name_is_resolved(self, domain, monkeypatch):
         """Ordering matters: the provider lets the on-disk walk override what
@@ -191,7 +239,60 @@ class TestRoleTags:
         assert index.roles(elements.Wallet) == {
             "rename": MethodRole.AGGREGATE_BEHAVIOR,
             "opened": MethodRole.EVENT_APPLY,
+            "deposited": MethodRole.EVENT_APPLY,
         }
+
+    def test_apply_wins_over_a_decorator_beside_it(self, index):
+        """``@apply`` stacked with an unrelated decorator is still an apply,
+        and the unrelated one does not knock the method out of the vocabulary."""
+        method = index.element_class_entry(elements.Wallet).method("deposited")
+
+        assert method.decorators == ("apply", "audited")
+        assert index.role_of(elements.Wallet, "deposited") is MethodRole.EVENT_APPLY
+
+    def test_invariants_properties_and_classmethods_are_not_behavior(self, index):
+        """The shallow decorator rule reads ``@invariant.post`` as ``post``,
+        so the name-derived roles stand back rather than call an invariant a
+        behavior. A wrong tag is worse than no tag."""
+        for name in ("balance_non_negative", "label", "describe", "__str__"):
+            assert index.role_of(elements.Wallet, name) is None
+
+    def test_event_sourced_repository_methods_are_repository_methods(self, index):
+        """``EVENT_SOURCED_REPOSITORY`` is a separate element type from
+        ``REPOSITORY`` and carries the same role."""
+        assert (
+            index.role_of(elements.WalletEventSourcedRepository, "find_snapshot")
+            is MethodRole.REPOSITORY_METHOD
+        )
+
+    def test_process_manager_handlers_are_event_handler_methods(self, index):
+        """A process manager handles events with ``@handle``; the vocabulary
+        has no separate tag for it, so it shares the event-handler role."""
+        assert (
+            index.role_of(elements.WalletProcessManager, "on_opened")
+            is MethodRole.EVENT_HANDLER_METHOD
+        )
+
+    def test_a_private_name_does_not_block_a_decorator_derived_role(self, index):
+        """Underscore keeps a method out of the two *name*-derived roles only.
+        Protean registers a decorated private method as a handler, so the index
+        says it is one."""
+        assert (
+            index.role_of(elements.WalletEventHandler, "_audit")
+            is MethodRole.EVENT_HANDLER_METHOD
+        )
+
+    def test_on_reads_as_handle_off_the_projector_too(self, index):
+        """``on`` is not a projector-only spelling: it is a literal alias of
+        ``handle``, so a command handler written with it is a command-handler
+        method, tag and all."""
+        entry = index.element_class_entry(elements.WalletCommandHandler)
+
+        assert entry.method("close_wallet").decorators == ("on",)
+        assert (
+            index.role_of(elements.WalletCommandHandler, "close_wallet")
+            is MethodRole.COMMAND_HANDLER_METHOD
+        )
 
     def test_projector_on_and_handle_are_the_same_role(self, index):
         """``on`` is an alias of ``handle`` for projectors."""
@@ -283,6 +384,108 @@ class TestQualnameBinding:
     def test_qualname_whose_function_is_absent_resolves_to_nothing(self, index):
         assert index.class_entry(TEST_MODULE, "Duplicate") is not None
         assert index.class_entry(TEST_MODULE, "no_such_fn.<locals>.Duplicate") is None
+
+    def test_class_with_an_empty_qualname_is_skipped(self, index):
+        """A dynamically built class can be nameless. Matching on its final
+        name segment would then match nothing useful, so it is refused up
+        front."""
+        nameless = type("", (), {"__module__": TEST_MODULE})
+
+        assert nameless.__qualname__ == ""
+        assert index.element_class_entry(nameless) is None
+        assert index.element_methods(nameless) == ()
+
+
+class TestRebuiltElements:
+    """Registering a class that does not already subclass its base rebuilds it
+    with ``type()``, which resets ``__qualname__`` to the bare class name. The
+    index has to find the class anyway, and must not answer with a same-named
+    class that happens to sit at module level."""
+
+    @staticmethod
+    def _domain():
+        return Domain(name="Rebuilt", root_path=PACKAGE_ROOT)
+
+    def test_a_rebuilt_element_does_not_bind_to_its_module_level_twin(self):
+        domain = self._domain()
+
+        @domain.aggregate
+        class Rebuilt:
+            rebuilt_id = Identifier(identifier=True)
+
+            def real_behavior(self) -> None:
+                pass
+
+        domain.init(traverse=False)
+        index = ElementIndex(domain)
+        entry = index.element_class_entry(Rebuilt)
+
+        # The premise: registration really did flatten the qualname, so the
+        # module-level ``Rebuilt`` in this file is a live wrong answer.
+        assert Rebuilt.__qualname__ == "Rebuilt"
+        assert Rebuilt.__module__ == TEST_MODULE
+        assert entry is not None
+        assert entry.qualname.endswith(".<locals>.Rebuilt")
+        assert [m.name for m in entry.methods] == ["real_behavior"]
+        assert index.roles(Rebuilt) == {"real_behavior": MethodRole.AGGREGATE_BEHAVIOR}
+
+    def test_an_element_written_inside_a_class_body_resolves(self):
+        domain = self._domain()
+
+        class Enclosing:
+            @domain.aggregate
+            class Ledger:
+                ledger_id = Identifier(identifier=True)
+
+                def post_entry(self) -> None:
+                    pass
+
+        domain.init(traverse=False)
+        entry = ElementIndex(domain).element_class_entry(Enclosing.Ledger)
+
+        assert entry is not None
+        assert entry.qualname.endswith(".Enclosing.Ledger")
+
+    def test_a_rebuilt_element_is_pinned_through_descriptors(self):
+        """A ``classmethod`` or ``property`` hides its function behind a
+        descriptor. Not looking through it would leave the element with no
+        vote at all, and the module-level decoy would win by default."""
+        domain = self._domain()
+
+        @domain.aggregate
+        class Wrapped:
+            wrapped_id = Identifier(identifier=True)
+
+            @classmethod
+            def build(cls) -> None:
+                pass
+
+            @property
+            def shown(self) -> str:
+                return "shown"
+
+        domain.init(traverse=False)
+        entry = ElementIndex(domain).element_class_entry(Wrapped)
+
+        assert entry is not None
+        assert entry.qualname.endswith(".<locals>.Wrapped")
+        assert [m.name for m in entry.methods] == ["build", "shown"]
+
+    def test_an_ambiguous_rebuilt_element_with_no_methods_resolves_to_nothing(self):
+        """Nothing on the class object says which ``Fieldless`` it is, so the
+        index says it does not know rather than picking the decoy."""
+        domain = self._domain()
+
+        @domain.aggregate
+        class Fieldless:
+            fieldless_id = Identifier(identifier=True)
+
+        domain.init(traverse=False)
+        index = ElementIndex(domain)
+
+        assert index.element_class_entry(Fieldless) is None
+        assert index.element_methods(Fieldless) == ()
+        assert index.roles(Fieldless) == {}
 
 
 class TestFailOpen:
@@ -406,6 +609,104 @@ class TestSourceShapes:
 
         assert index.class_node("shapespkg.mod", "Conditional") is not None
 
+    def test_classes_in_try_with_and_else_bodies_are_indexed(self, tmp_path):
+        """The statement walk has to reach every body, not just ``if``."""
+        index = self._index_for(
+            tmp_path,
+            """
+            import contextlib
+
+            try:
+                class InTry: ...
+            except ImportError:
+                class InExcept: ...
+            else:
+                class InElse: ...
+            finally:
+                class InFinally: ...
+
+            with contextlib.nullcontext():
+                class InWith: ...
+
+            for _ in range(1):
+                class InFor: ...
+            """,
+        )
+        found = {c.qualname for c in index.classes()}
+
+        assert found == {
+            "InTry",
+            "InExcept",
+            "InElse",
+            "InFinally",
+            "InWith",
+            "InFor",
+        }
+
+    def test_class_nested_inside_a_method_gets_both_segments(self, tmp_path):
+        """A class inside a method of a class: the qualname carries the outer
+        class, the method's ``<locals>``, and the inner class."""
+        index = self._index_for(
+            tmp_path,
+            """
+            class Outer:
+                def build(self):
+                    class Inner:
+                        def deep(self): ...
+                    return Inner
+            """,
+        )
+
+        assert [c.qualname for c in index.classes()] == [
+            "Outer",
+            "Outer.build.<locals>.Inner",
+        ]
+        assert [m.name for m in index.methods("shapespkg.mod", "Outer")] == ["build"]
+        assert [
+            m.name for m in index.methods("shapespkg.mod", "Outer.build.<locals>.Inner")
+        ] == ["deep"]
+
+    def test_methods_wrapped_in_a_conditional_are_still_methods(self, tmp_path):
+        """A method under ``if TYPE_CHECKING:`` or inside a ``try`` is written
+        in the class body, so it is a method of the class."""
+        index = self._index_for(
+            tmp_path,
+            """
+            from typing import TYPE_CHECKING
+
+            class Wrapped:
+                def plain(self): ...
+
+                if TYPE_CHECKING:
+                    def conditional(self): ...
+
+                try:
+                    def guarded(self): ...
+                except ImportError:
+                    pass
+
+                class Nested:
+                    def not_mine(self): ...
+            """,
+        )
+
+        assert [m.name for m in index.methods("shapespkg.mod", "Wrapped")] == [
+            "conditional",
+            "guarded",
+            "plain",
+        ]
+
+    def test_a_deeply_nested_expression_does_not_break_the_walk(self, tmp_path):
+        """The walk descends statements only. Descending expressions would put
+        one long arithmetic expression past the recursion limit and take the
+        whole package's index down with it."""
+        index = self._index_for(
+            tmp_path,
+            "x = " + "+".join("1" for _ in range(2000)) + "\n\nclass After: ...\n",
+        )
+
+        assert [c.qualname for c in index.classes()] == ["After"]
+
 
 class TestCachingAndDeterminism:
     def test_the_package_is_walked_once(self, domain, monkeypatch):
@@ -431,6 +732,55 @@ class TestCachingAndDeterminism:
         second = index.element_class_node(elements.Wallet)
 
         assert first is second
+
+    def test_an_on_demand_module_is_indexed_once(self, domain, monkeypatch):
+        """The provider caches trees, but re-indexing a cached tree on every
+        lookup would rebuild every entry. The index keeps its own answer."""
+        provider = SourceProvider(domain)
+        asked = []
+        real_tree = provider.tree
+        monkeypatch.setattr(
+            provider,
+            "tree",
+            lambda name: (asked.append(name), real_tree(name))[1],
+        )
+        index = ElementIndex(domain, provider)
+
+        index.element_class_node(elements.Wallet)
+        index.element_class_node(elements.WalletRepository)
+        index.role_of(elements.Wallet, "rename")
+
+        assert asked == [ELEMENTS_MODULE]
+
+    def test_the_registry_is_read_once(self):
+        """The element map is a snapshot taken on the first role query, which
+        matches the one-index-per-build lifetime: an element registered after
+        the build started is not part of the build being analysed."""
+        partial = Domain(name="Snapshot", root_path=PACKAGE_ROOT)
+        partial.register(elements.Wallet, event_sourced=True)
+        partial.register(elements.WalletOpened, part_of=elements.Wallet)
+        partial.register(elements.FundsDeposited, part_of=elements.Wallet)
+        partial.init(traverse=False)
+        index = ElementIndex(partial)
+        assert index.role_of(elements.Wallet, "rename") is not None
+
+        partial.register(elements.WalletRepository, part_of=elements.Wallet)
+
+        assert index.roles(elements.WalletRepository) == {}
+        assert ElementIndex(partial).roles(elements.WalletRepository) == {
+            "find_by_label": MethodRole.REPOSITORY_METHOD
+        }
+
+    def test_entries_cannot_be_rewritten_under_a_later_rule(self, index):
+        """Every rule in a build shares these entries, so an entry that could
+        be reassigned would let one rule poison the next."""
+        entry = index.element_class_entry(elements.Wallet)
+        method = entry.method("rename")
+
+        with pytest.raises(FrozenInstanceError):
+            entry.node = None
+        with pytest.raises(FrozenInstanceError):
+            method.decorators = ("handle",)
 
     def test_two_independent_builds_agree(self, domain):
         def snapshot(index):
