@@ -4,17 +4,24 @@
 module into an ``ast.Module``. It caches every answer, including the ``None``
 that means "no source available".
 
-There are two ways in, and they resolve source differently on purpose:
+There are two ways in, and they resolve source differently on purpose. Both
+share one cache keyed by module name, so which one resolves a given name
+first decides how it is answered for the rest of the provider's lifetime:
 
 - :meth:`tree` takes a **module name** and resolves it the way Python would,
   through ``importlib.util.find_spec``. That is what a rule needs for a
   registered element, whose ``__module__`` is often outside the domain's
   package. It inherits Python's resolution: a module that is not importable
-  has no tree, and a same-named module earlier on ``sys.path`` wins.
+  has no tree, and a same-named module earlier on ``sys.path`` wins. This
+  only applies the first time a name is resolved, though: if the package walk
+  has already cached a tree for that name, :meth:`tree` returns the cached,
+  walked tree without going through ``find_spec`` at all.
 - :meth:`modules` and :meth:`iter_trees` walk the domain's package on **disk**
   and parse the files they find. No import machinery is involved, so a package
   that is not on ``sys.path``, or is shadowed by an installed one, is still
-  read from the domain's own directory.
+  read from the domain's own directory. The walk always overrides whatever
+  :meth:`tree` may have cached for an overlapping name, so the domain's own
+  file wins regardless of resolution order.
 
 Two contracts every caller depends on:
 
@@ -79,7 +86,10 @@ class SourceProvider:
 
         The module is resolved through ``importlib.util.find_spec``, so this is
         the right entry point for a registered element's ``__module__``, which
-        need not live under the domain's ``root_path``.
+        need not live under the domain's ``root_path``. That resolution is
+        skipped, though, if the package walk (:meth:`iter_trees`) has already
+        cached a tree for this name: the walked, on-disk tree is returned as
+        is, since it is shared with and takes priority over this cache.
 
         ``None`` covers every reason source is unavailable: the module does not
         resolve, resolving it raised, it has no file origin (built-in, frozen,
