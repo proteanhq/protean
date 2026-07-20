@@ -31,7 +31,7 @@ from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
-from protean.ir.analysis import SourceProvider
+from protean.ir.analysis import ElementIndex, SourceProvider
 from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.container import Element, OptionsMixin
@@ -176,6 +176,7 @@ class IRBuilder:
         self._domain = domain
         self._diagnostics: list[dict[str, Any]] = []
         self._source: SourceProvider | None = None
+        self._index: ElementIndex | None = None
 
     @property
     def source(self) -> SourceProvider:
@@ -189,6 +190,19 @@ class IRBuilder:
         if self._source is None:
             self._source = SourceProvider(self._domain)
         return self._source
+
+    @property
+    def index(self) -> ElementIndex:
+        """Class/method index over the parsed sources, for behavioral rules.
+
+        One index per builder, sharing this builder's :attr:`source` provider so
+        a module is parsed once for both. Created on first use, and it walks the
+        domain's package only when first queried, so a build whose rules never
+        ask for it costs nothing.
+        """
+        if self._index is None:
+            self._index = ElementIndex(self._domain, self.source)
+        return self._index
 
     # ------------------------------------------------------------------
     # Public API
