@@ -14,7 +14,6 @@ import ast
 import datetime as _dt
 import hashlib
 import importlib
-import importlib.util
 import json
 import logging
 import types as _types
@@ -32,6 +31,7 @@ from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
+from protean.ir.analysis import SourceProvider
 from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.container import Element, OptionsMixin
@@ -175,6 +175,20 @@ class IRBuilder:
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
         self._diagnostics: list[dict[str, Any]] = []
+        self._source: SourceProvider | None = None
+
+    @property
+    def source(self) -> SourceProvider:
+        """Parsed-source access for the diagnostic rules that need it.
+
+        One provider per builder, so its cache dies with the build and a later
+        build in the same process re-reads files that changed in between.
+        Created on first use; the real cost (locating, reading and parsing a
+        module) is deferred until a rule actually asks for a tree.
+        """
+        if self._source is None:
+            self._source = SourceProvider(self._domain)
+        return self._source
 
     # ------------------------------------------------------------------
     # Public API
@@ -1779,29 +1793,18 @@ class IRBuilder:
             if module in module_flags:
                 return module_flags[module]
             flag = False
-            try:
-                spec = importlib.util.find_spec(module)
-            # Broad by design: ``find_spec`` may import a not-yet-loaded parent
-            # package and re-execute its ``__init__``, which can raise anything.
-            # Fail open (skip the module) rather than abort the diagnostics pass.
-            except Exception:
-                spec = None
-            origin = getattr(spec, "origin", None) if spec else None
-            if origin and origin not in ("built-in", "frozen"):
-                try:
-                    with open(origin, encoding="utf-8") as fh:
-                        tree = ast.parse(fh.read())
-                except (OSError, SyntaxError, ValueError):
-                    tree = None
-                if tree is not None:
-                    for node in _module_level_imports(tree):
-                        names = _import_names(node)
-                        if any(
-                            n == INFRA_PREFIX or n.startswith(INFRA_PREFIX + ".")
-                            for n in names
-                        ):
-                            flag = True
-                            break
+            # Fails open: an unresolvable, unreadable or unparseable module
+            # yields no tree, and is treated as not importing infra.
+            tree = self.source.tree(module)
+            if tree is not None:
+                for node in _module_level_imports(tree):
+                    names = _import_names(node)
+                    if any(
+                        n == INFRA_PREFIX or n.startswith(INFRA_PREFIX + ".")
+                        for n in names
+                    ):
+                        flag = True
+                        break
             module_flags[module] = flag
             return flag
 
