@@ -181,9 +181,10 @@ class IRBuilder:
     def source(self) -> SourceProvider:
         """Parsed-source access for the diagnostic rules that need it.
 
-        Created on first use so a build that never reads source (the default —
-        every source-reading rule is opt-in) pays nothing, and scoped to this
-        builder so a later build in the same process re-reads edited files.
+        One provider per builder, so its cache dies with the build and a later
+        build in the same process re-reads files that changed in between.
+        Created on first use; the real cost (locating, reading and parsing a
+        module) is deferred until a rule actually asks for a tree.
         """
         if self._source is None:
             self._source = SourceProvider(self._domain)
