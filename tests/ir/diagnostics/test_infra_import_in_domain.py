@@ -224,3 +224,68 @@ class TestInfraImportInDomain:
         ir = IRBuilder(domain).build()
 
         assert _infra_findings(ir) == []
+
+    def test_the_rule_runs_through_domain_to_ir(self):
+        """``IRBuilder`` is not the only entry point: ``Domain.to_ir()`` is what
+        the CLI, the hooks and the observatory go through."""
+        domain = _build_infra_domain("InfraToIr", {"check_infra_imports": True})
+
+        findings = _infra_findings(domain.to_ir())
+
+        assert sorted(d["element"] for d in findings) == sorted(
+            [
+                fqn(infra_import_domain.InfraOrder),
+                fqn(infra_import_domain.Money),
+            ]
+        )
+
+    def test_emitted_diagnostics_match_the_frozen_expectation(self):
+        """The full emitted payload for the infra fixtures — codes, elements,
+        order, levels, messages and rule text — pinned verbatim.
+
+        A characterization test, not a before/after proof: the expectation was
+        written from the current output. Its job is forward-looking — any later
+        change to how source is located, parsed or cached shows up as a diff
+        here instead of passing silently.
+        """
+        domain = _build_infra_domain("InfraFrozen", {"check_infra_imports": True})
+        ir = IRBuilder(domain).build()
+
+        module = infra_import_domain.__name__
+        rationale = (
+            "Domain elements must not depend on concrete infrastructure "
+            "adapters; importing from `protean.adapters` couples the domain "
+            "layer to a specific adapter and breaks the ports-and-adapters "
+            "boundary."
+        )
+        fix = (
+            "Remove the `protean.adapters` import from the domain module. "
+            "Depend on domain-layer abstractions and let the adapter be wired "
+            "through the domain's provider configuration instead."
+        )
+        assert _infra_findings(ir) == [
+            {
+                "code": "INFRA_IMPORT_IN_DOMAIN",
+                "category": "bounded_context",
+                "element": f"{module}.InfraOrder",
+                "level": "warning",
+                "message": (
+                    f"Domain element `InfraOrder` (module `{module}`) "
+                    "imports from `protean.adapters`."
+                ),
+                "rule": {"rationale": rationale, "fix": fix},
+                "suggestion": fix,
+            },
+            {
+                "code": "INFRA_IMPORT_IN_DOMAIN",
+                "category": "bounded_context",
+                "element": f"{module}.Money",
+                "level": "warning",
+                "message": (
+                    f"Domain element `Money` (module `{module}`) "
+                    "imports from `protean.adapters`."
+                ),
+                "rule": {"rationale": rationale, "fix": fix},
+                "suggestion": fix,
+            },
+        ]

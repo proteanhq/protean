@@ -348,8 +348,8 @@ def _resolve_sarif_location(
     Returns ``None`` (a location-less, run-level result — valid SARIF) whenever
     the FQN is not a registered public element (validator errors and
     domain-scoped diagnostics), or its module cannot be resolved to a file. Never
-    raises: import/attribute/value failures all degrade to ``None``. The
-    resolved path is workspace-relative so it maps to the PR diff on GitHub.
+    raises: any failure to resolve degrades to ``None``. The resolved path is
+    workspace-relative so it maps to the PR diff on GitHub.
     """
     module = module_map.get(element_fqn)
     if not module:
@@ -357,7 +357,10 @@ def _resolve_sarif_location(
     try:
         spec = importlib.util.find_spec(module)
         origin = spec.origin if spec else None
-    except (ImportError, AttributeError, ValueError):
+    # Broad by design, matching ``SourceProvider``: ``find_spec`` may import a
+    # not-yet-loaded parent package and re-execute its ``__init__``, which can
+    # raise anything. A report should lose a location, not fail to render.
+    except Exception:
         return None
     if not origin:
         return None
