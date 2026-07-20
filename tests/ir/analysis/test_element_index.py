@@ -4,6 +4,7 @@ import ast
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from textwrap import dedent
+from types import SimpleNamespace
 
 import pytest
 
@@ -394,6 +395,18 @@ class TestQualnameBinding:
         assert nameless.__qualname__ == ""
         assert index.element_class_entry(nameless) is None
         assert index.element_methods(nameless) == ()
+
+    def test_class_with_a_non_string_qualname_is_skipped(self, index):
+        """CPython refuses a non-string ``__qualname__`` on a real class, but
+        ``element_class_entry`` only requires something that quacks like one
+        (``__module__``/``__qualname__`` attributes), so a test double or
+        other non-class object can carry a non-string qualname. The truthy,
+        non-string case must be refused before the ``"." in qualname`` check,
+        which would otherwise raise ``TypeError`` on it."""
+        fake_cls = SimpleNamespace(__module__=TEST_MODULE, __qualname__=42)
+
+        assert index.element_class_entry(fake_cls) is None
+        assert index.element_methods(fake_cls) == ()
 
 
 class TestRebuiltElements:

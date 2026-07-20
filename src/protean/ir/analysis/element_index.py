@@ -258,12 +258,12 @@ class ElementIndex:
         or whose bare qualname matches several classes that its own methods
         cannot tell apart, yields ``None``.
         """
-        # CPython guarantees a class's ``__qualname__`` is a string (it refuses
-        # any other type), but ``__module__`` is whatever the class namespace
-        # put there, and a dynamically built class can carry anything.
+        # CPython guarantees a class's ``__qualname__`` is a string at
+        # creation time, but both ``__module__`` and ``__qualname__`` are
+        # ordinary attributes that code can reassign afterwards to anything.
         module = getattr(cls, "__module__", None)
-        qualname: str = getattr(cls, "__qualname__", "")
-        if not isinstance(module, str) or not qualname:
+        qualname = getattr(cls, "__qualname__", None)
+        if not isinstance(module, str) or not isinstance(qualname, str) or not qualname:
             return None
 
         index = self._module_index(module)
