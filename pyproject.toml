@@ -46,13 +46,13 @@ classifiers = [
 
 dependencies = [
     "bleach>=6.4.0",
-    "copier>=9.16.0,<10",
+    "copier>=9.17.0,<10",
     "inflection>=0.5.1",
     "ipython>=9.15.0,<10.0",
     "marshmallow>=4.3.0",
     "python-dateutil>=2.9.0.post0",
-    "typer>=0.26.8",
-    "fastapi>=0.139.0",
+    "typer>=0.27.0",
+    "fastapi>=0.139.2",
     "jinja2>=3.1.6",
     "uvicorn>=0.51.0",
     "structlog>=26.1.0",
@@ -73,11 +73,11 @@ flask = ["flask>=3.1.3"]
 sendgrid = ["sendgrid>=6.12.5"]
 dev = ["watchfiles>=1.2.0"]
 telemetry = [
-    "opentelemetry-api>=1.43.0",
-    "opentelemetry-sdk>=1.43.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.43.0",
-    "opentelemetry-instrumentation-fastapi>=0.64b0",
-    "opentelemetry-exporter-prometheus>=0.64b0",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-exporter-prometheus>=0.65b0",
 ]
 
 [project.scripts]
@@ -124,12 +124,12 @@ packages = ["src/protean"]
 [dependency-groups]
 dev = [
     "check-manifest>=0.51",
-    "coverage>=7.15.0",
+    "coverage>=7.15.2",
     "docutils>=0.23",
     "pre-commit>=4.6.0",
-    "ruff>=0.15.21",
+    "ruff>=0.15.22",
     "twine>=6.2.0",
-    "nox>=2026.4.10",
+    "nox>=2026.7.11",
     "bump-my-version>=1.4.1",
     "pyright>=1.1.411",
 ]
@@ -140,8 +140,8 @@ test = [
     "pytest-asyncio>=1.4.0",
     "pytest-mock==3.15.1",
     "pytest>=9.1.1,<10.0.0",
-    "mypy>=2.2.0",
-    "coverage>=7.15.0",
+    "mypy>=2.3.0",
+    "coverage>=7.15.2",
     "httpx>=0.28.1",
     "jsonschema>=4.26.0",
     # Round-trip validation of generated Avro schemas (protean schema --format avro)
@@ -149,18 +149,18 @@ test = [
     # Portable open-file-descriptor probe for the fd-leak guard (PROTEAN_FD_REPORT); see #1168
     "psutil>=7.2.2",
     # Property-based testing (the serialization round-trip suite under tests/serialization/).
-    "hypothesis>=6,<7",
+    "hypothesis>=6.156.6,<7",
 ]
 docs = [
     "mkdocs>=1.6.1,<2",
     "mkdocs-material>=9.7.6",
     "mdx-include>=1.4.2",
-    "mkdocstrings[python]>=1.0.5,<2",
+    "mkdocstrings[python]>=1.0.6,<2",
     "pymdown-extensions>=11.0.1",
 ]
 types = [
     "types-mock>=5.2.0.20260518",
-    "types-python-dateutil>=2.9.0.20260518",
+    "types-python-dateutil>=2.9.0.20260716",
     "types-redis>=4.6.0.20241004",
     "types-Werkzeug>=1.0.9",
 ]
