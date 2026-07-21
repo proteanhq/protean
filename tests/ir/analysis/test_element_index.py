@@ -816,10 +816,18 @@ class TestBuilderWiring:
         node = builder.index.element_class_node(elements.Wallet)
         assert any(child is node for child in ast.walk(tree))
 
-    def test_build_never_touches_the_index(self, domain):
-        """The index walks the whole package, so a build whose rules never ask
-        for it must not pay for it."""
+    def test_build_consumes_the_index_through_the_filter_path_rule(self, domain):
+        """The UNINDEXED_FILTER_PATH rule reads method bodies through the
+        behavioral view, so a build now constructs the shared index — the view
+        is the first real consumer of the substrate. It is still built lazily
+        (once, on demand) and shared with the view, not rebuilt per rule.
+
+        (Before any rule consumed the substrate this asserted ``_index is None``
+        after a build; #955 is that first consumer, so the polarity flips.)
+        """
         builder = IRBuilder(domain)
         builder.build()
 
-        assert builder._index is None
+        assert builder._index is not None
+        assert builder._view is not None
+        assert builder._view._index is builder._index
