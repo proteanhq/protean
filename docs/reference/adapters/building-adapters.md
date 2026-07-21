@@ -25,7 +25,7 @@ Each adapter package provides:
 Database adapters implement the `BaseProvider` interface and declare their
 capabilities through the `DatabaseCapabilities` flag system.
 
-See [Building Custom Database Adapters](../../reference/adapters/database/custom-databases.md)
+See [Building Custom Database Adapters](./database/custom-databases.md)
 for a complete guide with a worked DynamoDB example, including:
 
 - The five components to implement (Provider, DAO, DatabaseModel, Lookups,
@@ -39,7 +39,7 @@ for a complete guide with a worked DynamoDB example, including:
 Broker adapters implement the `BaseBroker` interface and declare their
 capabilities through the `BrokerCapabilities` tier system.
 
-See [Building Custom Brokers](../../reference/adapters/broker/custom-brokers.md)
+See [Building Custom Brokers](./broker/custom-brokers.md)
 for a complete guide with a worked Kafka example, including:
 
 - Required abstract methods
@@ -64,7 +64,7 @@ during development and in CI:
 protean test test-adapter --provider=your-adapter-name
 ```
 
-See [Adapter Conformance Testing](../../reference/testing/conformance.md) for
+See [Adapter Conformance Testing](../testing/conformance.md) for
 the full reference.
 
 ## Getting Help
