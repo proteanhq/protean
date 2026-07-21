@@ -32,9 +32,11 @@ from protean.ir.analysis.facts import (
 )
 from protean.ir.analysis.source_provider import SourceProvider
 from protean.ir.analysis.symbols import SymbolResolver
+from protean.ir.analysis.view import BehavioralView, FilterCallSite
 
 __all__ = [
     "AttributeFact",
+    "BehavioralView",
     "BlockCoverage",
     "CallFact",
     "ClassEntry",
@@ -44,6 +46,7 @@ __all__ = [
     "Definition",
     "ElementIndex",
     "FactCatalog",
+    "FilterCallSite",
     "MethodEntry",
     "MethodFacts",
     "MethodFlow",
