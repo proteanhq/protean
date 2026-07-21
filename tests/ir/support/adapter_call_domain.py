@@ -16,6 +16,7 @@ the positive cases the *unique* catch of the call-site rule.
 
 import protean
 from protean.core.aggregate import BaseAggregate
+from protean.core.value_object import BaseValueObject
 from protean.fields import String
 
 
@@ -28,6 +29,29 @@ class AdapterCallOrder(BaseAggregate):
 
     def provision(self):
         return protean.adapters.broker.inline.InlineBroker("default", None, {})
+
+
+class AdapterCallMoney(BaseValueObject):
+    """Positive, non-aggregate: a value object whose own method calls an
+    adapter. Proves the rule is element-type-agnostic — it fires on any
+    registered element bucket, not only aggregates."""
+
+    amount = String(max_length=10)
+
+    def provision(self):
+        return protean.adapters.broker.inline.InlineBroker("default", None, {})
+
+
+class SiblingPrefixOrder(BaseAggregate):
+    """Negative — sibling prefix: the callee resolves to ``protean.adaptersfoo``,
+    which shares the ``protean.adapters`` string prefix but is a *different*
+    package. The dot-boundary guard (``startswith("protean.adapters.")``, not a
+    bare string-prefix test) must not flag it."""
+
+    name = String(max_length=50)
+
+    def provision(self):
+        return protean.adaptersfoo.broker.inline.InlineBroker("default", None, {})
 
 
 class MultiCallOrder(BaseAggregate):

@@ -64,45 +64,105 @@ class TestAdapterCallInDomain:
     def test_unresolved_callee_is_not_flagged(self):
         """The conservative half: an adapter reached through a function-local
         import, or a fetched local-variable receiver, does not statically
-        resolve, so it is skipped rather than guessed at."""
+        resolve, so it is skipped rather than guessed at.
+
+        A firing control (``AdapterCallOrder``) is co-registered so the assertion
+        fails if the rule is inactive: the control must fire while the two
+        unresolved elements stay silent — an empty finding list would mean the
+        rule never ran, not that it correctly skipped."""
         domain = _build_adapter_call_domain(
             "AdapterUnresolved",
             {"check_adapter_calls": True},
             elements=(
+                adapter_call_domain.AdapterCallOrder,
                 adapter_call_domain.LocalImportOrder,
                 adapter_call_domain.InjectedReceiverOrder,
             ),
         )
         ir = IRBuilder(domain).build()
 
-        assert _adapter_findings(ir) == []
+        flagged = {d["element"] for d in _adapter_findings(ir)}
+        assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
+        assert fqn(adapter_call_domain.LocalImportOrder) not in flagged
+        assert fqn(adapter_call_domain.InjectedReceiverOrder) not in flagged
 
     def test_non_registered_class_is_out_of_scope(self):
         """A class with an identical adapter call that is never registered is
-        never visited — the rule is domain-scoped, so it emits nothing when only
-        a clean element is registered alongside it."""
+        never visited — the rule is domain-scoped.
+
+        The firing control proves the rule is active; ``UnregisteredHelper``
+        (same module, same adapter call, never registered) must not appear."""
         domain = _build_adapter_call_domain(
             "AdapterScope",
             {"check_adapter_calls": True},
-            elements=(adapter_call_domain.CleanOrder,),
+            elements=(adapter_call_domain.AdapterCallOrder,),
         )
         ir = IRBuilder(domain).build()
 
-        # ``UnregisteredHelper`` lives in the same module and calls an adapter,
-        # but is not registered, so no finding names it (or anything else).
-        assert _adapter_findings(ir) == []
+        flagged = {d["element"] for d in _adapter_findings(ir)}
+        assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
+        helper_fqn = fqn(adapter_call_domain.UnregisteredHelper)
+        assert helper_fqn not in flagged
 
     def test_clean_self_rooted_call_is_not_flagged(self):
         """A self-rooted repository/DAO call (``self._dao.filter(...)``) resolves
-        to no FQN and names no adapter, so it is not over-flagged."""
+        to no FQN, and a resolved non-adapter call (``protean.utils.fqn``) names
+        no adapter, so neither is over-flagged.
+
+        The firing control (``AdapterCallOrder``) is co-registered so the test
+        exercises a live rule: it must fire while ``CleanOrder`` stays silent."""
         domain = _build_adapter_call_domain(
             "AdapterClean",
             {"check_adapter_calls": True},
-            elements=(adapter_call_domain.CleanOrder,),
+            elements=(
+                adapter_call_domain.AdapterCallOrder,
+                adapter_call_domain.CleanOrder,
+            ),
         )
         ir = IRBuilder(domain).build()
 
-        assert _adapter_findings(ir) == []
+        flagged = {d["element"] for d in _adapter_findings(ir)}
+        assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
+        assert fqn(adapter_call_domain.CleanOrder) not in flagged
+
+    def test_sibling_prefix_callee_is_not_flagged(self):
+        """The dot-boundary guard: a callee resolving to ``protean.adaptersfoo``
+        shares the ``protean.adapters`` string prefix but is a different package.
+        ``startswith("protean.adapters.")`` (with the dot) must reject it.
+
+        A firing control is co-registered: dropping the ``+ "."`` from the guard
+        would wrongly flag the sibling, so the test fails if the boundary check
+        regresses."""
+        domain = _build_adapter_call_domain(
+            "AdapterSibling",
+            {"check_adapter_calls": True},
+            elements=(
+                adapter_call_domain.AdapterCallOrder,
+                adapter_call_domain.SiblingPrefixOrder,
+            ),
+        )
+        ir = IRBuilder(domain).build()
+
+        flagged = {d["element"] for d in _adapter_findings(ir)}
+        assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
+        assert fqn(adapter_call_domain.SiblingPrefixOrder) not in flagged
+
+    def test_value_object_element_is_flagged(self):
+        """The rule is element-type-agnostic: it fires on any registered element
+        bucket, not only aggregates. A value object whose own method calls an
+        adapter is flagged just like an aggregate."""
+        domain = _build_adapter_call_domain(
+            "AdapterValueObject",
+            {"check_adapter_calls": True},
+            elements=(adapter_call_domain.AdapterCallMoney,),
+        )
+        ir = IRBuilder(domain).build()
+
+        vo_fqn = fqn(adapter_call_domain.AdapterCallMoney)
+        findings = [d for d in _adapter_findings(ir) if d["element"] == vo_fqn]
+        assert len(findings) == 1
+        assert "provision" in findings[0]["message"]
+        assert "protean.adapters.broker.inline.InlineBroker" in findings[0]["message"]
 
     def test_multi_site_emits_one_per_call_in_source_order(self):
         """A method with two adapter calls emits two diagnostics, in source

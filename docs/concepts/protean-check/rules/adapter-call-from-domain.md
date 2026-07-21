@@ -41,11 +41,17 @@ own — turning on the call-site rule never changes what the import rule does.
 
 The rule walks **every non-internal registered domain element** — aggregates,
 entities, value objects, repositories, handlers, domain services, process
-managers, subscribers — in fqn order, and reads each of its method bodies. It is
-deliberately **conservative**: it flags a call only when the callee **statically
-resolves** under `protean.adapters`. A call whose callee cannot be resolved is
-**skipped, never guessed at**, keeping the rule on the deterministic side of
-ADR-0019. In particular, it does not flag:
+managers, subscribers — in fqn order, and reads the methods **defined in each
+element's own class body**. It is deliberately **conservative**: it flags a call
+only when the callee **statically resolves** under `protean.adapters`. A call
+whose callee cannot be resolved is **skipped, never guessed at**, keeping the
+rule on the deterministic side of ADR-0019.
+
+Because it reads only an element's own top-level methods, it does **not** see an
+adapter call that sits in a method inherited from a non-registered base or mixin,
+in a class-attribute default, at module level, or nested inside another `def`,
+`lambda`, or class within a method — those are conservative, by-design misses,
+not violations the rule certifies absent. In particular, it does not flag:
 
 - **A class that is not a registered domain element.** Only registered elements
   are visited, so a plain helper class calling an adapter is out of scope.
