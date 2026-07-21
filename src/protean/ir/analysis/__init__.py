@@ -14,6 +14,7 @@ from protean.ir.analysis.element_index import (
     MethodRole,
 )
 from protean.ir.analysis.source_provider import SourceProvider
+from protean.ir.analysis.symbols import SymbolResolver
 
 __all__ = [
     "ClassEntry",
@@ -21,4 +22,5 @@ __all__ = [
     "MethodEntry",
     "MethodRole",
     "SourceProvider",
+    "SymbolResolver",
 ]
