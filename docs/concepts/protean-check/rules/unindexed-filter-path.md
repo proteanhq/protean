@@ -9,8 +9,8 @@
 ## What it flags
 
 An aggregate field that a repository query **filters on** but that **no declared
-index covers**. Such a query is a full table scan on every backend: the cost is
-invisible on small development data and grows with the production table.
+index covers**. Such a query is a full table scan on a relational backend: the
+cost is invisible on small development data and grows with the production table.
 
 `protean check` reads two halves and joins them:
 
@@ -23,18 +23,27 @@ It reports one finding per uncovered field per call-site: the same field
 filtered in two methods yields two findings, each pointing at its own query.
 
 A query is any of the repository read surfaces — `filter`, `get`, `find`,
-`find_by`, `exclude` — recognised on a repository receiver. The finding is
-attributed to the **aggregate** (that is where the `Index()` fix and the natural
-suppression site live), names the field, and points at the call-site
-`path:line:col`.
+`find_by`, `exclude` — recognised on a receiver that statically resolves to a
+registered repository or aggregate class (or is self-rooted, `self._dao`, inside
+a repository). The finding is attributed to the **aggregate** (that is where the
+`Index()` fix and the natural suppression site live), names the field, and points
+at the call-site as `<element>.<method>, line N` — the enclosing element and
+source line, stable across machines so it does not pollute the content-checksummed
+IR (the absolute source path is deliberately left out).
+
+An operator lookup such as `age__gte`, `status__in`, or `email__contains` filters
+its base field: the rule strips the `__<lookup>` suffix and evaluates the base
+(`age`, `status`, `email`), so an operator query on an unindexed column is
+flagged and one on an indexed column is not.
 
 ## When a field is covered
 
 A filtered field is **not** flagged when:
 
-- it is the aggregate's **identifier** — every backend indexes the primary key;
+- it is the aggregate's **identifier** — a relational backend indexes the
+  primary key;
 - it carries a single-column **`unique=True`** constraint — a unique constraint
-  is a real index on every backend; or
+  is a real index on a relational backend; or
 - it is the **leading column** of a declared `Index`.
 
 Only the *leading* column of a composite index is covered. A filter on a
@@ -48,9 +57,13 @@ specific aggregate, it **skips rather than guesses**, so an unresolved join is a
 silent miss, never a false positive. It deliberately does **not** cover:
 
 - **Dynamic filters.** `filter(**kwargs)` names no field, so it is skipped.
-- **Unresolvable receivers.** A `.filter(...)` on a plain local variable or
-  parameter (a receiver static analysis cannot tie to a repository) is skipped —
-  it needs type information the check does not have.
+- **Unresolvable receivers.** A `.filter(...)` on a receiver static analysis
+  cannot tie to a registered class is skipped — a plain local variable or
+  parameter, or the idiomatic `current_domain.repository_for(Order).filter(...)`
+  whose receiver is a call result. Only a receiver that resolves to a repository
+  or aggregate **class** (`OrderRepository.filter(...)`, `Order.filter(...)`) or
+  a self-rooted repository query joins today; instance and `repository_for(...)`
+  receivers wait on dataflow.
 - **Non-scalar names.** A filter naming a value-object attribute, an
   association, or a name that is not a declared scalar field of the aggregate is
   left alone (the same scalar-field scope as the sibling persistence rules).

@@ -128,6 +128,24 @@ class TestUnindexedFilterPath:
         assert len(findings) == 1, findings
         assert findings[0]["field"] == "name"
 
+    def test_operator_lookup_filters_the_base_field(self, flagged_ir):
+        """An operator lookup (``name__contains``) filters its base field; the
+        rule strips the ``__<lookup>`` suffix and flags the uncovered base
+        ``name`` (not the composite keyword), so the suggested ``Index`` names
+        the real column."""
+        findings = [
+            d for d in _flagged(flagged_ir) if _method_of(d) == "filter_operator_lookup"
+        ]
+        assert len(findings) == 1, findings
+        assert findings[0]["field"] == "name"
+        assert "name" in findings[0]["suggestion"]
+
+    def test_operator_lookup_on_indexed_base_not_flagged(self, flagged_ir):
+        """An operator lookup on an indexed base field (``status__in``) strips
+        to the covered ``status``, so it is not flagged — stripping must not
+        over-emit on a covered column."""
+        assert "filter_indexed_operator_lookup" not in _flagged_methods(flagged_ir)
+
     def test_second_aggregate_attributed(self, flagged_ir):
         """A finding on a different aggregate is attributed to its own FQN, not
         leaked onto the first — the join is per-aggregate."""
@@ -219,9 +237,11 @@ class TestUnindexedFilterPath:
             assert ".py" not in finding["message"], finding["message"]
 
     def test_total_finding_count_is_exact(self, flagged_ir):
-        """A pin on the whole corpus: exactly the seven uncovered call-sites
-        fire, so a regression that over- or under-emits is caught."""
-        assert len(_flagged(flagged_ir)) == 7
+        """A pin on the whole corpus: exactly the eight uncovered call-sites
+        fire (the seven plain/composite/get/twice/second-aggregate/app-service
+        sites plus the operator-lookup base), so a regression that over- or
+        under-emits is caught."""
+        assert len(_flagged(flagged_ir)) == 8
 
     def test_determinism_same_domain_same_findings(self):
         """Same corpus built twice yields identical findings in identical
@@ -350,3 +370,37 @@ class TestUnindexedFilterPathBoundary:
             _method_of(d) == "filter_plain" and d["field"] == "name"
             for d in _flagged(ir)
         )
+
+
+@pytest.fixture(scope="module")
+def scalar_scope_ir() -> dict:
+    """``Customer`` embeds an ``address`` value object and carries a plain
+    ``name``; its repository filters both. No index is declared, so only the
+    scalar filter is eligible to fire."""
+    domain = Domain(name="ScalarScope", root_path=CORPUS_ROOT)
+    domain.register(catalog.Address)
+    domain.register(catalog.Customer)
+    domain.register(catalog.CustomerRepository, part_of=catalog.Customer)
+    domain.init(traverse=False)
+    return IRBuilder(domain).build()
+
+
+class TestUnindexedFilterPathScalarScope:
+    """A filter naming a non-scalar field (a value object, an association) is
+    outside the rule's scalar scope and left alone — the rule cannot suggest an
+    ``Index`` on a name that maps to no single column."""
+
+    def test_scalar_filter_is_the_positive_control(self, scalar_scope_ir):
+        """A plain scalar filter on the aggregate still fires, so the
+        value-object skip below is a real exclusion, not an empty finding set."""
+        findings = [
+            d for d in _flagged(scalar_scope_ir) if _method_of(d) == "filter_scalar"
+        ]
+        assert len(findings) == 1, findings
+        assert findings[0]["field"] == "name"
+
+    def test_value_object_filter_is_not_flagged(self, scalar_scope_ir):
+        """A filter naming a value-object field is left alone: a value object
+        expands into several columns, none named for the field, so no ``Index``
+        on the field name could cover it."""
+        assert "filter_value_object" not in _flagged_methods(scalar_scope_ir)

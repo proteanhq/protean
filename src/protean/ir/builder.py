@@ -134,6 +134,16 @@ NON_NOUN_AGGREGATE_SUFFIXES = (
 # against the target aggregate's declared indexes.
 FILTER_PATH_QUERY_METHODS = frozenset({"filter", "get", "find", "find_by", "exclude"})
 
+# Field ``kind`` values that map to no single scalar column, so a filter on the
+# field *name* cannot be served by an ``Index`` on that name: embedded value
+# objects (which expand into several columns, none named for the field) and
+# associations (which live on the other side of the relationship). The rule
+# evaluates only scalar fields, the same scalar-field scope the sibling
+# ``UNBOUNDED_INDEXED_STRING`` rule keeps.
+NON_SCALAR_FILTER_FIELD_KINDS = frozenset(
+    {"value_object", "value_object_list", "has_one", "has_many", "reference"}
+)
+
 
 def validate_lint_suppressions(suppressions: Any) -> str | None:
     """Return an error message if ``[lint].suppressions`` is malformed, else ``None``.
@@ -2530,14 +2540,15 @@ class IRBuilder:
         repository — is *skipped, not guessed*, so an unresolved join is a
         silent miss rather than a false positive.
 
-        A field is covered when it is the aggregate's identifier (every backend
-        indexes the PK), carries a single-column ``unique`` constraint (a unique
-        index on every backend), or is the *leading* column of a declared
-        ``Index`` (a filter on a non-leading composite column alone is not
-        served by that index). Only names that are actual scalar fields of the
-        target aggregate are evaluated: a filter on a value-object attribute,
+        A field is covered when it is the aggregate's identifier (a relational
+        backend indexes the PK), carries a single-column ``unique`` constraint (a
+        unique index on a relational backend), or is the *leading* column of a
+        declared ``Index`` (a filter on a non-leading composite column alone is
+        not served by that index). Only names that are actual scalar fields of
+        the target aggregate are evaluated: a filter on a value-object attribute,
         association, or dynamic ``**kwargs`` names no coverable field and is left
-        alone, matching the sibling persistence rule's scalar-field scope.
+        alone, matching the sibling persistence rule's scalar-field scope. An
+        operator lookup (``age__gte``) is evaluated by its base field.
 
         One finding is emitted per uncovered field per call-site, so the same
         field filtered in two methods yields two findings. Elements are walked in
@@ -2608,11 +2619,29 @@ class IRBuilder:
                         )
                     covered = covered_cache[target_fqn]
 
-                    for field_name in call.field_names:
-                        # Only a real scalar field can be index-covered; a
-                        # value-object attribute, association, or unknown name is
-                        # not evaluated (conservative, matching the sibling rule).
-                        if field_name not in fields or field_name in covered:
+                    seen: set[str] = set()
+                    for raw_name in call.field_names:
+                        # An operator lookup (``age__gte``, ``status__in``)
+                        # filters its base field; strip the ``__<lookup>`` suffix
+                        # and evaluate the base, and evaluate each base at most
+                        # once per call-site (``age__gte`` + ``age__lte`` name the
+                        # one field ``age``). A real field name never contains a
+                        # ``__``, so the split is unambiguous.
+                        field_name = raw_name.split("__", 1)[0]
+                        if field_name in seen:
+                            continue
+                        seen.add(field_name)
+
+                        field = fields.get(field_name)
+                        # Only a real scalar field can be index-covered on its own
+                        # name; an unknown name, a value-object attribute, or an
+                        # association names no coverable column and is left alone
+                        # (conservative, matching the sibling rule's scalar scope).
+                        if (
+                            field is None
+                            or field.get("kind") in NON_SCALAR_FILTER_FIELD_KINDS
+                            or field_name in covered
+                        ):
                             continue
                         self._emit_unindexed_filter_path(
                             aggregate,
@@ -2638,7 +2667,7 @@ class IRBuilder:
         covered: set[str] = {aggregate["identity_field"]}
 
         for field_name, field in aggregate.get("fields", {}).items():
-            # A field-level ``unique`` constraint is a real index on every
+            # A field-level ``unique`` constraint is a real index on a relational
             # backend. The identifier never carries this key (the extractor omits
             # it as redundant), so this is only non-PK unique fields.
             if field.get("unique"):
@@ -2708,8 +2737,8 @@ class IRBuilder:
         rule = {
             "rationale": (
                 "A repository filter on a field with no covering index forces a "
-                "full table scan on every backend. The cost is invisible on "
-                "small development data and grows with the production table."
+                "full table scan on a relational backend. The cost is invisible "
+                "on small development data and grows with the production table."
             ),
             "fix": (
                 "Add an index led by this field to the aggregate "
