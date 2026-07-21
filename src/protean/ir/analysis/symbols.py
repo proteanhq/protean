@@ -40,12 +40,16 @@ conditional or a function body is conservatively absent from the table (it
 resolves to ``None``, never to a wrong FQN). A ``*`` import binds no name and a
 relative import that escapes binds none.
 
-Shadowing: local definitions win over imports
----------------------------------------------
-Imports are recorded first, then local ``class``/``def`` bindings overwrite
-them, so a module-level class that shadows a same-named import resolves to the
-local definition's FQN. That matches Python's last-binding-wins semantics for
-that shape, and it is deterministic: build order, not tree-walk order, decides.
+Shadowing: the last binding in source order wins
+------------------------------------------------
+The table is built in a single top-level pass, so a name bound more than once
+takes its **last** binding — exactly as Python binds a module-level name at
+runtime. A ``class``/``def`` after a same-named import shadows the import; an
+import after a same-named definition shadows the definition. A module-level
+assignment (``x = ...``, ``x: T = ...``, ``x += ...``) rebinds its target to a
+value this static table cannot follow, so it *removes* that name rather than
+keep a now-stale FQN — the name resolves to ``None`` (a miss, never a wrong
+FQN). Attribute and subscript targets (``a.b = ...``) rebind no module name.
 
 Use-site resolution
 -------------------
@@ -93,8 +97,8 @@ if TYPE_CHECKING:
 
 #: Module-level statements that bind a name to a definition in this module.
 #: A class, a function, or an ``async def`` at module scope binds its own name
-#: to ``<module>.<name>``, and does so *after* imports so a local definition
-#: shadows a same-named import.
+#: to ``<module>.<name>``. Bindings are applied in source order, so whichever of
+#: a definition and a same-named import comes last is the one that stands.
 _DEF_NODES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
@@ -187,16 +191,21 @@ class SymbolResolver:
             return {}
 
         table: dict[str, str] = {}
-        # Imports first: a local definition below binds the same name last, and
-        # Python's last-binding-wins means the local definition should stand.
+        # One pass in source order: the last statement to bind a name wins,
+        # matching how Python binds a module-level name at runtime. So a
+        # definition after a same-named import shadows it, an import after a
+        # same-named definition shadows that, and an assignment removes the name
+        # (its new value is not statically followable) rather than leave a stale
+        # FQN that would be a wrong answer.
         for statement in tree.body:
             if isinstance(statement, ast.Import):
                 self._bind_import(table, statement)
             elif isinstance(statement, ast.ImportFrom):
                 self._bind_import_from(table, module, statement)
-        for statement in tree.body:
-            if isinstance(statement, _DEF_NODES):
+            elif isinstance(statement, _DEF_NODES):
                 table[statement.name] = f"{module}.{statement.name}"
+            else:
+                _unbind_assignments(table, statement)
         return table
 
     @staticmethod
@@ -283,6 +292,47 @@ def _dotted_parts(node: ast.expr) -> list[str] | None:
     parts.append(node.id)
     parts.reverse()
     return parts
+
+
+def _unbind_assignments(table: dict[str, str], statement: ast.stmt) -> None:
+    """Drop any table name a module-level assignment rebinds.
+
+    ``x = ...``, ``x: T = ...``, ``x += ...`` and unpacking assignments rebind
+    ``x`` to a value this static table cannot follow. Rather than keep the FQN a
+    prior import or definition left for ``x``, the name is removed so it
+    resolves to ``None`` — a miss, never a wrong FQN. Attribute and subscript
+    targets (``a.b = ...``) rebind no module name, and a bare annotation
+    (``x: int`` with no value) binds nothing, so both are left untouched.
+    """
+    if isinstance(statement, ast.Assign):
+        targets: list[ast.expr] = statement.targets
+    elif isinstance(statement, ast.AugAssign) or (
+        isinstance(statement, ast.AnnAssign) and statement.value is not None
+    ):
+        targets = [statement.target]
+    else:
+        return
+    for target in targets:
+        for name in _assigned_names(target):
+            table.pop(name, None)
+
+
+def _assigned_names(target: ast.expr) -> list[str]:
+    """The plain names an assignment target binds, recursing into unpacking.
+
+    ``x`` -> ``["x"]``, ``a, *b`` -> ``["a", "b"]``. Attribute and subscript
+    targets bind no module name and yield nothing.
+    """
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Starred):
+        return _assigned_names(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: list[str] = []
+        for element in target.elts:
+            names.extend(_assigned_names(element))
+        return names
+    return []
 
 
 def _is_package_init(origin: str) -> bool:

@@ -170,6 +170,45 @@ class TestShadowing:
 
         assert resolver.symbols("pkg.mod")["build"] == "pkg.mod.build"
 
+    def test_an_import_after_a_definition_wins_by_source_order(self, tmp_path):
+        """The reverse shape: a ``class`` followed by a same-named import binds
+        the import, matching Python's last-binding-wins. Binding by source order
+        (not imports-then-defs) is what keeps this from being a wrong FQN."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    class Order: ...
+
+                    from other import Order
+                    """
+                },
+            )
+        )
+
+        assert resolver.symbols("pkg.mod")["Order"] == "other.Order"
+
+    def test_a_reassignment_degrades_a_bound_name_to_unresolved(self, tmp_path):
+        """A module-level ``=`` over an imported name rebinds it to a value the
+        table cannot follow, so the name is dropped and resolves to ``None`` —
+        a miss, never the stale import FQN."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    from other import Order
+
+                    Order = make_order()
+                    """
+                },
+            )
+        )
+
+        assert "Order" not in resolver.symbols("pkg.mod")
+        assert resolver.resolve("pkg.mod", _use_site("Order")) is None
+
 
 class TestRelativeImports:
     def test_single_dot_import_anchors_on_the_package(self, tmp_path):
