@@ -84,7 +84,7 @@ setting `identity_type` in configuration:
 ```toml
 # domain.toml
 identity_strategy = "uuid"
-identity_type = "uuid"          # native UUID objects
+identity_type = "uuid"          # UUID rendered as a string
 ```
 
 Supported types are `string`, `uuid`, and `integer`:
@@ -92,7 +92,7 @@ Supported types are `string`, `uuid`, and `integer`:
 | Type | Generated value | Use when... |
 |---|---|---|
 | `string` (default) | `"9cf4ddc4-2919-..."` | You want portability across every adapter |
-| `uuid` | `UUID('9cf4ddc4-...')` | Your database has a native UUID column (e.g. PostgreSQL) |
+| `uuid` | `"9cf4ddc4-..."` (a string; stored in a native UUID column) | Your database has a native UUID column (e.g. PostgreSQL) |
 | `integer` | `154702789254628181...` | Your persistence layer requires integer ids |
 
 You can also override the type for a single aggregate without changing

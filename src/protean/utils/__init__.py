@@ -26,7 +26,7 @@ from typing import (
 )
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator
 from pydantic import Field as PydanticField
 from pydantic.fields import FieldInfo
 
@@ -388,9 +388,12 @@ def _prepare_pydantic_namespace(
                         break
 
         if not has_id:
-            annots["id"] = str | int | UUID
+            annots["id"] = Annotated[
+                str | int | UUID, BeforeValidator(_coerce_uuid_to_str)
+            ]
             new_dict["id"] = PydanticField(
                 default_factory=_generate_identity,
+                validate_default=True,
                 json_schema_extra={
                     "identifier": True,
                     "_auto_generated": True,
@@ -571,6 +574,18 @@ def _derive_element_class(
     return element_cls
 
 
+def _coerce_uuid_to_str(v: Any) -> Any:
+    """Coerce a ``UUID`` identity to its string form, leaving other types alone.
+
+    Applied to the auto-injected ``id`` field so a ``uuid`` identity is a ``str``
+    in Python (ADR-0021) whether it was generated or loaded from an adapter that
+    returns a native ``UUID`` (e.g. SQLAlchemy's ``GUID`` type), while an
+    ``integer`` identity stays an ``int``. Mirrors the ``_coerce_to_str`` the
+    explicitly-declared ``Auto``/``Identifier`` fields already carry.
+    """
+    return str(v) if isinstance(v, UUID) else v
+
+
 def _generate_identity(
     identity_strategy: str | None = None,
     identity_function: Callable[[], Any] | None = None,
@@ -595,7 +610,13 @@ def _generate_identity(
         elif id_type == IdentityType.STRING.value:
             id_value = str(uuid4())
         elif id_type == IdentityType.UUID.value:
-            id_value = uuid4()
+            # A UUID identity is a UUID *string* in Python (ADR-0021): identities
+            # cross a JSON boundary constantly (event/command payloads, the event
+            # store, API responses), and a native uuid.UUID is not JSON
+            # serializable. The value is still a valid UUID, and adapters that
+            # support a native UUID column (e.g. SQLAlchemy's GUID type) store it
+            # as one; the Python-side identity stays an opaque string.
+            id_value = str(uuid4())
         else:
             raise ConfigurationError(f"Unknown Identity Type '{id_type}'")
 

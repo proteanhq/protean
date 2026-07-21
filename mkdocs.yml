@@ -404,6 +404,8 @@ nav:
       - adr/0017-consume-side-idempotency-for-projectors.md
       - adr/0018-type-safety-strategy.md
       - adr/0019-check-engine-determinism-boundary-and-behavioral-substrate.md
+      - adr/0020-dependency-floor-policy.md
+      - adr/0021-uuid-identity-is-a-string-in-python.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

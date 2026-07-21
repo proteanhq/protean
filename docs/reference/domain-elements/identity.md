@@ -63,10 +63,11 @@ In [2]: uuid.uuid4().int
 Out[2]: 154702789254628181204690697941965130883
 ```
 
-- **`uuid`** - A uuid object is allowed. Many databases have
-inbuilt support for UUIDs and this option leverages it for performance. For
-example, PostgreSQL has a built-in `UUID` data type that can store a 128-bit
-value, typically represented as a 36-character string.
+- **`uuid`** - Identity is a UUID rendered as a string in Python (ADR-0021), so
+it stays JSON-serializable across event and command payloads and API responses.
+Adapters that support a native UUID column still store it as one: PostgreSQL has a
+built-in `UUID` data type (a 128-bit value, typically shown as a 36-character
+string), and the SQLAlchemy adapter maps this type to it for storage and indexing.
 
 !!!note
     Identity Strategy and Identity Type values have to be configured to
