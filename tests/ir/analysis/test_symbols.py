@@ -209,6 +209,124 @@ class TestShadowing:
         assert "Order" not in resolver.symbols("pkg.mod")
         assert resolver.resolve("pkg.mod", _use_site("Order")) is None
 
+    def test_an_augmented_assignment_degrades_a_bound_name_to_unresolved(
+        self, tmp_path
+    ):
+        """A module-level ``+=`` over an imported name rebinds it to a value the
+        table cannot follow, so the name is dropped and resolves to ``None``."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    from other import count
+
+                    count += 1
+                    """
+                },
+            )
+        )
+
+        assert "count" not in resolver.symbols("pkg.mod")
+        assert resolver.resolve("pkg.mod", _use_site("count")) is None
+
+    def test_an_annotated_assignment_with_a_value_degrades_a_bound_name(self, tmp_path):
+        """A module-level ``x: T = ...`` over an imported name rebinds it, so the
+        name is dropped and resolves to ``None``."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    from other import Order
+
+                    Order: type = make_order()
+                    """
+                },
+            )
+        )
+
+        assert "Order" not in resolver.symbols("pkg.mod")
+        assert resolver.resolve("pkg.mod", _use_site("Order")) is None
+
+    def test_a_bare_annotation_without_a_value_keeps_a_bound_name(self, tmp_path):
+        """A module-level ``x: T`` with no value binds nothing, so a same-named
+        import is left untouched and still resolves."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    from other import Order
+
+                    Order: type
+                    """
+                },
+            )
+        )
+
+        assert resolver.resolve("pkg.mod", _use_site("Order")) == "other.Order"
+
+    def test_a_tuple_unpacking_degrades_every_bound_name(self, tmp_path):
+        """A module-level tuple unpacking rebinds each target name, so every one
+        is dropped and resolves to ``None``."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    from other import Order, Line
+
+                    Order, Line = make_pair()
+                    """
+                },
+            )
+        )
+
+        assert "Order" not in resolver.symbols("pkg.mod")
+        assert "Line" not in resolver.symbols("pkg.mod")
+        assert resolver.resolve("pkg.mod", _use_site("Order")) is None
+        assert resolver.resolve("pkg.mod", _use_site("Line")) is None
+
+    def test_a_starred_unpacking_degrades_the_starred_name(self, tmp_path):
+        """A module-level starred unpacking (``a, *b = ...``) rebinds both the
+        plain and the starred target, so both are dropped."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    from other import head, tail
+
+                    head, *tail = make_sequence()
+                    """
+                },
+            )
+        )
+
+        assert "head" not in resolver.symbols("pkg.mod")
+        assert "tail" not in resolver.symbols("pkg.mod")
+        assert resolver.resolve("pkg.mod", _use_site("head")) is None
+        assert resolver.resolve("pkg.mod", _use_site("tail")) is None
+
+    def test_an_attribute_target_rebinds_no_module_name(self, tmp_path):
+        """A module-level attribute assignment (``a.b = ...``) binds no module
+        name, so a same-named import is left untouched and still resolves."""
+        resolver = _walked_resolver(
+            _make_pkg(
+                tmp_path,
+                {
+                    "mod.py": """
+                    from other import Order
+
+                    Order.total = compute()
+                    """
+                },
+            )
+        )
+
+        assert resolver.resolve("pkg.mod", _use_site("Order")) == "other.Order"
+
 
 class TestRelativeImports:
     def test_single_dot_import_anchors_on_the_package(self, tmp_path):
