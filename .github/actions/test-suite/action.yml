@@ -1,0 +1,232 @@
+# Shared test-suite runner used by both the per-PR CI (ci.yml) and the nightly
+# full-matrix run (nightly.yml). It is a composite action rather than a reusable
+# `workflow_call` on purpose: a called workflow prefixes its status-check name
+# with the caller job (`caller / job (matrix)`), which would break the exact
+# branch-protection contexts (`Python 3.14 Tests`, `Python 3.14 Full`). A
+# composite action keeps the job in the caller, so the caller owns the name.
+#
+# The caller must `actions/checkout` before invoking this action.
+name: "Protean test suite"
+description: "Install and run the Protean test suite (CORE or FULL) at the chosen resolution."
+
+inputs:
+  python-version:
+    description: "Python version to test against."
+    required: true
+  full:
+    description: "'true' runs the FULL adapter suite (`-c FULL`) against Docker service containers; 'false' runs the fast in-memory CORE suite."
+    required: false
+    default: "false"
+  resolution:
+    description: "'highest' uses the locked latest-compatible versions; 'lowest-direct' re-resolves declared dependencies to their floor."
+    required: false
+    default: "highest"
+  enforce-coverage:
+    description: "'true' fails the run if coverage drops below the project floor. Only meaningful for a FULL leg."
+    required: false
+    default: "false"
+  upload-coverage:
+    description: "'true' uploads coverage to Codecov. Only meaningful for a FULL leg."
+    required: false
+    default: "false"
+  codecov-token:
+    description: "Codecov upload token (required only when upload-coverage is 'true')."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    # Service setup (this step through "Wait for services") runs only for a FULL
+    # leg; CORE and floors legs need no Docker. Images are pulled from this org's
+    # public GHCR mirror (populated by mirror-images.yml), not Docker Hub, so
+    # there is no login step and fork PRs pull them with zero secrets.
+    - name: Cache Docker images
+      id: docker-cache
+      if: inputs.full == 'true'
+      uses: actions/cache@v6
+      with:
+        path: /tmp/docker-images
+        key: docker-images-${{ runner.os }}-v3
+
+    - name: Load or pull Docker images
+      if: inputs.full == 'true'
+      shell: bash
+      run: |
+        IMAGES=(
+          "ghcr.io/proteanhq/mirror/postgres:16"
+          "ghcr.io/proteanhq/mirror/redis:7"
+          "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0"
+          "ghcr.io/proteanhq/mirror/message-db:1.2.6"
+          "ghcr.io/proteanhq/mirror/mssql-server:2022-latest"
+        )
+
+        if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "Loading cached Docker images..."
+          for f in /tmp/docker-images/*.tar; do
+            docker load -i "$f" &
+          done
+          wait
+        else
+          echo "Pulling Docker images..."
+          for img in "${IMAGES[@]}"; do
+            docker pull "$img" &
+          done
+          wait
+
+          echo "Saving Docker images to cache..."
+          mkdir -p /tmp/docker-images
+          for img in "${IMAGES[@]}"; do
+            name=$(echo "$img" | tr '/:' '_')
+            docker save "$img" -o "/tmp/docker-images/${name}.tar" &
+          done
+          wait
+        fi
+
+    - name: Configure sysctl limits
+      if: inputs.full == 'true'
+      shell: bash
+      run: |
+        sudo swapoff -a
+        sudo sysctl -w vm.swappiness=1
+        sudo sysctl -w fs.file-max=262144
+        sudo sysctl -w vm.max_map_count=262144
+
+    - name: Start service containers
+      if: inputs.full == 'true'
+      shell: bash
+      run: |
+        # Free the host ports below before binding them. Remove ALL containers
+        # left over from a previous run on this (potentially reused) runner:
+        # matching only our own names misses a container leaked under a
+        # different name, or one still shutting down, either of which can keep
+        # a port bound (e.g. the 59300 Elasticsearch transport port) and fail
+        # `docker run` with "address already in use".
+        leaked=$(docker ps -aq)
+        if [ -n "$leaked" ]; then
+          docker rm -f $leaked
+        fi
+
+        docker run -d --name postgres \
+          -p 55432:5432 \
+          -e POSTGRES_PASSWORD=postgres \
+          ghcr.io/proteanhq/mirror/postgres:16
+
+        docker run -d --name redis \
+          -p 56379:6379 \
+          ghcr.io/proteanhq/mirror/redis:7
+
+        docker run -d --name message-db \
+          -p 55433:5432 \
+          ghcr.io/proteanhq/mirror/message-db:1.2.6
+
+        docker run -d --name mssql \
+          -p 51433:1433 \
+          -e ACCEPT_EULA=Y \
+          -e "SA_PASSWORD=Protean123!" \
+          ghcr.io/proteanhq/mirror/mssql-server:2022-latest
+
+        docker run -d --name elasticsearch \
+          -p 59200:9200 \
+          -p 59300:9300 \
+          -e "discovery.type=single-node" \
+          -e "xpack.security.enabled=false" \
+          -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+          ghcr.io/proteanhq/mirror/elasticsearch:8.7.0
+
+    - name: Wait for services
+      if: inputs.full == 'true'
+      shell: bash
+      run: |
+        echo "Waiting for PostgreSQL..."
+        timeout 60 bash -c 'until docker exec postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done'
+        echo "PostgreSQL is ready!"
+
+        echo "Waiting for Redis..."
+        timeout 30 bash -c 'until docker exec redis redis-cli ping 2>/dev/null; do sleep 2; done'
+        echo "Redis is ready!"
+
+        echo "Waiting for Message DB..."
+        timeout 60 bash -c 'until docker exec message-db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
+        echo "Message DB is ready!"
+
+        echo "Waiting for MSSQL..."
+        timeout 60 bash -c 'until docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Protean123!" -Q "SELECT 1" -b -C 2>/dev/null; do sleep 2; done'
+        echo "MSSQL is ready!"
+
+        echo "Waiting for Elasticsearch..."
+        timeout 120 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
+        echo "Elasticsearch is ready!"
+
+        echo "All services are ready!"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Microsoft ODBC Driver 18 and tools
+      if: inputs.full == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl gnupg apt-transport-https
+        curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc >/dev/null
+        curl -sSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null
+        sudo apt-get update
+        sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
+        echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
+
+    - name: Install dependencies
+      # A lowest-direct leg re-resolves declared deps to their floor (installing
+      # all extras so a floor without a wheel for the newest Python fails here);
+      # every other leg uses the locked latest-compatible resolution.
+      shell: bash
+      env:
+        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (inputs.python-version == '3.13' || inputs.python-version == '3.14') && '1' || '' }}
+      run: uv sync --all-extras --all-groups ${{ inputs.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
+
+    - name: Mypy Plugin Tests
+      shell: bash
+      run: uv run pytest tests/ext/ -v
+
+    - name: Tests
+      # FULL runs the adapter suite against the service containers; CORE and
+      # floors run the fast in-memory suite (the POSTGRES/etc. env below is
+      # simply unused there).
+      shell: bash
+      env:
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_USER: postgres
+        POSTGRES_PORT: 55432
+        PGPASSWORD: postgres
+        REDIS_HOST: localhost
+        REDIS_PORT: 56379
+        MSSQL_PASSWORD: Protean123!
+        MSSQL_USER: sa
+        MSSQL_PORT: 51433
+        MSSQL_HOST: localhost
+      run: uv run protean test ${{ inputs.full == 'true' && '-c FULL' || '' }}
+
+    # Project coverage floor. `protean test -c FULL` already ran `coverage
+    # combine`, so the merged `.coverage` exists; re-report it with a hard
+    # threshold so a change that drops overall coverage fails. `success() &&`
+    # keeps it from running after the Tests step failed (no merged `.coverage`).
+    - name: Enforce coverage floor
+      if: ${{ success() && inputs.enforce-coverage == 'true' }}
+      shell: bash
+      run: uv run coverage report --fail-under=94
+
+    # Upload from the FULL leg even when tests fail, so partial coverage is
+    # visible; skip only on cancellation.
+    - name: CodeCOV
+      if: ${{ !cancelled() && inputs.upload-coverage == 'true' }}
+      uses: codecov/codecov-action@v7.0.0
+      with:
+        files: coverage.xml
+        token: ${{ inputs.codecov-token }}
