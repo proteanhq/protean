@@ -90,3 +90,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0017](0017-consume-side-idempotency-for-projectors.md) | Consume-Side Idempotency for Projectors |
 | [0018](0018-type-safety-strategy.md) | Type-safety adoption strategy |
 | [0019](0019-check-engine-determinism-boundary-and-behavioral-substrate.md) | Check-engine determinism boundary and a behavioral analysis substrate |
+| [0020](0020-dependency-floor-policy.md) | Dependency Floor Policy |

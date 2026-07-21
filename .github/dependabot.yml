@@ -10,7 +10,15 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    versioning-strategy: auto
+    # Protean is a library: its `>=` floors are the *lowest* versions it supports,
+    # proven by the lowest-direct CI leg (ADR-0020), not a moving "latest" target.
+    # `increase-if-necessary` only raises a floor when the newest release escapes
+    # the existing range (i.e. a new major poking past a `<N` cap) — it leaves the
+    # floor alone while latest still satisfies `>=X,<N`, so dependabot stops
+    # ratcheting floors up to newest-of-the-week and needlessly narrowing the
+    # compatibility window (the behaviour `auto` produced — see #1216). Genuine
+    # floor raises (a real feature/security dependency) are made by hand.
+    versioning-strategy: increase-if-necessary
     labels:
       - "dependencies"
     groups:

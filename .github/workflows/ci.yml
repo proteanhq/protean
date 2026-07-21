@@ -20,8 +20,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
-    name: Python ${{ matrix.python-version }} Tests
+        # Per-PR cost control. The full adapter suite (`-c FULL`, which spins up
+        # Postgres/Redis/Elasticsearch/MSSQL/MessageDB) is the expensive part, so
+        # only the newest Python runs it; the older versions run the fast
+        # in-memory CORE suite with no Docker. The `floors` leg proves the
+        # dependency floors resolve and install on the newest Python (the binding
+        # constraint for C-extension wheels) by re-resolving to the lowest
+        # permitted versions (`--resolution lowest-direct`); it runs CORE so it
+        # stays cheap. The full `-c FULL` matrix across every Python runs nightly
+        # on `main` (nightly.yml), which is where a version-specific adapter
+        # regression on 3.11-3.13 is caught. See ADR-0020.
+        include:
+          - { python-version: "3.11", suite: core }
+          - { python-version: "3.12", suite: core }
+          - { python-version: "3.13", suite: core }
+          - { python-version: "3.14", suite: full }
+          - { python-version: "3.14", suite: floors }
+    # CORE/FULL legs keep the name `Python X Tests` so the branch-protection
+    # required checks match; the floors leg gets a distinct (non-required) name.
+    name: ${{ matrix.suite == 'floors' && 'Python 3.14 Floors (lowest-direct)' || format('Python {0} Tests', matrix.python-version) }}
 
     # one place to set the PyO3 flag; every step inherits it automatically
     env:
@@ -35,14 +52,18 @@ jobs:
         with:
           fetch-depth: 1
 
+      # Service setup (this step through "Wait for services") runs only for the
+      # FULL leg; the CORE and floors legs need no Docker.
       - name: Cache Docker images
         id: docker-cache
+        if: matrix.suite == 'full'
         uses: actions/cache@v6
         with:
           path: /tmp/docker-images
           key: docker-images-${{ runner.os }}-v3
 
       - name: Load or pull Docker images
+        if: matrix.suite == 'full'
         run: |
           IMAGES=(
             "ghcr.io/proteanhq/mirror/postgres:16"
@@ -75,6 +96,7 @@ jobs:
           fi
 
       - name: Configure sysctl limits
+        if: matrix.suite == 'full'
         run: |
           sudo swapoff -a
           sudo sysctl -w vm.swappiness=1
@@ -82,6 +104,7 @@ jobs:
           sudo sysctl -w vm.max_map_count=262144
 
       - name: Start service containers
+        if: matrix.suite == 'full'
         run: |
           # Free the host ports below before binding them. Remove ALL containers
           # left over from a previous run on this (potentially reused) runner:
@@ -122,6 +145,7 @@ jobs:
             ghcr.io/proteanhq/mirror/elasticsearch:8.7.0
 
       - name: Wait for services
+        if: matrix.suite == 'full'
         run: |
           echo "Waiting for PostgreSQL..."
           timeout 60 bash -c 'until docker exec postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done'
@@ -156,6 +180,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install Microsoft ODBC Driver 18 and tools
+        if: matrix.suite == 'full'
         run: |
           sudo apt-get update
           sudo apt-get install -y curl gnupg apt-transport-https
@@ -166,13 +191,19 @@ jobs:
           echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
-        run: uv sync --all-extras --all-groups
+        # The floors leg re-resolves to the lowest permitted versions (installing
+        # all extras so a floor without a wheel for the newest Python fails here);
+        # every other leg uses the locked (latest-compatible) resolution.
+        run: uv sync --all-extras --all-groups ${{ matrix.suite == 'floors' && '--resolution lowest-direct' || '' }}
 
       - name: Mypy Plugin Tests
         run: uv run pytest tests/ext/ -v
 
       - name: Tests
-        run: uv run protean test -c FULL
+        # FULL runs the adapter suite against the service containers; CORE and
+        # floors run the fast in-memory suite (the POSTGRES/etc. env below is
+        # simply unused there).
+        run: uv run protean test ${{ matrix.suite == 'full' && '-c FULL' || '' }}
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
@@ -197,12 +228,17 @@ jobs:
       # `success() &&` is required: a custom `if` drops the implicit success guard,
       # so without it this step would run even after the test step failed (when no
       # merged `.coverage` exists) and report a confusing "no data" error.
+      # Gated to the FULL leg: it is the only per-PR leg that exercises the
+      # adapters, so it is the only one whose coverage reaches the full-suite
+      # figure the threshold assumes (the CORE legs sit well below it).
       - name: Enforce coverage floor
-        if: success() && matrix.python-version == '3.13'
+        if: success() && matrix.suite == 'full'
         run: uv run coverage report --fail-under=94
 
+      # Upload coverage only from the FULL leg; the CORE legs' in-memory-only
+      # coverage would drag the merged report below the real figure.
       - name: CodeCOV
-        if: success() || failure()
+        if: (success() || failure()) && matrix.suite == 'full'
         uses: codecov/codecov-action@v7.0.0
         with:
           files: coverage.xml
