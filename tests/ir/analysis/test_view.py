@@ -9,6 +9,8 @@ registered as a real domain so a construction resolves and a repository query is
 recognized, exactly as the fact-catalog tests do.
 """
 
+from pathlib import Path
+
 import pytest
 
 import protean
@@ -32,7 +34,7 @@ pytestmark = pytest.mark.no_test_domain
 #: FQNs match what the registry recorded, which a package walk's name does not.
 BEHAVIOR_MODULE = behavior.__name__
 
-PACKAGE_ROOT = str(behavioral_domain.__file__).rsplit("/", 1)[0]
+PACKAGE_ROOT = str(Path(behavioral_domain.__file__).parent)
 
 
 @pytest.fixture(scope="module")

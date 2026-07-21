@@ -75,10 +75,11 @@ if TYPE_CHECKING:
     from protean.ir.analysis.element_index import ClassEntry, FunctionNode, MethodEntry
     from protean.ir.analysis.facts import MethodFacts
 
-#: The repository-query method whose call-sites :meth:`~BehavioralView.filter_
-#: call_sites` reports. ``filter`` is the ``QuerySet`` surface a rule reads to
-#: see which fields an element filters on; the other query methods
-#: (``find``/``get``/...) are recognized by the catalog but are not "filters".
+#: The repository-query method whose call-sites
+#: :meth:`~BehavioralView.filter_call_sites` reports. ``filter`` is the
+#: ``QuerySet`` surface a rule reads to see which fields an element filters
+#: on; the other query methods (``find``/``get``/...) are recognized by the
+#: catalog but are not "filters".
 _FILTER_METHOD = "filter"
 
 
