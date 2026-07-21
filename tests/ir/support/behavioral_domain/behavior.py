@@ -15,6 +15,12 @@ Each method carries a deliberate shape a test asserts:
   grammar models as a store and the catalog records as a write.
 - ``OrderRepository.active`` — a recognized repository query on ``self._dao``,
   naming the ``status`` field.
+- ``OrderRepository.between`` — two repository queries in one body: the first
+  names two fields (``status``, ``channel``), the second one (``reference``), so
+  field-name order and call-site order within a method are both observable.
+- ``OrderRepository.stale`` — a ``.filter(...)`` on a plain parameter, not
+  ``self._dao``: its receiver stays ``UNKNOWN``, so it is a ``filter`` call that
+  is *not* a repository filter site.
 - ``OrderRepository.by_reference`` — a query whose field comes from an inline
   ``Q(reference=...)``.
 - ``OrderRepository.dynamic`` — a ``**filters`` query that names no field.
@@ -57,6 +63,19 @@ class OrderRepository(BaseRepository):
     def active(self) -> None:
         """A recognized repository query naming the ``status`` field."""
         self._dao.filter(status="active")
+
+    def between(self) -> None:
+        """Two repository queries in one body: the first names two fields, so
+        field-name order is pinned; the second names one, so call-site order
+        within a method is observable too."""
+        self._dao.filter(status="open", channel="web")
+        self._dao.filter(reference="latest")
+
+    def stale(self, rows: list) -> None:
+        """A ``.filter(...)`` on a plain parameter, not the repository DAO: its
+        receiver stays ``UNKNOWN``, so it is a ``filter`` call that is not a
+        repository filter site."""
+        rows.filter(status="stale")
 
     def by_reference(self, reference: str) -> None:
         """A query whose field comes from an inline ``Q(reference=...)``."""

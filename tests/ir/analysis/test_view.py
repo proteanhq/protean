@@ -79,33 +79,54 @@ class TestPerMethodFacts:
         assert query.receiver_role is ReceiverRole.REPOSITORY_QUERY
         assert query.field_names == ("status",)
 
-    def test_method_facts_by_node_matches_the_element_map(self, view):
-        """A method node fetched from the index gives the same facts."""
+    def test_method_facts_by_node_returns_that_bodys_facts(self, view):
+        """The by-node door resolves a method node to its own body's facts.
+
+        Asserts the concrete values ``method_facts`` computes for ``between``
+        (its two repository ``filter`` calls, in source order) rather than
+        comparing to ``element_facts``, which is the same cached object by
+        construction and so would match under any regression.
+        """
         entry = view.element_class_entry(behavior.OrderRepository)
-        node = entry.method("active").node
+        node = entry.method("between").node
 
-        by_node = view.method_facts(entry.module, node)
-        by_element = view.element_facts(behavior.OrderRepository)["active"]
+        facts = view.method_facts(entry.module, node)
 
-        assert by_node == by_element
-        assert len(by_node.calls) > 0
+        filters = [c for c in facts.calls if c.method == "filter"]
+        assert [c.field_names for c in filters] == [
+            ("status", "channel"),
+            ("reference",),
+        ]
+        assert all(c.receiver_role is ReceiverRole.REPOSITORY_QUERY for c in filters)
 
 
 class TestFilterCallSites:
-    def test_filter_call_sites_reports_each_site_and_its_fields(self, view):
-        """The headline convenience: the element's ``filter`` sites and fields.
+    def test_filter_call_sites_reports_each_site_and_its_fields_in_order(self, view):
+        """The headline convenience: the element's ``filter`` sites and fields,
+        in the order the contract promises — methods by name, then call-sites
+        within a method in source order.
 
-        ``active`` filters on ``status``; ``dynamic`` filters on ``**filters`` so
-        names no field. ``by_reference`` uses ``find``, not ``filter``, so it is
-        not a filter call-site.
+        ``active`` filters on ``status``; ``between`` filters twice
+        (``status`` + ``channel``, then ``reference``), which pins both
+        field-name order and call-site-within-a-method order; ``dynamic``
+        filters on ``**filters`` so names no field. ``by_reference`` uses
+        ``find``, not ``filter``, so it is not a filter call-site.
         """
         sites = view.filter_call_sites(behavior.OrderRepository)
 
         assert len(sites) > 0, "OrderRepository has filter call-sites"
         for site in sites:
             assert isinstance(site, FilterCallSite)
-        pairs = {(site.method_name, site.field_names) for site in sites}
-        assert pairs == {("active", ("status",)), ("dynamic", ())}
+        # An ordered sequence, not a set: the assertion pins the view's
+        # determinism contract (name order across methods, source order within
+        # a method) and the source order of a multi-field filter's field names.
+        pairs = [(site.method_name, site.field_names) for site in sites]
+        assert pairs == [
+            ("active", ("status",)),
+            ("between", ("status", "channel")),
+            ("between", ("reference",)),
+            ("dynamic", ()),
+        ]
 
     def test_filter_call_sites_carry_a_location(self, view):
         """Each site names where it is, so a rule can report the finding there."""
@@ -121,6 +142,29 @@ class TestFilterCallSites:
         sites = view.filter_call_sites(behavior.OrderRepository)
 
         assert "by_reference" not in {site.method_name for site in sites}
+
+    def test_a_non_repository_filter_is_not_reported_as_a_filter_site(self, view):
+        """A ``.filter(...)`` on a plain local is a filter call but not a
+        repository one, so the view excludes it.
+
+        ``stale`` calls ``rows.filter(...)`` on a parameter, so its receiver
+        role is ``UNKNOWN``, not ``REPOSITORY_QUERY``. This guards the
+        ``receiver_role is REPOSITORY_QUERY`` half of the predicate: without it
+        a plain-object ``.filter`` would be misreported as a repository filter
+        site.
+        """
+        # The call really is a ``filter`` fact — only its receiver role differs,
+        # so the exclusion is proven to hinge on the role, not the method name.
+        stale_call = next(
+            c
+            for c in view.element_facts(behavior.OrderRepository)["stale"].calls
+            if c.method == "filter"
+        )
+        assert stale_call.receiver_role is ReceiverRole.UNKNOWN
+
+        sites = view.filter_call_sites(behavior.OrderRepository)
+
+        assert "stale" not in {site.method_name for site in sites}
 
 
 class TestDataflowSurface:

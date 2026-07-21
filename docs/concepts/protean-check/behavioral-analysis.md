@@ -49,21 +49,32 @@ parsed again for its facts or its dataflow — one parse per run.
 ## A rule reading the view
 
 A diagnostic rule receives the view the way it receives the IR: as `self.view`,
-a lazily-built property on the builder. On top of the three families the view
-offers one convenience, `filter_call_sites(cls)`, which enumerates a repository's
-`filter` call-sites and the fields each filters on:
+a lazily-built property on the builder. Every rule is a `_diagnose_*(self, ir)`
+method that appends findings to `self._diagnostics`. On top of the three families
+the view offers one convenience, `filter_call_sites(cls)`, which enumerates a
+repository's `filter` call-sites and the fields each filters on:
 
 ```python
-def _diagnose_unindexed_filters(self, cls, indexed_fields):
+def _diagnose_unindexed_filters(self, ir):
     """Flag a repository filter on a field that carries no index."""
-    for site in self.view.filter_call_sites(cls):
-        for field in site.field_names:
-            if field not in indexed_fields:
-                self._emit(
-                    "UNINDEXED_FILTER",
-                    location=site.location,
-                    detail=f"{site.method_name} filters on unindexed {field!r}",
-                )
+    # Walking `ir` for each repository class and its indexed fields is elided
+    # here; the point is how the rule reads the view, then emits.
+    for cls, indexed_fields in repositories_and_indexes(ir):
+        for site in self.view.filter_call_sites(cls):
+            for field in site.field_names:
+                if field not in indexed_fields:
+                    self._diagnostics.append(
+                        {
+                            "code": "UNINDEXED_FILTER",
+                            "category": "performance",
+                            "element": f"{cls.__module__}.{cls.__qualname__}",
+                            "level": "warning",
+                            "message": (
+                                f"`{site.method_name}` filters on "
+                                f"`{field}`, which carries no index."
+                            ),
+                        }
+                    )
 ```
 
 The rule never reaches into `FactCatalog` or `ElementIndex` internals to assemble

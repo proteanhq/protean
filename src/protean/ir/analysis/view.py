@@ -93,8 +93,10 @@ class FilterCallSite:
 
     #: The name of the element method the ``filter`` call is written in.
     method_name: str
-    #: The keyword field names the ``filter`` passes, in source order. Empty for
-    #: a ``**kwargs`` filter, which names no field statically.
+    #: The keyword field names the ``filter`` passes, in source order, plus any
+    #: names from an inline ``Q(field=...)``. A ``**kwargs`` star contributes
+    #: none, so this is empty for a purely dynamic ``filter(**kwargs)``. Carried
+    #: through unchanged from the underlying :class:`~protean.ir.analysis.facts.CallFact`.
     field_names: tuple[str, ...]
     location: SourceLocation
 
