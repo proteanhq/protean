@@ -34,8 +34,14 @@ if it *could* reach the use on some path, so a name assigned in both arms of an
 code collapses to exactly one (last write in source order wins). The analysis
 over-approximates on purpose — an extra candidate is safe, a dropped true
 assignment is the bug that would later hide a lost write. Loops are walked twice
-so a use fed by a prior iteration's assignment is not missed; ``try`` handlers
-see the merge of the entry state and the (partially executed) body.
+so a use fed by a prior iteration's assignment is not missed, and a loop's
+``break`` states are merged into its exit so a definition on the break path
+survives an ``else``. ``try`` handlers and ``finally`` blocks see the union of
+the entry state and *every* intermediate state of the body, because an exception
+can propagate from any point in it. ``del`` and the binding forms this analysis
+cannot value — an ``except ... as`` name, a ``match`` capture, an in-body
+``import`` — unbind their name, so a use resolves to the empty tuple rather than
+a stale prior definition.
 
 What binds a local name
 -----------------------
@@ -55,7 +61,11 @@ scopes with their own names. A walrus inside a comprehension therefore does not
 leak into the outer body's def-use, and the outer body's names do not resolve
 into a nested scope. ``async def`` bodies, ``async with`` and ``async for`` are
 first-class here — handlers are commonly ``async``, and matching only the sync
-nodes would silently yield empty answers for them.
+nodes would silently yield empty answers for them. A use written in a nested
+scope's *header* but evaluated in this scope — a decorator or default argument on
+a nested ``def``, a base class, a comprehension's outermost iterable — is a
+conservative miss: it resolves to the empty tuple rather than to a wrong
+definition.
 
 Contracts
 ---------
@@ -327,6 +337,10 @@ class _FlowBuilder:
         self._reaching: dict[int, tuple[Definition, ...]] = {}
         self._coverage: dict[int, BlockCoverage] = {}
         self._statements: list[ast.stmt] = []
+        #: A stack of break-state accumulators, one frame per enclosing loop. A
+        #: ``break`` records the current state onto the top frame so the loop can
+        #: merge every break-path exit past its ``else``.
+        self._break_states: list[list[_State]] = []
 
     def build(self, module: str, node: FunctionNode) -> MethodFlow:
         self._module = module
@@ -458,13 +472,22 @@ class _FlowBuilder:
             self._record_uses(stmt.iter, state, order)
             entry = _copy(state)
             self._bind(stmt.target, stmt, None, DefKind.FOR_TARGET, entry)
+            self._break_states.append([])
             after = self._run_loop_body(stmt.body, entry, state)
-            return self._run(stmt.orelse, after) if stmt.orelse else after
+            return self._after_loop(after, self._break_states.pop(), stmt.orelse)
 
         if isinstance(stmt, ast.While):
             self._record_uses(stmt.test, state, order)
+            self._break_states.append([])
             after = self._run_loop_body(stmt.body, _copy(state), state)
-            return self._run(stmt.orelse, after) if stmt.orelse else after
+            return self._after_loop(after, self._break_states.pop(), stmt.orelse)
+
+        if isinstance(stmt, ast.Break):
+            # A break is a possible loop exit that skips the ``else``; record the
+            # state so the enclosing loop can merge it in.
+            if self._break_states:
+                self._break_states[-1].append(_copy(state))
+            return state
 
         if isinstance(stmt, (ast.With, ast.AsyncWith)):
             new = _copy(state)
@@ -508,18 +531,40 @@ class _FlowBuilder:
         second = self._run(body, _merge(entry, first))
         return _merge(before, second)
 
+    def _after_loop(
+        self, after: _State, breaks: list[_State], orelse: list[ast.stmt]
+    ) -> _State:
+        """Merge a loop's exits: normal completion runs ``else``, ``break`` skips it.
+
+        ``else`` runs only when the loop finished without a ``break`` (including
+        zero iterations), so it threads onto the normal-completion state; each
+        ``break`` is a separate exit that bypasses ``else`` entirely, and every
+        one is a may-reach exit merged in so a definition on the break path is not
+        dropped.
+        """
+        result = self._run(orelse, after) if orelse else after
+        for break_state in breaks:
+            result = _merge(result, break_state)
+        return result
+
     def _step_try(
         self, stmt: ast.Try | ast.TryStar, state: _State, order: int
     ) -> _State:
         """Advance across a ``try`` conservatively.
 
-        A handler can be entered after any prefix of the body ran, so it sees the
-        merge of the entry state and the body's end state. ``else`` runs only on
-        the body's success; ``finally`` runs on every path, so it runs last on
-        the merge of the success and handler states.
+        A handler — or the ``finally`` — can be entered after *any* prefix of the
+        body ran, because an exception may propagate from any statement in it, so
+        it sees the union of the entry state and every intermediate state, not
+        just the body's fully-executed end state. Missing an intermediate here is
+        the "dropped true assignment that later hides a lost write" the module's
+        contract forbids. ``else`` runs only on the body's success; ``finally``
+        runs on every path, so it runs last on the broad handler entry too.
         """
-        after_body = self._run(stmt.body, _copy(state))
-        handler_entry = _merge(state, after_body)
+        handler_entry = _copy(state)
+        after_body = _copy(state)
+        for body_stmt in stmt.body:
+            after_body = self._step(body_stmt, after_body)
+            handler_entry = _merge(handler_entry, after_body)
 
         result = (
             self._run(stmt.orelse, _copy(after_body)) if stmt.orelse else after_body
@@ -527,24 +572,36 @@ class _FlowBuilder:
         for handler in stmt.handlers:
             if handler.type is not None:
                 self._record_uses(handler.type, handler_entry, order)
-            result = _merge(result, self._run(handler.body, _copy(handler_entry)))
+            handler_state = _copy(handler_entry)
+            if handler.name is not None:
+                # ``except ... as e`` rebinds ``e`` to the caught exception for
+                # the handler body; kill any shadowed outer ``e`` so a use
+                # resolves to the empty tuple, never a stale prior definition.
+                handler_state[handler.name] = frozenset()
+            result = _merge(result, self._run(handler.body, handler_state))
 
-        return self._run(stmt.finalbody, result) if stmt.finalbody else result
+        if stmt.finalbody:
+            return self._run(stmt.finalbody, _merge(result, handler_entry))
+        return result
 
     def _step_match(self, stmt: ast.Match, state: _State, order: int) -> _State:
         """Advance across a ``match``, treating each case as a branch.
 
-        The subject is used once; each case body runs from the entry state
-        (capture patterns bind names this analysis conservatively leaves
-        unresolved). The match may match no case, so the entry state is merged
-        into the result too.
+        The subject is used once; each case runs from the entry state with its
+        capture names killed, so a use of a captured name (in the guard or the
+        body) resolves to the empty tuple rather than a stale outer definition
+        the capture shadows. The match may match no case, so the entry state is
+        merged into the result too.
         """
         self._record_uses(stmt.subject, state, order)
         result = _copy(state)
         for case in stmt.cases:
+            case_state = _copy(state)
+            for name in _pattern_names(case.pattern):
+                case_state[name] = frozenset()
             if case.guard is not None:
-                self._record_uses(case.guard, state, order)
-            result = _merge(result, self._run(case.body, _copy(state)))
+                self._record_uses(case.guard, case_state, order)
+            result = _merge(result, self._run(case.body, case_state))
         return result
 
     def _step_simple(self, stmt: ast.stmt, state: _State, order: int) -> _State:
@@ -573,6 +630,26 @@ class _FlowBuilder:
             self._record_uses(stmt.value, state, order)
             new = _copy(state)
             self._bind(stmt.target, stmt, stmt.value, DefKind.ANN_ASSIGN, new)
+            return new
+
+        if isinstance(stmt, ast.Delete):
+            new = _copy(state)
+            for target in stmt.targets:
+                # ``del a[i]`` reads ``a`` and ``i``; a plain ``del x`` reads
+                # nothing (its target is in Del context, not Load).
+                self._record_uses(target, state, order)
+                self._kill(target, new)
+            return new
+
+        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+            # An in-body import binds a module or imported object this analysis
+            # cannot value; kill the name so a use resolves to the empty tuple
+            # rather than a prior definition the import shadows.
+            new = _copy(state)
+            for alias in stmt.names:
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                if bound != "*":
+                    new[bound] = frozenset()
             return new
 
         if isinstance(stmt, ast.AugAssign):
@@ -664,10 +741,42 @@ class _FlowBuilder:
         # Attribute / subscript: not a local name — an attribute write, which a
         # later layer owns, not def-use.
 
+    def _kill(self, target: ast.expr, state: _State) -> None:
+        """Unbind the local names a ``del`` target removes.
+
+        A plain ``ast.Name`` is set to the empty set so a later use resolves to
+        the empty tuple, never the deleted definition; a tuple/list/starred
+        target recurses; an attribute or subscript target removes no local name.
+        """
+        if isinstance(target, ast.Name):
+            state[target.id] = frozenset()
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                self._kill(element, state)
+        elif isinstance(target, ast.Starred):
+            self._kill(target.value, state)
+
 
 # ----------------------------------------------------------------------
 # Module-level helpers
 # ----------------------------------------------------------------------
+
+
+def _pattern_names(pattern: ast.pattern) -> set[str]:
+    """The names a ``match`` case pattern captures.
+
+    Capture (``case x``), star (``case [*rest]``) and mapping-rest
+    (``case {**rest}``) patterns bind names; this collects them across the whole
+    pattern so a case body can kill them, since the analysis cannot value a
+    captured binding.
+    """
+    names: set[str] = set()
+    for node in ast.walk(pattern):
+        if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name is not None:
+            names.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest is not None:
+            names.add(node.rest)
+    return names
 
 
 def _copy(state: _State) -> _State:

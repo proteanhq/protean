@@ -386,6 +386,281 @@ class TestControlFlowBranches:
 
         assert binders == {first_case, default_case}
 
+    def test_a_use_in_a_handler_sees_an_intermediate_body_definition(self, tmp_path):
+        """A handler is enterable after any prefix of the body ran, so a name
+        reassigned inside the body reaches the handler as the full may-set — the
+        intermediate write is not dropped for the body's end state."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(a, b):
+                try:
+                    x = a
+                    risky()
+                    x = b
+                except Exception:
+                    use(x)
+            """,
+        )
+        try_stmt = node.body[0]
+        first = try_stmt.body[0]
+        second = try_stmt.body[2]
+        use = _load(try_stmt.handlers[0].body[0], "x")
+
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {first, second}
+
+    def test_a_use_in_a_finally_sees_an_intermediate_body_definition(self, tmp_path):
+        """``finally`` runs on every path, including an exception before the body
+        finished, so an intermediate write reaches it too."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(a, b):
+                try:
+                    x = a
+                    risky()
+                    x = b
+                finally:
+                    use(x)
+            """,
+        )
+        try_stmt = node.body[0]
+        first = try_stmt.body[0]
+        second = try_stmt.body[2]
+        use = _load(try_stmt.finalbody[0], "x")
+
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {first, second}
+
+    def test_an_except_binding_shadows_an_outer_name(self, tmp_path):
+        """``except ... as e`` rebinds ``e`` to the caught exception; a use of it
+        in the handler resolves to the empty tuple, not the shadowed parameter."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(e):
+                try:
+                    risky()
+                except Exception as e:
+                    use(e)
+            """,
+        )
+        use = _load(node.body[0].handlers[0].body[0], "e")
+
+        assert flow.reaching(use) == ()
+
+    def test_a_break_path_definition_survives_the_else(self, tmp_path):
+        """A loop ``else`` runs only when the loop finished without a ``break``;
+        a definition on the break path is a separate exit that must still reach
+        past the ``else``."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(it, cond, a, b):
+                for i in it:
+                    x = a
+                    if cond:
+                        break
+                else:
+                    x = b
+                use(x)
+            """,
+        )
+        loop = node.body[0]
+        break_def = loop.body[0]
+        else_def = loop.orelse[0]
+        use = _load(node.body[1], "x")
+
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {break_def, else_def}
+
+    def test_a_deleted_name_no_longer_reaches(self, tmp_path):
+        """``del x`` unbinds ``x``; a use after it resolves to the empty tuple,
+        not the killed definition (the name is unbound at runtime)."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m():
+                x = compute()
+                del x
+                use(x)
+            """,
+        )
+        use = _load(node.body[2], "x")
+
+        assert flow.reaching(use) == ()
+
+    def test_a_match_capture_shadows_an_outer_name(self, tmp_path):
+        """A capture pattern rebinds its name for the case; a use of it resolves
+        to the empty tuple, not the shadowed parameter."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(x, subject):
+                match subject:
+                    case [x]:
+                        use(x)
+            """,
+        )
+        use = _load(node.body[0].cases[0].body[0], "x")
+
+        assert flow.reaching(use) == ()
+
+    def test_an_in_body_import_shadows_an_outer_name(self, tmp_path):
+        """An in-body import binds a name this analysis cannot value; a use of it
+        resolves to the empty tuple, not the shadowed parameter."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(data):
+                import data
+                use(data)
+            """,
+        )
+        use = _load(node.body[1], "data")
+
+        assert flow.reaching(use) == ()
+
+
+class TestBindingForms:
+    def test_a_walrus_binds_a_reachable_definition(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(items):
+                if (n := len(items)):
+                    use(n)
+            """,
+        )
+        use = _load(node.body[0].body[0], "n")
+
+        reaching = flow.reaching(use)
+
+        assert len(reaching) == 1
+        assert reaching[0].kind == DefKind.WALRUS
+
+    def test_tuple_unpacking_binds_each_name(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(pair):
+                a, b = pair
+                use(a)
+                use(b)
+            """,
+        )
+        assign = node.body[0]
+        use_a = _load(node.body[1], "a")
+        use_b = _load(node.body[2], "b")
+
+        assert [d.node for d in flow.reaching(use_a)] == [assign]
+        assert [d.node for d in flow.reaching(use_b)] == [assign]
+
+    def test_starred_unpacking_binds_the_rest_name(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(items):
+                first, *rest = items
+                use(rest)
+            """,
+        )
+        assign = node.body[0]
+        use = _load(node.body[1], "rest")
+
+        assert [d.node for d in flow.reaching(use)] == [assign]
+
+    def test_a_for_target_is_a_reachable_definition(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(items):
+                for item in items:
+                    use(item)
+            """,
+        )
+        use = _load(node.body[0].body[0], "item")
+
+        reaching = flow.reaching(use)
+
+        assert len(reaching) == 1
+        assert reaching[0].kind == DefKind.FOR_TARGET
+
+    def test_a_with_target_is_a_reachable_definition(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(path):
+                with open(path) as handle:
+                    use(handle)
+            """,
+        )
+        use = _load(node.body[0].body[0], "handle")
+
+        reaching = flow.reaching(use)
+
+        assert len(reaching) == 1
+        assert reaching[0].kind == DefKind.WITH_TARGET
+
+    def test_a_use_fed_by_a_prior_while_iteration_is_not_missed(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(seed, cond):
+                x = seed
+                while cond:
+                    use(x)
+                    x = step(x)
+            """,
+        )
+        seed_def = node.body[0]
+        loop = node.body[1]
+        reassign = loop.body[1]
+        use = _load(loop.body[0], "x")
+
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {seed_def, reassign}
+
+    def test_vararg_and_kwarg_parameters_are_reachable(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(*args, **kwargs):
+                use(args)
+                use(kwargs)
+            """,
+        )
+        args_use = _load(node.body[0], "args")
+        kwargs_use = _load(node.body[1], "kwargs")
+
+        assert [d.kind for d in flow.reaching(args_use)] == [DefKind.PARAMETER]
+        assert [d.kind for d in flow.reaching(kwargs_use)] == [DefKind.PARAMETER]
+        assert {p.name for p in flow.parameters} == {"args", "kwargs"}
+
+    def test_a_match_guard_records_its_uses(self, tmp_path):
+        """A guard runs before the case body; a parameter it reads resolves to
+        the parameter origin, and a captured name it reads resolves to empty."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(subject, threshold):
+                match subject:
+                    case [value] if value > threshold:
+                        pass
+            """,
+        )
+        guard = node.body[0].cases[0].guard
+        threshold_use = _load(guard, "threshold")
+        value_use = _load(guard, "value")
+
+        assert [d.kind for d in flow.reaching(threshold_use)] == [DefKind.PARAMETER]
+        assert flow.reaching(value_use) == ()
+
 
 class TestReceiverResolution:
     def test_a_variable_receiver_resolves_to_its_assignment_rhs(self, tmp_path):
@@ -587,44 +862,62 @@ class TestAsyncParity:
 
 class TestScopeBoundaries:
     def test_a_comprehension_target_does_not_leak(self, tmp_path):
+        """An outer binding of the comprehension's target still reaches: the
+        comprehension's own ``y`` is a separate scope and does not overwrite it."""
         flow, node = _setup(
             tmp_path,
             """
             def m(items):
+                y = 0
                 total = [y for y in items]
                 use(y)
             """,
         )
-        use = _load(node.body[1], "y")
+        outer = node.body[0]
+        use = _load(node.body[2], "y")
 
-        assert flow.reaching(use) == ()
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {outer}
 
     def test_a_nested_functions_binding_does_not_leak(self, tmp_path):
+        """The nested ``def``'s ``z = 1`` does not overwrite the outer ``z``;
+        the outer binding is what reaches the use."""
         flow, node = _setup(
             tmp_path,
             """
             def m():
+                z = 0
                 def inner():
                     z = 1
                 use(z)
             """,
         )
-        use = _load(node.body[1], "z")
+        outer = node.body[0]
+        use = _load(node.body[2], "z")
 
-        assert flow.reaching(use) == ()
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {outer}
 
     def test_a_lambda_parameter_does_not_leak(self, tmp_path):
+        """The lambda's parameter ``w`` is a separate scope; the outer ``w``
+        binding still reaches the use after it."""
         flow, node = _setup(
             tmp_path,
             """
             def m():
+                w = 0
                 f = lambda w: w + 1
                 use(w)
             """,
         )
-        use = _load(node.body[1], "w")
+        outer = node.body[0]
+        use = _load(node.body[2], "w")
 
-        assert flow.reaching(use) == ()
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {outer}
 
 
 class TestFailOpen:
@@ -685,11 +978,18 @@ class TestDeterminism:
                 use(x)
             """,
         )
+        branch = node.body[0]
         use = _load(node.body[1], "x")
 
-        orders = [definition.order for definition in flow.reaching(use)]
+        reaching = flow.reaching(use)
 
-        assert orders == sorted(orders)
+        # ``x = a`` is statement 1, ``x = b`` statement 2 (the ``if`` is 0); the
+        # tuple is in that concrete document order, then source position.
+        assert [definition.order for definition in reaching] == [1, 2]
+        assert [definition.node for definition in reaching] == [
+            branch.body[0],
+            branch.orelse[0],
+        ]
 
 
 class TestCaching:
