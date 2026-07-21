@@ -21,19 +21,35 @@ from protean.ir.analysis.element_index import (
     MethodEntry,
     MethodRole,
 )
+from protean.ir.analysis.facts import (
+    AttributeFact,
+    CallFact,
+    ConstructionFact,
+    FactCatalog,
+    MethodFacts,
+    ReceiverRole,
+    SourceLocation,
+)
 from protean.ir.analysis.source_provider import SourceProvider
 from protean.ir.analysis.symbols import SymbolResolver
 
 __all__ = [
+    "AttributeFact",
     "BlockCoverage",
+    "CallFact",
     "ClassEntry",
+    "ConstructionFact",
     "DataflowAnalyzer",
     "DefKind",
     "Definition",
     "ElementIndex",
+    "FactCatalog",
     "MethodEntry",
+    "MethodFacts",
     "MethodFlow",
     "MethodRole",
+    "ReceiverRole",
+    "SourceLocation",
     "SourceProvider",
     "SymbolResolver",
     "WithContext",
