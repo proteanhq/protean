@@ -32,8 +32,9 @@ The shapes each method carries, and the join case they drive:
   field, so per-call-site emission is observable.
 - ``AccountRepository.filter_unique`` / ``filter_plain`` — a filter on a
   ``unique`` field (covered by the unique constraint) vs. a plain field.
-- ``CustomerRepository.filter_value_object`` / ``filter_scalar`` — a filter
-  naming a value-object field (outside the scalar scope, left alone) vs. a plain
+- ``CustomerRepository.filter_value_object`` / ``filter_reference`` /
+  ``filter_scalar`` — a filter naming a value-object field and a filter naming a
+  ``Reference`` field (both outside the scalar scope, left alone) vs. a plain
   scalar field on the same aggregate (the positive control).
 - ``OrderService.by_plain_field`` — a filter path in an application service that
   references the aggregate class by name (``Order.filter(...)``), so its receiver
@@ -50,7 +51,7 @@ from protean.core.application_service import BaseApplicationService
 from protean.core.event import BaseEvent
 from protean.core.repository import BaseRepository
 from protean.core.value_object import BaseValueObject
-from protean.fields import Identifier, String, ValueObject
+from protean.fields import Identifier, Reference, String, ValueObject
 
 
 class Order(BaseAggregate):
@@ -165,10 +166,16 @@ class Address(BaseValueObject):
     city = String(max_length=50)
 
 
+class Vendor(BaseAggregate):
+    vendor_id = Identifier(identifier=True)
+    name = String(max_length=50)
+
+
 class Customer(BaseAggregate):
     customer_id = Identifier(identifier=True)
     name = String(max_length=50)
     address = ValueObject(Address)
+    vendor = Reference(Vendor)
 
 
 class CustomerRepository(BaseRepository):
@@ -178,6 +185,14 @@ class CustomerRepository(BaseRepository):
         field name could serve it. It is outside the rule's scalar scope and
         left alone — the guard the high-severity red-team finding restored."""
         self._dao.filter(address="x")
+
+    def filter_reference(self) -> None:
+        """A filter naming a ``Reference`` field: the persisted FK column lives
+        under the differently-named shadow attribute (``vendor_id``), never
+        under the reference's own declared name (``vendor``), so no ``Index``
+        on the declared name could serve it either. Outside the rule's scalar
+        scope and left alone."""
+        self._dao.filter(vendor="v-1")
 
     def filter_scalar(self) -> None:
         """A plain scalar filter on the same aggregate — the positive control

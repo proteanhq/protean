@@ -134,12 +134,18 @@ NON_NOUN_AGGREGATE_SUFFIXES = (
 # against the target aggregate's declared indexes.
 FILTER_PATH_QUERY_METHODS = frozenset({"filter", "get", "find", "find_by", "exclude"})
 
-# Field ``kind`` values that map to no single scalar column, so a filter on the
-# field *name* cannot be served by an ``Index`` on that name: embedded value
-# objects (which expand into several columns, none named for the field) and
-# associations (which live on the other side of the relationship). The rule
-# evaluates only scalar fields, the same scalar-field scope the sibling
-# ``UNBOUNDED_INDEXED_STRING`` rule keeps.
+# Field ``kind`` values that map to no single scalar column named for the
+# field, so a filter on the field *name* cannot be served by an ``Index`` on
+# that name: embedded value objects (which expand into several columns, none
+# named for the field), ``has_one``/``has_many`` associations (which live on
+# the other side of the relationship, with no column here at all), and
+# ``reference`` (which *does* persist a single FK column, but under the
+# differently-named shadow attribute ``Reference.get_attribute_name()``
+# produces — e.g. ``vendor`` persists as ``vendor_id`` — never under the
+# ``reference`` field's own declared name; a declared ``Index("vendor")``
+# resolves through that same shadow-attribute map, so it covers a filter on
+# the declared name identically). The rule evaluates only scalar fields, the
+# same scalar-field scope the sibling ``UNBOUNDED_INDEXED_STRING`` rule keeps.
 NON_SCALAR_FILTER_FIELD_KINDS = frozenset(
     {"value_object", "value_object_list", "has_one", "has_many", "reference"}
 )

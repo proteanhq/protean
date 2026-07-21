@@ -374,11 +374,12 @@ class TestUnindexedFilterPathBoundary:
 
 @pytest.fixture(scope="module")
 def scalar_scope_ir() -> dict:
-    """``Customer`` embeds an ``address`` value object and carries a plain
-    ``name``; its repository filters both. No index is declared, so only the
-    scalar filter is eligible to fire."""
+    """``Customer`` embeds an ``address`` value object, references ``Vendor``,
+    and carries a plain ``name``; its repository filters all three. No index is
+    declared, so only the scalar filter is eligible to fire."""
     domain = Domain(name="ScalarScope", root_path=CORPUS_ROOT)
     domain.register(catalog.Address)
+    domain.register(catalog.Vendor)
     domain.register(catalog.Customer)
     domain.register(catalog.CustomerRepository, part_of=catalog.Customer)
     domain.init(traverse=False)
@@ -404,3 +405,10 @@ class TestUnindexedFilterPathScalarScope:
         expands into several columns, none named for the field, so no ``Index``
         on the field name could cover it."""
         assert "filter_value_object" not in _flagged_methods(scalar_scope_ir)
+
+    def test_reference_filter_is_not_flagged(self, scalar_scope_ir):
+        """A filter naming a ``Reference`` field is left alone: the persisted FK
+        column lives under a differently-named shadow attribute
+        (``vendor_id``), never under the reference's own declared name
+        (``vendor``), so no ``Index`` on the declared name could cover it."""
+        assert "filter_reference" not in _flagged_methods(scalar_scope_ir)
