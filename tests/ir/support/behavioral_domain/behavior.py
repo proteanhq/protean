@@ -29,6 +29,8 @@ Each method carries a deliberate shape a test asserts:
 - ``OrderRepository.in_transaction`` — a call on a ``UnitOfWork()`` receiver.
 """
 
+from typing import Any
+
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.repository import BaseRepository
@@ -71,7 +73,7 @@ class OrderRepository(BaseRepository):
         self._dao.filter(status="open", channel="web")
         self._dao.filter(reference="latest")
 
-    def stale(self, rows: list) -> None:
+    def stale(self, rows: Any) -> None:
         """A ``.filter(...)`` on a plain parameter, not the repository DAO: its
         receiver stays ``UNKNOWN``, so it is a ``filter`` call that is not a
         repository filter site."""
