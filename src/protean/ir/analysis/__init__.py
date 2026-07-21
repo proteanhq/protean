@@ -7,6 +7,14 @@ build on, not a public surface.
 
 from __future__ import annotations
 
+from protean.ir.analysis.dataflow import (
+    BlockCoverage,
+    DataflowAnalyzer,
+    Definition,
+    DefKind,
+    MethodFlow,
+    WithContext,
+)
 from protean.ir.analysis.element_index import (
     ClassEntry,
     ElementIndex,
@@ -17,10 +25,16 @@ from protean.ir.analysis.source_provider import SourceProvider
 from protean.ir.analysis.symbols import SymbolResolver
 
 __all__ = [
+    "BlockCoverage",
     "ClassEntry",
+    "DataflowAnalyzer",
+    "DefKind",
+    "Definition",
     "ElementIndex",
     "MethodEntry",
+    "MethodFlow",
     "MethodRole",
     "SourceProvider",
     "SymbolResolver",
+    "WithContext",
 ]

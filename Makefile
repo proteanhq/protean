@@ -34,6 +34,13 @@ test-matrix-full: up
 test-coverage: up
 	uv run protean test -c COVERAGE
 
+# Patch (diff) coverage gate. Fails when the lines this branch changed are less
+# than 96% covered, mirroring the codecov/patch check so an under-covered diff
+# is caught before pushing rather than only in CI. Consumes the coverage.xml a
+# preceding coverage run (make test-coverage, or protean test -c FULL) wrote.
+coverage-diff:
+	uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=96 --show-uncovered
+
 typecheck:
 	uv run mypy src/protean --config-file pyproject.toml
 
