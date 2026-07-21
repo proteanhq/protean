@@ -321,6 +321,26 @@ class TestReachingDefinitions:
         assert reaching[0].node is aug
         assert reaching[0].kind == DefKind.AUG_ASSIGN
 
+    def test_an_augmented_assignment_to_a_subscript_binds_no_local(self, tmp_path):
+        """``a[i] += n`` writes a subscript, not a local name; its target is a
+        use, so ``a`` and ``i`` are read (and stay bound to their parameters)
+        while no local binding is produced."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(a, i, n):
+                a[i] += n
+            """,
+        )
+        aug = node.body[0]
+        a_use = _load(aug, "a")
+        i_use = _load(aug, "i")
+
+        # The subscript target is recorded as a use of ``a`` and ``i``; neither
+        # is rebound (the write lands on ``a[i]``, an attribute-layer concern).
+        assert [d.kind for d in flow.reaching(a_use)] == [DefKind.PARAMETER]
+        assert [d.kind for d in flow.reaching(i_use)] == [DefKind.PARAMETER]
+
 
 class TestControlFlowBranches:
     def test_try_and_except_both_may_reach(self, tmp_path):
@@ -452,6 +472,99 @@ class TestControlFlowBranches:
 
         assert flow.reaching(use) == ()
 
+    def test_a_bare_except_still_sees_a_body_definition(self, tmp_path):
+        """A bare ``except:`` carries no exception type, but it is enterable after
+        any prefix of the body just as a typed handler is, so a body definition
+        reaches its handler."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(a):
+                try:
+                    x = a
+                except:
+                    use(x)
+            """,
+        )
+        try_stmt = node.body[0]
+        body_assign = try_stmt.body[0]
+        use = _load(try_stmt.handlers[0].body[0], "x")
+
+        assert [d.node for d in flow.reaching(use)] == [body_assign]
+
+    def test_a_break_inside_a_try_body_stops_the_handler_entry(self, tmp_path):
+        """A ``break`` partway through a ``try`` body ends the body early: nothing
+        after it runs or can raise, so a later (dead) assignment is not folded
+        into the handler entry — only the definition before the break reaches
+        the handler."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(it, a, b):
+                for i in it:
+                    try:
+                        x = a
+                        break
+                        x = b
+                    except Exception:
+                        use(x)
+            """,
+        )
+        try_stmt = node.body[0].body[0]
+        before_break = try_stmt.body[0]
+        use = _load(try_stmt.handlers[0].body[0], "x")
+
+        assert [d.node for d in flow.reaching(use)] == [before_break]
+
+    def test_a_match_case_that_breaks_does_not_reach_after_the_match(self, tmp_path):
+        """A case whose body always exits via ``break`` falls through to the
+        loop's exit, not to the statement after the ``match``; its definition is
+        not merged into the post-match state."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(it, subject, a, b):
+                for i in it:
+                    x = b
+                    match subject:
+                        case 1:
+                            x = a
+                            break
+                        case _:
+                            pass
+                    use(x)
+            """,
+        )
+        for_stmt = node.body[0]
+        x_b = for_stmt.body[0]
+        use = _load(for_stmt.body[2], "x")
+
+        # Only the pre-match ``x = b`` reaches ``use(x)``; ``case 1`` breaks, so
+        # its ``x = a`` exits the loop rather than falling past the match.
+        assert {d.node for d in flow.reaching(use)} == {x_b}
+
+    def test_a_surviving_arm_reaches_past_a_breaking_arm(self, tmp_path):
+        """When one arm of an ``if`` falls through and the other exits the loop
+        via ``break``, the surviving arm's definition reaches past the ``if`` —
+        the breaking arm contributes nothing to the merge."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(it, cond, a):
+                for i in it:
+                    if cond:
+                        x = a
+                    else:
+                        break
+                    use(x)
+            """,
+        )
+        if_stmt = node.body[0].body[0]
+        x_a = if_stmt.body[0]
+        use = _load(node.body[0].body[1], "x")
+
+        assert [d.node for d in flow.reaching(use)] == [x_a]
+
     def test_a_break_path_definition_survives_the_else(self, tmp_path):
         """A loop ``else`` runs only when the loop finished without a ``break``;
         a definition on the break path is a separate exit that must still reach
@@ -546,6 +659,26 @@ class TestControlFlowBranches:
 
         assert flow.reaching(use) == ()
 
+    def test_a_tuple_del_unbinds_each_name(self, tmp_path):
+        """``del (a, b)`` recurses into the tuple target, unbinding every name;
+        a use of either after it resolves to the empty tuple."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m():
+                a = compute()
+                b = compute()
+                del (a, b)
+                use(a)
+                use(b)
+            """,
+        )
+        use_a = _load(node.body[3], "a")
+        use_b = _load(node.body[4], "b")
+
+        assert flow.reaching(use_a) == ()
+        assert flow.reaching(use_b) == ()
+
     def test_a_match_capture_shadows_an_outer_name(self, tmp_path):
         """A capture pattern rebinds its name for the case; a use of it resolves
         to the empty tuple, not the shadowed parameter."""
@@ -559,6 +692,23 @@ class TestControlFlowBranches:
             """,
         )
         use = _load(node.body[0].cases[0].body[0], "x")
+
+        assert flow.reaching(use) == ()
+
+    def test_a_mapping_rest_capture_shadows_an_outer_name(self, tmp_path):
+        """A ``case {**rest}`` binds ``rest`` to the unmatched keys; the analysis
+        cannot value that capture, so a use of it resolves to the empty tuple,
+        not the shadowed parameter."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(rest, subject):
+                match subject:
+                    case {**rest}:
+                        use(rest)
+            """,
+        )
+        use = _load(node.body[0].cases[0].body[0], "rest")
 
         assert flow.reaching(use) == ()
 
@@ -576,6 +726,23 @@ class TestControlFlowBranches:
         use = _load(node.body[1], "data")
 
         assert flow.reaching(use) == ()
+
+    def test_a_star_import_binds_no_named_value(self, tmp_path):
+        """A ``from x import *`` names no specific binding, so it is skipped
+        rather than killing a name; an unrelated prior definition is intact. (A
+        star import is illegal inside a function at compile time, but the parser
+        the substrate reads through accepts it, so the analyzer must handle it.)"""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(existing):
+                from os import *
+                use(existing)
+            """,
+        )
+        use = _load(node.body[1], "existing")
+
+        assert [d.kind for d in flow.reaching(use)] == [DefKind.PARAMETER]
 
 
 class TestBindingForms:
@@ -1007,6 +1174,41 @@ class TestFailOpen:
         # A load node from another tree is simply unrecorded, not an error.
         stray = ast.parse("q", mode="eval").body
         assert flow.reaching(stray) == ()
+
+    def test_a_break_outside_any_loop_does_not_raise(self, tmp_path):
+        """A ``break`` with no enclosing loop cannot compile, but the parser the
+        substrate reads through accepts it. With no loop frame to record onto,
+        the analyzer must not raise; the break still stops fall-through, so a
+        later statement is never analyzed."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(a):
+                break
+                x = a
+            """,
+        )
+
+        # Both statements are indexed, but ``x = a`` after the break is never
+        # reached, so its use of ``a`` records no reaching definition.
+        assert flow.order_of(node.body[0]) == 0
+        assert flow.reaching(_load(node.body[1], "a")) == ()
+
+    def test_a_continue_outside_any_loop_does_not_raise(self, tmp_path):
+        """As with a stray ``break``, a ``continue`` with no enclosing loop
+        parses but cannot compile; with no loop frame to record onto the
+        analyzer must accept it without raising."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(a):
+                continue
+                x = a
+            """,
+        )
+
+        assert flow.order_of(node.body[0]) == 0
+        assert flow.reaching(_load(node.body[1], "a")) == ()
 
 
 class TestDeterminism:
