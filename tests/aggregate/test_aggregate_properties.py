@@ -113,7 +113,9 @@ class TestIdentityValues:
         new_uuid = uuid4()
         role = Role(id=new_uuid, name="ADMIN")
         assert role.id is not None
-        assert role.id == new_uuid
+        # A native UUID supplied to the auto-injected id field is coerced to its
+        # string form (ADR-0021), matching an explicitly-declared identifier.
+        assert role.id == str(new_uuid)
 
 
 class TestEquivalence:

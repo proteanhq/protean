@@ -53,7 +53,7 @@ from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import IdentityStrategy, IdentityType, _fully_qualified_name
+from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import F, Q
@@ -231,16 +231,13 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
 
     @classmethod
     def _identity_from_meta(cls, meta_id: _Any) -> _Any:
-        """Coerce the Elasticsearch ``meta.id`` to the entity's identity type.
+        """Return the Elasticsearch ``meta.id`` as the entity's identity.
 
-        Mirrors the identity handling in :meth:`to_entity`.
+        A uuid identity is a string in Python (ADR-0021), and ``meta.id`` is
+        already stored as a string, so it is returned as-is rather than converted
+        to a native ``UUID`` (which would not be JSON-serializable). Kept as an
+        override point for an adapter with a different identity representation.
         """
-        if (
-            current_domain.config["identity_strategy"] == IdentityStrategy.UUID.value
-            and current_domain.config["identity_type"] == IdentityType.UUID.value
-            and isinstance(meta_id, str)
-        ):
-            return UUID(meta_id)
         return meta_id
 
     @classmethod

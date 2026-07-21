@@ -34,9 +34,12 @@ The generator returns `str(uuid4())` for `identity_type = "uuid"`, and the
 auto-injected `id` field carries a narrow `UUID -> str` coercion (a
 `BeforeValidator`) that leaves an `integer` identity as an `int`. This mirrors the
 coercion that explicitly declared `Auto`/`Identifier` fields already apply, so a
-value that reaches the field as a native `UUID` — whether passed by a caller or
-returned by an adapter on load (for example SQLAlchemy's `GUID` type) — becomes a
-string too.
+value that reaches the field as a native `UUID`, whether passed by a caller or
+returned by an adapter on load (for example SQLAlchemy's `GUID` type), becomes a
+string too. Read-optimized projection results (`QuerySet.only(...)`, which bypass
+entity construction and its validator) coerce the identity as well, in the default
+record builder and in the Elasticsearch identity extraction, so the contract holds
+on read paths that never build a full entity.
 
 The native-UUID representation stays an **adapter and storage** concern: an
 adapter that supports a native UUID column continues to store the value in one
