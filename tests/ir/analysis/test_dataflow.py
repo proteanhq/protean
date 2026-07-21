@@ -478,6 +478,58 @@ class TestControlFlowBranches:
 
         assert binders == {break_def, else_def}
 
+    def test_a_break_does_not_reach_later_statements_in_the_same_iteration(
+        self, tmp_path
+    ):
+        """A ``break`` exits the loop; a definition on that path must not reach a
+        statement later in the loop body, even through a nested ``if`` — that
+        statement is only ever reached on the non-break path."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(it, cond, a, b):
+                for i in it:
+                    x = b
+                    if cond:
+                        x = a
+                        break
+                    use(x)
+            """,
+        )
+        loop = node.body[0]
+        b_def = loop.body[0]
+        use = _load(loop.body[2], "x")
+
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {b_def}
+
+    def test_a_continue_does_not_reach_later_statements_in_the_same_iteration(
+        self, tmp_path
+    ):
+        """A ``continue`` jumps back to the loop; a definition on that path must
+        not reach a statement later in the loop body, even through a nested
+        ``if`` — that statement is only ever reached on the other path."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(it, cond, a, b):
+                for i in it:
+                    x = b
+                    if cond:
+                        x = a
+                        continue
+                    use(x)
+            """,
+        )
+        loop = node.body[0]
+        b_def = loop.body[0]
+        use = _load(loop.body[2], "x")
+
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {b_def}
+
     def test_a_deleted_name_no_longer_reaches(self, tmp_path):
         """``del x`` unbinds ``x``; a use after it resolves to the empty tuple,
         not the killed definition (the name is unbound at runtime)."""
@@ -621,6 +673,27 @@ class TestBindingForms:
         loop = node.body[1]
         reassign = loop.body[1]
         use = _load(loop.body[0], "x")
+
+        binders = {definition.node for definition in flow.reaching(use)}
+
+        assert binders == {seed_def, reassign}
+
+    def test_a_while_test_sees_a_definition_from_the_loop_body(self, tmp_path):
+        """The ``while`` test is re-evaluated every iteration, not just before
+        the first one, so a definition the body makes must reach it too."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m(seed):
+                x = seed
+                while has_next(x):
+                    x = advance(x)
+            """,
+        )
+        seed_def = node.body[0]
+        loop = node.body[1]
+        reassign = loop.body[0]
+        use = _load(loop.test, "x")
 
         binders = {definition.node for definition in flow.reaching(use)}
 

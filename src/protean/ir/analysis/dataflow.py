@@ -92,7 +92,7 @@ from protean.ir.analysis.source_provider import SourceProvider
 from protean.ir.analysis.symbols import SymbolResolver
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from protean.domain import Domain
 
@@ -341,6 +341,11 @@ class _FlowBuilder:
         #: ``break`` records the current state onto the top frame so the loop can
         #: merge every break-path exit past its ``else``.
         self._break_states: list[list[_State]] = []
+        #: A stack of continue-state accumulators, one frame per enclosing loop.
+        #: A ``continue`` records the current state onto the top frame so the
+        #: next iteration's entry — and, for a ``while``, its re-evaluated
+        #: ``test`` — sees a definition made before the ``continue``.
+        self._continue_states: list[list[_State]] = []
 
     def build(self, module: str, node: FunctionNode) -> MethodFlow:
         self._module = module
@@ -450,14 +455,27 @@ class _FlowBuilder:
             state[argument.arg] = frozenset({definition})
         return tuple(parameters), state
 
-    def _run(self, stmts: list[ast.stmt], state: _State) -> _State:
-        """Thread ``state`` through a straight-line block of statements."""
+    def _run(self, stmts: list[ast.stmt], state: _State) -> _State | None:
+        """Thread ``state`` through a straight-line block of statements.
+
+        ``None`` means the block never falls through — every path exited early
+        via ``break`` or ``continue`` — so nothing after it in the same block is
+        reachable, and the remaining statements are not walked.
+        """
         for stmt in stmts:
-            state = self._step(stmt, state)
+            result = self._step(stmt, state)
+            if result is None:
+                return None
+            state = result
         return state
 
-    def _step(self, stmt: ast.stmt, state: _State) -> _State:
-        """Advance the reaching state across one statement, recording its uses."""
+    def _step(self, stmt: ast.stmt, state: _State) -> _State | None:
+        """Advance the reaching state across one statement, recording its uses.
+
+        Returns ``None`` for a statement that never falls through to whatever
+        follows it in the same block (``break``, ``continue``, or a compound
+        statement every one of whose paths does).
+        """
         order = self._order.get(id(stmt), -1)
 
         if isinstance(stmt, ast.If):
@@ -466,28 +484,47 @@ class _FlowBuilder:
             skipped = (
                 self._run(stmt.orelse, _copy(state)) if stmt.orelse else _copy(state)
             )
-            return _merge(taken, skipped)
+            return _merge_optional(taken, skipped)
 
         if isinstance(stmt, (ast.For, ast.AsyncFor)):
             self._record_uses(stmt.iter, state, order)
             entry = _copy(state)
             self._bind(stmt.target, stmt, None, DefKind.FOR_TARGET, entry)
             self._break_states.append([])
+            self._continue_states.append([])
             after = self._run_loop_body(stmt.body, entry, state)
+            self._continue_states.pop()
             return self._after_loop(after, self._break_states.pop(), stmt.orelse)
 
         if isinstance(stmt, ast.While):
-            self._record_uses(stmt.test, state, order)
             self._break_states.append([])
-            after = self._run_loop_body(stmt.body, _copy(state), state)
+            self._continue_states.append([])
+            after = self._run_loop_body(
+                stmt.body,
+                _copy(state),
+                state,
+                on_test=lambda invariant: self._record_uses(
+                    stmt.test, invariant, order
+                ),
+            )
+            self._continue_states.pop()
             return self._after_loop(after, self._break_states.pop(), stmt.orelse)
 
         if isinstance(stmt, ast.Break):
             # A break is a possible loop exit that skips the ``else``; record the
-            # state so the enclosing loop can merge it in.
+            # state so the enclosing loop can merge it in. It does not fall
+            # through to whatever follows it in the same block.
             if self._break_states:
                 self._break_states[-1].append(_copy(state))
-            return state
+            return None
+
+        if isinstance(stmt, ast.Continue):
+            # A continue jumps back to the loop rather than falling through to
+            # whatever follows it in the same block; its state instead feeds
+            # the next iteration's entry (and a ``while``'s re-evaluated test).
+            if self._continue_states:
+                self._continue_states[-1].append(_copy(state))
+            return None
 
         if isinstance(stmt, (ast.With, ast.AsyncWith)):
             new = _copy(state)
@@ -517,39 +554,66 @@ class _FlowBuilder:
         return self._step_simple(stmt, state, order)
 
     def _run_loop_body(
-        self, body: list[ast.stmt], entry: _State, before: _State
+        self,
+        body: list[ast.stmt],
+        entry: _State,
+        before: _State,
+        on_test: Callable[[_State], None] | None = None,
     ) -> _State:
         """Analyze a loop body, twice, and return the state after the loop.
 
         The first pass gives what the body binds; the second pass runs the body
         against the merge of entry and first-pass state, so a use fed by a prior
-        iteration's assignment is recorded rather than missed. The loop may run
-        zero times, so the state after it is the merge of the pre-loop state and
-        the body's.
+        iteration's assignment is recorded rather than missed. A ``continue``
+        does not fall through the body's end, so it is folded into each pass
+        separately rather than carried in the body's own return value. The loop
+        may run zero times, so the state after it is the merge of the pre-loop
+        state and the body's. ``on_test``, when given, records a ``while``
+        test's uses against the invariant a second and later iteration actually
+        sees, so a definition the body makes reaches the re-evaluated test.
         """
-        first = self._run(body, _copy(entry))
-        second = self._run(body, _merge(entry, first))
+        first_run = self._run(body, _copy(entry))
+        first = _merge(entry, first_run) if first_run is not None else entry
+        first = self._fold_continues(first)
+        if on_test is not None:
+            on_test(first)
+        second_run = self._run(body, _copy(first))
+        second = second_run if second_run is not None else first
+        second = self._fold_continues(second)
         return _merge(before, second)
+
+    def _fold_continues(self, state: _State) -> _State:
+        """Merge every ``continue`` exit recorded so far for the innermost loop.
+
+        A ``continue`` jumps back to the loop rather than falling through the
+        body's end, so its state never appears in a body pass's own return
+        value and is merged in here instead.
+        """
+        result = state
+        for continue_state in self._continue_states[-1]:
+            result = _merge(result, continue_state)
+        return result
 
     def _after_loop(
         self, after: _State, breaks: list[_State], orelse: list[ast.stmt]
-    ) -> _State:
+    ) -> _State | None:
         """Merge a loop's exits: normal completion runs ``else``, ``break`` skips it.
 
         ``else`` runs only when the loop finished without a ``break`` (including
         zero iterations), so it threads onto the normal-completion state; each
         ``break`` is a separate exit that bypasses ``else`` entirely, and every
         one is a may-reach exit merged in so a definition on the break path is not
-        dropped.
+        dropped. ``None`` only if ``else`` itself never falls through (an outer
+        loop's ``break``/``continue``) and there were no ``break`` exits either.
         """
-        result = self._run(orelse, after) if orelse else after
+        result: _State | None = self._run(orelse, after) if orelse else after
         for break_state in breaks:
-            result = _merge(result, break_state)
+            result = _merge_optional(result, break_state)
         return result
 
     def _step_try(
         self, stmt: ast.Try | ast.TryStar, state: _State, order: int
-    ) -> _State:
+    ) -> _State | None:
         """Advance across a ``try`` conservatively.
 
         A handler — or the ``finally`` — can be entered after *any* prefix of the
@@ -558,16 +622,24 @@ class _FlowBuilder:
         just the body's fully-executed end state. Missing an intermediate here is
         the "dropped true assignment that later hides a lost write" the module's
         contract forbids. ``else`` runs only on the body's success; ``finally``
-        runs on every path, so it runs last on the broad handler entry too.
+        runs on every path, so it runs last on the broad handler entry too. A
+        ``break``/``continue`` partway through the body (directly, or through a
+        nested block) ends the body early — nothing after it in the body runs or
+        raises — so ``handler_entry`` stops accumulating there too.
         """
         handler_entry = _copy(state)
-        after_body = _copy(state)
+        after_body: _State | None = _copy(state)
         for body_stmt in stmt.body:
+            if after_body is None:
+                break
             after_body = self._step(body_stmt, after_body)
-            handler_entry = _merge(handler_entry, after_body)
+            if after_body is not None:
+                handler_entry = _merge(handler_entry, after_body)
 
-        result = (
-            self._run(stmt.orelse, _copy(after_body)) if stmt.orelse else after_body
+        result: _State | None = (
+            self._run(stmt.orelse, _copy(after_body))
+            if stmt.orelse and after_body is not None
+            else after_body
         )
         for handler in stmt.handlers:
             if handler.type is not None:
@@ -578,10 +650,15 @@ class _FlowBuilder:
                 # the handler body; kill any shadowed outer ``e`` so a use
                 # resolves to the empty tuple, never a stale prior definition.
                 handler_state[handler.name] = frozenset()
-            result = _merge(result, self._run(handler.body, handler_state))
+            result = _merge_optional(result, self._run(handler.body, handler_state))
 
         if stmt.finalbody:
-            return self._run(stmt.finalbody, _merge(result, handler_entry))
+            # ``finally`` runs regardless of how the body/handlers exited, so its
+            # entry is never bottom: ``handler_entry`` is always a real state.
+            finally_entry = (
+                handler_entry if result is None else _merge(result, handler_entry)
+            )
+            return self._run(stmt.finalbody, finally_entry)
         return result
 
     def _step_match(self, stmt: ast.Match, state: _State, order: int) -> _State:
@@ -591,7 +668,9 @@ class _FlowBuilder:
         capture names killed, so a use of a captured name (in the guard or the
         body) resolves to the empty tuple rather than a stale outer definition
         the capture shadows. The match may match no case, so the entry state is
-        merged into the result too.
+        merged into the result too. A case whose body always exits early via
+        ``break``/``continue`` contributes nothing here — its state is already
+        captured by the enclosing loop's exit handling.
         """
         self._record_uses(stmt.subject, state, order)
         result = _copy(state)
@@ -601,7 +680,9 @@ class _FlowBuilder:
                 case_state[name] = frozenset()
             if case.guard is not None:
                 self._record_uses(case.guard, case_state, order)
-            result = _merge(result, self._run(case.body, case_state))
+            case_result = self._run(case.body, case_state)
+            if case_result is not None:
+                result = _merge(result, case_result)
         return result
 
     def _step_simple(self, stmt: ast.stmt, state: _State, order: int) -> _State:
@@ -795,6 +876,20 @@ def _merge(left: _State, right: _State) -> _State:
         existing = merged.get(name)
         merged[name] = definitions if existing is None else existing | definitions
     return merged
+
+
+def _merge_optional(left: _State | None, right: _State | None) -> _State | None:
+    """The may-reach union of two flows, either of which may have exited early.
+
+    ``None`` means that side never falls through here — every path on it broke,
+    continued, or returned — so it contributes nothing and is dropped rather
+    than merged. Both ``None`` propagates: neither side reaches this point.
+    """
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return _merge(left, right)
 
 
 def _ordered(definitions: Iterable[Definition]) -> tuple[Definition, ...]:
