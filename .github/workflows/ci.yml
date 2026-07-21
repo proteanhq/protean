@@ -20,229 +20,41 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Per-PR cost control. The full adapter suite (`-c FULL`, which spins up
+        # Per-PR cost control. The FULL adapter suite (`-c FULL`, which starts
         # Postgres/Redis/Elasticsearch/MSSQL/MessageDB) is the expensive part, so
-        # only the newest Python runs it; the older versions run the fast
-        # in-memory CORE suite with no Docker. The `floors` leg proves the
-        # dependency floors resolve and install on the newest Python (the binding
-        # constraint for C-extension wheels) by re-resolving to the lowest
-        # permitted versions (`--resolution lowest-direct`); it runs CORE so it
-        # stays cheap. The full `-c FULL` matrix across every Python runs nightly
-        # on `main` (nightly.yml), which is where a version-specific adapter
-        # regression on 3.11-3.13 is caught. See ADR-0020.
+        # only the newest Python runs it (check `Python 3.14 Full`); the older
+        # versions run the fast in-memory CORE suite with no Docker. The
+        # lowest-direct leg (`Python 3.14 Tests`) re-resolves the dependencies to
+        # their floor and runs CORE, proving the floors resolve/install on the
+        # newest Python without a Docker spin-up. The full `-c FULL` matrix across
+        # every Python runs nightly on `main` (nightly.yml), which is where a
+        # version-specific adapter regression on 3.11-3.13 is caught. See ADR-0020.
         include:
-          - { python-version: "3.11", suite: core }
-          - { python-version: "3.12", suite: core }
-          - { python-version: "3.13", suite: core }
-          - { python-version: "3.14", suite: full }
-          - { python-version: "3.14", suite: floors }
-    # CORE/FULL legs keep the name `Python X Tests` so the branch-protection
-    # required checks match; the floors leg gets a distinct (non-required) name.
-    name: ${{ matrix.suite == 'floors' && 'Python 3.14 Floors (lowest-direct)' || format('Python {0} Tests', matrix.python-version) }}
-
-    # one place to set the PyO3 flag; every step inherits it automatically
-    env:
-      PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (matrix.python-version == '3.13' || matrix.python-version == '3.14') && '1' || '' }}
+          - { python-version: "3.11", full: false, resolution: highest }
+          - { python-version: "3.12", full: false, resolution: highest }
+          - { python-version: "3.13", full: false, resolution: highest }
+          - { python-version: "3.14", full: true, resolution: highest }
+          - { python-version: "3.14", full: false, resolution: lowest-direct }
+    # Check names are branch-protection contexts. The CORE legs and the
+    # lowest-direct leg on 3.14 are `Python X Tests`; the FULL adapter leg is
+    # `Python 3.14 Full` (add it to the required checks so it gates merges).
+    name: ${{ matrix.full && 'Python 3.14 Full' || (matrix.resolution == 'lowest-direct' && 'Python 3.14 Tests') || format('Python {0} Tests', matrix.python-version) }}
 
     steps:
-      # Service images are pulled from this org's public GHCR mirror (populated
-      # by mirror-images.yml), not Docker Hub. Public GHCR packages need no auth,
-      # so there is no login step and fork PRs pull them with zero secrets.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
-      # Service setup (this step through "Wait for services") runs only for the
-      # FULL leg; the CORE and floors legs need no Docker.
-      - name: Cache Docker images
-        id: docker-cache
-        if: matrix.suite == 'full'
-        uses: actions/cache@v6
-        with:
-          path: /tmp/docker-images
-          key: docker-images-${{ runner.os }}-v3
-
-      - name: Load or pull Docker images
-        if: matrix.suite == 'full'
-        run: |
-          IMAGES=(
-            "ghcr.io/proteanhq/mirror/postgres:16"
-            "ghcr.io/proteanhq/mirror/redis:7"
-            "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0"
-            "ghcr.io/proteanhq/mirror/message-db:1.2.6"
-            "ghcr.io/proteanhq/mirror/mssql-server:2022-latest"
-          )
-
-          if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
-            echo "Loading cached Docker images..."
-            for f in /tmp/docker-images/*.tar; do
-              docker load -i "$f" &
-            done
-            wait
-          else
-            echo "Pulling Docker images..."
-            for img in "${IMAGES[@]}"; do
-              docker pull "$img" &
-            done
-            wait
-
-            echo "Saving Docker images to cache..."
-            mkdir -p /tmp/docker-images
-            for img in "${IMAGES[@]}"; do
-              name=$(echo "$img" | tr '/:' '_')
-              docker save "$img" -o "/tmp/docker-images/${name}.tar" &
-            done
-            wait
-          fi
-
-      - name: Configure sysctl limits
-        if: matrix.suite == 'full'
-        run: |
-          sudo swapoff -a
-          sudo sysctl -w vm.swappiness=1
-          sudo sysctl -w fs.file-max=262144
-          sudo sysctl -w vm.max_map_count=262144
-
-      - name: Start service containers
-        if: matrix.suite == 'full'
-        run: |
-          # Free the host ports below before binding them. Remove ALL containers
-          # left over from a previous run on this (potentially reused) runner:
-          # matching only our own names misses a container leaked under a
-          # different name, or one still shutting down, either of which can keep
-          # a port bound (e.g. the 59300 Elasticsearch transport port) and fail
-          # `docker run` with "address already in use".
-          leaked=$(docker ps -aq)
-          if [ -n "$leaked" ]; then
-            docker rm -f $leaked
-          fi
-
-          docker run -d --name postgres \
-            -p 55432:5432 \
-            -e POSTGRES_PASSWORD=postgres \
-            ghcr.io/proteanhq/mirror/postgres:16
-
-          docker run -d --name redis \
-            -p 56379:6379 \
-            ghcr.io/proteanhq/mirror/redis:7
-
-          docker run -d --name message-db \
-            -p 55433:5432 \
-            ghcr.io/proteanhq/mirror/message-db:1.2.6
-
-          docker run -d --name mssql \
-            -p 51433:1433 \
-            -e ACCEPT_EULA=Y \
-            -e "SA_PASSWORD=Protean123!" \
-            ghcr.io/proteanhq/mirror/mssql-server:2022-latest
-
-          docker run -d --name elasticsearch \
-            -p 59200:9200 \
-            -p 59300:9300 \
-            -e "discovery.type=single-node" \
-            -e "xpack.security.enabled=false" \
-            -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-            ghcr.io/proteanhq/mirror/elasticsearch:8.7.0
-
-      - name: Wait for services
-        if: matrix.suite == 'full'
-        run: |
-          echo "Waiting for PostgreSQL..."
-          timeout 60 bash -c 'until docker exec postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done'
-          echo "PostgreSQL is ready!"
-
-          echo "Waiting for Redis..."
-          timeout 30 bash -c 'until docker exec redis redis-cli ping 2>/dev/null; do sleep 2; done'
-          echo "Redis is ready!"
-
-          echo "Waiting for Message DB..."
-          timeout 60 bash -c 'until docker exec message-db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
-          echo "Message DB is ready!"
-
-          echo "Waiting for MSSQL..."
-          timeout 60 bash -c 'until docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Protean123!" -Q "SELECT 1" -b -C 2>/dev/null; do sleep 2; done'
-          echo "MSSQL is ready!"
-
-          echo "Waiting for Elasticsearch..."
-          timeout 120 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
-          echo "Elasticsearch is ready!"
-
-          echo "All services are ready!"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/test-suite
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install Microsoft ODBC Driver 18 and tools
-        if: matrix.suite == 'full'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl gnupg apt-transport-https
-          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc >/dev/null
-          curl -sSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null
-          sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
-          echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
-
-      - name: Install dependencies
-        # The floors leg re-resolves to the lowest permitted versions (installing
-        # all extras so a floor without a wheel for the newest Python fails here);
-        # every other leg uses the locked (latest-compatible) resolution.
-        run: uv sync --all-extras --all-groups ${{ matrix.suite == 'floors' && '--resolution lowest-direct' || '' }}
-
-      - name: Mypy Plugin Tests
-        run: uv run pytest tests/ext/ -v
-
-      - name: Tests
-        # FULL runs the adapter suite against the service containers; CORE and
-        # floors run the fast in-memory suite (the POSTGRES/etc. env below is
-        # simply unused there).
-        run: uv run protean test ${{ matrix.suite == 'full' && '-c FULL' || '' }}
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-          POSTGRES_PORT: 55432
-          PGPASSWORD: postgres
-          REDIS_HOST: localhost
-          REDIS_PORT: 56379
-          MSSQL_PASSWORD: Protean123!
-          MSSQL_USER: sa
-          MSSQL_PORT: 51433
-          MSSQL_HOST: localhost
-
-      # Project coverage floor. `protean test -c FULL` already ran
-      # `coverage combine`, so the merged `.coverage` for this leg exists; re-report
-      # it with a hard threshold so a PR that drops overall coverage fails CI.
-      # This threshold lives here, not in `[tool.coverage.report]`, because that
-      # config is also read by the local `protean test` (CORE) run, whose
-      # in-memory-only coverage sits well below the full-suite figure — a global
-      # `fail_under` would break the primary dev command. Gated to one Python
-      # version: src/protean has no version-conditional code, so every leg's
-      # coverage is equivalent, and a single check avoids per-leg flake.
-      # `success() &&` is required: a custom `if` drops the implicit success guard,
-      # so without it this step would run even after the test step failed (when no
-      # merged `.coverage` exists) and report a confusing "no data" error.
-      # Gated to the FULL leg: it is the only per-PR leg that exercises the
-      # adapters, so it is the only one whose coverage reaches the full-suite
-      # figure the threshold assumes (the CORE legs sit well below it).
-      - name: Enforce coverage floor
-        if: success() && matrix.suite == 'full'
-        run: uv run coverage report --fail-under=94
-
-      # Upload coverage only from the FULL leg; the CORE legs' in-memory-only
-      # coverage would drag the merged report below the real figure.
-      - name: CodeCOV
-        if: (success() || failure()) && matrix.suite == 'full'
-        uses: codecov/codecov-action@v7.0.0
-        with:
-          files: coverage.xml
-          token: ${{ secrets.CODECOV_TOKEN }}
+          full: ${{ matrix.full }}
+          resolution: ${{ matrix.resolution }}
+          # Enforce + upload coverage only from the FULL adapter leg (the only
+          # per-PR leg that reaches the full-suite figure the threshold assumes).
+          enforce-coverage: ${{ matrix.full && matrix.resolution == 'highest' }}
+          upload-coverage: ${{ matrix.full && matrix.resolution == 'highest' }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
   mypy:
     runs-on: ubuntu-latest

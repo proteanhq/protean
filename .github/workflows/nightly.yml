@@ -1,0 +1,83 @@
+name: Nightly
+
+# The full `-c FULL` adapter suite across every supported Python. Per-PR CI runs
+# the adapter suite only on the newest Python (ci.yml) to keep PRs cheap; this
+# nightly run is where a version-specific adapter regression on 3.11-3.13 (or a
+# floor that only breaks against a real service) is caught. On failure the
+# `notify` job opens or updates a `ci-failure` issue so a red scheduled run is
+# visible without anyone watching the Actions tab.
+on:
+  schedule:
+    # 06:00 UTC daily. Adjust freely; scheduled runs only fire on the default branch.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { python-version: "3.11", resolution: highest }
+          - { python-version: "3.12", resolution: highest }
+          - { python-version: "3.13", resolution: highest }
+          - { python-version: "3.14", resolution: highest }
+          # Adapter floors against real services, on the newest Python.
+          - { python-version: "3.14", resolution: lowest-direct }
+    name: ${{ matrix.resolution == 'lowest-direct' && format('Python {0} Full (lowest-direct)', matrix.python-version) || format('Python {0} Full', matrix.python-version) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/test-suite
+        with:
+          python-version: ${{ matrix.python-version }}
+          full: true
+          resolution: ${{ matrix.resolution }}
+
+  notify:
+    name: Report nightly failure
+    needs: test
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the ci-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # Ensure the label exists (idempotent: --force also updates color/desc).
+          gh label create ci-failure --color B60205 \
+            --description "Automated: a scheduled CI run failed" --force >/dev/null 2>&1 || true
+
+          now="$(date -u '+%Y-%m-%d %H:%M UTC')"
+
+          # Reuse a single open issue rather than filing one every night.
+          existing="$(gh issue list --repo "$REPO" --label ci-failure --state open \
+            --json number,title \
+            --jq 'map(select(.title == "Nightly CI is failing")) | .[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" \
+              --body "Still failing as of $now. Run: $RUN_URL"
+            echo "Commented on existing issue #$existing"
+          else
+            gh issue create --repo "$REPO" --title "Nightly CI is failing" --label ci-failure \
+              --body "$(printf 'The nightly full adapter matrix failed.\n\n- First seen: %s\n- Run: %s\n\nA `Python X Full` leg went red. This catches adapter regressions on the Python versions that per-PR CI exercises in-memory only, and floors that only break against a real service. Close this issue once the run is green again.' "$now" "$RUN_URL")"
+            echo "Opened a new ci-failure issue"
+          fi
