@@ -31,7 +31,12 @@ from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
-from protean.ir.analysis import BehavioralView, ElementIndex, SourceProvider
+from protean.ir.analysis import (
+    BehavioralView,
+    ElementIndex,
+    ReceiverRole,
+    SourceProvider,
+)
 from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.container import Element, OptionsMixin
@@ -43,6 +48,7 @@ from protean.utils.upcasting import (
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.ir.analysis import SourceLocation
 
     class _ElementCls(Element, OptionsMixin):
         """Static-only view of a registered domain element class.
@@ -118,6 +124,30 @@ NON_NOUN_AGGREGATE_SUFFIXES = (
     "able",  # adjective:                  Cancelable, Schedulable
     "ible",  # adjective:                  Convertible, Divisible
     "ful",  # adjective:                  Delightful, Successful
+)
+
+# Repository-query method names whose keyword fields name a filter path the
+# UNINDEXED_FILTER_PATH rule evaluates. These are the read/lookup surfaces of the
+# ``QuerySet``/repository API (``facts._QUERY_METHODS`` minus ``add``, which
+# persists rather than queries): each names the field(s) a query filters on, so a
+# call to one on a recognized repository receiver is a filter path to check
+# against the target aggregate's declared indexes.
+FILTER_PATH_QUERY_METHODS = frozenset({"filter", "get", "find", "find_by", "exclude"})
+
+# Field ``kind`` values that map to no single scalar column named for the
+# field, so a filter on the field *name* cannot be served by an ``Index`` on
+# that name: embedded value objects (which expand into several columns, none
+# named for the field), ``has_one``/``has_many`` associations (which live on
+# the other side of the relationship, with no column here at all), and
+# ``reference`` (which *does* persist a single FK column, but under the
+# differently-named shadow attribute ``Reference.get_attribute_name()``
+# produces — e.g. ``vendor`` persists as ``vendor_id`` — never under the
+# ``reference`` field's own declared name; a declared ``Index("vendor")``
+# resolves through that same shadow-attribute map, so it covers a filter on
+# the declared name identically). The rule evaluates only scalar fields, the
+# same scalar-field scope the sibling ``UNBOUNDED_INDEXED_STRING`` rule keeps.
+NON_SCALAR_FILTER_FIELD_KINDS = frozenset(
+    {"value_object", "value_object_list", "has_one", "has_many", "reference"}
 )
 
 
@@ -1609,6 +1639,7 @@ class IRBuilder:
         self._diagnose_projector_handles_orphaned_event(ir)
         self._diagnose_command_handler_cross_cluster(ir)
         self._diagnose_unbounded_indexed_string(ir)
+        self._diagnose_unindexed_filter_path(ir)
         self._diagnose_event_handler_foreign_event(ir)
         # Info-level rules (design smells)
         self._diagnose_aggregate_too_large(ir)
@@ -2491,6 +2522,254 @@ class IRBuilder:
                             ),
                         }
                     )
+
+    def _diagnose_unindexed_filter_path(self, ir: dict[str, Any]) -> None:
+        """UNINDEXED_FILTER_PATH: an aggregate field a repository query filters
+        on that no declared index covers, so the query is a full table scan.
+
+        This joins the two halves the epic names: the *declared-index* half from
+        the aggregate IR, and the *filter-path* half from the behavioral
+        substrate (the per-method call facts the view surfaces). It walks every
+        registered element's query call-sites — filter paths live in repository
+        methods *and* in application/domain services — and, for each recognized
+        repository query (``filter``/``get``/``find``/``find_by``/``exclude`` on
+        a :attr:`ReceiverRole.REPOSITORY_QUERY` receiver), resolves the target
+        aggregate, then flags any filtered field that its index set does not
+        cover.
+
+        Target resolution is deliberately conservative (ADR-0019): a receiver
+        that resolves to a registered repository maps to that repository's
+        aggregate; a receiver that resolves to a registered aggregate is that
+        aggregate; a self-rooted receiver inside a repository (``self._dao``)
+        maps to the repository's aggregate; anything else — a variable-held or
+        otherwise unresolvable receiver, or a self-rooted query outside a
+        repository — is *skipped, not guessed*, so an unresolved join is a
+        silent miss rather than a false positive.
+
+        A field is covered when it is the aggregate's identifier (a relational
+        backend indexes the PK), carries a single-column ``unique`` constraint (a
+        unique index on a relational backend), or is the *leading* column of a
+        declared ``Index`` (a filter on a non-leading composite column alone is
+        not served by that index). Only names that are actual scalar fields of
+        the target aggregate are evaluated: a filter on a value-object attribute,
+        association, or dynamic ``**kwargs`` names no coverable field and is left
+        alone, matching the sibling persistence rule's scalar-field scope. An
+        operator lookup (``age__gte``) is evaluated by its base field.
+
+        One finding is emitted per uncovered field per call-site, so the same
+        field filtered in two methods yields two findings. Elements are walked in
+        sorted-FQN order and facts arrive in ``(line, col)`` order, so output is
+        reproducible.
+        """
+        registry = self._domain._domain_registry
+        clusters = ir["clusters"]
+        aggregate_fqns = set(clusters.keys())
+        abstract_fqns = self._abstract_aggregate_fqns()
+
+        # Repository FQN -> its aggregate FQN, read straight from the clusters
+        # the build already assembled. Reading the cluster's ``repositories``
+        # section (rather than re-resolving each repository) means only
+        # repositories of a real, non-internal cluster are mapped, and the map's
+        # values are cluster keys by construction.
+        repo_to_aggregate = {
+            repo_fqn: agg_fqn
+            for agg_fqn, cluster in clusters.items()
+            for repo_fqn in cluster["repositories"]
+        }
+
+        # Covered-field sets are computed once per target aggregate and reused
+        # across all of its call-sites.
+        covered_cache: dict[str, set[str]] = {}
+
+        # Walk every registered (non-internal) element in sorted-FQN order, so
+        # the emitted findings are deterministic regardless of registration
+        # order. ``element_fqn`` is the enclosing element, used to resolve a
+        # self-rooted query written inside a repository.
+        elements: list[tuple[str, type]] = []
+        for records in registry._elements.values():
+            for element_fqn, record in records.items():
+                if record.internal:
+                    continue
+                elements.append((element_fqn, record.cls))
+        elements.sort(key=lambda item: item[0])
+
+        for element_fqn, cls in elements:
+            for method_name, facts in self.view.element_facts(cls).items():
+                for call in facts.calls:
+                    if call.receiver_role is not ReceiverRole.REPOSITORY_QUERY:
+                        continue
+                    # A query surface with at least one named field: a persist
+                    # (``add``) or a dynamic ``filter(**kwargs)`` names none.
+                    if (
+                        call.method not in FILTER_PATH_QUERY_METHODS
+                        or not call.field_names
+                    ):
+                        continue
+
+                    target_fqn = self._resolve_filter_target(
+                        call.receiver_fqn,
+                        element_fqn,
+                        repo_to_aggregate,
+                        aggregate_fqns,
+                    )
+                    # No join target, or an abstract aggregate that builds no
+                    # table: skip rather than guess (target is a cluster key).
+                    if target_fqn is None or target_fqn in abstract_fqns:
+                        continue
+
+                    aggregate = clusters[target_fqn]["aggregate"]
+                    fields = aggregate.get("fields", {})
+                    if target_fqn not in covered_cache:
+                        covered_cache[target_fqn] = self._covered_index_fields(
+                            aggregate
+                        )
+                    covered = covered_cache[target_fqn]
+
+                    seen: set[str] = set()
+                    for raw_name in call.field_names:
+                        # An operator lookup (``age__gte``, ``status__in``)
+                        # filters its base field; strip the ``__<lookup>`` suffix
+                        # and evaluate the base, and evaluate each base at most
+                        # once per call-site (``age__gte`` + ``age__lte`` name the
+                        # one field ``age``). A real field name never contains a
+                        # ``__``, so the split is unambiguous.
+                        field_name = raw_name.split("__", 1)[0]
+                        if field_name in seen:
+                            continue
+                        seen.add(field_name)
+
+                        field = fields.get(field_name)
+                        # Only a real scalar field can be index-covered on its own
+                        # name; an unknown name, a value-object attribute, or an
+                        # association names no coverable column and is left alone
+                        # (conservative, matching the sibling rule's scalar scope).
+                        if (
+                            field is None
+                            or field.get("kind") in NON_SCALAR_FILTER_FIELD_KINDS
+                            or field_name in covered
+                        ):
+                            continue
+                        self._emit_unindexed_filter_path(
+                            aggregate,
+                            field_name,
+                            element_fqn,
+                            method_name,
+                            call.location,
+                        )
+
+    @staticmethod
+    def _covered_index_fields(aggregate: dict[str, Any]) -> set[str]:
+        """The fields an aggregate's declared indexes cover for a filter.
+
+        Covered: the identity field (every aggregate IR carries a non-empty
+        ``identity_field``), any field carrying a single-column ``unique``
+        constraint, and the *leading* column of each ``Index``. ``RawIndex``
+        entries carry no ``fields`` key and are skipped; a non-leading composite
+        column is deliberately *not* covered, because a filter on it alone
+        cannot use the composite index.
+        """
+        # ``identity_field`` is always present and non-empty for an aggregate
+        # (the extractor defaults it to ``"id"``), so it seeds the set directly.
+        covered: set[str] = {aggregate["identity_field"]}
+
+        for field_name, field in aggregate.get("fields", {}).items():
+            # A field-level ``unique`` constraint is a real index on a relational
+            # backend. The identifier never carries this key (the extractor omits
+            # it as redundant), so this is only non-PK unique fields.
+            if field.get("unique"):
+                covered.add(field_name)
+
+        for index in aggregate.get("indexes", []):
+            # Only ``Index`` entries carry a ``fields`` key; ``RawIndex`` carries
+            # opaque DDL and no fields, and the missing key guards the lookup.
+            columns = index.get("fields")
+            if columns:
+                covered.add(columns[0])
+
+        return covered
+
+    @staticmethod
+    def _resolve_filter_target(
+        receiver_fqn: str | None,
+        element_fqn: str,
+        repo_to_aggregate: dict[str, str],
+        aggregate_fqns: set[str],
+    ) -> str | None:
+        """Resolve a query call-site to the aggregate FQN it filters, or ``None``.
+
+        Four cases, conservative by design (ADR-0019):
+
+        1. the receiver resolves to a registered **repository** → that
+           repository's aggregate;
+        2. the receiver resolves to a registered **aggregate** → that aggregate;
+        3. the receiver is self-rooted (``self._dao``, no FQN) and the enclosing
+           element is a repository → that repository's aggregate
+           (``element_fqn`` is the repository, so it is a key of the map);
+        4. anything else — a variable-held or otherwise unresolvable receiver, a
+           receiver that resolves to some other element, or a self-rooted query
+           outside a repository — returns ``None``, skipped rather than guessed.
+
+        Every returned FQN is a cluster key, because ``repo_to_aggregate`` maps
+        only into clusters and ``aggregate_fqns`` *is* the cluster key set.
+        """
+        if receiver_fqn is None:
+            # Case 3 (repository self-query) or 4: ``get`` returns ``None`` for a
+            # self-rooted query written outside a repository.
+            return repo_to_aggregate.get(element_fqn)
+        if receiver_fqn in repo_to_aggregate:
+            return repo_to_aggregate[receiver_fqn]  # case 1
+        if receiver_fqn in aggregate_fqns:
+            return receiver_fqn  # case 2
+        return None  # case 4
+
+    def _emit_unindexed_filter_path(
+        self,
+        aggregate: dict[str, Any],
+        field_name: str,
+        source_fqn: str,
+        method_name: str,
+        location: SourceLocation,
+    ) -> None:
+        """Append one UNINDEXED_FILTER_PATH finding for a filtered field.
+
+        The call-site is named by the enclosing element's FQN, its method, and
+        the source line — all stable across machines. The absolute file path the
+        substrate carries is deliberately kept out of the message: diagnostics
+        are part of the content-checksummed IR (see
+        :data:`~protean.ir.constants.VOLATILE_IR_KEYS`), and an absolute path
+        would make a committed baseline machine-specific.
+        """
+        where = f"{source_fqn}.{method_name}, line {location.line}"
+        rule = {
+            "rationale": (
+                "A repository filter on a field with no covering index forces a "
+                "full table scan on a relational backend. The cost is invisible "
+                "on small development data and grows with the production table."
+            ),
+            "fix": (
+                "Add an index led by this field to the aggregate "
+                '(`indexes=[Index("field")]`), or suppress the check when the '
+                "table is small or the query is a one-off (admin/reporting)."
+            ),
+        }
+        self._diagnostics.append(
+            {
+                "code": "UNINDEXED_FILTER_PATH",
+                "category": "persistence",
+                "element": aggregate["fqn"],
+                "level": "warning",
+                "field": field_name,
+                "message": (
+                    f"Field `{field_name}` on aggregate `{aggregate['name']}` is "
+                    f"filtered by `{where}` but no declared index covers it, so "
+                    f"the query scans the whole table."
+                ),
+                "rule": rule,
+                "suggestion": (
+                    f'Index("{field_name}")  # add to `{aggregate["name"]}` indexes'
+                ),
+            }
+        )
 
     def _diagnose_upcaster_gap(self, ir: dict[str, Any]) -> None:
         """UPCASTER_GAP: an event at version N>1 whose stored predecessors have

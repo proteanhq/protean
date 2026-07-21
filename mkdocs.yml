@@ -468,6 +468,7 @@ nav:
       - concepts/protean-check/behavioral-analysis.md
       - concepts/protean-check/rules/unbounded-indexed-string.md
       - concepts/protean-check/rules/adapter-call-from-domain.md
+      - concepts/protean-check/rules/unindexed-filter-path.md
 
   - Patterns & Recipes:
     - patterns/index.md
