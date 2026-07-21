@@ -82,7 +82,7 @@ Current Implementations:
 
 !!!tip "Build your own"
     All adapter types support third-party extensions via Python entry points.
-    See [Building Adapters](../../community/contributing/adapters.md) for an
+    See [Building Adapters](./building-adapters.md) for an
     overview, or jump directly to
     [Custom Database Adapters](./database/custom-databases.md) or
     [Custom Brokers](./broker/custom-brokers.md) for detailed guides.

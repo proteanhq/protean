@@ -429,4 +429,4 @@ Design reasoning and internal architecture for contributors and advanced users.
 - [Development Setup](./community/contributing/setup.md) -- Set up Protean locally for contributing.
 - [Testing Protean](./community/contributing/testing.md) -- Test strategy, fixtures, and running the suite.
 - [Mutation Testing](./community/contributing/mutation-testing.md) -- Find under-asserted code paths with `make mutation` and close them with new tests.
-- [Building Adapters](./community/contributing/adapters.md) -- Overview of creating custom adapters for databases, brokers, event stores, and caches with links to per-port guides.
+- [Building Adapters](./reference/adapters/building-adapters.md) -- Overview of creating custom adapters for databases, brokers, event stores, and caches with links to per-port guides.

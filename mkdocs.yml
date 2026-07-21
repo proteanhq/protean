@@ -349,6 +349,7 @@ nav:
       - reference/server/hardening.md
     - Adapters:
       - reference/adapters/index.md
+      - Building Adapters: reference/adapters/building-adapters.md
       - Database:
         - reference/adapters/database/index.md
         - reference/adapters/database/memory.md
@@ -552,9 +553,8 @@ nav:
 
   - Community:
     - community/index.md
-    - Contributing:
+    - Developer setup:
       - community/contributing/setup.md
       - community/contributing/testing.md
       - community/contributing/mutation-testing.md
-      - community/contributing/adapters.md
     - Quality Report: community/quality.md

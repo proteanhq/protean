@@ -226,4 +226,4 @@ see [Dual-Mode Testing](../../patterns/dual-mode-testing.md).
 - [Dual-Mode Testing](../../patterns/dual-mode-testing.md) — Running the same suite against memory and real adapters.
 - [Using the Outbox](../server/outbox.md) — Reliable event publishing over the broker port.
 - [Event Store Setup](../change-state/event-store-setup.md) — Detailed event store configuration and operations.
-- [Custom Adapters](../../community/contributing/adapters.md) — Writing your own for ports the built-in adapters don't cover.
+- [Custom Adapters](../../reference/adapters/building-adapters.md) — Writing your own for ports the built-in adapters don't cover.

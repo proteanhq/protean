@@ -28,7 +28,7 @@ you. The contributions below are genuinely valuable and actively wanted.
    through a public port contract and are verified by a conformance suite.
    Adapters live in their own packages, owned by their authors, rather than in
    the core. See
-   [Building Adapters](https://docs.proteanhq.com/community/contributing/adapters/).
+   [Building Adapters](https://docs.proteanhq.com/reference/adapters/building-adapters/).
 4. **Improve documentation.** Corrections and clarifications are welcome, and
    small doc fixes can go straight to a pull request.
 
