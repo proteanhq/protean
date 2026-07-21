@@ -237,10 +237,13 @@ runs:
       run: uv run coverage report --fail-under=94
 
     # Upload from the FULL leg even when tests fail, so partial coverage is
-    # visible; skip only on cancellation.
+    # visible; skip only on cancellation. `fail_ci_if_error` makes a rejected
+    # upload (missing/invalid token, Codecov outage) fail this leg instead of
+    # silently leaving the required `codecov/patch` check unreported.
     - name: CodeCOV
       if: ${{ !cancelled() && inputs.upload-coverage == 'true' }}
       uses: codecov/codecov-action@v7.0.0
       with:
         files: coverage.xml
         token: ${{ inputs.codecov-token }}
+        fail_ci_if_error: true
