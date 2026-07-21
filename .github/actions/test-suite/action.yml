@@ -61,9 +61,15 @@ runs:
           "ghcr.io/proteanhq/mirror/mssql-server:2022-latest"
         )
 
-        if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ]; then
+        # A cache-hit with no tarballs (e.g. a cache saved by an interrupted
+        # run) would otherwise iterate the literal glob and fail `docker load`;
+        # nullglob makes the array empty and we fall through to pulling.
+        shopt -s nullglob
+        cached_tarballs=(/tmp/docker-images/*.tar)
+
+        if [ "${{ steps.docker-cache.outputs.cache-hit }}" == "true" ] && [ ${#cached_tarballs[@]} -gt 0 ]; then
           echo "Loading cached Docker images..."
-          for f in /tmp/docker-images/*.tar; do
+          for f in "${cached_tarballs[@]}"; do
             docker load -i "$f" &
           done
           wait
@@ -177,7 +183,15 @@ runs:
         sudo apt-get update
         sudo apt-get install -y curl gnupg apt-transport-https
         curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc >/dev/null
-        curl -sSL https://packages.microsoft.com/config/ubuntu/24.04/prod.list | sudo tee /etc/apt/sources.list.d/microsoft-prod.list >/dev/null
+        # Match the runner's Ubuntu release so this keeps working when
+        # `ubuntu-latest` advances; fall back to 24.04 (the last release we know
+        # Microsoft publishes a feed for) if the current release has none yet.
+        ubuntu_ver="$(. /etc/os-release && echo "${VERSION_ID}")"
+        if ! curl -fsSL "https://packages.microsoft.com/config/ubuntu/${ubuntu_ver}/prod.list" -o /tmp/mssql-prod.list; then
+          echo "No Microsoft feed for Ubuntu ${ubuntu_ver}; falling back to 24.04."
+          curl -fsSL "https://packages.microsoft.com/config/ubuntu/24.04/prod.list" -o /tmp/mssql-prod.list
+        fi
+        sudo cp /tmp/mssql-prod.list /etc/apt/sources.list.d/microsoft-prod.list
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
         echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
