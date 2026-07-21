@@ -6,6 +6,7 @@ from protean.fields import Identifier, List, Reference
 from protean.fields.simple import Float, String
 from protean.ir.builder import IRBuilder
 from tests.ir.support import (
+    adapter_call_domain,
     infra_import_domain,
 )
 
@@ -33,6 +34,7 @@ _BUILTIN_CODES = frozenset(
         "AGGREGATE_NO_INVARIANTS",
         "CIRCULAR_CLUSTER_DEPENDENCY",
         "INFRA_IMPORT_IN_DOMAIN",
+        "ADAPTER_CALL_IN_DOMAIN",
         "QUERY_HANDLER_WITHOUT_QUERY",
         "PROJECTOR_HANDLES_ORPHANED_EVENT",
         "COMMAND_HANDLER_CROSS_CLUSTER",
@@ -341,6 +343,13 @@ def _all_builtin_diagnostics() -> list[dict]:
     infra_domain.init(traverse=False)
     diagnostics += IRBuilder(infra_domain).build()["diagnostics"]
 
+    # ADAPTER_CALL_IN_DOMAIN — opt-in; the fixture method calls protean.adapters.
+    adapter_domain = Domain(name="EnrichAdapterCall", root_path=".")
+    adapter_domain.config["lint"] = {"check_adapter_calls": True}
+    adapter_domain.register(adapter_call_domain.AdapterCallOrder)
+    adapter_domain.init(traverse=False)
+    diagnostics += IRBuilder(adapter_domain).build()["diagnostics"]
+
     # 3.5.4 flow-fitness rules reachable from a live domain.
     diagnostics += IRBuilder(_build_flow_fitness_domain()).build()["diagnostics"]
 
@@ -458,6 +467,26 @@ def _circular_findings(ir: dict) -> list[dict]:
 
 def _infra_findings(ir: dict) -> list[dict]:
     return [d for d in ir["diagnostics"] if d["code"] == "INFRA_IMPORT_IN_DOMAIN"]
+
+
+def _adapter_findings(ir: dict) -> list[dict]:
+    return [d for d in ir["diagnostics"] if d["code"] == "ADAPTER_CALL_IN_DOMAIN"]
+
+
+def _build_adapter_call_domain(
+    name: str, lint: dict | None = None, elements: tuple[type, ...] | None = None
+) -> Domain:
+    """Register adapter-call fixture element(s) onto a fresh domain.
+
+    ``elements`` defaults to the single positive-case aggregate; pass a tuple to
+    register several fixture classes at once. ``lint`` populates ``[lint]``."""
+    domain = Domain(name=name, root_path=".")
+    if lint is not None:
+        domain.config["lint"] = lint
+    for cls in elements or (adapter_call_domain.AdapterCallOrder,):
+        domain.register(cls)
+    domain.init(traverse=False)
+    return domain
 
 
 def _build_infra_domain(name: str, lint: dict | None = None, **register_kwargs):
