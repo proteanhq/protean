@@ -31,7 +31,7 @@ from protean.fields.embedded import ValueObject
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
-from protean.ir.analysis import ElementIndex, SourceProvider
+from protean.ir.analysis import BehavioralView, ElementIndex, SourceProvider
 from protean.ir.constants import VOLATILE_IR_KEYS
 from protean.utils import fqn
 from protean.utils.container import Element, OptionsMixin
@@ -177,6 +177,7 @@ class IRBuilder:
         self._diagnostics: list[dict[str, Any]] = []
         self._source: SourceProvider | None = None
         self._index: ElementIndex | None = None
+        self._view: BehavioralView | None = None
 
     @property
     def source(self) -> SourceProvider:
@@ -204,6 +205,21 @@ class IRBuilder:
         if self._index is None:
             self._index = ElementIndex(self._domain, self.source)
         return self._index
+
+    @property
+    def view(self) -> BehavioralView:
+        """Queryable behavioral view over the parsed sources, for rules.
+
+        One view per builder, sharing this builder's :attr:`source` provider and
+        :attr:`index`, so the modules a rule already read are not parsed again
+        for their facts or dataflow. It is the single object a ``_diagnose_*``
+        rule asks for method-level facts and flow, the way it reads the IR —
+        created on first use, and each layer under it stays lazy, so a build
+        whose rules never ask for it costs nothing.
+        """
+        if self._view is None:
+            self._view = BehavioralView(self._domain, self.source, self.index)
+        return self._view
 
     # ------------------------------------------------------------------
     # Public API

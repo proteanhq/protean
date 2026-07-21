@@ -465,6 +465,7 @@ nav:
       - concepts/internals/event-upcasting.md
       - concepts/internals/ir-specification.md
     - Architecture Checks:
+      - concepts/protean-check/behavioral-analysis.md
       - concepts/protean-check/rules/unbounded-indexed-string.md
 
   - Patterns & Recipes:
