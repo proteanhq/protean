@@ -1604,6 +1604,7 @@ class IRBuilder:
         self._diagnose_value_object_mutable_field(ir)
         self._diagnose_circular_cluster_dependencies(ir)
         self._diagnose_infra_imports(ir)
+        self._diagnose_adapter_calls(ir)
         self._diagnose_query_handler_without_query(ir)
         self._diagnose_projector_handles_orphaned_event(ir)
         self._diagnose_command_handler_cross_cluster(ir)
@@ -1894,6 +1895,94 @@ class IRBuilder:
                         ),
                     }
                 )
+
+    def _diagnose_adapter_calls(self, ir: dict[str, Any]) -> None:
+        """ADAPTER_CALL_IN_DOMAIN (opt-in): a domain element's method body calls
+        a concrete adapter under ``protean.adapters``, coupling the domain layer
+        to infrastructure at runtime.
+
+        Off by default; runs only when ``[lint].check_adapter_calls`` is true,
+        because it parses method bodies (heavier than the module-import scan
+        :meth:`_diagnose_infra_imports` does). A dedicated flag, not a reuse of
+        ``check_infra_imports``, so each rule stays independently switchable.
+
+        Catches coupling one level deeper than ``INFRA_IMPORT_IN_DOMAIN``: an
+        adapter reached through ``import protean`` attribute access
+        (``protean.adapters.<pkg>.<Symbol>(...)``) is a real call-site coupling
+        the module-level import rule's name-prefix check does not see.
+
+        Conservative by construction: only a call whose callee *statically
+        resolves* under ``protean.adapters`` is flagged. A call whose callee does
+        not resolve — an adapter behind a function-local import, held in a local
+        variable, or fetched through ``current_domain.providers[...]`` — is
+        skipped, never guessed at, keeping the rule on the deterministic side of
+        ADR-0019. Scope is every non-internal registered element, so a class that
+        is not a domain element is never visited.
+        """
+        if not self._domain.config.get("lint", {}).get("check_adapter_calls", False):
+            return
+
+        ADAPTER_PREFIX = "protean.adapters"
+
+        rule = {
+            "rationale": (
+                "Domain elements must not depend on concrete infrastructure "
+                "adapters; calling into `protean.adapters` from a domain method "
+                "couples the domain layer to a specific adapter at runtime and "
+                "breaks the ports-and-adapters boundary."
+            ),
+            "fix": (
+                "Remove the `protean.adapters` call from the domain method. "
+                "Depend on domain-layer abstractions and let the adapter be "
+                "wired through the domain's provider configuration instead."
+            ),
+        }
+
+        # Iterate every non-internal registered element in a stable (fqn) order
+        # so emitted diagnostics are deterministic; dedupe by FQN as the
+        # module-import rule does.
+        registry = self._domain._domain_registry
+        seen: set[str] = set()
+        scanned: list[tuple[str, type]] = []  # (fqn, cls)
+        for records in registry._elements.values():
+            for record in records.values():
+                if record.internal:
+                    continue
+                element_fqn = fqn(record.cls)
+                if element_fqn in seen:
+                    continue
+                seen.add(element_fqn)
+                scanned.append((element_fqn, record.cls))
+
+        for element_fqn, cls in sorted(scanned, key=lambda pair: pair[0]):
+            name = cls.__name__
+            # Facts come method-name-ordered, calls within a method in source
+            # order — so one diagnostic per adapter call-site, in a stable order.
+            for method_name, facts in self.view.element_facts(cls).items():
+                for call in facts.calls:
+                    callee = call.callee_fqn
+                    if callee is None:
+                        continue
+                    if callee != ADAPTER_PREFIX and not callee.startswith(
+                        ADAPTER_PREFIX + "."
+                    ):
+                        continue
+                    self._diagnostics.append(
+                        {
+                            "code": "ADAPTER_CALL_IN_DOMAIN",
+                            "category": "bounded_context",
+                            "element": element_fqn,
+                            "level": "warning",
+                            "message": (
+                                f"Domain element `{name}` calls "
+                                f"`{callee}` in method `{method_name}` "
+                                f"(line {call.location.line}), coupling the "
+                                f"domain to `protean.adapters`."
+                            ),
+                            "rule": rule,
+                            "suggestion": rule["fix"],
+                        }
+                    )
 
     def _diagnose_event_handler_foreign_event(self, ir: dict[str, Any]) -> None:
         """EVENT_HANDLER_FOREIGN_EVENT: an event handler whose ``part_of``
