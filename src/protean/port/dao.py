@@ -52,7 +52,9 @@ def _stamp_lifecycle_timestamps(entity_obj: Any, *, is_create: bool) -> None:
         base_type = next(
             (a for a in get_args(base_type) if a is not type(None)), base_type
         )
-        value: datetime.date = now.date() if base_type is datetime.date else now
+        value: datetime.date | datetime.datetime = (
+            now.date() if base_type is datetime.date else now
+        )
         setattr(entity_obj, name, value)
 
 

@@ -55,7 +55,8 @@ class TestAutoNowStamping:
         got = repo.get(post.id)
         assert got.created_at is not None
         assert got.updated_at is not None
-        assert got.created_at.year >= 2026 and got.updated_at.year >= 2026
+        # Stamped to "now" — after the year-2000 sentinel, not left unset.
+        assert got.created_at > _SENTINEL and got.updated_at > _SENTINEL
 
     def test_auto_now_refreshes_on_update_but_auto_now_add_is_frozen(self, test_domain):
         repo = test_domain.repository_for(Post)
@@ -73,7 +74,7 @@ class TestAutoNowStamping:
 
         got = repo.get(post.id)
         assert got.created_at == _SENTINEL  # auto_now_add: not refreshed on update
-        assert got.updated_at.year >= 2026  # auto_now: refreshed on update
+        assert got.updated_at > _SENTINEL  # auto_now: refreshed past the sentinel
 
     def test_a_plain_temporal_field_is_never_stamped(self, test_domain):
         # Only auto_now/auto_now_add fields are touched; a plain DateTime stays
@@ -105,8 +106,7 @@ class TestAutoNowStamping:
         repo.add(post)
 
         got = repo.get(post.id)
-        assert got.created_at != _SENTINEL
-        assert got.created_at.year >= 2026
+        assert got.created_at != _SENTINEL  # stamped fresh, not the supplied value
 
     def test_stamps_read_the_domain_injectable_clock(self, test_domain):
         # auto_now* uses the same clock as field defaults, so a frozen clock

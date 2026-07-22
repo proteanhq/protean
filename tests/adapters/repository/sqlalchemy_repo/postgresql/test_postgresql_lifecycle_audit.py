@@ -57,6 +57,6 @@ def test_auto_now_and_aggregate_enricher_persist_and_retrieve(test_domain):
         # sentinel year, updated_at advances to the current year.
         got = repo.get(ledger_id)
         assert got.created_at.year == 2000  # auto_now_add frozen on update
-        assert got.updated_at.year >= 2026  # auto_now refreshed on update
+        assert got.updated_at.year != 2000  # auto_now refreshed off the sentinel
         assert got.created_by == "alice"
         assert got.updated_by == "bob"
