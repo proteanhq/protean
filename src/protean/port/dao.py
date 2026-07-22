@@ -152,6 +152,17 @@ class BaseDAO(metaclass=ABCMeta):
             finally:
                 conn.close()
 
+    def _rollback_if_standalone(self, conn: Any) -> None:
+        """Roll back and release the connection on an error path when standalone.
+
+        The error-path counterpart to :meth:`_commit_if_standalone`: within a
+        UoW the UoW owns rollback/close, but a standalone DAO owns its own
+        connection and must release it before propagating the exception.
+        """
+        if self._is_standalone:
+            conn.rollback()
+            conn.close()
+
     def _flush(self) -> None:
         """Flush pending writes to the data store within the active
         transaction, without committing.

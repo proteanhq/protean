@@ -784,6 +784,20 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     cls.__dict__.get("__table_args__"), sa_indexes
                 )
 
+        # Native optimistic-concurrency guard: with a ``_version`` column the
+        # flush emits ``UPDATE … WHERE _version = :loaded`` and raises
+        # ``StaleDataError`` when a concurrent commit already advanced the
+        # version. Protean owns the version value (version_id_generator=False)
+        # via ``BaseDAO._validate_and_update_version``, so the check is atomic at
+        # flush/commit even under the deferred-write AUTOCOMMIT model (#1087).
+        version_col = cls.__dict__.get("_version")
+        if version_col is not None:
+            cls.__mapper_args__ = {
+                **cls.__dict__.get("__mapper_args__", {}),
+                "version_id_col": version_col,
+                "version_id_generator": False,
+            }
+
         super().__init_subclass__(**kwargs)
 
         # Emit verbatim DDL for RawIndex escape-hatch declarations whose
@@ -1010,11 +1024,18 @@ class SADAO(BaseDAO):
     ) -> typing.Any:
         """Update a record in the sqlalchemy database.
 
-        When ``expected_version`` is not ``None``, the stored version is
-        verified before applying changes.  The check + write happen within
-        the same ORM session (and therefore the same DB transaction when a
-        UoW is active), so concurrent commits are caught by the database's
-        own conflict detection at commit time.
+        The model carries a ``version_id_col`` (see :class:`SqlalchemyModel`), so
+        changes are applied through the ORM and the flush emits
+        ``UPDATE … SET … WHERE _version = :loaded``. If a concurrent commit
+        advanced the version after this read, the flush matches zero rows and
+        SQLAlchemy raises ``StaleDataError``, which the persistence layer maps to
+        :class:`ExpectedVersionError`. Deferring the write to the flush keeps it
+        invisible until the UnitOfWork commits (the adapter runs an AUTOCOMMIT
+        engine), while the version predicate keeps the guard atomic — a plain
+        ``UPDATE … WHERE id`` would let two readers of the same version both
+        write and lose one update. When ``expected_version`` is not ``None`` the
+        Python check below additionally rejects a version already stale at read
+        time.
         """
         conn = self._get_session()
         assert conn is not None
@@ -1022,42 +1043,35 @@ class SADAO(BaseDAO):
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
         assert entity_id_field.attribute_name is not None
+        id_attr = entity_id_field.attribute_name
 
-        # Fetch the record from database
-        identifier = getattr(model_obj, entity_id_field.attribute_name)
+        identifier = getattr(model_obj, id_attr)
         db_item = conn.get(self.database_model_cls, identifier)
 
         if db_item is None:
-            if self._is_standalone:
-                conn.rollback()
-                conn.close()
+            self._rollback_if_standalone(conn)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
             )
 
-        # Atomic version check within the same transaction
         if expected_version is not None:
             stored_version = getattr(db_item, "_version", None)
             if stored_version != expected_version:
-                if self._is_standalone:
-                    conn.rollback()
-                    conn.close()
+                self._rollback_if_standalone(conn)
                 raise ExpectedVersionError(
                     f"Wrong expected version: {expected_version} "
                     f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
                     f"Version: {stored_version})"
                 )
 
-        # Sync DB Record with current changes
         for attribute in attributes(self.entity_cls):
-            if attribute != entity_id_field.attribute_name and getattr(
-                model_obj, attribute
-            ) != getattr(db_item, attribute):
+            if attribute != id_attr and getattr(model_obj, attribute) != getattr(
+                db_item, attribute
+            ):
                 setattr(db_item, attribute, getattr(model_obj, attribute))
 
         self._commit_if_standalone(conn)
-
         return model_obj
 
     def _update_all(
@@ -1213,9 +1227,7 @@ class SADAO(BaseDAO):
         db_item = conn.get(self.database_model_cls, identifier)
 
         if db_item is None:
-            if self._is_standalone:
-                conn.rollback()
-                conn.close()
+            self._rollback_if_standalone(conn)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."

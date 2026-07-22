@@ -10,7 +10,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import ExpectedVersionError
+from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
 from protean.fields import Integer, String
 
 
@@ -148,3 +148,72 @@ class TestVersionRoundTrip:
         updated = test_domain.repository_for(Counter).get(identifier)
         assert updated._version == 1
         assert updated.value == 5
+
+
+@pytest.mark.basic_storage
+class TestReadAfterUpdateInSameUnitOfWork:
+    """Read-your-writes consistency: a re-read after an update in the same UoW
+    sees the new state (the ORM applies the change to the session-tracked
+    instance). This is a consistency guard, not the lost-update test — see the
+    postgres concurrency test for that."""
+
+    def test_reget_in_same_uow_reflects_the_update(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="c", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+        counter_id = counter.id
+
+        with UnitOfWork():
+            loaded = repo.get(counter_id)
+            loaded.value = 99
+            repo.add(loaded)
+            refetched = repo.get(counter_id)
+            assert refetched.value == 99
+            assert refetched._version == 1
+
+
+@pytest.mark.basic_storage
+class TestUpdateOfDeletedAggregate:
+    """Saving an aggregate whose row was deleted raises ObjectNotFoundError,
+    not ExpectedVersionError."""
+
+    def test_saving_a_deleted_aggregate_raises_object_not_found(self, test_domain):
+        repo = test_domain.repository_for(Counter)
+        counter = Counter(name="c", value=0)
+        with UnitOfWork():
+            repo.add(counter)
+        counter_id = counter.id
+
+        # Load a stale copy, then delete the row out from under it.
+        stale = repo.get(counter_id)
+        with UnitOfWork():
+            repo._dao.delete(repo.get(counter_id))
+
+        stale.value = 1
+        with pytest.raises(ObjectNotFoundError), UnitOfWork():
+            repo.add(stale)
+
+
+@pytest.mark.basic_storage
+class TestStandaloneStaleWrite:
+    """A stale write outside any UnitOfWork still raises ExpectedVersionError
+    (and cleans up its standalone session)."""
+
+    def test_standalone_stale_save_raises_expected_version_error(self, test_domain):
+        dao = test_domain.repository_for(Counter)._dao
+        counter = Counter(name="c", value=0)
+        test_domain.repository_for(Counter).add(counter)
+        counter_id = counter.id
+
+        first = test_domain.repository_for(Counter).get(counter_id)
+        second = test_domain.repository_for(Counter).get(counter_id)
+
+        # Both loaded version 0; commit the first (standalone), then the second
+        # is stale. No UnitOfWork wraps these, so the DAO runs standalone.
+        first.value = 1
+        dao.save(first)
+
+        second.value = 2
+        with pytest.raises(ExpectedVersionError):
+            dao.save(second)
