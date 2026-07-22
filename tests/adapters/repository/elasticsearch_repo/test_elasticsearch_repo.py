@@ -31,7 +31,7 @@ class TestElasticsearchRepository:
 
         assert person is not None
         assert person == persisted_person
-        assert person.id == identifier
+        assert person.id == str(identifier)
 
     def test_persistence_through_repository(self, test_domain):
         person_repo = test_domain.repository_for(Person)

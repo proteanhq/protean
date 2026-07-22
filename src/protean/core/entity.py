@@ -10,6 +10,7 @@ from enum import Enum
 from functools import partial
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     ClassVar,
     Self,
@@ -19,7 +20,7 @@ from typing import (
 )
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import BaseModel, BeforeValidator, ConfigDict, PrivateAttr
 from pydantic import Field as PydanticField
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.fields import FieldInfo
@@ -49,6 +50,7 @@ from protean.integrations.logging import (
 )
 from protean.utils import (
     DomainObjects,
+    _coerce_uuid_to_str,
     _derive_element_class,
     _generate_identity,
     inflection,
@@ -333,13 +335,16 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # No identifier found — inject auto-id
         if "id" not in own_annots:
             annots = dict(own_annots)
-            annots["id"] = str | int | UUID
+            annots["id"] = Annotated[
+                str | int | UUID, BeforeValidator(_coerce_uuid_to_str)
+            ]
             cls.__annotations__ = annots
             setattr(
                 cls,
                 "id",
                 PydanticField(
                     default_factory=_generate_identity,
+                    validate_default=True,
                     json_schema_extra={
                         "identifier": True,
                         "_auto_generated": True,

@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
-from protean.utils import DomainObjects, _derive_element_class
+from protean.utils import DomainObjects, _coerce_uuid_to_str, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.reflection import attributes, declared_fields
+from protean.utils.reflection import attributes, declared_fields, id_field
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
@@ -151,13 +151,22 @@ class BaseDatabaseModel(Element, OptionsMixin):
             (attr_name, attrs[attr_name].referenced_as or attr_name)
             for attr_name in fields
         ]
-        return [
-            Record(
-                entity_name,
-                {key: cls._get_value(item, source) for key, source in resolved},
-            )
-            for item in items
-        ]
+        # A uuid identity is a string in Python (ADR-0021). This read-optimized
+        # path bypasses entity construction (and its identity coercion), so an
+        # adapter that returns a native UUID for the id column (e.g. SQLAlchemy's
+        # GUID type) would surface one here; coerce the identity field itself.
+        id_f = id_field(cls.meta_.part_of)
+        id_name = id_f.field_name if id_f is not None else None
+        records = []
+        for item in items:
+            data = {}
+            for key, source in resolved:
+                value = cls._get_value(item, source)
+                if key == id_name:
+                    value = _coerce_uuid_to_str(value)
+                data[key] = value
+            records.append(Record(entity_name, data))
+        return records
 
 
 def _entity_to_dict(
