@@ -342,10 +342,12 @@ class BaseRepository(Element, OptionsMixin):
         still re-save the root to advance its ``_version``. This mirrors the
         direct-update detection in :meth:`_sync_children`: a child whose own
         attribute was edited carries ``state_.is_changed``, and the recursion
-        walks nested children the same way ``_sync_children`` does. Children newly
-        added via ``add_``/``remove_`` are excluded — ``mark_changed`` no-ops
-        while an entity is new, so their ``is_changed`` stays ``False`` — because
-        adding a child is handled separately and does not race the way concurrent
+        walks nested children the same way ``_sync_children`` does. Structural
+        ``add_``/``remove_`` changes to a collection are excluded for two distinct
+        reasons: a freshly *added* child is new, so ``mark_changed`` no-ops and its
+        ``is_changed`` stays ``False``; a *removed* child is no longer in the
+        collection this walks (it lives in the association's temp cache until the
+        sync). Those are handled separately and do not race the way concurrent
         edits of the same existing data do.
         """
         for field_name, field in association_fields(entity).items():
