@@ -798,7 +798,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             assert key is not None
             value = item_dict.get(key)
             if (isinstance(attr_obj, ValueObjectList) and value) or (
-                hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple))
+                hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple, dict))
             ):
                 item_dict[key] = attr_obj.as_dict(value)
 

@@ -206,3 +206,30 @@ Out[2]:
     by default. You can force it to store the pickled value as a Python object
     by specifying pickled=True. Databases that don’t support lists simply store
     the field as a python object.
+
+### Dict of Value Objects
+
+A `Dict` field can hold a string-keyed `code → value object` map with
+`value_type`. Each value is a `ValueObject` instance, reconstructed and validated
+on load and serialized to a plain dict for storage (a single JSON column), just
+like a [list of value objects](#list-of-value-objects):
+
+```python
+from protean.fields import Dict, String, ValueObject
+
+
+@domain.value_object
+class Address:
+    street: String(max_length=100)
+    city: String(max_length=25)
+
+
+@domain.aggregate
+class Customer:
+    name: String(max_length=50)
+    addresses: Dict(value_type=ValueObject(Address))   # {"home": Address(...), ...}
+```
+
+The values must be value objects; use the untyped `Dict()` for loose JSON of
+primitives. Reach for this when modelling a small, embedded `code → concept` map
+(see the [reference-data pattern](../../patterns/model-reference-data.md)).

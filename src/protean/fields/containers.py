@@ -78,22 +78,46 @@ def List(  # pyright: ignore[reportRedeclaration]
     return FieldSpec(python_type, content_type=content_type, **kwargs)
 
 
-def Dict(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
+def Dict(  # pyright: ignore[reportRedeclaration]
+    value_type: Any = None, **kwargs: Any
+) -> FieldSpec:
     """A dict/JSON field.
 
-    Accepts both ``dict`` and ``list`` values to support JSON columns that
-    may store either objects or arrays.  Defaults to an empty dict if no
-    default is provided.
+    ``value_type`` types the dict's values; keys are always ``str``:
+    - ``None``: ``Dict()`` → ``dict | list`` (untyped JSON — unchanged behavior)
+    - A ``ValueObject`` descriptor: ``Dict(value_type=ValueObject(Addr))`` →
+      ``dict[str, Addr]``, a ``code → value object`` map that reconstructs and
+      validates each value.
+
+    Use the untyped ``Dict()`` for loose JSON of primitives; the typed form is
+    for value-object maps.
     """
     # Dicts default to empty dict, not None
     if "default" not in kwargs and not kwargs.get("required", False):
         kwargs["default"] = dict  # Will become default_factory=dict
 
+    # Untyped JSON column (objects OR arrays) — unchanged legacy behavior.
     # ``dict | list`` is a ``types.UnionType`` accepted at runtime (FieldSpec
     # guards every python_type use with ``isinstance(..., type)``), but the
     # public ``FieldSpec.__init__`` still declares ``python_type: type``.
     # Cast until that exported signature is widened to ``type | UnionType``.
-    return FieldSpec(cast(type, dict | list), **kwargs)
+    if value_type is None:
+        return FieldSpec(cast(type, dict | list), **kwargs)
+
+    if not isinstance(value_type, VODescriptor):
+        raise ValidationError(
+            {
+                "value_type": [
+                    "value_type must be a ValueObject; use Dict() for untyped values"
+                ]
+            }
+        )
+
+    # ValueObject descriptors wrap a VO class (or a forward-ref string); use the
+    # actual VO type so Pydantic accepts and reconstructs VO instances directly.
+    python_type = dict[str, value_type.value_object_cls]
+
+    return FieldSpec(python_type, content_type=value_type, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -105,4 +129,6 @@ if TYPE_CHECKING:
         content_type: Any = None, pickled: bool = ..., **kwargs: Any
     ) -> list[Any]: ...
 
-    def Dict(**kwargs: Any) -> dict[str, Any]: ...  # type: ignore[misc]
+    def Dict(  # type: ignore[misc]
+        value_type: Any = None, **kwargs: Any
+    ) -> dict[str, Any]: ...
