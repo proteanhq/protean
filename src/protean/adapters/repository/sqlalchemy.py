@@ -1010,11 +1010,16 @@ class SADAO(BaseDAO):
     ) -> typing.Any:
         """Update a record in the sqlalchemy database.
 
-        When ``expected_version`` is not ``None``, the stored version is
-        verified before applying changes.  The check + write happen within
-        the same ORM session (and therefore the same DB transaction when a
-        UoW is active), so concurrent commits are caught by the database's
-        own conflict detection at commit time.
+        When ``expected_version`` is not ``None``, the write is a single
+        conditional ``UPDATE … WHERE id = :id AND _version = :expected``. The
+        database evaluates the predicate against the latest committed row under a
+        row lock as one atomic statement, so a concurrent commit that already
+        advanced ``_version`` matches zero rows and the stale write is rejected
+        with :class:`ExpectedVersionError` instead of silently overwriting it.
+        Because the guard is statement-level, it holds under PostgreSQL's default
+        ``READ COMMITTED`` (and weaker) without a serial isolation level. A
+        non-locking read-compare-write would lose the update: two transactions
+        can both read the old version and both write.
         """
         conn = self._get_session()
         assert conn is not None
@@ -1022,42 +1027,64 @@ class SADAO(BaseDAO):
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
         assert entity_id_field.attribute_name is not None
+        id_attr = entity_id_field.attribute_name
+        identifier = getattr(model_obj, id_attr)
 
-        # Fetch the record from database
-        identifier = getattr(model_obj, entity_id_field.attribute_name)
-        db_item = conn.get(self.database_model_cls, identifier)
-
-        if db_item is None:
-            if self._is_standalone:
-                conn.rollback()
-                conn.close()
-            raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
-            )
-
-        # Atomic version check within the same transaction
         if expected_version is not None:
-            stored_version = getattr(db_item, "_version", None)
-            if stored_version != expected_version:
-                if self._is_standalone:
-                    conn.rollback()
-                    conn.close()
+            model_cls = self.database_model_cls
+            mapper = inspect(model_cls)
+            values = {
+                column: getattr(model_obj, column.key)
+                for column in mapper.columns
+                if column.key != id_attr
+            }
+            result = conn.execute(
+                update(model_cls)
+                .where(
+                    getattr(model_cls, id_attr) == identifier,
+                    getattr(model_cls, "_version") == expected_version,
+                )
+                .values(values)
+            )
+            if result.rowcount == 0:
+                # Zero matched rows: the row is gone, or its version has moved.
+                # Fetch it fresh (``populate_existing`` overrides any cached
+                # instance) to raise the precise error and report the actual
+                # current version, before standalone cleanup releases the session.
+                current = conn.get(model_cls, identifier, populate_existing=True)
+                stored_version = getattr(current, "_version", None)
+                self._rollback_if_standalone(conn)
+                if current is None:
+                    raise ObjectNotFoundError(
+                        f"`{self.entity_cls.__name__}` object with identifier "
+                        f"{identifier} does not exist."
+                    )
                 raise ExpectedVersionError(
                     f"Wrong expected version: {expected_version} "
                     f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
                     f"Version: {stored_version})"
                 )
+            # ``update(model_cls)`` is an ORM-enabled statement, so its default
+            # ``synchronize_session`` keeps any instance loaded earlier in this
+            # session consistent with the write — no manual expire needed.
+            self._commit_if_standalone(conn)
+            return model_obj
 
-        # Sync DB Record with current changes
+        # No optimistic-concurrency guard: load the record and sync changes.
+        db_item = conn.get(self.database_model_cls, identifier)
+        if db_item is None:
+            self._rollback_if_standalone(conn)
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
         for attribute in attributes(self.entity_cls):
-            if attribute != entity_id_field.attribute_name and getattr(
-                model_obj, attribute
-            ) != getattr(db_item, attribute):
+            if attribute != id_attr and getattr(model_obj, attribute) != getattr(
+                db_item, attribute
+            ):
                 setattr(db_item, attribute, getattr(model_obj, attribute))
 
         self._commit_if_standalone(conn)
-
         return model_obj
 
     def _update_all(
@@ -1213,9 +1240,7 @@ class SADAO(BaseDAO):
         db_item = conn.get(self.database_model_cls, identifier)
 
         if db_item is None:
-            if self._is_standalone:
-                conn.rollback()
-                conn.close()
+            self._rollback_if_standalone(conn)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."

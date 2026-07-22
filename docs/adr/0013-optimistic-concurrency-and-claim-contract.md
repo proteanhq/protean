@@ -110,6 +110,18 @@ epic 5.1 (`BaseDAO._validate_and_update_version`): version checking guards
 *aggregate updates* against lost writes, while `_claim` guards
 *queue-style claims* against double processing.
 
+Both rely on the same principle: a single guarded `UPDATE … WHERE <expected
+state>` that the database evaluates atomically under a row lock. Because the
+guard is statement-level, it is correct under PostgreSQL's default `READ
+COMMITTED` (and weaker) without needing a serial isolation level; the same holds
+on MySQL/InnoDB, whose `UPDATE … WHERE` performs a locking current read even
+under its `REPEATABLE READ` default. The SQLAlchemy adapter enforces an aggregate
+update as `UPDATE … SET … WHERE id = :id AND _version = :expected` and raises
+`ExpectedVersionError` when zero rows match. A non-atomic read-compare-write
+(read the version in Python, compare, then write unconditionally) would *not*
+hold: two transactions can both read the same version and both write, silently
+losing one update — which is exactly the failure the guarded `UPDATE` prevents.
+
 ## Consequences
 
 - The outbox poll path drops from `1 + N` round trips to one (fast path) or
