@@ -153,9 +153,9 @@ class TestVersionRoundTrip:
 @pytest.mark.basic_storage
 class TestReadAfterUpdateInSameUnitOfWork:
     """Read-your-writes consistency: a re-read after an update in the same UoW
-    sees the new state, so the conditional UPDATE's ``synchronize_session`` keeps
-    the ORM identity map consistent. (This is a consistency guard, not the
-    lost-update test — see the postgres concurrency test for that.)"""
+    sees the new state (the ORM applies the change to the session-tracked
+    instance). This is a consistency guard, not the lost-update test — see the
+    postgres concurrency test for that."""
 
     def test_reget_in_same_uow_reflects_the_update(self, test_domain):
         repo = test_domain.repository_for(Counter)

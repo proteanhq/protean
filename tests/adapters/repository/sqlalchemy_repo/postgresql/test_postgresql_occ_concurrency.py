@@ -1,9 +1,10 @@
 """Concurrency regression for optimistic-concurrency lost updates.
 
-The bug: the SQLAlchemy ``_update`` used a non-atomic read-compare-write, so
-under ``READ COMMITTED`` two transactions could both read the same version and
-both write — silently losing an update with no ``ExpectedVersionError``. The
-fix makes the write a single conditional ``UPDATE … WHERE _version = :expected``.
+The bug: the aggregate version check was a non-atomic read-compare-write, so two
+transactions could both read the same version and both write — silently losing an
+update with no ``ExpectedVersionError``. The fix maps a SQLAlchemy
+``version_id_col`` so the update flush is guarded by ``WHERE _version = :loaded``
+and a stale write raises ``StaleDataError`` (surfaced as ``ExpectedVersionError``).
 
 This needs a real PostgreSQL backend (the in-memory adapter uses a process-wide
 lock that masks the race) and one live connection per worker thread, so the test
@@ -14,6 +15,7 @@ shared ``pool_size = 1`` fixture.
 import threading
 
 import pytest
+from sqlalchemy import text
 
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
@@ -128,3 +130,37 @@ def test_concurrent_updates_do_not_silently_lose_writes(concurrency_domain):
     assert success == 1
     assert conflict == _WORKERS - 1
     assert final.value in range(1, _WORKERS + 1)
+
+
+@pytest.mark.postgresql
+def test_flush_time_version_conflict_raises_expected_version_error(concurrency_domain):
+    """A version bump committed out-of-band after the add but before the UoW
+    commit makes the flush's version_id_col guard match zero rows; the resulting
+    StaleDataError surfaces as ExpectedVersionError (a deterministic, single-
+    threaded exercise of the flush-time guard and its translation)."""
+    domain = concurrency_domain
+
+    with UnitOfWork():
+        seed = OCCCounter(value=0)
+        domain.repository_for(OCCCounter).add(seed)
+    counter_id = seed.id
+
+    with pytest.raises(ExpectedVersionError):
+        with UnitOfWork():
+            repo = domain.repository_for(OCCCounter)
+            counter = repo.get(counter_id)
+            counter.value = 5
+            repo.add(counter)
+
+            # Advance the row's version through an independent connection, after
+            # the in-UoW read+add but before the deferred flush at commit.
+            provider = domain.providers["default"]
+            with provider._engine.connect() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE occ_counter SET _version = _version + 1 WHERE id = :id"
+                    ),
+                    {"id": counter_id},
+                )
+                conn.commit()
+            # Exiting the UoW commits -> flush -> StaleDataError -> translated.

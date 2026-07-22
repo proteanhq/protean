@@ -394,6 +394,14 @@ class UnitOfWork:
             set_span_error(span, exc)
             raise exc
         except Exception as exc:
+            # A SQLAlchemy version_id_col mismatch surfaces at flush/commit as
+            # StaleDataError. That is an optimistic-concurrency conflict, not a
+            # generic transaction failure, so translate it to ExpectedVersionError
+            # (matching the event-store P0001 path above) for the retry machinery.
+            if type(exc).__name__ == "StaleDataError":
+                logger.exception("uow.commit_failed", exc_info=True)
+                set_span_error(span, exc)
+                raise ExpectedVersionError(str(exc)) from None
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise TransactionError(

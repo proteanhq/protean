@@ -110,17 +110,24 @@ epic 5.1 (`BaseDAO._validate_and_update_version`): version checking guards
 *aggregate updates* against lost writes, while `_claim` guards
 *queue-style claims* against double processing.
 
-Both rely on the same principle: a single guarded `UPDATE … WHERE <expected
-state>` that the database evaluates atomically under a row lock. Because the
-guard is statement-level, it is correct under PostgreSQL's default `READ
-COMMITTED` (and weaker) without needing a serial isolation level; the same holds
-on MySQL/InnoDB, whose `UPDATE … WHERE` performs a locking current read even
-under its `REPEATABLE READ` default. The SQLAlchemy adapter enforces an aggregate
-update as `UPDATE … SET … WHERE id = :id AND _version = :expected` and raises
-`ExpectedVersionError` when zero rows match. A non-atomic read-compare-write
-(read the version in Python, compare, then write unconditionally) would *not*
-hold: two transactions can both read the same version and both write, silently
-losing one update — which is exactly the failure the guarded `UPDATE` prevents.
+Both rely on the same principle: a guarded `UPDATE … WHERE <expected state>` so
+the database, not the application, decides the winner. For aggregate updates the
+adapter enforces this with SQLAlchemy's native **`version_id_col`**: Protean owns
+the version value (`version_id_generator=False`, advanced by
+`_validate_and_update_version`), and the ORM flush emits `UPDATE … SET … ,
+_version = <new> WHERE id = :id AND _version = <loaded>`, raising `StaleDataError`
+— translated to `ExpectedVersionError` at commit — when a concurrent write already
+advanced the version. `version_id_col` is used here (rather than issuing an eager
+`UPDATE … WHERE _version = :expected` from the adapter) because the SQLAlchemy
+provider runs an **AUTOCOMMIT engine**: the UnitOfWork achieves atomicity by
+deferring every write to a single flush at commit, so an eager statement would
+autocommit mid-UoW and break transaction isolation and rollback. Because the
+version predicate rides the deferred flush, the guard is atomic without a serial
+isolation level while the write stays invisible until commit. A non-atomic
+read-compare-write (read the version in Python, compare, then write
+unconditionally) would *not* hold: two transactions can both read the same
+version and both write, silently losing one update — the failure the guarded
+`UPDATE` prevents.
 
 ## Consequences
 
