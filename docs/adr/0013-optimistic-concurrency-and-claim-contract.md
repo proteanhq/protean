@@ -129,6 +129,42 @@ unconditionally) would *not* hold: two transactions can both read the same
 version and both write, silently losing one update — the failure the guarded
 `UPDATE` prevents.
 
+**The aggregate root is the concurrency boundary — including child changes.**
+The version guard above protects the root's own fields, but an aggregate can be
+modified purely through a child entity (a `HasMany`/`HasOne` member): a change to
+a line item's quantity, with no root-field change and no event. Such a change
+persists the child through the un-versioned path (`_update(expected_version=None)`
+— a child entity is not an aggregate, so `_validate_and_update_version` does not
+run for it), and `Repository._do_add` re-saves the root only when the root itself
+is new or changed. A child-only change would therefore leave the root's version
+untouched, and two concurrent child-only updates would both succeed — the child
+counterpart of the lost update above. We treat the aggregate root as the unit of
+concurrency control: `Repository._do_add` re-saves the root not only when the
+root's own fields changed but also when any persisted child was directly edited
+(`_has_changed_child`, which mirrors the direct-update detection already in
+`_sync_children`), so the guarded root save runs and advances `_version`. This
+covers a child's scalar, value-object, and reference fields uniformly, because
+the check reads the child's own `state_.is_changed` rather than the field kind.
+Under a transactional provider the child writes and the root version bump commit
+together in the Unit of Work.
+
+Adding or removing a `HasMany` child through the `add_`/`remove_` collection
+methods is deliberately out of scope: those methods do not mark the root changed,
+`mark_changed` no-ops while a freshly added child is new (so it does not trip
+`_has_changed_child`), and concurrent adds of distinct children do not race the
+way concurrent edits of the same existing data do. Assigning or replacing a
+`HasOne` child (`aggregate.child = ...`) is different — it goes through the root's
+own `__setattr__`, marks the root changed, and is version-guarded like any
+root-field change.
+
+Because an aggregate that has child rows forces its root `UPDATE` out at
+`repo.add` time (a flush to materialize the parent row before the child inserts
+that reference it, since Protean emits no SQLAlchemy foreign-key metadata to let
+the ORM order them) rather than at commit, a child-only version conflict can
+surface at that forced flush instead of at commit. The SQLAlchemy `_flush`
+translates the resulting `StaleDataError` to `ExpectedVersionError` there, the
+same mapping the commit path applies.
+
 ## Consequences
 
 - The outbox poll path drops from `1 + N` round trips to one (fast path) or
