@@ -22,6 +22,7 @@ def setup_db():
         # Create all associated tables
         from .elements import Alien, ComplexUser, Person, User
         from .test_postgresql_associations import Audit, Comment, Directory, Post
+        from .test_postgresql_lifecycle_audit import Ledger
         from .test_postgresql_persistence import Event
         from .test_postgresql_persisting_list_of_value_objects import Customer, Order
 
@@ -34,6 +35,7 @@ def setup_db():
         domain.register(Comment, part_of=Post)
         domain.register(Audit)
         domain.register(Directory)
+        domain.register(Ledger)
         domain.register(Order)
         domain.register(Customer, part_of=Order)
         domain.init(traverse=False)
@@ -47,6 +49,7 @@ def setup_db():
         domain.repository_for(Comment)._dao
         domain.repository_for(Audit)._dao
         domain.repository_for(Directory)._dao
+        domain.repository_for(Ledger)._dao
         domain.repository_for(Customer)._dao
         domain.repository_for(Order)._dao
 

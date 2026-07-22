@@ -98,6 +98,10 @@ class FieldSpec:
         content_type: Any = None,  # For List fields
         # Sanitization
         sanitize: bool = False,  # For String/Text — runs bleach.clean()
+        # Lifecycle timestamps (DateTime/Date only) — Django-parity flags that
+        # let the persistence layer stamp the field on save.
+        auto_now_add: bool = False,  # set to now() on the CREATE save
+        auto_now: bool = False,  # set to now() on every save (create + update)
         # Validators
         validators: Iterable[Callable[..., Any]] = (),  # Per-field validator callables
         # Error messages
@@ -127,6 +131,8 @@ class FieldSpec:
         self.scale = scale
         self.content_type = content_type
         self.sanitize = sanitize
+        self.auto_now_add = auto_now_add
+        self.auto_now = auto_now
         self.validators = list(validators)
         self.error_messages = error_messages
         self.transitions = (
@@ -143,6 +149,39 @@ class FieldSpec:
                 "The default will be honored; the field is effectively not required.",
                 stacklevel=3,
             )
+
+        # auto_now / auto_now_add are Django-parity, save-time stamps and only
+        # apply to temporal fields. They are mutually exclusive.
+        if self.auto_now or self.auto_now_add:
+            if self.python_type not in (_dt.datetime, _dt.date):
+                raise ProteanValidationError(
+                    {
+                        "auto_now": [
+                            "auto_now/auto_now_add are only supported on "
+                            "DateTime and Date fields"
+                        ]
+                    }
+                )
+            if self.auto_now and self.auto_now_add:
+                raise ProteanValidationError(
+                    {
+                        "auto_now": [
+                            "auto_now and auto_now_add are mutually exclusive: "
+                            "auto_now stamps on every save, auto_now_add only on "
+                            "create"
+                        ]
+                    }
+                )
+            if self.required:
+                raise ProteanValidationError(
+                    {
+                        "auto_now": [
+                            "auto_now/auto_now_add fields cannot be required: the "
+                            "value is stamped at save time, so the field must be "
+                            "optional (drop required=True)"
+                        ]
+                    }
+                )
 
     # ------------------------------------------------------------------
     # Resolution methods
@@ -272,6 +311,10 @@ class FieldSpec:
             json_extra["field_kind"] = self.field_kind
         if self.sanitize:
             json_extra["sanitize"] = True
+        if self.auto_now:
+            json_extra["auto_now"] = True
+        if self.auto_now_add:
+            json_extra["auto_now_add"] = True
         if getattr(self, "_increment", False):
             json_extra["increment"] = True
         if self.validators:

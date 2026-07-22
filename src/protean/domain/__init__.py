@@ -396,6 +396,9 @@ class Domain:
         # Results are merged into metadata.extensions.
         self._event_enrichers: list[Callable[..., Any]] = []
         self._command_enrichers: list[Callable[..., Any]] = []
+        # Aggregate pre-persist enrichers receive (aggregate,) and mutate it
+        # in place to stamp cross-cutting lifecycle/audit fields on save.
+        self._aggregate_enrichers: list[Callable[..., Any]] = []
 
         # Composed helpers — see handler_setup.py, validation.py, etc.
         self._command_processor = CommandProcessor(self)
@@ -2107,6 +2110,61 @@ class Domain:
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             self.register_command_enricher(fn)
+            return fn
+
+        return decorator
+
+    def register_aggregate_enricher(self, fn: Callable[..., Any]) -> None:
+        """Register a callable that stamps cross-cutting fields on an aggregate
+        just before it is persisted.
+
+        Unlike event/command enrichers — which return a ``dict`` merged into
+        ``metadata.extensions`` — an aggregate enricher receives the aggregate
+        and **mutates it in place** (its return value is ignored).  It runs on
+        the ``Repository.add`` -> ``DAO.save`` path, on both the create and the
+        update, inside an active domain context, so it can read the acting user
+        from ``g`` and stamp technical fields such as ``updated_at`` /
+        ``updated_by`` / ``created_by``.  It does not fire for event-sourced
+        aggregates (persisted through the event store) or for a set-based
+        ``query.update()`` (which runs no per-row Python).
+
+        Enrichers execute in registration order (FIFO).  If an enricher raises,
+        the exception propagates and the save is aborted; on an update the
+        version advance is rolled back.
+
+        This hook is for cross-cutting **lifecycle/audit** metadata only.  It is
+        not a general mutation escape hatch: do not use it to enforce invariants
+        or raise events — that belongs in the aggregate's own methods.
+
+        Args:
+            fn: A callable with signature ``(aggregate) -> None``.
+
+        Example::
+
+            @domain.aggregate_enricher
+            def stamp_audit(aggregate):
+                user = g.get("current_user")
+                aggregate.updated_by = user
+                if aggregate.created_by is None:
+                    aggregate.created_by = user
+        """
+        if not callable(fn):
+            raise IncorrectUsageError("Aggregate enricher must be callable")
+        self._aggregate_enrichers.append(fn)
+
+    @property
+    def aggregate_enricher(self) -> Callable[..., Any]:
+        """Decorator form of :meth:`register_aggregate_enricher`.
+
+        Example::
+
+            @domain.aggregate_enricher
+            def stamp_updated_at(aggregate):
+                aggregate.updated_at = datetime.now(UTC)
+        """
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            self.register_aggregate_enricher(fn)
             return fn
 
         return decorator

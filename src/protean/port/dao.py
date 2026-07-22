@@ -1,7 +1,8 @@
+import datetime
 import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
@@ -13,9 +14,9 @@ from protean.exceptions import (
 )
 from protean.port.provider import BaseProvider
 from protean.utils import DomainObjects
-from protean.utils.globals import current_domain, current_uow
+from protean.utils.globals import _domain_now, current_domain, current_uow
 from protean.utils.query import Q
-from protean.utils.reflection import declared_fields, id_field, unique_fields
+from protean.utils.reflection import declared_fields, fields, id_field, unique_fields
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -26,6 +27,35 @@ logger = logging.getLogger(__name__)
 # default. Kept under SQLite's default ``SQLITE_MAX_VARIABLE_NUMBER`` of 999 so
 # the fallback path is safe on every backend regardless of batch size.
 _DELETE_IN_CHUNK_SIZE = 900
+
+
+def _stamp_lifecycle_timestamps(entity_obj: Any, *, is_create: bool) -> None:
+    """Stamp ``auto_now`` / ``auto_now_add`` DateTime/Date fields on save.
+
+    Django-parity semantics: ``auto_now`` fields are set to the current time on
+    every save; ``auto_now_add`` fields only on the initial (create) save. A
+    single ``now``, read from the domain's injectable clock (so frozen-clock
+    tests apply), is shared across all stamped fields on this entity.
+    """
+    now: datetime.datetime | None = None
+    for name, field_obj in fields(entity_obj).items():
+        if not (
+            getattr(field_obj, "auto_now", False)
+            or (is_create and getattr(field_obj, "auto_now_add", False))
+        ):
+            continue
+        if now is None:
+            now = _domain_now()
+        # ``_python_type`` may be Optional-wrapped (auto_now fields are not
+        # required); unwrap to the underlying date/datetime to pick the value.
+        base_type: Any = getattr(field_obj, "_python_type", None)
+        base_type = next(
+            (a for a in get_args(base_type) if a is not type(None)), base_type
+        )
+        value: datetime.date | datetime.datetime = (
+            now.date() if base_type is datetime.date else now
+        )
+        setattr(entity_obj, name, value)
 
 
 class BaseDAO(metaclass=ABCMeta):
@@ -735,6 +765,22 @@ class BaseDAO(metaclass=ABCMeta):
             expected_version = self._validate_and_update_version(entity_obj)
 
         try:
+            # Pre-persist hooks run while the entity is still a live object,
+            # before ``from_entity`` freezes it into a model. auto_now stamps
+            # run first, then registered enrichers (so an enricher may override
+            # a stamped timestamp). Both fire on create and update; a raised
+            # enricher aborts the save (the version advance is rolled back for an
+            # update in the ``except`` below).
+            is_create = not entity_obj.state_.is_persisted
+            _stamp_lifecycle_timestamps(entity_obj, is_create=is_create)
+            if (
+                entity_obj.element_type == DomainObjects.AGGREGATE
+                and current_domain
+                and current_domain._aggregate_enrichers
+            ):
+                for enricher in current_domain._aggregate_enrichers:
+                    enricher(entity_obj)
+
             # Build the model object and create it
             if entity_obj.state_.is_persisted:
                 self._update(

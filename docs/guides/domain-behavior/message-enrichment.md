@@ -109,6 +109,42 @@ def enricher(command: BaseCommand) -> dict[str, Any]:
     """Return key-value pairs to merge into metadata.extensions."""
 ```
 
+## Aggregate Pre-Persist Enrichers
+
+Event and command enrichers write to `metadata.extensions`. When you instead
+need to stamp fields **on the aggregate itself** -- audit columns like
+`updated_by`, or lifecycle timestamps -- register an **aggregate enricher**. It
+runs in the persistence path just before an aggregate is saved (on both create
+and update), and unlike the enrichers above it **mutates the aggregate in place**
+rather than returning a dict:
+
+```python
+from protean.utils.globals import g
+
+@domain.aggregate_enricher
+def stamp_audit(aggregate):
+    user = g.get("current_user")
+    aggregate.updated_by = user
+    if aggregate.created_by is None:      # set once, on create
+        aggregate.created_by = user
+```
+
+Put the acting user on the context so the enricher can read it:
+
+```python
+with domain.domain_context(current_user="alice"):
+    domain.repository_for(Order).add(order)
+```
+
+Aggregate enrichers run in registration order, fire only for aggregates (not
+child entities), and -- because they assign through normal attributes --
+invariants still run on the stamped fields. If one raises, the save is aborted.
+
+Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
+business logic or for raising events. For the complete recipe (an abstract audit
+base with `auto_now`/`auto_now_add` timestamps plus `created_by`/`updated_by`),
+see [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md).
+
 ## Accessing Extensions
 
 After raising an event, extensions are available on the metadata:
