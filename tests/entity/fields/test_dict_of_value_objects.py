@@ -125,3 +125,24 @@ def test_that_value_type_must_be_a_value_object():
     # The typed dict is value-object-only; a non-VO value type is rejected.
     with pytest.raises(ValidationError):
         Dict(value_type=String())
+
+
+def test_is_value_object_dict_helper():
+    # The predicate the SQLAlchemy adapter uses to decide whether a dict field
+    # holds value objects (and so must be serialized before storage).
+    from protean.adapters.repository.sqlalchemy import _is_value_object_dict
+    from protean.utils.reflection import fields
+
+    vo_dict_field = fields(Customer)["addresses"]
+    home = Address(street="1 A St", city="Town")
+
+    assert _is_value_object_dict(vo_dict_field, {"home": home}) is True
+    assert _is_value_object_dict(vo_dict_field, {}) is False  # empty dict
+    assert _is_value_object_dict(vo_dict_field, [home]) is False  # not a dict
+    assert _is_value_object_dict(fields(Customer)["name"], {"x": 1}) is False  # no ct
+
+    class _StrTyped:
+        content_type = str
+
+    # A typed-but-non-VO content type is not a value-object dict.
+    assert _is_value_object_dict(_StrTyped(), {"a": 1}) is False
