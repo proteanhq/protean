@@ -9,8 +9,9 @@ These run against the in-memory adapter (core suite). The contract is:
 - ``order_by`` controls which rows go first;
 - ``limit <= 0`` deletes nothing.
 
-Cross-adapter behaviour is covered in ``tests/repository/test_delete_top.py``
-and the SQLAlchemy single-statement path in
+Cross-adapter behaviour is covered in
+``tests/adapters/repository/generic/test_bulk_operations.py`` and the
+SQLAlchemy single-statement path in
 ``tests/adapters/repository/sqlalchemy_repo/``.
 """
 

@@ -39,3 +39,29 @@ for usage.
     options:
       show_root_heading: false
       inherited_members: false
+
+---
+
+## Cross-adapter conformance
+
+Every built-in adapter is held to the same behaviour for these query-API
+primitives through the [conformance test suite](../reference/testing/conformance.md).
+Each primitive is gated by a capability tier: an adapter that declares a
+capability must pass every conformance test tagged with it. See
+[ADR-0023](https://github.com/proteanhq/protean/blob/main/docs/adr/0023-query-api-conformance-contract-and-capability-tiers.md)
+for the rationale.
+
+| Primitive | Capability tier | Adapters that must pass |
+|---|---|---|
+| `count()` | `basic_storage` | all (including Elasticsearch) |
+| `only()` projection | `basic_storage` | all |
+| `isnull` lookup | `basic_storage` | all |
+| `lt` / `lte` lookups | `basic_storage` | all |
+| `_delete_top` bounded delete | `basic_storage` | all |
+| `F()` column comparison | `transactional` | in-memory + SQL |
+| `_claim` correctness | `transactional` | in-memory + SQL |
+| `_claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
+
+`F()` and `_claim` are gated above `basic_storage` because Elasticsearch does not
+support them: it raises `NotImplementedError` for `F`-bearing predicates, and its
+document-versioning makes it unsuitable as a concurrent claim store.

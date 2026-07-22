@@ -1,7 +1,7 @@
 """Generic bulk operation tests that run against all database providers.
 
-Covers _update_all(), _delete_all(), and filtered bulk operations
-on the DAO layer.
+Covers _update_all(), _delete_all(), _delete_top() bounded delete, and filtered
+bulk operations on the DAO layer.
 """
 
 from datetime import datetime
@@ -240,3 +240,73 @@ class TestBulkUpdateOperations:
         assert u_person2.last_name == "Musketeer"
         assert u_person3.last_name == "Fraud"
         assert u_person4.last_name == "Fraud"
+
+
+class DeleteTopTicket(BaseAggregate):
+    # Distinct name avoids colliding on the ``ticket`` table with the different
+    # ``Ticket`` aggregate in test_auto_increment_reflection.py.
+    status: String(max_length=20, default="open")
+    rank: Integer(default=0)
+
+
+@pytest.mark.basic_storage
+class TestDeleteTop:
+    """``_delete_top`` deletes up to ``limit`` matching rows and returns the
+    count, on every provider (SQL single-statement path, Elasticsearch
+    ``delete_by_query``, in-memory serialized delete)."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(DeleteTopTicket)
+        test_domain.init(traverse=False)
+
+    @pytest.fixture
+    def seeded_dao(self, test_domain, db):
+        """Seed seven open tickets and return their DAO.
+
+        Depends on ``db`` so table setup precedes the inserts on SQL adapters.
+        """
+        repo = test_domain.repository_for(DeleteTopTicket)
+        for i in range(7):
+            repo.add(DeleteTopTicket(status="open", rank=i))
+        return repo._dao
+
+    def test_bounded_delete_returns_count(self, seeded_dao):
+        deleted = seeded_dao._delete_top(Q(), limit=3)
+
+        assert deleted == 3
+        assert seeded_dao.query.count() == 4
+
+    def test_drains_table_in_batches(self, seeded_dao):
+        total = 0
+        while True:
+            deleted = seeded_dao._delete_top(Q(), limit=2)
+            total += deleted
+            if deleted < 2:
+                break
+
+        assert total == 7
+        assert seeded_dao.query.count() == 0
+
+    def test_criteria_restricts_eligible_rows(self, test_domain, db):
+        repo = test_domain.repository_for(DeleteTopTicket)
+        for i in range(3):
+            repo.add(DeleteTopTicket(status="open", rank=i))
+        for i in range(4):
+            repo.add(DeleteTopTicket(status="closed", rank=i))
+
+        deleted = repo._dao._delete_top(Q(status="closed"), limit=10)
+
+        assert deleted == 4
+        assert repo._dao.query.count() == 3
+
+    def test_order_by_controls_which_rows_go_first(self, seeded_dao):
+        seeded_dao._delete_top(Q(), limit=2, order_by="-rank")
+
+        remaining = sorted(t.rank for t in seeded_dao.query.all().items)
+        assert remaining == [0, 1, 2, 3, 4]
+
+    def test_limit_zero_or_negative_deletes_nothing(self, seeded_dao):
+        assert seeded_dao._delete_top(Q(), limit=0) == 0
+        assert seeded_dao._delete_top(Q(), limit=-1) == 0
+        assert seeded_dao.query.count() == 7

@@ -175,10 +175,11 @@ The generic test suite covers these areas:
 | Test File | Marker | What It Tests |
 |-----------|--------|---------------|
 | `test_crud.py` | `basic_storage` | Create, read, update, delete single records |
-| `test_filtering.py` | `basic_storage` | Query filtering with all lookup types |
-| `test_queryset.py` | `basic_storage` | QuerySet chaining, pagination, Q objects |
+| `test_filtering.py` | `basic_storage`, `transactional` | Filtering, lookups (incl. `isnull`, `lt`/`lte`), and `F()` column comparison |
+| `test_queryset.py` | `basic_storage` | QuerySet chaining, pagination, `count()`, `only()` projection |
 | `test_ordering.py` | `basic_storage` | Server-side result ordering |
-| `test_bulk_operations.py` | `basic_storage` | `update_all()`, `delete_all()` |
+| `test_bulk_operations.py` | `basic_storage` | `update_all()`, `delete_all()`, `_delete_top()` |
+| `test_claim.py` | `transactional`, `atomic_transactions` | `_claim()` find-and-claim correctness and no-double-claim |
 | `test_persistence.py` | `basic_storage` | End-to-end aggregate persistence |
 | `test_value_objects.py` | `basic_storage` | Value object embedding and retrieval |
 | `test_associations.py` | `basic_storage` | HasOne, HasMany, Reference associations |
@@ -192,6 +193,31 @@ The generic test suite covers these areas:
 | `test_schema_management.py` | `schema_management` | Create/drop database artifacts |
 | `test_native_json.py` | `native_json` | Native JSON column support |
 | `test_native_array.py` | `native_array` | Native array column support |
+
+### Query API primitive coverage
+
+The query and persistence-path primitives are gated by capability tier: an
+adapter that declares a capability must pass every conformance test tagged with
+it. See
+[ADR-0023](https://github.com/proteanhq/protean/blob/main/docs/adr/0023-query-api-conformance-contract-and-capability-tiers.md)
+for the rationale.
+
+| Primitive | Capability tier | Adapters that must pass |
+|---|---|---|
+| `count()` | `basic_storage` | all (including Elasticsearch) |
+| `only()` projection | `basic_storage` | all |
+| `isnull` lookup | `basic_storage` | all |
+| `lt` / `lte` lookups | `basic_storage` | all |
+| `_delete_top` bounded delete | `basic_storage` | all |
+| `F()` column comparison | `transactional` | in-memory + SQL |
+| `_claim` correctness | `transactional` | in-memory + SQL |
+| `_claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
+
+`F()` and `_claim` are gated above `basic_storage` because Elasticsearch does not
+support them: it raises `NotImplementedError` for `F`-bearing predicates, and its
+document-versioning makes it unsuitable as a concurrent claim store. A provider
+that declares only `basic_storage` (like Elasticsearch) is therefore never asked
+to pass them.
 
 ## For External Adapter Authors
 
