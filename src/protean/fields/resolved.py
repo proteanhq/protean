@@ -81,6 +81,8 @@ class ResolvedField:
             self.increment = extra.get("increment", False)
             # FieldSpec-originated metadata
             self.sanitize = extra.get("sanitize", False)
+            self.auto_now = extra.get("auto_now", False)
+            self.auto_now_add = extra.get("auto_now_add", False)
             self.field_kind = extra.get("field_kind", "standard")
             self.precision: int | None = extra.get("precision")
             self.scale: int | None = extra.get("scale")
@@ -100,6 +102,8 @@ class ResolvedField:
             self.unique = False
             self.increment = False
             self.sanitize = False
+            self.auto_now = False
+            self.auto_now_add = False
             self.field_kind = "standard"
             self.precision = None
             self.scale = None

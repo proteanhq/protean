@@ -180,6 +180,12 @@ If you are new to these patterns, these sequences build on each other:
   keyed by its natural code when it is editable -- and treat any shared storage
   table as an adapter detail, never a domain model.
 
+- **[Track Audit and Lifecycle Fields](track-audit-fields.md)** -- Keep
+  `created_at`/`updated_at` and `created_by`/`updated_by` off your business
+  methods. Put them on an abstract base with `auto_now`/`auto_now_add` timestamps
+  and stamp the audit users with a pre-persist enricher that reads the acting
+  user from the domain context.
+
 - **[Thin Handlers, Rich Domain](thin-handlers-rich-domain.md)** -- Handlers
   orchestrate (load, call, save). Aggregates and domain services contain all
   business logic. Prevents the anemic domain model anti-pattern and makes

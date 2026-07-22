@@ -92,3 +92,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0019](0019-check-engine-determinism-boundary-and-behavioral-substrate.md) | Check-engine determinism boundary and a behavioral analysis substrate |
 | [0020](0020-dependency-floor-policy.md) | Dependency Floor Policy |
 | [0021](0021-uuid-identity-is-a-string-in-python.md) | A uuid identity is a string in Python |
+| [0022](0022-pre-persist-aggregate-enricher.md) | Pre-Persist Aggregate Enricher for Lifecycle/Audit Fields |

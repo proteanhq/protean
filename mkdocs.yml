@@ -406,6 +406,7 @@ nav:
       - adr/0019-check-engine-determinism-boundary-and-behavioral-substrate.md
       - adr/0020-dependency-floor-policy.md
       - adr/0021-uuid-identity-is-a-string-in-python.md
+      - adr/0022-pre-persist-aggregate-enricher.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
@@ -498,6 +499,7 @@ nav:
       - patterns/index-aggregates-for-query-paths.md
       - patterns/validation-layering.md
       - patterns/model-reference-data.md
+      - patterns/track-audit-fields.md
       - patterns/thin-handlers-rich-domain.md
       - patterns/application-service-vs-command-handler.md
       - patterns/projection-granularity.md

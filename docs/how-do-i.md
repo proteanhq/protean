@@ -23,6 +23,7 @@ need by what you're trying to accomplish.
 | Convert a value object back into an entity instance | [Constructing from Value Objects](./guides/domain-definition/entities.md#constructing-from-value-objects) |
 | Choose between an entity and a value object     | [Choosing Element Types](./concepts/building-blocks/choosing-element-types.md) |
 | Model lookup or reference data (currencies, statuses, countries) | [Model Reference Data as Domain Concepts](./patterns/model-reference-data.md) |
+| Track created/updated timestamps and audit users (`created_by`/`updated_by`) | [Track Audit and Lifecycle Fields](./patterns/track-audit-fields.md) |
 | Connect entities with relationships             | [Relationships](./guides/domain-definition/relationships.md) |
 | Add typed attributes to domain objects          | [Fields](./guides/domain-definition/fields.md) |
 | Choose between field definition styles          | [Defining Fields](./reference/fields/defining-fields.md) |

@@ -144,6 +144,37 @@ Out[2]:
  'id': '3a96e434-06ab-4244-80a8-76edbd621a27'}
 ```
 
+### Auto-populated timestamps
+
+`DateTime` and `Date` support two Django-parity flags that let the persistence
+layer stamp the field on save:
+
+- **`auto_now_add=True`** — set to the current UTC time on the **create** save,
+  then never touched again. Use it for `created_at`.
+- **`auto_now=True`** — set to the current UTC time on **every** save (create and
+  update). Use it for `updated_at`.
+
+```python
+from protean.fields import DateTime, String
+
+@domain.aggregate
+class Article:
+    title: String(max_length=100)
+    created_at: DateTime(auto_now_add=True)
+    updated_at: DateTime(auto_now=True)
+```
+
+The two flags are mutually exclusive, are only valid on `DateTime`/`Date`
+fields, and cannot be combined with `required=True` (the value is filled at save
+time, so the field must be optional). Unlike a construction-time
+`default=utc_now`, an `auto_now*` field is `None` until the first save — the
+value is stamped on the `repository.add()` → save path, not at construction and
+not on a bulk `query.update()` (matching Django's `Model.save()` vs
+`QuerySet.update()` behavior).
+
+See [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md) for
+the full recipe (abstract base + timestamps + `created_by`/`updated_by`).
+
 ## Boolean
 
 A `True`/`False` field.

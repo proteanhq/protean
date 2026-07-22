@@ -103,12 +103,21 @@ def Boolean(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
 
 
 def Date(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
-    """A date field (``datetime.date``)."""
+    """A date field (``datetime.date``).
+
+    Supports the ``auto_now`` / ``auto_now_add`` save-time stamps (see
+    :func:`DateTime`).
+    """
     return FieldSpec(datetime.date, **kwargs)
 
 
 def DateTime(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
-    """A datetime field (``datetime.datetime``)."""
+    """A datetime field (``datetime.datetime``).
+
+    Pass ``auto_now=True`` to stamp the current UTC time on every save, or
+    ``auto_now_add=True`` to stamp it only on create (Django parity). The two
+    are mutually exclusive.
+    """
     return FieldSpec(datetime.datetime, **kwargs)
 
 
