@@ -47,6 +47,7 @@ def build_field_test_domain() -> Domain:
         tags = List(content_type=str)
         metadata_field = Dict()
         shipping_address = VOField(Address)
+        address_book = Dict(value_type=VOField(Address))
         variants = HasMany(Variant)
         status = String(max_length=20, choices=["ACTIVE", "INACTIVE", "ARCHIVED"])
         score = Float(default=0.0)

@@ -425,6 +425,9 @@ class IRBuilder:
         elif self._is_dict_type(base_type, python_type):
             entry["kind"] = "dict"
             entry["type"] = "Dict"
+            ct = field.content_type
+            if ct is not None:
+                entry["content_type"] = self._python_type_name(ct)
         else:
             kind = field.field_kind
             entry["kind"] = kind
@@ -532,11 +535,11 @@ class IRBuilder:
     def _is_dict_type(base_type: type | None, original_type: type | None) -> bool:
         """Check if a type is a dict.
 
-        Handles both ``dict`` and ``dict | list`` (from Dict() field).
+        Handles bare ``dict``, ``dict[K, V]`` (from ``Dict(value_type=...)``),
+        and ``dict | list`` (from an untyped ``Dict()`` field).
         """
-        if base_type is dict:
+        if base_type is dict or typing.get_origin(base_type) is dict:
             return True
-        # Dict() field creates `dict | list` annotation
         origin = typing.get_origin(original_type)
         if origin is _types.UnionType or origin is typing.Union:
             args = [a for a in typing.get_args(original_type) if a is not type(None)]

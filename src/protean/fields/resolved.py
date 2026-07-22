@@ -151,10 +151,11 @@ class ResolvedField:
 
     @property
     def content_type(self) -> type | None:
-        """For list[X] types, return the inner Python type.
+        """For list[X] / dict[K, V] types, return the inner element/value type.
 
         This allows the SQLAlchemy adapter to determine the correct ARRAY
-        element type (e.g., list[int] → int → ARRAY(Integer)).
+        element type (e.g., list[int] → int → ARRAY(Integer)), and lets a
+        dict[str, VO] surface its value type for IR/schema emission.
         """
         python_type = self._python_type
 
@@ -166,17 +167,14 @@ class ResolvedField:
                 python_type = args[0]
                 origin = typing.get_origin(python_type)
 
-        if origin is not list:
-            return None
-
         type_args = typing.get_args(python_type)
-        if not type_args:
-            return None
-
-        # typing.get_args returns tuple[Any, ...]; the first element of a
-        # list[X] annotation is the element type X.
-        inner: type = type_args[0]
-        return inner
+        if origin is list:
+            # The first element of a list[X] annotation is the element type X.
+            return type_args[0] if type_args else None
+        if origin is dict:
+            # dict[K, V] → the VALUE type V (index 1), not the key.
+            return type_args[1] if len(type_args) == 2 else None
+        return None
 
     def as_dict(self, value: Any) -> Any:
         """Return JSON-compatible value of self."""
@@ -209,6 +207,10 @@ class ResolvedField:
         # Handle lists/tuples of VOs or datetime values
         if isinstance(value, (list, tuple)):
             return [self.as_dict(item) for item in value]
+        # Handle dict-of-VOs (dict[str, VO]) and other typed-value dicts,
+        # serializing each value the same way (VOs via to_dict, etc.).
+        if isinstance(value, dict):
+            return {k: self.as_dict(v) for k, v in value.items()}
         return value
 
     def get_attribute_name(self) -> str:

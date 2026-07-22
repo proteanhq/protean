@@ -64,3 +64,24 @@ def test_embedded_dict_field_in_value_object(test_domain):
     assert test_domain.repository_for(Audit).get(audit.id).permission_dict_object == {
         "foo": "bar"
     }
+
+
+class Contact(BaseValueObject):
+    email: Text()
+
+
+class Directory(BaseAggregate):
+    contacts = Dict(value_type=ValueObject(Contact))
+
+
+@pytest.mark.postgresql
+def test_dict_of_value_objects_field_is_persisted_and_retrieved(test_domain):
+    test_domain.register(Directory)
+    test_domain.init(traverse=False)
+
+    repo = test_domain.repository_for(Directory)
+    directory = Directory(contacts={"home": Contact(email="a@b.com")})
+    repo.add(directory)
+
+    retrieved = repo.get(directory.id)
+    assert retrieved.contacts == {"home": Contact(email="a@b.com")}

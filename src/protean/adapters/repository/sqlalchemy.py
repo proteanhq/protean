@@ -77,6 +77,25 @@ if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
+
+
+def _is_value_object_dict(field_obj: typing.Any, value: typing.Any) -> bool:
+    """Whether ``value`` is a non-empty dict of value objects for ``field_obj``.
+
+    A ``Dict(value_type=ValueObject(...))`` field is serialized to plain dicts
+    before storage. An untyped dict, or a value-object shadow field (whose
+    ``content_type`` is not a value object), fails this check and is stored
+    as-is.
+    """
+    ct = getattr(field_obj, "content_type", None)
+    return (
+        isinstance(value, dict)
+        and bool(value)
+        and isinstance(ct, type)
+        and issubclass(ct, BaseValueObject)
+    )
+
+
 logger = logging.getLogger(__name__)
 
 # Dedicated child loggers for query instrumentation. The slow-query logger is
@@ -800,6 +819,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             if (isinstance(attr_obj, ValueObjectList) and value) or (
                 hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple))
             ):
+                item_dict[key] = attr_obj.as_dict(value)
+            elif _is_value_object_dict(attr_obj, value):
+                # Serialize a dict-of-value-objects to plain dicts for storage.
                 item_dict[key] = attr_obj.as_dict(value)
 
         return cls(**item_dict)

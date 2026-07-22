@@ -86,6 +86,14 @@ class TestFieldKinds:
         assert f["kind"] == "dict"
         assert f["type"] == "Dict"
 
+    def test_dict_of_value_objects_field(self, product_fields):
+        # A typed Dict(value_type=ValueObject(...)) is a dict whose IR entry
+        # carries the value object's name as its content_type.
+        f = product_fields["address_book"]
+        assert f["kind"] == "dict"
+        assert f["type"] == "Dict"
+        assert f["content_type"] == "Address"
+
     def test_value_object_field(self, product_fields):
         f = product_fields["shipping_address"]
         assert f["kind"] == "value_object"
