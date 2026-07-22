@@ -274,7 +274,7 @@ class TestDAORetrievalFunctionality:
         assert people is not None
         assert people.total == 4
         assert len(people.items) == 2
-        assert people.first.id == identifiers[0]
+        assert people.first.id == str(identifiers[0])
         assert people.has_next
         assert not people.has_prev
 
@@ -286,7 +286,7 @@ class TestDAORetrievalFunctionality:
             .all()
         )
         assert len(people.items) == 2
-        assert people.first.id == identifiers[2]
+        assert people.first.id == str(identifiers[2])
         assert not people.has_next
         assert people.has_prev
 
@@ -296,7 +296,7 @@ class TestDAORetrievalFunctionality:
         """Test Entity Retrieval by its primary key"""
         person = test_domain.repository_for(Person)._dao.get(persisted_person.id)
         assert person is not None
-        assert person.id == identifier
+        assert person.id == str(identifier)
         assert person == persisted_person
 
     def test_failed_entity_retrieval_by_its_primary_key(self, test_domain):
@@ -309,7 +309,7 @@ class TestDAORetrievalFunctionality:
     ):
         person = test_domain.repository_for(Person)._dao.find_by(first_name="John")
         assert person is not None
-        assert person.id == identifier
+        assert person.id == str(identifier)
         assert person == persisted_person
 
     def test_failed_entity_retrieval_by_column_value(
@@ -332,7 +332,7 @@ class TestDAORetrievalFunctionality:
             first_name="Johnny1", age=8
         )
         assert person is not None
-        assert person.id == identifier1
+        assert person.id == str(identifier1)
 
     def test_failed_entity_retrieval_by_multiple_column_values(self, test_domain):
         test_domain.repository_for(Person)._dao.create(
@@ -429,7 +429,7 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 1
 
         person = people.first
-        assert person.id == identifier2
+        assert person.id == str(identifier2)
 
     def test_filter_by_chaining_example_2(self, test_domain):
         # Add multiple entries to the DB
@@ -455,7 +455,7 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 2
 
         person = people.first
-        assert person.id == identifier1
+        assert person.id == str(identifier1)
 
     def test_filter_by_chaining_example_3(self, test_domain):
         # Add multiple entries to the DB
@@ -485,7 +485,7 @@ class TestDAORetrievalFunctionality:
         assert len(people.items) == 2
 
         person = people.first
-        assert person.id == identifier2
+        assert person.id == str(identifier2)
 
     def test_results_retrieved_with_filter(self, test_domain):
         # Add multiple entries to the DB
