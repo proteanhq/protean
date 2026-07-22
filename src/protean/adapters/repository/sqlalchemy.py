@@ -797,8 +797,22 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             key = attr_obj.referenced_as or attr_obj.attribute_name
             assert key is not None
             value = item_dict.get(key)
-            if (isinstance(attr_obj, ValueObjectList) and value) or (
-                hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple, dict))
+            # A dict-of-value-objects field (Dict(value_type=ValueObject(...)))
+            # must be serialized to plain dicts before storage. Route only a
+            # genuine VO-dict through as_dict — never a shadow field (its as_dict
+            # is NotImplementedError) or an untyped dict (stored as-is).
+            ct = getattr(attr_obj, "content_type", None)
+            is_vo_dict = (
+                isinstance(value, dict)
+                and bool(value)
+                and not isinstance(attr_obj, _ShadowField)
+                and isinstance(ct, type)
+                and issubclass(ct, BaseValueObject)
+            )
+            if (
+                (isinstance(attr_obj, ValueObjectList) and value)
+                or (hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple)))
+                or is_vo_dict
             ):
                 item_dict[key] = attr_obj.as_dict(value)
 
