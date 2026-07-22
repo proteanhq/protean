@@ -24,6 +24,10 @@ from protean.exceptions import ExpectedVersionError
 from protean.fields import Integer, String
 from tests.shared import POSTGRES_PORT
 
+# This module builds its own Domain (``concurrency_domain``), so skip the autouse
+# ``test_domain`` fixture per the repo convention.
+pytestmark = pytest.mark.no_test_domain
+
 _WORKERS = 8
 
 
