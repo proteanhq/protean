@@ -543,7 +543,7 @@ class IRBuilder:
         origin = typing.get_origin(original_type)
         if origin is _types.UnionType or origin is typing.Union:
             args = [a for a in typing.get_args(original_type) if a is not type(None)]
-            if dict in args or any(typing.get_origin(a) is dict for a in args):
+            if dict in args:
                 return True
         return False
 

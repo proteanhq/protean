@@ -820,11 +820,8 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                 hasattr(attr_obj, "as_dict") and isinstance(value, (list, tuple))
             ):
                 item_dict[key] = attr_obj.as_dict(value)
-            elif _is_value_object_dict(attr_obj, value):  # pragma: no cover
-                # Serialize a dict-of-value-objects to plain dicts. Exercised by
-                # the postgres VO-dict persistence test; the adapter execution is
-                # not captured by the coverage upload, and the predicate itself
-                # is unit-tested (test_is_value_object_dict_helper).
+            elif _is_value_object_dict(attr_obj, value):
+                # Serialize a dict-of-value-objects to plain dicts for storage.
                 item_dict[key] = attr_obj.as_dict(value)
 
         return cls(**item_dict)
