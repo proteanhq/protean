@@ -95,3 +95,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0022](0022-pre-persist-aggregate-enricher.md) | Pre-Persist Aggregate Enricher for Lifecycle/Audit Fields |
 | [0023](0023-query-api-conformance-contract-and-capability-tiers.md) | Query API Conformance Contract and Capability Tiers |
 | [0024](0024-event-store-read-position-contract.md) | Event Store Read Position Contract |
+| [0025](0025-all-subscription-gap-safety.md) | Gap-Safe Checkpointing for `$all` Subscriptions |

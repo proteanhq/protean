@@ -407,6 +407,7 @@ max_retries = 3                # Retries before marking exhausted
 retry_delay_seconds = 1        # Delay between recovery retries
 enable_recovery = true         # Enable periodic recovery pass
 recovery_interval_seconds = 30 # Interval between recovery sweeps
+gap_timeout_seconds = 5        # $all subs: hold at a global_position gap this long before abandoning it
 
 # BrokerSubscription defaults
 [server.broker_subscription]

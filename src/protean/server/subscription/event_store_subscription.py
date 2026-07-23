@@ -92,6 +92,9 @@ class EventStoreSubscription(BaseSubscription):
       and recovery entirely.
     - ``recovery_interval_seconds`` (default 30) — minimum time between
       recovery passes.
+    - ``gap_timeout_seconds`` (default 5) — for a ``$all`` (cross-category)
+      subscription, how long to hold at a missing lower ``global_position``
+      before abandoning it as a rolled-back gap (see ``_gap_safe_batch``).
 
     Per-handler overrides can be passed via the constructor or
     ``from_config()`` factory.
@@ -110,6 +113,7 @@ class EventStoreSubscription(BaseSubscription):
         retry_delay_seconds: float | None = None,
         enable_recovery: bool | None = None,
         recovery_interval_seconds: float | None = None,
+        gap_timeout_seconds: float | None = None,
     ) -> None:
         """
         Initialize the EventStoreSubscription object.
@@ -126,6 +130,9 @@ class EventStoreSubscription(BaseSubscription):
             retry_delay_seconds: Delay between recovery retries.
             enable_recovery: Whether to enable failed position recovery.
             recovery_interval_seconds: How often to run the recovery pass.
+            gap_timeout_seconds: For a ``$all`` (cross-category) subscription, how
+                long to wait for a missing lower ``global_position`` to commit
+                before abandoning it as a rolled-back gap.
         """
         # Initialize parent class
         super().__init__(engine, messages_per_tick, tick_interval)
@@ -189,6 +196,21 @@ class EventStoreSubscription(BaseSubscription):
             if recovery_interval_seconds is not None
             else float(es_config.get("recovery_interval_seconds", 30))
         )
+        self.gap_timeout_seconds: float = (
+            gap_timeout_seconds
+            if gap_timeout_seconds is not None
+            else float(es_config.get("gap_timeout_seconds", 5))
+        )
+
+        # $all (cross-category) gap tracking: the monotonic time each missing
+        # global_position at the contiguity frontier was first observed, used to
+        # abandon a gap once it exceeds ``gap_timeout_seconds`` (see
+        # ``_gap_safe_batch``). Empty for single-category subscriptions.
+        self._gap_first_seen: dict[int, float] = {}
+        # The gap-safe watermark computed by the last ``_gap_safe_batch``; ``tick``
+        # advances the cursor to it after processing. Stays -1 (a no-op) for
+        # single-category subscriptions, which never run the gap logic.
+        self._gap_watermark: int = -1
 
         # Failed position tracking
         self.failed_positions_stream = (
@@ -405,6 +427,25 @@ class EventStoreSubscription(BaseSubscription):
         logger.debug(f"Filtered {len(filtered_messages)} out of {len(messages)}")
         return filtered_messages
 
+    async def tick(self) -> None:
+        """Process one batch, then step the cursor over any abandoned ``$all`` gaps.
+
+        Extends the base tick: after ``process_batch`` has carried the present
+        messages forward (one at a time, so an interrupted batch leaves the cursor
+        at the last one actually processed), advance ``current_position`` to the
+        gap-safe watermark set by ``_gap_safe_batch``. This steps over abandoned
+        holes, which carry no message for ``process_batch`` to advance through.
+        Running it *after* ``process_batch`` is what keeps it crash-safe — an
+        exception there skips this and leaves the cursor at real progress. It is a
+        no-op for single-category subscriptions (``_gap_watermark`` stays -1).
+        """
+        messages = await self.get_next_batch_of_messages()
+        if messages:
+            await self.process_batch(messages)
+
+        if self._gap_watermark > self.current_position:
+            await self.update_read_position(self._gap_watermark)
+
     async def get_next_batch_of_messages(self) -> list[Message]:
         """
         Get the next batch of messages to process.
@@ -422,7 +463,96 @@ class EventStoreSubscription(BaseSubscription):
             no_of_messages=self.messages_per_tick,
         )
 
+        if self.stream_category == "$all":
+            messages = self._gap_safe_batch(messages)
+
         return self.filter_on_origin(messages)
+
+    def _gap_safe_batch(self, messages: list[Message]) -> list[Message]:
+        """Hold a ``$all`` (cross-category) batch at the first ``global_position`` gap.
+
+        ``global_position`` is a store-wide sequence. Within a single category the
+        store assigns it in commit order, so a single-category subscription never
+        sees a gap. Across categories it can be assigned out of commit order — a
+        lower position committing *after* a higher one — so advancing past the
+        highest position seen would silently skip the late-committing lower one
+        (the checkpoint gap this guards against).
+
+        The core of the fix is a low-watermark: process only the contiguous run
+        from ``current_position + 1``, stopping at the first missing
+        position and waiting for it to commit. A rolled-back append permanently
+        consumes a ``global_position``, so a gap that persists longer than
+        ``gap_timeout_seconds`` is abandoned (skipped) rather than waited on
+        forever. Positions above an unfilled gap are held until it resolves.
+
+        Records the settled watermark in ``self._gap_watermark`` (``tick`` advances
+        the cursor to it *after* processing, so an interrupted batch is not skipped)
+        and returns the prefix of ``messages`` safe to process now (those at or
+        below it); an empty list means "hold this tick".
+        """
+        positioned = [
+            (m.metadata.event_store.global_position, m)
+            for m in messages
+            if m.metadata
+            and m.metadata.event_store
+            and m.metadata.event_store.global_position is not None
+        ]
+        if len(positioned) < len(
+            messages
+        ):  # pragma: no cover — real store messages always carry a position
+            # The gap walk needs a global_position, so records without one are
+            # dropped here rather than in ``process_batch``. Log it so the drop
+            # (a sign of a malformed store record) is not silent.
+            logger.warning(
+                f"[{self.subscriber_class_name}] Skipping "
+                f"{len(messages) - len(positioned)} $all record(s) with no "
+                f"global_position"
+            )
+        if not positioned:
+            # Empty batch, or (defensively) only records missing a position: no
+            # frontier to gate, so clear the gap timers and let the downstream
+            # corruption guard handle any position-less records.
+            self._gap_first_seen.clear()
+            self._gap_watermark = self.current_position
+            return messages
+
+        now = time.monotonic()
+        present = {position for position, _ in positioned}
+        highest = max(present)
+        # ``global_position`` is 1-based, so a fresh subscription (current == -1)
+        # expects position 1, not 0 — clamp to the sequence floor so the first
+        # real position is not mistaken for a gap.
+        expected = max(self.current_position + 1, 1)
+        safe = self.current_position
+        while expected <= highest:
+            if expected in present:
+                self._gap_first_seen.pop(expected, None)
+                safe = expected
+            else:
+                first_seen = self._gap_first_seen.setdefault(expected, now)
+                if now - first_seen < self.gap_timeout_seconds:
+                    break  # hold — wait for the gap to fill
+                logger.warning(
+                    f"[{self.subscriber_class_name}] Abandoning gap at "
+                    f"global_position {expected} after {self.gap_timeout_seconds}s "
+                    f"(assumed rolled back)"
+                )
+                self._gap_first_seen.pop(expected, None)
+                safe = expected
+            expected += 1
+
+        # Record the settled watermark. ``tick`` advances ``current_position`` to
+        # it *after* ``process_batch`` completes, which is what keeps this
+        # crash-safe: present messages are carried forward one at a time by
+        # ``process_batch`` (an interrupted batch leaves the cursor at the last
+        # one actually processed), while abandoned holes — which carry no message,
+        # so ``process_batch`` cannot move past them — are stepped over only once
+        # the batch is done. Timers for settled positions were popped in the loop;
+        # only frontier/ahead gaps remain, and they age monotonically
+        # (``setdefault`` never resets).
+        self._gap_watermark = safe
+
+        return [message for position, message in positioned if position <= safe]
 
     async def process_batch(self, messages: list[Message]) -> int:
         """

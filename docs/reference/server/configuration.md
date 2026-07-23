@@ -213,6 +213,7 @@ max_retries = 3
 retry_delay_seconds = 1
 enable_recovery = true
 recovery_interval_seconds = 30
+gap_timeout_seconds = 5  # $all subscriptions: hold at a global_position gap this long before abandoning it
 
 # BrokerSubscription defaults
 [server.broker_subscription]
