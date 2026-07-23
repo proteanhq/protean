@@ -198,11 +198,10 @@ def _replay_projector(
 
     # Collect all messages from all categories.
     #
-    # We read all events per category in a single call rather than
-    # paginating, because the Memory event store's per-stream position
-    # field doesn't support correct cross-stream pagination within a
-    # category.  For production stores (MessageDB) a single large read
-    # per category is equally efficient thanks to server-side cursors.
+    # A full rebuild replays every event in a category, so we read the whole
+    # category in a single call rather than paginating — it is the simplest
+    # correct pass, and on production stores (MessageDB) a single large read per
+    # category is equally efficient thanks to server-side cursors.
     all_messages: list[Message] = []
     event_store = domain._require_event_store()
     for category in stream_categories:

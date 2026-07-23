@@ -60,6 +60,25 @@ class MessageDBStore(BaseEventStore):
         )
         return position
 
+    # The message-db client's built-in ``$all`` query is a strict, unordered
+    # ``global_position > position LIMIT n`` — it skips the first position and,
+    # having no ``ORDER BY`` before the ``LIMIT``, returns an arbitrary subset
+    # rather than the lowest-``global_position`` page. Protean's read contract is
+    # an inclusive, ``global_position``-ordered page (subscriptions and outbox
+    # reconciliation page from ``last_global_position + 1``), consistent with
+    # category reads (``get_category_messages`` uses ``global_position >= position
+    # ORDER BY global_position ASC``) and the memory adapter, so supply a
+    # corrected statement.
+    _ALL_STREAM_SQL = (
+        "SELECT "
+        "id::varchar, stream_name::varchar, type::varchar, position::bigint, "
+        "global_position::bigint, data::varchar, metadata::varchar, time::timestamp "
+        "FROM messages "
+        "WHERE global_position >= %(position)s "
+        "ORDER BY global_position ASC "
+        "LIMIT %(batch_size)s"
+    )
+
     def _read(
         self,
         stream_name: str,
@@ -67,9 +86,16 @@ class MessageDBStore(BaseEventStore):
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> list[dict[str, Any]]:
-        """Read messages from the event store."""
+        """Read messages from the event store.
+
+        Category and specific-stream reads use the client's own (already
+        inclusive, ``global_position``/stream-position ordered) statements; only
+        ``$all`` needs a corrected query (see :attr:`_ALL_STREAM_SQL`).
+        """
+        if sql is None and stream_name == "$all":
+            sql = self._ALL_STREAM_SQL
         messages: list[dict[str, Any]] = self.client.read(
-            stream_name, position=position, no_of_messages=no_of_messages
+            stream_name, sql=sql, position=position, no_of_messages=no_of_messages
         )
         return messages
 

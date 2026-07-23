@@ -143,11 +143,13 @@ async def test_write_position_after_interval(test_domain):
     last_written_position = await email_event_handler_subscription.fetch_last_position()
 
     # ASSERT Positions after reading all messages (100 per tick now)
-    # Current position should be 16 because we read all 15 messages plus 1 position update
+    # Current position should be 16 because we read all 16 messages (1 in the
+    # first tick, 15 in the second) — the category read now pages by
+    # global_position, so nothing is skipped between ticks.
     assert email_event_handler_subscription.current_position == 16
     assert (
-        last_written_position == 11
-    )  # Position written after 10 messages (position update interval)
+        last_written_position == 10
+    )  # Position written after 10 messages == the 10th global_position
 
     # ASSERT Positions after reading to end of messages
     await email_event_handler_subscription.tick()
@@ -155,7 +157,7 @@ async def test_write_position_after_interval(test_domain):
     assert (
         email_event_handler_subscription.current_position == 16
     )  # Already read all messages in previous tick
-    assert last_written_position == 11  # Remains 11 as no new interval reached
+    assert last_written_position == 10  # Remains 10 as no new interval reached
 
 
 @pytest.mark.asyncio
