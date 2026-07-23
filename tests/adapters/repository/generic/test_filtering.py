@@ -1,13 +1,15 @@
 """Generic filtering tests that run against all database providers.
 
-Covers filter(), exclude(), lookups (exact, contains, in, gt, lt, etc.),
-and query chaining operations on the DAO layer.
+Covers filter(), exclude(), lookups (exact, contains, in, gt, gte, lt, lte,
+isnull), F() column-to-column comparison, and query chaining operations on the
+DAO layer.
 """
 
 from datetime import datetime, timedelta
 
 import pytest
 
+from protean import F
 from protean.core.aggregate import BaseAggregate
 from protean.core.queryset import QuerySet
 from protean.exceptions import TooManyObjectsError
@@ -433,3 +435,107 @@ class TestDAOLookupRegistration:
         from protean.adapters.repository.sqlalchemy import SAProvider
 
         assert SAProvider.get_lookups().get("sample") == sample_lookup_cls
+
+
+class Contact(BaseAggregate):
+    first_name: String(max_length=50, required=True)
+    last_name: String(max_length=50, required=True)
+    age: Integer(default=21)
+    nickname: String(max_length=50)  # nullable — not required, no default
+
+
+@pytest.mark.basic_storage
+class TestIsNullAndRangeLookups:
+    """``isnull`` matches null/non-null rows, and ``lt``/``lte`` honour the
+    boundary consistently on every provider (Elasticsearch included)."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Contact)
+        test_domain.init(traverse=False)
+
+    def _seed(self, test_domain):
+        repo = test_domain.repository_for(Contact)
+        # Alice has a nickname; Bob and Carol do not.
+        repo.add(
+            Contact(first_name="Alice", last_name="Wonder", age=30, nickname="Ace")
+        )
+        repo.add(Contact(first_name="Bob", last_name="Wonder", age=40))
+        repo.add(Contact(first_name="Carol", last_name="Other", age=25))
+
+    def test_isnull_true_returns_rows_with_null_field(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Contact)
+        assert repo.query.filter(nickname__isnull=True).count() == 2
+
+    def test_isnull_false_returns_rows_with_non_null_field(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Contact)
+        result = repo.query.filter(nickname__isnull=False).all().items
+        assert len(result) == 1
+        assert result[0].nickname == "Ace"
+
+    def test_isnull_combined_with_other_predicates(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Contact)
+        # Bob has null nickname AND age >= 35.
+        result = repo.query.filter(nickname__isnull=True, age__gte=35).all().items
+        assert len(result) == 1
+        assert result[0].first_name == "Bob"
+
+    def test_lt_excludes_the_boundary_value(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Contact)
+        # Ages are 30, 40, 25. ``lt=30`` excludes the boundary (30) → only 25.
+        result = repo.query.filter(age__lt=30).all().items
+        assert {c.age for c in result} == {25}
+
+    def test_lte_includes_the_boundary_value(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(Contact)
+        # ``lte=30`` includes the boundary (30) → 25 and 30.
+        result = repo.query.filter(age__lte=30).all().items
+        assert {c.age for c in result} == {25, 30}
+
+
+class RetryTask(BaseAggregate):
+    retry_count: Integer(default=0)
+    max_retries: Integer(default=3)
+
+
+@pytest.mark.transactional
+class TestFColumnExpression:
+    """``F`` compares two columns of the same row.
+
+    Resolved natively by the in-memory and SQLAlchemy adapters. The
+    Elasticsearch adapter raises ``NotImplementedError`` for ``F``-bearing
+    predicates (column-to-column comparison there needs a Painless script
+    query, which is not implemented), so this conformance test is gated to the
+    ``transactional`` tier (memory + SQL). Elasticsearch's loud-fail contract is
+    covered by ``tests/adapters/repository/elasticsearch_repo/test_f_expression.py``.
+    See ADR-0023 for why this tier was chosen.
+    """
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(RetryTask)
+        test_domain.init(traverse=False)
+
+    def _seed(self, test_domain):
+        repo = test_domain.repository_for(RetryTask)
+        repo.add(RetryTask(retry_count=1, max_retries=3))  # below max
+        repo.add(RetryTask(retry_count=3, max_retries=3))  # at max
+        repo.add(RetryTask(retry_count=5, max_retries=3))  # above max
+
+    def test_lt_compares_two_columns(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(RetryTask)
+        result = repo.query.filter(retry_count__lt=F("max_retries")).all().items
+        assert len(result) == 1
+        assert result[0].retry_count == 1
+
+    def test_gte_compares_two_columns(self, test_domain):
+        self._seed(test_domain)
+        repo = test_domain.repository_for(RetryTask)
+        result = repo.query.filter(retry_count__gte=F("max_retries")).all().items
+        assert {r.retry_count for r in result} == {3, 5}
