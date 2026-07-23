@@ -256,50 +256,65 @@ class BaseRepository(Element, OptionsMixin):
             own_current_uow = UnitOfWork()
             own_current_uow.start()
 
-        # Persist the aggregate/projection FIRST so that it exists in the data
-        # store before any child entities that hold a foreign-key reference to
-        # it.  This is required for databases that enforce FK constraints
-        # immediately (MSSQL, MySQL/InnoDB, SQLite with PRAGMA foreign_keys).
-        root_persisted = False
-        if (not item.state_.is_persisted) or (
-            item.state_.is_persisted and item.state_.is_changed
-        ):
-            self._dao.save(item)
-            root_persisted = True
+        try:
+            # Persist the aggregate/projection FIRST so that it exists in the data
+            # store before any child entities that hold a foreign-key reference to
+            # it.  This is required for databases that enforce FK constraints
+            # immediately (MSSQL, MySQL/InnoDB, SQLite with PRAGMA foreign_keys).
+            root_persisted = False
+            if (not item.state_.is_persisted) or (
+                item.state_.is_persisted
+                and (item.state_.is_changed or self._has_changed_child(item))
+            ):
+                self._dao.save(item)
+                root_persisted = True
 
-            # If Aggregate has signed up Fact Events, raise them now
-            if item.element_type == DomainObjects.AGGREGATE and item.meta_.fact_events:
-                payload = item.to_dict()
+                # If Aggregate has signed up Fact Events, raise them now
+                if (
+                    item.element_type == DomainObjects.AGGREGATE
+                    and item.meta_.fact_events
+                ):
+                    payload = item.to_dict()
 
-                # Remove internal attributes from the payload, as they are not needed for the Fact Event
-                payload.pop("state_", None)
-                payload.pop("_version", None)
+                    # Remove internal attributes from the payload, as they are not needed for the Fact Event
+                    payload.pop("state_", None)
+                    payload.pop("_version", None)
 
-                # Construct and raise the Fact Event
-                fact_event = item._fact_event_cls(**payload)
-                item.raise_(fact_event)
-        elif item.element_type == DomainObjects.AGGREGATE and item._events:
-            # Aggregate has pending events but no own-field changes (e.g., events
-            # raised by child entities).  We still need to persist the aggregate so
-            # that _version is incremented, and track it in the identity map so that
-            # _gather_events picks up these events on commit.
-            self._dao.save(item)
-            root_persisted = True
+                    # Construct and raise the Fact Event
+                    fact_event = item._fact_event_cls(**payload)
+                    item.raise_(fact_event)
+            elif item.element_type == DomainObjects.AGGREGATE and item._events:
+                # Aggregate has pending events but no own-field changes (e.g., events
+                # raised by child entities).  We still need to persist the aggregate so
+                # that _version is incremented, and track it in the identity map so that
+                # _gather_events picks up these events on commit.
+                self._dao.save(item)
+                root_persisted = True
 
-        # Now sync child entities (HasMany/HasOne) — the parent row exists, so
-        # child inserts referencing it will satisfy FK constraints.
-        if has_association_fields(item):
-            # Under an active UoW the save above is only buffered (no flush),
-            # so force the root row to materialize in the transaction before
-            # child inserts. Without FK metadata on the generated models, the
-            # ORM cannot order parent-before-child at commit-time flush itself.
-            if root_persisted:
-                self._dao._flush()
-            self._sync_children(item)
+            # Now sync child entities (HasMany/HasOne) — the parent row exists, so
+            # child inserts referencing it will satisfy FK constraints.
+            if has_association_fields(item):
+                # Under an active UoW the save above is only buffered (no flush),
+                # so force the root row to materialize in the transaction before
+                # child inserts. Without FK metadata on the generated models, the
+                # ORM cannot order parent-before-child at commit-time flush itself.
+                if root_persisted:
+                    self._dao._flush()
+                self._sync_children(item)
 
-        # If we started a UnitOfWork, commit it now
-        if own_current_uow:
-            own_current_uow.commit()
+            # If we started a UnitOfWork, commit it now
+            if own_current_uow:
+                own_current_uow.commit()
+        except Exception:
+            # A save/flush here can raise (e.g. ``ExpectedVersionError`` on a
+            # concurrent conflict, now reachable for child-only changes). If we
+            # started the UnitOfWork, roll it back so a standalone ``add`` does
+            # not leave a dangling in-progress UoW (and, on SQLAlchemy, a session
+            # needing rollback) for the next operation. A caller-supplied UoW is
+            # left for the caller's own ``with`` block to unwind.
+            if own_current_uow and own_current_uow.in_progress:
+                own_current_uow.rollback()
+            raise
 
         return item
 
@@ -318,6 +333,35 @@ class BaseRepository(Element, OptionsMixin):
         Internal counterpart to ``_persist_child`` for removals.
         """
         self._domain.repository_for(child_cls)._dao.delete(item)
+
+    def _has_changed_child(self, entity: Any) -> bool:
+        """Return ``True`` if a descendant entity has been directly changed.
+
+        The aggregate root is the optimistic-concurrency boundary, so a change
+        confined to a child — at any depth — with no change to a root field must
+        still re-save the root to advance its ``_version``. This mirrors the
+        direct-update detection in :meth:`_sync_children`: a child whose own
+        attribute was edited carries ``state_.is_changed``, and the recursion
+        walks nested children the same way ``_sync_children`` does. Structural
+        ``add_``/``remove_`` changes to a collection are excluded for two distinct
+        reasons: a freshly *added* child is new, so ``mark_changed`` no-ops and its
+        ``is_changed`` stays ``False``; a *removed* child is no longer in the
+        collection this walks (it lives in the association's temp cache until the
+        sync). Those are handled separately and do not race the way concurrent
+        edits of the same existing data do.
+        """
+        for field_name, field in association_fields(entity).items():
+            if isinstance(field, HasMany):
+                for child in getattr(entity, field_name):
+                    if child.state_.is_changed or self._has_changed_child(child):
+                        return True
+            elif isinstance(field, HasOne):
+                child = getattr(entity, field_name)
+                if child is not None and (
+                    child.state_.is_changed or self._has_changed_child(child)
+                ):
+                    return True
+        return False
 
     def _sync_children(self, entity: Any) -> None:
         """Recursively sync child entities to the persistence store.

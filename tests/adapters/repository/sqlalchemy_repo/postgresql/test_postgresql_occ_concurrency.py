@@ -19,9 +19,10 @@ from sqlalchemy import text
 
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
-from protean.fields import Integer, String
+from protean.fields import HasMany, Integer, Reference, String
 from tests.shared import POSTGRES_PORT
 
 # This module builds its own Domain (``concurrency_domain``), so skip the autouse
@@ -34,6 +35,19 @@ _WORKERS = 8
 class OCCCounter(BaseAggregate):
     label: String(max_length=20, required=False)
     value: Integer(default=0)
+
+
+class OCCOrder(BaseAggregate):
+    label: String(max_length=20, required=False)
+    lines = HasMany("OCCLine")
+
+
+class OCCLine(BaseEntity):
+    sku: String(max_length=20, required=True)
+    quantity: Integer(default=0)
+
+    # Named to match the HasMany back-reference derived from ``OCCOrder``.
+    occ_order = Reference(OCCOrder)
 
 
 @pytest.fixture
@@ -56,12 +70,16 @@ def concurrency_domain():
         },
     )
     domain.register(OCCCounter)
+    domain.register(OCCOrder)
+    domain.register(OCCLine, part_of=OCCOrder)
     domain.init(traverse=False)
 
     provider = domain.providers["default"]
-    # Touch the DAO so the SQLAlchemy model + its table are materialized into
-    # the provider metadata before create_all.
+    # Touch each DAO so the SQLAlchemy models + their tables are materialized
+    # into the provider metadata before create_all.
     domain.repository_for(OCCCounter)._dao
+    domain.repository_for(OCCOrder)._dao
+    domain.repository_for(OCCLine)._dao
     provider._metadata.create_all(provider._engine)
     try:
         with domain.domain_context():
@@ -69,6 +87,15 @@ def concurrency_domain():
     finally:
         provider._metadata.drop_all(provider._engine)
         provider.close()
+
+
+def _seed_occ_order(domain):
+    """Persist an OCCOrder with a single line at version 0; return its id."""
+    with UnitOfWork():
+        seed = OCCOrder(label="seed")
+        seed.add_lines(OCCLine(sku="A", quantity=0))
+        domain.repository_for(OCCOrder).add(seed)
+    return seed.id
 
 
 @pytest.mark.postgresql
@@ -168,3 +195,110 @@ def test_flush_time_version_conflict_raises_expected_version_error(concurrency_d
                 )
                 conn.commit()
             # Exiting the UoW commits -> flush -> StaleDataError -> translated.
+
+
+@pytest.mark.postgresql
+def test_concurrent_child_only_updates_do_not_silently_lose_writes(concurrency_domain):
+    """The aggregate root is the concurrency boundary: when every worker changes
+    only a *child* field (no root-field change, no event), the root's version
+    must still guard the write. Without the child->root propagation the root is
+    never re-saved, so all writers "win" and updates are silently lost."""
+    domain = concurrency_domain
+
+    order_id = _seed_occ_order(domain)
+
+    # Every worker loads version 0 before any of them commits. Each worker
+    # writes its own distinct child value (worker_no + 1) so the surviving value
+    # identifies which writer actually won.
+    load_barrier = threading.Barrier(_WORKERS, timeout=20)
+    results: list[tuple[int, str]] = []
+    results_lock = threading.Lock()
+
+    def worker(worker_no: int) -> None:
+        outcome: str
+        try:
+            with domain.domain_context(), UnitOfWork():
+                repo = domain.repository_for(OCCOrder)
+                order = repo.get(order_id)
+                # Mutate ONLY the child line's field — the root is untouched.
+                order.lines[0].quantity = worker_no + 1
+                load_barrier.wait()
+                repo.add(order)
+            outcome = "success"
+        except ExpectedVersionError:
+            outcome = "conflict"
+        except Exception as exc:  # reported via the assertion below
+            outcome = f"error:{type(exc).__name__}"
+        with results_lock:
+            results.append((worker_no, outcome))
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(_WORKERS)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    winners = [w for w, o in results if o == "success"]
+    conflict = sum(1 for _, o in results if o == "conflict")
+
+    assert len(results) == _WORKERS, results
+    assert all(o in ("success", "conflict") for _, o in results), results
+
+    with UnitOfWork():
+        final = domain.repository_for(OCCOrder).get(order_id)
+
+    # The invariant the bug violated: a child-only change advances the root
+    # version, so exactly one writer wins the race for version 0 and the rest
+    # conflict. A silent lost update would report more successes than the final
+    # version.
+    assert len(winners) == final._version, (
+        f"lost update: {len(winners)} successes but version is {final._version}"
+    )
+    assert len(winners) == 1
+    assert conflict == _WORKERS - 1
+    # The surviving child value belongs to the single winning writer — not just
+    # any writer (which would also catch a version bumped without the write).
+    assert final.lines[0].quantity == winners[0] + 1
+
+
+@pytest.mark.postgresql
+def test_child_only_flush_conflict_raises_expected_version_error(concurrency_domain):
+    """Deterministic, single-threaded exercise of the child-only flush guard.
+
+    A child-only change re-saves the root, and because the aggregate has child
+    rows to order, the root UPDATE is forced out at ``repo.add`` time via
+    ``_flush`` (not at UoW commit). A version bump committed out-of-band between
+    the read and that flush makes the version_id_col predicate match zero rows;
+    the resulting StaleDataError must surface as ExpectedVersionError from the
+    forced flush, just as the commit path translates it."""
+    domain = concurrency_domain
+
+    order_id = _seed_occ_order(domain)
+
+    with pytest.raises(ExpectedVersionError):
+        with UnitOfWork():
+            repo = domain.repository_for(OCCOrder)
+            order = repo.get(order_id)
+            order.lines[0].quantity = 5
+
+            # Advance the root's version through an independent connection, after
+            # the in-UoW read+mutation but before the forced flush at add time.
+            provider = domain.providers["default"]
+            with provider._engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE occ_order SET _version = _version + 1 WHERE id = :id"),
+                    {"id": order_id},
+                )
+                conn.commit()
+
+            # The child-only add re-saves the root and flushes -> StaleDataError
+            # -> translated to ExpectedVersionError.
+            repo.add(order)
+
+    # The conflicting UoW rolled back: the in-flight child edit (quantity=5) was
+    # discarded and the row reflects only the out-of-band version bump (0 -> 1),
+    # not a second bump from the failed add.
+    with UnitOfWork():
+        final = domain.repository_for(OCCOrder).get(order_id)
+    assert final._version == 1
+    assert final.lines[0].quantity == 0

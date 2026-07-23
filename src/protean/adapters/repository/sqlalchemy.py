@@ -44,6 +44,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
+from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.schema import CreateIndex
 from sqlalchemy.types import CHAR, TypeDecorator
@@ -1006,8 +1007,27 @@ class SADAO(BaseDAO):
           until a flush runs. Forcing a flush lets the repository read the
           generated value back onto the aggregate inside the transaction — under
           both a standalone add and an add nested in an outer UnitOfWork.
+
+        This is a shared primitive: it is called from ``Repository._do_add`` (the
+        parent-before-child flush), from the recursive grandchild-ordering flushes
+        in ``_sync_children``, and from ``BaseDAO.create``/``save`` (auto-increment
+        materialization). A concurrent-conflict ``StaleDataError`` can surface at
+        any of them — most commonly the ``version_id_col`` mismatch when the forced
+        flush re-saves an aggregate root whose version a concurrent commit already
+        advanced (e.g. a child-only aggregate change routed through the root save),
+        but also a delete whose row a concurrent writer already removed (SQLAlchemy
+        raises ``StaleDataError`` on a zero-row confirmed delete regardless of
+        ``version_id_col``). Either is an optimistic-concurrency conflict, so
+        translate it to :class:`ExpectedVersionError` — the same mapping the
+        UnitOfWork commit applies to the deferred flush that has no association
+        rows to order.
         """
-        self._get_session().flush()
+        conn = self._get_session()
+        try:
+            conn.flush()
+        except StaleDataError as exc:
+            self._rollback_if_standalone(conn)
+            raise ExpectedVersionError(str(exc)) from None
 
     def _create(self, model_obj: typing.Any) -> typing.Any:
         """Add a new record to the sqlalchemy database"""
