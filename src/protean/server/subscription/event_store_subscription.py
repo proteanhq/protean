@@ -497,6 +497,17 @@ class EventStoreSubscription(BaseSubscription):
             and m.metadata.event_store
             and m.metadata.event_store.global_position is not None
         ]
+        if len(positioned) < len(
+            messages
+        ):  # pragma: no cover — real store messages always carry a position
+            # The gap walk needs a global_position, so records without one are
+            # dropped here rather than in ``process_batch``. Log it so the drop
+            # (a sign of a malformed store record) is not silent.
+            logger.warning(
+                f"[{self.subscriber_class_name}] Skipping "
+                f"{len(messages) - len(positioned)} $all record(s) with no "
+                f"global_position"
+            )
         if not positioned:
             # Empty batch, or (defensively) only records missing a position: no
             # frontier to gate, so clear the gap timers and let the downstream

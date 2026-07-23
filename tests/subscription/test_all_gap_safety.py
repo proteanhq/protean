@@ -1,9 +1,11 @@
 """Gap-safe checkpointing for a ``$all`` (cross-category) subscription.
 
-``global_position`` is a store-wide sequence assigned in commit order only
-*within* a category. A ``$all`` subscription reads across categories, where a
-lower position can commit after a higher one, so advancing past the highest
-position seen would silently skip the late-committing lower one. The subscription
+``global_position`` is a store-wide sequence assigned when a row is inserted and
+made visible when its transaction commits. Within a category, writes are
+serialized (a per-category lock), so a category's own values also become visible
+in ascending order. Across categories they can commit out of order — a lower
+position committing after a higher one — so a ``$all`` subscription that advances
+past the highest position seen would silently skip the late-committing lower one. The subscription
 holds at the first gap (a low-watermark), and abandons a gap that stays unfilled
 longer than ``gap_timeout_seconds`` (a rolled-back append leaves a permanent
 hole). These tests exercise the low-watermark directly (``_gap_safe_batch``) and
