@@ -178,7 +178,7 @@ The generic test suite covers these areas:
 | `test_filtering.py` | `basic_storage`, `transactional` | Filtering, lookups (incl. `isnull`, `lt`/`lte`), and `F()` column comparison |
 | `test_queryset.py` | `basic_storage` | QuerySet chaining, pagination, `count()`, `only()` projection |
 | `test_ordering.py` | `basic_storage` | Server-side result ordering |
-| `test_bulk_operations.py` | `basic_storage` | `update_all()`, `delete_all()`, `_delete_top()` |
+| `test_bulk_operations.py` | `basic_storage` | `_update_all()`, `_delete_all()`, `_delete_top()` |
 | `test_claim.py` | `transactional`, `atomic_transactions` | `_claim()` find-and-claim correctness and no-double-claim |
 | `test_persistence.py` | `basic_storage` | End-to-end aggregate persistence |
 | `test_value_objects.py` | `basic_storage` | Value object embedding and retrieval |
@@ -199,7 +199,7 @@ The generic test suite covers these areas:
 The query and persistence-path primitives are gated by capability tier: an
 adapter that declares a capability must pass every conformance test tagged with
 it. See
-[ADR-0023](https://github.com/proteanhq/protean/blob/main/docs/adr/0023-query-api-conformance-contract-and-capability-tiers.md)
+[ADR-0023](../../adr/0023-query-api-conformance-contract-and-capability-tiers.md)
 for the rationale.
 
 | Primitive | Capability tier | Adapters that must pass |

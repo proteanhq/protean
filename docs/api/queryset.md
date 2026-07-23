@@ -48,7 +48,7 @@ Every built-in adapter is held to the same behaviour for these query-API
 primitives through the [conformance test suite](../reference/testing/conformance.md).
 Each primitive is gated by a capability tier: an adapter that declares a
 capability must pass every conformance test tagged with it. See
-[ADR-0023](https://github.com/proteanhq/protean/blob/main/docs/adr/0023-query-api-conformance-contract-and-capability-tiers.md)
+[ADR-0023](../adr/0023-query-api-conformance-contract-and-capability-tiers.md)
 for the rationale.
 
 | Primitive | Capability tier | Adapters that must pass |
