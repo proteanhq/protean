@@ -117,24 +117,28 @@ class MemoryMessageRepository(BaseRepository):
         no_of_messages: int = 1000,
     ) -> list[dict[str, Any]]:
         repo = current_domain.repository_for(MemoryMessage)
-        q = (
-            repo._dao.query.filter(position__gte=position)
-            .order_by("position")
-            .limit(no_of_messages)
-        )
 
-        if stream_name == "$all":
-            pass  # Don't filter on stream name or category
-        elif self.is_category(stream_name):
-            # If filtering on category, ensure the supplied stream name
-            #   is the only thing in the category.
-            # Eg. If stream is 'user', then only 'user' should be in the category,
-            #   and not even `user:command`
-            q = q.filter(stream_name__contains=f"{stream_name}-")
+        # Read-position contract (ADR-0024): a ``$all`` or category read spans
+        # multiple streams, so it pages by ``global_position`` (inclusive) —
+        # consumers track ``global_position``, and keying on the per-stream
+        # ordinal would silently drop or misorder messages once a category holds
+        # more than one stream. A specific stream (``category-id``) pages by its
+        # own per-stream ``position``.
+        if stream_name == "$all" or self.is_category(stream_name):
+            q = repo._dao.query.filter(global_position__gte=position).order_by(
+                "global_position"
+            )
+            if stream_name != "$all":
+                # Keep the read to this category's streams (``user`` -> ``user-...``).
+                q = q.filter(stream_name__contains=f"{stream_name}-")
         else:
-            q = q.filter(stream_name=stream_name)
+            q = (
+                repo._dao.query.filter(position__gte=position)
+                .filter(stream_name=stream_name)
+                .order_by("position")
+            )
 
-        items = q.all().items
+        items = q.limit(no_of_messages).all().items
         return [item.to_dict() for item in items]
 
 

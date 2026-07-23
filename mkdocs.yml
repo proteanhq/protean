@@ -408,6 +408,7 @@ nav:
       - adr/0021-uuid-identity-is-a-string-in-python.md
       - adr/0022-pre-persist-aggregate-enricher.md
       - adr/0023-query-api-conformance-contract-and-capability-tiers.md
+      - adr/0024-event-store-read-position-contract.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
