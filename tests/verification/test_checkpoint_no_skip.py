@@ -24,6 +24,7 @@ Two invariants hold after every step:
 """
 
 import pytest
+from hypothesis import HealthCheck
 from hypothesis import settings as hypothesis_settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, precondition, rule
@@ -96,6 +97,15 @@ class CheckpointNoSkip(RuleBasedStateMachine):
         if self.sub._gap_watermark > self.sub.current_position:  # pragma: no cover
             self.sub.current_position = self.sub._gap_watermark
 
+        # Progress: a gap-free drain must reach the committed frontier in one
+        # tick. Guards against a regression where the batch stops yielding and
+        # the safety invariants pass vacuously (cursor frozen, nothing delivered).
+        if self.committed and not self.pending:
+            assert self.sub.current_position == max(self.committed), (
+                f"cursor {self.sub.current_position} did not drain to the "
+                f"committed frontier {max(self.committed)} with no open gaps"
+            )
+
     @invariant()
     def cursor_never_passes_a_pending_position(self):
         if self.pending:
@@ -114,7 +124,10 @@ class CheckpointNoSkip(RuleBasedStateMachine):
 
 
 CheckpointNoSkip.TestCase.settings = hypothesis_settings(
-    max_examples=200, deadline=None, stateful_step_count=40
+    max_examples=200,
+    deadline=None,
+    stateful_step_count=40,
+    suppress_health_check=[HealthCheck.too_slow],
 )
 TestCheckpointNoSkip = CheckpointNoSkip.TestCase
 
