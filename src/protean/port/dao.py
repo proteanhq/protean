@@ -755,7 +755,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         return expected_version
 
-    def save(self, entity_obj: Any) -> Any:
+    def save(self, entity_obj: Any, *, apply_lifecycle: bool = True) -> Any:
         """Create or update an entity in the data store, depending on its state. An identity for entity record is
         generated, if not already present.
 
@@ -768,6 +768,12 @@ class BaseDAO(metaclass=ABCMeta):
         Throws `ValidationError` for validation failures on attribute values or uniqueness constraints.
 
         :param entity_obj: Entity object to be persisted
+        :param apply_lifecycle: When ``False``, skip the pre-persist lifecycle
+            hooks — ``auto_now``/``auto_now_add`` timestamp stamping and
+            registered aggregate enrichers — for a raw write (e.g. a bulk
+            migration that must not touch audit fields). Optimistic-concurrency
+            version management is **not** gated by this flag: it is a correctness
+            guard against lost updates, not a lifecycle hook, and always applies.
         """
         logger.debug(f"Saving `{self.entity_cls.__name__}` object")
 
@@ -782,15 +788,16 @@ class BaseDAO(metaclass=ABCMeta):
             # a stamped timestamp). Both fire on create and update; a raised
             # enricher aborts the save (the version advance is rolled back for an
             # update in the ``except`` below).
-            is_create = not entity_obj.state_.is_persisted
-            _stamp_lifecycle_timestamps(entity_obj, is_create=is_create)
-            if (
-                entity_obj.element_type == DomainObjects.AGGREGATE
-                and current_domain
-                and current_domain._aggregate_enrichers
-            ):
-                for enricher in current_domain._aggregate_enrichers:
-                    enricher(entity_obj)
+            if apply_lifecycle:
+                is_create = not entity_obj.state_.is_persisted
+                _stamp_lifecycle_timestamps(entity_obj, is_create=is_create)
+                if (
+                    entity_obj.element_type == DomainObjects.AGGREGATE
+                    and current_domain
+                    and current_domain._aggregate_enrichers
+                ):
+                    for enricher in current_domain._aggregate_enrichers:
+                        enricher(entity_obj)
 
             # Build the model object and create it
             if entity_obj.state_.is_persisted:
@@ -839,15 +846,34 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed saving entity because {exc}")
             raise
 
-    def update(self, entity_obj: Any, *data: Any, **kwargs: Any) -> "BaseEntity":
-        """Update a record in the data store.
+    def update(
+        self,
+        entity_obj: Any,
+        *data: Any,
+        apply_lifecycle: bool = True,
+        **kwargs: Any,
+    ) -> "BaseEntity":
+        """Apply a field patch to an existing entity and persist it.
 
-        Performs validations for unique attributes before creating the entity.
+        Applies the supplied attribute values, validates uniqueness, then
+        persists through the same path as :meth:`save` — so an aggregate update
+        advances its version (optimistic concurrency, raising
+        :class:`ExpectedVersionError` on a stale write), stamps ``auto_now``
+        timestamps, and runs pre-persist enrichers.
+
+        ``update`` targets an **existing** record: it raises
+        :class:`ObjectNotFoundError` for an entity that was never persisted
+        (rather than silently creating one — use :meth:`save` / ``repository.add``
+        to create).
 
         Supports both dictionary and keyword argument updates to the entity::
 
             >>> user.update({'age': 10})
             >>> user.update(age=10)
+
+        ``apply_lifecycle`` is a reserved keyword argument; to patch a field that
+        happens to be named ``apply_lifecycle``, use the dictionary form
+        (``user.update({'apply_lifecycle': ...})``).
 
         Returns the updated entity object.
 
@@ -855,34 +881,27 @@ class BaseDAO(metaclass=ABCMeta):
 
         :param entity_obj: The entity object to be updated
         :param data: Dictionary of values to be updated for the entity
+        :param apply_lifecycle: When ``False``, skip the pre-persist lifecycle
+            hooks (``auto_now`` stamping and enrichers) for a raw write; optimistic
+            concurrency still applies. See :meth:`save`.
         :param kwargs: keyword arguments of attribute pairs to be updated
         """
         logger.debug(
             f"Updating existing `{self.entity_cls.__name__}` object with id {entity_obj.id}"
         )
 
-        try:
-            # Update entity's data attributes
-            entity_obj._update_data(*data, **kwargs)
+        if not entity_obj.state_.is_persisted:
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {entity_obj.id} "
+                f"does not exist."
+            )
 
-            # Do unique checks
-            self._validate_unique(entity_obj, create=False)
-
-            self._update(self.database_model_cls.from_entity(entity_obj))
-
-            # Set Entity status to saved to let everybody know it has been persisted
-            entity_obj.state_.mark_saved()
-
-            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
-            #   like persisting events raised by the aggregate.
-            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
-                current_uow._add_to_identity_map(entity_obj)
-
-            updated: BaseEntity = entity_obj
-            return updated
-        except Exception as exc:
-            logger.error(f"Failed updating entity because of {exc}")
-            raise
+        entity_obj._update_data(*data, **kwargs)
+        # ``save`` skips the uniqueness check on its update branch, so run it here
+        # before delegating the persist (version advance, timestamps, enrichers).
+        self._validate_unique(entity_obj, create=False)
+        updated: BaseEntity = self.save(entity_obj, apply_lifecycle=apply_lifecycle)
+        return updated
 
     def _validate_unique(self, entity_obj: Any, create: bool = True) -> None:
         """Validate the unique constraints for the entity. Raise ValidationError, if constraints were violated.
