@@ -392,6 +392,9 @@ class QuerySet:
         batch back); run standalone and the rows updated before the conflict are
         already committed.
 
+        ``apply_lifecycle`` is a reserved keyword argument; to update a field named
+        ``apply_lifecycle``, use the dictionary form (``.update({'apply_lifecycle': ...})``).
+
         Returns the number of objects matched (which may not be equal to the number of objects
             updated if objects rows already have the new value).
         """

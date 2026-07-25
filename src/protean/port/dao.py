@@ -868,12 +868,12 @@ class BaseDAO(metaclass=ABCMeta):
 
         Supports both dictionary and keyword argument updates to the entity::
 
-            >>> user.update({'age': 10})
-            >>> user.update(age=10)
+            >>> dao.update(user, {'age': 10})
+            >>> dao.update(user, age=10)
 
         ``apply_lifecycle`` is a reserved keyword argument; to patch a field that
         happens to be named ``apply_lifecycle``, use the dictionary form
-        (``user.update({'apply_lifecycle': ...})``).
+        (``dao.update(user, {'apply_lifecycle': ...})``).
 
         Returns the updated entity object.
 
