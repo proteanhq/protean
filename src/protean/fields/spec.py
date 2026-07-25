@@ -362,13 +362,29 @@ class FieldSpec:
         ):
             extra_validators.append(BeforeValidator(_coerce_to_str))
 
-        # Sanitization via AfterValidator
+        # Sanitization via AfterValidator. The field's length bounds are
+        # re-enforced on the sanitised (stored) value so a value that passes on
+        # write always round-trips through serialization and replay — bleach can
+        # otherwise store a value out of bounds (escaping grows it, comment /
+        # attribute stripping shrinks it). ``choices`` fields are never sanitised:
+        # the value must match a declared choice exactly, and HTML-escaping a
+        # closed vocabulary would break that match. See ADR-0026.
         if (
             self.sanitize
+            and self.choices is None
             and isinstance(self.python_type, type)
             and issubclass(self.python_type, str)
         ):
-            extra_validators.append(AfterValidator(_sanitize_string))
+            # Mirror the effective ``min_length`` from ``resolve_field_kwargs``:
+            # a required string has an implicit lower bound of 1.
+            effective_min_length = self.min_length
+            if effective_min_length is None and self.required:
+                effective_min_length = 1
+            extra_validators.append(
+                AfterValidator(
+                    _make_sanitize_validator(effective_min_length, self.max_length)
+                )
+            )
 
         # Per-field validators via AfterValidator
         if self.validators:
@@ -572,3 +588,39 @@ def _sanitize_string(v: str) -> str:
         return cleaned
     except ImportError:
         return v
+
+
+def _make_sanitize_validator(
+    min_length: int | None, max_length: int | None
+) -> Callable[[Any], Any]:
+    """Build the sanitisation validator, re-enforcing the field's length bounds
+    on the *sanitised* value.
+
+    ``bleach.clean`` both lengthens (``&`` -> ``&amp;``) and shortens (stripping
+    HTML comments / disallowed attributes) a string. The core ``min_length`` /
+    ``max_length`` constraints run first, on the *raw* input, but the value that
+    gets stored is the sanitised one — so a within-bounds input can be stored
+    out of bounds, and re-validating that stored value on a serialization
+    round-trip or event-sourced replay then fails. Re-checking the bounds here,
+    against the sanitised (stored) form, keeps the field self-consistent: the
+    stored value always satisfies its length bounds, so it round-trips. See
+    ADR-0026.
+    """
+
+    def _sanitize(v: Any) -> Any:
+        cleaned = _sanitize_string(v)
+        if isinstance(cleaned, str):
+            length = len(cleaned)
+            if max_length is not None and length > max_length:
+                raise ValueError(
+                    f"String has {length} characters after sanitization, "
+                    f"exceeding max_length of {max_length}"
+                )
+            if min_length is not None and length < min_length:
+                raise ValueError(
+                    f"String has {length} characters after sanitization, "
+                    f"below min_length of {min_length}"
+                )
+        return cleaned
+
+    return _sanitize
