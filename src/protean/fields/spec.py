@@ -363,10 +363,10 @@ class FieldSpec:
             extra_validators.append(BeforeValidator(_coerce_to_str))
 
         # Sanitization via AfterValidator. The field's length bounds are
-        # re-enforced on the sanitised (stored) value so a value that passes on
+        # re-enforced on the sanitized (stored) value so a value that passes on
         # write always round-trips through serialization and replay — bleach can
         # otherwise store a value out of bounds (escaping grows it, comment /
-        # attribute stripping shrinks it). ``choices`` fields are never sanitised:
+        # attribute stripping shrinks it). ``choices`` fields are never sanitized:
         # the value must match a declared choice exactly, and HTML-escaping a
         # closed vocabulary would break that match. See ADR-0026.
         if (
@@ -593,16 +593,16 @@ def _sanitize_string(v: str) -> str:
 def _make_sanitize_validator(
     min_length: int | None, max_length: int | None
 ) -> Callable[[Any], Any]:
-    """Build the sanitisation validator, re-enforcing the field's length bounds
-    on the *sanitised* value.
+    """Build the sanitization validator, re-enforcing the field's length bounds
+    on the *sanitized* value.
 
     ``bleach.clean`` both lengthens (``&`` -> ``&amp;``) and shortens (stripping
     HTML comments / disallowed attributes) a string. The core ``min_length`` /
     ``max_length`` constraints run first, on the *raw* input, but the value that
-    gets stored is the sanitised one — so a within-bounds input can be stored
+    gets stored is the sanitized one — so a within-bounds input can be stored
     out of bounds, and re-validating that stored value on a serialization
     round-trip or event-sourced replay then fails. Re-checking the bounds here,
-    against the sanitised (stored) form, keeps the field self-consistent: the
+    against the sanitized (stored) form, keeps the field self-consistent: the
     stored value always satisfies its length bounds, so it round-trips. See
     ADR-0026.
     """

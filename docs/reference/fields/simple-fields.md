@@ -22,14 +22,16 @@ Defaults to `None` (no minimum).
 
 !!! note "Length bounds apply to the sanitized value"
     Sanitization changes the length of a value — HTML-escaping grows it
-    (`&` → `&amp;`) and stripping HTML comments/attributes shrinks it — and
-    `min_length`/`max_length` bound the **stored** (sanitized) form, so a value
-    that is accepted always round-trips through serialization and event-sourced
-    replay. An input whose sanitized form falls outside the bounds is rejected on
-    write (its raw length may look fine); widen the bound or set `sanitize=False`
-    if you need the escaped form. A `choices` field is **never** sanitized — its
-    value must match a declared choice exactly. See
-    [ADR-0026](https://github.com/proteanhq/protean/blob/main/docs/adr/0026-max-length-bounds-the-sanitized-value.md).
+    (`&` → `&amp;`) and stripping HTML comments/attributes shrinks it — so
+    `min_length`/`max_length` are checked against **both** the raw input and the
+    **stored** (sanitized) form. Because the stored form is bounded, a value that
+    is accepted always round-trips through serialization and event-sourced replay.
+    An input is rejected on write if *either* form is out of bounds (so a raw
+    length that looks fine can still be rejected once sanitized, and vice versa);
+    widen the bound or set `sanitize=False` if you need the escaped form. A
+    `choices` field is **never** sanitized — its value must match a declared
+    choice exactly. See
+    [ADR-0026](../../adr/0026-max-length-bounds-the-sanitized-value.md).
 
 ## Text
 
