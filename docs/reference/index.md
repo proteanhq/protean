@@ -106,4 +106,13 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: API Reference](../api/index.md)
 
+-   **:material-shield-check: Guarantees**
+
+    ---
+
+    Per-port, per-adapter ordering, delivery, consistency, and isolation — the
+    contract conformance tests cite.
+
+    [:material-arrow-right-box: Guarantees](guarantees.md)
+
 </div>
