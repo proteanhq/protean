@@ -140,6 +140,7 @@ need by what you're trying to accomplish.
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
 | Process events and commands asynchronously      | [Server](./concepts/async-processing/index.md) |
+| Know what ordering, delivery, and consistency each adapter guarantees | [Consistency & Delivery Guarantees](./reference/guarantees.md) |
 | Understand subscriptions and event processing   | [Subscriptions](./concepts/async-processing/subscriptions.md) |
 | Use the outbox pattern for reliable messaging   | [Using the Outbox](./guides/server/outbox.md) |
 | Configure outbox retries, retention, and cleanup | [Using the Outbox](./guides/server/outbox.md#configure-retries) |
