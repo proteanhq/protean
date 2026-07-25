@@ -410,6 +410,7 @@ nav:
       - adr/0023-query-api-conformance-contract-and-capability-tiers.md
       - adr/0024-event-store-read-position-contract.md
       - adr/0025-all-subscription-gap-safety.md
+      - adr/0026-max-length-bounds-the-sanitized-value.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
