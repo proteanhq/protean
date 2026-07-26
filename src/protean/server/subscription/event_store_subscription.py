@@ -43,14 +43,16 @@ class EventStoreSubscription(BaseSubscription):
     Error Handling
     ~~~~~~~~~~~~~~
 
-    When a handler fails to process a message:
+    When a handler fails to process a message (with recovery enabled, the default):
 
-    1. **Read position advances** — the subscription is never blocked by a single
-       failing message (avoids the poison-pill problem).
-    2. **Failed position is recorded** — a ``Failed`` record is written to a
+    1. **Failed position is recorded** — a ``Failed`` record is written to a
        dedicated ``failed-{subscriber}-{category}`` stream, capturing the
        global position, per-stream name/position (for later re-read), and
-       the current retry count.
+       the current retry count. This is written *before* the read position
+       advances past the message, so a failed recovery write (or a crash in
+       between) leaves the message re-read or recovered rather than dropped.
+    2. **Read position advances** — the subscription is never blocked by a single
+       failing message (avoids the poison-pill problem).
     3. **Periodic recovery pass** — ``maybe_run_recovery()`` is called on every
        poll cycle. When ``recovery_interval_seconds`` has elapsed since the last
        pass, it re-reads each unresolved position from the event store and retries
@@ -561,10 +563,20 @@ class EventStoreSubscription(BaseSubscription):
         This method takes a batch of messages and processes each message by calling the `handle_message` method
         of the engine. It also updates the read position after processing each message.
 
-        When a handler fails:
-        - The read position is still advanced (non-blocking — avoids poison pill)
-        - The failed position is recorded to a dedicated stream for later recovery
+        When a handler fails (with recovery enabled, the default):
+        - The failed position is recorded to the dedicated recovery stream
+          *before* the read position advances past it. Because the record is
+          written per message while the cursor's durable checkpoint is batched,
+          the record is always durable before the cursor is durably flushed past
+          the position. So a failed recovery write raises before the cursor moves
+          (the message is re-read next tick), and a crash after the record leaves
+          the message re-read (cursor still behind) or recovered by the recovery
+          pass (cursor already flushed past) — never silently dropped.
+        - The read position is then advanced (non-blocking, to avoid a poison pill)
         - The ``handle_error()`` callback is invoked by the engine
+
+        With ``enable_recovery=False`` a failed message is not recorded and the
+        cursor still advances, i.e. it is intentionally dropped (no retry).
 
         Messages with an idempotency key that have already been processed (recorded
         as ``status: success`` in the idempotency store) are skipped to prevent
@@ -639,25 +651,14 @@ class EventStoreSubscription(BaseSubscription):
                 self.handler, message, worker_id=self.subscription_id
             )
 
-            # Always update position to avoid reprocessing the message
-            await self.update_read_position(position)
-
-            # Record success in idempotency store for future dedup
-            if is_successful and idempotency_key and idempotency_store.is_active:
-                idempotency_store.record_success(idempotency_key, True)
-
-            if is_successful:
-                successful_count += 1
-                logger.info(
-                    f"[{self.subscriber_class_name}] "
-                    f"Completed {message_type} (ID: {short_id}..., pos: {position})"
-                )
-            else:
+            if not is_successful:
                 logger.warning(
                     f"[{self.subscriber_class_name}] "
                     f"Failed {message_type} (ID: {short_id}..., pos: {position})"
                 )
-                # Record the failed position for later recovery
+                # Record the failure durably BEFORE advancing the cursor past it
+                # (see the method docstring): the recovery record has to be durable
+                # first, or a crash in the gap would drop the message.
                 if self.enable_recovery:
                     stream_name = (
                         message.metadata.headers.stream
@@ -676,6 +677,21 @@ class EventStoreSubscription(BaseSubscription):
                         stream_name=stream_name,
                         stream_position=stream_position,
                     )
+
+            # Advance the cursor after any failure record (non-blocking, to avoid a
+            # poison pill). With recovery enabled the record above is already
+            # durable; with it disabled a failed message is intentionally dropped.
+            await self.update_read_position(position)
+
+            if is_successful:
+                successful_count += 1
+                logger.info(
+                    f"[{self.subscriber_class_name}] "
+                    f"Completed {message_type} (ID: {short_id}..., pos: {position})"
+                )
+                # Record success in the idempotency store for future dedup
+                if idempotency_key and idempotency_store.is_active:
+                    idempotency_store.record_success(idempotency_key, True)
 
         return successful_count
 
