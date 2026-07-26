@@ -60,3 +60,49 @@ def test_auto_now_and_aggregate_enricher_persist_and_retrieve(test_domain):
         assert got.updated_at.year != 2000  # auto_now refreshed off the sentinel
         assert got.created_by == "alice"
         assert got.updated_by == "bob"
+
+
+@pytest.mark.postgresql
+def test_dao_update_lifecycle_and_opt_out_on_sqlalchemy(test_domain):
+    """The DAO update() path stamps auto_now and runs enrichers on SQLAlchemy
+    (round-tripped through the SQL columns), and apply_hooks=False skips both
+    while the write still happens — verifying the behavior beyond the in-memory
+    adapter."""
+    test_domain.register(Ledger)
+
+    @test_domain.aggregate_enricher
+    def stamp_audit(aggregate):
+        aggregate.updated_by = g.get("current_user")
+        if aggregate.created_by is None:
+            aggregate.created_by = g.get("current_user")
+
+    test_domain.init(traverse=False)
+
+    with test_domain.domain_context(current_user="alice"):
+        repo = test_domain.repository_for(Ledger)
+        ledger = Ledger(name="cash")
+        repo.add(ledger)
+        ledger_id = ledger.id
+
+    # DAO update() path (not repo.add): auto_now refreshes, enricher runs.
+    with test_domain.domain_context(current_user="bob"):
+        repo = test_domain.repository_for(Ledger)
+        stored = repo.get(ledger_id)
+        stored.updated_at = _SENTINEL
+        repo._dao.update(stored, name="petty cash")
+
+        got = repo.get(ledger_id)
+        assert got.updated_at.year != 2000  # auto_now refreshed via update()
+        assert got.updated_by == "bob"  # enricher ran via update()
+
+    # apply_hooks=False: hooks skipped, write still applied.
+    with test_domain.domain_context(current_user="carol"):
+        repo = test_domain.repository_for(Ledger)
+        stored = repo.get(ledger_id)
+        stored.updated_at = _SENTINEL
+        repo._dao.update(stored, name="cash box", apply_hooks=False)
+
+        got = repo.get(ledger_id)
+        assert got.name == "cash box"  # the write happened
+        assert got.updated_at.year == 2000  # auto_now NOT refreshed (sentinel kept)
+        assert got.updated_by == "bob"  # enricher did NOT run for carol

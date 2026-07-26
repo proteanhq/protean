@@ -54,22 +54,15 @@ raises `ExpectedVersionError` if it has moved. See
 A repository persists an aggregate through a Unit of Work. The aggregate root is
 the concurrency boundary
 ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)): OCC is
-enforced on the standard write path — `repository.add`, which routes through the
-DAO's `save()` — on the root's `_version`.
+enforced on both write paths — `repository.add` (which routes through the DAO's
+`save()`) and the DAO's `update()` (which now persists through `save()` too) — on
+the root's `_version`.
 
-!!! warning "Gaps in OCC coverage"
-    Two write paths are **not** version-guarded today. These are limitations to
-    be aware of, not a deliberate part of the contract:
-
-    - **The lower-level DAO `update()` method** — an escape hatch beneath
-      `repository.add` — issues its write *without* the version check, so a
-      concurrent update made through it can silently lose one. Use
-      `repository.add` for version-safe writes. *(This inconsistency with
-      `save()` is a candidate for a follow-up fix.)*
-    - **Child-entity changes within a collection** are not independently
-      version-guarded. By ADR-0013 the aggregate root is the concurrency
-      boundary, so a concurrent collection add/remove or child-field change is
-      detected only if it also advances the *root's* `_version`.
+!!! note "Child changes are guarded through the root, not independently"
+    **Child-entity changes within a collection** are not independently
+    version-guarded. By ADR-0013 the aggregate root is the concurrency boundary,
+    so a concurrent collection add/remove or child-field change is detected only
+    if it also advances the *root's* `_version`.
 
 | Adapter | Ordering (no `order_by`) | Write atomicity / visibility | OCC & consistency | Isolation / concurrency model |
 |---|---|---|---|---|

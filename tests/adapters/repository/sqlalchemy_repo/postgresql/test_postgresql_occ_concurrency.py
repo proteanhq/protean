@@ -302,3 +302,63 @@ def test_child_only_flush_conflict_raises_expected_version_error(concurrency_dom
         final = domain.repository_for(OCCOrder).get(order_id)
     assert final._version == 1
     assert final.lines[0].quantity == 0
+
+
+@pytest.mark.postgresql
+def test_concurrent_dao_updates_do_not_silently_lose_writes(concurrency_domain):
+    """The DAO ``update()`` path enforces the same atomic OCC guard as save.
+
+    Previously ``update()`` wrote without the version predicate, so concurrent
+    updates through it both succeeded and one was silently lost. Now it persists
+    through ``save``, so exactly one writer wins the race for version 0 and the
+    rest raise ``ExpectedVersionError``."""
+    domain = concurrency_domain
+
+    with UnitOfWork():
+        seed = OCCCounter(value=0)
+        domain.repository_for(OCCCounter).add(seed)
+    counter_id = seed.id
+
+    load_barrier = threading.Barrier(_WORKERS, timeout=20)
+    results: list[str] = []
+    results_lock = threading.Lock()
+
+    def worker(worker_no: int) -> None:
+        outcome: str
+        try:
+            with domain.domain_context(), UnitOfWork():
+                repo = domain.repository_for(OCCCounter)
+                counter = repo.get(counter_id)
+                load_barrier.wait()
+                repo._dao.update(counter, value=worker_no + 1)
+            outcome = "success"
+        except ExpectedVersionError:
+            outcome = "conflict"
+        except Exception as exc:  # reported via the assertion below
+            outcome = f"error:{type(exc).__name__}"
+        with results_lock:
+            results.append(outcome)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(_WORKERS)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    success = results.count("success")
+    conflict = results.count("conflict")
+
+    assert len(results) == _WORKERS, results
+    assert all(o in ("success", "conflict") for o in results), results
+    assert conflict >= 1, results
+
+    with UnitOfWork():
+        final = domain.repository_for(OCCCounter).get(counter_id)
+
+    # One success per version advance: a silent lost update would report more
+    # successes than the final version.
+    assert success == final._version, (
+        f"lost update via update(): {success} successes but version is {final._version}"
+    )
+    assert success == 1
+    assert conflict == _WORKERS - 1

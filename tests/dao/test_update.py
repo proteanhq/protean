@@ -35,6 +35,16 @@ class TestDAOUpdateFunctionality:
         with pytest.raises(ObjectNotFoundError):
             test_domain.repository_for(Person)._dao.update(person, {"age": 10})
 
+    def test_that_updating_an_unpersisted_entity_raises_object_not_found_error(
+        self, test_domain
+    ):
+        """update() targets an existing record; a never-persisted entity must
+        raise rather than silently create one (which delegating to save() would
+        otherwise do via its create branch)."""
+        fresh = Person(id=999, first_name="Never", last_name="Saved")
+        with pytest.raises(ObjectNotFoundError):
+            test_domain.repository_for(Person)._dao.update(fresh, age=10)
+
     def test_updating_record_with_dictionary_args(self, test_domain):
         """Update an existing entity in the repository"""
         person = test_domain.repository_for(Person)._dao.create(

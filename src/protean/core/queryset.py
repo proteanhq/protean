@@ -378,11 +378,22 @@ class QuerySet:
         """
         return self._owner_dao._count(self._criteria)
 
-    def update(self, *data: Any, **kwargs: Any) -> int:
+    def update(self, *data: Any, apply_hooks: bool = True, **kwargs: Any) -> int:
         """Updates all objects with details given if they match a set of conditions supplied.
 
         This method updates each object individually, to fire callback methods and ensure
-        validations are run.
+        validations are run — so each matched aggregate advances its version and,
+        by default, has its ``auto_now`` timestamps and enrichers applied. Pass
+        ``apply_hooks=False`` to skip those hooks for a raw bulk write.
+
+        Because each row is updated individually with an optimistic-concurrency
+        check, a mid-batch conflict raises :class:`ExpectedVersionError`. Run
+        inside a ``UnitOfWork`` to keep the batch atomic (the raise rolls the whole
+        batch back); run standalone and the rows updated before the conflict are
+        already committed.
+
+        ``apply_hooks`` is a reserved keyword argument; to update a field named
+        ``apply_hooks``, use the dictionary form (``.update({'apply_hooks': ...})``).
 
         Returns the number of objects matched (which may not be equal to the number of objects
             updated if objects rows already have the new value).
@@ -395,7 +406,7 @@ class QuerySet:
             items = self.all()
 
             for item in items:
-                self._owner_dao.update(item, *data, **kwargs)
+                self._owner_dao.update(item, *data, apply_hooks=apply_hooks, **kwargs)
                 updated_item_count += 1
         except Exception:
             raise

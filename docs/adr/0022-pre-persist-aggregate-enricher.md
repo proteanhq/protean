@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+> Amended July 2026 (#1255) — see [Amendment](#amendment-july-2026-unified-persist-lifecycle) below.
+
 **Date:** July 2026
 
 ## Context
@@ -81,12 +83,12 @@ mechanism; the audit *user* model stays app-defined.
   (unlike a construction-time `default=utc_now`). Apps that need the value
   populated in memory before persistence should keep using a field default.
 - Both mechanisms fire on the `Repository.add` → `save` path, alongside version
-  management — and only there. They do **not** fire on the escape hatches that
-  bypass that path: a set-based `repository.query.filter(...).update(...)` runs
-  no per-row Python (matching Django, where `auto_now` fires on `Model.save()`
-  but not `QuerySet.update()`), and an event-sourced aggregate persists through
-  the event store rather than a DAO, so it carries audit data in its events
-  instead. This is why the audit recipe is a DDD/CQRS pattern, not an ES one.
+  management. **They also fire on the DAO `update()` / `QuerySet.update()` paths,
+  which persist through `save` (unified in #1255 — see [Amendment](#amendment-july-2026-unified-persist-lifecycle)).**
+  A raw write can opt out of the hooks with `apply_hooks=False`; version
+  management still applies. An event-sourced aggregate persists through the event
+  store rather than a DAO, so it carries audit data in its events instead — the
+  audit recipe remains a DDD/CQRS pattern, not an ES one.
 
 ## Alternatives Considered
 
@@ -106,3 +108,33 @@ those enrichers target `metadata.extensions`, not aggregate columns. Forcing the
 aggregate enricher into the same shape (return a dict of field→value that the
 framework applies) added indirection without benefit; direct in-place mutation
 is clearer for stamping fields.
+
+## Amendment (July 2026): unified persist lifecycle
+
+The original decision scoped the lifecycle hooks (and version management) to the
+`Repository.add` → `save` path only, excluding the DAO `update()` /
+`QuerySet.update()` paths as "escape hatches", by analogy to Django (`auto_now`
+fires on `Model.save()` but not the set-based `QuerySet.update()`).
+
+That analogy did not hold for Protean. Protean's `QuerySet.update()` is **not**
+set-based — it loads each matched row and updates it individually ("to fire
+callback methods and ensure validations are run"). So it already ran per-row
+Python (uniqueness validation) while skipping *only* the version guard, timestamp
+stamping, and enrichers. That partial exclusion was arbitrary, and its most
+serious symptom was a silent lost update: an update through `update()` bypassed
+the optimistic-concurrency version check (#1255).
+
+**Amended decision:** `update()` and `QuerySet.update()` persist through `save`,
+so they run the full lifecycle — version management, `auto_now` stamping, and
+enrichers — by default. Two qualifications:
+
+- **Optimistic concurrency is always on.** It is a correctness guard against lost
+  updates, not a cosmetic hook, and cannot be switched off by the flag below.
+- **The cosmetic hooks are opt-out.** `save(..., apply_hooks=False)` /
+  `update(..., apply_hooks=False)` / `QuerySet.update(..., apply_hooks=False)`
+  skip `auto_now` stamping and enrichers for a raw write (e.g. a bulk migration
+  that must not touch audit fields), turning the old *implicit* omission into an
+  *explicit* choice.
+
+Event-sourced aggregates are unchanged: they persist through the event store and
+carry audit data in their events, so the DAO lifecycle does not apply.

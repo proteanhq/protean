@@ -76,6 +76,72 @@ class TestAutoNowStamping:
         assert got.created_at == _SENTINEL  # auto_now_add: not refreshed on update
         assert got.updated_at > _SENTINEL  # auto_now: refreshed past the sentinel
 
+    def test_auto_now_refreshes_via_the_dao_update_path(self, test_domain):
+        # The DAO ``update()`` path stamps ``auto_now`` too, since it now
+        # persists through ``save`` (previously it skipped lifecycle stamping).
+        repo = test_domain.repository_for(Post)
+        post = Post(title="hello")
+        repo.add(post)
+
+        stored = repo.get(post.id)
+        stored.created_at = _SENTINEL
+        stored.updated_at = _SENTINEL
+        repo._dao.update(stored, title="hello again")
+
+        got = repo.get(post.id)
+        assert got.created_at == _SENTINEL  # auto_now_add: not refreshed on update
+        assert got.updated_at > _SENTINEL  # auto_now: refreshed via update()
+
+    def test_apply_hooks_false_skips_stamping_on_update(self, test_domain):
+        # ``apply_hooks=False`` opts out of the hooks for a raw write.
+        repo = test_domain.repository_for(Post)
+        post = Post(title="hello")
+        repo.add(post)
+
+        stored = repo.get(post.id)
+        stored.updated_at = _SENTINEL
+        repo._dao.update(stored, title="raw", apply_hooks=False)
+
+        got = repo.get(post.id)
+        assert got.title == "raw"  # the write still happened
+        assert got.updated_at == _SENTINEL  # auto_now NOT refreshed
+        assert got._version == 1  # but OCC/version is still applied (not gated)
+
+    def test_apply_hooks_false_skips_stamping_on_save(self, test_domain):
+        repo = test_domain.repository_for(Post)
+        post = Post(title="hello")
+        repo.add(post)
+
+        stored = repo.get(post.id)
+        stored.updated_at = _SENTINEL
+        stored.title = "raw"
+        repo._dao.save(stored, apply_hooks=False)
+
+        got = repo.get(post.id)
+        assert got.title == "raw"
+        assert got.updated_at == _SENTINEL  # auto_now NOT refreshed
+
+    def test_apply_hooks_flag_threads_through_queryset_update(self, test_domain):
+        # The flag reaches each row of the per-item QuerySet.update() loop.
+        repo = test_domain.repository_for(Post)
+        post = Post(title="hello")
+        repo.add(post)
+
+        # Seed a sentinel via a raw update (which does not re-stamp).
+        stored = repo.get(post.id)
+        stored.updated_at = _SENTINEL
+        repo._dao.update(stored, title="seed", apply_hooks=False)
+        assert repo.get(post.id).updated_at == _SENTINEL
+
+        # Bulk update with the flag off must NOT re-stamp.
+        repo._dao.query.filter(title="seed").update(title="bulk", apply_hooks=False)
+        assert repo.get(post.id).updated_at == _SENTINEL
+
+        # Control: the default bulk update DOES re-stamp — so the assertion above
+        # is not vacuous.
+        repo._dao.query.filter(title="bulk").update(title="bulk2")
+        assert repo.get(post.id).updated_at > _SENTINEL
+
     def test_a_plain_temporal_field_is_never_stamped(self, test_domain):
         # Only auto_now/auto_now_add fields are touched; a plain DateTime stays
         # exactly as constructed (None here).
@@ -229,6 +295,45 @@ class TestAggregateEnricherAuditStamping:
             got = repo.get(post_id)
             assert got.created_by == "alice"  # set once, preserved
             assert got.updated_by == "bob"  # refreshed every save
+
+    def test_enricher_runs_on_the_dao_update_path(self, test_domain):
+        # The DAO ``update()`` path runs pre-persist enrichers too (it persists
+        # through ``save``), so audit fields are refreshed on an update() write.
+        self._register_audit_enricher(test_domain)
+
+        with test_domain.domain_context(current_user="alice"):
+            repo = test_domain.repository_for(Post)
+            post = Post(title="x")
+            repo.add(post)
+            post_id = post.id
+
+        with test_domain.domain_context(current_user="bob"):
+            repo = test_domain.repository_for(Post)
+            stored = repo.get(post_id)
+            repo._dao.update(stored, title="y")
+
+            got = repo.get(post_id)
+            assert got.created_by == "alice"  # preserved
+            assert got.updated_by == "bob"  # refreshed via update()'s enricher run
+
+    def test_enricher_skipped_when_apply_hooks_false(self, test_domain):
+        # ``apply_hooks=False`` opts out of enrichers on the update path.
+        self._register_audit_enricher(test_domain)
+
+        with test_domain.domain_context(current_user="alice"):
+            repo = test_domain.repository_for(Post)
+            post = Post(title="x")
+            repo.add(post)
+            post_id = post.id
+
+        with test_domain.domain_context(current_user="bob"):
+            repo = test_domain.repository_for(Post)
+            stored = repo.get(post_id)
+            repo._dao.update(stored, title="y", apply_hooks=False)
+
+            got = repo.get(post_id)
+            assert got.title == "y"  # the write still happened
+            assert got.updated_by == "alice"  # enricher did NOT run for "bob"
 
     def test_enricher_is_not_called_for_child_entities(self, test_domain):
         # The enricher is aggregate-scoped: a HasMany child persisted through

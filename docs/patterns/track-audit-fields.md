@@ -125,13 +125,15 @@ final = domain.repository_for(Article).get(article_id)
 ## Where it applies
 
 The stamping and the enricher run on the `repository.add()` → save path -- the
-same place Protean manages aggregate versions. They deliberately do **not** run
-on two escape hatches:
+same place Protean manages aggregate versions -- and, because they persist
+through the same path, on `update()` and `QuerySet.update()` as well. Two notes:
 
-- **Bulk updates.** A set-based `repository.query.filter(...).update(...)` issues
-  one store-level `UPDATE` and runs no per-row Python, so it does not stamp. This
-  matches Django, where `auto_now` fires on `Model.save()` but not
-  `QuerySet.update()`. Load and save when you need the stamps.
+- **Bulk / raw updates.** `QuerySet.update(...)` updates each matched row
+  individually, so it stamps and enriches like a save. When you need a raw write
+  that must *not* touch audit fields (e.g. a data backfill), pass
+  `apply_hooks=False` to `save()` / `update()` / `QuerySet.update()` -- it
+  skips the stamping and enrichers (optimistic-concurrency version management
+  still applies). See [ADR-0022](../adr/0022-pre-persist-aggregate-enricher.md).
 - **Event-sourced aggregates.** These persist as a stream of events, not rows in
   a table, so there are no columns to stamp. Record who and when *in the events*
   themselves (see [Message Enrichment](../guides/domain-behavior/message-enrichment.md)
