@@ -265,9 +265,9 @@ class TestAggregateVersionTracking:
             assert person.age == 99
             assert person._version == 1
 
-    def test_apply_lifecycle_false_does_not_disable_occ(self, test_domain):
+    def test_apply_hooks_false_does_not_disable_occ(self, test_domain):
         """The opt-out flag skips the cosmetic hooks but must NOT weaken
-        optimistic concurrency: a stale update with apply_lifecycle=False still
+        optimistic concurrency: a stale update with apply_hooks=False still
         raises ExpectedVersionError, not just advances the version number."""
         repo = test_domain.repository_for(Person)
         person = Person(first_name="John", last_name="Doe")
@@ -276,7 +276,7 @@ class TestAggregateVersionTracking:
         reader1 = repo.get(person.id)
         reader2 = repo.get(person.id)
 
-        repo._dao.update(reader1, first_name="Jane", apply_lifecycle=False)
+        repo._dao.update(reader1, first_name="Jane", apply_hooks=False)
 
         with pytest.raises(ExpectedVersionError):
-            repo._dao.update(reader2, first_name="Bob", apply_lifecycle=False)
+            repo._dao.update(reader2, first_name="Bob", apply_hooks=False)

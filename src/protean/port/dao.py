@@ -755,7 +755,7 @@ class BaseDAO(metaclass=ABCMeta):
 
         return expected_version
 
-    def save(self, entity_obj: Any, *, apply_lifecycle: bool = True) -> Any:
+    def save(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
         """Create or update an entity in the data store, depending on its state. An identity for entity record is
         generated, if not already present.
 
@@ -768,12 +768,12 @@ class BaseDAO(metaclass=ABCMeta):
         Throws `ValidationError` for validation failures on attribute values or uniqueness constraints.
 
         :param entity_obj: Entity object to be persisted
-        :param apply_lifecycle: When ``False``, skip the pre-persist lifecycle
-            hooks — ``auto_now``/``auto_now_add`` timestamp stamping and
-            registered aggregate enrichers — for a raw write (e.g. a bulk
-            migration that must not touch audit fields). Optimistic-concurrency
-            version management is **not** gated by this flag: it is a correctness
-            guard against lost updates, not a lifecycle hook, and always applies.
+        :param apply_hooks: When ``False``, skip the pre-persist hooks —
+            ``auto_now``/``auto_now_add`` timestamp stamping and registered
+            aggregate enrichers — for a raw write (e.g. a bulk migration that must
+            not touch audit fields). Optimistic-concurrency version management is
+            **not** gated by this flag: it is a correctness guard against lost
+            updates, not a pre-persist hook, and always applies.
         """
         logger.debug(f"Saving `{self.entity_cls.__name__}` object")
 
@@ -788,7 +788,7 @@ class BaseDAO(metaclass=ABCMeta):
             # a stamped timestamp). Both fire on create and update; a raised
             # enricher aborts the save (the version advance is rolled back for an
             # update in the ``except`` below).
-            if apply_lifecycle:
+            if apply_hooks:
                 is_create = not entity_obj.state_.is_persisted
                 _stamp_lifecycle_timestamps(entity_obj, is_create=is_create)
                 if (
@@ -850,7 +850,7 @@ class BaseDAO(metaclass=ABCMeta):
         self,
         entity_obj: Any,
         *data: Any,
-        apply_lifecycle: bool = True,
+        apply_hooks: bool = True,
         **kwargs: Any,
     ) -> "BaseEntity":
         """Apply a field patch to an existing entity and persist it.
@@ -871,9 +871,9 @@ class BaseDAO(metaclass=ABCMeta):
             >>> dao.update(user, {'age': 10})
             >>> dao.update(user, age=10)
 
-        ``apply_lifecycle`` is a reserved keyword argument; to patch a field that
-        happens to be named ``apply_lifecycle``, use the dictionary form
-        (``dao.update(user, {'apply_lifecycle': ...})``).
+        ``apply_hooks`` is a reserved keyword argument; to patch a field that
+        happens to be named ``apply_hooks``, use the dictionary form
+        (``dao.update(user, {'apply_hooks': ...})``).
 
         Returns the updated entity object.
 
@@ -881,8 +881,8 @@ class BaseDAO(metaclass=ABCMeta):
 
         :param entity_obj: The entity object to be updated
         :param data: Dictionary of values to be updated for the entity
-        :param apply_lifecycle: When ``False``, skip the pre-persist lifecycle
-            hooks (``auto_now`` stamping and enrichers) for a raw write; optimistic
+        :param apply_hooks: When ``False``, skip the pre-persist hooks
+            (``auto_now`` stamping and enrichers) for a raw write; optimistic
             concurrency still applies. See :meth:`save`.
         :param kwargs: keyword arguments of attribute pairs to be updated
         """
@@ -900,7 +900,7 @@ class BaseDAO(metaclass=ABCMeta):
         # ``save`` skips the uniqueness check on its update branch, so run it here
         # before delegating the persist (version advance, timestamps, enrichers).
         self._validate_unique(entity_obj, create=False)
-        updated: BaseEntity = self.save(entity_obj, apply_lifecycle=apply_lifecycle)
+        updated: BaseEntity = self.save(entity_obj, apply_hooks=apply_hooks)
         return updated
 
     def _validate_unique(self, entity_obj: Any, create: bool = True) -> None:

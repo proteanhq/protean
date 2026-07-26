@@ -85,7 +85,7 @@ mechanism; the audit *user* model stays app-defined.
 - Both mechanisms fire on the `Repository.add` → `save` path, alongside version
   management. **They also fire on the DAO `update()` / `QuerySet.update()` paths,
   which persist through `save` (unified in #1255 — see [Amendment](#amendment-july-2026-unified-persist-lifecycle)).**
-  A raw write can opt out of the hooks with `apply_lifecycle=False`; version
+  A raw write can opt out of the hooks with `apply_hooks=False`; version
   management still applies. An event-sourced aggregate persists through the event
   store rather than a DAO, so it carries audit data in its events instead — the
   audit recipe remains a DDD/CQRS pattern, not an ES one.
@@ -130,8 +130,8 @@ enrichers — by default. Two qualifications:
 
 - **Optimistic concurrency is always on.** It is a correctness guard against lost
   updates, not a cosmetic hook, and cannot be switched off by the flag below.
-- **The cosmetic hooks are opt-out.** `save(..., apply_lifecycle=False)` /
-  `update(..., apply_lifecycle=False)` / `QuerySet.update(..., apply_lifecycle=False)`
+- **The cosmetic hooks are opt-out.** `save(..., apply_hooks=False)` /
+  `update(..., apply_hooks=False)` / `QuerySet.update(..., apply_hooks=False)`
   skip `auto_now` stamping and enrichers for a raw write (e.g. a bulk migration
   that must not touch audit fields), turning the old *implicit* omission into an
   *explicit* choice.

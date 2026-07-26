@@ -131,7 +131,7 @@ through the same path, on `update()` and `QuerySet.update()` as well. Two notes:
 - **Bulk / raw updates.** `QuerySet.update(...)` updates each matched row
   individually, so it stamps and enriches like a save. When you need a raw write
   that must *not* touch audit fields (e.g. a data backfill), pass
-  `apply_lifecycle=False` to `save()` / `update()` / `QuerySet.update()` -- it
+  `apply_hooks=False` to `save()` / `update()` / `QuerySet.update()` -- it
   skips the stamping and enrichers (optimistic-concurrency version management
   still applies). See [ADR-0022](../adr/0022-pre-persist-aggregate-enricher.md).
 - **Event-sourced aggregates.** These persist as a stream of events, not rows in
