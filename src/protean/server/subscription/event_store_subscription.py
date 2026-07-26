@@ -723,12 +723,6 @@ class EventStoreSubscription(BaseSubscription):
         existing = self._failed_positions.get(position, {})
         retry_count = existing.get("retry_count", 0)
 
-        self._failed_positions[position] = {
-            "retry_count": retry_count,
-            "stream_name": stream_name,
-            "stream_position": stream_position,
-        }
-
         logger.info(
             f"[{self.subscriber_class_name}] Recording failed position {position} "
             f"(retry {retry_count}/{self.max_retries})"
@@ -759,6 +753,15 @@ class EventStoreSubscription(BaseSubscription):
                 },
             },
         )
+
+        # Update in-memory tracking only after the record is durable. If the write
+        # above raised, we leave no stale entry, so a later recovery pass never
+        # acts on a position that was never actually recorded.
+        self._failed_positions[position] = {
+            "retry_count": retry_count,
+            "stream_name": stream_name,
+            "stream_position": stream_position,
+        }
 
     async def _write_recovery_status(
         self,

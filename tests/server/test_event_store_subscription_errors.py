@@ -1252,6 +1252,9 @@ class TestFailureRecordOrdering:
             )
             == 0
         )
+        # In-memory tracking is updated only after a durable write, so the failed
+        # write leaves no stale entry for the recovery pass to act on.
+        assert 1 not in sub._failed_positions
 
         # Store recovers; the next tick re-reads the SAME event from the store,
         # fails again, and now records it — proving the message was retried, not
