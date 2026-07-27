@@ -290,8 +290,12 @@ class BrokerSubscription(BaseSubscription):
     async def _exhaust_retries(self, identifier: str, payload: dict[str, Any]) -> None:
         """Handle a message that has exhausted all retry attempts.
 
-        Moves the message to the DLQ (if enabled), ACKs it from the original
-        stream, and clears the retry count.
+        Moves the message to the DLQ (if enabled) and then ACKs it from the
+        original stream, clearing the retry count. If the DLQ publish fails, the
+        message is NOT ACKed and the retry count is retained: it is NACKed so the
+        broker redelivers it and the DLQ move is retried, rather than the message
+        being silently lost. When the DLQ is disabled, the message is discarded
+        (ACKed without a DLQ move), which is the intended behaviour.
 
         Args:
             identifier: The broker message identifier.
@@ -303,16 +307,30 @@ class BrokerSubscription(BaseSubscription):
             f"{'moving to DLQ' if self.enable_dlq else 'discarding'}"
         )
 
-        if self.enable_dlq:
-            await self._move_to_dlq(identifier, payload)
+        if not await self._move_to_dlq(identifier, payload):
+            # DLQ publish failed: hold the message for redelivery instead of
+            # ACKing it away. Back off first (as the retry path does) so a downed
+            # DLQ is retried at the retry cadence, not hammered at poll speed. Keep
+            # the retry count so the redelivery stays on the exhaust path and
+            # re-attempts the DLQ move.
+            if self.retry_delay_seconds > 0:
+                await asyncio.sleep(self.retry_delay_seconds)
+            nack_result = self.broker.nack(
+                self.stream_name, identifier, self.subscriber_name
+            )
+            if not nack_result:
+                logger.warning(
+                    f"[{self.subscriber_class_name}] Failed to NACK message "
+                    f"{identifier} after a failed DLQ publish"
+                )
+            return
 
-        # ACK to remove from pending
+        # DLQ move succeeded, or the DLQ is disabled (intentional discard): ACK
+        # to remove from pending and clear the retry count.
         self.broker.ack(self.stream_name, identifier, self.subscriber_name)
-
-        # Clear retry count
         self.retry_counts.pop(identifier, None)
 
-    async def _move_to_dlq(self, identifier: str, payload: dict[str, Any]) -> None:
+    async def _move_to_dlq(self, identifier: str, payload: dict[str, Any]) -> bool:
         """Move a failed message to the dead letter queue.
 
         Publishes the message to the DLQ stream with enriched metadata
@@ -321,7 +339,16 @@ class BrokerSubscription(BaseSubscription):
         Args:
             identifier: The broker message identifier.
             payload: The message payload dict.
+
+        Returns:
+            bool: True if the message was published to the DLQ (or the DLQ is
+            disabled, so there is nothing to hold); False if the publish failed,
+            so the caller can hold the message for redelivery rather than ACKing
+            it away.
         """
+        if not self.enable_dlq:
+            return True
+
         try:
             dlq_message = self._create_dlq_message(identifier, payload)
             self.broker.publish(self.dlq_stream, dlq_message)
@@ -360,11 +387,13 @@ class BrokerSubscription(BaseSubscription):
                 correlation_id=domain_meta.get("correlation_id"),
                 causation_id=domain_meta.get("causation_id"),
             )
+            return True
         except Exception as e:
             logger.exception(
                 f"[{self.subscriber_class_name}] Failed to move message "
                 f"{identifier} to DLQ: {e}"
             )
+            return False
 
     def _create_dlq_message(
         self, identifier: str, payload: dict[str, Any]

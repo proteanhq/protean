@@ -569,9 +569,11 @@ class TestNACKFailure:
 
 
 class TestDLQPublishFailure:
-    """Verify resilience when DLQ publish itself fails."""
+    """Verify a failed DLQ publish holds the message for redelivery (issue #1263)."""
 
-    def test_dlq_publish_exception_caught(self, test_domain, caplog):
+    def test_dlq_publish_failure_holds_message_for_redelivery(
+        self, test_domain, caplog
+    ):
         _register_and_init(test_domain, AlwaysFailingSubscriber, "fail_stream")
         sub = _make_subscription(
             test_domain,
@@ -581,6 +583,7 @@ class TestDLQPublishFailure:
         )
 
         sub.broker.ack = MagicMock(return_value=True)
+        sub.broker.nack = MagicMock(return_value=True)
         sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
         sub.engine.handle_broker_message = AsyncMock(return_value=False)
 
@@ -592,9 +595,107 @@ class TestDLQPublishFailure:
             )
 
         assert "Failed to move message" in caplog.text
+        # The message is NOT ACKed away when the DLQ publish fails — it is NACKed
+        # so the broker redelivers it and the DLQ move is retried, not lost.
+        sub.broker.ack.assert_not_called()
+        sub.broker.nack.assert_called_with("fail_stream", "msg1", sub.subscriber_name)
+        # Retry count is retained so the redelivery stays on the exhaust path.
+        assert "msg1" in sub.retry_counts
 
-        # Should still ACK from original stream even if DLQ publish failed
+    def test_message_reaches_dlq_after_transient_publish_failure(self, test_domain):
+        _register_and_init(test_domain, AlwaysFailingSubscriber, "fail_stream")
+        sub = _make_subscription(
+            test_domain,
+            AlwaysFailingSubscriber,
+            retry_delay_seconds=0,
+            max_retries=1,
+        )
+
+        sub.broker.ack = MagicMock(return_value=True)
+        sub.broker.nack = MagicMock(return_value=True)
+        # DLQ publish fails on the first exhaust, succeeds on the redelivery.
+        sub.broker.publish = MagicMock(side_effect=[Exception("Broker down"), "dlq-id"])
+        sub.engine.handle_broker_message = AsyncMock(return_value=False)
+
+        import asyncio
+
+        # First delivery: exhausts, DLQ publish fails, message held (NACKed).
+        asyncio.get_event_loop().run_until_complete(
+            sub.process_batch([("msg1", {"data": "test"})])
+        )
+        sub.broker.ack.assert_not_called()
+        assert "msg1" in sub.retry_counts
+
+        # Redelivery: exhausts again, DLQ publish now succeeds, message ACKed.
+        asyncio.get_event_loop().run_until_complete(
+            sub.process_batch([("msg1", {"data": "test"})])
+        )
+        assert sub.broker.publish.call_count == 2
         sub.broker.ack.assert_called_with("fail_stream", "msg1", sub.subscriber_name)
+        assert "msg1" not in sub.retry_counts
+
+    def test_nack_failure_after_dlq_failure_is_logged(self, test_domain, caplog):
+        _register_and_init(test_domain, AlwaysFailingSubscriber, "fail_stream")
+        sub = _make_subscription(
+            test_domain,
+            AlwaysFailingSubscriber,
+            retry_delay_seconds=0,
+            max_retries=1,
+        )
+
+        sub.broker.ack = MagicMock(return_value=True)
+        sub.broker.nack = MagicMock(return_value=False)  # NACK also fails
+        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+        sub.engine.handle_broker_message = AsyncMock(return_value=False)
+
+        import asyncio
+
+        with caplog.at_level(logging.WARNING):
+            asyncio.get_event_loop().run_until_complete(
+                sub.process_batch([("msg1", {"data": "test"})])
+            )
+
+        # Still not ACKed away (the message stays in-flight for redelivery), and
+        # the failed NACK is surfaced.
+        sub.broker.ack.assert_not_called()
+        assert "Failed to NACK message msg1 after a failed DLQ publish" in caplog.text
+
+    def test_dlq_publish_failure_backs_off_before_holding(
+        self, test_domain, monkeypatch
+    ):
+        _register_and_init(test_domain, AlwaysFailingSubscriber, "fail_stream")
+        sub = _make_subscription(
+            test_domain,
+            AlwaysFailingSubscriber,
+            retry_delay_seconds=0.25,
+            max_retries=1,
+        )
+
+        sub.broker.ack = MagicMock(return_value=True)
+        sub.broker.nack = MagicMock(return_value=True)
+        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+        sub.engine.handle_broker_message = AsyncMock(return_value=False)
+
+        sleeps: list[float] = []
+
+        async def fake_sleep(delay):
+            sleeps.append(delay)
+
+        monkeypatch.setattr(
+            "protean.server.subscription.broker_subscription.asyncio.sleep",
+            fake_sleep,
+        )
+
+        import asyncio
+
+        asyncio.get_event_loop().run_until_complete(
+            sub.process_batch([("msg1", {"data": "test"})])
+        )
+
+        # Backed off before the hold NACK, and still held (NACK, no ACK).
+        assert 0.25 in sleeps
+        sub.broker.ack.assert_not_called()
+        sub.broker.nack.assert_called_once()
 
 
 class TestACKFailure:

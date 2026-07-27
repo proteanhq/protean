@@ -305,6 +305,19 @@ exhausted retries and on in-flight timeout). The Redis Streams broker provides D
 *inspection and replay* over externally-populated `:dlq` streams but does **not**
 itself move poison messages to a DLQ (a nacked message stays pending).
 
+**The DLQ move is not lossy on a publish failure.** When the framework routes an
+exhausted message to the DLQ, it ACKs the source stream only *after* the DLQ
+publish succeeds. If the publish fails, the message is NACKed (after a
+`retry_delay_seconds` backoff) and its retry count retained rather than being ACKed
+away, so it is redelivered and the DLQ move retried at the retry cadence, not at
+poll speed. On **Redis Streams** this repeats until the DLQ recovers. The
+**Inline** broker has its own independent retry ceiling; under a *persistent* DLQ
+outage that ceiling eventually moves the message to the broker's *native* DLQ
+(which the DLQ CLI lists) and stops redelivering, provided the broker's own DLQ is
+enabled (the default). So under a DLQ outage the message is not silently dropped.
+Disabling a DLQ (`enable_dlq=False`) discards an exhausted message (ACK without a
+DLQ move), which is intentional.
+
 ---
 
 ## Cache
