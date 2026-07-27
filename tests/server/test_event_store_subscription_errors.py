@@ -151,6 +151,7 @@ def _create_message(
     stream_position: int = 0,
     stream_name: str | None = None,
     asynchronous: bool = True,
+    idempotency_key: str | None = None,
 ) -> Message:
     """Create a Registered event message with EventStoreMeta.
 
@@ -160,6 +161,7 @@ def _create_message(
         stream_position: The per-stream position (used for recovery re-reads).
         stream_name: The specific stream name. Defaults to ``test-{user_id}``.
         asynchronous: Whether the message is asynchronous.
+        idempotency_key: Optional idempotency key set in the message headers.
     """
     user_id = user_id or str(uuid4())
     if stream_name is None:
@@ -182,6 +184,8 @@ def _create_message(
         metadata_dict["headers"]["stream"] = stream_name
     else:
         metadata_dict["headers"] = {"stream": stream_name}
+    if idempotency_key is not None:
+        metadata_dict["headers"]["idempotency_key"] = idempotency_key
 
     message.metadata = Metadata(**metadata_dict)
 
@@ -209,6 +213,7 @@ def _make_subscription(
     enable_recovery: bool | None = True,
     recovery_interval_seconds: float | None = 0,
     retry_delay_seconds: float | None = 0,
+    position_update_interval: int = 1,
 ) -> EventStoreSubscription:
     """Create an EventStoreSubscription with test-friendly defaults."""
     engine = Engine(domain=test_domain, test_mode=False)
@@ -217,7 +222,7 @@ def _make_subscription(
         "test",
         handler_cls,
         messages_per_tick=10,
-        position_update_interval=1,
+        position_update_interval=position_update_interval,
         max_retries=max_retries,
         enable_recovery=enable_recovery,
         recovery_interval_seconds=recovery_interval_seconds,
@@ -1183,3 +1188,231 @@ class TestPollAndCleanup:
 
         last_pos = await sub.fetch_last_position()
         assert last_pos == 42
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Tests: Failure-record vs cursor durability ordering
+# ──────────────────────────────────────────────────────────────────────
+
+
+class _FaultyWrite:
+    """Wrap ``store._write`` to raise on writes to one stream while ``armed``.
+
+    Used to inject a store-write failure (a proxy for a crash) at a precise
+    seam so the failed-record-before-cursor ordering can be tested. Construct it
+    *before* patching so it captures the real ``_write``; toggle ``armed`` to
+    stop failing and let the store recover.
+    """
+
+    def __init__(self, store, target_stream: str) -> None:
+        self._real = store._write
+        self._target = target_stream
+        self.armed: bool = True
+
+    def __call__(self, stream_name: str, *args: object, **kwargs: object) -> object:
+        if self.armed and stream_name == self._target:
+            raise RuntimeError(f"simulated store failure writing to {stream_name}")
+        return self._real(stream_name, *args, **kwargs)
+
+
+class TestFailureRecordOrdering:
+    """A failed message must be recorded to the recovery stream before the cursor
+    advances past it, so a crash (or a failed recovery write) in that window
+    retries the message instead of dropping it."""
+
+    @pytest.mark.asyncio
+    async def test_recovery_write_failure_retries_message_on_next_tick(
+        self, test_domain, monkeypatch
+    ):
+        """If the recovery-stream write itself fails, the cursor does not advance,
+        so the message is re-read from the store and retried on the next tick
+        rather than skipped."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        # The event must really be in the store so the next tick can re-read it.
+        msg = _create_message(global_position=1, stream_position=0)
+        _write_event_to_store(test_domain, msg)
+
+        # Fail the recovery-stream write on the first tick. Recording the failure
+        # happens before the cursor advances, so this raises before any cursor move.
+        faulty = _FaultyWrite(sub.store, sub.failed_positions_stream)
+        monkeypatch.setattr(sub.store, "_write", faulty)
+
+        with pytest.raises(RuntimeError, match="simulated store failure"):
+            await sub.tick()
+
+        # Cursor did not advance, in memory or durably, and nothing was recorded
+        # (the recovery write is what failed).
+        assert sub.current_position == -1
+        assert await sub.fetch_last_position() == -1
+        assert (
+            len(
+                test_domain.event_store.store.read(
+                    sub.failed_positions_stream, position=0
+                )
+            )
+            == 0
+        )
+        # In-memory tracking is updated only after a durable write, so the failed
+        # write leaves no stale entry for the recovery pass to act on.
+        assert 1 not in sub._failed_positions
+
+        # Store recovers; the next tick re-reads the SAME event from the store,
+        # fails again, and now records it — proving the message was retried, not
+        # skipped.
+        faulty.armed = False
+        await sub.tick()
+
+        assert handler_counter == 2  # handler ran on the failed tick and the retry
+        assert sub.current_position == 1  # cursor advances only after recording
+        failed = test_domain.event_store.store.read(
+            sub.failed_positions_stream, position=0
+        )
+        assert len(failed) == 1
+        assert failed[0].data["position"] == 1
+
+    @pytest.mark.asyncio
+    async def test_failure_recorded_before_cursor_write_is_issued(
+        self, test_domain, monkeypatch
+    ):
+        """The failed position is written to the recovery stream before the cursor
+        write is issued. Failing the cursor write leaves the recovery record
+        already written, so a crash at that point keeps the message recoverable
+        rather than skipping it."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        msg = _create_message(global_position=5)
+
+        # Fail the cursor write (to the subscriber stream). It is issued only after
+        # the recovery record, so the record is already written when this raises.
+        faulty = _FaultyWrite(sub.store, sub.subscriber_stream_name)
+        monkeypatch.setattr(sub.store, "_write", faulty)
+
+        with pytest.raises(RuntimeError, match="simulated store failure"):
+            await sub.process_batch([msg])
+
+        # The recovery record was written before the cursor write, so it is present
+        # even though the cursor write raised.
+        failed = test_domain.event_store.store.read(
+            sub.failed_positions_stream, position=0
+        )
+        assert len(failed) == 1
+        assert failed[0].data["position"] == 5
+        assert failed[0].metadata.headers.type == FailedPositionStatus.FAILED.value
+
+        # The cursor was not durably advanced past the failed message.
+        assert await sub.fetch_last_position() == -1
+
+    @pytest.mark.asyncio
+    async def test_multi_message_batch_records_failure_before_durable_flush(
+        self, test_domain, monkeypatch
+    ):
+        """With a batched checkpoint (interval > 1), each failure's recovery record
+        is written before the cursor is durably flushed past it. Failing the flush
+        (which lands on a later message) leaves the earlier failures recorded."""
+        # interval=2: the durable flush is issued on the 2nd message, by which
+        # point the 1st (failing) message has already recorded its failure.
+        sub = _make_subscription(
+            test_domain, AlwaysFailingEventHandler, position_update_interval=2
+        )
+        msg1 = _create_message(global_position=1)
+        msg2 = _create_message(global_position=2)
+
+        faulty = _FaultyWrite(sub.store, sub.subscriber_stream_name)
+        monkeypatch.setattr(sub.store, "_write", faulty)
+
+        with pytest.raises(RuntimeError, match="simulated store failure"):
+            await sub.process_batch([msg1, msg2])
+
+        # Both failures were recorded before the cursor flush raised on msg2.
+        failed = test_domain.event_store.store.read(
+            sub.failed_positions_stream, position=0
+        )
+        assert sorted(m.data["position"] for m in failed) == [1, 2]
+        # The cursor was never durably flushed (the only flush attempt raised).
+        assert await sub.fetch_last_position() == -1
+
+    @pytest.mark.asyncio
+    async def test_recovery_disabled_failure_advances_cursor_without_recording(
+        self, test_domain
+    ):
+        """With recovery disabled, a failed message is intentionally dropped: no
+        recovery record is written, but the cursor still advances past it (the
+        advance is not gated on the recovery branch)."""
+        sub = _make_subscription(
+            test_domain, AlwaysFailingEventHandler, enable_recovery=False
+        )
+        msg = _create_message(global_position=8)
+
+        result = await sub.process_batch([msg])
+
+        assert result == 0
+        assert sub.current_position == 8  # cursor advances despite the failure
+        assert await sub.fetch_last_position() == 8  # durably flushed (interval=1)
+        # Nothing recorded — recovery is disabled.
+        assert (
+            len(
+                test_domain.event_store.store.read(
+                    sub.failed_positions_stream, position=0
+                )
+            )
+            == 0
+        )
+
+
+class _StubIdempotencyStore:
+    """Minimal stand-in for the Redis-backed idempotency store.
+
+    The real store's ``is_active`` is only true with a live Redis connection, so a
+    stub is the only way to exercise the success-side ``record_success`` branch in
+    the core (no-Redis) suite.
+    """
+
+    def __init__(self) -> None:
+        self.recorded: list[tuple[str, bool]] = []
+
+    @property
+    def is_active(self) -> bool:
+        return True
+
+    def check(self, idempotency_key: str) -> dict | None:
+        return None
+
+    def record_success(self, idempotency_key: str, value: bool) -> None:
+        self.recorded.append((idempotency_key, value))
+
+
+class TestIdempotencyRecording:
+    """Idempotency success is recorded only for a successfully handled message,
+    never for a failed one."""
+
+    @pytest.mark.asyncio
+    async def test_success_records_idempotency_when_store_active(
+        self, test_domain, monkeypatch
+    ):
+        """On success the position advances and, when the idempotency store is
+        active, the key is recorded for future dedup."""
+        sub = _make_subscription(test_domain, SucceedingEventHandler)
+        stub = _StubIdempotencyStore()
+        monkeypatch.setattr(sub.engine.domain, "_idempotency_store", stub)
+
+        msg = _create_message(global_position=7, idempotency_key="idem-7")
+
+        result = await sub.process_batch([msg])
+
+        assert result == 1
+        assert sub.current_position == 7
+        assert stub.recorded == [("idem-7", True)]
+
+    @pytest.mark.asyncio
+    async def test_failure_does_not_record_idempotency(self, test_domain, monkeypatch):
+        """A failed message must not be recorded as an idempotency success, even
+        with an active store and a key — the record lives inside the success branch."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        stub = _StubIdempotencyStore()
+        monkeypatch.setattr(sub.engine.domain, "_idempotency_store", stub)
+
+        msg = _create_message(global_position=9, idempotency_key="idem-9")
+
+        result = await sub.process_batch([msg])
+
+        assert result == 0
+        assert stub.recorded == []  # nothing recorded for a failed message

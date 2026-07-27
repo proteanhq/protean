@@ -178,8 +178,8 @@ the already-committed write and propagates to the caller (as `TransactionError`,
 or `ExpectedVersionError` for a version conflict).
 
 **Asynchronous delivery is at-least-once by default.** The read cursor advances
-after a message is handled, *including on failure* (a failure is recorded to a
-recovery stream and retried by a periodic pass, rather than blocking the
+after a message is handled, *including on failure* (the failure is first recorded
+to a recovery stream, then retried by a periodic pass, rather than blocking the
 subscription on a poison message). The cursor is checkpointed durably but in
 batches (every `position_update_interval` messages, 10 by default), so a crash
 re-delivers up to that many messages. Handlers must tolerate duplicates.
@@ -190,14 +190,22 @@ On exhaustion the position is marked **`Exhausted`** and dropped from tracking (
 `handler.failed` event is emitted) — there is **no dead-letter queue for
 event-store subscriptions**; a DLQ applies only to broker/stream subscriptions.
 
-!!! warning "Recovery retry is best-effort across a crash"
-    The cursor advances *before* the failure is recorded to the recovery
-    stream, and the durable cursor flush is not coupled to that record. A crash
-    between the durable cursor advance and the recovery-stream write — or a failure
-    of the recovery write itself — can drop the failed message rather than retrying
-    it. The batched-checkpoint at-least-once property (a crash re-delivers the last
-    unflushed batch) is unaffected; it is the *recovery* of an already-failed
-    message that is not crash-atomic.
+!!! note "Recovery of a failed message is crash-safe"
+    With recovery enabled (the default), the failure is recorded to the recovery
+    stream *before* the read cursor advances past it. The record is written per
+    message while the cursor's durable checkpoint is batched, so the record is
+    always durable before the cursor is durably flushed past the position. That
+    closes the drop window two ways:
+
+    - If the recovery write itself fails, it raises before the cursor advances, so
+      the message is re-read and retried on the next poll.
+    - If the record is written and the process then crashes, the durable cursor is
+      either still behind the position (the message is re-read) or already past it
+      (the durable record is picked up by the recovery pass) — never dropped.
+
+    With `enable_recovery=False` a failed message is intentionally dropped (no
+    tracking, no retry). This is separate from the batched-checkpoint at-least-once
+    property for the happy path, where a crash re-delivers the last unflushed batch.
 
 **Exactly-once-effect is opt-in**, in two places:
 
