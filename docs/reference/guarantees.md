@@ -66,7 +66,7 @@ the root's `_version`.
 
 | Adapter | Ordering (no `order_by`) | Write atomicity / visibility | OCC & consistency | Isolation / concurrency model |
 |---|---|---|---|---|
-| **Memory** | Insertion order (not a promise) | Copy-on-write session; visible at commit; `rollback()` is a no-op | OCC via a version check under a process-local lock — **holds only single-threaded** (see below) | Single process; per-provider lock (no MVCC) |
+| **Memory** | Insertion order (not a promise) | Copy-on-write session; visible at commit; `rollback()` discards the session's pending changes | Real OCC: commit is a compare-and-set that re-checks the version against the live store under the provider lock and merges per record; a stale write raises `ExpectedVersionError` (see below) | Single process; per-provider lock (no MVCC) |
 | **SQLAlchemy** (PostgreSQL / MSSQL) | No guaranteed order | Session-scoped writes deferred to the flush at commit (AUTOCOMMIT engine, `autoflush=False`) | OCC via `version_id_col` → `UPDATE … WHERE _version = :expected`; a zero-row match raises `ExpectedVersionError` | **READ COMMITTED or stronger** (see below) |
 | **SQLAlchemy** (SQLite) | No guaranteed order | Session autoflushes; write visible in-session | Same `version_id_col` OCC | Writers serialized; a contended write raises `SQLITE_BUSY` (no READ COMMITTED level) |
 | **Elasticsearch** | No guaranteed order | No multi-document transaction; each write forced `refresh=True` | OCC via `if_seq_no` / `if_primary_term`; a 409 conflict raises `ExpectedVersionError` | None (no transactions) |
@@ -91,14 +91,20 @@ Work, every repository *on a given provider* shares one session.
 
 Across UoW boundaries, relational adapters see only committed state.
 
-**Memory OCC is single-threaded only.** The Memory adapter takes a per-provider
-lock around the version check, but each session works on a deep-copied snapshot
-and commits by replacing the whole store, so two overlapping sessions can each
-pass the check against their own snapshot and the second commit clobbers the
-first — a lost update with no conflict raised. Memory is a single-writer test/dev
-store; do not rely on its OCC under concurrent sessions (use a real database to
-exercise concurrency — this is why the no-lost-update property test runs on
-PostgreSQL).
+**Memory OCC holds under concurrent sessions.** Each session still works on a
+deep-copied snapshot, but commit is no longer a wholesale replacement: it is a
+compare-and-set. Under the per-provider lock, `MemorySession.commit` re-checks
+each aggregate's `_version` against the *live* store and then merges only the
+records this session changed, key by key. So two overlapping sessions that both
+passed the snapshot check no longer both win — the second commit finds the
+version already moved and raises `ExpectedVersionError`, and sessions writing
+*different* records never clobber each other. This holds on the same
+version-guarded write paths as every adapter (`repository.add` and the DAO's
+`update()`, both through `save()`), with the same root-boundary caveat above
+(independent child changes are guarded only through the root's version). Memory
+is still a single-process test/dev store (no MVCC, no cross-process
+coordination), but on that path its no-lost-update behavior now matches a real
+database, so aggregate-level concurrency tests can run against it.
 
 **Ordering.** A query without an explicit `order_by` has **no guaranteed order**.
 Some adapters are incidentally stable (SQLAlchemy appends `ORDER BY <pk> ASC`,
@@ -133,7 +139,7 @@ stream pages by its per-stream `position`; a category or `$all` read pages by
 
 | Adapter | Per-stream order | Global / `$all` order | Append & OCC | Consistency |
 |---|---|---|---|---|
-| **Memory** | Gapless per-stream `position`, ascending | `global_position` ascending; no gaps (single process, no rollback) | Version check + append atomic under a class lock (conflict raises) **for single-threaded use** — like the repository Memory adapter, the append commits outside the lock, so overlapping sessions can lose an append with no conflict raised | Read-your-writes (in process); single-writer test/dev store |
+| **Memory** | Gapless per-stream `position`, ascending | `global_position` ascending; no gaps (single process, no rollback) | Version check + append atomic under a class lock (conflict raises) **for single-threaded use**. When the append is deferred into an enclosing Unit of Work it publishes after that class lock is released, so overlapping UoWs on the same stream are not serialized — do not rely on the Memory event store under concurrent writers | Read-your-writes (in process); single-writer test/dev store |
 | **MessageDB** | Gapless per-stream `position`, ascending | `global_position` ascending, strictly increasing. **Globally** it may contain gaps — a rolled-back append permanently consumes a value. **Within a single category it is gap-free**: MessageDB serializes same-category writes with a per-category advisory lock held to commit. | `write_message(… expected_version)` stored proc; conflict raises | Read-your-writes (committed before `append` returns) |
 
 **Append is per message.** A Unit of Work that raises N events performs N
@@ -318,6 +324,7 @@ deployment is configured to persist.
 | **#1087** | *No lost update.* The aggregate OCC check is atomic with the write (`UPDATE … WHERE _version = :expected`), so two concurrent updates can no longer both succeed and silently drop one. Holds at READ COMMITTED on PostgreSQL / MSSQL. |
 | **#1249** ([ADR-0024](../adr/0024-event-store-read-position-contract.md)) | *Correct read position.* Category and `$all` reads page by `global_position`, inclusive and ordered, uniformly across adapters — the substrate the no-skip guarantee is expressed on. |
 | **#1088** ([ADR-0025](../adr/0025-all-subscription-gap-safety.md)) | *No silent skip for `$all`.* A late-committing lower `global_position` is no longer stepped over; the cursor holds at the gap until it fills or times out. |
+| **#1258** | *No lost update on the Memory adapter.* `MemorySession.commit` is now a compare-and-set: it re-checks each aggregate's version against the live store under the provider lock and merges only the records it changed, so two concurrent sessions can no longer both succeed and silently drop one. Makes the in-memory adapter a faithful concurrency stand-in (single process, no MVCC). |
 
 ---
 

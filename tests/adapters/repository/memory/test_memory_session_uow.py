@@ -101,8 +101,28 @@ def test_memory_session_new_connection_bypasses_uow(test_domain):
         )  # Data in UoW session
 
 
+def test_create_then_delete_same_aggregate_in_one_uow_persists_nothing(test_domain):
+    """Creating and then deleting the same aggregate within one UnitOfWork
+    commits cleanly and persists nothing. At commit the record's op is a delete
+    and its schema was never published to the live store, so the merge has
+    nothing to pop and simply skips it."""
+    with UnitOfWork():
+        repo = test_domain.repository_for(Product)
+        product = Product(name="Ephemeral", price=1)
+        repo.add(product)
+        repo._dao.delete(product)
+
+    assert test_domain.repository_for(Product)._dao.query.all().total == 0
+
+
 def test_memory_session_commit_without_uow(test_domain):
-    """Test that MemorySession.commit works when no UoW is active"""
+    """Test that MemorySession.commit works when no UoW is active.
+
+    ``commit`` merges the session's recorded changeset into the live store
+    (a compare-and-set). Writes go through ``session.write``, which mutates the
+    session copy and records the change together — exactly what the DAO write
+    paths do.
+    """
     # Create a product without UoW
     product = Product(name="Monitor", price=200)
     test_domain.repository_for(Product).add(product)
@@ -110,12 +130,14 @@ def test_memory_session_commit_without_uow(test_domain):
     provider = test_domain.providers["default"]
     session = provider.get_session()
 
-    # Modify data in the session
+    # Modify data in the session through the write choke-point (as the DAO does)
     schema_name = "product"
     product_id = next(iter(session._db["data"][schema_name].keys()))
-    session._db["data"][schema_name][product_id]["price"] = 250
+    record = session._db["data"][schema_name][product_id]
+    record["price"] = 250
+    session.write(schema_name, product_id, record)
 
-    # Commit should update the provider's database directly
+    # Commit should merge the recorded change into the provider's database
     session.commit()
 
     # Verify the provider's database has the updated data
