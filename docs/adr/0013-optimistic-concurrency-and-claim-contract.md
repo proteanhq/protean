@@ -73,10 +73,12 @@ hands them back — one round trip, no TOCTOU window. `RETURNING` does not
 preserve the inner `ORDER BY`, so the returned batch is re-sorted in Python to
 honour `order_by`.
 
-**Memory adapter.** Holds the provider's `threading.Lock` across the whole
-read-and-claim section and delegates to the portable default. The lock
-serializes concurrent claimers in-process, which is the strongest guarantee the
-single-process store can offer.
+**Memory adapter.** Holds the provider's reentrant lock (`threading.RLock`)
+across the whole read-and-claim section and delegates to the portable default.
+The lock serializes concurrent claimers in-process, which is the strongest
+guarantee the single-process store can offer. It is reentrant because the
+adapter's compare-and-set commit re-acquires the same lock on the same thread
+when the claim commits standalone.
 
 **MySQL/MariaDB, SQL Server, SQLite, Elasticsearch, and other dialects** use the
 portable default. MySQL and MariaDB have `SKIP LOCKED` but no

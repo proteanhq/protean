@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import date, datetime
 from itertools import count
-from threading import Lock
+from threading import RLock
 from typing import cast
 from uuid import UUID
 
@@ -82,8 +82,34 @@ class MemoryModel(BaseDatabaseModel):
 
 
 class MemorySession:
-    # Heterogeneous session store: ``data`` (the copied databases), ``lock``
-    # (a ``threading.Lock``) and ``counters`` (auto-increment counters).
+    """A copy-on-write view over the provider's in-memory store.
+
+    On construction the session takes a private deep copy of the whole store
+    (``data``); all reads and writes made through it operate on that copy, so a
+    concurrent session never sees this one's uncommitted changes. The changes
+    are published to the shared store only on :meth:`commit`.
+
+    Committing is a **compare-and-set against the live store**, not a wholesale
+    replacement. All writes go through :meth:`write` / :meth:`delete`, which
+    mutate the session copy *and* record the change in one step, so a mutation
+    can never be silently dropped by forgetting to track it. ``commit``
+    re-validates the recorded optimistic-concurrency versions against the *live*
+    store under the provider lock and then merges only the changed records,
+    key-by-key. This is what makes the in-memory provider a faithful stand-in
+    for optimistic locking: two overlapping writers of the same aggregate no
+    longer both "win" (the stale one raises
+    :class:`~protean.exceptions.ExpectedVersionError`), and writers touching
+    *different* records no longer clobber each other on commit.
+    """
+
+    # Heterogeneous session store:
+    #   ``data``           the deep-copied databases this session reads/writes
+    #   ``lock``           a reentrant lock shared per provider
+    #   ``counters``       auto-increment counters
+    #   ``ops``            pending changeset ``(schema, identifier)`` -> "write"
+    #                      | "delete"; last op per record wins
+    #   ``version_checks`` ``(schema, identifier)`` -> expected ``_version`` the
+    #                      live store must still hold for the commit to apply
     _db: dict[str, typing.Any]
 
     def __init__(
@@ -99,22 +125,111 @@ class MemorySession:
                 MemorySession, current_uow._sessions[self._provider.name]
             )._db
         else:
+            lock = self._provider._locks.setdefault(self._provider.name, RLock())
+            # Snapshot under the lock: ``commit`` now mutates the live store in
+            # place (a per-record merge, not a wholesale replacement), so an
+            # unlocked deepcopy could iterate a dict another thread's commit is
+            # resizing and raise "dictionary changed size during iteration". The
+            # lock is reentrant, so taking it here is safe even when the caller
+            # (e.g. ``_claim``) already holds it on this thread.
+            with lock:
+                data = copy.deepcopy(self._provider._databases)
             self._db = {
-                "data": copy.deepcopy(self._provider._databases),
-                "lock": self._provider._locks.setdefault(self._provider.name, Lock()),
+                "data": data,
+                "lock": lock,
                 "counters": self._provider._counters,
+                "ops": {},
+                "version_checks": {},
+                "created": set(),
             }
 
+    def write(
+        self,
+        schema: str,
+        identifier: typing.Any,
+        record: typing.Any,
+        is_new: bool = False,
+    ) -> None:
+        """Store ``record`` in the session copy and mark it for the commit merge.
+
+        The single entry point for creating/updating a record, so a mutation of
+        the session copy is always paired with the tracking ``commit`` needs.
+        ``is_new=True`` marks a record this session *created* (an insert), which
+        exempts it from the commit-time version check: it has no prior version in
+        the live store to match, so ``None`` there is expected, not a conflict.
+        """
+        self._db["data"][schema][identifier] = record
+        self._db["ops"][(schema, identifier)] = "write"
+        if is_new:
+            self._db["created"].add((schema, identifier))
+
+    def delete(self, schema: str, identifier: typing.Any) -> None:
+        """Drop ``identifier`` from the session copy and mark it for the merge."""
+        self._db["data"][schema].pop(identifier, None)
+        self._db["ops"][(schema, identifier)] = "delete"
+
+    def record_version_check(
+        self, schema: str, identifier: typing.Any, expected_version: int
+    ) -> None:
+        """Record the version the live store must still hold for a safe commit.
+
+        Keeps the *first* expected version seen for a record (via
+        ``setdefault``): if the same aggregate is updated twice in one session,
+        the version the live store must match is the one it had when the session
+        started, not the intermediate version produced by the first update.
+
+        A record this session created (then updated in the same session) is
+        skipped: it is not yet in the live store, so there is no prior version
+        to compare against — checking would spuriously conflict on the ``None``.
+        """
+        if (schema, identifier) in self._db["created"]:
+            return
+        self._db["version_checks"].setdefault((schema, identifier), expected_version)
+
+    def _clear_changeset(self) -> None:
+        self._db["ops"].clear()
+        self._db["version_checks"].clear()
+        self._db["created"].clear()
+
     def commit(self) -> None:
-        if current_uow and self._provider.name in current_uow._sessions:
-            cast(MemorySession, current_uow._sessions[self._provider.name])._db[
-                "data"
-            ] = self._db["data"]
-        else:
-            self._provider._databases = self._db["data"]
+        """Validate optimistic-concurrency versions and merge changes to the store.
+
+        Runs the version checks and the merge together under the provider lock,
+        so the whole compare-and-set is atomic with respect to other sessions'
+        commits. A version mismatch raises :class:`ExpectedVersionError` and
+        leaves the live store untouched.
+        """
+        with self._db["lock"]:
+            live = self._provider._databases
+            data = self._db["data"]
+
+            # Compare: every recorded version must still match the live store.
+            for (schema, identifier), expected in self._db["version_checks"].items():
+                stored = live.get(schema, {}).get(identifier)
+                stored_version = stored.get("_version") if stored is not None else None
+                if stored_version != expected:
+                    raise ExpectedVersionError(
+                        f"Wrong expected version: {expected} "
+                        f"(Schema: {schema}, Identifier: {identifier}, "
+                        f"Version: {stored_version})"
+                    )
+
+            # Set: merge this session's changes into the live store record by
+            # record, so concurrent writes to other records are preserved.
+            for (schema, identifier), op in self._db["ops"].items():
+                if op == "write":
+                    live[schema][identifier] = data[schema][identifier]
+                elif schema in live:  # op == "delete"
+                    live[schema].pop(identifier, None)
+
+            # Clear the changeset so a repeated commit is a no-op.
+            self._clear_changeset()
 
     def rollback(self) -> None:
-        pass
+        # Changes live only in this session's ``data`` copy and its pending
+        # changeset until ``commit`` publishes them, so discarding the changeset
+        # (never applying it) is the rollback.
+        self._clear_changeset()
 
     def close(self) -> None:
         pass
@@ -127,7 +242,18 @@ class MemoryProvider(BaseProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """Memory provider supports basic storage with simulated transactions."""
+        """Basic storage, simulated transactions, and real optimistic locking.
+
+        ``OPTIMISTIC_LOCKING`` is a genuine guarantee here, not just for the
+        sequential case: on the version-guarded write path (``repository.add``
+        and the DAO's ``update()``, both through ``save()``),
+        :meth:`MemorySession.commit` validates the aggregate version against the
+        live store under the provider lock, so two overlapping writers of the
+        same aggregate cannot both succeed — the stale one raises
+        :class:`~protean.exceptions.ExpectedVersionError`. The aggregate root is
+        the concurrency boundary, so independent child changes are guarded only
+        through the root's version; see ``docs/reference/guarantees.md``.
+        """
         return DatabaseCapabilities.IN_MEMORY
 
     def __init__(
@@ -140,7 +266,10 @@ class MemoryProvider(BaseProvider):
 
         # Global in-memory store of dict data.
         self._databases: dict[str, dict[typing.Any, typing.Any]] = defaultdict(dict)
-        self._locks: dict[str, Lock] = defaultdict(Lock)
+        # Reentrant so a method that already holds the lock (e.g. ``_claim``) can
+        # call through to a standalone ``commit`` — which re-acquires it — in the
+        # same thread without deadlocking.
+        self._locks: dict[str, RLock] = defaultdict(RLock)
         self._counters: dict[str, count[int]] = defaultdict(count)
 
         # A temporary cache of already constructed model classes
@@ -166,7 +295,7 @@ class MemoryProvider(BaseProvider):
     def _data_reset(self) -> None:
         """Reset data"""
         self._databases = defaultdict(dict)
-        self._locks = defaultdict(Lock)
+        self._locks = defaultdict(RLock)
         self._counters = defaultdict(count)
 
         # Discard any active Unit of Work
@@ -456,7 +585,7 @@ class DictDAO(BaseDAO):
             self._check_unique_indexes(
                 model_obj, conn._db["data"][self.schema_name], identifier
             )
-            conn._db["data"][self.schema_name][identifier] = model_obj
+            conn.write(self.schema_name, identifier, model_obj, is_new=True)
 
         self._commit_if_standalone(conn)
 
@@ -604,7 +733,13 @@ class DictDAO(BaseDAO):
                     f"does not exist."
                 )
 
-            # Atomic version check under lock
+            # Version check against this session's snapshot. This catches a
+            # stale write early (the common sequential case, where the snapshot
+            # already reflects a newer committed version). The authoritative
+            # check for the *concurrent* case runs again against the live store
+            # in ``MemorySession.commit`` — two writers that both pass here
+            # against their own snapshots are reconciled there, so the stale one
+            # still raises rather than silently losing its update.
             if expected_version is not None:
                 stored = conn._db["data"][self.schema_name][identifier]
                 stored_version = stored.get("_version")
@@ -614,6 +749,9 @@ class DictDAO(BaseDAO):
                         f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
                         f"Version: {stored_version})"
                     )
+                conn.record_version_check(
+                    self.schema_name, identifier, expected_version
+                )
 
             # Reject updates that would collide with another row on a declared
             # unique index, mirroring the relational adapters' DDL enforcement.
@@ -621,7 +759,7 @@ class DictDAO(BaseDAO):
                 model_obj, conn._db["data"][self.schema_name], identifier
             )
 
-            conn._db["data"][self.schema_name][identifier] = model_obj
+            conn.write(self.schema_name, identifier, model_obj)
 
         self._commit_if_standalone(conn)
 
@@ -639,7 +777,7 @@ class DictDAO(BaseDAO):
             item = items[key]
             item.update(*args)
             item.update(kwargs)
-            conn._db["data"][self.schema_name][key] = item
+            conn.write(self.schema_name, key, item)
 
             update_count += 1
 
@@ -658,13 +796,14 @@ class DictDAO(BaseDAO):
 
         The memory adapter has no row-level locking, and its ``_update_all`` is
         not atomic across threads (it reads-then-writes). Holding the provider's
-        ``threading.Lock`` across the whole read-and-claim section serializes
-        concurrent claimers in-process, which is the strongest guarantee the
-        single-process memory store can offer. With the lock held, the portable
+        lock across the whole read-and-claim section serializes concurrent
+        claimers in-process, which is the strongest guarantee the single-process
+        memory store can offer. With the lock held, the portable
         :meth:`BaseDAO._claim` default is race-free.
 
-        The lock is non-reentrant; neither ``_filter`` nor ``_update_all``
-        (which the default delegates to) reacquires it, so there is no deadlock.
+        The lock is a reentrant ``RLock``: ``_update_all`` commits standalone,
+        and :meth:`MemorySession.commit` re-acquires the same lock on this
+        thread to run its compare-and-set, so it must nest without deadlocking.
         """
         conn = self._get_session()
         assert conn is not None
@@ -687,7 +826,7 @@ class DictDAO(BaseDAO):
                     f"does not exist."
                 )
 
-            del conn._db["data"][self.schema_name][identifier]
+            conn.delete(self.schema_name, identifier)
 
         self._commit_if_standalone(conn)
 
@@ -739,7 +878,7 @@ class DictDAO(BaseDAO):
 
             to_delete = keys[:limit]
             for identifier in to_delete:
-                conn._db["data"][self.schema_name].pop(identifier, None)
+                conn.delete(self.schema_name, identifier)
 
         self._commit_if_standalone(conn)
 
@@ -758,11 +897,14 @@ class DictDAO(BaseDAO):
             # Delete all the matching identifiers
             with conn._db["lock"]:
                 for identifier in items:
-                    conn._db["data"][self.schema_name].pop(identifier, None)
+                    conn.delete(self.schema_name, identifier)
         else:
+            # Delete every record one at a time (rather than dropping the whole
+            # schema) so the commit merge removes exactly what this session saw
+            # and does not clobber records another session inserted concurrently.
             with conn._db["lock"]:
-                if self.schema_name in conn._db["data"]:
-                    del conn._db["data"][self.schema_name]
+                for identifier in list(conn._db["data"].get(self.schema_name, {})):
+                    conn.delete(self.schema_name, identifier)
 
         self._commit_if_standalone(conn)
 

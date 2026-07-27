@@ -378,6 +378,17 @@ class UnitOfWork:
                 g._access_log_uow_outcome = "committed"
 
             logger.debug("uow.commit_successful")
+        except ExpectedVersionError as exc:
+            # An adapter may detect an optimistic-concurrency conflict directly
+            # at commit time and raise ExpectedVersionError itself — the
+            # in-memory provider does this in its compare-and-set commit. That
+            # is a concurrency conflict, not a generic transaction failure, so
+            # propagate it unchanged for the version-retry machinery (mirrors
+            # the StaleDataError translation below). Without this, the generic
+            # handler would wrap it in TransactionError.
+            logger.exception("uow.commit_failed", exc_info=True)
+            set_span_error(span, exc)
+            raise
         except ValueError as exc:
             logger.exception("uow.commit_failed", exc_info=True)
             set_span_error(span, exc)
