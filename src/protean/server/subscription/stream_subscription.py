@@ -652,6 +652,11 @@ class StreamSubscription(BaseSubscription):
     ) -> None:
         """Handle a message that has exhausted all retries.
 
+        Moves the message to the DLQ (if enabled) and then ACKs it, clearing the
+        retry count. If the DLQ publish fails, the message is NOT ACKed and the
+        retry count is retained: it is NACKed so the broker redelivers it and the
+        DLQ move is retried, rather than the message being silently lost.
+
         Args:
             identifier: The message identifier.
             payload: The message payload.
@@ -662,17 +667,25 @@ class StreamSubscription(BaseSubscription):
         logger.warning(
             f"Message {identifier} exhausted retries ({self.max_retries} attempts), moving to DLQ"
         )
-        await self.move_to_dlq(identifier, payload, stream)
+        if not await self.move_to_dlq(identifier, payload, stream):
+            # DLQ publish failed: hold the message for redelivery instead of
+            # ACKing it away. Back off first (as the retry path does) so a downed
+            # DLQ is retried at the retry cadence, not hammered at poll speed (the
+            # stream poll loop re-reads pending messages with no inter-poll delay).
+            # Keep the retry count so the redelivery stays on the exhaust path and
+            # re-attempts the DLQ move.
+            await asyncio.sleep(self.retry_delay_seconds)
+            self.broker.nack(stream, identifier, self.consumer_group)
+            return
 
-        # ACK the message to remove it from the pending list
+        # DLQ move succeeded (or the DLQ is disabled): ACK to remove the message
+        # from the pending list and clear the retry count.
         self.broker.ack(stream, identifier, self.consumer_group)
-
-        # Clear retry count
         self.retry_counts.pop(identifier, None)
 
     async def move_to_dlq(
         self, identifier: str, payload: dict[str, Any], stream: str | None = None
-    ) -> None:
+    ) -> bool:
         """
         Move a failed message to the dead letter queue.
 
@@ -684,9 +697,15 @@ class StreamSubscription(BaseSubscription):
             identifier: The original message identifier.
             payload: The message payload.
             stream: The source stream. Defaults to the primary stream.
+
+        Returns:
+            bool: True if the message was published to the DLQ (or the DLQ is
+            disabled, so there is nothing to hold); False if the publish failed,
+            so the caller can hold the message for redelivery rather than ACKing
+            it away.
         """
         if not self.enable_dlq:
-            return
+            return True
 
         assert self.broker is not None, "Broker not initialized"
         stream = stream or self._default_stream
@@ -731,8 +750,10 @@ class StreamSubscription(BaseSubscription):
                 correlation_id=domain_meta.get("correlation_id"),
                 causation_id=domain_meta.get("causation_id"),
             )
+            return True
         except Exception as e:
             logger.exception(f"Failed to move message {identifier} to DLQ: {e}")
+            return False
 
     def _create_dlq_message(
         self, identifier: str, payload: dict[str, Any], stream: str | None = None

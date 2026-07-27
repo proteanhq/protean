@@ -353,13 +353,14 @@ class TestDLQDisabled:
     """Behavior when enable_dlq=False."""
 
     @pytest.mark.asyncio
-    async def test_move_to_dlq_returns_none_when_disabled(self, test_domain):
-        """move_to_dlq is a no-op when DLQ is disabled."""
+    async def test_move_to_dlq_returns_true_when_disabled(self, test_domain):
+        """move_to_dlq is a no-op when DLQ is disabled, and reports success (True)
+        so the caller ACKs the discarded message rather than holding it."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, enable_dlq=False)
 
         result = await sub.move_to_dlq("msg1", {"data": "x"})
 
-        assert result is None
+        assert result is True
         assert len(sub.broker.published) == 0
 
     @pytest.mark.asyncio
@@ -395,6 +396,87 @@ class TestDLQPublishFailure:
             await sub.handle_failed_message("msg1", {"data": "x"})
 
         assert "Failed to move message msg1 to DLQ" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_dlq_publish_failure_holds_message_for_redelivery(self, test_domain):
+        """A failed DLQ publish must NOT ACK the message; it NACKs and retains the
+        retry count so the broker redelivers it (issue #1263)."""
+        sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
+        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+
+        await sub.handle_failed_message("msg1", {"data": "x"})
+
+        # Not ACKed away; NACKed for redelivery; retry count retained.
+        assert len(sub.broker.acked) == 0
+        assert len(sub.broker.nacked) == 1
+        assert "msg1" in sub.retry_counts
+
+    @pytest.mark.asyncio
+    async def test_message_reaches_dlq_after_transient_publish_failure(
+        self, test_domain
+    ):
+        """The message is retried, not lost: once the DLQ publish succeeds on a
+        redelivery it is moved to the DLQ and ACKed."""
+        sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
+        # Publish fails on the first exhaust, succeeds on the redelivery.
+        sub.broker.publish = MagicMock(side_effect=[Exception("Broker down"), "dlq-id"])
+
+        await sub.handle_failed_message("msg1", {"data": "x"})
+        assert len(sub.broker.acked) == 0  # held, not acked
+        assert "msg1" in sub.retry_counts
+
+        await sub.handle_failed_message("msg1", {"data": "x"})
+        assert sub.broker.publish.call_count == 2
+        assert len(sub.broker.acked) == 1  # acked once the DLQ move succeeded
+        assert "msg1" not in sub.retry_counts
+
+    @pytest.mark.asyncio
+    async def test_dlq_publish_failure_backs_off_before_holding(
+        self, test_domain, monkeypatch
+    ):
+        """The exhaust-path hold NACK backs off (retry_delay_seconds) first, so a
+        downed DLQ is retried at the retry cadence rather than hammered at poll
+        speed (the stream poll loop re-reads pending with no inter-poll delay)."""
+        sub = _make_subscription(
+            test_domain, AlwaysFailingHandler, max_retries=1, retry_delay_seconds=0.25
+        )
+        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+
+        sleeps: list[float] = []
+
+        async def fake_sleep(delay):
+            sleeps.append(delay)
+
+        monkeypatch.setattr(
+            "protean.server.subscription.stream_subscription.asyncio.sleep",
+            fake_sleep,
+        )
+
+        await sub.handle_failed_message("msg1", {"data": "x"})
+
+        # Backed off before holding, and still held (NACK, no ACK).
+        assert 0.25 in sleeps
+        assert len(sub.broker.nacked) == 1
+        assert len(sub.broker.acked) == 0
+
+    @pytest.mark.asyncio
+    async def test_backfill_dlq_publish_failure_holds_on_backfill_stream(
+        self, test_domain
+    ):
+        """A failed DLQ publish for a backfill-lane message NACKs on the backfill
+        stream (not the primary), holding it for redelivery."""
+        sub = _make_subscription(
+            test_domain, AlwaysFailingHandler, max_retries=1, lanes_enabled=True
+        )
+        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+
+        await sub.handle_failed_message(
+            "msg1", {"data": "x"}, stream=sub.backfill_stream
+        )
+
+        assert len(sub.broker.acked) == 0
+        assert sub.broker.nacked == [(sub.backfill_stream, "msg1", sub.consumer_group)]
+        assert "msg1" in sub.retry_counts
 
 
 # ── Tests: Configuration ─────────────────────────────────────────────────
