@@ -297,5 +297,6 @@ async def test_dlq_disabled_skips_dlq_operations(test_domain, engine):
         # This test verifies the early return in move_to_dlq
         result = await subscription.move_to_dlq("test-id", {"test": "data"})
 
-        # Should complete without error and return None
-        assert result is None
+        # Should complete without error and report success (True) so the caller
+        # ACKs the discarded message rather than holding it.
+        assert result is True

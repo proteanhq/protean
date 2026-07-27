@@ -478,6 +478,20 @@ class TestDLQPublishFailure:
         assert sub.broker.nacked == [(sub.backfill_stream, "msg1", sub.consumer_group)]
         assert "msg1" in sub.retry_counts
 
+    @pytest.mark.asyncio
+    async def test_nack_failure_after_dlq_failure_is_logged(self, test_domain, caplog):
+        """If the hold NACK itself fails after a failed DLQ publish, it is logged
+        and the message is still not ACKed."""
+        sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
+        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+        sub.broker.nack = MagicMock(return_value=False)  # NACK also fails
+
+        with caplog.at_level(logging.WARNING):
+            await sub.handle_failed_message("msg1", {"data": "x"})
+
+        assert len(sub.broker.acked) == 0
+        assert "Failed to NACK message msg1 after a failed DLQ publish" in caplog.text
+
 
 # ── Tests: Configuration ─────────────────────────────────────────────────
 

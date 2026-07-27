@@ -665,7 +665,8 @@ class StreamSubscription(BaseSubscription):
         assert self.broker is not None, "Broker not initialized"
         stream = stream or self._default_stream
         logger.warning(
-            f"Message {identifier} exhausted retries ({self.max_retries} attempts), moving to DLQ"
+            f"Message {identifier} exhausted retries ({self.max_retries} attempts), "
+            f"{'moving to DLQ' if self.enable_dlq else 'discarding'}"
         )
         if not await self.move_to_dlq(identifier, payload, stream):
             # DLQ publish failed: hold the message for redelivery instead of
@@ -675,7 +676,11 @@ class StreamSubscription(BaseSubscription):
             # Keep the retry count so the redelivery stays on the exhaust path and
             # re-attempts the DLQ move.
             await asyncio.sleep(self.retry_delay_seconds)
-            self.broker.nack(stream, identifier, self.consumer_group)
+            nack_result = self.broker.nack(stream, identifier, self.consumer_group)
+            if not nack_result:
+                logger.warning(
+                    f"Failed to NACK message {identifier} after a failed DLQ publish"
+                )
             return
 
         # DLQ move succeeded (or the DLQ is disabled): ACK to remove the message
