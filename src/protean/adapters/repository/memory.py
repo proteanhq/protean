@@ -903,7 +903,8 @@ class DictDAO(BaseDAO):
             # schema) so the commit merge removes exactly what this session saw
             # and does not clobber records another session inserted concurrently.
             with conn._db["lock"]:
-                for identifier in list(conn._db["data"].get(self.schema_name, {})):
+                items = list(conn._db["data"].get(self.schema_name, {}))
+                for identifier in items:
                     conn.delete(self.schema_name, identifier)
 
         self._commit_if_standalone(conn)

@@ -70,11 +70,18 @@ def _seed_order(test_domain):
 
 
 def _run_workers(worker):
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(_WORKERS)]
+    threads = [
+        threading.Thread(target=worker, args=(i,), daemon=True) for i in range(_WORKERS)
+    ]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join(timeout=30)
+    # A thread still alive means it hung past the join timeout; fail loudly here
+    # rather than letting a live thread mutate shared state under later asserts.
+    assert not any(thread.is_alive() for thread in threads), (
+        "a worker thread did not finish within the join timeout"
+    )
 
 
 def test_concurrent_updates_do_not_silently_lose_writes(test_domain):

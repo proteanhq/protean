@@ -66,7 +66,7 @@ the root's `_version`.
 
 | Adapter | Ordering (no `order_by`) | Write atomicity / visibility | OCC & consistency | Isolation / concurrency model |
 |---|---|---|---|---|
-| **Memory** | Insertion order (not a promise) | Copy-on-write session; visible at commit; `rollback()` is a no-op | Real OCC: commit is a compare-and-set that re-checks the version against the live store under the provider lock and merges per record; a stale write raises `ExpectedVersionError` (see below) | Single process; per-provider lock (no MVCC) |
+| **Memory** | Insertion order (not a promise) | Copy-on-write session; visible at commit; `rollback()` discards the session's pending changes | Real OCC: commit is a compare-and-set that re-checks the version against the live store under the provider lock and merges per record; a stale write raises `ExpectedVersionError` (see below) | Single process; per-provider lock (no MVCC) |
 | **SQLAlchemy** (PostgreSQL / MSSQL) | No guaranteed order | Session-scoped writes deferred to the flush at commit (AUTOCOMMIT engine, `autoflush=False`) | OCC via `version_id_col` → `UPDATE … WHERE _version = :expected`; a zero-row match raises `ExpectedVersionError` | **READ COMMITTED or stronger** (see below) |
 | **SQLAlchemy** (SQLite) | No guaranteed order | Session autoflushes; write visible in-session | Same `version_id_col` OCC | Writers serialized; a contended write raises `SQLITE_BUSY` (no READ COMMITTED level) |
 | **Elasticsearch** | No guaranteed order | No multi-document transaction; each write forced `refresh=True` | OCC via `if_seq_no` / `if_primary_term`; a 409 conflict raises `ExpectedVersionError` | None (no transactions) |
