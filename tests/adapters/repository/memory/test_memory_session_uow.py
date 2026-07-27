@@ -101,6 +101,20 @@ def test_memory_session_new_connection_bypasses_uow(test_domain):
         )  # Data in UoW session
 
 
+def test_create_then_delete_same_aggregate_in_one_uow_persists_nothing(test_domain):
+    """Creating and then deleting the same aggregate within one UnitOfWork
+    commits cleanly and persists nothing. At commit the record's op is a delete
+    and its schema was never published to the live store, so the merge has
+    nothing to pop and simply skips it."""
+    with UnitOfWork():
+        repo = test_domain.repository_for(Product)
+        product = Product(name="Ephemeral", price=1)
+        repo.add(product)
+        repo._dao.delete(product)
+
+    assert test_domain.repository_for(Product)._dao.query.all().total == 0
+
+
 def test_memory_session_commit_without_uow(test_domain):
     """Test that MemorySession.commit works when no UoW is active.
 
