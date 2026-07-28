@@ -984,6 +984,13 @@ class SADAO(BaseDAO):
                 # the count round-trip entirely.
                 total = len(items)
             result = ResultSet(offset=offset, limit=limit, total=total, items=items)
+        except StaleDataError as exc:
+            # ``autoflush`` emitted a pending version-guarded UPDATE before this
+            # read, and a concurrent commit already advanced the version. That is
+            # an optimistic-concurrency conflict, so surface it as
+            # ``ExpectedVersionError`` for the version-retry path, matching
+            # ``_flush`` and the UnitOfWork commit.
+            raise ExpectedVersionError(str(exc)) from None
         except Exception:
             logger.exception("repository.sqlalchemy.filter_failed")
             raise
@@ -1272,6 +1279,10 @@ class SADAO(BaseDAO):
             if criteria.children:
                 qs = qs.filter(self._build_filters(criteria))
             return qs.scalar() or 0
+        except StaleDataError as exc:
+            # See ``_filter``: an autoflushed version-guarded UPDATE lost the race,
+            # so report it as the optimistic-concurrency error.
+            raise ExpectedVersionError(str(exc)) from None
         finally:
             self._commit_if_standalone(conn)
 
@@ -1553,6 +1564,13 @@ class SAProvider(BaseProvider):
                 conn.close()
 
     def _data_reset(self) -> None:
+        # Discard any active Unit of Work FIRST. A leaked in-progress UoW can hold
+        # row locks from a flushed write; the delete-all below would block on those
+        # locks, and the rollback that frees them would be unreachable — a
+        # self-deadlock. Rolling back first releases the locks before we delete.
+        if current_uow and current_uow.in_progress:
+            current_uow.rollback()
+
         conn = self._engine.connect()
         try:
             transaction = conn.begin()
@@ -1569,10 +1587,6 @@ class SAProvider(BaseProvider):
             transaction.commit()
         finally:
             conn.close()
-
-        # Discard any active Unit of Work
-        if current_uow and current_uow.in_progress:
-            current_uow.rollback()
 
     def pool_stats(self) -> dict[str, int]:
         """Return SQLAlchemy connection pool statistics.

@@ -247,3 +247,36 @@ class TestUoWAtomicity:
             uow_domain.repository_for(Wallet).add(Wallet(name="both", balance=1))
         assert _rows(uow_domain, "register") == 1
         assert _rows(uow_domain, "wallet", "WHERE name = :n", {"n": "both"}) == 1
+
+
+# ── Optimistic concurrency surfaced by an in-UoW read ────────────────────────
+
+
+class TestInUoWOptimisticConcurrency:
+    def test_occ_conflict_at_in_uow_read_raises_expected_version_error(
+        self, uow_domain
+    ):
+        """With autoflush on, a read inside a UoW first flushes a pending
+        version-guarded UPDATE. If a concurrent commit already advanced the
+        version, that flush fails; the read must surface ``ExpectedVersionError``
+        (not a raw ``StaleDataError``) so the version-retry path can handle it."""
+        provider = uow_domain.providers["default"]
+        repo = uow_domain.repository_for(Wallet)
+        anchor = Wallet(name="occ", balance=0)
+        repo.add(anchor)
+
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                loaded = repo.get(anchor.id)
+                loaded.balance = 99
+                repo.add(loaded)
+                # Advance the DB copy out-of-band so the pending WHERE _version=0
+                # matches nothing.
+                with provider._engine.connect() as other:
+                    other.execute(
+                        text("UPDATE [wallet] SET _version = 1 WHERE id = :i"),
+                        {"i": anchor.id},
+                    )
+                    other.commit()
+                # A read autoflushes the pending guarded UPDATE, which now conflicts.
+                repo._dao.query.filter(balance=99).all()
