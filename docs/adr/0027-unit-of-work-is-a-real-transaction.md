@@ -1,6 +1,6 @@
 # ADR-0027: The Unit of Work is a real database transaction
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** July 2026
 
