@@ -306,3 +306,48 @@ class TestInUoWOptimisticConcurrency:
                     other.commit()
                 # A read autoflushes the pending guarded UPDATE, which now conflicts.
                 repo._dao.query.filter(balance=99).all()
+
+    def test_occ_conflict_at_in_uow_count_raises_expected_version_error(
+        self, uow_domain
+    ):
+        """Same as the read case, but the conflicting query is a ``count`` (the
+        ``_count`` path), which also autoflushes and must translate the conflict."""
+        provider = uow_domain.providers["default"]
+        repo = uow_domain.repository_for(Wallet)
+        anchor = Wallet(name="occ-count", balance=0)
+        repo.add(anchor)
+
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                loaded = repo.get(anchor.id)
+                loaded.balance = 99
+                repo.add(loaded)
+                with provider._engine.connect() as other:
+                    other.execute(
+                        text("UPDATE wallet SET _version = 1 WHERE id = :i"),
+                        {"i": anchor.id},
+                    )
+                    other.commit()
+                repo._dao.query.filter(balance=99).count()
+
+
+# ── Reset teardown does not deadlock on a leaked UoW ─────────────────────────
+
+
+class TestDataResetUnderActiveUoW:
+    def test_data_reset_rolls_back_a_dangling_uow_without_deadlock(self, uow_domain):
+        """``_data_reset`` rolls back a leaked in-progress UoW before deleting, so a
+        UoW holding row locks from a flushed write does not deadlock the reset."""
+        provider = uow_domain.providers["default"]
+        repo = uow_domain.repository_for(Wallet)
+        uow = UnitOfWork()
+        uow.start()
+        repo.add(Wallet(name="leaked", balance=1))
+        # Force a flush so the row (and its lock) exists inside the transaction.
+        repo._dao.query.filter(name="leaked").all()
+
+        # Must not block on the lock: it rolls the dangling UoW back first.
+        provider._data_reset()
+
+        assert uow.in_progress is False
+        assert _rows(uow_domain, "wallet") == 0

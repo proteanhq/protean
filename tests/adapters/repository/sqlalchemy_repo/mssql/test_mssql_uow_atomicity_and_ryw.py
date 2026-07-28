@@ -280,3 +280,26 @@ class TestInUoWOptimisticConcurrency:
                     other.commit()
                 # A read autoflushes the pending guarded UPDATE, which now conflicts.
                 repo._dao.query.filter(balance=99).all()
+
+    def test_occ_conflict_at_in_uow_count_raises_expected_version_error(
+        self, uow_domain
+    ):
+        """Same as the read case, but the conflicting query is a ``count`` (the
+        ``_count`` path), which also autoflushes and must translate the conflict."""
+        provider = uow_domain.providers["default"]
+        repo = uow_domain.repository_for(Wallet)
+        anchor = Wallet(name="occ-count", balance=0)
+        repo.add(anchor)
+
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                loaded = repo.get(anchor.id)
+                loaded.balance = 99
+                repo.add(loaded)
+                with provider._engine.connect() as other:
+                    other.execute(
+                        text("UPDATE [wallet] SET _version = 1 WHERE id = :i"),
+                        {"i": anchor.id},
+                    )
+                    other.commit()
+                repo._dao.query.filter(balance=99).count()
