@@ -438,8 +438,8 @@ aggregates, adds them to the active Unit of Work's identity map.
 It is returned by `domain.view_for().query` to enforce CQRS read-only access
 on projections.
 
-**Blocked methods:** `update()`, `delete()`, `update_all()`, `delete_all()`.
-All raise `NotSupportedError`.
+**Blocked methods:** `update()` and `delete()`. Both raise
+`NotSupportedError`.
 
 **Read methods work identically:** `filter()`, `exclude()`, `order_by()`,
 `limit()`, `offset()`, `all()`, `raw()`, and all properties.

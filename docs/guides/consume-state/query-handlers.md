@@ -167,18 +167,23 @@ sequenceDiagram
 
 ## Three Levels of Read Access
 
-Protean provides three levels of read abstraction:
+Protean provides three levels of read access to projections:
 
-| Level | API | When to Use |
-|-------|-----|-------------|
-| **Pipeline** | `domain.dispatch(query)` | Named queries with validation, structured read logic |
-| **Direct** | `domain.view_for(Projection).query` | Simple filtering without handler ceremony |
-| **Raw** | `domain.connection_for(Projection)` | Complex queries needing database-specific features |
+| Level | Entry point | When to use |
+|-------|-------------|-------------|
+| **Pipeline** | `domain.dispatch(query)` | Named queries with validation and structured read logic |
+| **Facade** | `domain.view_for(Projection)` | Read-only projection access without handler ceremony |
+| **Raw** | `domain.connection_for(Projection)` | Technology-specific queries (SQL, Elasticsearch DSL, Redis) |
 
-Query handlers operate at Level 1, providing the most structured approach.
-Use `domain.view_for().query` (Level 2) for simple lookups that don't need a
-handler. Use `domain.connection_for()` (Level 3) when you need the raw
-database or cache client for technology-specific queries.
+Query handlers operate at Level 1, the most structured approach. Use
+`domain.view_for(Projection)` (Level 2) for read-only lookups that don't need a
+handler — it returns a `ReadView`, and `view.query` gives you a chainable
+`ReadOnlyQuerySet` (a `QuerySet` subclass whose `update()`/`delete()` raise
+`NotSupportedError`). Use `domain.connection_for(Projection)` (Level 3) when you
+need the raw database or cache client for technology-specific queries.
+
+To *write* to a projection (inside a projector), use
+`domain.repository_for(Projection)`. That is the write path, not a read level.
 
 ## Error Handling
 
