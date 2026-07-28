@@ -2,17 +2,18 @@
 
 This mirrors the PostgreSQL suite
 (``postgresql/test_postgresql_uow_atomicity_and_ryw.py``). ADR-0027 applies the
-same real-transaction change to both providers, so both must be pinned. Every
-test here would fail on the earlier AUTOCOMMIT deferred-write model (issue
+same real-transaction change to both providers, so both must be pinned. Most
+tests here would fail on the earlier AUTOCOMMIT deferred-write model (issue
 #1256), where a mid-UoW flush committed durably, so read-your-writes was broken
-and a rolled-back UoW could leave a half-written aggregate. They cover:
+and a rolled-back UoW could leave a half-written aggregate.
 
-- read-your-writes inside a UoW (``filter``/``count`` see a pending insert, and
-  ``get`` after a modify);
-- in-UoW uniqueness sees the UoW's own pending write;
-- a rolled-back child-bearing UoW leaves no orphaned parent;
-- a cross-table commit is atomic (the transactional-outbox shape);
-- the single-childless-aggregate cases that already worked still work.
+The one PostgreSQL test with no MSSQL counterpart is the cross-connection
+isolation test: MSSQL's default read-committed uses row locks, so a separate
+connection's ``SELECT`` would block on the uncommitted row rather than return 0.
+Every other guarantee is mirrored.
+
+Uses aggregates named ``Register``/``Posting``/``Wallet`` to match the PostgreSQL
+file and to avoid colliding with other tables in this directory.
 """
 
 import pytest
@@ -29,17 +30,17 @@ from tests.shared import MSSQL_URI
 pytestmark = [pytest.mark.mssql, pytest.mark.no_test_domain]
 
 
-class Entry(BaseEntity):
+class Posting(BaseEntity):
     memo: String(max_length=100, required=False)
-    ledger = Reference("Ledger")
+    register = Reference("Register")
 
 
-class Ledger(BaseAggregate):
+class Register(BaseAggregate):
     title: String(max_length=100, required=False)
-    entries = HasMany(Entry)
+    postings = HasMany(Posting)
 
 
-class Account(BaseAggregate):
+class Wallet(BaseAggregate):
     name: String(max_length=50, required=True, unique=True)
     balance: Integer(default=0)
 
@@ -63,15 +64,15 @@ def uow_domain():
             },
         },
     )
-    domain.register(Ledger)
-    domain.register(Entry, part_of=Ledger)
-    domain.register(Account)
+    domain.register(Register)
+    domain.register(Posting, part_of=Register)
+    domain.register(Wallet)
     domain.init(traverse=False)
 
     provider = domain.providers["default"]
-    domain.repository_for(Ledger)._dao
-    domain.repository_for(Entry)._dao
-    domain.repository_for(Account)._dao
+    domain.repository_for(Register)._dao
+    domain.repository_for(Posting)._dao
+    domain.repository_for(Wallet)._dao
     provider._metadata.create_all(provider._engine)
     try:
         with domain.domain_context():
@@ -82,6 +83,8 @@ def uow_domain():
 
 
 def _rows(domain, table: str, where: str = "", params: dict | None = None) -> int:
+    """Count rows on a SEPARATE connection. Always called after the UoW has
+    committed or rolled back, so it never blocks on an open transaction."""
     provider = domain.providers["default"]
     with provider._engine.connect() as conn:
         return conn.execute(
@@ -94,27 +97,49 @@ def _rows(domain, table: str, where: str = "", params: dict | None = None) -> in
 
 class TestReadYourWritesInUoW:
     def test_filter_sees_pending_insert(self, uow_domain):
-        repo = uow_domain.repository_for(Account)
+        repo = uow_domain.repository_for(Wallet)
         with UnitOfWork():
-            repo.add(Account(name="alice", balance=10))
+            repo.add(Wallet(name="alice", balance=10))
             found = repo._dao.query.filter(name="alice").all()
             assert len(found.items) == 1
 
     def test_count_sees_pending_insert(self, uow_domain):
-        repo = uow_domain.repository_for(Account)
+        repo = uow_domain.repository_for(Wallet)
         with UnitOfWork():
-            repo.add(Account(name="bob", balance=1))
+            repo.add(Wallet(name="bob", balance=1))
             assert repo._dao.query.filter(name="bob").all().total == 1
+
+    def test_exists_sees_pending_insert(self, uow_domain):
+        """``exists`` is its own code path (``dao.exists``); pin it directly, both
+        the True direction (a pending row is found) and the False direction (an
+        absent one is not)."""
+        repo = uow_domain.repository_for(Wallet)
+        with UnitOfWork():
+            repo.add(Wallet(name="eve", balance=1))
+            assert repo._dao.exists({}, name="eve") is True
+            assert repo._dao.exists({}, name="absent") is False
+
+    def test_filter_sees_pending_update(self, uow_domain):
+        """Read-your-writes for an UPDATE that emits SQL. Filtering on the updated
+        column forces a query the identity map cannot answer, so on the old
+        AUTOCOMMIT model (autoflush off) the DB still holds the old value and this
+        returns 0 rows."""
+        repo = uow_domain.repository_for(Wallet)
+        acct = Wallet(name="frank", balance=0)
+        repo.add(acct)
+        with UnitOfWork():
+            loaded = repo.get(acct.id)
+            loaded.balance = 500
+            repo.add(loaded)
+            assert repo._dao.query.filter(balance=500).all().total == 1
 
     def test_get_sees_pending_update(self, uow_domain):
         """Lock-in: ``get`` after modifying an existing aggregate already sees the
         change today, because SQLAlchemy's identity map returns the in-memory
-        (modified) object rather than re-reading committed state. This is the one
-        read-your-writes case that works on the AUTOCOMMIT model (unlike
-        ``filter``/``count`` above, which emit SQL and cannot see a pending insert
-        without a flush), and it must keep working after ADR-0027."""
-        repo = uow_domain.repository_for(Account)
-        acct = Account(name="carol", balance=0)
+        (modified) object rather than re-reading committed state. This passes on
+        both models and must keep passing after ADR-0027."""
+        repo = uow_domain.repository_for(Wallet)
+        acct = Wallet(name="carol", balance=0)
         repo.add(acct)
         with UnitOfWork():
             loaded = repo.get(acct.id)
@@ -128,11 +153,11 @@ class TestReadYourWritesInUoW:
 
 class TestInUoWUniqueness:
     def test_second_duplicate_in_same_uow_is_rejected(self, uow_domain):
-        repo = uow_domain.repository_for(Account)
+        repo = uow_domain.repository_for(Wallet)
         with UnitOfWork():
-            repo.add(Account(name="dup", balance=1))
+            repo.add(Wallet(name="dup", balance=1))
             with pytest.raises(ValidationError):
-                repo.add(Account(name="dup", balance=2))
+                repo.add(Wallet(name="dup", balance=2))
 
 
 # ── Unit-of-Work atomicity ──────────────────────────────────────────────────
@@ -141,55 +166,84 @@ class TestInUoWUniqueness:
 class TestUoWAtomicity:
     def test_single_childless_aggregate_rollback(self, uow_domain):
         """Lock-in: the one case atomic today must stay atomic."""
-        repo = uow_domain.repository_for(Account)
+        repo = uow_domain.repository_for(Wallet)
         uow = UnitOfWork()
         uow.start()
-        repo.add(Account(name="ephemeral", balance=0))
+        repo.add(Wallet(name="ephemeral", balance=0))
         uow.rollback()
-        assert _rows(uow_domain, "account") == 0
+        assert _rows(uow_domain, "wallet") == 0
 
     def test_single_childless_aggregate_commit(self, uow_domain):
         """Lock-in: a committed childless aggregate persists."""
-        repo = uow_domain.repository_for(Account)
+        repo = uow_domain.repository_for(Wallet)
         with UnitOfWork():
-            repo.add(Account(name="kept", balance=7))
-        assert _rows(uow_domain, "account", "WHERE name = :n", {"n": "kept"}) == 1
+            repo.add(Wallet(name="kept", balance=7))
+        assert _rows(uow_domain, "wallet", "WHERE name = :n", {"n": "kept"}) == 1
 
     def test_child_bearing_rollback_leaves_no_orphan(self, uow_domain):
-        repo = uow_domain.repository_for(Ledger)
+        repo = uow_domain.repository_for(Register)
         uow = UnitOfWork()
         uow.start()
-        ledger = Ledger(title="temp")
-        ledger.add_entries(Entry(memo="e1"))
-        repo.add(ledger)
+        register = Register(title="temp")
+        register.add_postings(Posting(memo="p1"))
+        repo.add(register)
         uow.rollback()
-        assert _rows(uow_domain, "ledger") == 0
-        assert _rows(uow_domain, "entry") == 0
+        assert _rows(uow_domain, "register") == 0
+        assert _rows(uow_domain, "posting") == 0
+
+    def test_child_bearing_commit_persists_parent_and_children(self, uow_domain):
+        """The positive of the orphan test: a committed child-bearing aggregate
+        persists the parent AND its children together."""
+        repo = uow_domain.repository_for(Register)
+        with UnitOfWork():
+            register = Register(title="kept")
+            register.add_postings(Posting(memo="a"))
+            register.add_postings(Posting(memo="b"))
+            repo.add(register)
+        assert _rows(uow_domain, "register") == 1
+        assert _rows(uow_domain, "posting") == 2
 
     def test_cross_table_commit_is_atomic(self, uow_domain):
         """A UoW writing to two tables where one write fails at commit leaves
         neither. This is also the transactional-outbox shape (domain write +
         outbox message in different tables)."""
         provider = uow_domain.providers["default"]
-        accounts = uow_domain.repository_for(Account)
-        anchor = Account(name="anchor", balance=0)
-        accounts.add(anchor)
+        wallets = uow_domain.repository_for(Wallet)
+        anchor = Wallet(name="anchor", balance=0)
+        wallets.add(anchor)
 
         with pytest.raises(ExpectedVersionError):
             with UnitOfWork():
-                # INSERT into ``ledger`` ...
-                uow_domain.repository_for(Ledger).add(Ledger(title="L"))
-                # ... plus a stale UPDATE on ``account`` that fails at the commit
+                # INSERT into ``register`` ...
+                uow_domain.repository_for(Register).add(Register(title="L"))
+                # ... plus a stale UPDATE on ``wallet`` that fails at the commit
                 # flush (bump the DB copy out-of-band so WHERE _version=0 matches 0).
-                a = accounts.get(anchor.id)
+                a = wallets.get(anchor.id)
                 a.balance = 9
-                accounts.add(a)
+                wallets.add(a)
                 with provider._engine.connect() as other:
                     other.execute(
-                        text("UPDATE [account] SET _version = 1 WHERE id = :i"),
+                        text("UPDATE [wallet] SET _version = 1 WHERE id = :i"),
                         {"i": anchor.id},
                     )
                     other.commit()
 
-        # The ledger INSERT must not survive the failed commit.
-        assert _rows(uow_domain, "ledger") == 0
+        # Neither table's write from the failed UoW survives: the register INSERT
+        # is gone, and the wallet balance did not move to 9.
+        assert _rows(uow_domain, "register") == 0
+        assert (
+            _rows(
+                uow_domain, "wallet", "WHERE name = :n AND balance = 9", {"n": "anchor"}
+            )
+            == 0
+        )
+
+    def test_cross_table_commit_persists_both(self, uow_domain):
+        """The positive of ``test_cross_table_commit_is_atomic``: a UoW writing to
+        two tables that commits cleanly persists both rows (the atomic-outbox
+        happy path)."""
+        with UnitOfWork():
+            uow_domain.repository_for(Register).add(Register(title="L"))
+            uow_domain.repository_for(Wallet).add(Wallet(name="both", balance=1))
+        assert _rows(uow_domain, "register") == 1
+        assert _rows(uow_domain, "wallet", "WHERE name = :n", {"n": "both"}) == 1
