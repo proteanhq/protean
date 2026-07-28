@@ -77,6 +77,13 @@ class UnitOfWork:
         self._messages_to_dispatch: list[tuple[str, dict[str, Any], str | None]] = []
         self._identity_map: defaultdict[str, dict[Any, Any]] = defaultdict(dict)
 
+        # A UnitOfWork started while another is already active on this context is
+        # a participant in the outer transaction (see ``start``). ``_nested`` marks
+        # it; ``_rollback_only`` is set on the outermost UoW when a participant
+        # rolls back, dooming the whole transaction.
+        self._nested = False
+        self._rollback_only = False
+
     @property
     def in_progress(self) -> bool:
         return self._in_progress
@@ -130,7 +137,20 @@ class UnitOfWork:
                 item._events = []
 
     def start(self) -> None:
-        """Begin the transaction and push this UnitOfWork onto the context stack."""
+        """Begin the transaction and push this UnitOfWork onto the context stack.
+
+        A UnitOfWork started while another is already active on this context does
+        not open its own transaction. There are no savepoints, so it joins the
+        active (outermost) UnitOfWork: it does not push onto the stack, so
+        repository operations keep resolving ``current_uow`` to the outermost UoW
+        and route every write, session, and event there. Its own commit and
+        rollback then defer to the outermost UoW (see ``commit``/``rollback``).
+        """
+        if _uow_stack.top is not None:
+            self._nested = True
+            self._in_progress = True
+            return
+
         # Log transaction capability warnings for each configured provider
         for provider_name, provider in self.domain.providers.items():
             if not provider.has_capability(DatabaseCapabilities.TRANSACTIONS):
@@ -163,6 +183,22 @@ class UnitOfWork:
         logger.debug("uow.committing", extra={"uow_id": id(self)})
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
+
+        if self._nested:
+            # A participant in an outer UnitOfWork: the outermost UoW owns the real
+            # commit, so there is nothing to commit or dispatch here.
+            self._in_progress = False
+            return
+
+        if self._rollback_only:
+            # A nested participant rolled back, dooming the whole transaction. Roll
+            # back instead of committing; nothing is persisted or dispatched.
+            logger.warning(
+                "A nested UnitOfWork was rolled back; the whole transaction is "
+                "rolled back."
+            )
+            self.rollback()
+            return
 
         tracer = self.domain.tracer
 
@@ -457,6 +493,18 @@ class UnitOfWork:
         # Raise error if the Unit Of Work is not active
         if not self._in_progress:
             raise InvalidOperationError("UnitOfWork is not in progress")
+
+        if self._nested:
+            # A participant cannot roll back only its own work (there are no
+            # savepoints), so it dooms the whole transaction: mark the outermost
+            # UoW rollback-only. The real session rollback happens when that
+            # outermost UoW exits (its commit sees the flag, or an exception
+            # propagating out of the block drives its rollback directly).
+            self._in_progress = False
+            outermost = _uow_stack.top
+            if outermost is not None:
+                outermost._rollback_only = True
+            return
 
         # Record UoW outcome for the access log wide event
         with contextlib.suppress(Exception):
