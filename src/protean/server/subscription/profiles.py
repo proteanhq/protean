@@ -282,6 +282,19 @@ def build_profile_registry(
         else:
             base = dict(DEFAULT_CONFIG)
 
+        # Field names are always strings from TOML, but a programmatic config
+        # could use a non-string key. Catch it here so the unknown-field check
+        # below never has to ``sorted()``/``join()`` a mix of strings and
+        # other types, which would raise a raw TypeError instead of a clean
+        # ConfigurationError.
+        non_string_fields = [key for key in overrides if not isinstance(key, str)]
+        if non_string_fields:
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' has non-string "
+                f"field name(s): {non_string_fields!r}. Field names must be "
+                "strings."
+            )
+
         unknown = set(overrides) - PROFILE_FIELDS
         if unknown:
             raise ConfigurationError(

@@ -759,6 +759,18 @@ class TestBuildProfileRegistry:
             build_profile_registry({"tbl": {"inherits": {"name": "fast"}}})
         assert "tbl" in str(exc.value)
 
+    def test_non_string_override_key_raises(self):
+        """A non-string override key (programmatic config) is rejected cleanly.
+
+        Without the type guard, `set(overrides) - PROFILE_FIELDS` would put the
+        non-string key into `unknown`, and `sorted()`/`join()` over a mix of
+        strings and other types would raise a raw TypeError instead of a
+        ConfigurationError.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"weird": {123: "batch"}})  # type: ignore[dict-item]
+        assert "weird" in str(exc.value)
+
     def test_scalar_profiles_slot_raises(self):
         """A `[server.profiles]` slot that is a scalar, not a table, is rejected.
 
