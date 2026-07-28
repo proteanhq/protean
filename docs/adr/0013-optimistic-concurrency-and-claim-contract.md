@@ -131,6 +131,13 @@ unconditionally) would *not* hold: two transactions can both read the same
 version and both write, silently losing one update — the failure the guarded
 `UPDATE` prevents.
 
+> **Superseded in part by ADR-0027.** The AUTOCOMMIT engine described above was
+> later removed. As of ADR-0027 a Unit of Work is one real database transaction,
+> so `version_id_col` no longer guards against an eager statement autocommitting
+> mid-UoW; it now simply rides the UoW's real flush. The optimistic-concurrency
+> contract in this ADR is unchanged. Only the transaction-model justification
+> above is superseded.
+
 **The aggregate root is the concurrency boundary — including child changes.**
 The version guard above protects the root's own fields, but an aggregate can be
 modified purely through a child entity (a `HasMany`/`HasOne` member): a change to

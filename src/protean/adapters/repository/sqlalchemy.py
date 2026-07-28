@@ -789,8 +789,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         # flush emits ``UPDATE … WHERE _version = :loaded`` and raises
         # ``StaleDataError`` when a concurrent commit already advanced the
         # version. Protean owns the version value (version_id_generator=False)
-        # via ``BaseDAO._validate_and_update_version``, so the check is atomic at
-        # flush/commit even under the deferred-write AUTOCOMMIT model (#1087).
+        # via ``BaseDAO._validate_and_update_version``, so the guard rides the
+        # UnitOfWork's real transaction and raises on a concurrent bump
+        # (ADR-0013, ADR-0027).
         version_col = cls.__dict__.get("_version")
         if version_col is not None:
             cls.__mapper_args__ = {
@@ -1049,13 +1050,13 @@ class SADAO(BaseDAO):
         ``UPDATE … SET … WHERE _version = :loaded``. If a concurrent commit
         advanced the version after this read, the flush matches zero rows and
         SQLAlchemy raises ``StaleDataError``, which the persistence layer maps to
-        :class:`ExpectedVersionError`. Deferring the write to the flush keeps it
-        invisible until the UnitOfWork commits (the adapter runs an AUTOCOMMIT
-        engine), while the version predicate keeps the guard atomic — a plain
-        ``UPDATE … WHERE id`` would let two readers of the same version both
-        write and lose one update. When ``expected_version`` is not ``None`` the
-        Python check below additionally rejects a version already stale at read
-        time.
+        :class:`ExpectedVersionError`. The version predicate keeps the guard
+        atomic: a plain ``UPDATE … WHERE id`` would let two readers of the same
+        version both write and lose one update. The write rides the UnitOfWork's
+        real transaction (ADR-0027), so it is invisible to other connections
+        until the UoW commits and is rolled back with it. When
+        ``expected_version`` is not ``None`` the Python check below additionally
+        rejects a version already stale at read time.
         """
         conn = self._get_session()
         assert conn is not None
