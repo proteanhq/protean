@@ -12,6 +12,7 @@ The profile system follows a priority hierarchy:
 
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -220,7 +221,23 @@ def build_profile_registry(
     if not custom_profiles:
         return registry
 
+    # The profiles slot must itself be a table of named sections. A mis-typed
+    # scalar (e.g. ``profiles = "x"``) is truthy and would otherwise blow up on
+    # ``.items()`` with a raw AttributeError.
+    if not isinstance(custom_profiles, Mapping):
+        raise ConfigurationError(
+            f"[server.profiles] must be a table of named profile sections, got "
+            f"{type(custom_profiles).__name__}."
+        )
+
     for raw_name, raw_config in custom_profiles.items():
+        # TOML keys are always strings, but a programmatic config could use a
+        # non-string key; normalize only after confirming it is a string.
+        if not isinstance(raw_name, str):
+            raise ConfigurationError(
+                f"Custom subscription profile names must be strings, got "
+                f"{type(raw_name).__name__} ({raw_name!r})."
+            )
         name = raw_name.lower()
 
         if name in BUILTIN_PROFILE_NAMES:
@@ -243,7 +260,17 @@ def build_profile_registry(
         # name is not a built-in, so this rule also rejects the only reachable
         # cycle shapes (self-inherit, custom -> custom).
         if inherits is not None:
-            inherits_name = inherits.lower() if isinstance(inherits, str) else inherits
+            # ``inherits`` must name a built-in. A non-string value (TOML array
+            # or inline table) is not a name; catch it here so the membership
+            # test below never sees an unhashable value.
+            if not isinstance(inherits, str):
+                raise ConfigurationError(
+                    f"Custom subscription profile '{raw_name}' has a non-string "
+                    f"'inherits' value ({inherits!r}). 'inherits' must name a "
+                    f"built-in profile: "
+                    f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+                )
+            inherits_name = inherits.lower()
             if inherits_name not in BUILTIN_PROFILE_NAMES:
                 raise ConfigurationError(
                     f"Custom subscription profile '{raw_name}' inherits from "
@@ -263,7 +290,13 @@ def build_profile_registry(
                 f"{', '.join(sorted(PROFILE_FIELDS))}."
             )
 
-        base.update(overrides)
+        # Skip None overrides so a None value means "keep the inherited (or
+        # default) value" rather than silently reverting the field to the
+        # hardcoded default once the resolver's _merge_configs drops it. This
+        # matches how _merge_configs treats None overrides downstream.
+        base.update(
+            {key: value for key, value in overrides.items() if value is not None}
+        )
         registry[name] = base
 
     return registry

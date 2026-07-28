@@ -177,6 +177,19 @@ hierarchy](#configuration-priority-hierarchy) at whatever level named it, exactl
 like a built-in. An explicit field set alongside the profile at the same level still wins
 over the profile's default.
 
+**Caveat for `default_subscription_profile`.** A profile named there resolves at
+priority 6, which is *below* the server-level defaults at priority 5
+(`default_subscription_type`, `messages_per_tick`, `tick_interval`, and the
+`[server.stream_subscription]` / `[server.event_store_subscription]` blocks). Any
+of those that are set overwrite the matching fields the profile provides. In a
+stock `domain.toml` (which sets several of them), `default_subscription_profile`
+therefore only governs fields the server-level defaults leave unset. To let it
+govern a field, clear that field at the server level, or name the profile at a
+higher-priority level instead — a per-handler `profile` (priority 4) or a
+handler's Meta `subscription_profile` (priority 2-3), which both sit above the
+server-level defaults. This is not new to custom profiles: a built-in named at
+`default_subscription_profile` is shadowed the same way.
+
 ## Configuration Options Reference
 
 ### Common Options

@@ -365,34 +365,6 @@ class ConfigResolver:
         )
         return result
 
-    def _resolve_profile(
-        self, profile: str | SubscriptionProfile
-    ) -> SubscriptionProfile:
-        """Resolve a profile from string or enum.
-
-        Args:
-            profile: Profile name as string or SubscriptionProfile enum.
-
-        Returns:
-            The resolved SubscriptionProfile enum value.
-
-        Raises:
-            ConfigurationError: If the profile name is not a valid SubscriptionProfile.
-        """
-        if isinstance(profile, SubscriptionProfile):
-            return profile
-
-        if isinstance(profile, str):
-            try:
-                return SubscriptionProfile(profile.lower())
-            except ValueError as e:
-                valid = ", ".join(p.value for p in SubscriptionProfile)
-                raise ConfigurationError(
-                    f"Unknown subscription profile '{profile}'. Valid profiles: {valid}"
-                ) from e
-
-        return SubscriptionProfile.PRODUCTION
-
     def _resolve_subscription_type(
         self, sub_type: str | SubscriptionType
     ) -> SubscriptionType:

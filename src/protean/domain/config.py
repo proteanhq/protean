@@ -170,9 +170,10 @@ def _default_config() -> dict[str, Any]:
             # blocking_timeout_ms, max_retries, retry_delay_seconds, enable_dlq,
             # position_update_interval, origin_stream. A custom profile may not
             # reuse a built-in name (rejected with ConfigurationError). Once
-            # defined, a custom profile name is usable anywhere a built-in name
-            # is (default_subscription_profile, per-handler `profile`, handler
-            # Meta subscription_profile).
+            # defined, a custom profile name is usable wherever a built-in name
+            # is: a per-handler `profile`, a handler's Meta subscription_profile,
+            # or default_subscription_profile (which resolves below the
+            # server-level defaults above, so those still win over its fields).
             # Example:
             #   profiles:
             #     myfast:

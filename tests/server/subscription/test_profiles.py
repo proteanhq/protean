@@ -744,3 +744,63 @@ class TestBuildProfileRegistry:
         )
 
         assert registry["es"]["subscription_type"] == "event_store"
+
+    def test_non_string_inherits_raises(self):
+        """A non-string `inherits` (TOML array or inline table) is rejected cleanly.
+
+        Without the type guard the frozenset membership test would raise a raw
+        TypeError on the unhashable value instead of a ConfigurationError.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"arr": {"inherits": ["fast"]}})
+        assert "arr" in str(exc.value)
+
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"tbl": {"inherits": {"name": "fast"}}})
+        assert "tbl" in str(exc.value)
+
+    def test_scalar_profiles_slot_raises(self):
+        """A `[server.profiles]` slot that is a scalar, not a table, is rejected.
+
+        A truthy scalar slips past the empty check; without the mapping guard it
+        would blow up on `.items()` with a raw AttributeError.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry("not-a-table")  # type: ignore[arg-type]
+        assert "server.profiles" in str(exc.value)
+
+    def test_non_string_profile_name_raises(self):
+        """A non-string profile-name key (programmatic config) is rejected cleanly."""
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({123: {"messages_per_tick": 1}})  # type: ignore[dict-item]
+        assert "123" in str(exc.value)
+
+    def test_none_override_keeps_inherited_value(self):
+        """A None override under `inherits` keeps the inherited value, not the default.
+
+        `messages_per_tick = None` over an inherited batch (500) must stay 500,
+        not silently revert to DEFAULT_CONFIG's 10 once the downstream merge drops
+        the None.
+        """
+        registry = build_profile_registry(
+            {"keepy": {"inherits": "batch", "messages_per_tick": None}}
+        )
+
+        batch = PROFILE_DEFAULTS[SubscriptionProfile.BATCH]
+        assert registry["keepy"]["messages_per_tick"] == batch["messages_per_tick"]
+        assert (
+            registry["keepy"]["messages_per_tick"]
+            != DEFAULT_CONFIG["messages_per_tick"]
+        )
+
+    def test_real_but_disallowed_dlq_fields_are_rejected(self):
+        """dlq_retention_hours / dlq_alert_threshold are real fields but not profile fields.
+
+        They are valid SubscriptionConfig fields yet excluded from PROFILE_FIELDS,
+        so a profile that sets them is rejected as an unknown field — proving the
+        allow-list, not just a made-up name, gates them out.
+        """
+        for bad_field in ("dlq_retention_hours", "dlq_alert_threshold"):
+            with pytest.raises(ConfigurationError) as exc:
+                build_profile_registry({"d": {bad_field: 1}})
+            assert bad_field in str(exc.value)
