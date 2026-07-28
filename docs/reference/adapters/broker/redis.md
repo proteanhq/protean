@@ -69,6 +69,12 @@ This includes:
 - **Dead letter queue management** — list, inspect, replay, and purge failed messages via
   [`protean dlq`](../../cli/data/dlq.md) CLI or the
   [Observatory dashboard](../../server/observability.md)
+- **Stream retention (XTRIM)** — when a subscription sets
+  [`retention_maxlen`](../../server/subscription-types.md#stream-retention), the
+  broker trims the stream after each batch. It uses `XTRIM MINID` at the slowest
+  consumer group's position when several groups read the stream (so no unread
+  entry is lost) and `XTRIM MAXLEN` otherwise. Both are approximate (Redis's
+  `~`), trimming a node at a time.
 
 Not supported:
 - ❌ **Stream partitioning** - Not a native feature

@@ -473,6 +473,7 @@ class ConfigResolver:
             "origin_stream",
             "circuit_breaker_threshold",
             "circuit_breaker_reset_seconds",
+            "retention_maxlen",
         }
 
         config_kwargs = {

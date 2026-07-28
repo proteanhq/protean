@@ -57,6 +57,7 @@ class StreamSubscription(BaseSubscription):
         enable_dlq: bool | None = None,
         circuit_breaker_threshold: int | None = None,
         circuit_breaker_reset_seconds: float | None = None,
+        retention_maxlen: int | None = None,
     ) -> None:
         """
         Initialize the StreamSubscription object.
@@ -81,6 +82,9 @@ class StreamSubscription(BaseSubscription):
             circuit_breaker_reset_seconds (float, optional): Seconds an OPEN
                 breaker waits before allowing a single HALF_OPEN probe.
                 Defaults to config value or 60.
+            retention_maxlen (int, optional): Cap the subscribed stream at this
+                many entries, trimmed after each batch. None (the default)
+                disables trimming.
         """
         # Get configuration from domain
         server_config = engine.domain.config.get("server", {})
@@ -152,6 +156,12 @@ class StreamSubscription(BaseSubscription):
         self.circuit_state: CircuitBreakerState = CircuitBreakerState.CLOSED
         self.consecutive_handler_failures: int = 0
         self.circuit_opened_at: float | None = None
+
+        # Stream retention: cap the stream at this many entries after each batch.
+        # None disables trimming. Passed explicitly (usually via from_config);
+        # there is no server-config fallback because retention is a per-profile
+        # concern resolved upstream by the ConfigResolver.
+        self.retention_maxlen: int | None = retention_maxlen
 
         # Consumer name for Redis Streams (unique per consumer instance)
         self.consumer_name = self.subscription_id
@@ -233,6 +243,7 @@ class StreamSubscription(BaseSubscription):
             enable_dlq=config.enable_dlq,
             circuit_breaker_threshold=config.circuit_breaker_threshold,
             circuit_breaker_reset_seconds=config.circuit_breaker_reset_seconds,
+            retention_maxlen=config.retention_maxlen,
         )
 
     def _generate_subscription_id(self) -> str:
@@ -353,6 +364,7 @@ class StreamSubscription(BaseSubscription):
 
                     if messages:
                         await self.process_batch(messages, stream=self.stream_category)
+                        await self._maybe_trim(self.stream_category)
                         batches_processed += 1
                         # Loop back immediately to check primary again
                         if batches_processed % 10 == 0:
@@ -365,6 +377,7 @@ class StreamSubscription(BaseSubscription):
 
                     if messages:
                         await self.process_batch(messages, stream=self.backfill_stream)
+                        await self._maybe_trim(self.backfill_stream)
                         batches_processed += 1
 
                     # Yield control before re-checking primary
@@ -375,6 +388,7 @@ class StreamSubscription(BaseSubscription):
 
                     if messages:
                         await self.process_batch(messages, stream=self.stream_category)
+                        await self._maybe_trim(self.stream_category)
                         batches_processed += 1
 
                         # Yield control only after processing a batch
@@ -529,6 +543,23 @@ class StreamSubscription(BaseSubscription):
             },
             worker_id=self.subscription_id,
         )
+
+    async def _maybe_trim(self, stream: str) -> None:
+        """Trim *stream* to ``retention_maxlen`` entries, if retention is on.
+
+        Called after each processed batch on the exact stream the batch came
+        from (primary or backfill). Returns immediately when
+        ``retention_maxlen`` is None (retention disabled). The broker's ``trim``
+        runs off the event loop via ``asyncio.to_thread`` and any error is
+        logged and swallowed so a trim failure never stalls processing.
+        """
+        if self.retention_maxlen is None or not self.broker:
+            return
+
+        try:
+            await asyncio.to_thread(self.broker.trim, stream, self.retention_maxlen)
+        except Exception as e:
+            logger.warning(f"Error trimming stream {stream}: {e}")
 
     async def _read_primary_nonblocking(self) -> list[tuple[str, dict[str, Any]]]:
         """Non-blocking read from primary (production) stream.

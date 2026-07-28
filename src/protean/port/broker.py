@@ -771,6 +771,28 @@ class BaseBroker(metaclass=ABCMeta):
         """
         return 0
 
+    # ------------------------------------------------------------------
+    # Stream Retention
+    # ------------------------------------------------------------------
+
+    def trim(self, stream: str, maxlen: int) -> int:
+        """Trim a subscription stream to at most *maxlen* entries.
+
+        Optional maintenance hook called after each processed batch when a
+        subscription sets ``retention_maxlen``. Brokers with a persistent
+        stream (e.g. Redis Streams) override this to cap the stream's size in a
+        way that never removes an entry a consumer group still needs. Brokers
+        without a persistent stream leave the default, which is a no-op.
+
+        Args:
+            stream: The stream to trim.
+            maxlen: The target maximum number of entries to keep.
+
+        Returns:
+            Number of messages trimmed (0 by default).
+        """
+        return 0
+
     def close(self) -> None:
         """Close the broker and release all connections.
 

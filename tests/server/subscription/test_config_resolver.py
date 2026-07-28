@@ -1007,3 +1007,65 @@ class TestConfigResolverCustomProfiles:
 
         assert config.subscription_type == SubscriptionType.EVENT_STORE
         assert config.enable_dlq is False
+
+
+class TestConfigResolverRetention:
+    """Resolution of the retention_maxlen field through the resolver.
+
+    These tests guard the config_resolver `known_fields` filter: retention_maxlen
+    is dropped before it reaches SubscriptionConfig if the filter omits it.
+    """
+
+    def test_builtin_profile_retention_survives_resolution(self, test_domain):
+        """A built-in profile's retention_maxlen reaches the resolved config."""
+        test_domain.config["server"]["profiles"]  # ensure the slot exists
+        test_domain.config["server"]["subscriptions"]["RetHandler"] = {
+            "profile": "production",
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class RetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(RetHandler)
+
+        assert (
+            config.retention_maxlen
+            == PROFILE_DEFAULTS[SubscriptionProfile.PRODUCTION]["retention_maxlen"]
+            == 100_000
+        )
+
+    def test_custom_profile_retention_survives_resolution(self, test_domain):
+        """A custom profile's retention_maxlen flows through the known_fields filter.
+
+        This is the binding oracle for the resolver gap: `myret` sets a value
+        (42) that differs from every built-in default, so seeing 42 proves the
+        per-profile retention value was neither dropped by the resolver filter
+        nor shadowed by a default.
+        """
+        test_domain.config["server"]["profiles"]["myret"] = {
+            "inherits": "production",
+            "retention_maxlen": 42,
+        }
+        test_domain.config["server"]["subscriptions"]["MyRetHandler"] = {
+            "profile": "myret",
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class MyRetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(MyRetHandler)
+
+        assert config.retention_maxlen == 42
+
+    def test_retention_defaults_off_without_profile(self, test_domain):
+        """With no profile setting retention, the resolved config leaves it off."""
+
+        @test_domain.event_handler(part_of=Order)
+        class PlainRetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(PlainRetHandler)
+
+        assert config.retention_maxlen is None

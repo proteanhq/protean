@@ -149,6 +149,28 @@ class OrderEventHandler:
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |
+| `retention_maxlen` | none | Cap the stream at this many entries (see [Stream retention](#stream-retention)) |
+
+#### Stream retention {#stream-retention}
+
+By default a StreamSubscription never trims its broker stream: processed
+messages stay in Redis forever, so the stream grows without bound. Set
+`retention_maxlen` to cap it. After each batch, the subscription trims the
+stream it just read from.
+
+Trimming is consumer-progress-safe. If more than one consumer group reads the
+stream (for example a projector plus an event handler), Protean trims by
+`MINID` at the slowest group's last-delivered position, so nothing a slow group
+has not yet read is ever removed. `retention_maxlen` is treated as an upper
+bound that only takes effect when there is at most one consumer group; with
+several groups, consumer progress bounds the stream instead.
+
+Trimming is approximate (Redis's `~`): the stream is trimmed a whole node at a
+time, so it may settle slightly above `retention_maxlen`, never below it. This
+is size-based retention only; there is no time-based TTL.
+
+Each built-in profile carries a default cap (see
+[Stream retention defaults](configuration.md#stream-retention-defaults)).
 
 ### When to Use {#stream-when-to-use}
 
