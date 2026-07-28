@@ -235,6 +235,23 @@ class TestSubscriptionConfigFromProfile:
         # from_profile clears the inherited stream retention for EVENT_STORE.
         assert config.retention_maxlen is None
 
+    def test_profile_override_subscription_type_rejects_explicit_retention(self):
+        """An explicit retention_maxlen alongside an EVENT_STORE override is rejected.
+
+        Unlike the inherited-from-profile case (cleared silently, see
+        test_profile_override_subscription_type), a retention_maxlen passed
+        directly to from_profile() is a config mistake and must surface via
+        validate() rather than being dropped.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            SubscriptionConfig.from_profile(
+                SubscriptionProfile.PRODUCTION,
+                subscription_type=SubscriptionType.EVENT_STORE,
+                enable_dlq=False,
+                retention_maxlen=1_000,
+            )
+        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)
+
     def test_profile_with_origin_stream(self):
         """Profile can include origin_stream filter."""
         config = SubscriptionConfig.from_profile(

@@ -11,6 +11,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import (
@@ -1093,3 +1094,27 @@ class TestConfigResolverRetention:
 
         assert config.subscription_type == SubscriptionType.EVENT_STORE
         assert config.retention_maxlen is None
+
+    def test_event_store_type_rejects_explicit_retention(self, test_domain):
+        """An explicit retention_maxlen on an EVENT_STORE handler is rejected.
+
+        Unlike a value inherited from a stream profile (cleared silently, see
+        test_event_store_type_clears_inherited_retention), a retention_maxlen
+        the handler sets directly is a config mistake and must surface via
+        SubscriptionConfig.validate() rather than being dropped.
+        """
+        test_domain.config["server"]["subscriptions"]["ExplicitRetHandler"] = {
+            "retention_maxlen": 1_000,
+        }
+
+        @test_domain.event_handler(
+            stream_category="$all",
+            subscription_type=SubscriptionType.EVENT_STORE,
+        )
+        class ExplicitRetHandler(BaseEventHandler):
+            pass
+
+        with pytest.raises(ConfigurationError) as exc:
+            ConfigResolver(test_domain).resolve(ExplicitRetHandler)
+
+        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)

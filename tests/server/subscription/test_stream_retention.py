@@ -214,7 +214,11 @@ def _lanes_engine(*, enabled: bool):
     engine.domain.brokers = {"default": MagicMock()}
     engine.shutting_down = False
     engine.emitter = MagicMock()
-    engine.loop = asyncio.new_event_loop()
+    try:
+        engine.loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # Only reached if this helper is ever called outside an async test.
+        engine.loop = asyncio.new_event_loop()
     return engine
 
 

@@ -690,7 +690,13 @@ class SubscriptionConfig:
         # the profile default" (not "off"), so switching a stream profile to
         # EVENT_STORE would otherwise carry the profile's cap and fail validate().
         # Clear it here, mirroring how ConfigResolver sanitizes the same field.
-        if config_kwargs["subscription_type"] == SubscriptionType.EVENT_STORE:
+        # Only clear the *inherited* value though: if the caller explicitly
+        # passed retention_maxlen alongside EVENT_STORE, leave it so validate()
+        # rejects the combination instead of silently dropping it.
+        if (
+            config_kwargs["subscription_type"] == SubscriptionType.EVENT_STORE
+            and retention_maxlen is None
+        ):
             config_kwargs["retention_maxlen"] = None
 
         # DLQ overrides are pass-through (None means inherit global)
