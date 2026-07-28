@@ -6,6 +6,9 @@ broker's ``trim`` is never called, retention on trims the exact stream the batch
 came from, and a trim error is logged and swallowed rather than propagated.
 """
 
+import asyncio
+from unittest.mock import MagicMock
+
 import pytest
 
 from protean import handle
@@ -151,3 +154,101 @@ class TestMaybeTrim:
         await sub._maybe_trim("account")
 
         assert recorder.calls == [("account", 500)]
+
+
+class _FakeBroker:
+    """Broker stand-in for poll() tests: yields a batch, records trim() calls.
+
+    ``read_blocking`` returns whatever the constructor was given for the stream
+    being read (empty for any other), so the same broker can feed the standard,
+    primary-lane, and backfill-lane branches of ``poll()``.
+    """
+
+    def __init__(self, messages_by_stream: dict[str, list]) -> None:
+        self._messages_by_stream = messages_by_stream
+        self.trim_calls: list[tuple[str, int]] = []
+
+    def read_blocking(self, *, stream, **kwargs):
+        return self._messages_by_stream.get(stream, [])
+
+    def trim(self, stream: str, maxlen: int) -> int:
+        self.trim_calls.append((stream, maxlen))
+        return 0
+
+
+def _lanes_engine(*, enabled: bool):
+    """A minimal engine whose config toggles priority lanes on or off."""
+    server_config: dict = {}
+    if enabled:
+        server_config["priority_lanes"] = {"enabled": True}
+    engine = MagicMock()
+    engine.domain.config = {"server": server_config}
+    engine.domain.brokers = {"default": MagicMock()}
+    engine.shutting_down = False
+    engine.emitter = MagicMock()
+    engine.loop = asyncio.new_event_loop()
+    return engine
+
+
+def _poll_subscription(engine, **kwargs) -> StreamSubscription:
+    return StreamSubscription(
+        engine=engine,
+        stream_category="account",
+        handler=AccountEventHandler,
+        **kwargs,
+    )
+
+
+class TestPollCallsTrim:
+    """poll() trims the exact stream a batch came from, in every branch."""
+
+    async def _run_one_iteration(self, sub, broker):
+        """Drive poll() through a single batch then stop the loop."""
+        sub.broker = broker
+
+        async def _stop(messages, stream=None):
+            sub.keep_going = False
+
+        sub.process_batch = _stop
+        await sub.poll()
+
+    async def test_standard_mode_trims_primary_stream(self):
+        """Standard mode trims stream_category after the batch (line 348)."""
+        engine = _lanes_engine(enabled=False)
+        sub = _poll_subscription(engine, retention_maxlen=500)
+        broker = _FakeBroker({"account": [("m1", {"d": "x"})]})
+
+        await self._run_one_iteration(sub, broker)
+
+        assert broker.trim_calls == [("account", 500)]
+
+    async def test_priority_lane_trims_primary_stream(self):
+        """Primary-lane batch trims stream_category (line 324)."""
+        engine = _lanes_engine(enabled=True)
+        sub = _poll_subscription(engine, retention_maxlen=500)
+        broker = _FakeBroker({"account": [("m1", {"d": "x"})]})
+
+        await self._run_one_iteration(sub, broker)
+
+        assert broker.trim_calls == [("account", 500)]
+
+    async def test_backfill_lane_trims_backfill_stream(self):
+        """Primary empty, backfill has work -> trims the backfill stream (line 337)."""
+        engine = _lanes_engine(enabled=True)
+        sub = _poll_subscription(engine, retention_maxlen=500)
+        # Primary "account" is empty; only the backfill stream yields a batch.
+        broker = _FakeBroker({"account:backfill": [("m1", {"d": "x"})]})
+
+        await self._run_one_iteration(sub, broker)
+
+        assert broker.trim_calls == [("account:backfill", 500)]
+
+    async def test_standard_mode_does_not_trim_when_retention_off(self):
+        """With retention off, poll() processes a batch but never calls trim."""
+        engine = _lanes_engine(enabled=False)
+        sub = _poll_subscription(engine, retention_maxlen=None)
+        broker = _FakeBroker({"account": [("m1", {"d": "x"})]})
+
+        await self._run_one_iteration(sub, broker)
+
+        assert broker.trim_calls == []
