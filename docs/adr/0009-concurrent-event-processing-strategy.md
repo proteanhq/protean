@@ -98,6 +98,12 @@ framework-managed idempotency store, but decided against it because:
 
 ### 4. `sequential_by` deferred to R4
 
+> **Superseded by ADR-0028.** This deferral has been lifted. The 5.2
+> Subscription Profiles & Tuning epic ratified the partition-per-key design in
+> ADR-0028, which pins the stream scheme, key handling, single-active-consumer
+> enforcement (ownership with a fencing token), and halt-on-poison behavior. The
+> rest of ADR-0009 stands; only this section's deferral is superseded.
+
 Within-handler sequential processing by partition key (`sequential_by`)
 is a legitimate feature, but the simpler solutions (PM, combine handlers,
 OCC retry) handle the vast majority of cases. The infrastructure changes
