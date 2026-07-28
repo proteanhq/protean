@@ -11,6 +11,7 @@ The profile system follows a priority hierarchy:
 """
 
 import logging
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -55,8 +56,10 @@ class CircuitBreakerState(Enum):
         CLOSED: Normal operation. Reads and processing proceed; each failure
             increments the counter, each success resets it to zero.
         OPEN: Reads are paused. Pending messages stay in the stream/PEL for
-            redelivery. After ``circuit_breaker_reset_seconds`` elapses the
-            breaker moves to HALF_OPEN.
+            redelivery. On the next poll turn after
+            ``circuit_breaker_reset_seconds`` has elapsed, the breaker moves to
+            HALF_OPEN (the transition is lazy, driven by the poll loop, not a
+            timer).
         HALF_OPEN: A single probe message is allowed through. A successful
             probe closes the breaker; a failing probe re-opens it and restarts
             the reset timer.
@@ -475,8 +478,13 @@ class SubscriptionConfig:
         if self.circuit_breaker_threshold < 1:
             errors.append("circuit_breaker_threshold must be at least 1")
 
-        if self.circuit_breaker_reset_seconds <= 0:
-            errors.append("circuit_breaker_reset_seconds must be positive")
+        if self.circuit_breaker_reset_seconds <= 0 or not math.isfinite(
+            self.circuit_breaker_reset_seconds
+        ):
+            # Reject inf/nan too: inf would OPEN the breaker forever (it never
+            # reaches HALF_OPEN), and nan slips past ``> 0`` in the gate and
+            # silently disables the pause.
+            errors.append("circuit_breaker_reset_seconds must be positive and finite")
 
         # Validate DLQ is not enabled for EVENT_STORE
         if self.subscription_type == SubscriptionType.EVENT_STORE and self.enable_dlq:
@@ -722,6 +730,8 @@ class SubscriptionConfig:
                 # Type coercion for common cases
                 if expected_type is int and isinstance(value, (int, float)):
                     value = int(value)
+                elif expected_type is float and isinstance(value, (int, float)):
+                    value = float(value)
                 elif expected_type is bool:
                     value = bool(value)
                 config_kwargs[key] = value

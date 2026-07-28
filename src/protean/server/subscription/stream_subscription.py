@@ -448,7 +448,10 @@ class StreamSubscription(BaseSubscription):
         """Advance the circuit breaker from a single handler outcome.
 
         Called once per message in ``process_batch`` after the handler result is
-        known. A message routed to the DLQ still counts as one failure here.
+        known. A handler failure that is then routed to the DLQ still counts as
+        one failure here. (A deserialization failure is DLQ'd earlier in
+        ``process_batch`` and never reaches this method, so it does not advance
+        the breaker.)
 
         Args:
             is_successful: The handler outcome for the message (independent of
@@ -491,22 +494,28 @@ class StreamSubscription(BaseSubscription):
     def _emit_circuit_transition(self, state: str) -> None:
         """Record the metric and emit the trace for a breaker transition.
 
-        Both emissions are best-effort: the trace emitter swallows its own
-        errors, and this runs after the state has already changed, so an
-        instrumentation failure never alters the state machine outcome.
+        Both emissions are best-effort and run after the state has already
+        changed, so an instrumentation failure never alters the state machine
+        outcome. The trace emitter swallows its own errors; the metric record is
+        wrapped here so a failing exporter cannot unwind ``process_batch`` and
+        force an unnecessary redelivery.
 
         Args:
             state: One of ``"opened"``, ``"closed"``, or ``"half_open"``.
         """
-        metrics = get_domain_metrics(self.engine.domain)
-        metrics.subscription_circuit_breaker_state.add(
-            1,
-            {
-                "subscription": self.subscriber_class_name,
-                "handler": self.subscriber_class_name,
-                "state": state,
-            },
-        )
+        try:
+            metrics = get_domain_metrics(self.engine.domain)
+            metrics.subscription_circuit_breaker_state.add(
+                1,
+                {
+                    "subscription": self.subscriber_class_name,
+                    "handler": self.subscriber_class_name,
+                    "state": state,
+                },
+            )
+        except Exception as e:  # best-effort: telemetry must not break processing
+            logger.warning(f"Failed to record circuit breaker metric: {e}")
+
         self.engine.emitter.emit(
             event=f"subscription.circuit_breaker.{state}",
             stream=self.stream_category,

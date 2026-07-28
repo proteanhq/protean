@@ -66,6 +66,8 @@ Optimized for production workloads with reliability guarantees:
     "retry_delay_seconds": 1,
     "enable_dlq": True,
     "position_update_interval": 10,
+    "circuit_breaker_threshold": 10,
+    "circuit_breaker_reset_seconds": 60,
 }
 ```
 
@@ -83,6 +85,8 @@ Optimized for low-latency processing:
     "retry_delay_seconds": 0,
     "enable_dlq": True,
     "position_update_interval": 5,
+    "circuit_breaker_threshold": 10,
+    "circuit_breaker_reset_seconds": 60,
 }
 ```
 
@@ -100,6 +104,8 @@ Optimized for high-throughput batch processing:
     "retry_delay_seconds": 2,
     "enable_dlq": True,
     "position_update_interval": 50,
+    "circuit_breaker_threshold": 10,
+    "circuit_breaker_reset_seconds": 60,
 }
 ```
 
@@ -117,6 +123,8 @@ Optimized for development and debugging:
     "retry_delay_seconds": 0,
     "enable_dlq": False,
     "position_update_interval": 1,
+    "circuit_breaker_threshold": 10,
+    "circuit_breaker_reset_seconds": 60,
 }
 ```
 

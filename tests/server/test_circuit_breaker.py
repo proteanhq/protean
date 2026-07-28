@@ -1,19 +1,22 @@
 """Tests for the per-subscription circuit breaker.
 
 A ``StreamSubscription`` carries an in-memory circuit breaker that counts
-consecutive handler-outcome failures and, once a threshold is crossed, pauses
-reads (state ``OPEN``) so a struggling downstream is not hammered. After a reset
-window it allows a single probe (``HALF_OPEN``); the probe's outcome closes the
-breaker or re-opens it.
+consecutive handler-outcome failures and, once the threshold is reached, pauses
+reads (state ``OPEN``) so a struggling downstream stops receiving new batches.
+After a reset window it allows a single probe (``HALF_OPEN``); the probe's
+outcome closes the breaker or re-opens it.
 
 These tests cover:
 - Opening at the threshold, and the read gate pausing reads while OPEN.
+- ``poll()`` honoring the gate: an OPEN breaker skips the broker read entirely.
 - The counter resetting on an intervening success (breaker does NOT open).
-- The HALF_OPEN probe: single-message reads, closing on success, re-opening on
-  failure with a restarted timer.
+- Post-trip failures not re-emitting ``opened`` or restarting the timer.
+- The HALF_OPEN probe: single-message reads (standard + both lane paths),
+  closing on success, re-opening on failure with a restarted timer.
 - Deserialization failures NOT counting as handler failures.
+- A failing metric exporter not breaking message processing.
 - Config resolution through the 7-level hierarchy plus round-trips.
-- Validation of the two config keys.
+- Validation of the two config keys, including non-finite reset windows.
 - OTEL metric and trace emission on transitions, with matching negative cases.
 """
 
@@ -238,6 +241,33 @@ class TestCircuitBreakerOpens:
         sub = _make_stream_subscription(domain)
         assert await sub._circuit_permits_reads() is True
 
+    @pytest.mark.asyncio
+    async def test_threshold_one_opens_on_first_failure(self, domain):
+        sub = _make_stream_subscription(domain, circuit_breaker_threshold=1)
+
+        await sub.process_batch([_message("fail")], stream="test::user")
+
+        assert sub.circuit_state == CircuitBreakerState.OPEN
+        assert sub.consecutive_handler_failures == 1
+
+    @pytest.mark.asyncio
+    async def test_poll_skips_broker_read_while_open(self, domain):
+        # Exercise the real poll() loop, not just the gate helper: an OPEN
+        # breaker inside its reset window must skip the broker read entirely.
+        sub = _make_stream_subscription(domain, circuit_breaker_reset_seconds=300)
+        sub.broker.read_blocking = MagicMock(return_value=[])
+        sub.circuit_state = CircuitBreakerState.OPEN
+        sub.circuit_opened_at = time.monotonic()  # full window ahead, no probe
+
+        task = asyncio.create_task(sub.poll())
+        # Give poll() time to enter the loop and hit the OPEN gate a few times.
+        await asyncio.sleep(0.1)
+        task.cancel()
+        await task  # poll() swallows CancelledError and returns
+
+        sub.broker.read_blocking.assert_not_called()
+        assert sub.circuit_state == CircuitBreakerState.OPEN
+
 
 # ---------------------------------------------------------------------------
 # Reset on intervening success (negative case for "opens")
@@ -299,6 +329,26 @@ class TestCircuitBreakerHalfOpen:
 
         sub.circuit_state = CircuitBreakerState.HALF_OPEN
         await sub.get_next_batch_of_messages()
+
+        assert sub.broker.read_blocking.call_args.kwargs["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_half_open_primary_lane_reads_single_message(self, domain):
+        sub = _make_stream_subscription(domain, messages_per_tick=25)
+        sub.broker.read_blocking = MagicMock(return_value=[])
+
+        sub.circuit_state = CircuitBreakerState.HALF_OPEN
+        await sub._read_primary_nonblocking()
+
+        assert sub.broker.read_blocking.call_args.kwargs["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_half_open_backfill_lane_reads_single_message(self, domain):
+        sub = _make_stream_subscription(domain, messages_per_tick=25)
+        sub.broker.read_blocking = MagicMock(return_value=[])
+
+        sub.circuit_state = CircuitBreakerState.HALF_OPEN
+        await sub._read_backfill_blocking()
 
         assert sub.broker.read_blocking.call_args.kwargs["count"] == 1
 
@@ -428,6 +478,13 @@ class TestCircuitBreakerConfigResolution:
         assert config.circuit_breaker_threshold == 4
         assert config.circuit_breaker_reset_seconds == 12
 
+    def test_from_dict_coerces_reset_seconds_to_float(self):
+        # An int given for the float key is coerced, so to_dict/consumers see a
+        # consistent float type.
+        config = SubscriptionConfig.from_dict({"circuit_breaker_reset_seconds": 30})
+        assert isinstance(config.circuit_breaker_reset_seconds, float)
+        assert config.circuit_breaker_reset_seconds == 30.0
+
     def test_from_profile_override(self):
         config = SubscriptionConfig.from_profile(
             SubscriptionProfile.PRODUCTION,
@@ -485,6 +542,16 @@ class TestCircuitBreakerValidation:
         with pytest.raises(ConfigurationError, match="circuit_breaker_reset_seconds"):
             SubscriptionConfig(circuit_breaker_reset_seconds=-5)
 
+    def test_reset_seconds_infinity_raises(self):
+        # inf would OPEN the breaker forever — it never reaches HALF_OPEN.
+        with pytest.raises(ConfigurationError, match="circuit_breaker_reset_seconds"):
+            SubscriptionConfig(circuit_breaker_reset_seconds=float("inf"))
+
+    def test_reset_seconds_nan_raises(self):
+        # nan slips past `<= 0` and would silently disable the OPEN pause.
+        with pytest.raises(ConfigurationError, match="circuit_breaker_reset_seconds"):
+            SubscriptionConfig(circuit_breaker_reset_seconds=float("nan"))
+
 
 # ---------------------------------------------------------------------------
 # OTEL metric emission (positive + negative)
@@ -534,6 +601,47 @@ class TestCircuitBreakerMetrics:
             for metric in sm.metrics
         ]
         assert _METRIC not in names
+
+    @pytest.mark.asyncio
+    async def test_failures_past_threshold_open_exactly_once(self, domain):
+        # A batch that keeps failing well past the trip point must open the
+        # breaker once and only once — no re-emit and no timer restart on each
+        # subsequent failure while already OPEN.
+        metric_reader = _init_telemetry_in_memory(domain)
+        sub = _make_stream_subscription(domain, circuit_breaker_threshold=3)
+
+        batch = [_message("fail") for _ in range(3 + 4)]  # trip + 4 more
+        await sub.process_batch(batch, stream="test::user")
+
+        opened = _points_for_state(metric_reader, "opened")
+        assert len(opened) == 1
+        assert opened[0].value == 1  # a single .add, not one per post-trip failure
+        assert (
+            _circuit_emit_events(sub.engine.emitter).count(
+                "subscription.circuit_breaker.opened"
+            )
+            == 1
+        )
+        assert sub.circuit_state == CircuitBreakerState.OPEN
+        assert sub.consecutive_handler_failures == 7  # counter keeps climbing
+
+    @pytest.mark.asyncio
+    async def test_metric_failure_does_not_break_processing(self, domain):
+        # An OTEL exporter that raises on the transition record must not unwind
+        # process_batch (which would force a needless redelivery). The state
+        # still transitions; the failure is swallowed.
+        from protean.utils.telemetry import get_domain_metrics
+
+        sub = _make_stream_subscription(domain, circuit_breaker_threshold=1)
+        metrics = get_domain_metrics(domain)
+        boom = Mock()
+        boom.add = Mock(side_effect=RuntimeError("exporter down"))
+        metrics.subscription_circuit_breaker_state = boom
+
+        await sub.process_batch([_message("fail")], stream="test::user")
+
+        assert sub.circuit_state == CircuitBreakerState.OPEN
+        boom.add.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

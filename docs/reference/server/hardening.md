@@ -273,8 +273,11 @@ State machine:
   `circuit_breaker_threshold`, the breaker moves to OPEN.
 - **OPEN** — reads are paused. Pending messages stay in the stream/PEL
   for redelivery; the breaker never acks an unprocessed message, so
-  nothing is dropped or reordered. After `circuit_breaker_reset_seconds`
-  elapses, the breaker moves to HALF_OPEN.
+  nothing is dropped or reordered. On the next poll turn after
+  `circuit_breaker_reset_seconds` has elapsed, the breaker moves to
+  HALF_OPEN. The move is lazy (driven by the poll loop, not a timer), so
+  if the poll loop is in its own error backoff it can happen slightly
+  later than the exact window.
 - **HALF_OPEN** — a single probe message is read. A successful probe
   closes the breaker; a failing probe re-opens it and restarts the reset
   timer.
