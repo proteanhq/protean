@@ -12,6 +12,7 @@ The profile system follows a priority hierarchy:
 
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -173,6 +174,145 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "position_update_interval": 10,
     "origin_stream": None,
 }
+
+# Built-in profile names, normalized to lowercase. These are reserved: a custom
+# profile may not reuse one of these names.
+BUILTIN_PROFILE_NAMES: frozenset[str] = frozenset(p.value for p in SubscriptionProfile)
+
+# Fields a custom profile may set, derived from the built-in defaults schema so
+# the allow-list can't drift from the fields the resolver actually applies.
+# ``inherits`` is a meta-key handled separately, not a config field.
+PROFILE_FIELDS: frozenset[str] = frozenset(DEFAULT_CONFIG)
+
+
+def build_profile_registry(
+    custom_profiles: dict[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Build a string-keyed profile registry.
+
+    The registry is seeded with the built-in profiles (keyed by their lowercase
+    ``.value`` names) and extended with validated custom profiles read from the
+    ``[server.profiles.<name>]`` sections of ``domain.toml``.
+
+    A custom profile is a dict of subscription config overrides. It may set
+    ``inherits = "<built-in>"`` to base its defaults on a built-in profile;
+    without ``inherits`` the base is :data:`DEFAULT_CONFIG`. Validation is
+    fail-fast: a reserved built-in name, an unknown field, or an ``inherits``
+    target that is not a built-in each raises :class:`ConfigurationError`.
+
+    Args:
+        custom_profiles: The raw ``[server.profiles]`` mapping (profile name to
+            its config dict). ``None`` or empty yields just the built-ins.
+
+    Returns:
+        A mapping of profile name to its resolved defaults dict. Built-in entries
+        are fresh copies, so callers never mutate :data:`PROFILE_DEFAULTS`.
+
+    Raises:
+        ConfigurationError: If a custom profile shadows a built-in name, sets an
+            unknown field, or inherits from anything other than a built-in.
+    """
+    # Seed with built-ins. Copy each defaults dict so the returned registry never
+    # aliases (and so a later merge never mutates) the shared PROFILE_DEFAULTS.
+    registry: dict[str, dict[str, Any]] = {
+        profile.value: dict(defaults) for profile, defaults in PROFILE_DEFAULTS.items()
+    }
+
+    if not custom_profiles:
+        return registry
+
+    # The profiles slot must itself be a table of named sections. A mis-typed
+    # scalar (e.g. ``profiles = "x"``) is truthy and would otherwise blow up on
+    # ``.items()`` with a raw AttributeError.
+    if not isinstance(custom_profiles, Mapping):
+        raise ConfigurationError(
+            f"[server.profiles] must be a table of named profile sections, got "
+            f"{type(custom_profiles).__name__}."
+        )
+
+    for raw_name, raw_config in custom_profiles.items():
+        # TOML keys are always strings, but a programmatic config could use a
+        # non-string key; normalize only after confirming it is a string.
+        if not isinstance(raw_name, str):
+            raise ConfigurationError(
+                f"Custom subscription profile names must be strings, got "
+                f"{type(raw_name).__name__} ({raw_name!r})."
+            )
+        name = raw_name.lower()
+
+        if name in BUILTIN_PROFILE_NAMES:
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' shadows a built-in "
+                f"profile name. Built-in names are reserved: "
+                f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+            )
+
+        if not isinstance(raw_config, dict):
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' must be a table of "
+                f"config overrides, got {type(raw_config).__name__}."
+            )
+
+        overrides = dict(raw_config)
+        inherits = overrides.pop("inherits", None)
+
+        # Inheritance is a single level onto a built-in base. A custom or self
+        # name is not a built-in, so this rule also rejects the only reachable
+        # cycle shapes (self-inherit, custom -> custom).
+        if inherits is not None:
+            # ``inherits`` must name a built-in. A non-string value (TOML array
+            # or inline table) is not a name; catch it here so the membership
+            # test below never sees an unhashable value.
+            if not isinstance(inherits, str):
+                raise ConfigurationError(
+                    f"Custom subscription profile '{raw_name}' has a non-string "
+                    f"'inherits' value ({inherits!r}). 'inherits' must name a "
+                    f"built-in profile: "
+                    f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+                )
+            inherits_name = inherits.lower()
+            if inherits_name not in BUILTIN_PROFILE_NAMES:
+                raise ConfigurationError(
+                    f"Custom subscription profile '{raw_name}' inherits from "
+                    f"'{inherits}', which is not a built-in profile. Inheritance "
+                    f"is a single level onto a built-in base: "
+                    f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+                )
+            base = dict(registry[inherits_name])
+        else:
+            base = dict(DEFAULT_CONFIG)
+
+        # Field names are always strings from TOML, but a programmatic config
+        # could use a non-string key. Catch it here so the unknown-field check
+        # below never has to ``sorted()``/``join()`` a mix of strings and
+        # other types, which would raise a raw TypeError instead of a clean
+        # ConfigurationError.
+        non_string_fields = [key for key in overrides if not isinstance(key, str)]
+        if non_string_fields:
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' has non-string "
+                f"field name(s): {non_string_fields!r}. Field names must be "
+                "strings."
+            )
+
+        unknown = set(overrides) - PROFILE_FIELDS
+        if unknown:
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' has unknown "
+                f"field(s): {', '.join(sorted(unknown))}. Allowed fields: "
+                f"{', '.join(sorted(PROFILE_FIELDS))}."
+            )
+
+        # Skip None overrides so a None value means "keep the inherited (or
+        # default) value" rather than silently reverting the field to the
+        # hardcoded default once the resolver's _merge_configs drops it. This
+        # matches how _merge_configs treats None overrides downstream.
+        base.update(
+            {key: value for key, value in overrides.items() if value is not None}
+        )
+        registry[name] = base
+
+    return registry
 
 
 @dataclass
@@ -604,9 +744,12 @@ class SubscriptionConfig:
 
 
 __all__ = [
+    "BUILTIN_PROFILE_NAMES",
     "DEFAULT_CONFIG",
     "PROFILE_DEFAULTS",
+    "PROFILE_FIELDS",
     "SubscriptionConfig",
     "SubscriptionProfile",
     "SubscriptionType",
+    "build_profile_registry",
 ]

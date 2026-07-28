@@ -134,6 +134,62 @@ Optimized for building read models:
 }
 ```
 
+### Custom Profiles
+
+When the built-in profiles don't match your workload, define your own named
+profiles under `[server.profiles.<name>]` in `domain.toml`. A custom profile is a
+set of subscription config overrides. Once defined, its name is usable anywhere a
+built-in name is: `default_subscription_profile`, a per-handler `profile`, or a
+handler's Meta `subscription_profile`.
+
+```toml
+[server.profiles.myfast]
+inherits = "fast"        # optional: base on a built-in profile
+messages_per_tick = 25   # override one (or more) of the inherited fields
+```
+
+```toml
+[server.subscriptions.NotificationHandler]
+profile = "myfast"
+```
+
+**Inheritance.** With `inherits = "<built-in>"`, the profile starts from that
+built-in's defaults and applies your overrides on top. Inheritance is a single
+level onto a built-in base only, so a custom profile cannot inherit from another
+custom profile (this also means there is no inheritance cycle to fall into).
+Without `inherits`, the profile starts from the framework's hardcoded defaults.
+
+**Allowed fields.** A custom profile may set `inherits` plus any of the standard
+profile fields: `subscription_type`, `messages_per_tick`, `tick_interval`,
+`blocking_timeout_ms`, `max_retries`, `retry_delay_seconds`, `enable_dlq`,
+`position_update_interval`, `origin_stream`.
+
+**Validation** is fail-fast — a `ConfigurationError` is raised when the profiles
+are first resolved if a custom profile:
+
+- reuses a built-in name (`production`, `fast`, `batch`, `debug`, `projection` are
+  reserved),
+- sets a field that isn't in the allowed list above, or
+- `inherits` from anything other than a built-in profile.
+
+**Precedence is unchanged.** A custom profile name slots into the [priority
+hierarchy](#configuration-priority-hierarchy) at whatever level named it, exactly
+like a built-in. An explicit field set alongside the profile at the same level still wins
+over the profile's default.
+
+**Caveat for `default_subscription_profile`.** A profile named there resolves at
+priority 6, which is *below* the server-level defaults at priority 5
+(`default_subscription_type`, `messages_per_tick`, `tick_interval`, and the
+`[server.stream_subscription]` / `[server.event_store_subscription]` blocks). Any
+of those that are set overwrite the matching fields the profile provides. In a
+stock `domain.toml` (which sets several of them), `default_subscription_profile`
+therefore only governs fields the server-level defaults leave unset. To let it
+govern a field, clear that field at the server level, or name the profile at a
+higher-priority level instead — a per-handler `profile` (priority 4) or a
+handler's Meta `subscription_profile` (priority 2-3), which both sit above the
+server-level defaults. This is not new to custom profiles: a built-in named at
+`default_subscription_profile` is shadowed the same way.
+
 ## Configuration Options Reference
 
 ### Common Options

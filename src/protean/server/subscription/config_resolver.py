@@ -27,10 +27,10 @@ from typing import TYPE_CHECKING, Any
 from protean.exceptions import ConfigurationError
 from protean.server.subscription.profiles import (
     DEFAULT_CONFIG,
-    PROFILE_DEFAULTS,
     SubscriptionConfig,
     SubscriptionProfile,
     SubscriptionType,
+    build_profile_registry,
 )
 
 if TYPE_CHECKING:
@@ -65,12 +65,55 @@ class ConfigResolver:
             domain: The domain instance containing server configuration.
         """
         self._domain = domain
+        self._registry_cache: dict[str, dict[str, Any]] | None = None
 
     @property
     def server_config(self) -> dict[str, Any]:
         """Get the server configuration from the domain."""
         server: dict[str, Any] = self._domain.config.get("server", {})
         return server
+
+    @property
+    def profile_registry(self) -> dict[str, dict[str, Any]]:
+        """Merged profile registry (built-ins plus custom `[server.profiles]`).
+
+        Built once per resolver and cached. Building validates every custom
+        profile section, so an invalid `[server.profiles.<name>]` raises
+        `ConfigurationError` on first access.
+        """
+        if self._registry_cache is None:
+            self._registry_cache = build_profile_registry(
+                self.server_config.get("profiles", {})
+            )
+        return self._registry_cache
+
+    def _profile_defaults(self, profile: str | SubscriptionProfile) -> dict[str, Any]:
+        """Look up a profile's defaults dict from the merged registry.
+
+        Resolves built-in and custom profile names alike (case-insensitively).
+
+        Args:
+            profile: Profile name (string) or built-in `SubscriptionProfile` enum.
+
+        Returns:
+            The profile's defaults dict from the registry.
+
+        Raises:
+            ConfigurationError: If the name is neither a built-in nor a defined
+                custom profile.
+        """
+        name = (
+            profile.value
+            if isinstance(profile, SubscriptionProfile)
+            else str(profile).lower()
+        )
+        registry = self.profile_registry
+        if name not in registry:
+            valid = ", ".join(sorted(registry))
+            raise ConfigurationError(
+                f"Unknown subscription profile '{profile}'. Valid profiles: {valid}"
+            )
+        return registry[name]
 
     def resolve(
         self,
@@ -102,6 +145,11 @@ class ConfigResolver:
             "Resolving subscription configuration for handler '%s'", handler_name
         )
 
+        # Build (and validate) the profile registry up front so an invalid
+        # [server.profiles] section fails fast, even if this handler names no
+        # profile.
+        _ = self.profile_registry
+
         # Get configs from each level and extract profiles
         server_defaults = self._get_server_defaults()
         handler_server_config = self._get_handler_server_config(handler_name)
@@ -131,9 +179,7 @@ class ConfigResolver:
             and not handler_server_profile
             and not handler_meta_profile
         ):
-            profile_defaults = PROFILE_DEFAULTS.get(
-                self._resolve_profile(server_default_profile), {}
-            )
+            profile_defaults = self._profile_defaults(server_default_profile)
             resolved = self._merge_configs(resolved, profile_defaults)
             logger.debug(
                 "After applying server default profile '%s': %s",
@@ -149,9 +195,7 @@ class ConfigResolver:
         # Priority 4: Apply server-level handler-specific config
         # If handler server config has a profile, expand it first (unless handler Meta has profile)
         if handler_server_profile and not handler_meta_profile:
-            profile_defaults = PROFILE_DEFAULTS.get(
-                self._resolve_profile(handler_server_profile), {}
-            )
+            profile_defaults = self._profile_defaults(handler_server_profile)
             resolved = self._merge_configs(resolved, profile_defaults)
             logger.debug(
                 "After applying handler server profile '%s': %s",
@@ -165,9 +209,7 @@ class ConfigResolver:
 
         # Priority 2-3: Apply handler Meta profile (high priority, overrides server config)
         if handler_meta_profile:
-            profile_defaults = PROFILE_DEFAULTS.get(
-                self._resolve_profile(handler_meta_profile), {}
-            )
+            profile_defaults = self._profile_defaults(handler_meta_profile)
             resolved = self._merge_configs(resolved, profile_defaults)
             logger.debug(
                 "After applying handler Meta profile '%s': %s",
@@ -322,34 +364,6 @@ class ConfigResolver:
             {key: value for key, value in override.items() if value is not None}
         )
         return result
-
-    def _resolve_profile(
-        self, profile: str | SubscriptionProfile
-    ) -> SubscriptionProfile:
-        """Resolve a profile from string or enum.
-
-        Args:
-            profile: Profile name as string or SubscriptionProfile enum.
-
-        Returns:
-            The resolved SubscriptionProfile enum value.
-
-        Raises:
-            ConfigurationError: If the profile name is not a valid SubscriptionProfile.
-        """
-        if isinstance(profile, SubscriptionProfile):
-            return profile
-
-        if isinstance(profile, str):
-            try:
-                return SubscriptionProfile(profile.lower())
-            except ValueError as e:
-                valid = ", ".join(p.value for p in SubscriptionProfile)
-                raise ConfigurationError(
-                    f"Unknown subscription profile '{profile}'. Valid profiles: {valid}"
-                ) from e
-
-        return SubscriptionProfile.PRODUCTION
 
     def _resolve_subscription_type(
         self, sub_type: str | SubscriptionType

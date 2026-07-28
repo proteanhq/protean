@@ -16,6 +16,7 @@ from protean.server.subscription.profiles import (
     SubscriptionConfig,
     SubscriptionProfile,
     SubscriptionType,
+    build_profile_registry,
 )
 
 
@@ -615,3 +616,203 @@ class TestEventStoreWarning:
             SubscriptionConfig(subscription_type=SubscriptionType.STREAM)
 
         assert "EventStoreSubscription is being used in production" not in caplog.text
+
+
+class TestBuildProfileRegistry:
+    """Tests for build_profile_registry — the merged built-in + custom registry."""
+
+    def test_registry_seeds_all_builtins(self):
+        """Registry is seeded with every built-in profile keyed by its name."""
+        registry = build_profile_registry()
+
+        for profile in SubscriptionProfile:
+            assert profile.value in registry
+            assert registry[profile.value] == PROFILE_DEFAULTS[profile]
+
+    def test_none_or_empty_custom_profiles_is_builtins_only(self):
+        """No custom profiles yields exactly the built-in names."""
+        assert set(build_profile_registry(None)) == {
+            p.value for p in SubscriptionProfile
+        }
+        assert set(build_profile_registry({})) == {p.value for p in SubscriptionProfile}
+
+    def test_custom_profile_inherits_builtin_and_overrides(self):
+        """inherits = 'fast' + messages_per_tick=25 keeps fast defaults, overrides one."""
+        registry = build_profile_registry(
+            {"myfast": {"inherits": "fast", "messages_per_tick": 25}}
+        )
+
+        fast = PROFILE_DEFAULTS[SubscriptionProfile.FAST]
+        assert registry["myfast"]["messages_per_tick"] == 25
+        # The rest of fast's defaults carry through unchanged.
+        assert registry["myfast"]["blocking_timeout_ms"] == fast["blocking_timeout_ms"]
+        assert registry["myfast"]["max_retries"] == fast["max_retries"]
+        assert registry["myfast"]["retry_delay_seconds"] == fast["retry_delay_seconds"]
+        assert registry["myfast"]["subscription_type"] == fast["subscription_type"]
+
+    def test_custom_profile_without_inherits_bases_on_default_config(self):
+        """No inherits bases on DEFAULT_CONFIG and applies the overrides."""
+        registry = build_profile_registry({"custom": {"max_retries": 9}})
+
+        assert registry["custom"]["max_retries"] == 9
+        # Every other field comes from DEFAULT_CONFIG.
+        assert (
+            registry["custom"]["messages_per_tick"]
+            == DEFAULT_CONFIG["messages_per_tick"]
+        )
+        assert (
+            registry["custom"]["blocking_timeout_ms"]
+            == DEFAULT_CONFIG["blocking_timeout_ms"]
+        )
+
+    def test_custom_profile_name_is_case_normalized(self):
+        """A mixed-case section name is registered lowercased."""
+        registry = build_profile_registry({"MyFast": {"inherits": "fast"}})
+
+        assert "myfast" in registry
+        assert "MyFast" not in registry
+
+    def test_unknown_field_raises_and_names_the_field(self):
+        """An unknown field is rejected and named in the error message."""
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"bad": {"not_a_field": 1}})
+
+        assert "not_a_field" in str(exc.value)
+
+    def test_name_shadowing_builtin_raises(self):
+        """A custom profile named after a built-in is rejected."""
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"production": {"messages_per_tick": 1}})
+
+        assert "production" in str(exc.value)
+        # And the built-in defaults are left intact in the returned registry —
+        # never silently overridden.
+
+    def test_name_shadowing_builtin_is_case_insensitive(self):
+        """A custom profile named 'Production' (any case) is also rejected."""
+        with pytest.raises(ConfigurationError):
+            build_profile_registry({"Production": {"messages_per_tick": 1}})
+
+    def test_self_inherit_raises(self):
+        """A profile inheriting from its own name is rejected (cycle case)."""
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"loopy": {"inherits": "loopy"}})
+
+        assert "loopy" in str(exc.value)
+
+    def test_custom_to_custom_inherit_raises(self):
+        """Inheriting from another custom profile is rejected (single-level rule)."""
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry(
+                {"base": {"max_retries": 1}, "child": {"inherits": "base"}}
+            )
+
+        assert "base" in str(exc.value)
+
+    def test_unknown_inherit_target_raises(self):
+        """inherits pointing at an unknown name is rejected."""
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"orphan": {"inherits": "nonexistent"}})
+
+        assert "nonexistent" in str(exc.value)
+
+    def test_non_dict_section_raises(self):
+        """A profile section that is not a table is rejected."""
+        with pytest.raises(ConfigurationError):
+            build_profile_registry({"weird": "not-a-dict"})
+
+    def test_building_custom_registry_does_not_mutate_builtin_defaults(self):
+        """Overriding fields in a custom profile leaves PROFILE_DEFAULTS pristine."""
+        before = {
+            profile: dict(defaults) for profile, defaults in PROFILE_DEFAULTS.items()
+        }
+
+        registry = build_profile_registry(
+            {"myfast": {"inherits": "fast", "messages_per_tick": 999}}
+        )
+        # Mutating a returned entry must not leak into the shared defaults either.
+        registry["fast"]["messages_per_tick"] = -1
+        registry["myfast"]["max_retries"] = -1
+
+        for profile, defaults in PROFILE_DEFAULTS.items():
+            assert defaults == before[profile]
+
+    def test_custom_profile_subscription_type_stays_string(self):
+        """A subscription_type override is left as its raw string for later resolution."""
+        registry = build_profile_registry(
+            {"es": {"inherits": "projection", "subscription_type": "event_store"}}
+        )
+
+        assert registry["es"]["subscription_type"] == "event_store"
+
+    def test_non_string_inherits_raises(self):
+        """A non-string `inherits` (TOML array or inline table) is rejected cleanly.
+
+        Without the type guard the frozenset membership test would raise a raw
+        TypeError on the unhashable value instead of a ConfigurationError.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"arr": {"inherits": ["fast"]}})
+        assert "arr" in str(exc.value)
+
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"tbl": {"inherits": {"name": "fast"}}})
+        assert "tbl" in str(exc.value)
+
+    def test_non_string_override_key_raises(self):
+        """A non-string override key (programmatic config) is rejected cleanly.
+
+        Without the type guard, `set(overrides) - PROFILE_FIELDS` would put the
+        non-string key into `unknown`, and `sorted()`/`join()` over a mix of
+        strings and other types would raise a raw TypeError instead of a
+        ConfigurationError.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({"weird": {123: "batch"}})  # type: ignore[dict-item]
+        assert "weird" in str(exc.value)
+
+    def test_scalar_profiles_slot_raises(self):
+        """A `[server.profiles]` slot that is a scalar, not a table, is rejected.
+
+        A truthy scalar slips past the empty check; without the mapping guard it
+        would blow up on `.items()` with a raw AttributeError.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry("not-a-table")  # type: ignore[arg-type]
+        assert "server.profiles" in str(exc.value)
+
+    def test_non_string_profile_name_raises(self):
+        """A non-string profile-name key (programmatic config) is rejected cleanly."""
+        with pytest.raises(ConfigurationError) as exc:
+            build_profile_registry({123: {"messages_per_tick": 1}})  # type: ignore[dict-item]
+        assert "123" in str(exc.value)
+
+    def test_none_override_keeps_inherited_value(self):
+        """A None override under `inherits` keeps the inherited value, not the default.
+
+        `messages_per_tick = None` over an inherited batch (500) must stay 500,
+        not silently revert to DEFAULT_CONFIG's 10 once the downstream merge drops
+        the None.
+        """
+        registry = build_profile_registry(
+            {"keepy": {"inherits": "batch", "messages_per_tick": None}}
+        )
+
+        batch = PROFILE_DEFAULTS[SubscriptionProfile.BATCH]
+        assert registry["keepy"]["messages_per_tick"] == batch["messages_per_tick"]
+        assert (
+            registry["keepy"]["messages_per_tick"]
+            != DEFAULT_CONFIG["messages_per_tick"]
+        )
+
+    def test_real_but_disallowed_dlq_fields_are_rejected(self):
+        """dlq_retention_hours / dlq_alert_threshold are real fields but not profile fields.
+
+        They are valid SubscriptionConfig fields yet excluded from PROFILE_FIELDS,
+        so a profile that sets them is rejected as an unknown field — proving the
+        allow-list, not just a made-up name, gates them out.
+        """
+        for bad_field in ("dlq_retention_hours", "dlq_alert_threshold"):
+            with pytest.raises(ConfigurationError) as exc:
+                build_profile_registry({"d": {bad_field: 1}})
+            assert bad_field in str(exc.value)
