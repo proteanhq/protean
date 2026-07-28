@@ -146,9 +146,16 @@ class UnitOfWork:
         and route every write, session, and event there. Its own commit and
         rollback then defer to the outermost UoW (see ``commit``/``rollback``).
         """
-        if _uow_stack.top is not None:
-            self._nested = True
-            self._in_progress = True
+        # Recompute nesting on every start: a UnitOfWork instance can be reused, so
+        # a stale ``_nested``/``_rollback_only`` from a prior use must not leak into
+        # this one. (A UoW previously used as nested, then reused as the outermost,
+        # would otherwise keep ``_nested=True`` and no-op its commit, silently
+        # losing the transaction and leaving itself on the context stack.)
+        self._nested = _uow_stack.top is not None
+        self._rollback_only = False
+        self._in_progress = True
+
+        if self._nested:
             return
 
         # Log transaction capability warnings for each configured provider

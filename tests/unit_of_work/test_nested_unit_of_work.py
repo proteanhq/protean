@@ -86,3 +86,23 @@ class TestNestedUnitOfWork:
             inner.rollback()
             repo.add(Person(first_name="C", last_name="X"))
         assert _count(test_domain) == 0
+
+    def test_reused_instance_is_not_stuck_nested(self, test_domain):
+        """A UnitOfWork instance reused after being nested must behave as a normal
+        outermost UoW. ``start()`` recomputes nesting, so a stale ``_nested`` from
+        the earlier nested use cannot make the reused commit a silent no-op (which
+        would lose the write and leave the instance poisoning the context stack)."""
+        repo = test_domain.repository_for(Person)
+        u = UnitOfWork()
+        with UnitOfWork():
+            u.start()  # used as a nested participant
+            u.commit()
+
+        # Reuse the same instance as the outermost UoW.
+        u.start()
+        assert u._nested is False  # recomputed: the stack was empty this time
+        repo.add(Person(first_name="KEPT", last_name="X"))
+        u.commit()
+
+        assert _uow_context_stack.top is None  # u popped itself, no poisoning
+        assert _count(test_domain) == 1  # the write persisted
