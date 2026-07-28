@@ -241,9 +241,53 @@ the full per-profile value dictionaries (`messages_per_tick`,
 | `origin_stream` | `str \| None` | `None` | Both |
 | `dlq_retention_hours` | `int \| None` | `None` | `STREAM` |
 | `dlq_alert_threshold` | `int \| None` | `None` | `STREAM` |
+| `circuit_breaker_threshold` | `int` | `10` | `STREAM` |
+| `circuit_breaker_reset_seconds` | `float` | `60` | `STREAM` |
 
 See [Subscription Configuration](./configuration.md) for the full
 precedence hierarchy.
+
+## Circuit breaker
+
+Every `StreamSubscription` carries an in-memory circuit breaker that
+protects a struggling downstream from being hammered. It counts
+consecutive handler-outcome failures — a message routed to the DLQ still
+counts as one failure — and is separate from `poll()`'s own backoff for
+broker read errors.
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `circuit_breaker_threshold` | `10` | Consecutive handler failures that trip the breaker OPEN. Must be ≥ 1. |
+| `circuit_breaker_reset_seconds` | `60` | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0. |
+
+```toml
+[server.stream_subscription]
+circuit_breaker_threshold = 10
+circuit_breaker_reset_seconds = 60
+```
+
+State machine:
+
+- **CLOSED** — normal operation. Each failure increments the counter;
+  the first success resets it to zero. When the counter reaches
+  `circuit_breaker_threshold`, the breaker moves to OPEN.
+- **OPEN** — reads are paused. Pending messages stay in the stream/PEL
+  for redelivery; the breaker never acks an unprocessed message, so
+  nothing is dropped or reordered. After `circuit_breaker_reset_seconds`
+  elapses, the breaker moves to HALF_OPEN.
+- **HALF_OPEN** — a single probe message is read. A successful probe
+  closes the breaker; a failing probe re-opens it and restarts the reset
+  timer.
+
+The breaker is always on. With the default threshold of 10 it only trips
+after 10 consecutive handler failures, so healthy workloads are
+unaffected. There is no disable flag.
+
+Each transition records the
+`protean.subscription.circuit_breaker.state` counter (see below) and
+emits a trace event: `subscription.circuit_breaker.opened`,
+`subscription.circuit_breaker.closed`, or
+`subscription.circuit_breaker.half_open`.
 
 ## OpenTelemetry metrics
 
@@ -261,6 +305,7 @@ Emitted directly by the engine.
 | `protean.subscription.messages_processed` | Counter | `{message}` | `subscription`, `handler`, `stream`, `status` (`ok`/`error`) |
 | `protean.subscription.retries` | Counter | `{retry}` | `subscription`, `handler`, `stream` |
 | `protean.subscription.dlq_routed` | Counter | `{message}` | `subscription`, `handler`, `stream` |
+| `protean.subscription.circuit_breaker.state` | Counter | `{transition}` | `subscription`, `handler`, `state` (`opened`/`closed`/`half_open`) |
 | `protean.subscription.processing_duration` | Histogram | `s` | `subscription`, `handler`, `stream` |
 
 ### Engine gauges

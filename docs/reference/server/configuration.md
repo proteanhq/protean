@@ -208,6 +208,11 @@ server-level defaults. This is not new to custom profiles: a built-in named at
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |
+| `circuit_breaker_threshold` | int | 10 | Consecutive handler failures that trip the circuit breaker OPEN |
+| `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe |
+
+See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
+the state machine, the metric, and the trace events.
 
 ### EventStoreSubscription Options
 
@@ -261,6 +266,8 @@ blocking_timeout_ms = 5000
 max_retries = 3
 retry_delay_seconds = 1
 enable_dlq = true
+circuit_breaker_threshold = 10
+circuit_breaker_reset_seconds = 60
 
 # EventStoreSubscription defaults
 [server.event_store_subscription]
