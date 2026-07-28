@@ -702,29 +702,10 @@ class TestConfigResolverHandlerWithNoMeta:
 
 
 class TestConfigResolverUnknownProfileAndType:
-    """Tests for unknown profile and subscription type resolution."""
+    """Tests for unknown subscription type resolution.
 
-    def test_profile_defaults_unknown_name_raises_error(self, test_domain):
-        """_profile_defaults raises ConfigurationError for an unknown profile name."""
-        from protean.exceptions import ConfigurationError
-
-        resolver = ConfigResolver(test_domain)
-
-        with pytest.raises(ConfigurationError, match="Unknown subscription profile"):
-            resolver._profile_defaults("nonexistent_profile")
-
-    def test_profile_defaults_non_string_non_enum_raises(self, test_domain):
-        """A non-string, non-enum profile no longer silently falls back to a default.
-
-        The old _resolve_profile returned PRODUCTION for such input; the registry
-        lookup instead stringifies it, finds no match, and fails fast.
-        """
-        from protean.exceptions import ConfigurationError
-
-        resolver = ConfigResolver(test_domain)
-
-        with pytest.raises(ConfigurationError, match="Unknown subscription profile"):
-            resolver._profile_defaults(12345)  # type: ignore
+    Unknown profile-name resolution is covered in test_profile_validation.py.
+    """
 
     def test_resolve_unknown_subscription_type_string_falls_back(
         self, test_domain, caplog
