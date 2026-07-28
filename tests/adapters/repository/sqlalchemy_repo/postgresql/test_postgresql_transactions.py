@@ -90,8 +90,9 @@ class TestTransactions:
             person_to_be_updated.last_name = "FooBar"
             repo_with_uow.add(person_to_be_updated)
 
-            # Test that the underlying database is untouched
-            assert len(person_dao.query.all().items) == 1
+            # Read-your-writes: a plain in-UoW query now sees the pending write,
+            # so read committed state via outside_uow to confirm the DB is untouched.
+            assert len(person_dao.outside_uow().query.all().items) == 1
             assert (
                 person_dao.outside_uow().get(person_to_be_updated.id).last_name
                 != "FooBar"
@@ -125,8 +126,9 @@ class TestTransactions:
         person_to_be_updated.last_name = "FooBar"
         repo_with_uow.add(person_to_be_updated)
 
-        # Test that the underlying database is untouched
-        assert len(person_dao.query.all().items) == 1
+        # Read-your-writes: a plain in-UoW query now sees the pending write,
+        # so read committed state via outside_uow to confirm the DB is untouched.
+        assert len(person_dao.outside_uow().query.all().items) == 1
         assert (
             person_dao.outside_uow().get(person_to_be_updated.id).last_name != "FooBar"
         )
@@ -159,8 +161,9 @@ class TestTransactions:
         person_to_be_updated.last_name = "FooBar"
         repo_with_uow.add(person_to_be_updated)
 
-        # Test that the underlying database is untouched
-        assert len(person_dao.query.all().items) == 1
+        # Read-your-writes: a plain in-UoW query now sees the pending write,
+        # so read committed state via outside_uow to confirm the DB is untouched.
+        assert len(person_dao.outside_uow().query.all().items) == 1
         assert (
             person_dao.outside_uow().get(person_to_be_updated.id).last_name != "FooBar"
         )
