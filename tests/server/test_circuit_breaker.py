@@ -22,7 +22,7 @@ These tests cover:
 
 import asyncio
 import time
-from unittest.mock import MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -267,6 +267,29 @@ class TestCircuitBreakerOpens:
 
         sub.broker.read_blocking.assert_not_called()
         assert sub.circuit_state == CircuitBreakerState.OPEN
+
+    async def test_poll_continues_past_read_when_gate_denies(self, domain):
+        # Directly exercise the gate's `continue` in poll(): when the breaker
+        # denies a read, the loop skips the read path and comes back around. The
+        # sibling test above cancels while the real gate is mid-sleep, so it
+        # never reaches this branch; here we make the gate return False fast (it
+        # yields once so the loop can be cancelled) and confirm the read path is
+        # never entered.
+        sub = _make_stream_subscription(domain)
+        sub.get_next_batch_of_messages = AsyncMock(return_value=[])
+
+        async def _deny_reads() -> bool:
+            await asyncio.sleep(0)  # yield so the task can be cancelled
+            return False
+
+        sub._circuit_permits_reads = _deny_reads
+
+        task = asyncio.create_task(sub.poll())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        await task  # poll() swallows CancelledError and returns
+
+        sub.get_next_batch_of_messages.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

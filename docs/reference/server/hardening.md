@@ -258,7 +258,7 @@ broker read errors.
 | Key | Default | Purpose |
 |-----|---------|---------|
 | `circuit_breaker_threshold` | `10` | Consecutive handler failures that trip the breaker OPEN. Must be ≥ 1. |
-| `circuit_breaker_reset_seconds` | `60` | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0. |
+| `circuit_breaker_reset_seconds` | `60` | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected). |
 
 ```toml
 [server.stream_subscription]

@@ -217,7 +217,7 @@ server-level defaults. This is not new to custom profiles: a built-in named at
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |
 | `circuit_breaker_threshold` | int | 10 | Consecutive handler failures that trip the circuit breaker OPEN |
-| `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe |
+| `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected) |
 
 See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
 the state machine, the metric, and the trace events.
