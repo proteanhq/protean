@@ -102,6 +102,13 @@ Across UoW boundaries, relational adapters see only committed state.
     `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
     and its MSSQL mirror.
 
+!!! note "Nested Units of Work"
+    A `UnitOfWork` started while another is already active on the same context
+    joins the outermost transaction rather than opening its own (there are no
+    savepoints). Only the outermost UoW commits or rolls back, and a nested rollback
+    rolls back the whole transaction. This holds on every adapter. See
+    [ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md).
+
 **Memory OCC holds under concurrent sessions.** Each session still works on a
 deep-copied snapshot, but commit is no longer a wholesale replacement: it is a
 compare-and-set. Under the per-provider lock, `MemorySession.commit` re-checks

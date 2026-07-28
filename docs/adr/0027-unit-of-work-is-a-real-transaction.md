@@ -73,6 +73,10 @@ providers we will:
 - Have each UoW own a single real `BEGIN ... COMMIT/ROLLBACK`, so every write
   (parent, child, auto-increment, and outbox message) is deferred within that
   transaction and committed or rolled back as one unit.
+- Make a nested UnitOfWork (one started while another is active on the same
+  context) join the outermost transaction rather than open its own. There are no
+  savepoints, so it does not push onto the context stack and its commit/rollback
+  defer to the outermost UoW; a nested rollback dooms the whole transaction.
 
 With the UoW as a real transaction, each guarantee comes from the database:
 
@@ -117,35 +121,42 @@ Negative:
 
 Sharp edges of the real-transaction model:
 
-A real transaction has sharp edges that the AUTOCOMMIT model hid. These are not new
-to this change. The Memory and SQLite adapters already run each UoW as a real
+A real transaction has sharp edges that the AUTOCOMMIT model hid. None are new to
+this change: the Memory and SQLite adapters already run each UoW as a real
 transaction (Memory via a copy-on-write session, SQLite via SQLAlchemy's default
-autoflush), so they already behave this way today; we verified each edge below
-reproduces on them. This change brings PostgreSQL and MSSQL into line with them
-rather than introducing new behavior. They are written down here so the behavior is
-understood, and hardening them is tracked as follow-up work.
+autoflush), so they already behaved this way, which we verified by reproduction.
+Bringing PostgreSQL and MSSQL into line surfaced these edges. This change resolves
+the ones the framework can fix and documents the rest as guidance.
 
-- Nested `UnitOfWork` on the same thread shares one session. An inner UoW's commit
-  or rollback acts on the outer UoW's writes too, so an inner commit can durably
-  persist the outer's pending writes and an inner rollback can undo them. Ordinary
-  handler code does not nest (repository writes reuse the active UoW), but explicit
-  `with UnitOfWork(): ... with UnitOfWork():` in user code is unsafe.
-- A manual `uow.start()` without a `try/finally` leaks the transaction (and its
-  connection and locks) if an exception is raised before `commit()`/`rollback()`.
-  Only the `with UnitOfWork():` context manager guarantees cleanup on the exception
-  path. Prefer the context manager.
-- Under multithreading, each thread's UoW holds a pooled connection for the whole
-  transaction, so size the connection pool to peak UoW concurrency. The async
-  engine runs on a single event-loop thread and is not exposed to this; a
-  multithreaded host (a threaded WSGI worker, a user thread pool) is.
-- On MSSQL the default read-committed isolation uses row locks, not MVCC, so a
-  reader on one connection can block on a writer holding a row inside a UoW where
-  PostgreSQL would not. Enabling `READ_COMMITTED_SNAPSHOT` on the database gives
-  MSSQL MVCC-style reads if that blocking is a problem.
-- With `autoflush=True`, an optimistic-concurrency conflict can surface at an
-  in-UoW read (the read autoflushes the pending guarded `UPDATE`) as a raw
-  `StaleDataError`, earlier than the commit where the version-retry path catches it.
-  Extending the retry path to catch this earlier surface is follow-up work.
+Resolved in this change, for all adapters:
+
+- Nested `UnitOfWork`. A nested UoW used to share the outer's session, so an inner
+  commit durably persisted the outer's pending writes and an inner rollback discarded
+  them. It now joins the outermost transaction (see the Decision above), so nesting
+  is safe: only the outermost UoW commits or rolls back.
+- An OCC conflict raised at an in-UoW read. With `autoflush=True` a read flushes
+  pending writes first, so a version-guarded `UPDATE` can lose an optimistic-
+  concurrency race at the read. That used to surface as a raw `StaleDataError` the
+  version-retry path missed; `filter` and `count` now translate it to
+  `ExpectedVersionError`, matching the flush and commit paths.
+- A reset-teardown deadlock. The test reset helper (`_data_reset`) deleted all tables
+  before rolling back a leaked in-progress UoW, so a UoW holding row locks blocked the
+  delete and deadlocked. It now rolls back the dangling UoW first.
+
+Remaining as guidance (properties of any real transaction, not framework bugs):
+
+- Prefer the `with UnitOfWork():` context manager. A manual `uow.start()` without a
+  `try/finally` leaks the transaction (and its connection and locks) if an exception
+  is raised before `commit()`/`rollback()`; only the context manager guarantees
+  cleanup on the exception path.
+- Size the connection pool to peak UoW concurrency. Under multithreading each
+  thread's UoW holds a pooled connection for the whole transaction. The async engine
+  runs on a single event-loop thread and is not exposed to this; a multithreaded host
+  (a threaded WSGI worker, a user thread pool) is.
+- On MSSQL the default read-committed isolation uses row locks, not MVCC, so a reader
+  can block on a writer holding a row inside a UoW where PostgreSQL would not. Enable
+  `READ_COMMITTED_SNAPSHOT` on the database for MVCC-style reads if that blocking is a
+  problem.
 
 Migration and validation:
 
@@ -167,8 +178,15 @@ and its MSSQL mirror):
   test's guarantee carries to the outbox;
 - on PostgreSQL, a pending write staying invisible to a separate connection until
   commit;
+- an OCC conflict raised at an in-UoW read surfacing `ExpectedVersionError` rather
+  than a raw `StaleDataError`;
 - optimistic concurrency continues to hold (the existing OCC and `_claim`
   concurrency tests pass under the real-transaction model).
+
+Nested-UoW behavior is covered separately by
+`tests/unit_of_work/test_nested_unit_of_work.py` (a nested UoW joins the outermost
+transaction: commit-all, outer-rollback-after-inner-commit, exception-in-inner, and
+explicit-inner-rollback all leave the store consistent).
 
 ## Alternatives Considered
 
