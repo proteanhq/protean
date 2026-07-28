@@ -275,6 +275,8 @@ class ConfigResolver:
             "max_retries",
             "retry_delay_seconds",
             "enable_dlq",
+            "circuit_breaker_threshold",
+            "circuit_breaker_reset_seconds",
         ]:
             if key in stream_config:
                 config[key] = stream_config[key]
@@ -469,6 +471,8 @@ class ConfigResolver:
             "enable_dlq",
             "position_update_interval",
             "origin_stream",
+            "circuit_breaker_threshold",
+            "circuit_breaker_reset_seconds",
         }
 
         config_kwargs = {

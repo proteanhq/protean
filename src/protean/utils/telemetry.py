@@ -567,6 +567,11 @@ class DomainMetrics:
             description="Message retry attempts",
             unit="{retry}",
         )
+        self.subscription_circuit_breaker_state = meter.create_counter(
+            "protean.subscription.circuit_breaker.state",
+            description="Subscription circuit breaker state transitions",
+            unit="{transition}",
+        )
 
         # --- DLQ maintenance counters -----------------------------------------
         self.dlq_trimmed = meter.create_counter(

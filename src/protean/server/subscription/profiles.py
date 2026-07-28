@@ -11,6 +11,7 @@ The profile system follows a priority hierarchy:
 """
 
 import logging
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -43,6 +44,30 @@ class SubscriptionType(Enum):
 
     STREAM = "stream"
     EVENT_STORE = "event_store"
+
+
+class CircuitBreakerState(Enum):
+    """States of a subscription's circuit breaker.
+
+    The breaker counts consecutive handler-outcome failures per subscription
+    and gates reads when a downstream dependency looks unhealthy.
+
+    Attributes:
+        CLOSED: Normal operation. Reads and processing proceed; each failure
+            increments the counter, each success resets it to zero.
+        OPEN: Reads are paused. Pending messages stay in the stream/PEL for
+            redelivery. On the next poll turn after
+            ``circuit_breaker_reset_seconds`` has elapsed, the breaker moves to
+            HALF_OPEN (the transition is lazy, driven by the poll loop, not a
+            timer).
+        HALF_OPEN: A single probe message is allowed through. A successful
+            probe closes the breaker; a failing probe re-opens it and restarts
+            the reset timer.
+    """
+
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
 
 
 class SubscriptionProfile(Enum):
@@ -101,6 +126,9 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         "position_update_interval": 10,
         # Optional filtering
         "origin_stream": None,
+        # Circuit breaker options
+        "circuit_breaker_threshold": 10,
+        "circuit_breaker_reset_seconds": 60,
     },
     SubscriptionProfile.FAST: {
         "subscription_type": SubscriptionType.STREAM,
@@ -115,6 +143,9 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         "position_update_interval": 5,
         # Optional filtering
         "origin_stream": None,
+        # Circuit breaker options
+        "circuit_breaker_threshold": 10,
+        "circuit_breaker_reset_seconds": 60,
     },
     SubscriptionProfile.BATCH: {
         "subscription_type": SubscriptionType.STREAM,
@@ -129,6 +160,9 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         "position_update_interval": 50,
         # Optional filtering
         "origin_stream": None,
+        # Circuit breaker options
+        "circuit_breaker_threshold": 10,
+        "circuit_breaker_reset_seconds": 60,
     },
     SubscriptionProfile.DEBUG: {
         "subscription_type": SubscriptionType.STREAM,
@@ -143,6 +177,9 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         "position_update_interval": 1,
         # Optional filtering
         "origin_stream": None,
+        # Circuit breaker options
+        "circuit_breaker_threshold": 10,
+        "circuit_breaker_reset_seconds": 60,
     },
     SubscriptionProfile.PROJECTION: {
         "subscription_type": SubscriptionType.EVENT_STORE,
@@ -157,6 +194,9 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         "position_update_interval": 10,
         # Optional filtering
         "origin_stream": None,
+        # Circuit breaker options
+        "circuit_breaker_threshold": 10,
+        "circuit_breaker_reset_seconds": 60,
     },
 }
 
@@ -173,6 +213,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enable_dlq": True,
     "position_update_interval": 10,
     "origin_stream": None,
+    "circuit_breaker_threshold": 10,
+    "circuit_breaker_reset_seconds": 60,
 }
 
 # Built-in profile names, normalized to lowercase. These are reserved: a custom
@@ -333,6 +375,10 @@ class SubscriptionConfig:
         enable_dlq: Whether to enable dead letter queue (STREAM only).
         position_update_interval: How often to persist position (EVENT_STORE only).
         origin_stream: Optional filter for origin stream name.
+        circuit_breaker_threshold: Consecutive handler failures that trip the
+            circuit breaker OPEN (STREAM only).
+        circuit_breaker_reset_seconds: Seconds an OPEN breaker waits before it
+            allows a single HALF_OPEN probe (STREAM only).
 
     Example:
         >>> config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
@@ -384,6 +430,14 @@ class SubscriptionConfig:
     dlq_retention_hours: int | None = None
     dlq_alert_threshold: int | None = None
 
+    # Circuit breaker options (STREAM only)
+    circuit_breaker_threshold: int = field(
+        default_factory=lambda: DEFAULT_CONFIG["circuit_breaker_threshold"]
+    )
+    circuit_breaker_reset_seconds: float = field(
+        default_factory=lambda: DEFAULT_CONFIG["circuit_breaker_reset_seconds"]
+    )
+
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         self.validate()
@@ -420,6 +474,17 @@ class SubscriptionConfig:
 
         if self.dlq_alert_threshold is not None and self.dlq_alert_threshold <= 0:
             errors.append("dlq_alert_threshold must be positive when set")
+
+        if self.circuit_breaker_threshold < 1:
+            errors.append("circuit_breaker_threshold must be at least 1")
+
+        if self.circuit_breaker_reset_seconds <= 0 or not math.isfinite(
+            self.circuit_breaker_reset_seconds
+        ):
+            # Reject inf/nan too: inf would OPEN the breaker forever (it never
+            # reaches HALF_OPEN), and nan slips past ``> 0`` in the gate and
+            # silently disables the pause.
+            errors.append("circuit_breaker_reset_seconds must be positive and finite")
 
         # Validate DLQ is not enabled for EVENT_STORE
         if self.subscription_type == SubscriptionType.EVENT_STORE and self.enable_dlq:
@@ -486,6 +551,8 @@ class SubscriptionConfig:
         origin_stream: str | None = None,
         dlq_retention_hours: int | None = None,
         dlq_alert_threshold: int | None = None,
+        circuit_breaker_threshold: int | None = None,
+        circuit_breaker_reset_seconds: float | None = None,
     ) -> "SubscriptionConfig":
         """Create a configuration from a profile with optional overrides.
 
@@ -565,6 +632,16 @@ class SubscriptionConfig:
             if origin_stream is not None
             else profile_defaults["origin_stream"]
         )
+        config_kwargs["circuit_breaker_threshold"] = (
+            circuit_breaker_threshold
+            if circuit_breaker_threshold is not None
+            else profile_defaults["circuit_breaker_threshold"]
+        )
+        config_kwargs["circuit_breaker_reset_seconds"] = (
+            circuit_breaker_reset_seconds
+            if circuit_breaker_reset_seconds is not None
+            else profile_defaults["circuit_breaker_reset_seconds"]
+        )
 
         # DLQ overrides are pass-through (None means inherit global)
         if dlq_retention_hours is not None:
@@ -643,6 +720,8 @@ class SubscriptionConfig:
             ("origin_stream", str),
             ("dlq_retention_hours", int),
             ("dlq_alert_threshold", int),
+            ("circuit_breaker_threshold", int),
+            ("circuit_breaker_reset_seconds", float),
         ]
 
         for key, expected_type in config_keys:
@@ -651,6 +730,8 @@ class SubscriptionConfig:
                 # Type coercion for common cases
                 if expected_type is int and isinstance(value, (int, float)):
                     value = int(value)
+                elif expected_type is float and isinstance(value, (int, float)):
+                    value = float(value)
                 elif expected_type is bool:
                     value = bool(value)
                 config_kwargs[key] = value
@@ -740,6 +821,8 @@ class SubscriptionConfig:
             "origin_stream": self.origin_stream,
             "dlq_retention_hours": self.dlq_retention_hours,
             "dlq_alert_threshold": self.dlq_alert_threshold,
+            "circuit_breaker_threshold": self.circuit_breaker_threshold,
+            "circuit_breaker_reset_seconds": self.circuit_breaker_reset_seconds,
         }
 
 
@@ -748,6 +831,7 @@ __all__ = [
     "DEFAULT_CONFIG",
     "PROFILE_DEFAULTS",
     "PROFILE_FIELDS",
+    "CircuitBreakerState",
     "SubscriptionConfig",
     "SubscriptionProfile",
     "SubscriptionType",

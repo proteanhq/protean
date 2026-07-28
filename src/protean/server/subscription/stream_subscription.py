@@ -15,6 +15,7 @@ from protean.utils.eventing import Message
 from protean.utils.telemetry import get_domain_metrics
 
 from . import BaseSubscription
+from .profiles import CircuitBreakerState
 
 if TYPE_CHECKING:
     from protean.server.engine import Engine
@@ -22,6 +23,10 @@ if TYPE_CHECKING:
     from .profiles import SubscriptionConfig
 
 logger = logging.getLogger(__name__)
+
+# When the breaker is OPEN and still inside its reset window, ``poll()`` sleeps
+# in short slices rather than one long block so shutdown stays responsive.
+_CIRCUIT_OPEN_SLEEP_CAP_SECONDS = 1.0
 
 
 class StreamSubscription(BaseSubscription):
@@ -50,6 +55,8 @@ class StreamSubscription(BaseSubscription):
         max_retries: int | None = None,
         retry_delay_seconds: float | None = None,
         enable_dlq: bool | None = None,
+        circuit_breaker_threshold: int | None = None,
+        circuit_breaker_reset_seconds: float | None = None,
     ) -> None:
         """
         Initialize the StreamSubscription object.
@@ -68,6 +75,12 @@ class StreamSubscription(BaseSubscription):
                 Defaults to config value or 1.
             enable_dlq (bool, optional): Whether to use a dead letter queue.
                 Defaults to config value or True.
+            circuit_breaker_threshold (int, optional): Consecutive handler
+                failures that trip the circuit breaker OPEN. Defaults to config
+                value or 10.
+            circuit_breaker_reset_seconds (float, optional): Seconds an OPEN
+                breaker waits before allowing a single HALF_OPEN probe.
+                Defaults to config value or 60.
         """
         # Get configuration from domain
         server_config = engine.domain.config.get("server", {})
@@ -99,6 +112,16 @@ class StreamSubscription(BaseSubscription):
             if enable_dlq is not None
             else bool(stream_config.get("enable_dlq", True))
         )
+        resolved_circuit_breaker_threshold: int = (
+            circuit_breaker_threshold
+            if circuit_breaker_threshold is not None
+            else int(stream_config.get("circuit_breaker_threshold", 10))
+        )
+        resolved_circuit_breaker_reset_seconds: float = (
+            circuit_breaker_reset_seconds
+            if circuit_breaker_reset_seconds is not None
+            else float(stream_config.get("circuit_breaker_reset_seconds", 60))
+        )
 
         # Use zero tick interval for blocking reads
         # The blocking read timeout will control the actual pacing
@@ -117,6 +140,18 @@ class StreamSubscription(BaseSubscription):
         self.max_retries: int = resolved_max_retries
         self.retry_delay_seconds: float = resolved_retry_delay_seconds
         self.enable_dlq: bool = resolved_enable_dlq
+
+        # Circuit breaker: gates reads when the handler keeps failing. The
+        # breaker counts consecutive handler-outcome failures, which is a
+        # separate concern from poll()'s consecutive_errors backoff (that
+        # covers broker/read exceptions). All state is in-memory per instance.
+        self.circuit_breaker_threshold: int = resolved_circuit_breaker_threshold
+        self.circuit_breaker_reset_seconds: float = (
+            resolved_circuit_breaker_reset_seconds
+        )
+        self.circuit_state: CircuitBreakerState = CircuitBreakerState.CLOSED
+        self.consecutive_handler_failures: int = 0
+        self.circuit_opened_at: float | None = None
 
         # Consumer name for Redis Streams (unique per consumer instance)
         self.consumer_name = self.subscription_id
@@ -196,6 +231,8 @@ class StreamSubscription(BaseSubscription):
             max_retries=config.max_retries,
             retry_delay_seconds=config.retry_delay_seconds,
             enable_dlq=config.enable_dlq,
+            circuit_breaker_threshold=config.circuit_breaker_threshold,
+            circuit_breaker_reset_seconds=config.circuit_breaker_reset_seconds,
         )
 
     def _generate_subscription_id(self) -> str:
@@ -303,6 +340,12 @@ class StreamSubscription(BaseSubscription):
 
         while self.keep_going and not self.engine.shutting_down:
             try:
+                # Circuit breaker gate: an OPEN breaker pauses reads (shared by
+                # both lanes-mode and standard-mode) so pending messages stay in
+                # the stream/PEL for redelivery. Never acks an unprocessed message.
+                if not await self._circuit_permits_reads():
+                    continue
+
                 if self._lanes_enabled:
                     # PRIORITY LANES MODE
                     # Step 1: Non-blocking read on primary (production) stream
@@ -358,6 +401,135 @@ class StreamSubscription(BaseSubscription):
                 backoff = min(2 ** (consecutive_errors - 1), 30)
                 await asyncio.sleep(backoff)
 
+    async def _circuit_permits_reads(self) -> bool:
+        """Decide whether the circuit breaker allows a read this loop turn.
+
+        Shared by both lanes-mode and standard-mode reads.
+
+        - CLOSED / HALF_OPEN → reads are permitted.
+        - OPEN and still inside the reset window → reads are paused. Sleeps for
+          the remaining window (capped so shutdown stays responsive) and returns
+          ``False`` so the caller skips this turn. No message is read or acked,
+          so pending messages remain for redelivery.
+        - OPEN and the reset window has elapsed → transition to HALF_OPEN and
+          permit a single probe read.
+
+        Returns:
+            True if a read may proceed this turn, False if it must be skipped.
+        """
+        if self.circuit_state != CircuitBreakerState.OPEN:
+            return True
+
+        # OPEN: honor the reset window before allowing a probe.
+        opened_at = self.circuit_opened_at
+        if opened_at is not None:
+            remaining = self.circuit_breaker_reset_seconds - (
+                time.monotonic() - opened_at
+            )
+            if remaining > 0:
+                await asyncio.sleep(min(remaining, _CIRCUIT_OPEN_SLEEP_CAP_SECONDS))
+                return False
+
+        # Reset window elapsed → allow a single HALF_OPEN probe.
+        self._transition_to_half_open()
+        return True
+
+    def _current_batch_size(self) -> int:
+        """Effective read count for this turn.
+
+        A HALF_OPEN breaker probes with a single message so one outcome decides
+        whether to close or re-open. Otherwise the configured tick size is used.
+        """
+        if self.circuit_state == CircuitBreakerState.HALF_OPEN:
+            return 1
+        return self.messages_per_tick
+
+    def _record_handler_outcome(self, is_successful: bool) -> None:
+        """Advance the circuit breaker from a single handler outcome.
+
+        Called once per message in ``process_batch`` after the handler result is
+        known. A handler failure that is then routed to the DLQ still counts as
+        one failure here. (A deserialization failure is DLQ'd earlier in
+        ``process_batch`` and never reaches this method, so it does not advance
+        the breaker.)
+
+        Args:
+            is_successful: The handler outcome for the message (independent of
+                the broker ACK result).
+        """
+        if is_successful:
+            self.consecutive_handler_failures = 0
+            if self.circuit_state == CircuitBreakerState.HALF_OPEN:
+                self._close_circuit()
+            return
+
+        self.consecutive_handler_failures += 1
+        if self.circuit_state == CircuitBreakerState.HALF_OPEN:
+            # A failing probe re-opens the breaker and restarts the timer.
+            self._open_circuit()
+        elif (
+            self.circuit_state == CircuitBreakerState.CLOSED
+            and self.consecutive_handler_failures >= self.circuit_breaker_threshold
+        ):
+            self._open_circuit()
+
+    def _open_circuit(self) -> None:
+        """Move the breaker to OPEN and (re)start the reset timer."""
+        self.circuit_state = CircuitBreakerState.OPEN
+        self.circuit_opened_at = time.monotonic()
+        self._emit_circuit_transition("opened")
+
+    def _close_circuit(self) -> None:
+        """Move the breaker to CLOSED and clear failure state."""
+        self.circuit_state = CircuitBreakerState.CLOSED
+        self.circuit_opened_at = None
+        self.consecutive_handler_failures = 0
+        self._emit_circuit_transition("closed")
+
+    def _transition_to_half_open(self) -> None:
+        """Move the breaker to HALF_OPEN to allow a single probe read."""
+        self.circuit_state = CircuitBreakerState.HALF_OPEN
+        self._emit_circuit_transition("half_open")
+
+    def _emit_circuit_transition(self, state: str) -> None:
+        """Record the metric and emit the trace for a breaker transition.
+
+        Both emissions are best-effort and run after the state has already
+        changed, so an instrumentation failure never alters the state machine
+        outcome. The trace emitter swallows its own errors; the metric record is
+        wrapped here so a failing exporter cannot unwind ``process_batch`` and
+        force an unnecessary redelivery.
+
+        Args:
+            state: One of ``"opened"``, ``"closed"``, or ``"half_open"``.
+        """
+        try:
+            metrics = get_domain_metrics(self.engine.domain)
+            metrics.subscription_circuit_breaker_state.add(
+                1,
+                {
+                    "subscription": self.subscriber_class_name,
+                    "handler": self.subscriber_class_name,
+                    "state": state,
+                },
+            )
+        except Exception as e:  # best-effort: telemetry must not break processing
+            logger.warning(f"Failed to record circuit breaker metric: {e}")
+
+        self.engine.emitter.emit(
+            event=f"subscription.circuit_breaker.{state}",
+            stream=self.stream_category,
+            message_id=self.subscription_id,
+            message_type="circuit_breaker",
+            status=state,
+            handler=self.subscriber_class_name,
+            metadata={
+                "consecutive_handler_failures": self.consecutive_handler_failures,
+                "circuit_breaker_threshold": self.circuit_breaker_threshold,
+            },
+            worker_id=self.subscription_id,
+        )
+
     async def _read_primary_nonblocking(self) -> list[tuple[str, dict[str, Any]]]:
         """Non-blocking read from primary (production) stream.
 
@@ -378,7 +550,7 @@ class StreamSubscription(BaseSubscription):
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
                 timeout_ms=0,  # Non-blocking
-                count=self.messages_per_tick,
+                count=self._current_batch_size(),
             )
         except Exception as e:
             logger.error(f"Error reading primary stream {self.stream_category}: {e}")
@@ -406,7 +578,7 @@ class StreamSubscription(BaseSubscription):
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
                 timeout_ms=backfill_timeout,
-                count=self.messages_per_tick,
+                count=self._current_batch_size(),
             )
         except Exception as e:
             logger.error(f"Error reading backfill stream {self.backfill_stream}: {e}")
@@ -435,7 +607,7 @@ class StreamSubscription(BaseSubscription):
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
                 timeout_ms=self.blocking_timeout_ms,
-                count=self.messages_per_tick,
+                count=self._current_batch_size(),
             )
 
             return messages
@@ -502,6 +674,10 @@ class StreamSubscription(BaseSubscription):
             metrics.subscription_messages_processed.add(
                 1, {**attrs, "status": "ok" if is_successful else "error"}
             )
+
+            # Advance the circuit breaker on the handler outcome. This is
+            # separate from the ACK/NACK/DLQ paths below, which are untouched.
+            self._record_handler_outcome(is_successful)
 
             if is_successful:
                 if await self._acknowledge_message(identifier, message, stream):
