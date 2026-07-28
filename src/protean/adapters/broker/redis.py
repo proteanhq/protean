@@ -606,8 +606,14 @@ class RedisBroker(BaseBroker):
           never removes an entry with an id ``>=`` that floor, so the slowest
           group keeps everything it has not yet read. ``maxlen`` is ignored in
           this case — consumer progress, not a fixed size, bounds the stream.
-        - **Zero or one group:** MAXLEN is safe because there is at most one
-          reader whose progress could be outrun, so cap the stream at *maxlen*.
+        - **Zero or one group:** cap the stream at *maxlen* with MAXLEN. This is
+          a fixed-size cap, not a progress-safe one: if the single group falls
+          more than ``maxlen`` behind (initial catch-up on a pre-existing
+          stream, an outage, or a slow handler under a fast producer), MAXLEN
+          drops the oldest *unread* entries. With one reader ``maxlen`` is the
+          operator's explicit size ceiling; size it above the largest expected
+          backlog. A non-positive ``maxlen`` is refused (returns ``0``) so it can
+          never empty the stream.
 
         Both forms use ``approximate=True`` (Redis's ``~``): trimming happens on
         whole macro-nodes, so the stream may settle slightly above the target,
@@ -637,7 +643,11 @@ class RedisBroker(BaseBroker):
                     self._client.xtrim(stream, minid=min_id, approximate=True) or 0
                 )
             else:
-                # 0 or 1 group: a fixed-size cap is safe.
+                # 0 or 1 group: a fixed-size cap. Refuse a non-positive maxlen —
+                # `xtrim(maxlen=0)` would empty the stream, so treat it as "no
+                # cap" rather than "delete everything".
+                if maxlen <= 0:
+                    return 0
                 trimmed = (
                     self._client.xtrim(stream, maxlen=maxlen, approximate=True) or 0
                 )
@@ -655,11 +665,14 @@ class RedisBroker(BaseBroker):
     def _min_last_delivered_id(self, groups_info: Any) -> str | None:
         """Return the smallest ``last-delivered-id`` across groups, or None.
 
-        Returns ``None`` when there are fewer than two consumer groups (the
-        caller then uses a MAXLEN trim). With two or more groups, returns the
-        minimum ``last-delivered-id`` as a ``"ms-seq"`` string, comparing the
-        two numeric halves as an ``(int, int)`` tuple so ``"100-0"`` sorts after
-        ``"99-0"`` (lexicographic string order would get this wrong).
+        Returns ``None`` when fewer than two groups carry a truthy
+        ``last-delivered-id`` (the caller then uses a MAXLEN trim). Real Redis
+        groups always report ``"0-0"`` until first read, so in practice this is
+        "fewer than two consumer groups"; groups with a missing or empty id are
+        skipped. With two or more usable ids, returns the minimum as a
+        ``"ms-seq"`` string, comparing the two numeric halves as an
+        ``(int, int)`` tuple so ``"100-0"`` sorts after ``"99-0"``
+        (lexicographic string order would get this wrong).
         """
         ids: list[str] = []
         for group_info in groups_info:

@@ -158,12 +158,22 @@ messages stay in Redis forever, so the stream grows without bound. Set
 `retention_maxlen` to cap it. After each batch, the subscription trims the
 stream it just read from.
 
-Trimming is consumer-progress-safe. If more than one consumer group reads the
-stream (for example a projector plus an event handler), Protean trims by
-`MINID` at the slowest group's last-delivered position, so nothing a slow group
-has not yet read is ever removed. `retention_maxlen` is treated as an upper
-bound that only takes effect when there is at most one consumer group; with
-several groups, consumer progress bounds the stream instead.
+How the trim behaves depends on the consumer topology:
+
+- **More than one consumer group** (for example a projector plus an event
+  handler): Protean trims by `MINID` at the slowest group's last-delivered
+  position, so nothing a slow group has not yet read is ever removed.
+  `retention_maxlen` is ignored here — consumer progress bounds the stream. Note
+  the flip side: a group parked at `0-0` (a dead consumer, or a handler you
+  removed without deleting its group) holds the floor down, so the stream keeps
+  growing until you delete that group. Retention is progress-bounded, not
+  size-bounded, whenever multiple groups exist.
+- **At most one consumer group:** Protean caps the stream at `retention_maxlen`
+  with a plain `MAXLEN` trim. This is a fixed-size cap, not a progress-safe one:
+  if the single handler falls more than `retention_maxlen` behind (catch-up on a
+  pre-existing stream, an outage, or a slow handler under a fast producer),
+  `MAXLEN` drops the oldest *unread* entries. Size `retention_maxlen` above your
+  largest expected backlog.
 
 Trimming is approximate (Redis's `~`): the stream is trimmed a whole node at a
 time, so it may settle slightly above `retention_maxlen`, never below it. This

@@ -73,8 +73,12 @@ This includes:
   [`retention_maxlen`](../../server/subscription-types.md#stream-retention), the
   broker trims the stream after each batch. It uses `XTRIM MINID` at the slowest
   consumer group's position when several groups read the stream (so no unread
-  entry is lost) and `XTRIM MAXLEN` otherwise. Both are approximate (Redis's
-  `~`), trimming a node at a time.
+  entry is lost, though a group parked at `0-0` holds the floor down) and a
+  fixed-size `XTRIM MAXLEN` when at most one group reads it (which can drop
+  unread entries if that lone handler falls more than `retention_maxlen`
+  behind). Both are approximate (Redis's `~`), trimming a node at a time. See
+  [Stream retention](../../server/subscription-types.md#stream-retention) for the
+  full caveats.
 
 Not supported:
 - ❌ **Stream partitioning** - Not a native feature

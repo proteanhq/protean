@@ -232,6 +232,8 @@ class TestSubscriptionConfigFromProfile:
             enable_dlq=False,  # Must disable DLQ for EVENT_STORE
         )
         assert config.subscription_type == SubscriptionType.EVENT_STORE
+        # from_profile clears the inherited stream retention for EVENT_STORE.
+        assert config.retention_maxlen is None
 
     def test_profile_with_origin_stream(self):
         """Profile can include origin_stream filter."""
@@ -913,3 +915,28 @@ class TestRetentionMaxlen:
             {"capped": {"inherits": "production", "retention_maxlen": 42}}
         )
         assert registry["capped"]["retention_maxlen"] == 42
+
+    def test_event_store_with_retention_raises_error(self):
+        """retention_maxlen on an EVENT_STORE config is rejected, not ignored.
+
+        An EventStoreSubscription reads the event store, not a broker stream, so
+        there is nothing to trim. Setting a cap is a config mistake and must
+        surface, mirroring the enable_dlq guard.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            SubscriptionConfig(
+                subscription_type=SubscriptionType.EVENT_STORE,
+                enable_dlq=False,
+                retention_maxlen=1_000,
+            )
+        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)
+
+    def test_projection_profile_valid_without_retention(self):
+        """The PROJECTION profile (EVENT_STORE, retention None) validates cleanly.
+
+        Guards against the EVENT_STORE retention rejection accidentally breaking
+        the built-in projection profile, whose retention default is None.
+        """
+        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
+        assert config.subscription_type == SubscriptionType.EVENT_STORE
+        assert config.retention_maxlen is None

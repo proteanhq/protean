@@ -517,6 +517,19 @@ class SubscriptionConfig:
                 "EventStoreSubscription handles messages without DLQ support."
             )
 
+        # Validate retention_maxlen is not set for EVENT_STORE. An
+        # EventStoreSubscription reads the event store, not a broker stream, so
+        # there is nothing to trim — reject it rather than silently ignore it.
+        if (
+            self.subscription_type == SubscriptionType.EVENT_STORE
+            and self.retention_maxlen is not None
+        ):
+            errors.append(
+                "retention_maxlen is not supported for EVENT_STORE subscription "
+                "type. EventStoreSubscription reads the event store, which has no "
+                "broker stream to trim."
+            )
+
         # Log warning if using EVENT_STORE in production
         if self.subscription_type == SubscriptionType.EVENT_STORE:
             self._log_event_store_warning()
@@ -672,6 +685,13 @@ class SubscriptionConfig:
             if retention_maxlen is not None
             else profile_defaults.get("retention_maxlen")
         )
+        # An EVENT_STORE subscription reads the event store, not a broker stream,
+        # so it has nothing to trim. Passing retention_maxlen=None means "inherit
+        # the profile default" (not "off"), so switching a stream profile to
+        # EVENT_STORE would otherwise carry the profile's cap and fail validate().
+        # Clear it here, mirroring how ConfigResolver sanitizes the same field.
+        if config_kwargs["subscription_type"] == SubscriptionType.EVENT_STORE:
+            config_kwargs["retention_maxlen"] = None
 
         # DLQ overrides are pass-through (None means inherit global)
         if dlq_retention_hours is not None:

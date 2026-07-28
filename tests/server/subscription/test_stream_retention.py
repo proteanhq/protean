@@ -134,6 +134,34 @@ class TestMaybeTrim:
 
         assert recorder.calls == [("account:backfill", 500)]
 
+    async def test_no_trim_when_retention_is_zero(self, engine, test_domain):
+        """retention_maxlen=0 must not call trim.
+
+        validate() rejects 0, but the constructor accepts retention_maxlen
+        unchecked, so a direct StreamSubscription(..., retention_maxlen=0) would
+        otherwise reach trim(stream, 0) and, on a 0/1-group Redis stream, empty
+        it. The guard treats a non-positive cap as "retention off".
+        """
+        with test_domain.domain_context():
+            sub = _subscription(engine, retention_maxlen=0)
+        recorder = _TrimRecorder()
+        sub.broker = recorder
+
+        await sub._maybe_trim("account")
+
+        assert recorder.calls == []
+
+    async def test_no_trim_when_retention_negative(self, engine, test_domain):
+        """A negative retention_maxlen is treated as "retention off"."""
+        with test_domain.domain_context():
+            sub = _subscription(engine, retention_maxlen=-1)
+        recorder = _TrimRecorder()
+        sub.broker = recorder
+
+        await sub._maybe_trim("account")
+
+        assert recorder.calls == []
+
     async def test_no_trim_without_broker(self, engine, test_domain):
         """_maybe_trim is a no-op (no error) when the broker is not set."""
         with test_domain.domain_context():

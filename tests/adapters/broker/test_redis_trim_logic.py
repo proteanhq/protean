@@ -113,6 +113,31 @@ class TestTrimBranching:
         assert client.xtrim_calls[0]["maxlen"] == 100
         assert client.xtrim_calls[0]["minid"] is None
 
+    def test_single_group_non_positive_maxlen_trims_nothing(self):
+        """maxlen <= 0 in the MAXLEN branch returns 0 and issues no xtrim.
+
+        `xtrim(maxlen=0)` would empty the stream, so a non-positive cap is
+        refused rather than treated as "delete everything".
+        """
+        for bad_maxlen in (0, -5):
+            client = _FakeRedisClient(groups_info=[_group("42-0")])
+            broker = _broker(client)
+
+            assert broker.trim("orders", bad_maxlen) == 0
+            assert client.xtrim_calls == []
+
+    def test_multi_group_ignores_non_positive_maxlen(self):
+        """maxlen <= 0 does not disable the MINID (multi-group) branch.
+
+        The multi-group branch bounds by consumer progress, not maxlen, so it
+        still trims by MINID even when maxlen is 0.
+        """
+        client = _FakeRedisClient(groups_info=[_group("9-0"), _group("5-0")], trimmed=3)
+        broker = _broker(client)
+
+        assert broker.trim("orders", 0) == 3
+        assert client.xtrim_calls[0]["minid"] == "5-0"
+
     def test_trim_error_returns_zero(self):
         """A ResponseError from xtrim is swallowed and reported as 0 removed."""
         client = _FakeRedisClient(groups_info=[_group("42-0")], trim_error=True)
@@ -146,6 +171,33 @@ class TestMinLastDeliveredId:
         result = broker._min_last_delivered_id([_group("100-0"), _group("99-0")])
 
         assert result == "99-0"
+
+    def test_returns_minimum_when_smallest_id_is_in_the_middle(self):
+        """The minimum is picked regardless of position in the group list.
+
+        With the smallest id neither first nor last, a "pick first" or "pick
+        last" regression would return the wrong floor.
+        """
+        broker = _broker(_FakeRedisClient())
+
+        result = broker._min_last_delivered_id(
+            [_group("9-0"), _group("2-0"), _group("5-0")]
+        )
+
+        assert result == "2-0"
+
+    def test_malformed_id_is_selected_as_minimum(self):
+        """A malformed id sorts first ((-1, -1)), so it is chosen as the floor.
+
+        Selecting it keeps the whole stream conservatively — against real Redis
+        `xtrim(minid="bad")` raises ResponseError, which trim() catches and
+        reports as 0 removed.
+        """
+        broker = _broker(_FakeRedisClient())
+
+        result = broker._min_last_delivered_id([_group("bad"), _group("5-0")])
+
+        assert result == "bad"
 
     def test_non_dict_group_entries_are_ignored(self):
         """Entries that are not dicts are skipped, not fatal."""

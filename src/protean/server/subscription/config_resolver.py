@@ -411,6 +411,17 @@ class ConfigResolver:
             resolved["enable_dlq"] = False
             logger.debug("Disabled enable_dlq for EVENT_STORE subscription type")
 
+        # EVENT_STORE reads the event store, not a broker stream — there is
+        # nothing to trim. Clear any retention_maxlen inherited from a stream
+        # profile so an event-store subscription never carries a cap it cannot
+        # honor (SubscriptionConfig.validate() rejects the combination).
+        if (
+            subscription_type == SubscriptionType.EVENT_STORE
+            and resolved.get("retention_maxlen") is not None
+        ):
+            resolved["retention_maxlen"] = None
+            logger.debug("Cleared retention_maxlen for EVENT_STORE subscription type")
+
     def _log_event_store_warning(self, handler_name: str) -> None:
         """Log a warning when using EVENT_STORE subscription type in production.
 

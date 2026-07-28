@@ -1069,3 +1069,27 @@ class TestConfigResolverRetention:
         config = ConfigResolver(test_domain).resolve(PlainRetHandler)
 
         assert config.retention_maxlen is None
+
+    def test_event_store_type_clears_inherited_retention(self, test_domain):
+        """An EVENT_STORE handler under a stream profile resolves with no cap.
+
+        The `production` profile carries retention_maxlen=100_000. When the
+        handler resolves to EVENT_STORE, the resolver sanitizes the field to
+        None (an event-store subscription has no broker stream to trim);
+        otherwise SubscriptionConfig.validate() would reject the combination.
+        """
+        test_domain.config["server"]["subscriptions"]["EventStoreRetHandler"] = {
+            "profile": "production",
+        }
+
+        @test_domain.event_handler(
+            stream_category="$all",
+            subscription_type=SubscriptionType.EVENT_STORE,
+        )
+        class EventStoreRetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(EventStoreRetHandler)
+
+        assert config.subscription_type == SubscriptionType.EVENT_STORE
+        assert config.retention_maxlen is None

@@ -549,11 +549,20 @@ class StreamSubscription(BaseSubscription):
 
         Called after each processed batch on the exact stream the batch came
         from (primary or backfill). Returns immediately when
-        ``retention_maxlen`` is None (retention disabled). The broker's ``trim``
-        runs off the event loop via ``asyncio.to_thread`` and any error is
-        logged and swallowed so a trim failure never stalls processing.
+        ``retention_maxlen`` is None or non-positive (retention disabled). The
+        broker's ``trim`` runs off the event loop via ``asyncio.to_thread`` and
+        any error is logged and swallowed so a trim failure never stalls
+        processing.
         """
-        if self.retention_maxlen is None or not self.broker:
+        # Guard against a non-positive cap. `validate()` rejects `<= 0`, but the
+        # constructor accepts `retention_maxlen` unchecked, so a direct
+        # `StreamSubscription(..., retention_maxlen=0)` would otherwise reach
+        # `trim(stream, 0)` and empty the stream.
+        if (
+            self.retention_maxlen is None
+            or self.retention_maxlen <= 0
+            or not self.broker
+        ):
             return
 
         try:
