@@ -193,8 +193,10 @@ class UnitOfWork:
 
         if self._nested:
             # A participant in an outer UnitOfWork: the outermost UoW owns the real
-            # commit, so there is nothing to commit or dispatch here.
-            self._in_progress = False
+            # commit, so there is nothing to commit or dispatch here. Reset our own
+            # state (it is empty, since a nested UoW routes everything to the
+            # outermost) for symmetry with the non-nested path and safe reuse.
+            self._reset()
             return
 
         if self._rollback_only:
@@ -506,11 +508,12 @@ class UnitOfWork:
             # savepoints), so it dooms the whole transaction: mark the outermost
             # UoW rollback-only. The real session rollback happens when that
             # outermost UoW exits (its commit sees the flag, or an exception
-            # propagating out of the block drives its rollback directly).
-            self._in_progress = False
+            # propagating out of the block drives its rollback directly). Reset our
+            # own (empty) state for symmetry with the non-nested path.
             outermost = _uow_stack.top
             if outermost is not None:
                 outermost._rollback_only = True
+            self._reset()
             return
 
         # Record UoW outcome for the access log wide event
