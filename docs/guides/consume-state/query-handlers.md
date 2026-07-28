@@ -178,7 +178,8 @@ Protean provides three levels of read access to projections:
 Query handlers operate at Level 1, the most structured approach. Use
 `domain.view_for(Projection)` (Level 2) for read-only lookups that don't need a
 handler — it returns a `ReadView`, and `view.query` gives you a chainable
-read-only `QuerySet`. Use `domain.connection_for(Projection)` (Level 3) when you
+`ReadOnlyQuerySet` (a `QuerySet` subclass whose `update()`/`delete()` raise
+`NotSupportedError`). Use `domain.connection_for(Projection)` (Level 3) when you
 need the raw database or cache client for technology-specific queries.
 
 To *write* to a projection (inside a projector), use
