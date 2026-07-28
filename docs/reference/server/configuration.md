@@ -134,6 +134,49 @@ Optimized for building read models:
 }
 ```
 
+### Custom Profiles
+
+When the built-in profiles don't match your workload, define your own named
+profiles under `[server.profiles.<name>]` in `domain.toml`. A custom profile is a
+set of subscription config overrides. Once defined, its name is usable anywhere a
+built-in name is: `default_subscription_profile`, a per-handler `profile`, or a
+handler's Meta `subscription_profile`.
+
+```toml
+[server.profiles.myfast]
+inherits = "fast"        # optional: base on a built-in profile
+messages_per_tick = 25   # override one (or more) of the inherited fields
+```
+
+```toml
+[server.subscriptions.NotificationHandler]
+profile = "myfast"
+```
+
+**Inheritance.** With `inherits = "<built-in>"`, the profile starts from that
+built-in's defaults and applies your overrides on top. Inheritance is a single
+level onto a built-in base only, so a custom profile cannot inherit from another
+custom profile (this also means there is no inheritance cycle to fall into).
+Without `inherits`, the profile starts from the framework's hardcoded defaults.
+
+**Allowed fields.** A custom profile may set `inherits` plus any of the standard
+profile fields: `subscription_type`, `messages_per_tick`, `tick_interval`,
+`blocking_timeout_ms`, `max_retries`, `retry_delay_seconds`, `enable_dlq`,
+`position_update_interval`, `origin_stream`.
+
+**Validation** is fail-fast — a `ConfigurationError` is raised when the profiles
+are first resolved if a custom profile:
+
+- reuses a built-in name (`production`, `fast`, `batch`, `debug`, `projection` are
+  reserved),
+- sets a field that isn't in the allowed list above, or
+- `inherits` from anything other than a built-in profile.
+
+**Precedence is unchanged.** A custom profile name slots into the [priority
+hierarchy](#configuration-priority-hierarchy) at whatever level named it, exactly
+like a built-in. An explicit field set alongside the profile at the same level still wins
+over the profile's default.
+
 ## Configuration Options Reference
 
 ### Common Options

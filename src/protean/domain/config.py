@@ -161,6 +161,24 @@ def _default_config() -> dict[str, Any]:
             #       profile: "fast"
             #       messages_per_tick: 200
             "subscriptions": {},
+            # Custom subscription profiles
+            # Keys are profile names; values are dicts of subscription config
+            # overrides. A profile may set `inherits = "<built-in>"` to base its
+            # defaults on a built-in profile (production, fast, batch, debug,
+            # projection); without `inherits` the base is the hardcoded defaults.
+            # Allowed fields: subscription_type, messages_per_tick, tick_interval,
+            # blocking_timeout_ms, max_retries, retry_delay_seconds, enable_dlq,
+            # position_update_interval, origin_stream. A custom profile may not
+            # reuse a built-in name (rejected with ConfigurationError). Once
+            # defined, a custom profile name is usable anywhere a built-in name
+            # is (default_subscription_profile, per-handler `profile`, handler
+            # Meta subscription_profile).
+            # Example:
+            #   profiles:
+            #     myfast:
+            #       inherits: "fast"
+            #       messages_per_tick: 25
+            "profiles": {},
             # DLQ maintenance settings
             # Periodic trimming and alerting for dead letter queue streams
             "dlq": {

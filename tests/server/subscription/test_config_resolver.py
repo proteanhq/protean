@@ -771,3 +771,177 @@ class TestConfigResolverDebugLogging:
             "Resolving subscription configuration" in msg for msg in debug_messages
         )
         assert any("Final resolved configuration" in msg for msg in debug_messages)
+
+
+class TestConfigResolverCustomProfiles:
+    """End-to-end resolution of custom `[server.profiles.<name>]` profiles."""
+
+    def test_custom_profile_via_default_subscription_profile(self, test_domain):
+        """A custom profile named by default_subscription_profile resolves end-to-end."""
+        test_domain.config["server"]["profiles"]["myfast"] = {
+            "inherits": "fast",
+            "messages_per_tick": 25,
+        }
+        test_domain.config["server"]["default_subscription_profile"] = "myfast"
+        # The profile sits at priority 6; clear the priority-5 server-level
+        # defaults that would otherwise shadow the fields it should govern.
+        test_domain.config["server"].pop("messages_per_tick", None)
+        test_domain.config["server"].pop("default_subscription_type", None)
+        test_domain.config["server"]["stream_subscription"] = {}
+
+        @test_domain.event_handler(part_of=Order)
+        class PlainHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(PlainHandler)
+
+        fast = PROFILE_DEFAULTS[SubscriptionProfile.FAST]
+        # The one override plus the rest of fast's defaults carried by inheritance.
+        assert config.messages_per_tick == 25
+        assert config.subscription_type == fast["subscription_type"]
+        assert config.blocking_timeout_ms == fast["blocking_timeout_ms"]
+        assert config.max_retries == fast["max_retries"]
+
+    def test_custom_profile_via_handler_server_config(self, test_domain):
+        """A custom profile named in server.subscriptions.<Handler> resolves."""
+        test_domain.config["server"]["profiles"]["myfast"] = {
+            "inherits": "fast",
+            "messages_per_tick": 25,
+        }
+        test_domain.config["server"]["subscriptions"]["ServerProfHandler"] = {
+            "profile": "myfast",
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class ServerProfHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(ServerProfHandler)
+
+        assert config.messages_per_tick == 25
+        assert (
+            config.blocking_timeout_ms
+            == PROFILE_DEFAULTS[SubscriptionProfile.FAST]["blocking_timeout_ms"]
+        )
+
+    def test_custom_profile_via_handler_meta_profile(self, test_domain):
+        """A custom profile named in a handler's Meta subscription_profile resolves."""
+        test_domain.config["server"]["profiles"]["myfast"] = {
+            "inherits": "fast",
+            "messages_per_tick": 25,
+        }
+
+        @test_domain.event_handler(part_of=Order, subscription_profile="myfast")
+        class MetaProfHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(MetaProfHandler)
+
+        assert config.messages_per_tick == 25
+
+    def test_same_level_override_beats_custom_profile_defaults(self, test_domain):
+        """An explicit field at the same level wins over the custom profile's default."""
+        test_domain.config["server"]["profiles"]["myfast"] = {
+            "inherits": "fast",
+            "messages_per_tick": 25,
+        }
+        test_domain.config["server"]["subscriptions"]["OverrideHandler"] = {
+            "profile": "myfast",
+            "messages_per_tick": 77,
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class OverrideHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(OverrideHandler)
+
+        assert config.messages_per_tick == 77
+
+    def test_higher_level_custom_profile_beats_lower_level(self, test_domain):
+        """A handler Meta custom profile overrides a server default custom profile."""
+        test_domain.config["server"]["profiles"]["lowprof"] = {
+            "inherits": "fast",
+            "messages_per_tick": 11,
+        }
+        test_domain.config["server"]["profiles"]["highprof"] = {
+            "inherits": "batch",
+            "messages_per_tick": 88,
+        }
+        test_domain.config["server"]["default_subscription_profile"] = "lowprof"
+        test_domain.config["server"].pop("messages_per_tick", None)
+
+        @test_domain.event_handler(part_of=Order, subscription_profile="highprof")
+        class HighHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(HighHandler)
+
+        assert config.messages_per_tick == 88
+
+    def test_custom_profile_with_event_store_type(self, test_domain):
+        """A custom profile carrying subscription_type as a string resolves to the enum."""
+        test_domain.config["server"]["profiles"]["myproj"] = {
+            "inherits": "projection",
+            "subscription_type": "event_store",
+            "position_update_interval": 3,
+        }
+        test_domain.config["server"]["default_subscription_profile"] = "myproj"
+        # Clear the priority-5 event-store defaults so the priority-6 profile's
+        # position_update_interval is what surfaces.
+        test_domain.config["server"].pop("default_subscription_type", None)
+        test_domain.config["server"]["event_store_subscription"] = {}
+
+        @test_domain.event_handler(part_of=Order)
+        class ProjHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(ProjHandler)
+
+        # subscription_type given as a string in the profile resolves to the enum.
+        assert config.subscription_type == SubscriptionType.EVENT_STORE
+        assert config.position_update_interval == 3
+
+    def test_undefined_profile_name_raises(self, test_domain):
+        """Referencing a name that is neither built-in nor custom raises."""
+        from protean.exceptions import ConfigurationError
+
+        test_domain.config["server"]["default_subscription_profile"] = "ghost"
+
+        @test_domain.event_handler(part_of=Order)
+        class GhostHandler(BaseEventHandler):
+            pass
+
+        with pytest.raises(ConfigurationError):
+            ConfigResolver(test_domain).resolve(GhostHandler)
+
+    def test_invalid_profiles_section_fails_fast_on_resolve(self, test_domain):
+        """An invalid [server.profiles] section raises even if the handler names no profile."""
+        from protean.exceptions import ConfigurationError
+
+        test_domain.config["server"]["profiles"]["production"] = {
+            "messages_per_tick": 1,
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class NoProfileHandler(BaseEventHandler):
+            pass
+
+        with pytest.raises(ConfigurationError):
+            ConfigResolver(test_domain).resolve(NoProfileHandler)
+
+    def test_builtin_profile_unchanged_when_profiles_absent(self, test_domain):
+        """With no [server.profiles], a built-in profile resolves exactly as before."""
+        test_domain.config["server"]["default_subscription_profile"] = "batch"
+        test_domain.config["server"].pop("messages_per_tick", None)
+
+        @test_domain.event_handler(part_of=Order)
+        class BatchHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(BatchHandler)
+
+        assert (
+            config.messages_per_tick
+            == PROFILE_DEFAULTS[SubscriptionProfile.BATCH]["messages_per_tick"]
+        )

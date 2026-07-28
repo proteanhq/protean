@@ -174,6 +174,100 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "origin_stream": None,
 }
 
+# Built-in profile names, normalized to lowercase. These are reserved: a custom
+# profile may not reuse one of these names.
+BUILTIN_PROFILE_NAMES: frozenset[str] = frozenset(p.value for p in SubscriptionProfile)
+
+# Fields a custom profile may set, derived from the built-in defaults schema so
+# the allow-list can't drift from the fields the resolver actually applies.
+# ``inherits`` is a meta-key handled separately, not a config field.
+PROFILE_FIELDS: frozenset[str] = frozenset(DEFAULT_CONFIG)
+
+
+def build_profile_registry(
+    custom_profiles: dict[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Build a string-keyed profile registry.
+
+    The registry is seeded with the built-in profiles (keyed by their lowercase
+    ``.value`` names) and extended with validated custom profiles read from the
+    ``[server.profiles.<name>]`` sections of ``domain.toml``.
+
+    A custom profile is a dict of subscription config overrides. It may set
+    ``inherits = "<built-in>"`` to base its defaults on a built-in profile;
+    without ``inherits`` the base is :data:`DEFAULT_CONFIG`. Validation is
+    fail-fast: a reserved built-in name, an unknown field, or an ``inherits``
+    target that is not a built-in each raises :class:`ConfigurationError`.
+
+    Args:
+        custom_profiles: The raw ``[server.profiles]`` mapping (profile name to
+            its config dict). ``None`` or empty yields just the built-ins.
+
+    Returns:
+        A mapping of profile name to its resolved defaults dict. Built-in entries
+        are fresh copies, so callers never mutate :data:`PROFILE_DEFAULTS`.
+
+    Raises:
+        ConfigurationError: If a custom profile shadows a built-in name, sets an
+            unknown field, or inherits from anything other than a built-in.
+    """
+    # Seed with built-ins. Copy each defaults dict so the returned registry never
+    # aliases (and so a later merge never mutates) the shared PROFILE_DEFAULTS.
+    registry: dict[str, dict[str, Any]] = {
+        profile.value: dict(defaults) for profile, defaults in PROFILE_DEFAULTS.items()
+    }
+
+    if not custom_profiles:
+        return registry
+
+    for raw_name, raw_config in custom_profiles.items():
+        name = raw_name.lower()
+
+        if name in BUILTIN_PROFILE_NAMES:
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' shadows a built-in "
+                f"profile name. Built-in names are reserved: "
+                f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+            )
+
+        if not isinstance(raw_config, dict):
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' must be a table of "
+                f"config overrides, got {type(raw_config).__name__}."
+            )
+
+        overrides = dict(raw_config)
+        inherits = overrides.pop("inherits", None)
+
+        # Inheritance is a single level onto a built-in base. A custom or self
+        # name is not a built-in, so this rule also rejects the only reachable
+        # cycle shapes (self-inherit, custom -> custom).
+        if inherits is not None:
+            inherits_name = inherits.lower() if isinstance(inherits, str) else inherits
+            if inherits_name not in BUILTIN_PROFILE_NAMES:
+                raise ConfigurationError(
+                    f"Custom subscription profile '{raw_name}' inherits from "
+                    f"'{inherits}', which is not a built-in profile. Inheritance "
+                    f"is a single level onto a built-in base: "
+                    f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+                )
+            base = dict(registry[inherits_name])
+        else:
+            base = dict(DEFAULT_CONFIG)
+
+        unknown = set(overrides) - PROFILE_FIELDS
+        if unknown:
+            raise ConfigurationError(
+                f"Custom subscription profile '{raw_name}' has unknown "
+                f"field(s): {', '.join(sorted(unknown))}. Allowed fields: "
+                f"{', '.join(sorted(PROFILE_FIELDS))}."
+            )
+
+        base.update(overrides)
+        registry[name] = base
+
+    return registry
+
 
 @dataclass
 class SubscriptionConfig:
@@ -604,9 +698,12 @@ class SubscriptionConfig:
 
 
 __all__ = [
+    "BUILTIN_PROFILE_NAMES",
     "DEFAULT_CONFIG",
     "PROFILE_DEFAULTS",
+    "PROFILE_FIELDS",
     "SubscriptionConfig",
     "SubscriptionProfile",
     "SubscriptionType",
+    "build_profile_registry",
 ]
