@@ -298,7 +298,7 @@ A service that orchestrates a specific business use case by coordinating between
 
 ### `@use_case` Decorator
 
-A decorator applied to methods within an application service to mark them as use case entry points. It automatically wraps the method body in a `UnitOfWork` context, providing transaction management — if the method succeeds, all changes are committed; if it raises, all changes are rolled back.
+A decorator applied to methods within an application service to mark them as use case entry points. It automatically wraps the method body in a `UnitOfWork` context, providing transaction management: if the method succeeds, all changes are committed; if it raises, all changes are rolled back. If the method runs while a Unit of Work is already active (for example when called from a command handler), it joins that transaction rather than opening its own.
 
 [Learn more →](guides/change-state/application-services.md) | **See also**: [Application Service](#application-service), [Unit of Work](#unit-of-work)
 

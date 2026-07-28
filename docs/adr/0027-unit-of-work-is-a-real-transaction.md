@@ -205,3 +205,18 @@ explicit-inner-rollback all leave the store consistent).
   still off. Rejected: opening a real transaction is the decision above. Dropping
   AUTOCOMMIT is the clean way to express it. Leaving autoflush off would keep
   read-your-writes broken for no benefit.
+
+- Support independent inner transactions (savepoints, or a suspend-and-new inner
+  transaction). This is what a nested UoW joining the outermost gives up: an inner
+  scope cannot commit or roll back on its own. Rejected as a non-goal. It cannot be
+  offered uniformly (the Memory adapter has no savepoints and Elasticsearch has no
+  transactions), so it would break the "write once, run on any adapter" promise; it
+  adds real complexity (savepoint stacks, partial-rollback semantics, connection
+  suspension, adapter-specific paths); and it is an infrastructure concern that does
+  not belong in a domain-layer Unit of Work. The aggregate is the consistency
+  boundary and one UoW maps to one use case. Cross-aggregate coordination is done
+  with domain events, and a durable side-effect that must survive a rollback goes
+  through the outbox or a write outside the UoW. Nesting is not forbidden (that
+  would break legitimate composition, such as an application service called from a
+  command handler); it joins, so the correct single-transaction behavior is the
+  automatic one.

@@ -23,12 +23,13 @@ for you:
 |-----------|-------------|---------|
 | `@handle` on command handler methods | Yes | Each handler method runs inside its own UoW. |
 | `@handle` on event handler methods | Yes | Each handler method runs inside its own UoW. |
-| `@use_case` on application service methods | Yes | Each use case method runs inside its own UoW. |
+| `@use_case` on application service methods | Yes | Runs inside a UoW. If one is already active (for example the service is called from a command handler), it joins that one instead of opening its own (see [Nested Units of Work](#nested-units-of-work)). |
 | `repository.add()` outside a handler | Yes | If no UoW is in progress, `add()` creates a temporary one, commits it immediately after persisting, then discards it. |
 
-Because these decorators create a fresh UoW for every invocation, you get
-transaction isolation by default — one handler failure cannot corrupt another
-handler's in-progress changes.
+Each top-level handler invocation runs in its own UoW, so one handler failure
+cannot corrupt another handler's changes. A UoW opened *inside* an already-active
+one is different: it joins the outer transaction rather than getting its own (see
+[Nested Units of Work](#nested-units-of-work)).
 
 ### Manual UoW
 
@@ -81,9 +82,77 @@ if current_uow and current_uow.in_progress:
     ...
 ```
 
-This is a thread-local proxy backed by a context stack. Each `start()` (or
-`__enter__`) pushes a new UoW onto the stack, and each `commit()` or
-`rollback()` pops it off.
+This is a thread-local proxy backed by a context stack. The outermost `start()`
+(or `__enter__`) pushes its UoW onto the stack, and its `commit()` or `rollback()`
+pops it off. A nested UoW (one started while another is active) does not push: it
+joins the outermost UoW, so `current_uow` keeps pointing at that one (see
+[Nested Units of Work](#nested-units-of-work)).
+
+## Nested Units of Work
+
+A UnitOfWork started while another is already active on the same context is a
+participant in the outer one, not a new transaction. Protean does not use
+savepoints, so it joins the outermost UoW: it does not push onto the context
+stack, so every write, read, and event routes to the outermost UoW, and only that
+UoW commits or rolls back. A nested rollback rolls back the whole transaction.
+
+```python
+with UnitOfWork():            # outermost: owns the transaction
+    repo.add(a)
+    with UnitOfWork():        # nested: joins the outer, does not commit on its own
+        repo.add(b)
+    repo.add(c)
+    # a, b, and c all commit together when the outermost block exits,
+    # and all roll back together if anything fails.
+```
+
+The most common way this happens is composition: an application service
+(`@use_case`) called from within a command handler's UoW joins that handler's
+transaction instead of committing independently. That is intended, so the whole
+use case stays atomic.
+
+### Why joining, not independent inner transactions
+
+This means **independent inner transactions are not supported**: a nested UoW
+cannot commit or roll back on its own, and there is no savepoint to partially roll
+back to. That is a deliberate design decision, and it is worth understanding why.
+
+Independent inner transactions are a real database tool. A savepoint lets an inner
+scope roll back on its own; a separate (suspend-and-new) transaction lets an inner
+scope commit even if the outer later rolls back. Protean's Unit of Work supports
+neither, for three reasons:
+
+- **It is an infrastructure concern, not a domain one.** A savepoint or a
+  sub-transaction is a persistence-layer mechanism. The domain-layer Unit of Work
+  exists to keep one aggregate consistent for one use case, and the aggregate is
+  the consistency boundary. Sub-transactions do not belong at that layer.
+- **Uniformity across adapters.** Not every adapter can offer them: the Memory
+  adapter has no savepoints and Elasticsearch has no transactions at all. Exposing
+  savepoints would make a Unit of Work behave differently per adapter and break the
+  "write once, run on any adapter" promise.
+- **Simplicity, and it keeps your design honest.** There are no savepoint stacks or
+  partial-rollback rules to reason about: a Unit of Work is one transaction,
+  all-or-nothing. And when you find yourself reaching for an inner transaction, it
+  is usually a signal to re-examine the aggregate boundary rather than paper over
+  it, which keeps the model sustainable as it grows.
+
+Note that Protean does not *forbid* nesting. Raising an error would break
+legitimate composition, like an application service called from a command handler.
+It *joins*, so the correct single-transaction behavior is automatic and an
+independent inner commit is simply not expressible. When you genuinely need the
+effect of an inner transaction, model it explicitly:
+
+- for cross-aggregate coordination, raise a domain event and let a separate
+  handler (in its own UoW) react;
+- for a durable side-effect that must survive a rollback (an audit record, say),
+  use the outbox or a write outside the UnitOfWork.
+
+One edge to know: an explicit `nested_uow.rollback()` (without an exception) marks
+the whole transaction rollback-only, so the outermost commit rolls everything back
+and logs a warning. Prefer letting an exception propagate instead.
+
+See [ADR-0027](../../adr/0027-unit-of-work-is-a-real-transaction.md) for the
+rationale.
 
 ## What happens during commit
 

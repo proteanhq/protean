@@ -496,7 +496,12 @@ class InventoryEventHandler(BaseEventHandler):
 Application services are for external callers (APIs, CLIs), not event-driven
 reactions. The event handler already runs inside the engine's processing
 pipeline. Calling an application service introduces a nested `UnitOfWork`
-(from `@use_case`) inside the event handler's own UoW.
+(from `@use_case`) inside the event handler's own UoW. That nested UoW joins the
+handler's transaction rather than opening its own (see
+[Nested Units of Work](../guides/change-state/unit-of-work.md#nested-units-of-work)),
+so the two collapse into one transaction. It works, but it hides the coordination
+inside a service built for a different purpose; put the logic in the handler
+instead.
 
 **Fix:** Put the coordination logic directly in the event handler:
 
