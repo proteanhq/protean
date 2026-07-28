@@ -90,13 +90,17 @@ Across UoW boundaries, relational adapters see only committed state.
 
 !!! note "UoW atomicity on PostgreSQL/MSSQL"
     Each UoW is one real database transaction
-    ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), so every write
-    in it commits or rolls back as a unit: a childless aggregate, a child-bearing
-    aggregate (parent and children together), several aggregates, and the outbox
-    message. A rollback leaves nothing behind (no orphaned parent), and the
-    transactional outbox commits atomically with the domain write. The guarantees
-    are pinned by
-    `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`.
+    ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), so its
+    relational writes commit or roll back as a unit: a childless aggregate, a
+    child-bearing aggregate (parent and children together), and several aggregates.
+    A rollback leaves nothing behind (no orphaned parent). The transactional outbox
+    row is saved on the same session as the domain write and committed by the same
+    `session.commit()`, so the two are atomic (the cross-table test exercises that
+    two-table shape). For an event-sourced aggregate the event-store append is a
+    separate durable anchor written before the relational commit, so it is outside
+    this transaction (ADR-0015). The guarantees are pinned by
+    `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
+    and its MSSQL mirror.
 
 **Memory OCC holds under concurrent sessions.** Each session still works on a
 deep-copied snapshot, but commit is no longer a wholesale replacement: it is a
@@ -121,9 +125,9 @@ Memory preserves insertion order); do not rely on it — pass `order_by`.
 ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)) relies on
 the write being a single conditional `UPDATE` whose `WHERE _version = :expected`
 predicate is re-evaluated under the row lock against committed state. That is
-atomic at **READ COMMITTED**, the default on both; Protean runs the engine in
-AUTOCOMMIT and requires nothing stronger. Running below READ COMMITTED is
-unsupported. SQLite has no READ COMMITTED level — it serializes writers and a
+atomic at **READ COMMITTED**, the default on both; Protean runs the engine at
+read-committed ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)) and
+requires nothing stronger. Running below READ COMMITTED is unsupported. SQLite has no READ COMMITTED level: it serializes writers and a
 contended write raises `SQLITE_BUSY` rather than losing one.
 
 **Claim / concurrent-consume.** For queue-style claiming (e.g. the outbox), the

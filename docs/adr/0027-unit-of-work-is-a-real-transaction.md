@@ -96,9 +96,11 @@ contract is unchanged; only its transaction-model justification is replaced.
 
 Positive:
 
-- The Unit of Work becomes genuinely atomic for every aggregate shape, not just the
-  single-statement case. Silent data-integrity failures (orphaned parents, split
-  outbox writes) go away.
+- The Unit of Work becomes genuinely atomic for every relational aggregate shape,
+  not just the single-statement case. Silent data-integrity failures (orphaned
+  parents, split outbox writes) go away. (For an event-sourced aggregate the
+  event-store append is still a separate durable anchor written before the
+  relational commit, per ADR-0015; that two-store boundary is unchanged.)
 - Read-your-writes works on PostgreSQL and MSSQL, matching the Memory and SQLite
   adapters and the behavior every other ORM provides.
 - The adapter uses SQLAlchemy the way it is designed to be used. The OCC guard and
@@ -113,19 +115,60 @@ Negative:
 - This changes a load-bearing subsystem that #1087/#1244 recently stabilized. It
   must be validated carefully, not shipped casually.
 
+Sharp edges of the real-transaction model:
+
+A real transaction has sharp edges that the AUTOCOMMIT model hid. These are not new
+to this change. The Memory and SQLite adapters already run each UoW as a real
+transaction (Memory via a copy-on-write session, SQLite via SQLAlchemy's default
+autoflush), so they already behave this way today; we verified each edge below
+reproduces on them. This change brings PostgreSQL and MSSQL into line with them
+rather than introducing new behavior. They are written down here so the behavior is
+understood, and hardening them is tracked as follow-up work.
+
+- Nested `UnitOfWork` on the same thread shares one session. An inner UoW's commit
+  or rollback acts on the outer UoW's writes too, so an inner commit can durably
+  persist the outer's pending writes and an inner rollback can undo them. Ordinary
+  handler code does not nest (repository writes reuse the active UoW), but explicit
+  `with UnitOfWork(): ... with UnitOfWork():` in user code is unsafe.
+- A manual `uow.start()` without a `try/finally` leaks the transaction (and its
+  connection and locks) if an exception is raised before `commit()`/`rollback()`.
+  Only the `with UnitOfWork():` context manager guarantees cleanup on the exception
+  path. Prefer the context manager.
+- Under multithreading, each thread's UoW holds a pooled connection for the whole
+  transaction, so size the connection pool to peak UoW concurrency. The async
+  engine runs on a single event-loop thread and is not exposed to this; a
+  multithreaded host (a threaded WSGI worker, a user thread pool) is.
+- On MSSQL the default read-committed isolation uses row locks, not MVCC, so a
+  reader on one connection can block on a writer holding a row inside a UoW where
+  PostgreSQL would not. Enabling `READ_COMMITTED_SNAPSHOT` on the database gives
+  MSSQL MVCC-style reads if that blocking is a problem.
+- With `autoflush=True`, an optimistic-concurrency conflict can surface at an
+  in-UoW read (the read autoflushes the pending guarded `UPDATE`) as a raw
+  `StaleDataError`, earlier than the commit where the version-retry path catches it.
+  Extending the retry path to catch this earlier surface is follow-up work.
+
 Migration and validation:
 
 The change touches OCC (ADR-0013), `_claim`, `_commit_if_standalone`, the standalone
 read/write paths, and the connection lifecycle. It ships with a property-test suite
-on real PostgreSQL and MSSQL that encodes the guarantees the current model cannot
-meet and that fail today
-(`tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`):
+on real PostgreSQL and MSSQL that encodes the guarantees the old model cannot meet.
+With the old AUTOCOMMIT engine restored, the regression tests in these suites go red;
+on the fix they pass
+(`tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
+and its MSSQL mirror):
 
-- read-your-writes inside a UoW for `filter`/`count`/`exists`;
-- full rollback of a multi-table and child-bearing UoW (no orphaned parent);
-- the transactional outbox committing atomically with the domain write (a failure in
-  one leaves neither);
-- optimistic concurrency and no-double-`_claim` still hold under concurrency.
+- read-your-writes inside a UoW for `filter`, `count`, and `exists`, and for an
+  update that emits SQL;
+- both directions of a multi-table and child-bearing UoW: a rollback leaves no
+  orphaned parent, and a commit persists parent and children together;
+- a cross-table commit being atomic (a failure in one table leaves neither). This is
+  the transactional-outbox shape: the outbox row is saved on the same session and
+  committed by the same `session.commit()` as the domain write, so the cross-table
+  test's guarantee carries to the outbox;
+- on PostgreSQL, a pending write staying invisible to a separate connection until
+  commit;
+- optimistic concurrency continues to hold (the existing OCC and `_claim`
+  concurrency tests pass under the real-transaction model).
 
 ## Alternatives Considered
 
