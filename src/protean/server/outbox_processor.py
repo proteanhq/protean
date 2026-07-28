@@ -392,20 +392,20 @@ class OutboxProcessor(BaseSubscription):
                 span.set_attribute("protean.causation_id", message.causation_id)
 
             try:
-                # In the production flow the message was already claimed
-                # atomically when the batch was fetched (see
-                # ``OutboxRepository.claim_batch``), so there is no per-message
-                # claim here. Publish and record the final status in one
-                # transaction.
+                # Publish to the broker BEFORE opening a UnitOfWork. Publishing is
+                # network I/O; holding a transaction open across the await would let
+                # another coroutine on the event-loop thread share and corrupt this
+                # thread-scoped session (#1268), and ADR-0027 says to do no external
+                # I/O inside a UoW. The message was already claimed atomically when
+                # the batch was fetched (see ``OutboxRepository.claim_batch``), and
+                # publishing needs only the row's data/metadata, already loaded.
+                publish_success, publish_error = await self._publish_message(message)
+
+                # Record the outcome in a short transaction (no await inside).
                 with UnitOfWork():
                     # Re-fetch to bind the row to this UoW and read its current
                     # persisted state before transitioning it.
                     message = self.outbox_repo.get(message.id)
-
-                    # Publish message to broker
-                    publish_success, publish_error = await self._publish_message(
-                        message
-                    )
 
                     # Update final status based on broker publish result
                     metrics = get_domain_metrics(self.engine.domain)

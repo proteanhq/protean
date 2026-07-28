@@ -85,8 +85,9 @@ class TestAdditionalEngineArgs:
 
         assert "echo" in result
         assert result["echo"] is True
-        assert "isolation_level" in result
-        assert result["isolation_level"] == "AUTOCOMMIT"
+        # ADR-0027: the PostgreSQL provider no longer defaults to AUTOCOMMIT
+        # (the Unit of Work is a real transaction at read-committed isolation).
+        assert "isolation_level" not in result
 
     def test_database_specific_args_override_conn_info_args(self, test_domain):
         """Test that args in conn_info override default database-specific args with the same key"""
@@ -135,8 +136,9 @@ class TestAdditionalEngineArgs:
 
         assert "echo" in result
         assert result["echo"] is True
-        assert "isolation_level" in result
-        assert result["isolation_level"] == "AUTOCOMMIT"
+        # ADR-0027: the PostgreSQL provider no longer defaults to AUTOCOMMIT
+        # (the Unit of Work is a real transaction at read-committed isolation).
+        assert "isolation_level" not in result
 
     def test_integration_with_sqlite_provider(self, test_domain):
         provider = SqliteProvider(

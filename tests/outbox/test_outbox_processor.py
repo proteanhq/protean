@@ -20,6 +20,7 @@ from protean.utils.eventing import (
     Metadata,
     TraceParent,
 )
+from protean.utils.globals import _uow_context_stack
 from protean.utils.outbox import Outbox, OutboxStatus
 
 
@@ -283,6 +284,40 @@ class TestOutboxProcessor:
                 updated_msg = outbox_repo.get(messages[i].id)
                 assert updated_msg.status == OutboxStatus.PUBLISHED.value
                 assert updated_msg.published_at is not None
+
+    @pytest.mark.asyncio
+    async def test_publish_happens_outside_a_unit_of_work(self, outbox_test_domain):
+        """#1268: the broker publish must not run inside an open UnitOfWork. If it
+        did, the UoW would be held across the publish await, and another coroutine
+        on the event-loop thread could share and corrupt this thread-scoped
+        session. The status write still lands in its own short transaction."""
+        messages = persist_outbox_messages(outbox_test_domain)
+
+        engine = MockEngine(outbox_test_domain)
+        processor = OutboxProcessor(engine, "default", "default")
+        await processor.initialize()
+
+        uow_active_at_publish = []
+
+        def recording_publish(*args, **kwargs):
+            top = _uow_context_stack.top
+            uow_active_at_publish.append(top is not None and top.in_progress)
+            return "broker-msg-id"
+
+        with patch.object(processor.broker, "publish", side_effect=recording_publish):
+            successful_count = await processor.process_batch(messages[:2])
+
+        assert successful_count == 2
+        # Publish ran for each message, and never inside an active UnitOfWork.
+        assert len(uow_active_at_publish) == 2
+        assert uow_active_at_publish == [False, False]
+
+        # The status was still recorded (in the short transaction after publish).
+        outbox_repo = outbox_test_domain._get_outbox_repo("default")
+        for i in range(2):
+            assert (
+                outbox_repo.get(messages[i].id).status == OutboxStatus.PUBLISHED.value
+            )
 
     @pytest.mark.asyncio
     async def test_process_batch_failure(self, outbox_test_domain):

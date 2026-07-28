@@ -789,8 +789,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         # flush emits ``UPDATE … WHERE _version = :loaded`` and raises
         # ``StaleDataError`` when a concurrent commit already advanced the
         # version. Protean owns the version value (version_id_generator=False)
-        # via ``BaseDAO._validate_and_update_version``, so the check is atomic at
-        # flush/commit even under the deferred-write AUTOCOMMIT model (#1087).
+        # via ``BaseDAO._validate_and_update_version``, so the guard rides the
+        # UnitOfWork's real transaction and raises on a concurrent bump
+        # (ADR-0013, ADR-0027).
         version_col = cls.__dict__.get("_version")
         if version_col is not None:
             cls.__mapper_args__ = {
@@ -983,6 +984,13 @@ class SADAO(BaseDAO):
                 # the count round-trip entirely.
                 total = len(items)
             result = ResultSet(offset=offset, limit=limit, total=total, items=items)
+        except StaleDataError as exc:
+            # ``autoflush`` emitted a pending version-guarded UPDATE before this
+            # read, and a concurrent commit already advanced the version. That is
+            # an optimistic-concurrency conflict, so surface it as
+            # ``ExpectedVersionError`` for the version-retry path, matching
+            # ``_flush`` and the UnitOfWork commit.
+            raise ExpectedVersionError(str(exc)) from None
         except Exception:
             logger.exception("repository.sqlalchemy.filter_failed")
             raise
@@ -1049,13 +1057,13 @@ class SADAO(BaseDAO):
         ``UPDATE … SET … WHERE _version = :loaded``. If a concurrent commit
         advanced the version after this read, the flush matches zero rows and
         SQLAlchemy raises ``StaleDataError``, which the persistence layer maps to
-        :class:`ExpectedVersionError`. Deferring the write to the flush keeps it
-        invisible until the UnitOfWork commits (the adapter runs an AUTOCOMMIT
-        engine), while the version predicate keeps the guard atomic — a plain
-        ``UPDATE … WHERE id`` would let two readers of the same version both
-        write and lose one update. When ``expected_version`` is not ``None`` the
-        Python check below additionally rejects a version already stale at read
-        time.
+        :class:`ExpectedVersionError`. The version predicate keeps the guard
+        atomic: a plain ``UPDATE … WHERE id`` would let two readers of the same
+        version both write and lose one update. The write rides the UnitOfWork's
+        real transaction (ADR-0027), so it is invisible to other connections
+        until the UoW commits and is rolled back with it. When
+        ``expected_version`` is not ``None`` the Python check below additionally
+        rejects a version already stale at read time.
         """
         conn = self._get_session()
         assert conn is not None
@@ -1271,6 +1279,10 @@ class SADAO(BaseDAO):
             if criteria.children:
                 qs = qs.filter(self._build_filters(criteria))
             return qs.scalar() or 0
+        except StaleDataError as exc:
+            # See ``_filter``: an autoflushed version-guarded UPDATE lost the race,
+            # so report it as the optimistic-concurrency error.
+            raise ExpectedVersionError(str(exc)) from None
         finally:
             self._commit_if_standalone(conn)
 
@@ -1552,6 +1564,13 @@ class SAProvider(BaseProvider):
                 conn.close()
 
     def _data_reset(self) -> None:
+        # Discard any active Unit of Work FIRST. A leaked in-progress UoW can hold
+        # row locks from a flushed write; the delete-all below would block on those
+        # locks, and the rollback that frees them would be unreachable — a
+        # self-deadlock. Rolling back first releases the locks before we delete.
+        if current_uow and current_uow.in_progress:
+            current_uow.rollback()
+
         conn = self._engine.connect()
         try:
             transaction = conn.begin()
@@ -1568,10 +1587,6 @@ class SAProvider(BaseProvider):
             transaction.commit()
         finally:
             conn.close()
-
-        # Discard any active Unit of Work
-        if current_uow and current_uow.in_progress:
-            current_uow.rollback()
 
     def pool_stats(self) -> dict[str, int]:
         """Return SQLAlchemy connection pool statistics.
@@ -1799,7 +1814,6 @@ class PostgresqlProvider(SAProvider):
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
         return {
-            "isolation_level": "AUTOCOMMIT",
             "pool_size": 5,
             "max_overflow": 10,
             "pool_pre_ping": True,
@@ -1814,7 +1828,11 @@ class PostgresqlProvider(SAProvider):
 
         Return: a dictionary with additional arguments and values.
         """
-        return {"autoflush": False}
+        # ADR-0027: the Unit of Work is one real database transaction. The engine
+        # runs at the default read-committed level (not AUTOCOMMIT), and autoflush
+        # lets a read see the UoW's own pending writes, deferred within that
+        # transaction and rolled back with it.
+        return {"autoflush": True}
 
     def _execute_database_specific_connection_statements(
         self, conn: typing.Any
@@ -1883,7 +1901,6 @@ class MssqlProvider(SAProvider):
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
         return {
-            "isolation_level": "AUTOCOMMIT",
             "pool_size": 5,
             "max_overflow": 10,
             "pool_pre_ping": True,
@@ -1898,7 +1915,11 @@ class MssqlProvider(SAProvider):
 
         Return: a dictionary with additional arguments and values.
         """
-        return {"autoflush": False}
+        # ADR-0027: the Unit of Work is one real database transaction. The engine
+        # runs at the default read-committed level (not AUTOCOMMIT), and autoflush
+        # lets a read see the UoW's own pending writes, deferred within that
+        # transaction and rolled back with it.
+        return {"autoflush": True}
 
     def _execute_database_specific_connection_statements(
         self, conn: typing.Any

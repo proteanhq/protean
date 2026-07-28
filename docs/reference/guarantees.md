@@ -67,29 +67,47 @@ the root's `_version`.
 | Adapter | Ordering (no `order_by`) | Write atomicity / visibility | OCC & consistency | Isolation / concurrency model |
 |---|---|---|---|---|
 | **Memory** | Insertion order (not a promise) | Copy-on-write session; visible at commit; `rollback()` discards the session's pending changes | Real OCC: commit is a compare-and-set that re-checks the version against the live store under the provider lock and merges per record; a stale write raises `ExpectedVersionError` (see below) | Single process; per-provider lock (no MVCC) |
-| **SQLAlchemy** (PostgreSQL / MSSQL) | No guaranteed order | Session-scoped writes deferred to the flush at commit (AUTOCOMMIT engine, `autoflush=False`) | OCC via `version_id_col` → `UPDATE … WHERE _version = :expected`; a zero-row match raises `ExpectedVersionError` | **READ COMMITTED or stronger** (see below) |
+| **SQLAlchemy** (PostgreSQL / MSSQL) | No guaranteed order | One real transaction per UoW (read-committed engine, `autoflush=True`, [ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)); all writes commit or roll back atomically, and an in-UoW read sees the UoW's own pending writes | OCC via `version_id_col` → `UPDATE … WHERE _version = :expected`; a zero-row match raises `ExpectedVersionError` | **READ COMMITTED or stronger** (see below) |
 | **SQLAlchemy** (SQLite) | No guaranteed order | Session autoflushes; write visible in-session | Same `version_id_col` OCC | Writers serialized; a contended write raises `SQLITE_BUSY` (no READ COMMITTED level) |
 | **Elasticsearch** | No guaranteed order | No multi-document transaction; each write forced `refresh=True` | OCC via `if_seq_no` / `if_primary_term`; a 409 conflict raises `ExpectedVersionError` | None (no transactions) |
 
-**Consistency (read-your-writes) — with an important caveat.** Within a Unit of
-Work, every repository *on a given provider* shares one session.
+**Consistency (read-your-writes).** Within a Unit of Work, every repository *on a
+given provider* shares one session, and a read sees the UoW's own uncommitted
+writes.
 
 - **Memory / SQLite** — all reads see the UoW's own uncommitted writes.
-- **PostgreSQL / MSSQL** — the session runs `autoflush=False`, so a read inside
-  the UoW reflects **committed** state and does **not** see the UoW's own pending
-  writes. This applies to `filter` / `count` / `exists` **and to `get`** (which is
-  itself implemented as a criteria query, not an identity-map lookup). The pending
-  write becomes visible only once it has been flushed — which happens for an
-  auto-increment primary key, or an aggregate whose child sync forces a flush, but
-  not for a plain UUID-keyed childless aggregate. (In-UoW uniqueness validation
-  reads committed state for the same reason; the database constraint still fires
-  at commit.)
+- **PostgreSQL / MSSQL**: the UoW is a real transaction with `autoflush=True`
+  ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), so all reads
+  (`filter` / `count` / `exists` / `get`) inside the UoW see the UoW's own pending
+  writes, and in-UoW uniqueness validation sees them too. On a rollback none of it
+  persists.
 - **Elasticsearch** — has no session isolation: every write lands immediately
   (`refresh=True`) and is **not** rolled back, so read-your-writes (both `get` and
   criteria) is trivially satisfied, but a rolled-back UoW's writes persist and are
   visible to others.
 
 Across UoW boundaries, relational adapters see only committed state.
+
+!!! note "UoW atomicity on PostgreSQL/MSSQL"
+    Each UoW is one real database transaction
+    ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), so its
+    relational writes commit or roll back as a unit: a childless aggregate, a
+    child-bearing aggregate (parent and children together), and several aggregates.
+    A rollback leaves nothing behind (no orphaned parent). The transactional outbox
+    row is saved on the same session as the domain write and committed by the same
+    `session.commit()`, so the two are atomic (the cross-table test exercises that
+    two-table shape). For an event-sourced aggregate the event-store append is a
+    separate durable anchor written before the relational commit, so it is outside
+    this transaction (ADR-0015). The guarantees are pinned by
+    `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
+    and its MSSQL mirror.
+
+!!! note "Nested Units of Work"
+    A `UnitOfWork` started while another is already active on the same context
+    joins the outermost transaction rather than opening its own (there are no
+    savepoints). Only the outermost UoW commits or rolls back, and a nested rollback
+    rolls back the whole transaction. This holds on every adapter. See
+    [ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md).
 
 **Memory OCC holds under concurrent sessions.** Each session still works on a
 deep-copied snapshot, but commit is no longer a wholesale replacement: it is a
@@ -114,9 +132,9 @@ Memory preserves insertion order); do not rely on it — pass `order_by`.
 ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)) relies on
 the write being a single conditional `UPDATE` whose `WHERE _version = :expected`
 predicate is re-evaluated under the row lock against committed state. That is
-atomic at **READ COMMITTED**, the default on both; Protean runs the engine in
-AUTOCOMMIT and requires nothing stronger. Running below READ COMMITTED is
-unsupported. SQLite has no READ COMMITTED level — it serializes writers and a
+atomic at **READ COMMITTED**, the default on both; Protean runs the engine at
+read-committed ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)) and
+requires nothing stronger. Running below READ COMMITTED is unsupported. SQLite has no READ COMMITTED level: it serializes writers and a
 contended write raises `SQLITE_BUSY` rather than losing one.
 
 **Claim / concurrent-consume.** For queue-style claiming (e.g. the outbox), the
