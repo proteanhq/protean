@@ -1886,7 +1886,6 @@ class MssqlProvider(SAProvider):
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
         return {
-            "isolation_level": "AUTOCOMMIT",
             "pool_size": 5,
             "max_overflow": 10,
             "pool_pre_ping": True,
@@ -1901,7 +1900,11 @@ class MssqlProvider(SAProvider):
 
         Return: a dictionary with additional arguments and values.
         """
-        return {"autoflush": False}
+        # ADR-0027: the Unit of Work is one real database transaction. The engine
+        # runs at the default read-committed level (not AUTOCOMMIT), and autoflush
+        # lets a read see the UoW's own pending writes, deferred within that
+        # transaction and rolled back with it.
+        return {"autoflush": True}
 
     def _execute_database_specific_connection_statements(
         self, conn: typing.Any

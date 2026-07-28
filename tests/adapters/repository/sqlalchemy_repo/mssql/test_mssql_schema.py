@@ -282,10 +282,13 @@ class TestMSSQLSchemaHandling:
 
         # Verify MSSQL-specific engine arguments are applied
         engine_args = provider._get_database_specific_engine_args()
-        assert "isolation_level" in engine_args
-        assert engine_args["isolation_level"] == "AUTOCOMMIT"
+        # ADR-0027: the Unit of Work is a real transaction, so the engine no
+        # longer runs AUTOCOMMIT (it uses the default read-committed isolation),
+        # and the session uses autoflush so an in-UoW read sees pending writes.
+        assert "isolation_level" not in engine_args
         assert "pool_pre_ping" in engine_args
         assert engine_args["pool_pre_ping"] is True
+        assert provider._get_database_specific_session_args() == {"autoflush": True}
 
     def test_concurrent_schema_operations(self, test_domain):
         """Test that concurrent operations on MSSQL schema work correctly"""
