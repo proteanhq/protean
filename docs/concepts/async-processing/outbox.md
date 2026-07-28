@@ -226,14 +226,14 @@ block until the first transaction commits, then re-evaluate the WHERE clause --
 so only one worker succeeds:
 
 ```python
-# Simplified view of claim_for_processing():
-claimed_count = dao.query.filter(
-    id=message.id,
-    status__in=["pending", "failed"],   # Only eligible messages
-).update_all(
-    status="processing",
-    locked_by=worker_id,
-    locked_until=now + timedelta(minutes=5),
+# Simplified view of the per-message compare-and-swap inside _claim():
+claimed_count = dao._update_all(
+    Q(id=message.id, status__in=["pending", "failed"]),   # Only eligible messages
+    {
+        "status": "processing",
+        "locked_by": worker_id,
+        "locked_until": now + timedelta(minutes=5),
+    },
 )
 # claimed_count > 0 only for the winning worker
 ```
@@ -254,9 +254,9 @@ Each outbox message carries lock metadata:
 ### Lock Lifecycle
 
 1. Worker fetches a batch of `PENDING` messages.
-2. For each message, the worker calls `claim_for_processing()` -- an atomic
-   database operation that sets the status to `PROCESSING` and records the
-   worker ID and lock expiry.
+2. The worker claims the batch via `claim_batch()`, which (through `_claim()`)
+   runs an atomic database operation per message that sets the status to
+   `PROCESSING` and records the worker ID and lock expiry.
 3. If the claim succeeds, the worker publishes the message to the broker and
    marks it as `PUBLISHED`. If publishing fails, the message is marked as
    `FAILED` for retry.

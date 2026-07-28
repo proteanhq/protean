@@ -188,16 +188,22 @@ When a projection is stored in a cache (Redis, in-memory), `view.get()`,
 and `view.find_by()` raise `NotSupportedError` because cache backends are
 key-value stores and do not support field-based filtering.
 
-### Three levels of projection access
+### Three levels of read access
 
-Protean provides three levels of projection access, each suited to
-different use cases:
+Protean provides three levels of read access to projections:
 
-| Level | Entry point | Returns | Use when |
-|-------|-------------|---------|----------|
-| **ReadView** | `domain.view_for(Proj)` | `ReadView` | Default for endpoints and query handlers — read-only by design |
-| **Raw** | `domain.connection_for(Proj)` | DB/cache connection | Escape hatch — technology-specific queries (SQL, ES DSL, Redis) |
-| **Repository** | `domain.repository_for(Proj)` | `BaseRepository` | Inside projectors — when you need to write |
+| Level | Entry point | When to use |
+|-------|-------------|-------------|
+| **Pipeline** | `domain.dispatch(query)` | Named queries with validation and structured read logic |
+| **Facade** | `domain.view_for(Projection)` | Read-only projection access without handler ceremony |
+| **Raw** | `domain.connection_for(Projection)` | Technology-specific queries (SQL, Elasticsearch DSL, Redis) |
+
+`domain.view_for(Projection)` returns a `ReadView` — the default, read-only by
+design — and `domain.connection_for(Projection)` returns the raw DB or cache
+connection as an escape hatch.
+
+To *write* to a projection (inside a projector), use
+`domain.repository_for(Projection)`. That is the write path, not a read level.
 
 ### Raw connection access
 
