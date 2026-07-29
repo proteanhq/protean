@@ -210,7 +210,7 @@ def _build_es_domain() -> Domain:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # `is_event_sourced` alias is deprecated
 
-        @domain.aggregate(event_sourced=True)  # alias → DEPRECATED_OPTION
+        @domain.aggregate(is_event_sourced=True)  # alias → DEPRECATED_OPTION
         class Wallet:
             balance = Float(default=0.0)
 
