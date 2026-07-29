@@ -290,7 +290,7 @@ class TestEventSourcedAggregate:
         class OrderShipped:
             order_id = Identifier(required=True)
 
-        @test_domain.aggregate(is_event_sourced=True)
+        @test_domain.aggregate(event_sourced=True)
         class ESOrder:
             order_id = Identifier(identifier=True)
             status = Status(

@@ -183,7 +183,7 @@ class TestValidateEventSourcedAggregates:
             def on_created(self, event: AccountCreated) -> None:
                 pass
 
-        test_domain.register(Ledger, is_event_sourced=True)
+        test_domain.register(Ledger, event_sourced=True)
         test_domain.register(AccountCreated, part_of=Ledger)
         test_domain.init(traverse=False)  # Should not raise
 
@@ -205,8 +205,8 @@ class TestValidateEventSourcedAggregates:
             def on_shared(self, event: SharedEvent) -> None:
                 pass
 
-        test_domain.register(AggA, is_event_sourced=True)
-        test_domain.register(AggB, is_event_sourced=True)
+        test_domain.register(AggA, event_sourced=True)
+        test_domain.register(AggB, event_sourced=True)
         test_domain.register(SharedEvent, part_of=AggA)
 
         # Manually wire the event into both aggregates' _events_cls_map
@@ -434,7 +434,7 @@ class TestWarnMissingApplyHandlers:
             name: String()
             # No @apply handler for AccountCreated
 
-        test_domain.register(ESAggregate, is_event_sourced=True)
+        test_domain.register(ESAggregate, event_sourced=True)
         test_domain.register(AccountCreated, part_of=ESAggregate)
 
         with caplog.at_level(logging.WARNING, logger="protean.domain.validation"):
@@ -453,7 +453,7 @@ class TestWarnMissingApplyHandlers:
             def on_created(self, event: AccountCreated) -> None:
                 pass
 
-        test_domain.register(ESAggregate, is_event_sourced=True)
+        test_domain.register(ESAggregate, event_sourced=True)
         test_domain.register(AccountCreated, part_of=ESAggregate)
 
         with caplog.at_level(logging.WARNING, logger="protean.domain.validation"):
@@ -521,7 +521,7 @@ class TestStructuredWarnings:
         class ESAggregate(BaseAggregate):
             name: String()
 
-        test_domain.register(ESAggregate, is_event_sourced=True)
+        test_domain.register(ESAggregate, event_sourced=True)
         test_domain.register(AccountCreated, part_of=ESAggregate)
         test_domain.init(traverse=False)
 
@@ -584,7 +584,7 @@ class TestStructuredWarnings:
         class SomeEvent(BaseEvent):
             data: String()
 
-        test_domain.register(ESAggregate, is_event_sourced=True)
+        test_domain.register(ESAggregate, event_sourced=True)
         test_domain.register(SomeEvent, part_of=ESAggregate)
         test_domain.register(CreateAccount, part_of=ESAggregate)
         test_domain.init(traverse=False)

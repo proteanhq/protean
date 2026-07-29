@@ -36,7 +36,7 @@ from tests.tracing.elements import (
 # ---------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(Order, is_event_sourced=True)
+    test_domain.register(Order, event_sourced=True)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.register(OrderConfirmed, part_of=Order)
     test_domain.register(OrderShipped, part_of=Order)

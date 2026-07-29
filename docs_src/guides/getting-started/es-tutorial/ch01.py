@@ -16,7 +16,7 @@ class AccountOpened:
 
 # --8<-- [end:event]
 # --8<-- [start:aggregate]
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     account_number: String(max_length=20, required=True)
     holder_name: String(max_length=100, required=True)

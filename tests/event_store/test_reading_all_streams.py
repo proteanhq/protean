@@ -94,12 +94,12 @@ class Post(BaseAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(Renamed, part_of=User)
 
-    test_domain.register(Post, is_event_sourced=True)
+    test_domain.register(Post, event_sourced=True)
     test_domain.register(Created, part_of=Post)
     test_domain.register(Published, part_of=Post)
 

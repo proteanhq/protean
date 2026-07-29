@@ -73,7 +73,7 @@ def setup_event_loop():
 
 
 def test_event_subscriptions(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
@@ -86,7 +86,7 @@ def test_event_subscriptions(test_domain):
 
 
 def test_origin_stream_category_in_subscription(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Sent, part_of=User)
     test_domain.register(EmailEventHandler, part_of=User, source_stream="test::email")
     test_domain.init(traverse=False)
@@ -101,7 +101,7 @@ def test_origin_stream_category_in_subscription(test_domain):
 def test_that_stream_name_overrides_the_derived_stream_name_from_owning_aggregate(
     test_domain,
 ):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Sent, part_of=User)
     test_domain.register(
         EmailEventHandler,

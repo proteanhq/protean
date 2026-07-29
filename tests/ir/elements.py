@@ -265,7 +265,7 @@ def build_es_aggregate_domain() -> Domain:
         account_id = Identifier(required=True)
         amount = Float(required=True)
 
-    @domain.aggregate(is_event_sourced=True)
+    @domain.aggregate(event_sourced=True)
     class BankAccount:
         holder_name = String(max_length=100, required=True)
         balance = Float(default=0.0)

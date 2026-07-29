@@ -564,7 +564,7 @@ class TestEventingVOAnnotationStyle:
             name: String(max_length=50)
             email: ValueObject(Email, required=True)
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Email)
         test_domain.register(RegisterUser, part_of=User)
         test_domain.init(traverse=False)
@@ -589,7 +589,7 @@ class TestEventingVOAnnotationStyle:
             name: String(max_length=50)
             profile: ValueObject(Profile)  # optional (no required=True)
 
-        test_domain.register(Account, is_event_sourced=True)
+        test_domain.register(Account, event_sourced=True)
         test_domain.register(Profile)
         test_domain.register(CreateAccount, part_of=Account)
         test_domain.init(traverse=False)
@@ -620,7 +620,7 @@ class TestEventingVOAnnotationStyle:
             name: String(max_length=50)
             contact: ValueObject(EmailAddr, required=True)
 
-        test_domain.register(Customer, is_event_sourced=True)
+        test_domain.register(Customer, event_sourced=True)
         test_domain.register(EmailAddr)
         test_domain.register(CustomerCreated, part_of=Customer)
         test_domain.init(traverse=False)
@@ -653,7 +653,7 @@ class TestMessageDeserializationFallbackId:
             id: Identifier(identifier=True)
             name: String()
 
-        test_domain.register(FallbackUser, is_event_sourced=True)
+        test_domain.register(FallbackUser, event_sourced=True)
         test_domain.register(FallbackRegistered, part_of=FallbackUser)
         test_domain.init(traverse=False)
 
@@ -696,7 +696,7 @@ class TestMessageDeserializationFallbackId:
             id: Identifier(identifier=True)
             name: String()
 
-        test_domain.register(NoHeaderUser, is_event_sourced=True)
+        test_domain.register(NoHeaderUser, event_sourced=True)
         test_domain.register(NoHeaderRegistered, part_of=NoHeaderUser)
         test_domain.init(traverse=False)
 

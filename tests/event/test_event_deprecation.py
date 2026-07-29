@@ -182,7 +182,7 @@ class TestDeprecatedEventRaiseWarning:
             def on_deposit(self, event: MoneyDeposited):
                 self.balance = event.amount
 
-        test_domain.register(Account, is_event_sourced=True)
+        test_domain.register(Account, event_sourced=True)
         test_domain.register(
             MoneyDeposited,
             part_of=Account,

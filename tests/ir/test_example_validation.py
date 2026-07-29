@@ -28,12 +28,12 @@ class TestExamplesExist:
 class TestExampleStructure:
     """Validate examples have the expected top-level keys and metadata."""
 
-    @pytest.mark.parametrize("example_path", _example_files())
+    @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_is_valid_json(self, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
         assert isinstance(data, dict)
 
-    @pytest.mark.parametrize("example_path", _example_files())
+    @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_has_required_keys(self, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
         required = [
@@ -51,12 +51,12 @@ class TestExampleStructure:
         for key in required:
             assert key in data, f"{example_path.name} missing required key: {key}"
 
-    @pytest.mark.parametrize("example_path", _example_files())
+    @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_ir_version(self, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
         assert data["ir_version"] == "0.1.0"
 
-    @pytest.mark.parametrize("example_path", _example_files())
+    @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_checksum_format(self, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
         checksum = data["checksum"]
@@ -65,12 +65,12 @@ class TestExampleStructure:
             f"Expected 71 chars (sha256: + 64 hex), got {len(checksum)}"
         )
 
-    @pytest.mark.parametrize("example_path", _example_files())
+    @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_has_at_least_one_cluster(self, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
         assert len(data["clusters"]) >= 1
 
-    @pytest.mark.parametrize("example_path", _example_files())
+    @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_elements_index_present(self, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
         elements = data["elements"]

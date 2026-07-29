@@ -69,9 +69,9 @@ class Coupon(BaseAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(Promo, is_event_sourced=True, fact_events=True)
+    test_domain.register(Promo, event_sourced=True, fact_events=True)
     test_domain.register(PromoLaunched, part_of=Promo)
-    test_domain.register(Coupon, is_event_sourced=True)
+    test_domain.register(Coupon, event_sourced=True)
     test_domain.register(CouponIssued, part_of=Coupon)
     test_domain.init(traverse=False)
 

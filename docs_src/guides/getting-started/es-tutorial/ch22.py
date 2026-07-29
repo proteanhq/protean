@@ -48,7 +48,7 @@ class AccountClosed:
     reason: String()
 
 
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Account:
     account_number: String(max_length=20, required=True)
     holder_name: String(max_length=100, required=True)
@@ -216,7 +216,7 @@ class TransferFailed:
     reason: String(required=True)
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Transfer:
     source_account_id: String(max_length=50, required=True)
     destination_account_id: String(max_length=50, required=True)

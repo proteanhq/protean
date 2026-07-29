@@ -64,7 +64,7 @@ class UpcastOrderShippedV1ToV2(BaseUpcaster):
 class TestSingleStepChain:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderShipped, part_of=Order)
         test_domain.upcaster(
             UpcastOrderShippedV1ToV2,
@@ -94,7 +94,7 @@ class TestSingleStepChain:
 class TestMultiStepChain:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlacedV3, part_of=Order)
         test_domain.upcaster(
             UpcastOrderPlacedV1ToV2,
@@ -144,7 +144,7 @@ class TestMultiStepChain:
 class TestNoUpcasting:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderShipped, part_of=Order)
         test_domain.init(traverse=False)
 
@@ -168,7 +168,7 @@ class TestNoUpcasting:
 
 class TestDuplicateUpcaster:
     def test_error_on_duplicate_from_version(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderShipped, part_of=Order)
 
         test_domain.upcaster(
@@ -195,7 +195,7 @@ class TestDuplicateUpcaster:
 
 class TestCycleDetection:
     def test_error_on_cycle(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderShipped, part_of=Order)
 
         class CycleA(BaseUpcaster):
@@ -219,7 +219,7 @@ class TestCycleDetection:
 
 class TestNonConvergentChain:
     def test_error_on_multiple_terminal_versions(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlacedV3, part_of=Order)
 
         class BranchA(BaseUpcaster):
@@ -244,7 +244,7 @@ class TestNonConvergentChain:
 
 class TestChainDoesNotReachCurrentVersion:
     def test_error_when_terminal_version_has_no_event(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderShipped, part_of=Order)  # __version__ = 2
 
         class WrongTarget(BaseUpcaster):

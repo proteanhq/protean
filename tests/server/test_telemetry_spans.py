@@ -166,7 +166,7 @@ def register_elements(test_domain):
     test_domain.register(OrderSummary)
     test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
     test_domain.register(OrderSummaryQueryHandler, part_of=OrderSummary)
-    test_domain.register(Wallet, is_event_sourced=True)
+    test_domain.register(Wallet, event_sourced=True)
     test_domain.register(WalletOpened, part_of=Wallet)
     test_domain.register(OpenWallet, part_of=Wallet)
     test_domain.register(WalletCommandHandler, part_of=Wallet)

@@ -339,7 +339,7 @@ class TestEventSourcedAggregateOutbox:
 
     @pytest.fixture(autouse=True)
     def register_es_elements(self, test_domain):
-        test_domain.register(ESOrder, is_event_sourced=True)
+        test_domain.register(ESOrder, event_sourced=True)
         test_domain.register(ESOrderPlaced, part_of=ESOrder)
         test_domain.register(ESOrderConfirmed, part_of=ESOrder)
         test_domain.init(traverse=False)
@@ -482,7 +482,7 @@ class TestMixedAggregateOutbox:
     def register_mixed_elements(self, test_domain):
         test_domain.register(DummyAggregate)
         test_domain.register(DummyEvent, part_of=DummyAggregate)
-        test_domain.register(ESOrder, is_event_sourced=True)
+        test_domain.register(ESOrder, event_sourced=True)
         test_domain.register(ESOrderPlaced, part_of=ESOrder)
         test_domain.register(ESOrderConfirmed, part_of=ESOrder)
         test_domain.init(traverse=False)

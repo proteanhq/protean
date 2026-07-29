@@ -163,7 +163,7 @@ class OrderCommandHandler(BaseCommandHandler):
 # ---------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(Order, is_event_sourced=True)
+    test_domain.register(Order, event_sourced=True)
     test_domain.register(OrderCreated, part_of=Order)
     test_domain.register(OrderConfirmed, part_of=Order)
     test_domain.register(PaymentInitiated, part_of=Order)

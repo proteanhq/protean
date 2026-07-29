@@ -25,7 +25,7 @@ class Register(BaseCommand):
 
 
 def test_command_definition_without_aggregate_or_stream(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
 
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.register(Register)
@@ -50,7 +50,7 @@ def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_
 
 @pytest.mark.eventstore
 def test_command_associated_with_aggregate(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 
@@ -71,7 +71,7 @@ def test_command_associated_with_aggregate(test_domain):
 
 @pytest.mark.eventstore
 def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
-    test_domain.register(User, is_event_sourced=True, stream_category="foo")
+    test_domain.register(User, event_sourced=True, stream_category="foo")
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 
@@ -91,7 +91,7 @@ def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
 
 
 def test_aggregate_cluster_of_event(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 
@@ -168,7 +168,7 @@ class TestDeprecatedCommandOptions:
         class Cancel(BaseCommand):
             user_id: Identifier(identifier=True)
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         with pytest.warns(RemovedInProtean10Warning):
             test_domain.register(Cancel, part_of=User, published=True)
         test_domain.init(traverse=False)
@@ -241,7 +241,7 @@ class TestDeprecatedCommandOptions:
         class Suspend(BaseCommand):
             user_id: Identifier(identifier=True)
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         with pytest.warns(RemovedInProtean10Warning):
             test_domain.register(Suspend, part_of=User, published=True)
 

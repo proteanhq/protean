@@ -12,7 +12,7 @@ class User(BaseAggregate):
 
 def test_registering_an_event_sourced_aggregate_manually(test_domain):
     try:
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
     except Exception:
         pytest.fail("Failed to register an Event Sourced Aggregate")
 
@@ -22,7 +22,7 @@ def test_registering_an_event_sourced_aggregate_manually(test_domain):
 def test_registering_an_event_sourced_aggregate_via_annotation(test_domain):
     try:
 
-        @test_domain.aggregate(is_event_sourced=True)
+        @test_domain.aggregate(event_sourced=True)
         class Person:
             name: String()
             age: Integer()

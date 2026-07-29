@@ -41,7 +41,7 @@ class TestUpcasterGapDiagnostic:
     def test_zero_upcasters_at_v2_is_a_gap(self):
         domain = Domain(name="GapZero")
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Order:
             name = String()
 
@@ -59,7 +59,7 @@ class TestUpcasterGapDiagnostic:
     def test_partial_coverage_is_a_gap(self):
         domain = Domain(name="GapPartial")
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Order:
             name = String()
 
@@ -82,7 +82,7 @@ class TestUpcasterGapDiagnostic:
     def test_full_coverage_is_not_a_gap(self):
         domain = Domain(name="NoGap")
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Order:
             name = String()
 
@@ -106,7 +106,7 @@ class TestUpcasterGapDiagnostic:
     def test_v1_event_is_not_a_gap(self):
         domain = Domain(name="V1Only")
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Order:
             name = String()
 
@@ -121,7 +121,7 @@ class TestUpcasterGapDiagnostic:
         skipped even at version > 1 with no upcaster."""
         domain = Domain(name="AbsGap")
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Order:
             name = String()
 
@@ -137,7 +137,7 @@ class TestUpcasterGapDiagnostic:
         version and produces no false gap."""
         domain = Domain(name="StrCovered")
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Order:
             name = String()
 

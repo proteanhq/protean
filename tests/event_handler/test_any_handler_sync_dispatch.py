@@ -62,7 +62,7 @@ class AuditHandler(BaseEventHandler):
 
 @pytest.mark.eventstore
 def test_any_handler_fires_under_sync_dispatch(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)

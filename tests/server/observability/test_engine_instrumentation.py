@@ -91,7 +91,7 @@ def _make_command_message(test_domain):
 class TestHandlerStartedTrace:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -121,7 +121,7 @@ class TestHandlerStartedTrace:
 class TestHandlerCompletedTrace:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -152,7 +152,7 @@ class TestHandlerCompletedTrace:
 class TestHandlerFailedTrace:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -184,7 +184,7 @@ class TestHandlerFailedTrace:
 class TestCommandDispatcherHandlerName:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Register, part_of=User)
         test_domain.register(UserCommandHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -216,7 +216,7 @@ class TestCommandDispatcherHandlerName:
 class TestMessageContextCleanup:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
@@ -388,7 +388,7 @@ class TestPMTransitionTrace:
 class TestShutdownSkip:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)

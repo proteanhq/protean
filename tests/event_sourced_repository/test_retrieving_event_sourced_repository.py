@@ -15,7 +15,7 @@ class User(BaseAggregate):
 def test_that_event_sourced_repository_is_returned_for_event_sourced_aggregate(
     test_domain,
 ):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
 
     assert (
         test_domain.repository_for(User).element_type

@@ -233,7 +233,7 @@ class TestEngineHandleMessageSpan:
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
@@ -351,7 +351,7 @@ class TestEngineHandleMessageErrorSpan:
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -399,7 +399,7 @@ class TestEngineHandleMessageWithoutTelemetry:
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
@@ -432,7 +432,7 @@ class TestEngineSpanRelationships:
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)

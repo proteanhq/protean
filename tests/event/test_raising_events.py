@@ -25,7 +25,7 @@ class User(BaseAggregate):
 
 @pytest.mark.eventstore
 def test_raising_event(test_domain):
-    test_domain.register(User, is_event_sourced=True, stream_category="authentication")
+    test_domain.register(User, event_sourced=True, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 

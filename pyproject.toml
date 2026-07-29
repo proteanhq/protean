@@ -229,6 +229,11 @@ filterwarnings = [
     "ignore:No configuration file found.*Using default configuration.*:UserWarning",
     "ignore:Working outside of domain context",
     "ignore:.*was never awaited:RuntimeWarning",
+    # Guardrail: the `is_event_sourced` decorator/register alias is deprecated in
+    # favour of `event_sourced` and is removed in 1.0. The suite is migrated off it,
+    # so any new incidental use is an error here (tests that deliberately assert the
+    # deprecation wrap it in `pytest.warns`, which is unaffected).
+    "error:.*is_event_sourced.*:protean._deprecation.RemovedInProtean10Warning",
 ]
 python_files = [
     "test_*.py",

@@ -304,7 +304,7 @@ class CartCommandHandler(BaseCommandHandler):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     # Account
-    test_domain.register(Account, is_event_sourced=True)
+    test_domain.register(Account, event_sourced=True)
     test_domain.register(AccountOpened, part_of=Account)
     test_domain.register(DepositMade, part_of=Account)
     test_domain.register(WithdrawalMade, part_of=Account)
@@ -315,7 +315,7 @@ def register_elements(test_domain):
     test_domain.register(AccountEventHandler, part_of=Account)
 
     # Invoice
-    test_domain.register(Invoice, is_event_sourced=True)
+    test_domain.register(Invoice, event_sourced=True)
     test_domain.register(InvoiceCreated, part_of=Invoice)
     test_domain.register(InvoicePaid, part_of=Invoice)
     test_domain.register(CreateInvoice, part_of=Invoice)
@@ -323,7 +323,7 @@ def register_elements(test_domain):
     test_domain.register(InvoiceCommandHandler, part_of=Invoice)
 
     # Cart
-    test_domain.register(Cart, is_event_sourced=True)
+    test_domain.register(Cart, event_sourced=True)
     test_domain.register(CartItem, part_of=Cart)
     test_domain.register(CartCreated, part_of=Cart)
     test_domain.register(ItemAddedToCart, part_of=Cart)

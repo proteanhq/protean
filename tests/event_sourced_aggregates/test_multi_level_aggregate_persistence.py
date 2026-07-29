@@ -103,7 +103,7 @@ class University(BaseAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(University, is_event_sourced=True)
+    test_domain.register(University, event_sourced=True)
     test_domain.register(Department, part_of=University)
     test_domain.register(Dean, part_of=Department)
     test_domain.register(Office, part_of=Dean)

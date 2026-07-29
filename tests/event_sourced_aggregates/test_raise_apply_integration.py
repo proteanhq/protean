@@ -227,18 +227,18 @@ class Item(BaseAggregate):
 # ---------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
-    test_domain.register(Account, is_event_sourced=True)
+    test_domain.register(Account, event_sourced=True)
     test_domain.register(AccountOpened, part_of=Account)
     test_domain.register(DepositMade, part_of=Account)
-    test_domain.register(Item, is_event_sourced=True)
+    test_domain.register(Item, event_sourced=True)
     test_domain.register(ItemCreated, part_of=Item)
-    test_domain.register(Person, is_event_sourced=True)
+    test_domain.register(Person, event_sourced=True)
     test_domain.register(PersonCreated, part_of=Person)
-    test_domain.register(Order, is_event_sourced=True)
+    test_domain.register(Order, event_sourced=True)
     test_domain.register(LineItem, part_of=Order)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.register(ItemAdded, part_of=Order)
@@ -547,7 +547,7 @@ class TestMissingApplyHandler:
         class Orphan(BaseAggregate):
             data: String()
 
-        test_domain.register(Orphan, is_event_sourced=True)
+        test_domain.register(Orphan, event_sourced=True)
         test_domain.register(OrphanEvent, part_of=Orphan)
 
         with caplog.at_level(logging.WARNING, logger="protean.domain"):
@@ -567,7 +567,7 @@ class TestMissingApplyHandler:
         class Orphan(BaseAggregate):
             data: String()
 
-        test_domain.register(Orphan, is_event_sourced=True)
+        test_domain.register(Orphan, event_sourced=True)
         test_domain.register(OrphanEvent, part_of=Orphan)
         test_domain.init(traverse=False)
 

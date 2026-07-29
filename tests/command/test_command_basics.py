@@ -16,7 +16,7 @@ class Register(BaseCommand):
 
 
 def test_domain_stores_command_type_for_easy_retrieval(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 

@@ -88,7 +88,7 @@ class TestEngineSubscriptionFactoryIntegration:
 
     def test_engine_creates_subscription_factory(self, test_domain):
         """Engine should create a SubscriptionFactory instance."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -100,7 +100,7 @@ class TestEngineSubscriptionFactoryIntegration:
 
     def test_engine_subscription_factory_property(self, test_domain):
         """Engine should expose subscription_factory property."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -111,7 +111,7 @@ class TestEngineSubscriptionFactoryIntegration:
 
     def test_engine_factory_has_engine_reference(self, test_domain):
         """SubscriptionFactory should have reference to engine."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -126,7 +126,7 @@ class TestEngineSubscriptionCreation:
 
     def test_creates_subscription_for_event_handler(self, test_domain):
         """Engine should create subscription for registered event handler."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -139,7 +139,7 @@ class TestEngineSubscriptionCreation:
 
     def test_creates_subscription_for_command_handler(self, test_domain):
         """Engine should create a CommandDispatcher subscription for registered command handlers."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(RegisterUser, part_of=User)
         test_domain.register(UserCommandHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -156,7 +156,7 @@ class TestEngineSubscriptionCreation:
 
     def test_creates_multiple_subscriptions(self, test_domain):
         """Engine should create subscriptions for multiple handlers."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(RegisterUser, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
@@ -176,7 +176,7 @@ class TestEngineSubscriptionTypeSelection:
         """Engine should create StreamSubscription when server default is stream."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -192,7 +192,7 @@ class TestEngineSubscriptionTypeSelection:
         """Engine should create EventStoreSubscription when server default is event_store."""
         test_domain.config["server"]["default_subscription_type"] = "event_store"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -209,7 +209,7 @@ class TestEngineSubscriptionTypeSelection:
         # Server default is stream
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         # Register handler with EVENT_STORE subscription type
         test_domain.register(
@@ -237,7 +237,7 @@ class TestEngineSubscriptionProfile:
         """Engine should use handler's subscription_profile."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(
             ProductionEventHandler,
@@ -265,7 +265,7 @@ class TestEngineSubscriptionProfile:
             "default_subscription_profile": "batch",
         }
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -286,7 +286,7 @@ class TestEngineSubscriptionConfig:
         """Engine should use handler's subscription_config."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(
             CustomConfigHandler,
@@ -316,7 +316,7 @@ class TestEngineStreamCategoryInference:
         """Engine should infer stream category from handler's part_of aggregate."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -333,7 +333,7 @@ class TestEngineStreamCategoryInference:
         """Engine should use handler's explicit stream_category."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(
             ProjectionHandler,
@@ -358,7 +358,7 @@ class TestEngineInferStreamCategory:
 
     def test_infer_stream_category_from_explicit(self, test_domain):
         """Should return explicit stream_category from handler Meta."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(
             ProjectionHandler,
@@ -374,7 +374,7 @@ class TestEngineInferStreamCategory:
 
     def test_infer_stream_category_from_part_of(self, test_domain):
         """Should infer stream_category from part_of aggregate."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -393,7 +393,7 @@ class TestEngineInferStreamCategory:
             def handle_event(self, event: UserRegistered) -> None:
                 pass
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -406,7 +406,7 @@ class TestEngineInferStreamCategory:
 
     def test_infer_stream_category_raises_when_no_meta(self, test_domain):
         """Should raise ValueError when handler has no meta_ attribute."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -421,7 +421,7 @@ class TestEngineInferStreamCategory:
 
     def test_infer_stream_category_from_part_of_aggregate_meta(self, test_domain):
         """Should infer stream_category from part_of aggregate's meta_ when handler has no explicit stream_category."""
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -448,7 +448,7 @@ class TestEngineSubscriptionAttributes:
         """Subscription should have correct engine reference."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -464,7 +464,7 @@ class TestEngineSubscriptionAttributes:
         """Subscription should have correct handler reference."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -480,7 +480,7 @@ class TestEngineSubscriptionAttributes:
         """Subscription should have correct stream category."""
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -501,7 +501,7 @@ class TestEngineConfigPriority:
         test_domain.config["server"]["default_subscription_type"] = "stream"
         test_domain.config["server"]["messages_per_tick"] = 200
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(
             CustomConfigHandler,
@@ -525,7 +525,7 @@ class TestEngineConfigPriority:
         test_domain.config["server"]["default_subscription_type"] = "stream"
         test_domain.config["server"]["default_subscription_profile"] = "batch"  # 500
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(
             ProductionEventHandler,
@@ -555,7 +555,7 @@ class TestEngineConfigPriority:
             "CustomConfigHandler": {"messages_per_tick": 300}
         }
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         # Handler with profile + config override
         test_domain.register(

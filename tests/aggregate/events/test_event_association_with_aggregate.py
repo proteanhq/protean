@@ -70,7 +70,7 @@ class UserUnknownEvent(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
@@ -86,7 +86,7 @@ def test_an_unassociated_event_throws_error(test_domain):
 
 
 def test_that_event_associated_with_another_aggregate_throws_error(test_domain):
-    test_domain.register(User2, is_event_sourced=True)
+    test_domain.register(User2, event_sourced=True)
     test_domain.register(UserUnknownEvent, part_of=User2)
     test_domain.init(traverse=False)
 

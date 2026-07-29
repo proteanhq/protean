@@ -1945,7 +1945,9 @@ class TestOutboxProcessorMetrics:
         from unittest.mock import AsyncMock, MagicMock, patch
 
         processor = self._make_processor()
-        naive_dt = datetime.datetime.utcnow() - datetime.timedelta(seconds=2)
+        naive_dt = datetime.datetime.now(datetime.UTC).replace(
+            tzinfo=None
+        ) - datetime.timedelta(seconds=2)
         mock_message = self._make_message(created_at=naive_dt)
         processor.outbox_repo.get.return_value = mock_message
 

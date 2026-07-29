@@ -121,7 +121,7 @@ class ContextCapturingHandler(BaseCommandHandler):
 # ---------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(Task, is_event_sourced=True)
+    test_domain.register(Task, event_sourced=True)
     test_domain.register(TaskCreated, part_of=Task)
     test_domain.register(TaskCompleted, part_of=Task)
     test_domain.register(CreateTask, part_of=Task)

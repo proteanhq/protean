@@ -83,13 +83,13 @@ class UserAuditHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Activated, part_of=User)
     test_domain.register(Renamed, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(UserMetrics, part_of=User)
-    test_domain.register(Email, is_event_sourced=True)
+    test_domain.register(Email, event_sourced=True)
     test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, part_of=Email)
 

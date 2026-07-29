@@ -284,7 +284,7 @@ class TestPropertyProxies:
         AccountCreated version vs upcaster to_version convergence is not
         validated and does not matter for this proxy assertion.
         """
-        test_domain.register(Account, is_event_sourced=True)
+        test_domain.register(Account, event_sourced=True)
         test_domain.register(AccountCreated, part_of=Account)
         test_domain.upcaster(
             UpcastAccountCreated,

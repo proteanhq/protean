@@ -51,7 +51,7 @@ class UserSubscriber(BaseSubscriber):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.register(UserSubscriber, stream="user")

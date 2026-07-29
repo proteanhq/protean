@@ -35,7 +35,7 @@ from tests.tracing.elements import (
 # ---------------------------------------------------------------------------
 def _register_and_init(test_domain, subscriber_cls, stream: str = "external_orders"):
     """Register domain elements needed for the subscriber correlation tests."""
-    test_domain.register(Order, is_event_sourced=True)
+    test_domain.register(Order, event_sourced=True)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.register(OrderConfirmed, part_of=Order)
     test_domain.register(OrderShipped, part_of=Order)

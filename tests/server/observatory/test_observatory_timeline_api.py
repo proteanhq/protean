@@ -70,7 +70,7 @@ class User(BaseAggregate):
     name = String(required=True)
 
     class Meta:
-        is_event_sourced = True
+        event_sourced = True
 
     @classmethod
     def register(cls, user_id: str, name: str) -> User:

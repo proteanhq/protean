@@ -46,7 +46,7 @@ class UserEventHandler(BaseEventHandler):
 def register_elements(test_domain):
     test_domain.config["event_processing"] = Processing.ASYNC.value
 
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.init(traverse=False)

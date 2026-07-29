@@ -203,7 +203,7 @@ class TestStreamSubscriptionMessagesProcessed:
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
         test_domain.config["event_processing"] = Processing.ASYNC.value
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
@@ -294,7 +294,7 @@ class TestStreamSubscriptionProcessingDuration:
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
         test_domain.config["event_processing"] = Processing.ASYNC.value
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -335,7 +335,7 @@ class TestStreamSubscriptionRetries:
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
         test_domain.config["event_processing"] = Processing.ASYNC.value
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -403,7 +403,7 @@ class TestStreamSubscriptionDLQRouted:
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
         test_domain.config["event_processing"] = Processing.ASYNC.value
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(FailingEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -638,7 +638,7 @@ class TestEngineObservableGauges:
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
         test_domain.config["event_processing"] = Processing.ASYNC.value
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(Registered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)

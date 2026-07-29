@@ -74,7 +74,7 @@ def test_domain(request):
     domain.config["event_processing"] = "sync"
     domain._initialize()
 
-    domain.register(Order, is_event_sourced=True)
+    domain.register(Order, event_sourced=True)
     domain.register(OrderPlaced, part_of=Order)
     domain.register(FailingOrderPlaced, part_of=Order)
     domain.register(OrderNotificationHandler, part_of=Order)
