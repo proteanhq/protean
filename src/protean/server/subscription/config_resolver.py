@@ -228,8 +228,18 @@ class ConfigResolver:
         )
         resolved["subscription_type"] = subscription_type
 
+        # retention_maxlen is "explicit" if the handler set it directly (server
+        # config or Meta config), as opposed to merely inheriting it from a
+        # stream profile's defaults. Sanitization should only clear the
+        # inherited case; an explicit value on an EVENT_STORE subscription is a
+        # config mistake that validate() must reject, not silently drop.
+        explicit_retention_maxlen = (
+            handler_server_config.get("retention_maxlen") is not None
+            or handler_meta_config.get("retention_maxlen") is not None
+        )
+
         # Sanitize config for subscription type compatibility
-        self._sanitize_for_subscription_type(resolved)
+        self._sanitize_for_subscription_type(resolved, explicit_retention_maxlen)
 
         # Log warning if using EVENT_STORE in production
         if subscription_type == SubscriptionType.EVENT_STORE:
@@ -393,7 +403,9 @@ class ConfigResolver:
 
         return SubscriptionType.EVENT_STORE
 
-    def _sanitize_for_subscription_type(self, resolved: dict[str, Any]) -> None:
+    def _sanitize_for_subscription_type(
+        self, resolved: dict[str, Any], explicit_retention_maxlen: bool = False
+    ) -> None:
         """Sanitize configuration for subscription type compatibility.
 
         Adjusts configuration values that are incompatible with the resolved
@@ -401,6 +413,10 @@ class ConfigResolver:
 
         Args:
             resolved: The configuration dictionary to sanitize.
+            explicit_retention_maxlen: True if retention_maxlen was set
+                directly by the handler (server or Meta config) rather than
+                inherited from a profile. Explicit values are left in place so
+                SubscriptionConfig.validate() can reject them for EVENT_STORE.
         """
         subscription_type = resolved.get("subscription_type")
 
@@ -410,6 +426,20 @@ class ConfigResolver:
         ):
             resolved["enable_dlq"] = False
             logger.debug("Disabled enable_dlq for EVENT_STORE subscription type")
+
+        # EVENT_STORE reads the event store, not a broker stream — there is
+        # nothing to trim. Clear any retention_maxlen inherited from a stream
+        # profile so an event-store subscription never carries a cap it cannot
+        # honor. An explicitly configured retention_maxlen is left alone so
+        # SubscriptionConfig.validate() rejects the combination instead of
+        # silently dropping it.
+        if (
+            subscription_type == SubscriptionType.EVENT_STORE
+            and resolved.get("retention_maxlen") is not None
+            and not explicit_retention_maxlen
+        ):
+            resolved["retention_maxlen"] = None
+            logger.debug("Cleared retention_maxlen for EVENT_STORE subscription type")
 
     def _log_event_store_warning(self, handler_name: str) -> None:
         """Log a warning when using EVENT_STORE subscription type in production.
@@ -473,6 +503,7 @@ class ConfigResolver:
             "origin_stream",
             "circuit_breaker_threshold",
             "circuit_breaker_reset_seconds",
+            "retention_maxlen",
         }
 
         config_kwargs = {

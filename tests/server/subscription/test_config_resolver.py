@@ -11,6 +11,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import (
@@ -1007,3 +1008,113 @@ class TestConfigResolverCustomProfiles:
 
         assert config.subscription_type == SubscriptionType.EVENT_STORE
         assert config.enable_dlq is False
+
+
+class TestConfigResolverRetention:
+    """Resolution of the retention_maxlen field through the resolver.
+
+    These tests guard the config_resolver `known_fields` filter: retention_maxlen
+    is dropped before it reaches SubscriptionConfig if the filter omits it.
+    """
+
+    def test_builtin_profile_retention_survives_resolution(self, test_domain):
+        """A built-in profile's retention_maxlen reaches the resolved config."""
+        test_domain.config["server"]["profiles"]  # ensure the slot exists
+        test_domain.config["server"]["subscriptions"]["RetHandler"] = {
+            "profile": "production",
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class RetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(RetHandler)
+
+        assert (
+            config.retention_maxlen
+            == PROFILE_DEFAULTS[SubscriptionProfile.PRODUCTION]["retention_maxlen"]
+            == 100_000
+        )
+
+    def test_custom_profile_retention_survives_resolution(self, test_domain):
+        """A custom profile's retention_maxlen flows through the known_fields filter.
+
+        This is the binding oracle for the resolver gap: `myret` sets a value
+        (42) that differs from every built-in default, so seeing 42 proves the
+        per-profile retention value was neither dropped by the resolver filter
+        nor shadowed by a default.
+        """
+        test_domain.config["server"]["profiles"]["myret"] = {
+            "inherits": "production",
+            "retention_maxlen": 42,
+        }
+        test_domain.config["server"]["subscriptions"]["MyRetHandler"] = {
+            "profile": "myret",
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class MyRetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(MyRetHandler)
+
+        assert config.retention_maxlen == 42
+
+    def test_retention_defaults_off_without_profile(self, test_domain):
+        """With no profile setting retention, the resolved config leaves it off."""
+
+        @test_domain.event_handler(part_of=Order)
+        class PlainRetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(PlainRetHandler)
+
+        assert config.retention_maxlen is None
+
+    def test_event_store_type_clears_inherited_retention(self, test_domain):
+        """An EVENT_STORE handler under a stream profile resolves with no cap.
+
+        The `production` profile carries retention_maxlen=100_000. When the
+        handler resolves to EVENT_STORE, the resolver sanitizes the field to
+        None (an event-store subscription has no broker stream to trim);
+        otherwise SubscriptionConfig.validate() would reject the combination.
+        """
+        test_domain.config["server"]["subscriptions"]["EventStoreRetHandler"] = {
+            "profile": "production",
+        }
+
+        @test_domain.event_handler(
+            stream_category="$all",
+            subscription_type=SubscriptionType.EVENT_STORE,
+        )
+        class EventStoreRetHandler(BaseEventHandler):
+            pass
+
+        config = ConfigResolver(test_domain).resolve(EventStoreRetHandler)
+
+        assert config.subscription_type == SubscriptionType.EVENT_STORE
+        assert config.retention_maxlen is None
+
+    def test_event_store_type_rejects_explicit_retention(self, test_domain):
+        """An explicit retention_maxlen on an EVENT_STORE handler is rejected.
+
+        Unlike a value inherited from a stream profile (cleared silently, see
+        test_event_store_type_clears_inherited_retention), a retention_maxlen
+        the handler sets directly is a config mistake and must surface via
+        SubscriptionConfig.validate() rather than being dropped.
+        """
+        test_domain.config["server"]["subscriptions"]["ExplicitRetHandler"] = {
+            "retention_maxlen": 1_000,
+        }
+
+        @test_domain.event_handler(
+            stream_category="$all",
+            subscription_type=SubscriptionType.EVENT_STORE,
+        )
+        class ExplicitRetHandler(BaseEventHandler):
+            pass
+
+        with pytest.raises(ConfigurationError) as exc:
+            ConfigResolver(test_domain).resolve(ExplicitRetHandler)
+
+        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)

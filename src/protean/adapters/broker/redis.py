@@ -590,6 +590,117 @@ class RedisBroker(BaseBroker):
         except redis.ResponseError:
             return 0
 
+    # ------------------------------------------------------------------
+    # Stream Retention
+    # ------------------------------------------------------------------
+
+    def trim(self, stream: str, maxlen: int) -> int:
+        """Trim *stream* without dropping anything a consumer group still needs.
+
+        The trim strategy depends on how many consumer groups read the stream:
+
+        - **More than one group:** a plain MAXLEN trim would delete the oldest
+          entries regardless of where each group has read, silently losing
+          events a slow group has not yet consumed. Instead, trim by MINID at
+          the *minimum* ``last-delivered-id`` across all groups. Redis's MINID
+          never removes an entry with an id ``>=`` that floor, so the slowest
+          group keeps everything it has not yet read. ``maxlen`` is ignored in
+          this case — consumer progress, not a fixed size, bounds the stream.
+        - **Zero or one group:** cap the stream at *maxlen* with MAXLEN. This is
+          a fixed-size cap, not a progress-safe one: if the single group falls
+          more than ``maxlen`` behind (initial catch-up on a pre-existing
+          stream, an outage, or a slow handler under a fast producer), MAXLEN
+          drops the oldest *unread* entries. With one reader ``maxlen`` is the
+          operator's explicit size ceiling; size it above the largest expected
+          backlog. A non-positive ``maxlen`` is refused (returns ``0``) so it can
+          never empty the stream.
+
+        Both forms use ``approximate=True`` (Redis's ``~``): trimming happens on
+        whole macro-nodes, so the stream may settle slightly above the target,
+        but the work is far cheaper. A missing stream or any Redis error returns
+        ``0`` so a trim failure never stalls the poll loop.
+
+        Args:
+            stream: The stream to trim.
+            maxlen: Target maximum entries (used only in the 0/1-group case).
+
+        Returns:
+            Number of messages trimmed (0 if nothing was removed or on error).
+        """
+        try:
+            # redis-stubs leaves xinfo_groups untyped (stub gap, not our bug).
+            groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
+        except redis.ResponseError:
+            # Stream does not exist yet — nothing to trim.
+            return 0
+
+        min_id = self._min_last_delivered_id(groups_info)
+
+        try:
+            if min_id is not None:
+                # >1 group: bound by the slowest group's read position.
+                trimmed = (
+                    self._client.xtrim(stream, minid=min_id, approximate=True) or 0
+                )
+            else:
+                # 0 or 1 group: a fixed-size cap. Refuse a non-positive maxlen —
+                # `xtrim(maxlen=0)` would empty the stream, so treat it as "no
+                # cap" rather than "delete everything".
+                if maxlen <= 0:
+                    return 0
+                trimmed = (
+                    self._client.xtrim(stream, maxlen=maxlen, approximate=True) or 0
+                )
+        except redis.ResponseError as e:
+            logger.warning(f"Failed to trim stream {stream}: {e}")
+            return 0
+
+        if trimmed > 0:
+            logger.debug(
+                "broker.redis.stream_trimmed",
+                extra={"stream": stream, "trimmed": trimmed},
+            )
+        return trimmed
+
+    def _min_last_delivered_id(self, groups_info: Any) -> str | None:
+        """Return the smallest ``last-delivered-id`` across groups, or None.
+
+        Returns ``None`` when fewer than two groups carry a truthy
+        ``last-delivered-id`` (the caller then uses a MAXLEN trim). Real Redis
+        groups always report ``"0-0"`` until first read, so in practice this is
+        "fewer than two consumer groups"; groups with a missing or empty id are
+        skipped. With two or more usable ids, returns the minimum as a
+        ``"ms-seq"`` string, comparing the two numeric halves as an
+        ``(int, int)`` tuple so ``"100-0"`` sorts after ``"99-0"``
+        (lexicographic string order would get this wrong).
+        """
+        ids: list[str] = []
+        for group_info in groups_info:
+            if not isinstance(group_info, dict):
+                continue
+            last_delivered = self._get_field_value(group_info, "last-delivered-id")
+            if last_delivered:
+                ids.append(last_delivered)
+
+        if len(ids) < 2:
+            return None
+
+        return min(ids, key=self._stream_id_sort_key)
+
+    @staticmethod
+    def _stream_id_sort_key(stream_id: str) -> tuple[int, int]:
+        """Parse a ``"ms-seq"`` stream id into an ``(int, int)`` sort key.
+
+        A malformed id sorts first (``(-1, -1)``) so it never masks a real,
+        smaller floor: trimming conservatively keeps more than needed rather
+        than removing an unread entry.
+        """
+        ms, _, seq = stream_id.partition("-")
+        try:
+            return (int(ms), int(seq)) if seq else (int(ms), 0)
+        except ValueError:
+            return (-1, -1)
+
     def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
         """Create consumer group if it doesn't exist"""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"

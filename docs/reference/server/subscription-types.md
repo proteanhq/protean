@@ -149,6 +149,38 @@ class OrderEventHandler:
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |
+| `retention_maxlen` | none | Cap the stream at this many entries (see [Stream retention](#stream-retention)) |
+
+#### Stream retention {#stream-retention}
+
+By default a StreamSubscription never trims its broker stream: processed
+messages stay in Redis forever, so the stream grows without bound. Set
+`retention_maxlen` to cap it. After each batch, the subscription trims the
+stream it just read from.
+
+How the trim behaves depends on the consumer topology:
+
+- **More than one consumer group** (for example a projector plus an event
+  handler): Protean trims by `MINID` at the slowest group's last-delivered
+  position, so nothing a slow group has not yet read is ever removed.
+  `retention_maxlen` is ignored here — consumer progress bounds the stream. Note
+  the flip side: a group parked at `0-0` (a dead consumer, or a handler you
+  removed without deleting its group) holds the floor down, so the stream keeps
+  growing until you delete that group. Retention is progress-bounded, not
+  size-bounded, whenever multiple groups exist.
+- **At most one consumer group:** Protean caps the stream at `retention_maxlen`
+  with a plain `MAXLEN` trim. This is a fixed-size cap, not a progress-safe one:
+  if the single handler falls more than `retention_maxlen` behind (catch-up on a
+  pre-existing stream, an outage, or a slow handler under a fast producer),
+  `MAXLEN` drops the oldest *unread* entries. Size `retention_maxlen` above your
+  largest expected backlog.
+
+Trimming is approximate (Redis's `~`): the stream is trimmed a whole node at a
+time, so it may settle slightly above `retention_maxlen`, never below it. This
+is size-based retention only; there is no time-based TTL.
+
+Each built-in profile carries a default cap (see
+[Stream retention defaults](configuration.md#stream-retention-defaults)).
 
 ### When to Use {#stream-when-to-use}
 

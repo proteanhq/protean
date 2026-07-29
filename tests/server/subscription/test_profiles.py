@@ -232,6 +232,25 @@ class TestSubscriptionConfigFromProfile:
             enable_dlq=False,  # Must disable DLQ for EVENT_STORE
         )
         assert config.subscription_type == SubscriptionType.EVENT_STORE
+        # from_profile clears the inherited stream retention for EVENT_STORE.
+        assert config.retention_maxlen is None
+
+    def test_profile_override_subscription_type_rejects_explicit_retention(self):
+        """An explicit retention_maxlen alongside an EVENT_STORE override is rejected.
+
+        Unlike the inherited-from-profile case (cleared silently, see
+        test_profile_override_subscription_type), a retention_maxlen passed
+        directly to from_profile() is a config mistake and must surface via
+        validate() rather than being dropped.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            SubscriptionConfig.from_profile(
+                SubscriptionProfile.PRODUCTION,
+                subscription_type=SubscriptionType.EVENT_STORE,
+                enable_dlq=False,
+                retention_maxlen=1_000,
+            )
+        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)
 
     def test_profile_with_origin_stream(self):
         """Profile can include origin_stream filter."""
@@ -816,3 +835,125 @@ class TestBuildProfileRegistry:
             with pytest.raises(ConfigurationError) as exc:
                 build_profile_registry({"d": {bad_field: 1}})
             assert bad_field in str(exc.value)
+
+
+class TestRetentionMaxlen:
+    """Tests for the retention_maxlen stream-retention config field."""
+
+    def test_default_config_retention_is_none(self):
+        """retention_maxlen defaults to None (trimming off) in DEFAULT_CONFIG."""
+        assert DEFAULT_CONFIG["retention_maxlen"] is None
+
+    def test_subscription_config_default_retention_is_none(self):
+        """A bare SubscriptionConfig has retention disabled."""
+        assert SubscriptionConfig().retention_maxlen is None
+
+    def test_profile_default_retention_values(self):
+        """Each built-in profile carries its documented retention cap."""
+        assert (
+            PROFILE_DEFAULTS[SubscriptionProfile.PRODUCTION]["retention_maxlen"]
+            == 100_000
+        )
+        # FAST takes the same cap as PRODUCTION (Decision 3).
+        assert PROFILE_DEFAULTS[SubscriptionProfile.FAST]["retention_maxlen"] == 100_000
+        assert (
+            PROFILE_DEFAULTS[SubscriptionProfile.BATCH]["retention_maxlen"] == 500_000
+        )
+        assert PROFILE_DEFAULTS[SubscriptionProfile.DEBUG]["retention_maxlen"] == 1_000
+        # PROJECTION reads the event store, not a broker stream — nothing to trim.
+        assert (
+            PROFILE_DEFAULTS[SubscriptionProfile.PROJECTION]["retention_maxlen"] is None
+        )
+
+    def test_from_profile_carries_retention(self):
+        """from_profile propagates the profile's retention_maxlen."""
+        assert (
+            SubscriptionConfig.from_profile(
+                SubscriptionProfile.PRODUCTION
+            ).retention_maxlen
+            == 100_000
+        )
+        assert (
+            SubscriptionConfig.from_profile(SubscriptionProfile.FAST).retention_maxlen
+            == 100_000
+        )
+        assert (
+            SubscriptionConfig.from_profile(SubscriptionProfile.BATCH).retention_maxlen
+            == 500_000
+        )
+        assert (
+            SubscriptionConfig.from_profile(SubscriptionProfile.DEBUG).retention_maxlen
+            == 1_000
+        )
+        assert (
+            SubscriptionConfig.from_profile(
+                SubscriptionProfile.PROJECTION
+            ).retention_maxlen
+            is None
+        )
+
+    def test_from_profile_override_retention(self):
+        """An explicit retention_maxlen override wins over the profile default."""
+        config = SubscriptionConfig.from_profile(
+            SubscriptionProfile.PRODUCTION,
+            retention_maxlen=42,
+        )
+        assert config.retention_maxlen == 42
+
+    def test_positive_retention_is_valid(self):
+        """A positive retention_maxlen is accepted."""
+        assert SubscriptionConfig(retention_maxlen=1).retention_maxlen == 1
+
+    def test_zero_retention_raises_error(self):
+        """retention_maxlen of 0 is rejected."""
+        with pytest.raises(ConfigurationError) as exc:
+            SubscriptionConfig(retention_maxlen=0)
+        assert "retention_maxlen must be positive when set" in str(exc.value)
+
+    def test_negative_retention_raises_error(self):
+        """A negative retention_maxlen is rejected."""
+        with pytest.raises(ConfigurationError) as exc:
+            SubscriptionConfig(retention_maxlen=-5)
+        assert "retention_maxlen must be positive when set" in str(exc.value)
+
+    def test_from_dict_reads_retention(self):
+        """from_dict picks up retention_maxlen and coerces it to int."""
+        config = SubscriptionConfig.from_dict({"retention_maxlen": 50})
+        assert config.retention_maxlen == 50
+
+    def test_to_dict_round_trips_retention(self):
+        """to_dict includes retention_maxlen for a full round-trip."""
+        config = SubscriptionConfig(retention_maxlen=123)
+        assert config.to_dict()["retention_maxlen"] == 123
+
+    def test_retention_is_a_profile_field(self):
+        """retention_maxlen is settable on a custom [server.profiles] profile."""
+        registry = build_profile_registry(
+            {"capped": {"inherits": "production", "retention_maxlen": 42}}
+        )
+        assert registry["capped"]["retention_maxlen"] == 42
+
+    def test_event_store_with_retention_raises_error(self):
+        """retention_maxlen on an EVENT_STORE config is rejected, not ignored.
+
+        An EventStoreSubscription reads the event store, not a broker stream, so
+        there is nothing to trim. Setting a cap is a config mistake and must
+        surface, mirroring the enable_dlq guard.
+        """
+        with pytest.raises(ConfigurationError) as exc:
+            SubscriptionConfig(
+                subscription_type=SubscriptionType.EVENT_STORE,
+                enable_dlq=False,
+                retention_maxlen=1_000,
+            )
+        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)
+
+    def test_projection_profile_valid_without_retention(self):
+        """The PROJECTION profile (EVENT_STORE, retention None) validates cleanly.
+
+        Guards against the EVENT_STORE retention rejection accidentally breaking
+        the built-in projection profile, whose retention default is None.
+        """
+        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
+        assert config.subscription_type == SubscriptionType.EVENT_STORE
+        assert config.retention_maxlen is None

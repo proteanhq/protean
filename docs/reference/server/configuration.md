@@ -68,6 +68,7 @@ Optimized for production workloads with reliability guarantees:
     "position_update_interval": 10,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
+    "retention_maxlen": 100_000,
 }
 ```
 
@@ -87,6 +88,7 @@ Optimized for low-latency processing:
     "position_update_interval": 5,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
+    "retention_maxlen": 100_000,
 }
 ```
 
@@ -106,6 +108,7 @@ Optimized for high-throughput batch processing:
     "position_update_interval": 50,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
+    "retention_maxlen": 500_000,
 }
 ```
 
@@ -125,6 +128,7 @@ Optimized for development and debugging:
     "position_update_interval": 1,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
+    "retention_maxlen": 1_000,
 }
 ```
 
@@ -139,8 +143,30 @@ Optimized for building read models:
     "tick_interval": 0,
     "position_update_interval": 10,
     "enable_dlq": False,  # Not supported for event_store
+    "retention_maxlen": None,  # Reads the event store, not a broker stream
 }
 ```
+
+### Stream retention defaults {#stream-retention-defaults}
+
+`retention_maxlen` bounds a StreamSubscription's broker stream so processed
+messages don't accumulate forever. It is trimmed after each batch. How tight the
+bound is depends on the consumer topology — see
+[Stream retention](subscription-types.md#stream-retention) for the multi-group
+and single-group behavior and their caveats. Each profile carries a default cap:
+
+| Profile | `retention_maxlen` |
+| ------- | ------------------ |
+| `production` | 100,000 |
+| `fast` | 100,000 |
+| `batch` | 500,000 |
+| `debug` | 1,000 |
+| `projection` | none (event-store, no stream to trim) |
+
+The framework-wide default (when no profile applies) is `none`, which leaves
+trimming off. Set `retention_maxlen` on a profile, a per-handler config, or a
+custom profile to enable it. This is size-based retention only — there is no
+time-based TTL.
 
 ### Custom Profiles
 
@@ -170,7 +196,7 @@ Without `inherits`, the profile starts from the framework's hardcoded defaults.
 **Allowed fields.** A custom profile may set `inherits` plus any of the standard
 profile fields: `subscription_type`, `messages_per_tick`, `tick_interval`,
 `blocking_timeout_ms`, `max_retries`, `retry_delay_seconds`, `enable_dlq`,
-`position_update_interval`, `origin_stream`.
+`position_update_interval`, `origin_stream`, `retention_maxlen`.
 
 **Validation** is fail-fast — a `ConfigurationError` is raised when the profiles
 are first resolved if a custom profile:
@@ -218,6 +244,7 @@ server-level defaults. This is not new to custom profiles: a built-in named at
 | `enable_dlq` | bool | true | Enable dead letter queue |
 | `circuit_breaker_threshold` | int | 10 | Consecutive handler failures that trip the circuit breaker OPEN |
 | `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected) |
+| `retention_maxlen` | int | none | Cap the stream at this many entries ([stream retention](subscription-types.md#stream-retention)) |
 
 See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
 the state machine, the metric, and the trace events.
