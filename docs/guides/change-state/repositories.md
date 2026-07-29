@@ -173,7 +173,8 @@ if repo.exists(Q(email="john@example.com")):
 ```
 
 Use `get_or_none()` when a miss is a normal outcome rather than an error, such
-as looking up a possibly-absent user by email during login:
+as resolving an optional reference by id (for example, an order's
+`referred_by` customer id that may not exist):
 
 ```python
 # Returns None instead of raising ObjectNotFoundError

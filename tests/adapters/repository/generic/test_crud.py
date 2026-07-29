@@ -170,6 +170,8 @@ class TestDAOGetFunctionality:
         person = test_domain.repository_for(Person).get_or_none(persisted_person.id)
         assert person is not None
         assert person.id == persisted_person.id
+        assert person.first_name == persisted_person.first_name
+        assert person.last_name == persisted_person.last_name
 
     def test_repository_get_or_none_returns_none_when_not_found(self, test_domain):
         person = test_domain.repository_for(Person).get_or_none("nonexistent-id")
