@@ -16,7 +16,10 @@ entry at its warn site at all), this audit fails.
 
 import ast
 import contextlib
+import re
 import warnings
+from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -25,8 +28,6 @@ from protean._deprecation import (
     _REMOVAL_WARNINGS,
     DEPRECATIONS,
     Deprecation,
-    RemovedInProtean018Warning,
-    RemovedInProtean10Warning,
 )
 from protean.exceptions import ValidationError
 from protean.fields import List, String
@@ -80,6 +81,10 @@ def _deprecation_messages(ir: dict) -> list[str]:
     return [d["message"] for d in ir["diagnostics"] if d["category"] == "deprecation"]
 
 
+def _deprecation_diagnostics(ir: dict) -> list[dict]:
+    return [d for d in ir["diagnostics"] if d["category"] == "deprecation"]
+
+
 class TestRegistryCompleteness:
     def test_registry_holds_twelve_active_deprecations(self) -> None:
         assert len(DEPRECATIONS) == 12
@@ -129,11 +134,111 @@ class TestDeprecationValidation:
                 slug="x", name="x", since="0.1", removal="1.0.0", detection="check"
             )
 
+    def test_check_entry_without_code_raises(self) -> None:
+        with pytest.raises(ValueError, match="check_code"):
+            Deprecation(
+                slug="x",
+                name="x",
+                since="0.1",
+                removal="1.0.0",
+                detection="check",
+                detection_hint="hint",
+            )
+
+    def test_check_entry_with_reason_raises(self) -> None:
+        with pytest.raises(ValueError, match="runtime `reason`"):
+            Deprecation(
+                slug="x",
+                name="x",
+                since="0.1",
+                removal="1.0.0",
+                detection="check",
+                detection_hint="hint",
+                check_code="DEPRECATED_X",
+                reason="should not be here",
+            )
+
     def test_runtime_entry_without_reason_raises(self) -> None:
         with pytest.raises(ValueError, match="reason"):
             Deprecation(
                 slug="x", name="x", since="0.1", removal="1.0.0", detection="runtime"
             )
+
+    def test_runtime_entry_with_static_hint_raises(self) -> None:
+        with pytest.raises(ValueError, match="detection_hint/check_code"):
+            Deprecation(
+                slug="x",
+                name="x",
+                since="0.1",
+                removal="1.0.0",
+                detection="runtime",
+                reason="r",
+                detection_hint="hint",
+            )
+
+
+class TestRegistryIsTheOnlyWarnPath:
+    """The central guarantee of #1121: a framework-API deprecation cannot warn
+    without a registry entry, because every warn site routes through
+    ``warn_from_registry`` / ``deprecated_from_registry`` (which read the entry).
+
+    A pure registry can drift from reality — a future
+    ``warn_deprecated("--foo", removal="1.0.0")`` would warn fine and be invisible
+    to this audit, which only enumerates ``DEPRECATIONS``. This source scan closes
+    that gap: it fails if any ``src/protean`` module reaches for the low-level
+    ``warn_deprecated`` / ``@deprecated`` primitives directly, outside the
+    allowlisted user-declared-event site.
+    """
+
+    # ``core/aggregate.py`` warns for a *user*-declared deprecated event (the
+    # ``removal`` comes from the user's event meta, not the framework registry),
+    # so it legitimately uses the low-level primitive. It is not a framework-API
+    # deprecation and is exempt.
+    _ALLOWLIST = frozenset({"core/aggregate.py"})
+
+    @staticmethod
+    def _bare_primitive_sites() -> set[str]:
+        import protean
+
+        root = Path(protean.__file__).parent
+        sites: set[str] = set()
+        for path in sorted(root.rglob("*.py")):
+            # ``_deprecation.py`` DEFINES the primitives and the registry
+            # wrappers that legitimately call them; skip it.
+            if path.name == "_deprecation.py":
+                continue
+            rel = path.relative_to(root).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "warn_deprecated"
+                ):
+                    sites.add(rel)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for dec in node.decorator_list:
+                        target = dec.func if isinstance(dec, ast.Call) else dec
+                        if isinstance(target, ast.Name) and target.id == "deprecated":
+                            sites.add(rel)
+        return sites
+
+    def test_no_framework_site_bypasses_the_registry(self) -> None:
+        offenders = self._bare_primitive_sites() - self._ALLOWLIST
+        assert not offenders, (
+            "These modules call the low-level warn_deprecated/@deprecated "
+            "primitives directly instead of routing through the registry "
+            f"(warn_from_registry / deprecated_from_registry): {sorted(offenders)}. "
+            "A framework-API deprecation must have a DEPRECATIONS entry."
+        )
+
+    def test_allowlisted_site_still_exists(self) -> None:
+        # If the user-event site is refactored away, trim the allowlist so it
+        # cannot silently excuse a future framework bypass.
+        assert self._bare_primitive_sites() >= self._ALLOWLIST, (
+            "Allowlisted bare-primitive site(s) no longer present; trim "
+            f"TestRegistryIsTheOnlyWarnPath._ALLOWLIST: {sorted(self._ALLOWLIST)}."
+        )
 
 
 class TestCheckArm:
@@ -142,21 +247,30 @@ class TestCheckArm:
 
     def test_all_eight_check_entries_are_detected_with_removal_version(self) -> None:
         ir = IRBuilder(_build_audit_domain()).build()
-        messages = _deprecation_messages(ir)
+        diagnostics = _deprecation_diagnostics(ir)
 
         check_entries = [e for e in DEPRECATIONS.values() if e.detection == "check"]
         assert len(check_entries) == 8, "expected 8 statically-detectable deprecations"
 
         for entry in check_entries:
+            # Tie the entry to a diagnostic emitted by ITS OWN rule (matching the
+            # entry's ``check_code``), not any deprecation message. Otherwise a
+            # broken rule can ride on another rule's message: the email element
+            # and the ``email_providers`` config both say "email subsystem", and
+            # every message carries "v1.0.0", so a message-substring match alone
+            # would report the email element covered from the config diagnostic.
             hits = [
-                m
-                for m in messages
-                if entry.detection_hint in m and f"v{entry.removal}" in m
+                d
+                for d in diagnostics
+                if d["code"] == entry.check_code
+                and entry.detection_hint in d["message"]
+                and f"v{entry.removal}" in d["message"]
             ]
             assert hits, (
                 f"No firing diagnostic for {entry.slug} "
-                f"(hint={entry.detection_hint!r}, removal v{entry.removal}). "
-                f"Messages: {messages}"
+                f"(code={entry.check_code}, hint={entry.detection_hint!r}, "
+                f"removal v{entry.removal}). "
+                f"Diagnostics: {[(d['code'], d['message']) for d in diagnostics]}"
             )
 
     def test_import_scan_reports_method_nested_and_utils(self) -> None:
@@ -169,38 +283,88 @@ class TestCheckArm:
         assert "Nested" in joined
         assert "protean.utils.generate_identity" in joined
 
+    def test_pickled_false_also_fires_deprecated_field(self) -> None:
+        # The residue marker is set for ANY passed ``pickled`` value, not just
+        # ``True`` (the flag is inert either way). ``pickled=False`` must still
+        # trip DEPRECATED_FIELD, or a domain that "turned pickling off" would
+        # quietly keep the dead argument with no check nudge.
+        domain = Domain(name="PickledFalseAudit", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            tags = List(String(max_length=10), pickled=False)
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        entry = DEPRECATIONS["list_pickled"]
+        hits = [
+            d
+            for d in _deprecation_diagnostics(ir)
+            if d["code"] == entry.check_code and entry.detection_hint in d["message"]
+        ]
+        assert hits, "pickled=False did not fire DEPRECATED_FIELD"
+
+
+def _trigger_get_email_provider() -> None:
+    domain = Domain(name="RuntimeArmEmail")
+    domain.init(traverse=False)
+    with contextlib.suppress(Exception):
+        domain.get_email_provider("default")
+
+
+def _trigger_send_email() -> None:
+    domain = Domain(name="RuntimeArmSend")
+    domain.init(traverse=False)
+    with contextlib.suppress(Exception):
+        domain.send_email(object())
+
+
+def _trigger_assert_valid() -> None:
+    assert_valid(lambda: None)
+
+
+def _trigger_assert_invalid() -> None:
+    def _raises() -> None:
+        raise ValidationError({"field": ["bad"]})
+
+    assert_invalid(_raises)
+
+
+# Each runtime deprecation's slug → a callable that exercises its deprecated
+# path. Keyed by slug so the completeness test below can prove the map and the
+# registry's runtime arm stay in lock-step: adding a runtime entry without a
+# trigger here (or vice versa) fails the audit.
+_RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
+    "get_email_provider": _trigger_get_email_provider,
+    "send_email": _trigger_send_email,
+    "assert_valid": _trigger_assert_valid,
+    "assert_invalid": _trigger_assert_invalid,
+}
+
 
 class TestRuntimeArm:
-    """Every ``detection='runtime'`` entry fires its per-version warning."""
+    """Every ``detection='runtime'`` entry fires its per-version warning.
 
-    def test_all_four_runtime_entries_recorded(self) -> None:
-        runtime = [e for e in DEPRECATIONS.values() if e.detection == "runtime"]
-        assert len(runtime) == 4
+    Registry-driven and symmetric with the check arm: the trigger map is
+    reconciled against the registry, then every runtime entry is exercised and
+    its warning class and removal version are asserted from the entry itself.
+    """
 
-    def test_get_email_provider_warns_removed_in_v1(self) -> None:
-        domain = Domain(name="RuntimeArmEmail")
-        domain.init(traverse=False)
-        with pytest.warns(RemovedInProtean10Warning, match=r"v1\.0\.0"):
-            with contextlib.suppress(Exception):
-                domain.get_email_provider("default")
+    def test_every_runtime_entry_has_a_trigger(self) -> None:
+        runtime = {slug for slug, e in DEPRECATIONS.items() if e.detection == "runtime"}
+        assert runtime == set(_RUNTIME_TRIGGERS), (
+            "Every runtime deprecation needs a trigger proving its warning fires. "
+            f"Registry-only (no trigger): {runtime - set(_RUNTIME_TRIGGERS)}; "
+            f"trigger-only (no entry): {set(_RUNTIME_TRIGGERS) - runtime}."
+        )
 
-    def test_send_email_warns_removed_in_v1(self) -> None:
-        domain = Domain(name="RuntimeArmSend")
-        domain.init(traverse=False)
-        with pytest.warns(RemovedInProtean10Warning, match=r"v1\.0\.0"):
-            with contextlib.suppress(Exception):
-                domain.send_email(object())
-
-    def test_assert_valid_warns_removed_in_v018(self) -> None:
-        with pytest.warns(RemovedInProtean018Warning, match=r"v0\.18\.0"):
-            assert_valid(lambda: None)
-
-    def test_assert_invalid_warns_removed_in_v018(self) -> None:
-        def _raises() -> None:
-            raise ValidationError({"field": ["bad"]})
-
-        with pytest.warns(RemovedInProtean018Warning, match=r"v0\.18\.0"):
-            assert_invalid(_raises)
+    @pytest.mark.parametrize("slug", list(_RUNTIME_TRIGGERS))
+    def test_runtime_entry_fires_its_per_version_warning(self, slug: str) -> None:
+        entry = DEPRECATIONS[slug]
+        expected = _REMOVAL_WARNINGS[entry.removal]
+        with pytest.warns(expected, match=rf"v{re.escape(entry.removal)}"):
+            _RUNTIME_TRIGGERS[slug]()
 
 
 class TestNegativeCoverage:

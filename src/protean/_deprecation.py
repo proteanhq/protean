@@ -169,12 +169,17 @@ def deprecated(
 # Deprecation registry
 # ---------------------------------------------------------------------------
 # The single source of truth for every active framework-API deprecation. Each
-# warn-emitting site (below, via :func:`warn_from_registry` /
-# :func:`deprecated_from_registry`) reads its removal version and "what to do
-# instead" clause from its entry here, so a deprecation cannot start warning
-# without first being registered. ``protean check`` reads the same table to
-# audit that every ``detection="check"`` deprecation has a rule that can see it
-# statically, and every ``detection="runtime"`` one records why it cannot.
+# framework-API warn site routes through :func:`warn_from_registry` /
+# :func:`deprecated_from_registry`, which read the removal version and "what to
+# do instead" clause from the entry here, so a framework deprecation cannot start
+# warning without first being registered. (A source-scan test in
+# ``tests/ir/test_deprecation_coverage_audit.py`` enforces that no module calls
+# the low-level ``warn_deprecated`` / ``@deprecated`` primitives directly; the
+# one allowlisted exception is a user-*declared* deprecated event, whose removal
+# comes from the user's event meta rather than this registry.) ``protean check``
+# reads the same table to audit that every ``detection="check"`` deprecation has
+# a rule that can see it statically, and every ``detection="runtime"`` one
+# records why it cannot.
 
 # Shared "what to do instead" clause for the email subsystem, deprecated across
 # four surfaces (element registration, ``send_email``, ``get_email_provider``,
@@ -193,10 +198,16 @@ class Deprecation:
     ``detection`` splits the two arms:
 
     - ``"check"`` — a static ``protean check`` rule detects the usage on a
-      built domain. ``detection_hint`` is a token guaranteed to appear in the
-      firing diagnostic's message (e.g. ``"Method"``, ``"pickled"``,
-      ``"email_providers"``, ``"protean.utils"``), which the coverage audit
-      uses to confirm the rule fires.
+      built domain. ``check_code`` is the diagnostic code that rule emits (e.g.
+      ``"DEPRECATED_OPTION"``, ``"DEPRECATED_IMPORT"``), and ``detection_hint``
+      is a token guaranteed to appear in *that* diagnostic's message (e.g.
+      ``"Method"``, ``"pickled"``, ``"email_providers"``). The coverage audit
+      confirms the rule fires by finding a diagnostic whose code is
+      ``check_code`` and whose message carries the hint and the removal version,
+      so two entries that share a code (``is_event_sourced``/``published`` under
+      ``DEPRECATED_OPTION``) are told apart by their hint, and two entries that
+      share a hint substring (the email element and the ``email_providers``
+      config both say "email subsystem") are told apart by their code.
     - ``"runtime"`` — the usage is an imperative call with no static site, so
       only the per-version ``DeprecationWarning`` can catch it. ``reason``
       records why ``check`` structurally cannot.
@@ -209,6 +220,7 @@ class Deprecation:
     detection: str
     alternative: str | None = None
     detection_hint: str | None = None
+    check_code: str | None = None
     reason: str | None = None
 
     def __post_init__(self) -> None:
@@ -220,16 +232,39 @@ class Deprecation:
                 f"Deprecation {self.slug!r} has detection={self.detection!r}; "
                 f"expected 'check' or 'runtime'."
             )
-        if self.detection == "check" and not self.detection_hint:
-            raise ValueError(
-                f"Deprecation {self.slug!r} is detection='check' but has no "
-                f"detection_hint (the token that proves its rule fired)."
-            )
-        if self.detection == "runtime" and not self.reason:
-            raise ValueError(
-                f"Deprecation {self.slug!r} is detection='runtime' but records "
-                f"no reason for why `protean check` cannot see it statically."
-            )
+        if self.detection == "check":
+            # A check entry is proven by a specific rule: it must name both the
+            # diagnostic code that rule emits and a token in that message, and it
+            # must not carry a runtime ``reason`` (a mixed entry is a mistake, not
+            # a valid either/or — reject it here rather than trusting the audit).
+            if not self.detection_hint:
+                raise ValueError(
+                    f"Deprecation {self.slug!r} is detection='check' but has no "
+                    f"detection_hint (the token that proves its rule fired)."
+                )
+            if not self.check_code:
+                raise ValueError(
+                    f"Deprecation {self.slug!r} is detection='check' but has no "
+                    f"check_code (the diagnostic code its rule emits)."
+                )
+            if self.reason:
+                raise ValueError(
+                    f"Deprecation {self.slug!r} is detection='check' but also "
+                    f"carries a runtime `reason`; a check entry is proven by its "
+                    f"rule, not a reason."
+                )
+        else:  # runtime
+            if not self.reason:
+                raise ValueError(
+                    f"Deprecation {self.slug!r} is detection='runtime' but records "
+                    f"no reason for why `protean check` cannot see it statically."
+                )
+            if self.detection_hint or self.check_code:
+                raise ValueError(
+                    f"Deprecation {self.slug!r} is detection='runtime' but carries "
+                    f"a static detection_hint/check_code; a runtime entry has no "
+                    f"firing check rule."
+                )
 
 
 DEPRECATIONS: dict[str, Deprecation] = {
@@ -243,6 +278,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="Use `event_sourced` instead.",
             detection_hint="is_event_sourced",
+            check_code="DEPRECATED_OPTION",
         ),
         Deprecation(
             slug="command_published_option",
@@ -255,6 +291,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "are published. It has no effect."
             ),
             detection_hint="published",
+            check_code="DEPRECATED_OPTION",
         ),
         Deprecation(
             slug="email_element",
@@ -264,6 +301,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative=_EMAIL_ALTERNATIVE,
             detection_hint="email subsystem",
+            check_code="DEPRECATED_EMAIL",
         ),
         Deprecation(
             slug="method_field",
@@ -273,6 +311,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="Serializer fields are no longer supported.",
             detection_hint="Method",
+            check_code="DEPRECATED_IMPORT",
         ),
         Deprecation(
             slug="nested_field",
@@ -282,6 +321,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="Serializer fields are no longer supported.",
             detection_hint="Nested",
+            check_code="DEPRECATED_IMPORT",
         ),
         Deprecation(
             slug="list_pickled",
@@ -291,6 +331,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="It has no effect.",
             detection_hint="pickled",
+            check_code="DEPRECATED_FIELD",
         ),
         Deprecation(
             slug="email_providers_config",
@@ -300,6 +341,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative=_EMAIL_ALTERNATIVE,
             detection_hint="email_providers",
+            check_code="DEPRECATED_CONFIG",
         ),
         Deprecation(
             slug="utils_plumbing",
@@ -309,6 +351,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="It is internal plumbing with no public replacement.",
             detection_hint="protean.utils",
+            check_code="DEPRECATED_IMPORT",
         ),
         Deprecation(
             slug="get_email_provider",

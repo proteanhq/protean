@@ -3718,37 +3718,34 @@ class IRBuilder:
         unreadable or unparseable module yields no tree and is skipped. Runs by
         default (unlike the opt-in infra scan): detecting active deprecations is
         the point of the rule, not an optional lint.
+
+        Scope: only modules that host a registered element are scanned (the same
+        element-oriented boundary as ``_diagnose_infra_imports``), so a
+        deprecated use in a plain helper module with no registered class is not
+        seen. A deprecated import is a module-level fact, so the diagnostic is
+        emitted once per ``(module, symbol)`` and attributed to the module — not
+        once per element sharing it — to avoid N copies for a module with N
+        registered classes.
         """
         removal = DEPRECATIONS["method_field"].removal  # all three share 1.0.0
-        module_uses: dict[str, list[tuple[str, str]]] = {}
 
-        def _uses(module: str) -> list[tuple[str, str]]:
-            if module in module_uses:
-                return module_uses[module]
-            tree = self.source.tree(module)
-            uses = self._find_deprecated_import_uses(tree) if tree is not None else []
-            module_uses[module] = uses
-            return uses
-
-        # Iterate every non-internal registered element in a stable order so the
-        # emitted diagnostics are deterministic.
+        # Collect the distinct source modules that host a non-internal registered
+        # element. A module-level import is one fact regardless of how many
+        # elements live in the module, so dedupe on the module here.
         registry = self._domain._domain_registry
-        scanned: list[tuple[str, str, str]] = []  # (fqn, name, module)
-        seen_elements: set[str] = set()
+        modules: set[str] = set()
         for records in registry._elements.values():
             for record in records.values():
                 if record.internal:
                     continue
-                element_fqn = fqn(record.cls)
-                if element_fqn in seen_elements:
-                    continue
-                seen_elements.add(element_fqn)
                 module = getattr(record.cls, "__module__", None)
                 if module:
-                    scanned.append((element_fqn, record.cls.__name__, module))
+                    modules.add(module)
 
-        for element_fqn, _name, module in sorted(scanned):
-            for kind, symbol in _uses(module):
+        for module in sorted(modules):
+            tree = self.source.tree(module)
+            uses = self._find_deprecated_import_uses(tree) if tree is not None else []
+            for kind, symbol in uses:
                 if kind == "field":
                     message = (
                         f"`{symbol}` is a deprecated serializer field type, "
@@ -3773,7 +3770,7 @@ class IRBuilder:
                     {
                         "category": "deprecation",
                         "code": "DEPRECATED_IMPORT",
-                        "element": element_fqn,
+                        "element": module,
                         "level": "info",
                         "message": message,
                         "rule": rule,
@@ -3787,9 +3784,14 @@ class IRBuilder:
         import surface used in a module.
 
         ``kind`` is ``"field"`` (a ``Method``/``Nested`` call) or ``"util"`` (a
-        deprecated ``protean.utils`` name). Only module-level imports bind the
-        names a call is matched against, so a deprecated symbol imported inside a
-        function body is not attributed to the module.
+        deprecated ``protean.utils`` name).
+
+        The two paths differ in scope. The ``field`` path matches a call against
+        names bound by a *module-level* ``from protean.fields import ...``, so a
+        ``Method``/``Nested`` imported inside a function body is not attributed to
+        the module. The ``util`` path uses :func:`ast.walk`, so a
+        ``from protean.utils import <name>`` or a ``protean.utils.<name>`` access
+        at any scope (including inside a function) is flagged.
         """
         field_modules = {"protean.fields", "protean.fields.basic"}
         deprecated_fields = {"Method", "Nested"}
