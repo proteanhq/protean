@@ -9,6 +9,7 @@ from protean.exceptions import (
     ExpectedVersionError,
     InvalidOperationError,
     TransactionError,
+    ValidationError,
 )
 from protean.port.provider import DatabaseCapabilities
 from protean.utils import Processing
@@ -303,6 +304,17 @@ class UnitOfWork:
             outbox_config = self.domain.config.get("outbox", {})
             internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
             external_brokers: list[str] = outbox_config.get("external_brokers", [])
+
+            # Partition-per-key routing (ADR-0028): categories a sequential_by
+            # handler declared, and the configured backfill suffix the key must
+            # not collide with (read here, not hardcoded, so a custom suffix is
+            # honored). Both are inert when no handler opts in.
+            partition_keys = self.domain._partition_keys
+            backfill_suffix = (
+                self.domain.config.get("server", {})
+                .get("priority_lanes", {})
+                .get("backfill_suffix", "backfill")
+            )
             # Always tag the internal row with the configured internal broker.
             # The composite (message_id, target_broker) unique index relies on
             # target_broker never being NULL: PostgreSQL and SQLite treat NULLs
@@ -330,6 +342,15 @@ class UnitOfWork:
                         correlation_id = event._metadata.domain.correlation_id
                         causation_id = event._metadata.domain.causation_id
 
+                    # Partition key for per-key sequential routing (ADR-0028).
+                    # Extracted and validated here, synchronously in the caller's
+                    # transaction: a bad value fails the caller's operation now
+                    # and never enters the outbox (decision 3). Non-partitioned
+                    # categories leave it None.
+                    partition_key = self._extract_partition_key(
+                        event, partition_keys, backfill_suffix
+                    )
+
                     # Internal outbox row (always created)
                     outbox_message = Outbox.create_message(
                         message_id=event._metadata.headers.id,
@@ -341,6 +362,7 @@ class UnitOfWork:
                         correlation_id=correlation_id,
                         causation_id=causation_id,
                         target_broker=internal_broker,
+                        partition_key=partition_key,
                     )
                     outbox_repo._dao.save(outbox_message)
 
@@ -361,6 +383,7 @@ class UnitOfWork:
                                 correlation_id=correlation_id,
                                 causation_id=causation_id,
                                 target_broker=ext_broker,
+                                partition_key=partition_key,
                             )
                             outbox_repo._dao.save(ext_outbox)
 
@@ -572,6 +595,52 @@ class UnitOfWork:
             return self._sessions[provider_name]
         else:
             return self._initialize_session(provider_name)
+
+    @staticmethod
+    def _extract_partition_key(
+        event: Any, partition_keys: dict[str, str], backfill_suffix: str
+    ) -> str | None:
+        """Resolve and validate the partition key for *event*, or ``None``.
+
+        Non-partitioned categories (not in *partition_keys*) return ``None`` and
+        are untouched. For a partitioned category the key field is read off the
+        event payload, coerced to a string, and validated (ADR-0028 decision 3).
+        An invalid value raises :class:`ValidationError`, failing the caller's
+        operation in its own transaction so no outbox row is ever created for it.
+
+        Args:
+            event: The domain event being written to the outbox.
+            partition_keys: The domain's ``stream_category -> field`` map.
+            backfill_suffix: The configured reserved backfill suffix.
+
+        Returns:
+            The validated partition key, or ``None`` for a non-partitioned
+            category.
+
+        Raises:
+            ValidationError: If the extracted key value is unsafe to route.
+        """
+        from protean.utils.outbox import invalid_partition_key_reason  # noqa: PLC0415
+
+        domain_meta = event._metadata.domain if event._metadata else None
+        category = domain_meta.stream_category if domain_meta else None
+        if not category or category not in partition_keys:
+            return None
+
+        field = partition_keys[category]
+        raw = getattr(event, field, None)
+        partition_key = str(raw) if raw is not None else None
+
+        reason = invalid_partition_key_reason(partition_key, backfill_suffix)
+        if reason:
+            raise ValidationError(
+                {
+                    "partition_key": [
+                        f"Invalid `sequential_by` key on `{category}`: {reason}"
+                    ]
+                }
+            )
+        return partition_key
 
     def register_message(
         self, stream: str, message: dict[str, Any], broker_name: str | None = None

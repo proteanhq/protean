@@ -149,6 +149,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     | ``subscription_type`` | ``str`` | The subscription type to use. |
     | ``subscription_profile`` | ``str`` | A predefined configuration profile. |
     | ``subscription_config`` | ``dict`` | Dictionary of custom configuration overrides. |
+    | ``sequential_by`` | ``bool`` | Opt in to per-instance sequential processing (ADR-0028). |
     """
 
     element_type: ClassVar[DomainObjects] = DomainObjects.PROCESS_MANAGER
@@ -194,6 +195,14 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         ),
         # Use aggregates if specified, otherwise default to empty list.
         ("aggregates", []),
+        # Partition-per-key sequential processing (ADR-0028). Unlike event and
+        # command handlers (where the value is a field name), on a process
+        # manager this is a boolean opt-in: the PM already declares its
+        # serialization domain through its ``correlate`` specs, so setting
+        # ``sequential_by=True`` partitions each subscribed category by the
+        # field that category's ``correlate`` spec maps to the correlation
+        # value. ``None``/``False`` disables partitioning.
+        ("sequential_by", None),
         # Subscription configuration options
         ("subscription_type", None),
         ("subscription_profile", None),

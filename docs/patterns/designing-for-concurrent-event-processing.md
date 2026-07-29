@@ -427,3 +427,10 @@ aggregate -- is a structural problem with a structural solution. Before
 reaching for infrastructure (locks, partitioned streams, framework-level
 deduplication), look at the handler topology. The simplest fix is usually
 to combine related handlers or introduce a Process Manager.
+
+For the specific case the primitives above do not cover -- a single
+high-throughput handler that must serialize by an entity key without
+collapsing every key onto one worker -- Protean offers
+[`sequential_by`](../reference/server/sequential-by.md) (per-key sequential
+processing, [ADR-0028](../adr/0028-partition-per-key-sequential-processing.md)).
+Reach for it only after the structural options above do not fit.

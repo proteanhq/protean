@@ -1802,6 +1802,10 @@ class TestOutboxProcessorMetrics:
         mock_message.stream_name = "test::stream"
         mock_message.data = {"key": "value"}
         mock_message.created_at = created_at
+        # A normal (non-partitioned) outbox row; the field defaults to None.
+        # Leaving it a MagicMock would make it truthy and wrongly trip the
+        # partition-key backstop in ``_process_single_message``.
+        mock_message.partition_key = None
         mock_message.metadata_ = MagicMock()
         mock_message.metadata_.domain.stream_category = "test::stream"
         mock_message.metadata_.headers.type = "TestEvent"
