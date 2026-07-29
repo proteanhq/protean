@@ -30,7 +30,7 @@ from pydantic import BaseModel, BeforeValidator
 from pydantic import Field as PydanticField
 from pydantic.fields import FieldInfo
 
-from protean._deprecation import warn_deprecated
+from protean._deprecation import warn_from_registry
 from protean.exceptions import ConfigurationError
 from protean.utils.container import Options, OptionsMixin
 from protean.utils.globals import current_domain
@@ -781,10 +781,6 @@ def __getattr__(name: str) -> Any:
     """
     impl = _DEPRECATED_PLUMBING.get(name)
     if impl is not None:
-        warn_deprecated(
-            f"`protean.utils.{name}`",
-            removal="1.0.0",
-            alternative="It is internal plumbing with no public replacement.",
-        )
+        warn_from_registry("utils_plumbing", f"`protean.utils.{name}`")
         return impl
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

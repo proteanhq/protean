@@ -7,6 +7,7 @@ from protean.fields.simple import Float, String
 from protean.ir.builder import IRBuilder
 from tests.ir.support import (
     adapter_call_domain,
+    deprecated_usage_domain,
     infra_import_domain,
 )
 
@@ -28,6 +29,8 @@ _BUILTIN_CODES = frozenset(
         "DEPRECATED_FIELD",
         "DEPRECATED_OPTION",
         "DEPRECATED_EMAIL",
+        "DEPRECATED_CONFIG",
+        "DEPRECATED_IMPORT",
         "CROSS_AGGREGATE_REFERENCE",
         "ES_AGGREGATE_NO_EVENTS",
         "VALUE_OBJECT_MUTABLE_FIELD",
@@ -318,6 +321,29 @@ def _all_builtin_diagnostics() -> list[dict]:
 
     email_domain.init(traverse=False)
     diagnostics += IRBuilder(email_domain).build()["diagnostics"]
+
+    # DEPRECATED_CONFIG — a non-default ``email_providers`` config block.
+    email_cfg_domain = Domain(name="EnrichEmailConfig", root_path=".")
+    email_cfg_domain.config["email_providers"] = {
+        "default": {
+            "provider": "protean.adapters.DummyEmailProvider",
+            "DEFAULT_FROM_EMAIL": "custom@example.com",
+        },
+    }
+
+    @email_cfg_domain.aggregate
+    class CfgOrder:
+        name = String(max_length=10)
+
+    email_cfg_domain.init(traverse=False)
+    diagnostics += IRBuilder(email_cfg_domain).build()["diagnostics"]
+
+    # DEPRECATED_IMPORT — on-disk scan of a module using Method/Nested and a
+    # deprecated ``protean.utils`` plumbing access.
+    import_domain = Domain(name="EnrichDeprecatedImport", root_path=".")
+    import_domain.register(deprecated_usage_domain.DeprecatedUsageOrder)
+    import_domain.init(traverse=False)
+    diagnostics += IRBuilder(import_domain).build()["diagnostics"]
 
     # CIRCULAR_CLUSTER_DEPENDENCY — a 2-cluster identity-reference cycle.
     cycle_domain = Domain(name="EnrichCycle", root_path=".")

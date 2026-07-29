@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 
 from inflection import parameterize, titleize, transliterate, underscore
 
-from protean._deprecation import deprecated, warn_deprecated
+from protean._deprecation import deprecated_from_registry, warn_from_registry
 from protean.adapters import Brokers, Caches, EmailProviders, Providers
 from protean.adapters.event_store import EventStore
 from protean.core.aggregate import aggregate_factory
@@ -194,17 +194,6 @@ _T = TypeVar("_T")
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
-
-# Shared "what to do instead" clause for every email-subsystem deprecation
-# warning (registration, ``send_email``, ``get_email_provider``, and a
-# non-default ``email_providers`` config block). The email subsystem is
-# deprecated in the 0.x series and removed at v1.0.0; notify from
-# an event handler or subscriber that calls an application-level notification
-# service instead.
-_EMAIL_DEPRECATION_ALTERNATIVE = (
-    "Notify from an event handler or subscriber that calls an "
-    "application-level notification service instead."
-)
 
 
 class _Closeable(Protocol):
@@ -944,10 +933,9 @@ class Domain:
         # the equality guard is what keeps an untouched config silent: warn only
         # when the operator has configured a non-default block.
         if config_obj.get("email_providers") != _default_config()["email_providers"]:
-            warn_deprecated(
+            warn_from_registry(
+                "email_providers_config",
                 "Configuring `email_providers`",
-                removal="1.0.0",
-                alternative=_EMAIL_DEPRECATION_ALTERNATIVE,
                 stacklevel=3,
             )
 
@@ -1059,11 +1047,7 @@ class Domain:
         # here covers every registration path. Framework code registers no
         # email elements, so this only fires on user code.
         if element_type == DomainObjects.EMAIL:
-            warn_deprecated(
-                "The email element",
-                removal="1.0.0",
-                alternative=_EMAIL_DEPRECATION_ALTERNATIVE,
-            )
+            warn_from_registry("email_element", "The email element")
 
         # Check if `element_cls` is already a subclass of the Element Type
         #   which would be the case in an explicit declaration like `class Account(BaseEntity):`
@@ -2596,11 +2580,11 @@ class Domain:
     # Email Functionality #
     #######################
 
-    @deprecated(removal="1.0.0", alternative=_EMAIL_DEPRECATION_ALTERNATIVE)
+    @deprecated_from_registry("get_email_provider")
     def get_email_provider(self, provider_name: str) -> Any:
         return self.email_providers.get_email_provider(provider_name)
 
-    @deprecated(removal="1.0.0", alternative=_EMAIL_DEPRECATION_ALTERNATIVE)
+    @deprecated_from_registry("send_email")
     def send_email(self, email: Any) -> Any:
         return self.email_providers.send_email(email)
 

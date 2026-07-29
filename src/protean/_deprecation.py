@@ -22,6 +22,7 @@ code, not application code.
 import functools
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import ParamSpec, TypeVar
 
 _P = ParamSpec("_P")
@@ -162,3 +163,236 @@ def deprecated(
         return wrapper
 
     return decorator
+
+
+# ---------------------------------------------------------------------------
+# Deprecation registry
+# ---------------------------------------------------------------------------
+# The single source of truth for every active framework-API deprecation. Each
+# warn-emitting site (below, via :func:`warn_from_registry` /
+# :func:`deprecated_from_registry`) reads its removal version and "what to do
+# instead" clause from its entry here, so a deprecation cannot start warning
+# without first being registered. ``protean check`` reads the same table to
+# audit that every ``detection="check"`` deprecation has a rule that can see it
+# statically, and every ``detection="runtime"`` one records why it cannot.
+
+# Shared "what to do instead" clause for the email subsystem, deprecated across
+# four surfaces (element registration, ``send_email``, ``get_email_provider``,
+# and a non-default ``email_providers`` config block). Kept here so the runtime
+# warning text and the registry entries never drift apart.
+_EMAIL_ALTERNATIVE = (
+    "Notify from an event handler or subscriber that calls an "
+    "application-level notification service instead."
+)
+
+
+@dataclass(frozen=True)
+class Deprecation:
+    """One active deprecation and how ``protean check`` can (or cannot) see it.
+
+    ``detection`` splits the two arms:
+
+    - ``"check"`` — a static ``protean check`` rule detects the usage on a
+      built domain. ``detection_hint`` is a token guaranteed to appear in the
+      firing diagnostic's message (e.g. ``"Method"``, ``"pickled"``,
+      ``"email_providers"``, ``"protean.utils"``), which the coverage audit
+      uses to confirm the rule fires.
+    - ``"runtime"`` — the usage is an imperative call with no static site, so
+      only the per-version ``DeprecationWarning`` can catch it. ``reason``
+      records why ``check`` structurally cannot.
+    """
+
+    slug: str
+    name: str
+    since: str
+    removal: str
+    detection: str
+    alternative: str | None = None
+    detection_hint: str | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        # A registered removal version must resolve to a warning class, the same
+        # eager check ``@deprecated`` makes, so a typo fails at import.
+        _warning_for_removal(self.removal)
+        if self.detection not in ("check", "runtime"):
+            raise ValueError(
+                f"Deprecation {self.slug!r} has detection={self.detection!r}; "
+                f"expected 'check' or 'runtime'."
+            )
+        if self.detection == "check" and not self.detection_hint:
+            raise ValueError(
+                f"Deprecation {self.slug!r} is detection='check' but has no "
+                f"detection_hint (the token that proves its rule fired)."
+            )
+        if self.detection == "runtime" and not self.reason:
+            raise ValueError(
+                f"Deprecation {self.slug!r} is detection='runtime' but records "
+                f"no reason for why `protean check` cannot see it statically."
+            )
+
+
+DEPRECATIONS: dict[str, Deprecation] = {
+    entry.slug: entry
+    for entry in (
+        Deprecation(
+            slug="is_event_sourced_alias",
+            name="`is_event_sourced=` option alias",
+            since="0.13.0",
+            removal="1.0.0",
+            detection="check",
+            alternative="Use `event_sourced` instead.",
+            detection_hint="is_event_sourced",
+        ),
+        Deprecation(
+            slug="command_published_option",
+            name="`published` option on a command",
+            since="0.13.0",
+            removal="1.0.0",
+            detection="check",
+            alternative=(
+                "Commands are internal to the bounded context; only events "
+                "are published. It has no effect."
+            ),
+            detection_hint="published",
+        ),
+        Deprecation(
+            slug="email_element",
+            name="`@domain.email` element",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="check",
+            alternative=_EMAIL_ALTERNATIVE,
+            detection_hint="email subsystem",
+        ),
+        Deprecation(
+            slug="method_field",
+            name="`Method` field type",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="check",
+            alternative="Serializer fields are no longer supported.",
+            detection_hint="Method",
+        ),
+        Deprecation(
+            slug="nested_field",
+            name="`Nested` field type",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="check",
+            alternative="Serializer fields are no longer supported.",
+            detection_hint="Nested",
+        ),
+        Deprecation(
+            slug="list_pickled",
+            name="`pickled=` argument on `List`",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="check",
+            alternative="It has no effect.",
+            detection_hint="pickled",
+        ),
+        Deprecation(
+            slug="email_providers_config",
+            name="`email_providers` config block",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="check",
+            alternative=_EMAIL_ALTERNATIVE,
+            detection_hint="email_providers",
+        ),
+        Deprecation(
+            slug="utils_plumbing",
+            name="`protean.utils.*` import shims",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="check",
+            alternative="It is internal plumbing with no public replacement.",
+            detection_hint="protean.utils",
+        ),
+        Deprecation(
+            slug="get_email_provider",
+            name="`Domain.get_email_provider()`",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="runtime",
+            alternative=_EMAIL_ALTERNATIVE,
+            reason=(
+                "An imperative method call has no static declaration site for a "
+                "rule to read off a built domain; the per-call "
+                "RemovedInProtean10Warning is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="send_email",
+            name="`Domain.send_email()`",
+            since="0.12.0",
+            removal="1.0.0",
+            detection="runtime",
+            alternative=_EMAIL_ALTERNATIVE,
+            reason=(
+                "An imperative method call has no static declaration site for a "
+                "rule to read off a built domain; the per-call "
+                "RemovedInProtean10Warning is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="assert_valid",
+            name="`assert_valid()`",
+            since="0.16.1",
+            removal="0.18.0",
+            detection="runtime",
+            alternative="Call the operation directly instead.",
+            reason=(
+                "A test-only helper; `protean check` scans domain source, not "
+                "test suites (ADR-0019), so it never sees the call site."
+            ),
+        ),
+        Deprecation(
+            slug="assert_invalid",
+            name="`assert_invalid()`",
+            since="0.16.1",
+            removal="0.18.0",
+            detection="runtime",
+            alternative="Use pytest.raises(ValidationError, match=...) instead.",
+            reason=(
+                "A test-only helper; `protean check` scans domain source, not "
+                "test suites (ADR-0019), so it never sees the call site."
+            ),
+        ),
+    )
+}
+
+
+def warn_from_registry(slug: str, subject: str, *, stacklevel: int = 2) -> None:
+    """Emit a deprecation warning for a registered deprecation.
+
+    The removal version and "what to do instead" clause come from
+    ``DEPRECATIONS[slug]``, so a warning cannot exist without a registry entry
+    (a missing slug raises ``KeyError`` at the call site). ``subject`` stays at
+    the call site because several sites build it dynamically (e.g. the
+    per-name ``protean.utils.<name>`` subject).
+
+    ``stacklevel`` has the same meaning as in :func:`warn_deprecated` — it is
+    counted from the caller of *this* function, and the extra frame this wrapper
+    adds is accounted for internally, so attribution is unchanged from calling
+    :func:`warn_deprecated` directly.
+    """
+    entry = DEPRECATIONS[slug]
+    warn_deprecated(
+        subject,
+        removal=entry.removal,
+        alternative=entry.alternative,
+        stacklevel=stacklevel + 1,
+    )
+
+
+def deprecated_from_registry(
+    slug: str,
+) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
+    """``@deprecated`` for a registered deprecation, sourcing its removal version
+    and alternative from ``DEPRECATIONS[slug]`` (a missing slug raises
+    ``KeyError`` at import, so a decorated deprecation cannot skip the registry).
+    """
+    entry = DEPRECATIONS[slug]
+    return deprecated(removal=entry.removal, alternative=entry.alternative)

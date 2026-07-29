@@ -68,6 +68,10 @@ class FieldSpec:
     _identity_strategy: str | None
     _identity_function: Callable[..., Any] | str | None
     _identity_type: str | None
+    # Set by the ``List`` factory when the deprecated ``pickled=`` argument is
+    # passed, so ``protean check`` can surface the usage. Read via ``getattr``
+    # with a ``False`` default; absent on every other spec.
+    _pickled_deprecated: bool
 
     def __init__(
         self,

@@ -422,6 +422,20 @@ version fail to deserialize at read time.
 Rules that surface elements, fields, and options scheduled for removal. See the
 [v0.17 migration guide](migration/v0-17.md) for the deprecation timeline.
 
+!!! note "Deprecation coverage is a release gate"
+
+    Every active framework-API deprecation is recorded in the declarative
+    registry in `protean._deprecation` (`DEPRECATIONS`), and each
+    `warn_deprecated`/`@deprecated` site reads its removal version and
+    replacement advice from its entry — so a deprecation cannot warn without
+    being registered. A deprecation may not ship unless it is both registered
+    **and** covered by its detection mechanism: either a `protean check` rule
+    that fires on it (`detection="check"`, with a `detection_hint` token that
+    proves the rule fired), or, for an imperative call with no static site, its
+    per-version `DeprecationWarning` plus a recorded `reason` for why `check`
+    cannot see it (`detection="runtime"`). The audit in
+    `tests/ir/test_deprecation_coverage_audit.py` enforces both arms.
+
 ### DEPRECATED_ELEMENT { #deprecated-element }
 
 | | |
@@ -471,6 +485,37 @@ Emitted at `warning` level for a deprecated option alias (for example the
 
 **Fix.** Notify from an event handler or subscriber that calls an
 application-level notification service instead.
+
+### DEPRECATED_CONFIG { #deprecated-config }
+
+| | |
+|---|---|
+| **Category** | `deprecation` |
+| **Level** | `info` |
+
+**Why.** A non-default `email_providers` config block uses the deprecated email
+subsystem, scheduled for removal in v1.0.0. The default block stays silent.
+
+**Fix.** Notify from an event handler or subscriber that calls an
+application-level notification service instead.
+
+### DEPRECATED_IMPORT { #deprecated-import }
+
+| | |
+|---|---|
+| **Category** | `deprecation` |
+| **Level** | `info` |
+
+Detected by an on-disk scan of each registered element's source module: a
+`Method` / `Nested` serializer-field call site, or a deprecated `protean.utils.*`
+plumbing name (imported by name or reached through a `protean.utils` attribute
+access). All are scheduled for removal in v1.0.0.
+
+**Why.** A deprecated import surface is scheduled for removal; code using it will
+break at the removal version.
+
+**Fix.** Remove the deprecated serializer field, or stop importing the internal
+`protean.utils` plumbing name.
 
 ---
 
