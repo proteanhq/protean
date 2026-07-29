@@ -423,10 +423,15 @@ class HandlerConfigurator:
                 continue
             for _, method in _discover_handler_methods(pm_cls):
                 target = method._target_cls
+                # Defensive: ``_setup_process_managers`` (run earlier in
+                # ``_prepare``) already rejects a PM handler whose target is not
+                # an event and one with no ``correlate``, so neither guard below
+                # can fire through init. They stay as belt-and-suspenders against
+                # a future reordering, hence the coverage pragmas.
                 if not (inspect.isclass(target) and issubclass(target, BaseEvent)):
-                    continue
+                    continue  # pragma: no cover
                 field = self._correlate_field(getattr(method, "_correlate", None))
-                if field is None:
+                if field is None:  # pragma: no cover
                     raise IncorrectUsageError(
                         f"Process Manager `{pm_cls.__name__}` sets "
                         f"`sequential_by=True` but handler for "

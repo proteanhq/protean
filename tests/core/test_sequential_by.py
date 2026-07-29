@@ -7,6 +7,8 @@ validating the partition key onto each outbox row. The consumer side (ownership
 lease, fencing, reclaim) is #831 and is deliberately out of scope here.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -17,6 +19,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
+from protean.domain.handler_setup import HandlerConfigurator
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Identifier, Integer, String
 from protean.port.broker import BrokerCapabilities
@@ -451,3 +454,81 @@ class TestUnitOfWorkKeyRejection:
 
             after = len(outbox_repo.find_unprocessed())
             assert after == before, "A rejected key must create no outbox row"
+
+
+# --- Non-partitioned handlers are skipped ------------------------------------
+
+
+class TestNonPartitionedHandlersSkipped:
+    """Handlers that do not opt into ``sequential_by`` leave the map untouched."""
+
+    def test_plain_command_handler_is_skipped(self, test_domain):
+        # A command handler with no `sequential_by` must be skipped by the
+        # partition-map build, not partition its category.
+        class PlainCommandHandler(BaseCommandHandler):
+            @handle(PlaceOrder)
+            def on_place(self, command):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(PlaceOrder, part_of=Order)
+        test_domain.register(PlainCommandHandler, part_of=Order)
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {}
+
+    def test_plain_process_manager_is_skipped(self, test_domain):
+        # A process manager without `sequential_by=True` must be skipped.
+        class PlainPM(BaseProcessManager):
+            order_id = Identifier(identifier=True)
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def on_placed(self, event):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(PlainPM)
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {}
+
+
+# --- Capability gate: no broker resolves -------------------------------------
+
+
+class TestCapabilityGateNoBroker:
+    def test_gate_returns_when_no_broker_resolves(self):
+        # With partition keys declared but neither the named nor the default
+        # broker present, the gate returns quietly instead of raising.
+        domain = _init_domain_with_partitioned_handler("CapNoBroker")
+        assert domain._partition_keys  # precondition: past the empty-map guard
+        domain.brokers._brokers.clear()
+
+        # Must not raise.
+        domain._handler_configurator.validate_sequential_by_capabilities()
+
+
+# --- Static helper edge cases ------------------------------------------------
+
+
+class TestStaticHelperEdges:
+    def test_event_published_category_none_when_part_of_unset(self):
+        # part_of is None: no aggregate, so no category can be derived.
+        ev = SimpleNamespace(meta_=SimpleNamespace(part_of=None))
+        assert HandlerConfigurator._event_published_category(ev) is None
+
+    def test_event_published_category_none_when_part_of_is_string(self):
+        # An unresolved string reference carries no meta_ to read a category off.
+        ev = SimpleNamespace(meta_=SimpleNamespace(part_of="Order"))
+        assert HandlerConfigurator._event_published_category(ev) is None
+
+    def test_correlate_field_resolves_string_and_dict(self):
+        assert HandlerConfigurator._correlate_field("order_id") == "order_id"
+        assert HandlerConfigurator._correlate_field({"pm_id": "order_id"}) == "order_id"
+
+    def test_correlate_field_none_for_none_spec(self):
+        assert HandlerConfigurator._correlate_field(None) is None
+
+    def test_correlate_field_none_for_empty_dict(self):
+        assert HandlerConfigurator._correlate_field({}) is None
