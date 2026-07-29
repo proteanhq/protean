@@ -55,7 +55,7 @@ class FlakyHandler(BaseCommandHandler):
 
 @pytest.fixture(autouse=True)
 def elements(test_domain):
-    test_domain.register(Order, is_event_sourced=True)
+    test_domain.register(Order, event_sourced=True)
     test_domain.register(Submit, part_of=Order)
     # Retry enabled with an enormous backoff so any retry would breach a
     # near-future deadline.

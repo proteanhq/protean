@@ -64,7 +64,7 @@ async def test_that_subscription_invokes_engine_handler_on_message(
 ):
     test_domain.config["event_processing"] = Processing.ASYNC.value
 
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)
     test_domain.init(traverse=False)

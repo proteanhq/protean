@@ -117,7 +117,7 @@ class TestDomainCheckWarnings:
             name: String(required=True)
 
         domain = Domain(name="ESWarnDomain", root_path=__file__)
-        domain.register(ESAggregate, is_event_sourced=True)
+        domain.register(ESAggregate, event_sourced=True)
         domain.register(ESEvent, part_of=ESAggregate)
 
         result = domain.check(traverse=False)

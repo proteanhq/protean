@@ -36,7 +36,7 @@ class TestMissingApplyValidation:
 
     def test_event_without_apply_warns_at_init(self, test_domain, caplog):
         """An ES event without an @apply handler triggers a warning."""
-        test_domain.register(Account, is_event_sourced=True)
+        test_domain.register(Account, event_sourced=True)
         test_domain.register(Deposited, part_of=Account)
         test_domain.register(Withdrawn, part_of=Account)  # No @apply for this
 
@@ -65,7 +65,7 @@ class TestMissingApplyValidation:
             def withdrawn(self, event: Withdrawn) -> None:
                 self.balance -= event.amount
 
-        test_domain.register(FullAccount, is_event_sourced=True)
+        test_domain.register(FullAccount, event_sourced=True)
         test_domain.register(Deposited, part_of=FullAccount)
         test_domain.register(Withdrawn, part_of=FullAccount)
 
@@ -100,7 +100,7 @@ class TestMissingApplyValidation:
         class OtherEvent(BaseEvent):
             name: String()
 
-        test_domain.register(Account, is_event_sourced=True)
+        test_domain.register(Account, event_sourced=True)
         test_domain.register(Deposited, part_of=Account)
         test_domain.register(OtherAggregate)
         test_domain.register(OtherEvent, part_of=OtherAggregate)
@@ -120,7 +120,7 @@ class TestMissingApplyValidation:
         class EntryRecorded(BaseEvent):
             ledger_id: Identifier()
 
-        test_domain.register(Ledger, is_event_sourced=True)
+        test_domain.register(Ledger, event_sourced=True)
         test_domain.register(EntryRecorded, part_of=Ledger)
 
         with caplog.at_level(logging.WARNING, logger="protean.domain"):
@@ -143,7 +143,7 @@ class TestMissingApplyValidation:
         class WalletCreated(BaseEvent):
             wallet_id: Identifier()
 
-        test_domain.register(Wallet, is_event_sourced=True, fact_events=True)
+        test_domain.register(Wallet, event_sourced=True, fact_events=True)
         test_domain.register(WalletCreated, part_of=Wallet)
 
         with caplog.at_level(logging.WARNING, logger="protean.domain"):

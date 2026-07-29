@@ -27,7 +27,7 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 
 
 def _register_valid(test_domain):
-    test_domain.register(Order, is_event_sourced=True)
+    test_domain.register(Order, event_sourced=True)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.upcaster(
         UpcastOrderPlacedV1ToV2,
@@ -54,7 +54,7 @@ class TestUpcasterStandardLifecycle:
         """`domain.register(UpcasterClass, ...)` works because the class
         carries `element_type`; previously it was rejected as "not a valid
         element". It lands the same registry entry as `@domain.upcaster`."""
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.register(
             UpcastOrderPlacedV1ToV2,
@@ -88,7 +88,7 @@ class TestUpcasterInIR:
     def test_upcaster_free_domain_omits_the_section(self, test_domain):
         """The section is sparse: upcaster-free domains keep a byte-identical
         IR (and checksum)."""
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
 
@@ -99,7 +99,7 @@ class TestMalformedChainReportedByCheck:
     """A malformed chain is a structured error in check(), not a crash."""
 
     def test_duplicate_chain_is_a_structured_error(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
 
         class UpcastA(BaseUpcaster):
@@ -142,7 +142,7 @@ class TestMalformedChainReportedByCheck:
         """A second check() on a malformed domain reports the same single error,
         not a doubled/misleading one — the chain build must not accumulate
         state across calls."""
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
 
         class UpcastA(BaseUpcaster):
@@ -176,7 +176,7 @@ class TestMalformedChainReportedByCheck:
     def test_string_event_type_resolves_for_a_registered_event(self, test_domain):
         """A string event_type resolves by name to the registered event (a
         forward reference), building the chain with no error."""
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
 
         class UpcastByName(BaseUpcaster):
@@ -201,7 +201,7 @@ class TestMalformedChainReportedByCheck:
         """A string event_type naming an unregistered event fails cleanly via
         the unreachable-terminal check — a structured error, not an
         `AttributeError` crash."""
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
 
         class UpcastByName(BaseUpcaster):
             def upcast(self, data):

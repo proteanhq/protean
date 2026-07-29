@@ -14,7 +14,7 @@ class User(BaseAggregate):
 class TestEventSourcedAggregateEquivalence:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.init(traverse=False)
 
     def test_event_sourced_aggregate_are_not_equivalent_based_on_data(test_domain):
@@ -42,7 +42,7 @@ class TestEventSourcedAggregateEquivalence:
 
 
 def test_event_sourced_aggregate_hash(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
 
     user1 = User(name="John Doe", age=25)
     assert hash(user1) == hash(user1.id)

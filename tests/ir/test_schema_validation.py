@@ -92,7 +92,7 @@ class TestGeneratedIRValidation:
 class TestExampleFileValidation:
     """Validate shipped example IR files against the JSON Schema."""
 
-    @pytest.mark.parametrize("example_path", _example_files())
+    @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_validates_against_schema(self, schema, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
         try:

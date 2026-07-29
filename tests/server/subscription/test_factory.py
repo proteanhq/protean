@@ -108,7 +108,7 @@ def engine(test_domain):
     # Set default subscription type to STREAM for testing default behavior
     test_domain.config["server"]["default_subscription_type"] = "stream"
 
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(RegisterUser, part_of=User)
 
@@ -301,7 +301,7 @@ class TestSubscriptionFactoryWithServerConfig:
             "default_subscription_type": "event_store",
         }
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -322,7 +322,7 @@ class TestSubscriptionFactoryWithServerConfig:
             "default_subscription_profile": "batch",
         }
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -347,7 +347,7 @@ class TestSubscriptionFactoryWithServerConfig:
             }
         }
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         test_domain.register(UserEventHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -371,7 +371,7 @@ class TestSubscriptionFactoryWithServerConfig:
             "messages_per_tick": 200,
         }
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         # Register with explicit subscription_type to override server config
         test_domain.register(
@@ -551,7 +551,7 @@ class TestSubscriptionFactoryConfigResolution:
             }
         }
 
-        test_domain.register(User, is_event_sourced=True)
+        test_domain.register(User, event_sourced=True)
         test_domain.register(UserRegistered, part_of=User)
         # Register handler with subscription_profile and subscription_config
         # These should take highest priority over server config

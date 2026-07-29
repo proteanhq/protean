@@ -89,7 +89,7 @@ class Metrics(BaseEventHandler):
 
 @pytest.mark.eventstore
 def test_nested_uow_processing(test_domain):
-    test_domain.register(Post, is_event_sourced=True)
+    test_domain.register(Post, event_sourced=True)
     test_domain.register(Create, part_of=Post)
     test_domain.register(Created, part_of=Post)
     test_domain.register(Published, part_of=Post)

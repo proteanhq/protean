@@ -32,7 +32,7 @@ class WithdrawalMade:
 
 # --8<-- [end:account_events]
 # --8<-- [start:account_aggregate]
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     account_number: String(max_length=20, required=True)
     holder_name: String(max_length=100, required=True)
@@ -169,7 +169,7 @@ class TransferFailed:
 
 # --8<-- [end:transfer_events]
 # --8<-- [start:transfer_aggregate]
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Transfer:
     source_account_id: String(max_length=50, required=True)
     destination_account_id: String(max_length=50, required=True)

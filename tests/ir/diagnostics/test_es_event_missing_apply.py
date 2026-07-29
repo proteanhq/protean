@@ -25,7 +25,7 @@ class TestEsEventMissingApply:
         class FundsAdded:
             amount = Float(required=True)
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Wallet:
             balance = Float(default=0.0)
 
@@ -71,7 +71,7 @@ class TestEsEventMissingApply:
         class AccountOpened:
             holder = String(required=True)
 
-        @domain.aggregate(is_event_sourced=True, fact_events=True)
+        @domain.aggregate(event_sourced=True, fact_events=True)
         class Account:
             holder = String(max_length=100, required=True)
 
@@ -94,7 +94,7 @@ class TestEsEventMissingApply:
         class EntryAdded:
             amount = Float(required=True)
 
-        @domain.aggregate(is_event_sourced=True)
+        @domain.aggregate(event_sourced=True)
         class Ledger:
             total = Float(default=0.0)
 

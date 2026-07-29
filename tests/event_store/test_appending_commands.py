@@ -22,7 +22,7 @@ class Register(BaseCommand):
 
 
 def test_command_submission_without_aggregate(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.init(traverse=False)
 
     with pytest.raises(IncorrectUsageError) as exc:
@@ -36,7 +36,7 @@ def test_command_submission_without_aggregate(test_domain):
 
 @pytest.mark.eventstore
 def test_command_submission(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.init(traverse=False)
 

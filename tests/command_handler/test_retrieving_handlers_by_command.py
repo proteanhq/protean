@@ -58,11 +58,11 @@ class PostCommandHandler(BaseCommandHandler):
 
 
 def test_retrieving_handler_by_command(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(ChangeAddress, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
-    test_domain.register(Post, is_event_sourced=True)
+    test_domain.register(Post, event_sourced=True)
     test_domain.register(Create, part_of=Post)
     test_domain.register(PostCommandHandler, part_of=Post)
     test_domain.init(traverse=False)
@@ -74,7 +74,7 @@ def test_retrieving_handler_by_command(test_domain):
 def test_for_no_errors_when_no_handler_method_has_not_been_defined_for_a_command(
     test_domain,
 ):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(ChangeAddress, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
@@ -94,7 +94,7 @@ def test_retrieving_handlers_for_unknown_command(test_domain):
 
 
 def test_error_on_defining_multiple_handlers_for_a_command(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.register(AdminUserCommandHandlers, part_of=User)
@@ -111,7 +111,7 @@ def test_error_on_defining_multiple_handlers_for_a_command(test_domain):
 def test_duplicate_command_handlers_reported_by_check(test_domain):
     """The collision is also surfaced by `domain.check()` / `protean check`,
     via `validate_all()`, rather than only the fail-fast `init()` path."""
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandlers, part_of=User)
     test_domain.register(AdminUserCommandHandlers, part_of=User)

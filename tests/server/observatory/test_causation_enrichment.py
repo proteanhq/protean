@@ -53,7 +53,7 @@ class User(BaseAggregate):
     name = String(required=True)
 
     class Meta:
-        is_event_sourced = True
+        event_sourced = True
 
 
 # ---------------------------------------------------------------------------

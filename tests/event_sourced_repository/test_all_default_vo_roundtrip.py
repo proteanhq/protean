@@ -66,7 +66,7 @@ def register_elements(test_domain):
     # build their own domain.
     if test_domain is None:
         return
-    test_domain.register(InventoryItem, is_event_sourced=True)
+    test_domain.register(InventoryItem, event_sourced=True)
     test_domain.register(StockInitialized, part_of=InventoryItem)
     test_domain.init(traverse=False)
 
@@ -94,7 +94,7 @@ def _make_messagedb_domain():
         "provider": "message_db",
         "database_uri": MESSAGE_DB_URI,
     }
-    domain.register(InventoryItem, is_event_sourced=True)
+    domain.register(InventoryItem, event_sourced=True)
     domain.register(StockInitialized, part_of=InventoryItem)
     domain.init(traverse=False)
     return domain

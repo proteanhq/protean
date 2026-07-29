@@ -62,7 +62,7 @@ class UpcastAccountOpenedV1ToV2(BaseUpcaster):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(Account, is_event_sourced=True)
+    test_domain.register(Account, event_sourced=True)
     test_domain.register(AccountOpened, part_of=Account)
     test_domain.register(AccountCredited, part_of=Account)
     test_domain.upcaster(

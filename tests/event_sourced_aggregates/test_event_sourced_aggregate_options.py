@@ -20,9 +20,9 @@ class Person(BaseAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
-    test_domain.register(AdminUser, is_event_sourced=True)
-    test_domain.register(Person, is_event_sourced=True, stream_category="people")
+    test_domain.register(User, event_sourced=True)
+    test_domain.register(AdminUser, event_sourced=True)
+    test_domain.register(Person, event_sourced=True, stream_category="people")
 
 
 def test_stream_category_option_of_an_event_sourced_aggregate():
@@ -38,14 +38,14 @@ def test_stream_category_option_of_an_event_sourced_aggregate():
 def test_stream_category_option_of_an_event_sourced_aggregate_defined_via_annotation(
     test_domain,
 ):
-    @test_domain.aggregate(is_event_sourced=True)
+    @test_domain.aggregate(event_sourced=True)
     class Adult(BaseAggregate):
         name: String()
         age: Integer()
 
     assert Adult.meta_.stream_category == "test::adult"
 
-    @test_domain.aggregate(is_event_sourced=True, stream_category="children")
+    @test_domain.aggregate(event_sourced=True, stream_category="children")
     class Child(BaseAggregate):
         name: String()
         age: Integer()

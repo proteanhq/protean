@@ -59,7 +59,7 @@ class UserCommandHandler(BaseCommandHandler):
 @pytest.fixture
 def engine(test_domain):
     """Create an engine for testing."""
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(RegisterUser, part_of=User)
     test_domain.register(UserEventHandler, part_of=User)

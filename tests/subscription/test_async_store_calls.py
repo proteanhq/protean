@@ -52,7 +52,7 @@ class EmailEventHandler(BaseEventHandler):
 def register_elements(test_domain):
     test_domain.config["event_processing"] = Processing.ASYNC.value
 
-    test_domain.register(Email, is_event_sourced=True)
+    test_domain.register(Email, event_sourced=True)
     test_domain.register(Sent, part_of=Email)
     test_domain.register(EmailEventHandler, stream_category="email")
     test_domain.init(traverse=False)

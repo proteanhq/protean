@@ -151,7 +151,7 @@ class TestCreateArtifactsEventSourcedFilter:
 
         # Register a regular aggregate and an event-sourced aggregate with entity
         domain.register(Person)
-        domain.register(ESOrder, is_event_sourced=True)
+        domain.register(ESOrder, event_sourced=True)
         domain.register(ESLineItem, part_of=ESOrder)
         domain.init(traverse=False)
 

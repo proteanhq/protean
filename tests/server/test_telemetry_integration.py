@@ -225,7 +225,7 @@ def register_elements(test_domain):
     test_domain.register(FailingRegisterCustomer, part_of=Customer)
     test_domain.register(FailingCustomerHandler, part_of=Customer)
     test_domain.register(CustomerEventHandler, part_of=Customer)
-    test_domain.register(Wallet, is_event_sourced=True)
+    test_domain.register(Wallet, event_sourced=True)
     test_domain.register(WalletCreated, part_of=Wallet)
     test_domain.register(CreateWallet, part_of=Wallet)
     test_domain.register(WalletCommandHandler, part_of=Wallet)

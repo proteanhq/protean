@@ -46,7 +46,7 @@ class Leaderboard(BaseProjection):
 
 def _register_order_cluster(domain, *, event_sourced: bool) -> None:
     """Register the Order → LineItem → SubLineItem cluster on ``domain``."""
-    domain.register(Order, is_event_sourced=event_sourced)
+    domain.register(Order, event_sourced=event_sourced)
     domain.register(LineItem, part_of=Order)
     domain.register(SubLineItem, part_of=LineItem)
     domain.init(traverse=False)

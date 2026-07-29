@@ -50,7 +50,7 @@ class AllHandler(BaseEventHandler):
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.config["event_processing"] = Processing.ASYNC.value
-    test_domain.register(Thing, is_event_sourced=True)
+    test_domain.register(Thing, event_sourced=True)
     test_domain.register(Pinged, part_of=Thing)
     test_domain.register(AllHandler, stream_category="$all")
     test_domain.init(traverse=False)

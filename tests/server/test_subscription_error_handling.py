@@ -105,7 +105,7 @@ def test_domain_setup(test_domain):
     # Set up the domain with our test classes
     test_domain.config["event_processing"] = Processing.ASYNC.value
 
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(ErrorHandlerEventHandler, part_of=User)
     test_domain.register(ErrorInErrorHandlerEventHandler, part_of=User)

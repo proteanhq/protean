@@ -56,7 +56,7 @@ class Account(BaseAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(Account, is_event_sourced=True)
+    test_domain.register(Account, event_sourced=True)
     test_domain.register(AccountCreated, part_of=Account)
     test_domain.register(FundsDeposited, part_of=Account)
     test_domain.register(FundsWithdrawn, part_of=Account)

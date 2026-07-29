@@ -55,7 +55,7 @@ class FailingCommandHandler(BaseCommandHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Register, part_of=User)
     test_domain.register(Activate, part_of=User)
     test_domain.register(Deactivate, part_of=User)

@@ -173,7 +173,7 @@ def reset_counters():
 @pytest.fixture(autouse=True)
 def register(test_domain):
     """Setup a domain with our robustness test classes"""
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(SyncRegistered, part_of=User)
     test_domain.register(EmailSent, part_of=User)

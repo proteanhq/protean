@@ -74,11 +74,11 @@ class Email(BaseAggregate):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(UserRegistered, part_of=User)
     test_domain.register(UserActivated, part_of=User)
     test_domain.register(UserRenamed, part_of=User)
-    test_domain.register(Email, is_event_sourced=True)
+    test_domain.register(Email, event_sourced=True)
 
 
 @pytest.mark.eventstore
@@ -92,7 +92,7 @@ def test_that_event_is_associated_with_aggregate():
 def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_error(
     test_domain,
 ):
-    test_domain.register(Email, is_event_sourced=True)
+    test_domain.register(Email, event_sourced=True)
     with pytest.raises(IncorrectUsageError) as exc:
         test_domain.init(traverse=False)
 

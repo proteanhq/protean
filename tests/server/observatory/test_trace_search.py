@@ -51,7 +51,7 @@ class User(BaseAggregate):
     name = String(required=True)
 
     class Meta:
-        is_event_sourced = True
+        event_sourced = True
 
 
 class OrderPlaced(BaseEvent):
@@ -64,7 +64,7 @@ class Order(BaseAggregate):
     total = String(required=True)
 
     class Meta:
-        is_event_sourced = True
+        event_sourced = True
 
 
 # ---------------------------------------------------------------------------

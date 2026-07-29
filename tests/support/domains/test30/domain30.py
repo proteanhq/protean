@@ -12,7 +12,7 @@ from protean.fields import String
 domain = Domain(name="TEST30")
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     name = String(max_length=100)
 

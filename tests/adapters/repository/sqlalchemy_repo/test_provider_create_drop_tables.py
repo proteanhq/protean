@@ -103,7 +103,7 @@ def test_create_artifacts_skips_event_sourced_aggregates():
     domain.register(Person)
 
     # Register an event-sourced aggregate and its entity
-    domain.register(ESOrder, is_event_sourced=True)
+    domain.register(ESOrder, event_sourced=True)
     domain.register(ESLineItem, part_of=ESOrder)
     domain.init(traverse=False)
 

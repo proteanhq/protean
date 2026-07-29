@@ -35,7 +35,7 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 class TestUpcasterRegistration:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.upcaster(
             UpcastOrderPlacedV1ToV2,
@@ -66,7 +66,7 @@ class TestUpcasterRegistration:
 
 class TestUpcasterRegistrationWithDecorator:
     def test_decorator_with_options(self, test_domain):
-        test_domain.register(Order, is_event_sourced=True)
+        test_domain.register(Order, event_sourced=True)
         test_domain.register(OrderPlaced, part_of=Order)
 
         @test_domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)

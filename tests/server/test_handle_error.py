@@ -198,7 +198,7 @@ def register(test_domain):
     test_domain.config["command_processing"] = Processing.ASYNC.value
 
     # Register elements
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(Registered, part_of=User)
     test_domain.register(Register, part_of=User)
     test_domain.register(RegisterWithError, part_of=User)

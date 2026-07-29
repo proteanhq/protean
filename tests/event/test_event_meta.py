@@ -19,7 +19,7 @@ class UserLoggedIn(BaseEvent):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
-    test_domain.register(User, is_event_sourced=True)
+    test_domain.register(User, event_sourced=True)
     test_domain.register(UserLoggedIn, part_of=User)
     test_domain.init(traverse=False)
 
