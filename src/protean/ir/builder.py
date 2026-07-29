@@ -22,6 +22,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from protean._deprecation import DEPRECATIONS
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index, RawIndex
 from protean.exceptions import ConfigurationError
@@ -38,7 +39,7 @@ from protean.ir.analysis import (
     SourceProvider,
 )
 from protean.ir.constants import VOLATILE_IR_KEYS
-from protean.utils import fqn
+from protean.utils import _DEPRECATED_PLUMBING, fqn
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils.upcasting import (
@@ -475,6 +476,13 @@ class IRBuilder:
         # Deprecated — from FieldSpec
         if spec is not None and getattr(spec, "deprecated", None) is not None:
             entry["deprecated"] = spec.deprecated
+
+        # Deprecated ``pickled=`` on ``List`` — the residue marker the ``List``
+        # factory leaves on the spec (see ``fields/containers.py``). Surfaced as
+        # a sparse flag so ``_check_element_deprecated`` can emit a
+        # ``DEPRECATED_FIELD`` diagnostic without re-reading source.
+        if spec is not None and getattr(spec, "_pickled_deprecated", False):
+            entry["deprecated_pickled"] = True
 
         # Default — from FieldSpec for accurate representation
         if spec is not None:
@@ -1662,6 +1670,8 @@ class IRBuilder:
         self._diagnose_deprecated_elements(ir)
         self._diagnose_deprecated_options(ir)
         self._diagnose_email_deprecated(ir)
+        self._diagnose_email_config_deprecated(ir)
+        self._diagnose_deprecated_imports(ir)
         self._diagnose_aggregate_no_invariants(ir)
         self._diagnose_event_not_past_tense(ir)
         self._diagnose_command_not_imperative(ir)
@@ -3504,6 +3514,38 @@ class IRBuilder:
                     }
                 )
 
+            # Deprecated ``pickled=`` argument on a ``List`` field. The argument
+            # is inert (it never had an effect); this only nudges the user to
+            # drop it before the removal version.
+            if field_info.get("deprecated_pickled"):
+                p_removal = DEPRECATIONS["list_pickled"].removal
+                p_rule = {
+                    "rationale": (
+                        "The `pickled` argument on `List` is a dead legacy flag "
+                        "with no effect; it is scheduled for removal."
+                    ),
+                    "fix": (
+                        f"Remove the `pickled=` argument from `{name}.{field_name}`; "
+                        f"it has no effect."
+                    ),
+                }
+                self._diagnostics.append(
+                    {
+                        "category": "deprecation",
+                        "code": "DEPRECATED_FIELD",
+                        "element": fqn_val,
+                        "field": field_name,
+                        "level": "info",
+                        "message": (
+                            f"Field `{name}.{field_name}` uses the deprecated "
+                            f"`pickled=` argument on `List`, scheduled for removal "
+                            f"in v{p_removal}; it has no effect."
+                        ),
+                        "rule": p_rule,
+                        "suggestion": p_rule["fix"],
+                    }
+                )
+
         # Option-level deprecation (currently only commands passed the event-only
         # ``published`` option). Warning-level: unlike a still-functional
         # deprecated element, the option is inert today and becomes a hard
@@ -3542,6 +3584,7 @@ class IRBuilder:
         alias, e.g. ``is_event_sourced=`` instead of ``event_sourced=``.
         """
         registry = self._domain._domain_registry
+        removal = DEPRECATIONS["is_event_sourced_alias"].removal
         for record in registry._elements.get("AGGREGATE", {}).values():
             # Read the class's own attribute (not an inherited one) so a
             # subclass of an alias-using aggregate is not wrongly flagged.
@@ -3560,8 +3603,8 @@ class IRBuilder:
                         "element": fqn(record.cls),
                         "level": "info",
                         "message": (
-                            f"Option `{option}` is deprecated; "
-                            f"use `event_sourced` instead."
+                            f"Option `{option}` is deprecated, scheduled for "
+                            f"removal in v{removal}; use `event_sourced` instead."
                         ),
                         "rule": rule,
                         "suggestion": rule["fix"],
@@ -3611,6 +3654,204 @@ class IRBuilder:
                     "suggestion": rule["fix"],
                 }
             )
+
+    def _diagnose_email_config_deprecated(self, ir: dict[str, Any]) -> None:
+        """DEPRECATED_CONFIG: a non-default ``email_providers`` config block.
+
+        The email subsystem is deprecated, removed at v1.0.0. ``load_config``
+        warns once at bootstrap, but that warning is transient; ``check`` reads
+        the live ``email_providers`` config off the domain and re-surfaces it as
+        an INFO-level diagnostic. The equality guard mirrors ``load_config``'s:
+        the default block (always present via ``_deep_merge``) stays silent, so
+        only an operator-configured block is flagged.
+        """
+        # Local import: ``protean.domain`` imports this module (``protean.ir``),
+        # so a module-level import would be circular.
+        from protean.domain.config import _default_config  # noqa: PLC0415
+
+        configured = self._domain.config.get("email_providers")
+        if configured == _default_config()["email_providers"]:
+            return
+
+        entry = DEPRECATIONS["email_providers_config"]
+        alternative = entry.alternative or ""
+        rule = {
+            "rationale": (
+                "The email subsystem is deprecated and scheduled for removal in v1.0.0."
+            ),
+            "fix": alternative,
+        }
+        self._diagnostics.append(
+            {
+                "category": "deprecation",
+                "code": "DEPRECATED_CONFIG",
+                "element": "email_providers",
+                "level": "info",
+                "message": (
+                    f"The `email_providers` config block uses the deprecated "
+                    f"email subsystem, scheduled for removal in v{entry.removal}. "
+                    f"{alternative}"
+                ),
+                "rule": rule,
+                "suggestion": rule["fix"],
+            }
+        )
+
+    def _diagnose_deprecated_imports(self, ir: dict[str, Any]) -> None:
+        """DEPRECATED_IMPORT: a registered element's source module uses a
+        deprecated import surface that leaves no IR trace.
+
+        Two surfaces, both removed at v1.0.0 and invisible to the IR field walk
+        (serializer field types are not projected into the IR; the
+        ``protean.utils`` shims live only in source):
+
+        - ``Method`` / ``Nested`` serializer field *call sites* bound to a
+          module-level ``from protean.fields import ...`` (a bare, unused import
+          is not flagged — the call is the usage), or a ``protean.fields.Method``
+          attribute call.
+        - deprecated ``protean.utils.*`` plumbing names, imported by name
+          (``from protean.utils import generate_identity``) or reached through a
+          ``protean.utils`` attribute access.
+
+        On-disk AST scan (like :meth:`_diagnose_infra_imports`): reuses the
+        shared source provider's parse-once cache and its fail-open contract — an
+        unreadable or unparseable module yields no tree and is skipped. Runs by
+        default (unlike the opt-in infra scan): detecting active deprecations is
+        the point of the rule, not an optional lint.
+
+        Scope: only modules that host a registered element are scanned (the same
+        element-oriented boundary as ``_diagnose_infra_imports``), so a
+        deprecated use in a plain helper module with no registered class is not
+        seen. A deprecated import is a module-level fact, so the diagnostic is
+        emitted once per ``(module, symbol)`` and attributed to the module — not
+        once per element sharing it — to avoid N copies for a module with N
+        registered classes.
+        """
+        removal = DEPRECATIONS["method_field"].removal  # all three share 1.0.0
+
+        # Collect the distinct source modules that host a non-internal registered
+        # element. A module-level import is one fact regardless of how many
+        # elements live in the module, so dedupe on the module here.
+        registry = self._domain._domain_registry
+        modules: set[str] = set()
+        for records in registry._elements.values():
+            for record in records.values():
+                if record.internal:
+                    continue
+                module = getattr(record.cls, "__module__", None)
+                if module:
+                    modules.add(module)
+
+        for module in sorted(modules):
+            tree = self.source.tree(module)
+            uses = self._find_deprecated_import_uses(tree) if tree is not None else []
+            for kind, symbol in uses:
+                if kind == "field":
+                    message = (
+                        f"`{symbol}` is a deprecated serializer field type, "
+                        f"scheduled for removal in v{removal}. Serializer fields "
+                        f"are no longer supported."
+                    )
+                    fix = f"Remove the `{symbol}` field; serializer fields are gone."
+                else:  # "util"
+                    message = (
+                        f"`{symbol}` is deprecated internal plumbing, scheduled "
+                        f"for removal in v{removal}. It has no public replacement."
+                    )
+                    fix = f"Stop importing `{symbol}`; it is internal plumbing."
+                rule = {
+                    "rationale": (
+                        "A deprecated import surface is scheduled for removal; "
+                        "code using it will break at the removal version."
+                    ),
+                    "fix": fix,
+                }
+                self._diagnostics.append(
+                    {
+                        "category": "deprecation",
+                        "code": "DEPRECATED_IMPORT",
+                        "element": module,
+                        "level": "info",
+                        "message": message,
+                        "rule": rule,
+                        "suggestion": fix,
+                    }
+                )
+
+    @staticmethod
+    def _find_deprecated_import_uses(tree: ast.Module) -> list[tuple[str, str]]:
+        """Return deterministic ``(kind, symbol)`` pairs for each deprecated
+        import surface used in a module.
+
+        ``kind`` is ``"field"`` (a ``Method``/``Nested`` call) or ``"util"`` (a
+        deprecated ``protean.utils`` name).
+
+        The two paths differ in scope. The ``field`` path matches a call against
+        names bound by a *module-level* ``from protean.fields import ...``, so a
+        ``Method``/``Nested`` imported inside a function body is not attributed to
+        the module. The ``util`` path uses :func:`ast.walk`, so a
+        ``from protean.utils import <name>`` or a ``protean.utils.<name>`` access
+        at any scope (including inside a function) is flagged.
+
+        A whole-module ``import protean.fields as pf`` / ``import protean.utils
+        as u`` binds the module to a local alias; ``module_aliases`` resolves that
+        alias back to its dotted path so ``pf.Method(...)`` / ``u.<name>`` are
+        matched the same as the unaliased spelling.
+        """
+        field_modules = {"protean.fields", "protean.fields.basic"}
+        deprecated_fields = {"Method", "Nested"}
+        plumbing = set(_DEPRECATED_PLUMBING)
+
+        # Whole-module import aliases: `import protean.fields as pf` binds
+        # `pf` -> `protean.fields`.
+        module_aliases: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname:
+                        module_aliases[alias.asname] = alias.name
+
+        def _dotted(node: ast.AST) -> str | None:
+            """Dotted name of an attribute/name chain, or ``None`` if impure."""
+            if isinstance(node, ast.Name):
+                return module_aliases.get(node.id, node.id)
+            if isinstance(node, ast.Attribute):
+                base = _dotted(node.value)
+                return f"{base}.{node.attr}" if base is not None else None
+            return None
+
+        # Module-level names bound to protean.fields' Method/Nested.
+        field_aliases: dict[str, str] = {}  # local name -> canonical
+        for stmt in tree.body:
+            if isinstance(stmt, ast.ImportFrom) and stmt.module in field_modules:
+                for alias in stmt.names:
+                    if alias.name in deprecated_fields:
+                        field_aliases[alias.asname or alias.name] = alias.name
+
+        found: set[tuple[str, str]] = set()
+        for node in ast.walk(tree):
+            # ``from protean.utils import <plumbing-name>`` — the import itself
+            # is the deprecated access (it fires ``__getattr__`` at runtime).
+            if isinstance(node, ast.ImportFrom) and node.module == "protean.utils":
+                for alias in node.names:
+                    if alias.name in plumbing:
+                        found.add(("util", f"protean.utils.{alias.name}"))
+            # ``protean.utils.<plumbing-name>`` attribute access.
+            elif isinstance(node, ast.Attribute) and node.attr in plumbing:
+                if _dotted(node.value) == "protean.utils":
+                    found.add(("util", f"protean.utils.{node.attr}"))
+            # ``Method(...)`` / ``Nested(...)`` call bound to a module import, or
+            # a ``protean.fields.Method(...)`` attribute call.
+            elif isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id in field_aliases:
+                    found.add(("field", field_aliases[func.id]))
+                elif isinstance(func, ast.Attribute) and func.attr in deprecated_fields:
+                    base = _dotted(func.value)
+                    if base in field_modules:
+                        found.add(("field", func.attr))
+
+        return sorted(found)
 
     def _diagnose_aggregate_no_invariants(self, ir: dict[str, Any]) -> None:
         """AGGREGATE_NO_INVARIANTS: an aggregate with no pre/post invariants,

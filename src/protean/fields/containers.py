@@ -7,7 +7,7 @@ import types as _types
 import typing
 from typing import TYPE_CHECKING, Any, cast
 
-from protean._deprecation import warn_deprecated
+from protean._deprecation import warn_from_registry
 from protean.exceptions import ValidationError
 from protean.fields.embedded import ValueObject as VODescriptor
 from protean.fields.spec import FieldSpec
@@ -28,16 +28,15 @@ def List(  # pyright: ignore[reportRedeclaration]
     - A plain type: ``List(int)`` → ``list[int]``
     - ``None``: ``List()`` → ``list`` (untyped)
 
-    The ``pickled`` flag is a dead legacy parameter — it is accepted but never
-    forwarded to the resulting ``FieldSpec`` and has no effect. It is deprecated
-    and will be removed in v1.0.0.
+    The ``pickled`` flag is a dead legacy parameter: it is accepted but has no
+    effect on the resulting ``FieldSpec``. It is deprecated and will be removed
+    in v1.0.0. When passed, a ``_pickled_deprecated`` marker is left on the
+    returned spec so ``protean check`` can surface the usage statically (the
+    runtime warning below only fires once, at declaration time, and leaves no
+    trace the IR builder could read at check time).
     """
     if pickled is not _PICKLED_UNSET:
-        warn_deprecated(
-            "The `pickled` argument on `List`",
-            removal="1.0.0",
-            alternative="It has no effect.",
-        )
+        warn_from_registry("list_pickled", "The `pickled` argument on `List`")
 
     # If content_type is a FieldSpec factory function (e.g. ``Integer`` rather
     # than ``Integer()``), call it to obtain a FieldSpec instance.
@@ -75,7 +74,14 @@ def List(  # pyright: ignore[reportRedeclaration]
     if "default" not in kwargs and not kwargs.get("required", False):
         kwargs["default"] = list  # Will become default_factory=list
 
-    return FieldSpec(python_type, content_type=content_type, **kwargs)
+    spec = FieldSpec(python_type, content_type=content_type, **kwargs)
+    if pickled is not _PICKLED_UNSET:
+        # Durable residue of the deprecated ``pickled=`` usage. The value still
+        # has no effect; this internal marker only lets the IR builder emit a
+        # ``DEPRECATED_FIELD`` diagnostic for it. Not part of FieldSpec's public
+        # behavior (it is absent unless ``pickled=`` was passed).
+        spec._pickled_deprecated = True
+    return spec
 
 
 def Dict(  # pyright: ignore[reportRedeclaration]

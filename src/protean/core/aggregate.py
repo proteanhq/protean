@@ -13,7 +13,7 @@ from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
 from pydantic_core import PydanticUndefined
 
-from protean._deprecation import warn_deprecated
+from protean._deprecation import warn_deprecated, warn_from_registry
 from protean.core.entity import BaseEntity, _EntityState
 from protean.core.event import BaseEvent
 from protean.core.value_object import value_object_from_entity
@@ -638,10 +638,9 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     # entry points get the alias handling.
     alias_used = "is_event_sourced" in opts
     if alias_used:
-        warn_deprecated(
+        warn_from_registry(
+            "is_event_sourced_alias",
             "`is_event_sourced`",
-            removal="1.0.0",
-            alternative="Use `event_sourced` instead.",
             stacklevel=3,
         )
     if "event_sourced" in opts:

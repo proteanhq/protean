@@ -84,7 +84,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
-from protean._deprecation import deprecated
+from protean._deprecation import deprecated_from_registry
 from protean.core.process_manager import (
     BaseProcessManager,
     _resolve_correlation_value,
@@ -1384,10 +1384,7 @@ def get_generic_test_dir() -> Path:
 # minor versions). Prefer ``pytest.raises(ValidationError, match=...)``.
 
 
-@deprecated(
-    removal="0.18.0",
-    alternative="Use pytest.raises(ValidationError, match=...) instead.",
-)
+@deprecated_from_registry("assert_invalid")
 def assert_invalid(
     operation: Callable[[], Any],
     *,
@@ -1423,7 +1420,7 @@ def assert_invalid(
     raise AssertionError("Expected ValidationError but no exception was raised")
 
 
-@deprecated(removal="0.18.0", alternative="Call the operation directly instead.")
+@deprecated_from_registry("assert_valid")
 def assert_valid(operation: Callable[[], Any]) -> Any:
     """Assert that an operation completes without raising a ``ValidationError``.
 

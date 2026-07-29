@@ -2,7 +2,7 @@ from typing import Any, ClassVar, TypeVar, cast
 
 from pydantic import ValidationError as PydanticValidationError
 
-from protean._deprecation import warn_deprecated
+from protean._deprecation import warn_from_registry
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -262,13 +262,9 @@ def command_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]
     deprecated_used: list[str] = []
     for opt in _DEPRECATED_COMMAND_OPTIONS:
         if opt in opts:
-            warn_deprecated(
+            warn_from_registry(
+                "command_published_option",
                 f"The `{opt}` option on a command",
-                removal="1.0.0",
-                alternative=(
-                    "Commands are internal to the bounded context; only events "
-                    "are published. It has no effect."
-                ),
             )
             opts.pop(opt)
             deprecated_used.append(opt)

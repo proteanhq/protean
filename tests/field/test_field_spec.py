@@ -386,13 +386,21 @@ class TestListPickledDeprecation:
         ):
             spec = List(pickled=True)
 
-        # The kwarg is ignored, not fatal — a usable list spec is returned...
+        # The kwarg's value is ignored, not fatal — a usable list spec is
+        # returned...
         assert isinstance(spec, FieldSpec)
-        # ...and, crucially, it is *never forwarded* to the FieldSpec: the
-        # resulting spec is structurally identical to one built without it.
+        # ...and its *value* is still never forwarded: apart from an internal
+        # ``_pickled_deprecated`` marker (which `protean check` reads to emit a
+        # DEPRECATED_FIELD diagnostic), the spec is identical to one built
+        # without it. The marker has no effect on the field's behavior.
+        assert spec._pickled_deprecated is True
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            assert vars(spec) == vars(List())
+            observed = {
+                k: v for k, v in vars(spec).items() if k != "_pickled_deprecated"
+            }
+            assert observed == vars(List())
+        # No public ``pickled`` attribute leaks onto the spec.
         assert not hasattr(spec, "pickled")
 
     def test_pickled_false_is_deprecated(self):
