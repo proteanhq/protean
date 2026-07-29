@@ -348,6 +348,182 @@ class HandlerConfigurator:
 
                 element.cls._handlers[query_type].add(method)
 
+    # ------------------------------------------------------------------
+    # Partition keys (sequential_by, ADR-0028)
+    # ------------------------------------------------------------------
+
+    def validate_sequential_by(self) -> None:
+        """Validate ``sequential_by`` handlers and build the partition-key map.
+
+        Runs during ``_prepare()`` (needs no broker, so it also runs under
+        ``check()``). Enforces two of ADR-0028's registration rules and records
+        the result on the domain:
+
+        - **Field existence** — every event/command type a ``sequential_by``
+          handler handles must declare the named field (for a process manager,
+          the field its ``correlate`` spec resolves for that event).
+        - **One key per category** — a stream category can be partitioned by at
+          most one key; two handlers asking for different keys on the same
+          category is an error.
+
+        The resulting ``stream_category -> partition_key`` map is stored on
+        ``domain._partition_keys`` for the Unit of Work to read at commit. The
+        third rule (broker capability gating) needs an initialized broker and
+        runs later, in :meth:`validate_sequential_by_capabilities`.
+        """
+        registry = self._domain._domain_registry
+        # Rebuild from scratch so a re-run (re-init) does not accumulate stale
+        # entries; ``declared_by`` tracks the first declarer for conflict text.
+        partition_map: dict[str, str] = {}
+        declared_by: dict[str, str] = {}
+
+        def _record(category: str, field: str, element_name: str) -> None:
+            existing = partition_map.get(category)
+            if existing is not None and existing != field:
+                raise IncorrectUsageError(
+                    f"Stream category `{category}` is partitioned by conflicting "
+                    f"keys: `{existing}` (from `{declared_by[category]}`) and "
+                    f"`{field}` (from `{element_name}`). A category can be "
+                    f"partitioned by only one key (ADR-0028)."
+                )
+            partition_map[category] = field
+            declared_by.setdefault(category, element_name)
+
+        # Event handlers: value is a direct field name on each handled event.
+        for element in registry._elements[DomainObjects.EVENT_HANDLER.value].values():
+            handler_cls = element.cls
+            key = getattr(handler_cls.meta_, "sequential_by", None)
+            if not key:
+                continue
+            for _, method in _discover_handler_methods(handler_cls):
+                target = method._target_cls
+                if inspect.isclass(target) and issubclass(target, BaseEvent):
+                    self._assert_partition_field(target, key, handler_cls, "Event")
+                    category = self._event_published_category(target)
+                    if category is not None:
+                        _record(category, key, handler_cls.__name__)
+
+        # Command handlers: value is a direct field name on each handled command.
+        for element in registry._elements[DomainObjects.COMMAND_HANDLER.value].values():
+            handler_cls = element.cls
+            key = getattr(handler_cls.meta_, "sequential_by", None)
+            if not key:
+                continue
+            for _, method in _discover_handler_methods(handler_cls):
+                target = method._target_cls
+                if inspect.isclass(target) and issubclass(target, BaseCommand):
+                    self._assert_partition_field(target, key, handler_cls, "Command")
+            _record(handler_cls.meta_.stream_category, key, handler_cls.__name__)
+
+        # Process managers: boolean opt-in; the per-category key is the field the
+        # event's ``correlate`` spec maps to the correlation value.
+        for element in registry._elements[DomainObjects.PROCESS_MANAGER.value].values():
+            pm_cls = element.cls
+            if not getattr(pm_cls.meta_, "sequential_by", None):
+                continue
+            for _, method in _discover_handler_methods(pm_cls):
+                target = method._target_cls
+                if not (inspect.isclass(target) and issubclass(target, BaseEvent)):
+                    continue
+                field = self._correlate_field(getattr(method, "_correlate", None))
+                if field is None:
+                    raise IncorrectUsageError(
+                        f"Process Manager `{pm_cls.__name__}` sets "
+                        f"`sequential_by=True` but handler for "
+                        f"`{target.__name__}` has no usable `correlate` field "
+                        f"to partition by (ADR-0028)."
+                    )
+                self._assert_partition_field(target, field, pm_cls, "Event")
+                category = self._event_published_category(target)
+                if category is not None:
+                    _record(category, field, pm_cls.__name__)
+
+        self._domain._partition_keys = partition_map
+
+    def validate_sequential_by_capabilities(self) -> None:
+        """Gate ``sequential_by`` handlers on the broker's partitioning support.
+
+        ADR-0028 decision 8: a ``sequential_by`` handler is rejected at
+        registration when its target broker does not advertise
+        ``STREAM_PARTITIONING``. The single-threaded inline broker is the
+        no-op exception — it processes messages in submission order, so
+        ``sequential_by`` is already satisfied there and is accepted.
+
+        Runs from ``Domain.init()`` after adapters are initialized (it needs a
+        live broker), so ``check()`` — which does not initialize adapters —
+        skips it.
+        """
+        from protean.adapters.broker.inline import InlineBroker  # noqa: PLC0415
+        from protean.port.broker import BrokerCapabilities  # noqa: PLC0415
+
+        if not self._domain._partition_keys:
+            return
+
+        # The partition segment is applied where the outbox publishes, so the
+        # broker that must support partitioning is the internal outbox broker
+        # (default ``"default"``, which is also the broker handlers consume
+        # from). Fall back to the default broker if it is named differently.
+        broker_name = self._domain.config.get("outbox", {}).get("broker", "default")
+        broker = self._domain.brokers.get(broker_name) or self._domain.brokers.get(
+            "default"
+        )
+        if broker is None:
+            return
+
+        if isinstance(broker, InlineBroker):
+            return
+        if broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING):
+            return
+
+        categories = ", ".join(sorted(self._domain._partition_keys))
+        raise IncorrectUsageError(
+            f"Broker `{broker.name}` does not advertise STREAM_PARTITIONING, "
+            f"which `sequential_by` requires. Offending categories: "
+            f"{categories} (ADR-0028)."
+        )
+
+    @staticmethod
+    def _assert_partition_field(
+        target_cls: type[Any], field_name: str, element_cls: type[Any], kind: str
+    ) -> None:
+        """Raise if *target_cls* has no field named *field_name*."""
+        from protean.utils.reflection import fields  # noqa: PLC0415
+
+        if field_name not in fields(target_cls):
+            raise IncorrectUsageError(
+                f"`{element_cls.__name__}` declares "
+                f"`sequential_by='{field_name}'` but {kind} "
+                f"`{target_cls.__name__}` has no field named `{field_name}` "
+                f"(ADR-0028)."
+            )
+
+    @staticmethod
+    def _event_published_category(event_cls: type[Any]) -> str | None:
+        """Return the stream category an event is published to (its aggregate's).
+
+        Matches the category the Unit of Work reads off the event at commit, so
+        the map keys line up with the extraction lookup.
+        """
+        part_of = getattr(event_cls.meta_, "part_of", None)
+        if part_of is not None and not isinstance(part_of, str):
+            meta = getattr(part_of, "meta_", None)
+            if meta is not None:
+                return cast("str | None", getattr(meta, "stream_category", None))
+        return None
+
+    @staticmethod
+    def _correlate_field(correlate_spec: str | dict[str, str] | None) -> str | None:
+        """Resolve the event field name from a process manager's correlate spec.
+
+        A string spec names the field directly; a ``{pm_field: event_field}``
+        dict partitions by the event field it maps from.
+        """
+        if isinstance(correlate_spec, str):
+            return correlate_spec
+        if isinstance(correlate_spec, dict) and correlate_spec:
+            return next(iter(correlate_spec.values()))
+        return None
+
     @staticmethod
     def _validate_query_handler_method(
         method_name: str, method: HandlerMethod, handler_cls: type[OptionsMixin]

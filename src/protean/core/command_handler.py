@@ -64,6 +64,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate this handler is associated with. Required. |
     | ``stream_category`` | ``str`` | Read-only. Derived from the associated aggregate's stream category. |
+    | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing (ADR-0028). |
     | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
     | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
     | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
@@ -117,6 +118,11 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         ("retries", None),
         ("backoff", None),
         ("retry_exceptions", None),
+        # Partition-per-key sequential processing (ADR-0028). When set, its
+        # value is the name of a direct attribute on every command this handler
+        # handles. Validated at registration (field existence, one key per
+        # category, broker capability). ``None`` disables partitioning.
+        ("sequential_by", None),
         # Subscription configuration options
         ("subscription_type", None),  # SubscriptionType enum or None for default
         ("subscription_profile", None),  # SubscriptionProfile enum or None

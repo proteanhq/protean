@@ -3,10 +3,14 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from protean.core.unit_of_work import UnitOfWork
-from protean.port.broker import BaseBroker
+from protean.port.broker import BaseBroker, BrokerCapabilities
 from protean.utils import ensure_utc_aware
 from protean.utils.eventing import Message
-from protean.utils.outbox import Outbox, OutboxRepository
+from protean.utils.outbox import (
+    Outbox,
+    OutboxRepository,
+    invalid_partition_key_reason,
+)
 from protean.utils.telemetry import get_domain_metrics, get_tracer, set_span_error
 
 from .subscription import BaseSubscription
@@ -359,6 +363,34 @@ class OutboxProcessor(BaseSubscription):
         """
         # Start processing single message
         assert self.outbox_repo is not None, "Outbox repository not initialized"
+        assert self.broker is not None, "Broker not initialized"
+
+        # Backstop (ADR-0028 decision 3): partition keys are validated at record
+        # creation, so an invalid key on a row that reaches here is a corrupt or
+        # legacy row. It only matters when the broker actually partitions (else
+        # the key is ignored during routing); there, abandon it at once —
+        # terminal, no retry — so one bad row can never wedge the outbox behind
+        # it rather than retrying forever.
+        if message.partition_key and self.broker.has_capability(
+            BrokerCapabilities.STREAM_PARTITIONING
+        ):
+            reason = invalid_partition_key_reason(
+                message.partition_key, self._backfill_suffix
+            )
+            if reason:
+                with UnitOfWork():
+                    fresh = self.outbox_repo.get(message.id)
+                    fresh.mark_abandoned(f"Invalid partition key: {reason}")
+                    self.outbox_repo.add(fresh)
+                logger.warning(
+                    "outbox.invalid_partition_key",
+                    extra={
+                        "message_id": message.message_id[:8],
+                        "partition_key": message.partition_key,
+                        "reason": reason,
+                    },
+                )
+                return False
 
         stream_category: str = (
             message.metadata_.domain.stream_category
@@ -527,6 +559,20 @@ class OutboxProcessor(BaseSubscription):
                 if message.metadata_.domain
                 else None
             )
+
+            # Partition-per-key routing (ADR-0028). Gated on the broker
+            # advertising STREAM_PARTITIONING: under a non-partitioning broker
+            # (e.g. inline) the row still carries the key but routing is a no-op
+            # to the base category, matching "inline = no-op". Applied before the
+            # backfill suffix so a low-priority partitioned row composes as
+            # ``{category}:{key}:{backfill_suffix}`` (keys can't contain a colon,
+            # so the segment count stays unambiguous).
+            if (
+                stream_category
+                and message.partition_key
+                and self.broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
+            ):
+                stream_category = f"{stream_category}:{message.partition_key}"
 
             # Priority lanes only apply to internal processors
             if (

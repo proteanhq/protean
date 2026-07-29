@@ -81,6 +81,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     | ``part_of`` | ``type`` | The aggregate this handler is associated with. |
     | ``source_stream`` | ``str`` | Optional source stream filter for origin filtering. |
     | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. |
+    | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing (ADR-0028). |
     | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
     | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
     | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
@@ -143,6 +144,13 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         ("retries", None),
         ("backoff", None),
         ("retry_exceptions", None),
+        # Partition-per-key sequential processing (ADR-0028). When set, its
+        # value is the name of a direct attribute on every event this handler
+        # handles; the publisher routes each event to a per-key partition stream
+        # so two different events sharing that key are never processed
+        # concurrently. Validated at registration (field existence, one key per
+        # category, broker capability). ``None`` disables partitioning.
+        ("sequential_by", None),
         # Subscription configuration options
         ("subscription_type", None),  # SubscriptionType enum or None for default
         ("subscription_profile", None),  # SubscriptionProfile enum or None

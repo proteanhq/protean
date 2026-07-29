@@ -417,6 +417,13 @@ class Domain:
         # Placeholder array for resolving classes referenced by domain elements
         self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
 
+        # Partition-per-key routing map (ADR-0028): stream_category ->
+        # partition-key field name. Built by ``HandlerConfigurator`` during
+        # ``_prepare()`` from every handler that declares ``sequential_by``, and
+        # read by the Unit of Work at commit to denormalize the key onto each
+        # outbox row. Empty when no handler opts in.
+        self._partition_keys: dict[str, str] = {}
+
         # Event classes that have already emitted a raise-time deprecation
         # warning, so a deprecated event warns once per type, not per instance.
         self._deprecated_events_warned: set[type] = set()
@@ -635,6 +642,11 @@ class Domain:
         # Parse and setup handler methods in Query Handlers
         self._setup_query_handlers()
 
+        # Validate sequential_by handlers and build the partition-key map
+        # (field existence + one-key-per-category). Broker-capability gating is
+        # deferred to init() where adapters are live.
+        self._handler_configurator.validate_sequential_by()
+
         # Run fail-fast validations (skipped by check())
         if validate:
             self._validate_domain()
@@ -667,6 +679,10 @@ class Domain:
 
         # Initialize adapters after loading domain
         self._initialize()
+
+        # Gate sequential_by handlers on broker STREAM_PARTITIONING support
+        # (ADR-0028); needs live brokers, so it runs after _initialize().
+        self._handler_configurator.validate_sequential_by_capabilities()
 
         # Initialize outbox DAOs for all providers
         if self.has_outbox:

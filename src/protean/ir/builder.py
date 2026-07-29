@@ -913,6 +913,9 @@ class IRBuilder:
             entry["resilience"] = resilience
 
         entry["stream_category"] = getattr(cls.meta_, "stream_category", None)
+        sequential_by = getattr(cls.meta_, "sequential_by", None)
+        if sequential_by is not None:
+            entry["sequential_by"] = sequential_by
         entry["subscription"] = self._extract_subscription(cls)
 
         return dict(sorted(entry.items()))
@@ -947,6 +950,9 @@ class IRBuilder:
 
         entry["source_stream"] = getattr(cls.meta_, "source_stream", None)
         entry["stream_category"] = getattr(cls.meta_, "stream_category", None)
+        sequential_by = getattr(cls.meta_, "sequential_by", None)
+        if sequential_by is not None:
+            entry["sequential_by"] = sequential_by
         entry["subscription"] = self._extract_subscription(cls)
 
         return dict(sorted(entry.items()))
@@ -1299,6 +1305,9 @@ class IRBuilder:
 
         entry["stream_categories"] = sorted(getattr(cls.meta_, "stream_categories", []))
         entry["stream_category"] = getattr(cls.meta_, "stream_category", None)
+        sequential_by = getattr(cls.meta_, "sequential_by", None)
+        if sequential_by is not None:
+            entry["sequential_by"] = sequential_by
         entry["subscription"] = self._extract_subscription(cls)
 
         # Transition event

@@ -24,6 +24,53 @@ DEFAULT_LOCK_DURATION_MINUTES = 5  # How long a claim holds a processing lock
 # Matches the UnitOfWork default (``outbox_config.get("broker", "default")``).
 DEFAULT_TARGET_BROKER = "default"
 
+# Reserved stream suffix that a partition key can never equal (ADR-0028
+# decision 3). ``backfill`` is configurable via ``[server.priority_lanes]``;
+# ``dlq`` is fixed, so it lives here as the constant half of the reserved set.
+RESERVED_DLQ_TOKEN = "dlq"
+
+
+def invalid_partition_key_reason(
+    partition_key: str | None, backfill_suffix: str
+) -> str | None:
+    """Return why *partition_key* is unsafe for partition routing, else ``None``.
+
+    A partition key becomes the ``{stream_category}:{key}`` stream segment
+    (ADR-0028 decision 3 and 4), so a value that would collide with the
+    reserved lane/DLQ suffixes or the internal ``__name__`` sentinel namespace,
+    or that would break the ``category:key`` parse, is rejected. This is the
+    single source of truth shared by the Unit of Work (which validates
+    synchronously at record creation and fails the caller's operation) and the
+    outbox processor (which uses it as a publish-time backstop, abandoning
+    rather than retrying an invalid row).
+
+    Args:
+        partition_key: The candidate key value read off the event payload.
+        backfill_suffix: The configured ``[server.priority_lanes]``
+            ``backfill_suffix`` (default ``"backfill"``). Read from config, not
+            hardcoded, so a custom suffix cannot leak a colliding key.
+
+    Returns:
+        A short human-readable reason string when the key is invalid, or
+        ``None`` when the key is safe to route.
+    """
+    if not partition_key:
+        return "partition key is null or empty"
+    if ":" in partition_key:
+        return "partition key contains a colon"
+    if partition_key in (RESERVED_DLQ_TOKEN, backfill_suffix):
+        return f"partition key '{partition_key}' is a reserved lane/DLQ token"
+    if (
+        len(partition_key) >= 4
+        and partition_key.startswith("__")
+        and partition_key.endswith("__")
+    ):
+        return (
+            f"partition key '{partition_key}' uses the reserved "
+            "'__name__' sentinel form"
+        )
+    return None
+
 
 def _coerce_target_broker(value: Any) -> Any:
     """Coerce a NULL ``target_broker`` to the default broker name.
@@ -109,6 +156,14 @@ class Outbox(BaseAggregate):
     correlation_id: Annotated[str | None, Field(max_length=255)] = None
     causation_id: Annotated[str | None, Field(max_length=255)] = None
 
+    # Partition key for per-key sequential routing (ADR-0028). Denormalized
+    # off the event payload at record creation for a handler category that
+    # declares ``sequential_by``; ``None`` for non-partitioned categories. The
+    # outbox processor routes a row with this set to ``{stream_category}:{key}``
+    # when the target broker advertises ``STREAM_PARTITIONING``. Validated
+    # before it is ever stored, so it never carries a colon or a reserved token.
+    partition_key: Annotated[str | None, Field(max_length=255)] = None
+
     # Message priority for processing order
     priority: int = 0  # Higher = more important
 
@@ -139,6 +194,7 @@ class Outbox(BaseAggregate):
         max_retries: int = 3,
         sequence_number: int | None = None,
         target_broker: str = DEFAULT_TARGET_BROKER,
+        partition_key: str | None = None,
     ) -> "Outbox":
         """Create a new outbox message ready for publishing.
 
@@ -153,6 +209,9 @@ class Outbox(BaseAggregate):
             causation_id: Causation identifier (parent message's headers.id)
             max_retries: Maximum retry attempts
             sequence_number: Sequence number for ordering
+            partition_key: Per-key sequential-routing key (ADR-0028), or
+                ``None`` for a non-partitioned category. Already validated by
+                the caller (the Unit of Work) before it reaches here.
             target_broker: Name of the broker this message targets. The
                 framework's write path always passes it explicitly (the
                 configured internal broker, or an external broker name). The
@@ -176,6 +235,7 @@ class Outbox(BaseAggregate):
             max_retries=max_retries,
             sequence_number=sequence_number,
             target_broker=target_broker,
+            partition_key=partition_key,
             status=OutboxStatus.PENDING.value,
         )
 

@@ -344,6 +344,7 @@ nav:
     - Server:
       - reference/server/index.md
       - reference/server/subscription-types.md
+      - reference/server/sequential-by.md
       - reference/server/configuration.md
       - reference/server/supervisor.md
       - reference/server/observability.md
