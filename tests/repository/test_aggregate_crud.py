@@ -6,6 +6,7 @@ Validates:
 - Version tracking and optimistic concurrency
 """
 
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -13,7 +14,11 @@ from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
-from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
+from protean.exceptions import (
+    ExpectedVersionError,
+    ObjectNotFoundError,
+    TooManyObjectsError,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +120,39 @@ class TestAggregateCRUD:
 
         persisted = repo.get(person.id)
         assert persisted.age == 21
+
+    def test_get_or_none_returns_object_when_found(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe", age=30)
+        repo.add(person)
+
+        persisted = repo.get_or_none(person.id)
+        assert persisted is not None
+        assert persisted.id == person.id
+        assert persisted.first_name == "John"
+        assert persisted.last_name == "Doe"
+        assert persisted.age == 30
+
+    def test_get_or_none_returns_none_when_not_found(self, test_domain):
+        repo = test_domain.repository_for(Person)
+
+        result = repo.get_or_none("nonexistent-id")
+        assert result is None
+
+    def test_get_or_none_propagates_non_not_found_errors(self, test_domain):
+        """`get_or_none` only softens `ObjectNotFoundError`. Any other error
+        raised while looking up the identifier -- here, `TooManyObjectsError`
+        from a corrupted store with two rows sharing an id -- must still
+        propagate, not be swallowed into a `None` return."""
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe", age=30)
+        repo.add(person)
+
+        # Force the DAO to report a duplicate id, since the public API
+        # enforces id uniqueness and won't let us create one for real.
+        with patch.object(repo._dao, "get", side_effect=TooManyObjectsError("Person")):
+            with pytest.raises(TooManyObjectsError):
+                repo.get_or_none(person.id)
 
 
 # ---------------------------------------------------------------------------

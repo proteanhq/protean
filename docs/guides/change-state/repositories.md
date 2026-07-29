@@ -39,6 +39,8 @@ The default repository provides these methods:
 
 - **`add(aggregate)`** -- persist or update an aggregate.
 - **`get(identifier)`** -- retrieve an aggregate by its identity.
+- **`get_or_none(identifier)`** -- like `get()`, but return `None` instead of
+  raising when nothing matches.
 - **`find(criteria)`** -- find all aggregates matching a `Q` expression.
 - **`find_by(**kwargs)`** -- find a single aggregate by field values.
 - **`exists(criteria)`** -- check if any aggregate matches a `Q` expression.
@@ -168,6 +170,17 @@ except ObjectNotFoundError:
 ```python
 if repo.exists(Q(email="john@example.com")):
     raise ValueError("Email already taken")
+```
+
+Use `get_or_none()` when a miss is a normal outcome rather than an error, such
+as resolving an optional reference by id (for example, an order's
+`referred_by` customer id that may not exist):
+
+```python
+# Returns None instead of raising ObjectNotFoundError
+person = repo.get_or_none("nonexistent-id")
+if person is None:
+    ...
 ```
 
 For a comprehensive guide on querying, see
