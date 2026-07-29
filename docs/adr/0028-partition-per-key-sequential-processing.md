@@ -66,8 +66,10 @@ machinery are in place).
    `{category}:{key}` collides with the reserved suffixes when the key is `dlq` or
    the configured backfill suffix, and trips the group-cache reverse-parse whenever
    the key (or the `{category}:{key}` shape) contains a colon.
-5. **There is no keyspace scan.** Stream discovery walks the domain registry and
-   deliberately avoids `SCAN`/`KEYS`. Partition keys are data-driven and not in
+5. **Stream discovery does not scan the keyspace.** The broker discovers streams by
+   walking the domain registry and deliberately avoids `SCAN`/`KEYS` for that. (The
+   Redis cache adapter does use `SCAN` for its own key lookups; the point here is
+   scoped to stream and broker discovery.) Partition keys are data-driven and not in
    the registry, so registry-walking cannot enumerate them.
 6. **Routing has one choke point.** The outbox processor maps a message to its
    physical stream in one place, immediately before `broker.publish`, where the
@@ -457,8 +459,8 @@ collapsing every key onto a single worker.
 - **Discovery by keyspace scan.** The consumer runs `SCAN MATCH {category}:*` each
   cycle. Simple and needs no publisher bookkeeping, but it is only eventually
   consistent, returns reserved streams to filter out, and is the exact
-  keyspace-scan pattern the codebase refuses. Rejected in favour of the maintained
-  index.
+  keyspace-scan pattern the broker's stream discovery avoids. Rejected in favour of
+  the maintained index.
 - **Structural name escape (`{category}:__p__:{key}`).** Collision-proof for any
   key, but it still needs colon rejection to stay unambiguous, so it does not
   remove key validation, and it deepens every partition name by a segment for no
