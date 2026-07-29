@@ -164,6 +164,17 @@ class TestDAOGetFunctionality:
         with pytest.raises(ObjectNotFoundError):
             test_domain.repository_for(Person)._dao.find_by(first_name="Johnny1", age=6)
 
+    def test_repository_get_or_none_returns_object_when_found(
+        self, test_domain, persisted_person
+    ):
+        person = test_domain.repository_for(Person).get_or_none(persisted_person.id)
+        assert person is not None
+        assert person.id == persisted_person.id
+
+    def test_repository_get_or_none_returns_none_when_not_found(self, test_domain):
+        person = test_domain.repository_for(Person).get_or_none("nonexistent-id")
+        assert person is None
+
 
 @pytest.mark.basic_storage
 class TestDAOSaveFunctionality:

@@ -5,7 +5,11 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.exceptions import (
+    IncorrectUsageError,
+    NotSupportedError,
+    ObjectNotFoundError,
+)
 from protean.fields import HasMany, HasOne
 from protean.fields.tempdata import HasManyChanges, HasOneChanges
 from protean.port.dao import BaseDAO
@@ -517,6 +521,41 @@ class BaseRepository(Element, OptionsMixin):
                 item = self._dao.get(identifier)
                 self._prewarm_associations(item)
                 return item
+            except Exception as exc:
+                set_span_error(span, exc)
+                raise
+
+    def get_or_none(self, identifier: Any) -> Any:
+        """Fetch data from the persistence store by its key identifier, same as `get()`,
+        but return `None` instead of raising `ObjectNotFoundError` when nothing matches.
+
+        On a hit, the returned object has all child objects, including enclosed entities,
+        pre-warmed exactly as `get()` does. On a miss, this method returns `None` and never
+        raises `ObjectNotFoundError`. Any other error (for example `TooManyObjectsError`, or
+        a provider/connection error) still propagates.
+
+        Use `get()` instead when a missing identifier should be treated as a hard failure.
+        """
+        # Increment access log repo load counter
+        with contextlib.suppress(Exception):
+            g._access_log_repo_loads = getattr(g, "_access_log_repo_loads", 0) + 1
+
+        tracer = self._domain.tracer
+
+        with tracer.start_as_current_span(
+            "protean.repository.get_or_none",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.aggregate.type", self.meta_.part_of.__name__)
+            span.set_attribute("protean.provider", self._provider.name)
+
+            try:
+                item = self._dao.get(identifier)
+                self._prewarm_associations(item)
+                return item
+            except ObjectNotFoundError:
+                return None
             except Exception as exc:
                 set_span_error(span, exc)
                 raise

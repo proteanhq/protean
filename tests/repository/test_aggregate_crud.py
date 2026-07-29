@@ -116,6 +116,24 @@ class TestAggregateCRUD:
         persisted = repo.get(person.id)
         assert persisted.age == 21
 
+    def test_get_or_none_returns_object_when_found(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe", age=30)
+        repo.add(person)
+
+        persisted = repo.get_or_none(person.id)
+        assert persisted is not None
+        assert persisted.id == person.id
+        assert persisted.first_name == "John"
+        assert persisted.last_name == "Doe"
+        assert persisted.age == 30
+
+    def test_get_or_none_returns_none_when_not_found(self, test_domain):
+        repo = test_domain.repository_for(Person)
+
+        result = repo.get_or_none("nonexistent-id")
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # Tests: State Tracking

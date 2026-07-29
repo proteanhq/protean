@@ -161,6 +161,31 @@ class TestPrewarmOnGet:
         # Verify HasOne data
         assert post.post_meta.likes == 42
 
+    def test_has_many_and_has_one_prewarmed_after_get_or_none(
+        self, test_domain, persisted_post_with_children
+    ):
+        """get_or_none() should pre-warm associations just like get(), on a hit."""
+        post = test_domain.repository_for(Post).get_or_none(
+            persisted_post_with_children.id
+        )
+
+        assert post is not None
+
+        comments_field = Post.__dict__["comments"]
+        post_meta_field = Post.__dict__["post_meta"]
+
+        assert comments_field.is_cached(post)
+        assert post_meta_field.is_cached(post)
+
+        assert len(post.comments) == 2
+        assert post.post_meta is not None
+        assert post.post_meta.likes == 42
+
+    def test_get_or_none_returns_none_on_miss(self, test_domain):
+        """get_or_none() should return None, not raise, when nothing matches."""
+        post = test_domain.repository_for(Post).get_or_none("nonexistent-id")
+        assert post is None
+
 
 # ---------------------------------------------------------------------------
 # Tests: Pre-warm on find_by()
