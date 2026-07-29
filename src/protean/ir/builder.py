@@ -3792,15 +3792,29 @@ class IRBuilder:
         the module. The ``util`` path uses :func:`ast.walk`, so a
         ``from protean.utils import <name>`` or a ``protean.utils.<name>`` access
         at any scope (including inside a function) is flagged.
+
+        A whole-module ``import protean.fields as pf`` / ``import protean.utils
+        as u`` binds the module to a local alias; ``module_aliases`` resolves that
+        alias back to its dotted path so ``pf.Method(...)`` / ``u.<name>`` are
+        matched the same as the unaliased spelling.
         """
         field_modules = {"protean.fields", "protean.fields.basic"}
         deprecated_fields = {"Method", "Nested"}
         plumbing = set(_DEPRECATED_PLUMBING)
 
+        # Whole-module import aliases: `import protean.fields as pf` binds
+        # `pf` -> `protean.fields`.
+        module_aliases: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname:
+                        module_aliases[alias.asname] = alias.name
+
         def _dotted(node: ast.AST) -> str | None:
             """Dotted name of an attribute/name chain, or ``None`` if impure."""
             if isinstance(node, ast.Name):
-                return node.id
+                return module_aliases.get(node.id, node.id)
             if isinstance(node, ast.Attribute):
                 base = _dotted(node.value)
                 return f"{base}.{node.attr}" if base is not None else None

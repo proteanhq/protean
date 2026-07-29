@@ -210,16 +210,26 @@ class TestRegistryIsTheOnlyWarnPath:
             rel = path.relative_to(root).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "warn_deprecated"
+                if isinstance(node, ast.Call) and (
+                    (
+                        isinstance(node.func, ast.Name)
+                        and node.func.id == "warn_deprecated"
+                    )
+                    or (
+                        isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "warn_deprecated"
+                    )
                 ):
                     sites.add(rel)
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     for dec in node.decorator_list:
                         target = dec.func if isinstance(dec, ast.Call) else dec
-                        if isinstance(target, ast.Name) and target.id == "deprecated":
+                        if (
+                            isinstance(target, ast.Name) and target.id == "deprecated"
+                        ) or (
+                            isinstance(target, ast.Attribute)
+                            and target.attr == "deprecated"
+                        ):
                             sites.add(rel)
         return sites
 
