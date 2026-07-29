@@ -91,20 +91,40 @@ an unbounded partition set (addressed under discovery and consequences).
 ### 2. Declaring the key
 
 `sequential_by` is a string option on the handler's metadata, supported on event
-handlers, command handlers, and process managers. Its value is the name of a
-direct attribute on the event or command payload. Nested paths and computed keys
-are out of scope.
+handlers and command handlers. Its value is the name of a direct attribute on the
+event or command payload. Nested paths and computed keys are out of scope.
 
 Validation runs at registration, not at publish: every event or command type the
 handler handles must carry a field with that name, or registration fails loud.
 This turns a whole class of "the key field was missing" runtime surprises into a
 startup error.
 
-### 3. Reject unsafe and empty keys at publish
+**The partition key is a property of the stream category, not of one handler.** An
+event is published once to its category and consumed by every subscriber on that
+category through consumer groups, so a category is either partitioned by exactly
+one key or not partitioned at all. Two handlers on the same category cannot ask for
+different partition keys. All handlers on a category that declare `sequential_by`
+must declare the same key; a conflict is a registration error. This is what lets
+the publisher decide the partition at publish time (decision 3) from the event
+alone, without knowing which handler will consume it.
 
-The partition key is extracted when the outbox record is registered and carried
-on the `Outbox` record to the publishing side. At publish, the key is coerced to
-a string and rejected (fail loud, no publish) when it is:
+**Process managers are deferred.** A PM subscribes to several categories and
+correlates each event to a PM instance through a per-event `correlate` spec (which
+can map a different field on each event type to the same correlation value). For a
+PM, the natural serialization domain is that correlation value, not a single named
+field, and aligning partitions to it across every subscribed category is its own
+design problem. Rather than ratify an under-analysed semantic, v1 covers event and
+command handlers only; PM support is left to a follow-up. This narrows #830's
+stated scope (which listed PMs); the follow-up should decide whether a PM
+partitions by correlation value and how that propagates to the categories it
+shares with other handlers.
+
+### 3. Reject unsafe and empty keys at record creation
+
+The partition key value is extracted when the outbox record is created, in the
+Unit of Work that registers the message, and validated **there**, synchronously, in
+the caller's transaction. A key is rejected (fail loud, the caller's operation
+fails) when it is:
 
 - null or empty, or
 - containing a colon, or
@@ -114,6 +134,16 @@ a string and rejected (fail loud, no publish) when it is:
   `{category}:__partitions__`, so a key of `__partitions__` would collide with it;
   rejecting the whole `__*__` shape reserves that namespace for internal use and
   covers future sentinels too.
+
+Validating at record creation, not at publish, matters: the field's *existence* is
+checked at registration (decision 2), but the field's *value* is only known per
+message, and the outbox publish path is asynchronous. If a bad value were allowed
+to become an outbox record and only rejected at publish, that record could never
+publish and would sit failing on the outbox. Validating in the caller's UoW means a
+bad value fails the user's operation immediately and never enters the outbox. As a
+backstop, if an invalid value ever reaches the publish path, the record is marked
+`ABANDONED` at once (the existing terminal state, with an invalid-key reason) rather
+than retried, so one bad record can never wedge the outbox behind it.
 
 We reject rather than route a bad key to a default partition. A default partition
 would silently coalesce unrelated keys and quietly break the ordering guarantee
@@ -314,9 +344,52 @@ keys (`client-A`, `client-B`):
   broker that does not advertise `STREAM_PARTITIONING` raises at registration; the
   same handler under the single-threaded inline broker is accepted and behaves as a
   no-op (messages already run in submission order).
-- **Unsafe keys fail loud at publish.** Publishing an event whose key is null,
-  empty, colon-bearing, a reserved lane/DLQ token, or the `__partitions__` sentinel
-  raises at publish and does not create a stream.
+- **One partition key per category.** Two handlers on the same category declaring
+  different `sequential_by` keys fail at registration.
+- **Unsafe key values fail loud at record creation.** Raising an event whose key
+  value is null, empty, colon-bearing, a reserved lane/DLQ token, or the
+  `__partitions__` sentinel fails the caller's operation in its UoW and never
+  creates an outbox record.
+
+## Applicability and limits: when Redis is the wrong tool
+
+Partition-per-key on Redis is bounded-cardinality by design, and that bound is a
+precondition, not a footnote. The partition key must be a natural serialization
+domain with a bounded live set: a tenant, a region, an account, an aggregate with
+few live instances. It must **not** be a high-cardinality per-entity key (one
+partition per order, per request, or per user in a large user base).
+
+The reason is structural. Every live partition is a stream, a consumer group, an
+index entry, and a share of every consumer poll cycle, so the system's standing
+cost scales with the number of live partitions, not with throughput. Redis carries
+this comfortably at the order of hundreds to a few thousand live partitions per
+category. Past that, memory and per-cycle poll cost dominate and the cold-partition
+reaper is fighting the inflow rather than keeping up. So the practical ceiling is on
+the order of low thousands of live partitions per category. Treat that as a guide to
+measure against, not a hard limit, and have the framework emit a warning when a
+category's live partition count crosses a configurable threshold, so a
+high-cardinality misuse is loud rather than a slow slide into a Redis OOM.
+
+When a workload genuinely needs high-cardinality partitioned ordering, Redis
+Streams is the wrong tool and the answer is not to push it past this regime. A
+purpose-built partitioned log (Kafka and its kind) has a bounded partition count and
+broker-managed partition assignment as its native model, which is exactly what
+high-cardinality ordered consumption wants. Protean does not ship a Kafka broker
+adapter today; if that demand is real, the right response is such an adapter that
+maps `sequential_by` onto native partitions, not a reimplementation of Kafka on
+Redis Streams. This ADR deliberately keeps `sequential_by` a bounded-cardinality
+Redis feature and draws the line there.
+
+EventStoreDB and MessageDB sit on a different axis and are not the escape hatch for
+this ceiling. They are durable event stores (Protean already uses MessageDB), giving
+per-stream ordering and durable subscriptions, not high-cardinality key fan-out with
+competing consumers. Reaching past the ceiling is a broker question (a partitioned
+log), not an event-store question.
+
+Below the ceiling, and for the many cases the ADR-0009 primitives already cover
+(combine handlers, a process manager, OCC retry), prefer those. `sequential_by` is
+for the specific case of one handler that must serialize by a bounded key without
+collapsing every key onto a single worker.
 
 ## Consequences
 
@@ -343,11 +416,19 @@ keys (`client-A`, `client-B`):
   near term. The judgement is that ADR-0009 deferred the feature here so it could
   be built correctly, so building the real mechanism is on-thesis.
 - The partition set is unbounded, so cold-partition reaping is required and has a
-  publish/reap race that #831 must handle carefully.
+  publish/reap race that #831 must handle carefully. Worse, a high-cardinality key
+  degrades quietly toward a Redis OOM rather than failing fast (see Applicability
+  and limits), so the partition-count warning is a needed guardrail, not a nicety.
 - Halt-on-poison stops a partition until its head message is resolved, so a stuck
   key blocks its own later events by design. That is the intended trade for
   ordering, but it means a poison message has a larger blast radius within its key
-  than in a non-partitioned handler.
+  than in a non-partitioned handler. Unwedging a halted partition needs operator
+  tooling (inspect the head, then skip it or move it to the DLQ by hand) that does
+  not exist yet, so that tooling is a required follow-up, not optional; without it a
+  poison message on a hot key has no operator escape hatch.
+- Process managers are out of v1, which narrows the epic's stated scope for #830.
+  Sagas that want per-correlation ordering must wait for the follow-up that defines
+  PM partitioning, or fall back to the ADR-0009 primitives in the meantime.
 - The lease introduces a failover window between an owner's death and the next
   instance's claim, tunable by the lease expiry (shorter means faster failover but
   more reclaim churn; longer means the opposite).
