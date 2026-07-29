@@ -18,7 +18,7 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
 from protean.exceptions import IncorrectUsageError, ValidationError
-from protean.fields import Identifier, String
+from protean.fields import Identifier, Integer, String
 from protean.port.broker import BrokerCapabilities
 from protean.utils.mixins import handle
 
@@ -54,6 +54,19 @@ class Widget(BaseAggregate):
 class WidgetCreated(BaseEvent):
     widget_id: Identifier()
     label: String(max_length=50)
+
+
+class Account(BaseAggregate):
+    tenant: Integer()
+
+    def open(self, tenant):
+        self.tenant = tenant
+        self.raise_(AccountOpened(account_id=str(self.id), tenant=tenant))
+
+
+class AccountOpened(BaseEvent):
+    account_id: Identifier()
+    tenant: Integer()
 
 
 class _StubBroker:
@@ -298,8 +311,9 @@ class TestCapabilityGating:
         domain.brokers._brokers["default"] = _StubBroker(
             "default", BrokerCapabilities.STREAM_PARTITIONING
         )
-        # Must not raise.
+        # Must not raise, and the partition map must survive the gate unchanged.
         domain._handler_configurator.validate_sequential_by_capabilities()
+        assert domain._partition_keys == {"cappart::order": "client_id"}
 
 
 # --- Unit of Work extraction + validation -----------------------------------
@@ -347,6 +361,45 @@ class TestUnitOfWorkExtraction:
             ]
             assert len(rows) == 1, "Expected exactly one OrderPlaced outbox row"
             assert rows[0].partition_key == "client-1"
+
+    def test_non_string_key_is_coerced_to_its_string_form(self):
+        # A non-string key field (here an Integer) is coerced to its string form
+        # before it becomes the ``{category}:{key}`` stream segment. Locking this
+        # keeps the coercion honest: int ``7`` must land as ``"7"`` on the row,
+        # not as an int or a repr, so routing stays a stable string.
+        config = {
+            "enable_outbox": True,
+            "server": {
+                "default_subscription_type": "stream",
+                "priority_lanes": {"backfill_suffix": "backfill"},
+            },
+        }
+        domain = Domain(name="UoWIntKey", config=config)
+
+        class AccountEventHandler(BaseEventHandler):
+            @handle(AccountOpened)
+            def on_opened(self, event):
+                pass
+
+        domain.register(Account)
+        domain.register(AccountOpened, part_of=Account)
+        domain.register(AccountEventHandler, part_of=Account, sequential_by="tenant")
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            account = Account(tenant=0)
+            account.open(7)
+            with UnitOfWork():
+                domain.repository_for(Account).add(account)
+
+            outbox_repo = domain._get_outbox_repo("default")
+            rows = [
+                r
+                for r in outbox_repo.find_unprocessed()
+                if r.type == AccountOpened.__type__
+            ]
+            assert len(rows) == 1, "Expected exactly one AccountOpened outbox row"
+            assert rows[0].partition_key == "7"
 
     def test_non_partitioned_event_leaves_key_none(self):
         domain = _make_outbox_domain("UoWNone")

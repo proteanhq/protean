@@ -157,6 +157,27 @@ class TestPartitionRouting:
 
         assert broker.published[0][0] == "test::order"
 
+    @pytest.mark.asyncio
+    async def test_external_processor_does_not_partition(self):
+        # Registration validates sequential_by against the internal outbox
+        # broker only, so partition routing is internal-only. An external
+        # processor, even on a partitioning broker, must publish to the base
+        # category and not partition a stream no one opted into (#831 owns
+        # per-handler external-broker routing).
+        domain = _make_domain("RouteExternal")
+        processor = OutboxProcessor(
+            FakeEngine(domain), "default", "default", is_external=True
+        )
+        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
+        processor.broker = broker
+
+        with domain.domain_context():
+            await processor._publish_message(
+                _outbox_row("m5", partition_key="client-1")
+            )
+
+        assert broker.published[0][0] == "test::order"
+
 
 @pytest.mark.database
 class TestAbandonBackstop:
@@ -188,3 +209,83 @@ class TestAbandonBackstop:
             assert "Invalid partition key" in refetched.last_error["message"]
             # The backstop abandons instead of publishing.
             assert processor.broker.published == []
+
+    @pytest.mark.asyncio
+    async def test_invalid_key_on_non_partitioning_broker_is_not_abandoned(self):
+        # The backstop only engages when the broker actually partitions. Under a
+        # non-partitioning broker the invalid key is inert, so the row must
+        # publish to the base category and succeed, not be abandoned.
+        domain = _make_domain("AbandonNoCap")
+        with domain.domain_context():
+            outbox_repo = domain._get_outbox_repo("default")
+
+            row = _outbox_row("bad-2", partition_key="has:colon")
+            with UnitOfWork():
+                outbox_repo.add(row)
+            row_id = row.id
+
+            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            await processor.initialize()
+            broker = RecordingBroker("default", BrokerCapabilities.RELIABLE_MESSAGING)
+            processor.broker = broker
+
+            result = await processor._process_single_message(row)
+
+            assert result is True
+            refetched = outbox_repo.get(row_id)
+            assert refetched.status == OutboxStatus.PUBLISHED.value
+            # Key inert: published to the base category, not abandoned.
+            assert broker.published[0][0] == "test::order"
+
+    @pytest.mark.asyncio
+    async def test_abandon_failure_returns_false_does_not_propagate(self):
+        # If the abandon transaction blows up (row cleaned up between claim and
+        # backstop, or an OCC race on a reclaimed row), the backstop must swallow
+        # it and return False so one poisoned row cannot abort the rest of the
+        # batch in process_batch. Inject a repo whose get() raises to simulate it.
+        domain = _make_domain("AbandonRaises")
+
+        class _RaisingRepo:
+            def get(self, _id):
+                raise RuntimeError("row vanished between claim and backstop")
+
+        with domain.domain_context():
+            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            await processor.initialize()
+            processor.outbox_repo = _RaisingRepo()
+            processor.broker = RecordingBroker(
+                "default", BrokerCapabilities.STREAM_PARTITIONING
+            )
+
+            row = _outbox_row("bad-3", partition_key="has:colon")
+            # Must not raise out of the backstop.
+            result = await processor._process_single_message(row)
+
+            assert result is False
+            # It never reached the publish path.
+            assert processor.broker.published == []
+
+    @pytest.mark.asyncio
+    async def test_valid_key_on_partitioning_broker_publishes(self):
+        # A valid key on a partitioning broker skips the backstop and publishes
+        # to the partition stream through the full single-message path.
+        domain = _make_domain("BackstopValid")
+        with domain.domain_context():
+            outbox_repo = domain._get_outbox_repo("default")
+
+            row = _outbox_row("good-1", partition_key="client-1")
+            with UnitOfWork():
+                outbox_repo.add(row)
+            row_id = row.id
+
+            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            await processor.initialize()
+            broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
+            processor.broker = broker
+
+            result = await processor._process_single_message(row)
+
+            assert result is True
+            refetched = outbox_repo.get(row_id)
+            assert refetched.status == OutboxStatus.PUBLISHED.value
+            assert broker.published[0][0] == "test::order:client-1"

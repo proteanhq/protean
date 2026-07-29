@@ -378,10 +378,23 @@ class OutboxProcessor(BaseSubscription):
                 message.partition_key, self._backfill_suffix
             )
             if reason:
-                with UnitOfWork():
-                    fresh = self.outbox_repo.get(message.id)
-                    fresh.mark_abandoned(f"Invalid partition key: {reason}")
-                    self.outbox_repo.add(fresh)
+                # Guard the abandon transaction: if the row was cleaned up
+                # between claim and here (``get`` raises) or the commit loses an
+                # OCC race on a reclaimed row, swallow it and return False so the
+                # poisoned row does not abort the rest of the batch in
+                # ``process_batch`` and throttle the poll loop. The row stays
+                # PENDING and is re-evaluated on the next claim.
+                try:
+                    with UnitOfWork():
+                        fresh = self.outbox_repo.get(message.id)
+                        fresh.mark_abandoned(f"Invalid partition key: {reason}")
+                        self.outbox_repo.add(fresh)
+                except Exception:
+                    logger.exception(
+                        "outbox.invalid_partition_key_abandon_failed",
+                        extra={"message_id": message.message_id[:8]},
+                    )
+                    return False
                 logger.warning(
                     "outbox.invalid_partition_key",
                     extra={
@@ -560,15 +573,23 @@ class OutboxProcessor(BaseSubscription):
                 else None
             )
 
-            # Partition-per-key routing (ADR-0028). Gated on the broker
-            # advertising STREAM_PARTITIONING: under a non-partitioning broker
-            # (e.g. inline) the row still carries the key but routing is a no-op
-            # to the base category, matching "inline = no-op". Applied before the
-            # backfill suffix so a low-priority partitioned row composes as
-            # ``{category}:{key}:{backfill_suffix}`` (keys can't contain a colon,
-            # so the segment count stays unambiguous).
+            # Partition-per-key routing (ADR-0028). Internal processors only:
+            # registration (``validate_sequential_by_capabilities``) gates
+            # ``sequential_by`` on the internal outbox broker's capability, so
+            # routing must key off that same broker. #830 does not decide
+            # per-handler external-broker routing (that is #831), and gating on
+            # ``not self.is_external`` here keeps routing symmetric with what was
+            # validated instead of partitioning external streams no one opted
+            # into. Gated on the broker advertising STREAM_PARTITIONING: under a
+            # non-partitioning broker (e.g. inline) the row still carries the key
+            # but routing is a no-op to the base category, matching "inline =
+            # no-op". Applied before the backfill suffix so a low-priority
+            # partitioned row composes as ``{category}:{key}:{backfill_suffix}``
+            # (keys can't contain a colon, so the segment count stays
+            # unambiguous).
             if (
-                stream_category
+                not self.is_external
+                and stream_category
                 and message.partition_key
                 and self.broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
             ):

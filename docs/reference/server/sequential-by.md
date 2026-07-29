@@ -14,15 +14,23 @@ reaching for it, read
 [Designing for Concurrent Event Processing](../../patterns/designing-for-concurrent-event-processing.md):
 most concurrency problems have a simpler structural fix.
 
-!!! note "Publishing side only"
+!!! warning "Publishing side only — inline broker only, today"
     This page documents the **publishing** behaviour that ships today: the
     option, its registration-time validation, and how the outbox routes a
     partitioned event. The **consumer** side that actually enforces the ordering
     across multiple engine instances (partition ownership lease, fencing token,
     crash reclaim, partition discovery) is tracked separately and is not yet
-    active. Under the single-threaded inline broker the option is a validated
-    no-op — useful in tests — because inline already processes messages in
-    submission order.
+    active.
+
+    No broker shipped with Protean advertises the `STREAM_PARTITIONING`
+    capability yet, so today `sequential_by` is usable **only on the inline
+    broker**, where it is a validated no-op (inline already processes messages in
+    submission order). On any other broker (for example Redis) declaring
+    `sequential_by` fails `domain.init()` with an `IncorrectUsageError` — the
+    broker-capability check below rejects it — and it stays that way until the
+    consumer side lands and a broker turns the capability on. The routing and
+    Redis-specific guidance below describe the target behaviour for that future
+    broker, not something you can switch on now.
 
 ## Declaring the key
 

@@ -29,6 +29,11 @@ DEFAULT_TARGET_BROKER = "default"
 # ``dlq`` is fixed, so it lives here as the constant half of the reserved set.
 RESERVED_DLQ_TOKEN = "dlq"
 
+# Max length of a partition key. Mirrors the ``Outbox.partition_key`` field
+# ceiling so an over-long key is rejected up front with a clear reason rather
+# than tripping the generic ``MaxLengthValidator`` deep inside ``create_message``.
+MAX_PARTITION_KEY_LENGTH = 255
+
 
 def invalid_partition_key_reason(
     partition_key: str | None, backfill_suffix: str
@@ -56,6 +61,11 @@ def invalid_partition_key_reason(
     """
     if not partition_key:
         return "partition key is null or empty"
+    if len(partition_key) > MAX_PARTITION_KEY_LENGTH:
+        return (
+            f"partition key exceeds {MAX_PARTITION_KEY_LENGTH} characters "
+            f"(got {len(partition_key)})"
+        )
     if ":" in partition_key:
         return "partition key contains a colon"
     if partition_key in (RESERVED_DLQ_TOKEN, backfill_suffix):
@@ -160,9 +170,14 @@ class Outbox(BaseAggregate):
     # off the event payload at record creation for a handler category that
     # declares ``sequential_by``; ``None`` for non-partitioned categories. The
     # outbox processor routes a row with this set to ``{stream_category}:{key}``
-    # when the target broker advertises ``STREAM_PARTITIONING``. Validated
-    # before it is ever stored, so it never carries a colon or a reserved token.
-    partition_key: Annotated[str | None, Field(max_length=255)] = None
+    # when the target broker advertises ``STREAM_PARTITIONING``. The framework's
+    # write path (the Unit of Work) validates the key before storing it, so a
+    # row written through the framework never carries a colon or a reserved
+    # token; a directly constructed row (tests, legacy data) is a backstop the
+    # outbox processor re-checks and abandons at publish.
+    partition_key: Annotated[str | None, Field(max_length=MAX_PARTITION_KEY_LENGTH)] = (
+        None
+    )
 
     # Message priority for processing order
     priority: int = 0  # Higher = more important
