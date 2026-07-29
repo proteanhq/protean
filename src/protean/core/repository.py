@@ -525,7 +525,7 @@ class BaseRepository(Element, OptionsMixin):
                 set_span_error(span, exc)
                 raise
 
-    def get_or_none(self, identifier: Any) -> Any:
+    def get_or_none(self, identifier: Any) -> Any | None:
         """Fetch data from the persistence store by its key identifier, same as `get()`,
         but return `None` instead of raising `ObjectNotFoundError` when nothing matches.
 

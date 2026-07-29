@@ -6,6 +6,7 @@ Validates:
 - Version tracking and optimistic concurrency
 """
 
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -147,15 +148,11 @@ class TestAggregateCRUD:
         person = Person(first_name="John", last_name="Doe", age=30)
         repo.add(person)
 
-        # Duplicate the stored row under a different storage key so the id
-        # field value collides, without going through the public API (which
-        # enforces id uniqueness).
-        schema_name = repo._dao.schema_name
-        live_rows = repo._provider._databases[schema_name]
-        live_rows["duplicate-row"] = dict(live_rows[person.id])
-
-        with pytest.raises(TooManyObjectsError):
-            repo.get_or_none(person.id)
+        # Force the DAO to report a duplicate id, since the public API
+        # enforces id uniqueness and won't let us create one for real.
+        with patch.object(repo._dao, "get", side_effect=TooManyObjectsError("Person")):
+            with pytest.raises(TooManyObjectsError):
+                repo.get_or_none(person.id)
 
 
 # ---------------------------------------------------------------------------
