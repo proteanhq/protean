@@ -92,9 +92,12 @@ an unbounded partition set (addressed under discovery and consequences).
 
 ### 2. Declaring the key
 
-`sequential_by` is a string option on the handler's metadata, supported on event
-handlers and command handlers. Its value is the name of a direct attribute on the
-event or command payload. Nested paths and computed keys are out of scope.
+`sequential_by` is an option on the handler's metadata, supported on event
+handlers, command handlers, and process managers. On an event or command handler
+its value is the name of a direct attribute on the event or command payload; nested
+paths and computed keys are out of scope. On a process manager it is a boolean
+opt-in, because a PM already declares its serialization domain through its
+`correlate` specs (see below).
 
 Validation runs at registration, not at publish: every event or command type the
 handler handles must carry a field with that name, or registration fails loud.
@@ -110,16 +113,34 @@ must declare the same key; a conflict is a registration error. This is what lets
 the publisher decide the partition at publish time (decision 3) from the event
 alone, without knowing which handler will consume it.
 
-**Process managers are deferred.** A PM subscribes to several categories and
-correlates each event to a PM instance through a per-event `correlate` spec (which
-can map a different field on each event type to the same correlation value). For a
-PM, the natural serialization domain is that correlation value, not a single named
-field, and aligning partitions to it across every subscribed category is its own
-design problem. Rather than ratify an under-analysed semantic, v1 covers event and
-command handlers only; PM support is left to a follow-up. This narrows #830's
-stated scope (which listed PMs); the follow-up should decide whether a PM
-partitions by correlation value and how that propagates to the categories it
-shares with other handlers.
+**Process managers partition by correlation value.** A PM subscribes to several
+categories and correlates each event to a PM instance through a per-event
+`correlate` spec, which can map a different field on each event type to the same
+correlation value. So a PM's natural serialization domain is not a single named
+field, it is the correlation value the PM already resolves. When a PM sets
+`sequential_by`, its partition key on each subscribed category is the field that
+`correlate` maps to the correlation value there (`order` partitioned by `order_id`,
+`payment` partitioned by the field that maps to `order_id`), so every event for one
+PM instance carries the same correlation value across those categories.
+
+The guarantee for a PM is stated in terms of the instance, not a total order:
+**no two events for the same PM instance are ever processed concurrently.** Strict
+cross-category publish order is not well defined (the events live on different
+streams) and a PM does not need it; a PM is an eventually-consistent coordinator
+whose instance is a stateful aggregate, so correctness across arrival orders already
+comes from OCC. What `sequential_by` adds is serialization: it stops two events for
+the same instance from being handled at once, which is what removes the
+OCC-thrash and the concurrent-handler races a busy PM would otherwise hit.
+
+Ownership for a PM is therefore keyed by the correlation value and spans the PM's
+subscribed category partitions: one instance leases correlation value `X` and is the
+sole processor of `order:X`, `payment:X`, and so on, applying them one at a time.
+This reuses the lease and fence of decision 5, keyed by correlation rather than by a
+single stream. Because a PM's categories are now partitioned by the correlation
+field, any other handler on those categories is bound by the one-key-per-category
+rule above: it must partition by the same field or not partition, else it is a
+registration error. Enabling `sequential_by` on a PM is thus a decision about the
+categories it subscribes to, not the PM alone.
 
 ### 3. Reject unsafe and empty keys at record creation
 
@@ -347,7 +368,16 @@ keys (`client-A`, `client-B`):
   same handler under the single-threaded inline broker is accepted and behaves as a
   no-op (messages already run in submission order).
 - **One partition key per category.** Two handlers on the same category declaring
-  different `sequential_by` keys fail at registration.
+  different `sequential_by` keys fail at registration. A handler that partitions a
+  category by a field different from a `sequential_by` PM's correlation field on the
+  same category also fails at registration.
+- **Process manager serializes per instance.** With a PM correlated by `order_id`
+  across the `order` and `payment` categories, and interleaved order and payment
+  events published for two correlation values, assert no two events for the same
+  correlation value are ever in the PM handler at once (cross-instance marker), and
+  that different correlation values progress in parallel. Order and payment events
+  for one instance need not apply in a strict cross-category order, only never
+  concurrently.
 - **Unsafe key values fail loud at record creation.** Raising an event whose key
   value is null, empty, colon-bearing, a reserved lane/DLQ token, or the
   `__partitions__` sentinel fails the caller's operation in its UoW and never
@@ -428,9 +458,16 @@ collapsing every key onto a single worker.
   tooling (inspect the head, then skip it or move it to the DLQ by hand) that does
   not exist yet, so that tooling is a required follow-up, not optional; without it a
   poison message on a hot key has no operator escape hatch.
-- Process managers are out of v1, which narrows the epic's stated scope for #830.
-  Sagas that want per-correlation ordering must wait for the follow-up that defines
-  PM partitioning, or fall back to the ADR-0009 primitives in the meantime.
+- Process-manager support couples categories together. Turning on `sequential_by`
+  for a PM partitions every category the PM subscribes to by the PM's correlation
+  field, which binds all other handlers on those categories to the same key (the
+  one-key-per-category rule). Enabling it on a PM is a decision about the shared
+  categories, not the PM in isolation, and a co-subscriber that wants a different
+  partitioning of one of those categories cannot have it.
+- A PM's ownership lease spans several category partition streams for one
+  correlation value, which is more than the single-stream lease the handler case
+  needs. #831 must key the lease and the fence by correlation value and have the
+  owner read all of that correlation's partition streams, not just one.
 - The lease introduces a failover window between an owner's death and the next
   instance's claim, tunable by the lease expiry (shorter means faster failover but
   more reclaim churn; longer means the opposite).
