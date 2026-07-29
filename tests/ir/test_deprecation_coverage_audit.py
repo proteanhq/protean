@@ -197,7 +197,34 @@ class TestRegistryIsTheOnlyWarnPath:
     _ALLOWLIST = frozenset({"core/aggregate.py"})
 
     @staticmethod
-    def _bare_primitive_sites() -> set[str]:
+    def _uses_bare_primitive(tree: ast.AST) -> bool:
+        """True if ``tree`` calls ``warn_deprecated`` or applies ``@deprecated``,
+        whether reached by bare name (``warn_deprecated(...)``) or by attribute
+        access (``protean._deprecation.warn_deprecated(...)``). Shared between
+        the real-source-tree scan below and the synthetic-snippet unit tests in
+        ``TestBarePrimitiveMatchForms``.
+        """
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and (
+                (isinstance(node.func, ast.Name) and node.func.id == "warn_deprecated")
+                or (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "warn_deprecated"
+                )
+            ):
+                return True
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for dec in node.decorator_list:
+                    target = dec.func if isinstance(dec, ast.Call) else dec
+                    if (isinstance(target, ast.Name) and target.id == "deprecated") or (
+                        isinstance(target, ast.Attribute)
+                        and target.attr == "deprecated"
+                    ):
+                        return True
+        return False
+
+    @classmethod
+    def _bare_primitive_sites(cls) -> set[str]:
         import protean
 
         root = Path(protean.__file__).parent
@@ -209,28 +236,8 @@ class TestRegistryIsTheOnlyWarnPath:
                 continue
             rel = path.relative_to(root).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Call) and (
-                    (
-                        isinstance(node.func, ast.Name)
-                        and node.func.id == "warn_deprecated"
-                    )
-                    or (
-                        isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "warn_deprecated"
-                    )
-                ):
-                    sites.add(rel)
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    for dec in node.decorator_list:
-                        target = dec.func if isinstance(dec, ast.Call) else dec
-                        if (
-                            isinstance(target, ast.Name) and target.id == "deprecated"
-                        ) or (
-                            isinstance(target, ast.Attribute)
-                            and target.attr == "deprecated"
-                        ):
-                            sites.add(rel)
+            if cls._uses_bare_primitive(tree):
+                sites.add(rel)
         return sites
 
     def test_no_framework_site_bypasses_the_registry(self) -> None:
@@ -249,6 +256,34 @@ class TestRegistryIsTheOnlyWarnPath:
             "Allowlisted bare-primitive site(s) no longer present; trim "
             f"TestRegistryIsTheOnlyWarnPath._ALLOWLIST: {sorted(self._ALLOWLIST)}."
         )
+
+
+class TestBarePrimitiveMatchForms:
+    """Direct tests of the bare-primitive AST match across bare-name and
+    attribute-access spellings, so a bypass via ``protean._deprecation.foo``
+    is provably caught and not just "no real site happens to use it today"."""
+
+    @staticmethod
+    def _matches(src: str) -> bool:
+        return TestRegistryIsTheOnlyWarnPath._uses_bare_primitive(ast.parse(src))
+
+    def test_bare_name_call_is_flagged(self) -> None:
+        assert self._matches("warn_deprecated('x', removal='1.0.0')\n")
+
+    def test_attribute_access_call_is_flagged(self) -> None:
+        assert self._matches(
+            "import protean._deprecation\n"
+            "protean._deprecation.warn_deprecated('x', removal='1.0.0')\n"
+        )
+
+    def test_bare_name_decorator_is_flagged(self) -> None:
+        assert self._matches("@deprecated\ndef foo(): ...\n")
+
+    def test_attribute_access_decorator_is_flagged(self) -> None:
+        assert self._matches("@protean._deprecation.deprecated\ndef foo(): ...\n")
+
+    def test_unrelated_call_is_not_flagged(self) -> None:
+        assert not self._matches("warn('x')\nprotean.other.thing()\n")
 
 
 class TestCheckArm:
@@ -446,12 +481,22 @@ class TestImportScanForms:
         src = "import protean.fields\nx = protean.fields.Method('a')\n"
         assert self._scan(src) == [("field", "Method")]
 
+    def test_whole_module_import_alias_field_call_is_flagged(self) -> None:
+        # ``import protean.fields as pf`` still routes through the runtime
+        # deprecation warning on ``pf.Method(...)``, so the scan must catch it.
+        src = "import protean.fields as pf\nx = pf.Method('a')\n"
+        assert self._scan(src) == [("field", "Method")]
+
     def test_from_import_util_name_is_flagged(self) -> None:
         src = "from protean.utils import generate_identity\n"
         assert self._scan(src) == [("util", "protean.utils.generate_identity")]
 
     def test_attribute_access_util_name_is_flagged(self) -> None:
         src = "import protean.utils\ny = protean.utils.utcnow_func\n"
+        assert self._scan(src) == [("util", "protean.utils.utcnow_func")]
+
+    def test_whole_module_import_alias_util_name_is_flagged(self) -> None:
+        src = "import protean.utils as u\ny = u.utcnow_func\n"
         assert self._scan(src) == [("util", "protean.utils.utcnow_func")]
 
     def test_bare_field_import_without_call_is_not_flagged(self) -> None:
