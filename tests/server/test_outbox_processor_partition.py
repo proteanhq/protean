@@ -211,6 +211,36 @@ class TestAbandonBackstop:
             assert processor.broker.published == []
 
     @pytest.mark.asyncio
+    async def test_empty_string_key_is_abandoned_not_published(self):
+        # An empty-string key is as invalid as one with a colon
+        # (``invalid_partition_key_reason`` rejects both), but it is also
+        # falsy like the legitimate "no partition key" ``None`` value. The
+        # backstop must still catch it rather than let it slip through as if
+        # it were an unpartitioned row.
+        domain = _make_domain("AbandonEmpty")
+        with domain.domain_context():
+            outbox_repo = domain._get_outbox_repo("default")
+
+            row = _outbox_row("bad-empty", partition_key="")
+            with UnitOfWork():
+                outbox_repo.add(row)
+            row_id = row.id
+
+            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            await processor.initialize()
+            processor.broker = RecordingBroker(
+                "default", BrokerCapabilities.STREAM_PARTITIONING
+            )
+
+            result = await processor._process_single_message(row)
+
+            assert result is False
+            refetched = outbox_repo.get(row_id)
+            assert refetched.status == OutboxStatus.ABANDONED.value
+            assert "Invalid partition key" in refetched.last_error["message"]
+            assert processor.broker.published == []
+
+    @pytest.mark.asyncio
     async def test_invalid_key_on_non_partitioning_broker_is_not_abandoned(self):
         # The backstop only engages when the broker actually partitions. Under a
         # non-partitioning broker the invalid key is inert, so the row must

@@ -371,7 +371,14 @@ class OutboxProcessor(BaseSubscription):
         # the key is ignored during routing); there, abandon it at once —
         # terminal, no retry — so one bad row can never wedge the outbox behind
         # it rather than retrying forever.
-        if message.partition_key and self.broker.has_capability(
+        #
+        # Check ``is not None`` rather than truthiness: ``None`` is the
+        # legitimate value for a non-partitioned category and must skip
+        # validation, but an empty string is never legitimate (a fresh row
+        # can't get one — ``invalid_partition_key_reason`` blocks it at
+        # creation) and must still hit the check below rather than being
+        # treated the same as "no key".
+        if message.partition_key is not None and self.broker.has_capability(
             BrokerCapabilities.STREAM_PARTITIONING
         ):
             reason = invalid_partition_key_reason(

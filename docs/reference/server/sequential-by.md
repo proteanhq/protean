@@ -14,13 +14,21 @@ reaching for it, read
 [Designing for Concurrent Event Processing](../../patterns/designing-for-concurrent-event-processing.md):
 most concurrency problems have a simpler structural fix.
 
-!!! warning "Publishing side only — inline broker only, today"
+!!! warning "Publishing side only — events only, inline broker only, today"
     This page documents the **publishing** behaviour that ships today: the
     option, its registration-time validation, and how the outbox routes a
     partitioned event. The **consumer** side that actually enforces the ordering
     across multiple engine instances (partition ownership lease, fencing token,
     crash reclaim, partition discovery) is tracked separately and is not yet
     active.
+
+    Commands do not currently go through the outbox at all — a command handler
+    dispatches synchronously and never produces an outbox row, so it has no
+    `stream_category` and nothing to partition. Declaring `sequential_by` on a
+    **command handler** is accepted and checked at registration (field
+    existence, one key per category), but that check is inert today: it has no
+    runtime effect until command publishing exists. Everything below about
+    extraction, validation, and routing describes **events** only.
 
     No broker shipped with Protean advertises the `STREAM_PARTITIONING`
     capability yet, so today `sequential_by` is usable **only on the inline
@@ -35,7 +43,8 @@ most concurrency problems have a simpler structural fix.
 ## Declaring the key
 
 On an **event handler** or **command handler**, `sequential_by` is the name of a
-direct field on the event or command payload:
+direct field on the event or command payload. Only the event-handler case has a
+runtime effect today — see the warning above.
 
 ```python
 @domain.event_handler(part_of=Order, sequential_by="client_id")
@@ -81,10 +90,11 @@ runtime surprises into a startup error:
 ## Key values that are rejected
 
 The partition key becomes the `{stream_category}:{key}` stream-name segment, so
-a value that would collide with reserved stream names is rejected. The value is
-extracted and validated **synchronously in the caller's transaction** when the
-outbox record is created, so a bad value fails the caller's operation
-immediately and never enters the outbox. A key is rejected when it is:
+a value that would collide with reserved stream names is rejected. For an
+event, the value is extracted and validated **synchronously in the caller's
+transaction** when the outbox record is created, so a bad value fails the
+caller's operation immediately and never enters the outbox. A key is rejected
+when it is:
 
 - null or empty,
 - contains a colon (`:`),
