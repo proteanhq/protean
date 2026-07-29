@@ -13,7 +13,11 @@ from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
-from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
+from protean.exceptions import (
+    ExpectedVersionError,
+    ObjectNotFoundError,
+    TooManyObjectsError,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +137,25 @@ class TestAggregateCRUD:
 
         result = repo.get_or_none("nonexistent-id")
         assert result is None
+
+    def test_get_or_none_propagates_non_not_found_errors(self, test_domain):
+        """`get_or_none` only softens `ObjectNotFoundError`. Any other error
+        raised while looking up the identifier -- here, `TooManyObjectsError`
+        from a corrupted store with two rows sharing an id -- must still
+        propagate, not be swallowed into a `None` return."""
+        repo = test_domain.repository_for(Person)
+        person = Person(first_name="John", last_name="Doe", age=30)
+        repo.add(person)
+
+        # Duplicate the stored row under a different storage key so the id
+        # field value collides, without going through the public API (which
+        # enforces id uniqueness).
+        schema_name = repo._dao.schema_name
+        live_rows = repo._provider._databases[schema_name]
+        live_rows["duplicate-row"] = dict(live_rows[person.id])
+
+        with pytest.raises(TooManyObjectsError):
+            repo.get_or_none(person.id)
 
 
 # ---------------------------------------------------------------------------
