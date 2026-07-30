@@ -94,7 +94,9 @@ class OrderSaga(BaseProcessManager):
 # --- Fixtures --------------------------------------------------------------
 
 
-def _build_domain(name: str, db: int, *, with_pm: bool = False) -> Domain:
+def _build_domain(
+    name: str, db: int, *, with_pm: bool = False, lanes: bool = False
+) -> Domain:
     # The module reuses the same element classes (Order/OrderPlaced/OrderSaga)
     # across every test's domain. Protean caches a handler's ``_handlers`` on the
     # class after the first registration but re-derives each event's ``__type__``
@@ -116,7 +118,12 @@ def _build_domain(name: str, db: int, *, with_pm: bool = False) -> Domain:
             "heartbeat_interval_seconds": 0.3,
             "poll_interval_seconds": 0.02,
             "reap_idle_ms": 0,
-        }
+        },
+        "priority_lanes": {
+            "enabled": lanes,
+            "threshold": 0,
+            "backfill_suffix": "backfill",
+        },
     }
     domain._initialize()
     domain.register(Order)
@@ -141,6 +148,15 @@ def _reset() -> None:
 @pytest.fixture
 def domain() -> Domain:
     domain = _build_domain("PartTest", 11)
+    with domain.domain_context():
+        domain.brokers["default"]._data_reset()
+        yield domain
+        domain.brokers["default"]._data_reset()
+
+
+@pytest.fixture
+def lanes_domain() -> Domain:
+    domain = _build_domain("PartTest", 11, lanes=True)
     with domain.domain_context():
         domain.brokers["default"]._data_reset()
         yield domain
@@ -192,6 +208,18 @@ def _order_event(client_id: str, seq: int) -> OrderPlaced:
     return OrderPlaced(order_id=str(uuid4()), client_id=client_id, seq=seq)
 
 
+def _publish_lane(
+    domain: Domain, category: str, event: BaseEvent, key: str, *, backfill: bool = False
+) -> None:
+    """Publish to a key's primary or backfill partition lane; index the base key."""
+    broker = domain.brokers["default"]
+    broker.record_partition(category, key)
+    stream = f"{category}:{key}"
+    if backfill:
+        stream = f"{stream}:backfill"
+    broker._publish(stream, Message.from_domain_object(event).to_dict())
+
+
 async def _drain(
     sub: PartitionedStreamSubscription, partition_id: str, times: int = 30
 ) -> None:
@@ -226,16 +254,30 @@ def test_factory_selects_partitioned_for_sequential_by(domain: Domain) -> None:
     assert subs[0].handler is OrderTracker
 
 
-def test_pm_with_no_categories_is_not_partitioned(domain: Domain) -> None:
-    # Defensive guard: a sequential_by PM that somehow has no stream categories
-    # is not treated as partitioned (it would have nothing to lease).
+def test_non_sequential_pm_and_empty_categories_are_not_partitioned(
+    domain: Domain,
+) -> None:
+    # A PM is partitioned only when it opts in AND has categories to lease.
     from types import SimpleNamespace
 
     engine = Engine(domain=domain, test_mode=True)
-    stub = SimpleNamespace(
+    not_opted_in = SimpleNamespace(
+        meta_=SimpleNamespace(sequential_by=None, stream_categories=["x"])
+    )
+    no_categories = SimpleNamespace(
         meta_=SimpleNamespace(sequential_by=True, stream_categories=[])
     )
-    assert engine._is_partitioned_process_manager(stub) is False
+    assert engine._is_partitioned_process_manager(not_opted_in) is False
+    assert engine._is_partitioned_process_manager(no_categories) is False
+
+
+def test_non_partitioned_category_uses_plain_stream(domain: Domain) -> None:
+    # A category no handler declares sequential_by on is not partitioned.
+    engine = Engine(domain=domain, test_mode=True)
+    assert (
+        engine.subscription_factory._is_partitioned_category("not::partitioned")
+        is False
+    )
 
 
 def test_factory_plain_stream_when_broker_cannot_partition() -> None:
@@ -504,6 +546,50 @@ async def test_reaped_key_is_rediscovered_when_republished(
     assert processed["A"] == [0, 1]
 
 
+# --- Tests: priority-lane composition --------------------------------------
+
+
+async def test_backfill_lane_partition_is_consumed(lanes_domain: Domain) -> None:
+    # A low-priority partitioned event is routed to {category}:{key}:backfill.
+    # The consumer must read that lane, or the event is stranded.
+    category = Order.meta_.stream_category
+    _publish_lane(lanes_domain, category, _order_event("A", 0), "A", backfill=True)
+    sub = await _make_sub(lanes_domain)
+    assert sub._lanes_enabled
+    await sub._discovery_pass()
+    await _drain(sub, "A")
+    assert processed["A"] == [0]
+
+
+async def test_primary_lane_drained_before_backfill(lanes_domain: Domain) -> None:
+    # With both lanes populated for a key, the primary (production) lane drains
+    # before the backfill lane.
+    category = Order.meta_.stream_category
+    _publish_lane(lanes_domain, category, _order_event("A", 0), "A")  # primary
+    _publish_lane(lanes_domain, category, _order_event("A", 1), "A", backfill=True)
+    sub = await _make_sub(lanes_domain)
+    await sub._discovery_pass()
+    await _drain(sub, "A")
+    assert processed["A"] == [0, 1]
+
+
+async def test_retire_covers_backfill_lane(lanes_domain: Domain) -> None:
+    # Retirement only reaps a key once BOTH lanes are drained, and it removes the
+    # backfill stream too, so nothing is left behind or stranded.
+    category = Order.meta_.stream_category
+    broker = lanes_domain.brokers["default"]
+    _publish_lane(lanes_domain, category, _order_event("A", 0), "A")
+    _publish_lane(lanes_domain, category, _order_event("A", 1), "A", backfill=True)
+    sub = await _make_sub(lanes_domain)
+    await sub._discovery_pass()
+    await _drain(sub, "A")
+    assert processed["A"] == [0, 1]
+
+    assert await sub._retire(sub._owned["A"]) is True
+    assert "A" not in broker.partition_keys(category)
+    assert broker._client.exists(f"{category}:A:backfill") == 0
+
+
 # --- Tests: process manager ------------------------------------------------
 
 
@@ -743,6 +829,25 @@ async def test_discover_units_swallows_broker_error(
     sub = await _make_sub(domain)
     monkeypatch.setattr(sub.broker, "partition_keys", _raiser(RuntimeError("x")))
     assert sub._discover_units() == {}
+
+
+async def test_ack_noop_is_counted_and_logged(
+    domain: Domain, category: str, monkeypatch
+) -> None:
+    # A fenced ack that removes nothing (entry left the PEL unexpectedly) while
+    # we still hold the lease is surfaced, and the handled message still counts.
+    _publish(domain, category, _order_event("A", 0), "A")
+    sub = await _make_sub(domain)
+    await sub._discovery_pass()
+    owned = sub._owned["A"]
+    head = await sub._read_head(owned, f"{category}:A")
+    assert head is not None
+    physical, identifier, payload = head
+    monkeypatch.setattr(sub.broker, "ack_partition_fenced", lambda *a, **k: False)
+    assert (
+        await sub._process_message(owned, category, physical, identifier, payload)
+        is True
+    )
 
 
 async def test_drop_owned_is_idempotent(domain: Domain) -> None:

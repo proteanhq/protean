@@ -148,7 +148,11 @@ class BaseBroker(metaclass=ABCMeta):
         def _partition_keys(self, category: str) -> set[str]: ...
 
         def _reap_partition(
-            self, category: str, key: str, min_idle_ms: int
+            self,
+            category: str,
+            key: str,
+            min_idle_ms: int,
+            backfill_suffix: str | None,
         ) -> bool: ...
 
         def _acquire_partition_lease(
@@ -898,21 +902,31 @@ class BaseBroker(metaclass=ABCMeta):
         self._require_partitioning("partition_keys")
         return self._partition_keys(category)
 
-    def reap_partition(self, category: str, key: str, min_idle_ms: int) -> bool:
+    def reap_partition(
+        self,
+        category: str,
+        key: str,
+        min_idle_ms: int,
+        backfill_suffix: str | None = None,
+    ) -> bool:
         """Prune a cold partition from the index, atomically and race-safely.
 
-        Only reaps a partition when **no** consumer group on its stream has
-        pending entries (the stream is shared by every handler on the category)
-        and the stream has been idle for at least *min_idle_ms* (ADR-0028
-        decision 7). Removes the index entry and the stream; the generation
-        counter is left in place so a re-created partition keeps a monotonic
-        fence. Returns ``True`` when the partition was reaped. The publish/reap
-        race is tolerated: a publisher that re-adds the key right after a reap is
+        Only reaps a partition when **no** consumer group on any of its streams
+        has pending entries (each stream is shared by every handler on the
+        category) and all of them have been idle for at least *min_idle_ms*
+        (ADR-0028 decision 7). When priority lanes are enabled, pass
+        *backfill_suffix* so the key's backfill lane
+        (``{category}:{key}:{backfill_suffix}``) is checked and deleted alongside
+        the main stream — otherwise a lane with unconsumed work would be
+        stranded. Removes the index entry and the streams; the generation counter
+        is left in place so a re-created partition keeps a monotonic fence.
+        Returns ``True`` when the partition was reaped. The publish/reap race is
+        tolerated: a publisher that re-adds the key right after a reap is
         re-discovered on the next cycle. Meant to be called by the partition's
         current owner once it has drained the partition.
         """
         self._require_partitioning("reap_partition")
-        return self._reap_partition(category, key, min_idle_ms)
+        return self._reap_partition(category, key, min_idle_ms, backfill_suffix)
 
     def acquire_partition_lease(
         self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int

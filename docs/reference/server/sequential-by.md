@@ -170,6 +170,17 @@ category's partition for that value, so no two events for the same process-manag
 instance are ever handled at once. Cross-category order for one instance is not
 promised (the events live on different streams) — only that they never overlap.
 
+### Priority lanes
+
+When [priority lanes](../../guides/server/using-priority-lanes.md) are enabled, a low-priority
+partitioned event is published to the key's backfill lane
+(`{category}:{key}:{backfill_suffix}`). The owner drains a key's primary lane
+before its backfill lane (production before backfill, as elsewhere), and reaping
+a cold key covers both lanes, so backfill-routed partitioned events are consumed
+and never stranded. Combining the two features means, within a key, a
+higher-priority event can be handled before a lower-priority one published
+earlier; strict publish order holds within each lane.
+
 ## Configuration (`[server.partitioning]`)
 
 The partitioned consumer's timing is tunable under `[server.partitioning]` in

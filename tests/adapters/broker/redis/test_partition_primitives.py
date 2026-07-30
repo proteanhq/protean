@@ -147,6 +147,37 @@ def test_reap_only_when_idle_and_drained(broker: RedisBroker) -> None:
     assert "a" not in broker.partition_keys(cat)
 
 
+def test_reap_is_lane_aware(broker: RedisBroker) -> None:
+    # With a backfill lane, reap refuses while the lane has pending entries and,
+    # once drained, deletes both lanes — so a backfill message is never stranded.
+    cat = _cat()
+    main = f"{cat}:a"
+    backfill = f"{cat}:a:backfill"
+    group = "grp.Handler"
+    broker.record_partition(cat, "a")
+    broker._ensure_group(group, backfill)
+    broker._publish(backfill, _payload(0))
+    resp = broker._client.xreadgroup(group, "c1", {backfill: ">"}, count=1)  # pending
+    bid = broker._decode_if_bytes(resp[0][1][0][0])
+
+    # Backfill lane has a pending entry → not reaped.
+    assert (
+        broker.reap_partition(cat, "a", min_idle_ms=0, backfill_suffix="backfill")
+        is False
+    )
+    assert "a" in broker.partition_keys(cat)
+
+    # Ack it → both lanes drained → reaped, and both streams are gone.
+    broker._client.xack(backfill, group, bid)
+    assert (
+        broker.reap_partition(cat, "a", min_idle_ms=0, backfill_suffix="backfill")
+        is True
+    )
+    assert "a" not in broker.partition_keys(cat)
+    assert broker._client.exists(main) == 0
+    assert broker._client.exists(backfill) == 0
+
+
 def test_reap_leaves_generation_counter(broker: RedisBroker) -> None:
     cat = _cat()
     stream = f"{cat}:a"

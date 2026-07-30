@@ -88,43 +88,47 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 return redis.call('XACK', KEYS[2], ARGV[2], ARGV[3])
 """
 
-# Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2]=main_stream;
-# ARGV[1]=key, ARGV[2]=min_idle_ms. Reaps only when NO consumer group on the
-# stream has pending entries (the stream is shared by every handler on the
-# category, so one drained group is not enough) and the stream has been idle for
-# min_idle_ms. Removes the index entry and the stream, but deliberately leaves
-# the generation counter so a re-created partition keeps a monotonic generation
-# (the fence never goes backwards across a reap). Returns 1 if reaped, else 0.
+# Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2..]=every physical
+# stream for the key (the main partition stream and, when priority lanes are on,
+# its backfill lane); ARGV[1]=key, ARGV[2]=min_idle_ms. Reaps only when NO
+# consumer group on ANY of those streams has pending entries (each stream is
+# shared by every handler on the category) and ALL of them have been idle for
+# min_idle_ms — otherwise a lane with unconsumed work would be stranded. Removes
+# the index entry and every stream, but deliberately leaves the generation
+# counter so a re-created partition keeps a monotonic generation (the fence never
+# goes backwards across a reap). Returns 1 if reaped, else 0.
 _LUA_REAP_PARTITION = """
-local groups = redis.pcall('XINFO', 'GROUPS', KEYS[2])
-if type(groups) == 'table' and groups.err then
-    -- The only benign error is a genuinely absent stream (nothing to lose by
-    -- reaping); any other error means we cannot prove there are no pending
-    -- entries, so refuse to delete the shared stream.
-    if string.find(groups.err, 'no such key') then
-        groups = {}
-    else
-        return 0
+for s = 2, #KEYS do
+    local groups = redis.pcall('XINFO', 'GROUPS', KEYS[s])
+    if type(groups) == 'table' and groups.err then
+        -- The only benign error is a genuinely absent stream (nothing to lose by
+        -- reaping); any other error means we cannot prove there are no pending
+        -- entries, so refuse to delete the shared stream.
+        if string.find(groups.err, 'no such key') then
+            groups = {}
+        else
+            return 0
+        end
     end
-end
-if type(groups) == 'table' then
-    for _, g in ipairs(groups) do
-        for i = 1, #g - 1, 2 do
-            if g[i] == 'pending' and tonumber(g[i + 1]) and tonumber(g[i + 1]) > 0 then
-                return 0
+    if type(groups) == 'table' then
+        for _, g in ipairs(groups) do
+            for i = 1, #g - 1, 2 do
+                if g[i] == 'pending' and tonumber(g[i + 1]) and tonumber(g[i + 1]) > 0 then
+                    return 0
+                end
             end
         end
     end
-end
-local last = redis.call('XREVRANGE', KEYS[2], '+', '-', 'COUNT', 1)
-if last and last[1] then
-    local ms = tonumber(string.match(last[1][1], '^(%d+)'))
-    local now = redis.call('TIME')
-    local now_ms = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
-    if ms and (now_ms - ms) < tonumber(ARGV[2]) then return 0 end
+    local last = redis.call('XREVRANGE', KEYS[s], '+', '-', 'COUNT', 1)
+    if last and last[1] then
+        local ms = tonumber(string.match(last[1][1], '^(%d+)'))
+        local now = redis.call('TIME')
+        local now_ms = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+        if ms and (now_ms - ms) < tonumber(ARGV[2]) then return 0 end
+    end
 end
 redis.call('SREM', KEYS[1], ARGV[1])
-redis.call('DEL', KEYS[2])
+for s = 2, #KEYS do redis.call('DEL', KEYS[s]) end
 return 1
 """
 
@@ -1334,22 +1338,30 @@ class RedisBroker(BaseBroker):
         members = self._client.smembers(self._partition_index_key(category))
         return {self._decode_if_bytes(m) for m in members}
 
-    def _reap_partition(self, category: str, key: str, min_idle_ms: int) -> bool:
+    def _reap_partition(
+        self, category: str, key: str, min_idle_ms: int, backfill_suffix: str | None
+    ) -> bool:
         """Atomically reap a cold partition; see :meth:`BaseBroker.reap_partition`."""
         index_key = self._partition_index_key(category)
         main_stream = f"{category}{CONSUMER_GROUP_SEPARATOR}{key}"
+        # When priority lanes are on, the key also has a backfill lane; reap only
+        # if both lanes are cold so a lane with unconsumed work is never stranded.
+        streams = [main_stream]
+        if backfill_suffix:
+            streams.append(f"{main_stream}{CONSUMER_GROUP_SEPARATOR}{backfill_suffix}")
         result = self._lua_reap_partition(
-            keys=[index_key, main_stream],
+            keys=[index_key, *streams],
             args=[key, min_idle_ms],
             client=self._client,
         )
         reaped = bool(result)
         if reaped:
-            # Reap deleted the stream and with it every consumer group on it, so
-            # drop the now-stale group-cache entries; otherwise a re-created
+            # Reap deleted the streams and with them every consumer group on them,
+            # so drop the now-stale group-cache entries; otherwise a re-created
             # partition's ``_ensure_group`` would no-op on a cache hit and the
             # next read would fail NOGROUP.
-            self._forget_stream_groups(main_stream)
+            for stream in streams:
+                self._forget_stream_groups(stream)
         return reaped
 
     def _forget_stream_groups(self, stream: str) -> None:

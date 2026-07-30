@@ -492,18 +492,29 @@ class PartitionedStreamSubscription(StreamSubscription):
         """
         assert self.broker is not None, "Broker not initialized"
         for _category, stream in owned.streams:
-            await asyncio.to_thread(
-                self.broker.reclaim_partition_pending,
-                stream,
-                self.consumer_group,
-                owned.consumer_name,
-            )
+            lanes = [stream]
+            if self._lanes_enabled:
+                lanes.append(self._backfill_stream(stream))
+            for lane in lanes:
+                await asyncio.to_thread(
+                    self.broker.reclaim_partition_pending,
+                    lane,
+                    self.consumer_group,
+                    owned.consumer_name,
+                )
+
+    def _backfill_stream(self, primary: str) -> str:
+        """The backfill-lane stream name for a primary partition stream."""
+        return f"{primary}:{self._backfill_suffix}"
 
     async def _drain_once(self, owned: _OwnedPartition) -> int:
         """Process at most one message per stream in the unit, strictly in order.
 
         Reads this consumer's pending entries first (retries and reclaimed
-        entries) before any new message, so the head is never skipped. On a
+        entries) before any new message, so the head is never skipped. When
+        priority lanes are enabled a key also has a backfill lane, drained only
+        when its primary lane is empty (production before backfill, as elsewhere),
+        so backfill-routed partitioned events are consumed, not stranded. On a
         processing failure it stops advancing that stream — the failed message
         stays pending as the head — and either schedules a retry or halts the
         partition once retries are exhausted (ADR-0028 decision 6). Returns the
@@ -514,36 +525,47 @@ class PartitionedStreamSubscription(StreamSubscription):
         for category, stream in owned.streams:
             if owned.halted:
                 break
-            # Pending entries (retries and reclaimed) before any new message, so
-            # the head is never skipped. Two reads are inherent — XREADGROUP
-            # cannot ask for "0 then >" in one call.
-            messages: list[tuple[str, dict[str, Any]]] = []
-            for new_messages in (False, True):  # pending first, then new
-                messages = await asyncio.to_thread(
-                    self.broker.read_partition_fenced,
-                    stream,
-                    self.consumer_group,
-                    owned.consumer_name,
-                    owned.lease_key,
-                    owned.fence_token,
-                    count=1,
-                    new_messages=new_messages,
-                )
-                if messages:
-                    break
-            if not messages:
+            head = await self._read_head(owned, stream)
+            if head is None and self._lanes_enabled:
+                head = await self._read_head(owned, self._backfill_stream(stream))
+            if head is None:
                 continue
-
-            identifier, payload = messages[0]
+            physical_stream, identifier, payload = head
             succeeded = await self._process_message(
-                owned, category, stream, identifier, payload
+                owned, category, physical_stream, identifier, payload
             )
             if succeeded:
                 processed += 1
             else:
                 # Do NOT advance past a failed head — that would reorder the key.
-                await self._on_failure(owned, stream, identifier)
+                await self._on_failure(owned, physical_stream, identifier)
         return processed
+
+    async def _read_head(
+        self, owned: _OwnedPartition, stream: str
+    ) -> tuple[str, str, dict[str, Any]] | None:
+        """Fenced-read the head of *stream* (pending before new), or ``None``.
+
+        Two reads are inherent — XREADGROUP cannot ask for "0 then >" in one call.
+        Returns ``(stream, identifier, payload)`` so the caller acks and tracks
+        retries against the exact physical stream (primary or backfill lane).
+        """
+        assert self.broker is not None, "Broker not initialized"
+        for new_messages in (False, True):  # pending first, then new
+            messages = await asyncio.to_thread(
+                self.broker.read_partition_fenced,
+                stream,
+                self.consumer_group,
+                owned.consumer_name,
+                owned.lease_key,
+                owned.fence_token,
+                count=1,
+                new_messages=new_messages,
+            )
+            if messages:
+                identifier, payload = messages[0]
+                return stream, identifier, payload
+        return None
 
     async def _process_message(
         self,
@@ -598,7 +620,7 @@ class PartitionedStreamSubscription(StreamSubscription):
             owned.fence_token,
         )
         if acked:
-            owned.retry_counts.pop(identifier, None)
+            owned.retry_counts.pop(f"{stream}:{identifier}", None)
         else:
             # We held the lease (no LeaseLostError) yet XACK removed nothing —
             # the entry left this consumer's pending list unexpectedly. The
@@ -620,8 +642,11 @@ class PartitionedStreamSubscription(StreamSubscription):
         stops advancing and leaves the poison as the pending head for an operator
         to resolve. The halt is scoped to this partition; others keep flowing.
         """
-        count = owned.retry_counts.get(identifier, 0) + 1
-        owned.retry_counts[identifier] = count
+        # Key the retry count by the physical stream too: a primary and a backfill
+        # lane can hand out the same Redis id, and they must not share a counter.
+        retry_key = f"{stream}:{identifier}"
+        count = owned.retry_counts.get(retry_key, 0) + 1
+        owned.retry_counts[retry_key] = count
         if count < self.max_retries:
             logger.warning(
                 "partition.retry",
@@ -657,6 +682,9 @@ class PartitionedStreamSubscription(StreamSubscription):
         ``True`` when every stream in the unit was reaped and the lease released.
         """
         assert self.broker is not None, "Broker not initialized"
+        # When lanes are on, reap covers the backfill lane too, so a key with
+        # unconsumed backfill work is never dropped from the index.
+        backfill_suffix = self._backfill_suffix if self._lanes_enabled else None
         all_reaped = True
         for category, _stream in owned.streams:
             try:
@@ -665,6 +693,7 @@ class PartitionedStreamSubscription(StreamSubscription):
                     category,
                     owned.partition_id,
                     self.reap_idle_ms,
+                    backfill_suffix,
                 )
             except Exception:
                 logger.exception(
