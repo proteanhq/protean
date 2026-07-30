@@ -181,10 +181,14 @@ def test_reap_is_lane_aware(broker: RedisBroker) -> None:
 def test_reap_leaves_generation_counter(broker: RedisBroker) -> None:
     cat = _cat()
     stream = f"{cat}:a"
+    group = "grp.Handler"
     gen_key = f"{cat}:a:__generation__"
     lease = f"{cat}:a:__lease__"
     broker.record_partition(cat, "a")
-    broker._publish(stream, _payload(0))
+    broker._ensure_group(group, stream)
+    ident = broker._publish(stream, _payload(0))
+    broker._client.xreadgroup(group, "c1", {stream: ">"}, count=1)
+    broker._client.xack(stream, group, ident)  # fully consumed
     # advance the generation a couple of times
     broker.acquire_partition_lease(lease, gen_key, "o1", 100)
     broker.release_partition_lease(lease, "o1:1")
@@ -194,6 +198,33 @@ def test_reap_leaves_generation_counter(broker: RedisBroker) -> None:
     assert broker.reap_partition(cat, "a", min_idle_ms=0) is True
     # A re-created partition keeps a monotonic generation (fence never resets).
     assert broker.acquire_partition_lease(lease, gen_key, "o3", 100) == 3
+
+
+def test_reap_blocked_by_group_behind_with_zero_pending(broker: RedisBroker) -> None:
+    # A partition stream is shared by every handler on the category (one group
+    # each). A group can be behind with ZERO pending — it never read, or acked all
+    # it read but has unread entries left. Reaping then would silently lose its
+    # unread messages, so the reap must refuse until every group has caught up.
+    cat = _cat()
+    stream = f"{cat}:a"
+    g1 = "grp.H1"
+    g2 = "grp.H2"
+    broker.record_partition(cat, "a")
+    broker._ensure_group(g1, stream)
+    broker._ensure_group(g2, stream)  # exists but never reads
+    ident = broker._publish(stream, _payload(0))
+
+    # g1 fully consumes; g2 is behind (last-delivered still 0-0) with 0 pending.
+    broker._client.xreadgroup(g1, "c1", {stream: ">"}, count=1)
+    broker._client.xack(stream, g1, ident)
+    assert broker.reap_partition(cat, "a", min_idle_ms=0) is False
+    assert "a" in broker.partition_keys(cat)
+
+    # g2 catches up → every group consumed → reaped.
+    broker._client.xreadgroup(g2, "c2", {stream: ">"}, count=1)
+    broker._client.xack(stream, g2, ident)
+    assert broker.reap_partition(cat, "a", min_idle_ms=0) is True
+    assert "a" not in broker.partition_keys(cat)
 
 
 def test_colon_bearing_partition_stream_group_roundtrips(broker: RedisBroker) -> None:

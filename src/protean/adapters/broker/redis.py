@@ -90,41 +90,48 @@ return redis.call('XACK', KEYS[2], ARGV[2], ARGV[3])
 
 # Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2..]=every physical
 # stream for the key (the main partition stream and, when priority lanes are on,
-# its backfill lane); ARGV[1]=key, ARGV[2]=min_idle_ms. Reaps only when NO
-# consumer group on ANY of those streams has pending entries (each stream is
-# shared by every handler on the category) and ALL of them have been idle for
-# min_idle_ms — otherwise a lane with unconsumed work would be stranded. Removes
-# the index entry and every stream, but deliberately leaves the generation
-# counter so a re-created partition keeps a monotonic generation (the fence never
-# goes backwards across a reap). Returns 1 if reaped, else 0.
+# its backfill lane); ARGV[1]=key, ARGV[2]=min_idle_ms. A stream is shared by
+# every handler on the category (one consumer group each), and reaping deletes
+# it, so a stream that still has entries is reaped only when it is FULLY consumed
+# by every group: no group has pending entries AND every group's last-delivered
+# id has caught up to the stream's last entry (a group can be behind with zero
+# pending — never read, or acked all it read but with unread entries left — and
+# deleting then would silently lose its unread messages). It must also have been
+# idle for min_idle_ms. An empty stream has nothing to lose and is always
+# reapable. Removes the index entry and every stream, but deliberately leaves the
+# generation counter so a re-created partition keeps a monotonic generation (the
+# fence never goes backwards across a reap). Returns 1 if reaped, else 0.
 _LUA_REAP_PARTITION = """
+local function id_lt(a, b)
+    local ams, aseq = string.match(a, '^(%d+)-(%d+)$')
+    local bms, bseq = string.match(b, '^(%d+)-(%d+)$')
+    if not (ams and bms) then return false end
+    ams, aseq, bms, bseq = tonumber(ams), tonumber(aseq), tonumber(bms), tonumber(bseq)
+    if ams ~= bms then return ams < bms end
+    return aseq < bseq
+end
 for s = 2, #KEYS do
-    local groups = redis.pcall('XINFO', 'GROUPS', KEYS[s])
-    if type(groups) == 'table' and groups.err then
-        -- The only benign error is a genuinely absent stream (nothing to lose by
-        -- reaping); any other error means we cannot prove there are no pending
-        -- entries, so refuse to delete the shared stream.
-        if string.find(groups.err, 'no such key') then
-            groups = {}
-        else
-            return 0
-        end
-    end
-    if type(groups) == 'table' then
-        for _, g in ipairs(groups) do
-            for i = 1, #g - 1, 2 do
-                if g[i] == 'pending' and tonumber(g[i + 1]) and tonumber(g[i + 1]) > 0 then
-                    return 0
-                end
-            end
-        end
-    end
     local last = redis.call('XREVRANGE', KEYS[s], '+', '-', 'COUNT', 1)
     if last and last[1] then
-        local ms = tonumber(string.match(last[1][1], '^(%d+)'))
+        local last_id = last[1][1]
+        local ms = tonumber(string.match(last_id, '^(%d+)'))
         local now = redis.call('TIME')
         local now_ms = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
         if ms and (now_ms - ms) < tonumber(ARGV[2]) then return 0 end
+        -- The stream has entries; every consumer group must have fully consumed
+        -- them. If we cannot enumerate the groups, or there are none, we cannot
+        -- prove that, so refuse to delete a stream that still holds data.
+        local groups = redis.pcall('XINFO', 'GROUPS', KEYS[s])
+        if type(groups) ~= 'table' or groups.err or #groups == 0 then return 0 end
+        for _, g in ipairs(groups) do
+            local pending, delivered
+            for i = 1, #g - 1, 2 do
+                if g[i] == 'pending' then pending = tonumber(g[i + 1]) end
+                if g[i] == 'last-delivered-id' then delivered = g[i + 1] end
+            end
+            if pending and pending > 0 then return 0 end
+            if not delivered or id_lt(delivered, last_id) then return 0 end
+        end
     end
 end
 redis.call('SREM', KEYS[1], ARGV[1])
