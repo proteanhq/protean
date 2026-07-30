@@ -29,6 +29,7 @@ class RecordingBroker:
         self.name = name
         self._capabilities = capabilities
         self.published: list[tuple[str, dict]] = []
+        self.recorded_partitions: list[tuple[str, str]] = []
 
     def has_capability(self, capability: BrokerCapabilities) -> bool:
         return capability in self._capabilities
@@ -36,6 +37,11 @@ class RecordingBroker:
     def publish(self, stream: str, message: dict) -> str:
         self.published.append((stream, message))
         return "broker-msg-id"
+
+    def record_partition(self, category: str, key: str) -> None:
+        if getattr(self, "raise_on_record", False):
+            raise RuntimeError("index write boom")
+        self.recorded_partitions.append((category, key))
 
 
 class FakeEmitter:
@@ -319,3 +325,98 @@ class TestAbandonBackstop:
             refetched = outbox_repo.get(row_id)
             assert refetched.status == OutboxStatus.PUBLISHED.value
             assert broker.published[0][0] == "test::order:client-1"
+
+
+@pytest.mark.database
+class TestPartitionIndexWrite:
+    """The publisher records each partition key in the index (ADR-0028 #7).
+
+    The partitioned consumer discovers partitions only from this index, so the
+    publish path must write it. There is deliberately no per-process cache: the
+    consumer reaps cold keys from the index, so a cache could skip re-adding a
+    reaped-then-republished key and strand it. Every publish records (SADD is
+    idempotent), and a failed record fails the publish so the row retries.
+    """
+
+    @pytest.mark.asyncio
+    async def test_partitioned_publish_records_index(self):
+        domain = _make_domain("IdxWrite")
+        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
+        processor.broker = broker
+
+        with domain.domain_context():
+            await processor._publish_message(
+                _outbox_row("m1", partition_key="client-1")
+            )
+
+        # Records the base category and key, before the partition segment.
+        assert broker.recorded_partitions == [("test::order", "client-1")]
+
+    @pytest.mark.asyncio
+    async def test_every_partitioned_publish_records_no_cache(self):
+        # No per-process cache: each publish records its key, even a repeat.
+        # Relying on SADD idempotency keeps a reaped-then-republished key from
+        # being silently skipped (the strand bug a cache would reintroduce).
+        domain = _make_domain("IdxNoCache")
+        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
+        processor.broker = broker
+
+        with domain.domain_context():
+            await processor._publish_message(_outbox_row("m1", partition_key="c1"))
+            await processor._publish_message(_outbox_row("m2", partition_key="c1"))
+            await processor._publish_message(_outbox_row("m3", partition_key="c2"))
+
+        assert broker.recorded_partitions == [
+            ("test::order", "c1"),
+            ("test::order", "c1"),
+            ("test::order", "c2"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_index_write_failure_fails_publish(self):
+        # A failed index write must fail the whole publish so the row stays
+        # PENDING and retries — never leave a message on a partition stream that
+        # is absent from the index (the consumer would never discover it).
+        domain = _make_domain("IdxFail")
+        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
+        broker.raise_on_record = True
+        processor.broker = broker
+
+        with domain.domain_context():
+            success, error = await processor._publish_message(
+                _outbox_row("m1", partition_key="client-1")
+            )
+
+        assert success is False
+        assert error is not None
+        # The message was NOT published to the partition stream.
+        assert broker.published == []
+
+    @pytest.mark.asyncio
+    async def test_no_index_write_without_partition_key(self):
+        domain = _make_domain("IdxNoKey")
+        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
+        processor.broker = broker
+
+        with domain.domain_context():
+            await processor._publish_message(_outbox_row("m1", partition_key=None))
+
+        assert broker.recorded_partitions == []
+
+    @pytest.mark.asyncio
+    async def test_no_index_write_on_non_partitioning_broker(self):
+        domain = _make_domain("IdxNoCap")
+        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        broker = RecordingBroker("default", BrokerCapabilities.RELIABLE_MESSAGING)
+        processor.broker = broker
+
+        with domain.domain_context():
+            await processor._publish_message(
+                _outbox_row("m1", partition_key="client-1")
+            )
+
+        assert broker.recorded_partitions == []

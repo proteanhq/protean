@@ -38,7 +38,10 @@ from .dlq_maintenance import DLQMaintenanceTask
 from .health import HealthServer
 from .outbox_processor import OutboxProcessor
 from .subscription.broker_subscription import BrokerSubscription
-from .subscription.factory import SubscriptionFactory
+from .subscription.factory import (
+    SubscriptionFactory,
+    broker_supports_partitioning,
+)
 from .tracing import TraceEmitter
 
 if TYPE_CHECKING:
@@ -476,9 +479,29 @@ class Engine:
                     f"on stream '{stream_category}'"
                 )
 
-        # Register process manager subscriptions (one per stream category)
+        # Register process manager subscriptions (one per stream category).
+        # A ``sequential_by`` process manager is the exception: it leases by
+        # correlation value spanning every category it subscribes to (ADR-0028
+        # decision 2), so it gets a single partitioned subscription across all
+        # its categories instead of one per category — otherwise two instances
+        # could each own a different category's partition for the same
+        # correlation value and process that instance's events concurrently.
         for pm_name, pm_record in self.domain.registry.process_managers.items():
             pm_cls = pm_record.cls
+
+            if self._is_partitioned_process_manager(pm_cls):
+                subscription_key = f"{pm_name}-partitioned"
+                self._subscriptions[subscription_key] = (
+                    self._subscription_factory.create_partitioned_pm_subscription(
+                        pm_cls
+                    )
+                )
+                logger.debug(
+                    f"Registered partitioned subscription for process manager "
+                    f"'{pm_name}' across streams "
+                    f"{list(pm_cls.meta_.stream_categories)}"
+                )
+                continue
 
             for stream_category in pm_cls.meta_.stream_categories:
                 subscription_key = f"{pm_name}-{stream_category}"
@@ -493,6 +516,20 @@ class Engine:
                     f"Registered subscription for process manager '{pm_name}' "
                     f"on stream '{stream_category}'"
                 )
+
+    def _is_partitioned_process_manager(self, pm_cls: type[BaseProcessManager]) -> bool:
+        """Whether a PM opts into partitioning and the broker actually partitions.
+
+        Mirrors the factory's category check: a ``sequential_by`` PM only routes
+        to partition streams when the default broker advertises
+        ``STREAM_PARTITIONING``; under the inline broker it is a no-op and the PM
+        keeps its regular per-category subscriptions (ADR-0028 decision 8).
+        """
+        if not getattr(pm_cls.meta_, "sequential_by", None):
+            return False
+        if not pm_cls.meta_.stream_categories:
+            return False
+        return broker_supports_partitioning(self.domain)
 
     def _infer_stream_category(
         self, handler_cls: type[BaseCommandHandler | BaseEventHandler]

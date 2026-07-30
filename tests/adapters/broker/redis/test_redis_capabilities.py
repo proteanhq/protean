@@ -10,11 +10,13 @@ class TestRedisBrokerCapabilities:
     """Test capability methods specifically with Redis broker."""
 
     def test_capabilities(self, broker):
-        """RedisBroker should have ORDERED_MESSAGING | BLOCKING_READ capabilities."""
+        """RedisBroker has ordered messaging, blocking reads, DLQ, and
+        partition-per-key streams (STREAM_PARTITIONING, added in ADR-0028)."""
         expected_caps = (
             BrokerCapabilities.ORDERED_MESSAGING
             | BrokerCapabilities.BLOCKING_READ
             | BrokerCapabilities.DEAD_LETTER_QUEUE
+            | BrokerCapabilities.STREAM_PARTITIONING
         )
 
         # Test has_all_capabilities
@@ -26,9 +28,10 @@ class TestRedisBrokerCapabilities:
         assert broker.has_all_capabilities(BrokerCapabilities.MESSAGE_ORDERING)
         assert broker.has_all_capabilities(BrokerCapabilities.BLOCKING_READ)
         assert broker.has_all_capabilities(BrokerCapabilities.DEAD_LETTER_QUEUE)
+        assert broker.has_all_capabilities(BrokerCapabilities.STREAM_PARTITIONING)
         assert broker.has_all_capabilities(expected_caps)
 
-        # Should not have some advanced capabilities
+        # Should not have some advanced capabilities it does not implement.
         assert not broker.has_all_capabilities(BrokerCapabilities.REPLAY)
         assert not broker.has_all_capabilities(BrokerCapabilities.ENTERPRISE_STREAMING)
 
@@ -37,6 +40,8 @@ class TestRedisBrokerCapabilities:
         assert broker.has_any_capability(
             BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.REPLAY
         )
-        assert not broker.has_any_capability(
+        # Advertises STREAM_PARTITIONING but not REPLAY.
+        assert broker.has_any_capability(
             BrokerCapabilities.REPLAY | BrokerCapabilities.STREAM_PARTITIONING
         )
+        assert not broker.has_any_capability(BrokerCapabilities.REPLAY)

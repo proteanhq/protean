@@ -600,6 +600,18 @@ class OutboxProcessor(BaseSubscription):
                 and message.partition_key
                 and self.broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
             ):
+                # Record the key in the per-category partition index (an
+                # idempotent SADD) so the partitioned consumer can discover it —
+                # the consumer discovers partitions from this index alone, no
+                # keyspace scan (ADR-0028 decision 7) — then route to the
+                # partition stream. This is inside the publish try on purpose: if
+                # the index write fails the whole publish fails and the row stays
+                # PENDING to retry, so a message can never land on a partition
+                # stream that is missing from the index (which the consumer would
+                # never discover). No per-process cache: the consumer reaps cold
+                # keys from the index, so a cached "already recorded" belief could
+                # skip re-adding a reaped-then-republished key and strand it.
+                self.broker.record_partition(stream_category, message.partition_key)
                 stream_category = f"{stream_category}:{message.partition_key}"
 
             # Priority lanes only apply to internal processors

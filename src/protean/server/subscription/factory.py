@@ -16,8 +16,12 @@ Example:
 import logging
 from typing import TYPE_CHECKING, Protocol, Union, cast
 
+from protean.port.broker import BrokerCapabilities
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
+from protean.server.subscription.partitioned_stream_subscription import (
+    PartitionedStreamSubscription,
+)
 from protean.server.subscription.profiles import SubscriptionConfig, SubscriptionType
 from protean.server.subscription.stream_subscription import StreamSubscription
 
@@ -26,6 +30,8 @@ if TYPE_CHECKING:
     from protean.core.command_handler import BaseCommandHandler
     from protean.core.event import BaseEvent
     from protean.core.event_handler import BaseEventHandler
+    from protean.core.process_manager import BaseProcessManager
+    from protean.domain import Domain
     from protean.server import Engine
     from protean.utils.container import Options
     from protean.utils.eventing import Message
@@ -62,6 +68,22 @@ class CommandDispatcherProtocol(Protocol):
 
 
 logger = logging.getLogger(__name__)
+
+
+def broker_supports_partitioning(domain: "Domain") -> bool:
+    """Whether the domain's default broker advertises ``STREAM_PARTITIONING``.
+
+    Shared by the factory (deciding a category is physically partitioned) and the
+    engine (deciding a ``sequential_by`` process manager gets one spanning
+    subscription), so both agree on when partition-per-key is actually active
+    (ADR-0028 decision 8). Under a non-partitioning broker (e.g. the inline
+    broker) ``sequential_by`` is a no-op and neither path partitions.
+    """
+    broker = domain.brokers.get("default")
+    return broker is not None and broker.has_capability(
+        BrokerCapabilities.STREAM_PARTITIONING
+    )
+
 
 # The kinds of handler the factory can build a subscription for: any handler
 # *class* — event/command handlers, projectors, and process managers are all
@@ -194,6 +216,20 @@ class SubscriptionFactory:
         handler_arg = cast("type[BaseEventHandler] | type[BaseCommandHandler]", handler)
 
         if config.subscription_type == SubscriptionType.STREAM:
+            if self._is_partitioned_category(stream_category):
+                # Every handler on a partitioned category consumes from
+                # ``{category}:{key}`` partition streams (its events are
+                # published there, not to the base stream), so it needs the
+                # partitioned consumer even if it did not itself declare
+                # ``sequential_by`` (ADR-0028).
+                return PartitionedStreamSubscription.from_partitioned_config(
+                    engine=self._engine,
+                    stream_category=stream_category,
+                    handler=handler_arg,
+                    config=config,
+                    stream_categories=[stream_category],
+                    correlated=False,
+                )
             return StreamSubscription.from_config(
                 engine=self._engine,
                 stream_category=stream_category,
@@ -207,6 +243,45 @@ class SubscriptionFactory:
                 handler=handler_arg,
                 config=config,
             )
+
+    def _is_partitioned_category(self, stream_category: str) -> bool:
+        """Whether events on *stream_category* are physically partitioned.
+
+        A category is partitioned only when some handler declares
+        ``sequential_by`` on it (so it is in ``domain._partition_keys``) **and**
+        the default broker actually advertises ``STREAM_PARTITIONING``. Under a
+        non-partitioning broker (e.g. the inline broker) ``sequential_by`` is a
+        no-op: the publisher does not split streams, so the consumer stays on the
+        base stream with a regular subscription (ADR-0028 decision 8).
+        """
+        domain = self._engine.domain
+        if stream_category not in getattr(domain, "_partition_keys", {}):
+            return False
+        return broker_supports_partitioning(domain)
+
+    def create_partitioned_pm_subscription(
+        self, pm_cls: "type[BaseProcessManager]"
+    ) -> "BaseSubscription":
+        """Build one partitioned subscription spanning a process manager's categories.
+
+        A ``sequential_by`` process manager leases by correlation value across
+        all the categories it subscribes to (ADR-0028 decision 2), so unlike the
+        per-category handler subscriptions it needs a single subscription that
+        owns a correlation value's partition streams across every category at
+        once. Resolves config from the first category.
+        """
+        categories = list(pm_cls.meta_.stream_categories)
+        primary = categories[0]
+        config = self._config_resolver.resolve(pm_cls, stream_category=primary)
+        handler_arg = cast("type[BaseEventHandler] | type[BaseCommandHandler]", pm_cls)
+        return PartitionedStreamSubscription.from_partitioned_config(
+            engine=self._engine,
+            stream_category=primary,
+            handler=handler_arg,
+            config=config,
+            stream_categories=categories,
+            correlated=True,
+        )
 
     def _log_subscription_creation(
         self,

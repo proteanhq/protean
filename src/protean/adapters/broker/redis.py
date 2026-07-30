@@ -11,7 +11,13 @@ from typing import (
 
 import redis
 
-from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry, registry
+from protean.port.broker import (
+    BaseBroker,
+    BrokerCapabilities,
+    DLQEntry,
+    LeaseLostError,
+    registry,
+)
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -23,6 +29,104 @@ DATA_FIELD = "data"
 STREAM_ID_START = "0"
 CONSUMER_GROUP_SEPARATOR = ":"
 NEW_MESSAGES_MARK = ">"
+PENDING_MESSAGES_MARK = "0"
+
+# Partition-per-key internal key suffixes (ADR-0028). Each is a reserved
+# ``__name__`` sentinel, which partition keys can never equal (rejected at
+# record creation), so an internal key never collides with a partition stream.
+PARTITIONS_INDEX_SUFFIX = "__partitions__"  # {category}:__partitions__ (a Set)
+
+# Lua scripts backing partition ownership. Each pairs a lease check with the
+# stream operation so the two happen atomically — the fencing token of ADR-0028
+# decision 5. Redis runs a script to completion without interleaving other
+# commands, which is what makes "check the lease, then act" indivisible.
+
+# Acquire an unheld lease at a fresh, monotonically increasing generation.
+# KEYS[1]=lease_key, KEYS[2]=generation_key; ARGV[1]=owner_id, ARGV[2]=ttl_ms.
+# Returns the new generation, or nil if the lease is already held.
+_LUA_ACQUIRE_LEASE = """
+if redis.call('GET', KEYS[1]) then return nil end
+local gen = redis.call('INCR', KEYS[2])
+redis.call('SET', KEYS[1], ARGV[1] .. ':' .. gen, 'PX', tonumber(ARGV[2]))
+return gen
+"""
+
+# Renew a lease only while it still holds this exact fence token.
+# KEYS[1]=lease_key; ARGV[1]=fence_token, ARGV[2]=ttl_ms. Returns 1 or 0.
+_LUA_RENEW_LEASE = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[2]))
+    return 1
+end
+return 0
+"""
+
+# Release a lease only if we still hold it. KEYS[1]=lease_key; ARGV[1]=fence.
+_LUA_RELEASE_LEASE = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    redis.call('DEL', KEYS[1])
+    return 1
+end
+return 0
+"""
+
+# Fenced read: verify the lease, then XREADGROUP in the same atomic step.
+# KEYS[1]=lease_key, KEYS[2]=stream; ARGV[1]=fence, ARGV[2]=group,
+# ARGV[3]=consumer, ARGV[4]=count, ARGV[5]=id ('>' new or '0' pending).
+# Returns the raw XREADGROUP reply, or a FENCED error when the lease is lost.
+_LUA_READ_FENCED = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return redis.error_reply('FENCED') end
+return redis.call('XREADGROUP', 'GROUP', ARGV[2], ARGV[3],
+                  'COUNT', tonumber(ARGV[4]), 'STREAMS', KEYS[2], ARGV[5])
+"""
+
+# Fenced ack: verify the lease, then XACK atomically. Returns the XACK count,
+# or -1 when the lease is lost (so the caller can raise LeaseLostError).
+# KEYS[1]=lease_key, KEYS[2]=stream; ARGV[1]=fence, ARGV[2]=group, ARGV[3]=id.
+_LUA_ACK_FENCED = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
+return redis.call('XACK', KEYS[2], ARGV[2], ARGV[3])
+"""
+
+# Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2]=main_stream;
+# ARGV[1]=key, ARGV[2]=min_idle_ms. Reaps only when NO consumer group on the
+# stream has pending entries (the stream is shared by every handler on the
+# category, so one drained group is not enough) and the stream has been idle for
+# min_idle_ms. Removes the index entry and the stream, but deliberately leaves
+# the generation counter so a re-created partition keeps a monotonic generation
+# (the fence never goes backwards across a reap). Returns 1 if reaped, else 0.
+_LUA_REAP_PARTITION = """
+local groups = redis.pcall('XINFO', 'GROUPS', KEYS[2])
+if type(groups) == 'table' and groups.err then
+    -- The only benign error is a genuinely absent stream (nothing to lose by
+    -- reaping); any other error means we cannot prove there are no pending
+    -- entries, so refuse to delete the shared stream.
+    if string.find(groups.err, 'no such key') then
+        groups = {}
+    else
+        return 0
+    end
+end
+if type(groups) == 'table' then
+    for _, g in ipairs(groups) do
+        for i = 1, #g - 1, 2 do
+            if g[i] == 'pending' and tonumber(g[i + 1]) and tonumber(g[i + 1]) > 0 then
+                return 0
+            end
+        end
+    end
+end
+local last = redis.call('XREVRANGE', KEYS[2], '+', '-', 'COUNT', 1)
+if last and last[1] then
+    local ms = tonumber(string.match(last[1][1], '^(%d+)'))
+    local now = redis.call('TIME')
+    local now_ms = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+    if ms and (now_ms - ms) < tonumber(ARGV[2]) then return 0 end
+end
+redis.call('SREM', KEYS[1], ARGV[1])
+redis.call('DEL', KEYS[2])
+return 1
+"""
 
 
 class RedisBroker(BaseBroker):
@@ -66,6 +170,17 @@ class RedisBroker(BaseBroker):
         self._created_groups_set: set[str] = set()
         self._group_creation_times: dict[str, float] = {}  # creation times
 
+        # Partition-per-key Lua scripts (ADR-0028), registered once. redis-py's
+        # register_script only wraps the source (the SHA is derived from it, no
+        # server round-trip), so the Script objects survive reconnects; each call
+        # passes the current client explicitly.
+        self._lua_acquire_lease = self._client.register_script(_LUA_ACQUIRE_LEASE)
+        self._lua_renew_lease = self._client.register_script(_LUA_RENEW_LEASE)
+        self._lua_release_lease = self._client.register_script(_LUA_RELEASE_LEASE)
+        self._lua_read_fenced = self._client.register_script(_LUA_READ_FENCED)
+        self._lua_ack_fenced = self._client.register_script(_LUA_ACK_FENCED)
+        self._lua_reap_partition = self._client.register_script(_LUA_REAP_PARTITION)
+
         # Add compatibility attributes for generic tests
         # Redis Streams handle these differently but tests expect these attributes
         self._max_retries = 3  # Default value for compatibility
@@ -99,11 +214,14 @@ class RedisBroker(BaseBroker):
 
     @property
     def capabilities(self) -> BrokerCapabilities:
-        """Redis Streams provide ordered messaging with native consumer groups and blocking reads."""
+        """Redis Streams provide ordered messaging with native consumer groups,
+        blocking reads, dead-letter queues, and partition-per-key streams
+        (ADR-0028)."""
         return (
             BrokerCapabilities.ORDERED_MESSAGING
             | BrokerCapabilities.BLOCKING_READ
             | BrokerCapabilities.DEAD_LETTER_QUEUE
+            | BrokerCapabilities.STREAM_PARTITIONING
         )
 
     @property
@@ -834,10 +952,14 @@ class RedisBroker(BaseBroker):
         """Get set of streams to check for info"""
         streams = set(self._subscribers.keys())
 
-        # Add streams from created consumer groups
+        # Add streams from created consumer groups. Group keys are
+        # ``{stream}:{group}`` and a partition stream name itself contains
+        # colons (``order:client-123``), so recover the stream by splitting off
+        # the LAST colon segment — the group name is a handler FQN (dotted, no
+        # colons), so the final segment is always the group (ADR-0028 decision 4).
         for group_key in self._created_groups:
             if CONSUMER_GROUP_SEPARATOR in group_key:
-                stream_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)[0]
+                stream_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0]
                 streams.add(stream_name)
 
         return streams
@@ -1043,7 +1165,10 @@ class RedisBroker(BaseBroker):
 
             for group_key in created_groups:
                 if CONSUMER_GROUP_SEPARATOR in group_key:
-                    _, group_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+                    # Split off the LAST colon: the group name (a dotted handler
+                    # FQN, no colons) is the final segment, while the stream part
+                    # may itself carry colons for partition streams (ADR-0028).
+                    group_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[1]
                     consumer_groups.add(group_name)
 
             return {"count": len(consumer_groups), "names": sorted(consumer_groups)}
@@ -1191,6 +1316,218 @@ class RedisBroker(BaseBroker):
                 logger.debug("Closed Redis broker connection: %s", self.name)
         except Exception:
             logger.exception("Error closing Redis broker %s", self.name)
+
+    # ------------------------------------------------------------------
+    # Partition-per-key support (ADR-0028)
+    # ------------------------------------------------------------------
+
+    def _partition_index_key(self, category: str) -> str:
+        """Return the Redis Set key holding *category*'s live partition keys."""
+        return f"{category}{CONSUMER_GROUP_SEPARATOR}{PARTITIONS_INDEX_SUFFIX}"
+
+    def _record_partition(self, category: str, key: str) -> None:
+        """Record *key* in ``{category}:__partitions__`` (idempotent SADD)."""
+        self._client.sadd(self._partition_index_key(category), key)
+
+    def _partition_keys(self, category: str) -> set[str]:
+        """Return the live partition keys recorded for *category*."""
+        members = self._client.smembers(self._partition_index_key(category))
+        return {self._decode_if_bytes(m) for m in members}
+
+    def _reap_partition(self, category: str, key: str, min_idle_ms: int) -> bool:
+        """Atomically reap a cold partition; see :meth:`BaseBroker.reap_partition`."""
+        index_key = self._partition_index_key(category)
+        main_stream = f"{category}{CONSUMER_GROUP_SEPARATOR}{key}"
+        result = self._lua_reap_partition(
+            keys=[index_key, main_stream],
+            args=[key, min_idle_ms],
+            client=self._client,
+        )
+        reaped = bool(result)
+        if reaped:
+            # Reap deleted the stream and with it every consumer group on it, so
+            # drop the now-stale group-cache entries; otherwise a re-created
+            # partition's ``_ensure_group`` would no-op on a cache hit and the
+            # next read would fail NOGROUP.
+            self._forget_stream_groups(main_stream)
+        return reaped
+
+    def _forget_stream_groups(self, stream: str) -> None:
+        """Drop cached consumer-group entries for *stream* (group cache key is
+        ``{stream}:{group}``; the group is the last colon-segment)."""
+        stale = {
+            group_key
+            for group_key in self._created_groups_set
+            if group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0] == stream
+        }
+        self._created_groups_set -= stale
+
+    def _acquire_partition_lease(
+        self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int
+    ) -> int | None:
+        """Acquire an unheld lease at a fresh generation, or return ``None``."""
+        result = self._lua_acquire_lease(
+            keys=[lease_key, generation_key],
+            args=[owner_id, ttl_ms],
+            client=self._client,
+        )
+        return int(result) if result is not None else None
+
+    def _renew_partition_lease(
+        self, lease_key: str, fence_token: str, ttl_ms: int
+    ) -> bool:
+        """Renew a held lease; ``False`` if the fence token no longer matches."""
+        result = self._lua_renew_lease(
+            keys=[lease_key], args=[fence_token, ttl_ms], client=self._client
+        )
+        return bool(result)
+
+    def _release_partition_lease(self, lease_key: str, fence_token: str) -> bool:
+        """Release a held lease; ``False`` if we no longer hold it."""
+        result = self._lua_release_lease(
+            keys=[lease_key], args=[fence_token], client=self._client
+        )
+        return bool(result)
+
+    def _read_partition_fenced(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        lease_key: str,
+        fence_token: str,
+        count: int,
+        new_messages: bool,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Fenced XREADGROUP; raises :class:`LeaseLostError` when the lease is lost."""
+        self._ensure_group(consumer_group, stream)
+        start_id = NEW_MESSAGES_MARK if new_messages else PENDING_MESSAGES_MARK
+        try:
+            result = self._lua_read_fenced(
+                keys=[lease_key, stream],
+                args=[fence_token, consumer_group, consumer_name, count, start_id],
+                client=self._client,
+            )
+        except redis.ResponseError as e:
+            # The fenced-read script returns exactly ``redis.error_reply('FENCED')``
+            # on a lost lease. Match it exactly so a real broker error whose text
+            # merely contains "FENCED" is not laundered into a lost-lease verdict.
+            if str(e).strip() == "FENCED":
+                raise LeaseLostError(
+                    f"Lease {lease_key} lost while reading {stream}"
+                ) from e
+            # The group can be gone even though our cache thinks it exists — e.g.
+            # the stream was reaped and re-created by another process. Rebuild it
+            # and retry once (mirrors the NOGROUP recovery in ``_read_blocking``).
+            if "NOGROUP" in str(e):
+                self._forget_stream_groups(stream)
+                self._ensure_group(consumer_group, stream)
+                result = self._lua_read_fenced(
+                    keys=[lease_key, stream],
+                    args=[fence_token, consumer_group, consumer_name, count, start_id],
+                    client=self._client,
+                )
+                return self._parse_fenced_read(result)
+            raise
+        return self._parse_fenced_read(result)
+
+    def _ack_partition_fenced(
+        self,
+        stream: str,
+        identifier: str,
+        consumer_group: str,
+        lease_key: str,
+        fence_token: str,
+    ) -> bool:
+        """Fenced XACK; raises :class:`LeaseLostError` when the lease is lost."""
+        result = self._lua_ack_fenced(
+            keys=[lease_key, stream],
+            args=[fence_token, consumer_group, identifier],
+            client=self._client,
+        )
+        acked = int(result)
+        if acked < 0:
+            raise LeaseLostError(f"Lease {lease_key} lost while acking {stream}")
+        return acked > 0
+
+    def _reclaim_partition_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        count: int,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Reclaim a dead owner's pending entries into *consumer_name* via XAUTOCLAIM.
+
+        A broker error is left to propagate rather than swallowed: reclaim is a
+        correctness precondition for the new owner (an un-reclaimed pending entry
+        would be processed out of order), so the partitioned consumer must see a
+        failure and give up the partition, not mistake a failed reclaim for
+        "nothing to reclaim".
+        """
+        self._ensure_group(consumer_group, stream)
+        messages: list[tuple[str, dict[str, Any]]] = []
+        cursor = STREAM_ID_START + "-0"
+        while True:
+            try:
+                # Returns (next_cursor, claimed, deleted) on redis-py 8.
+                reply = self._client.xautoclaim(
+                    stream,
+                    consumer_group,
+                    consumer_name,
+                    min_idle_time=min_idle_ms,
+                    start_id=cursor,
+                    count=count,
+                )
+            except redis.ResponseError as e:
+                # A missing group (e.g. stream reaped and re-created elsewhere)
+                # means there is nothing to reclaim: rebuild the group and return
+                # what we have. Any other broker error propagates — reclaim is a
+                # correctness precondition, not best-effort.
+                if "NOGROUP" in str(e):
+                    self._forget_stream_groups(stream)
+                    self._ensure_group(consumer_group, stream)
+                    return messages
+                raise
+            next_cursor, claimed = reply[0], reply[1]
+            for message_id, fields in claimed:
+                if fields:
+                    redis_id_str = self._decode_if_bytes(message_id)
+                    message = self._deserialize_message(fields)
+                    messages.append((redis_id_str, message))
+            cursor = self._decode_if_bytes(next_cursor)
+            # A "0-0" cursor means the scan wrapped around — no more pending.
+            if cursor == STREAM_ID_START + "-0" or not claimed:
+                break
+        return messages
+
+    def _parse_fenced_read(self, result: Any) -> list[tuple[str, dict[str, Any]]]:
+        """Parse the raw XREADGROUP reply returned by the fenced-read Lua script.
+
+        A Lua reply is nested arrays with flat ``[field, value, ...]`` lists
+        (not the ``{field: value}`` dicts redis-py builds for a native call), so
+        the fields are zipped back into a dict before deserialization.
+        """
+        messages: list[tuple[str, dict[str, Any]]] = []
+        if not result:
+            return messages
+        for stream_entry in result:
+            entries = stream_entry[1]
+            if not entries:
+                continue
+            for entry in entries:
+                entry_id, flat_fields = entry[0], entry[1]
+                if not flat_fields:
+                    continue
+                fields = {
+                    flat_fields[i]: flat_fields[i + 1]
+                    for i in range(0, len(flat_fields) - 1, 2)
+                }
+                redis_id_str = self._decode_if_bytes(entry_id)
+                message = self._deserialize_message(fields)
+                messages.append((redis_id_str, message))
+        return messages
 
     def _data_reset(self) -> None:
         """Flush all data in Redis instance for testing"""
