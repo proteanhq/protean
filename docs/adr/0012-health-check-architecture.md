@@ -45,8 +45,9 @@ the async engine by default.
   async engine; `{"application": "running"}` on the FastAPI router.
 - `GET /livez` — alias for `/healthz`.
 - `GET /readyz` — readiness. Inspects every provider, broker, event
-  store, and cache; on the async engine it also reports the
-  subscription count. Returns `200` when every check passes, `503`
+  store, and cache; on the async engine it also reports a
+  `subscriptions` block (see "Per-subscription readiness" below).
+  Returns `200` when every check passes, `503`
   when any check fails (status `degraded`), and `503` with
   `{"shutting_down": true}` when shutdown is in progress
   (status `unavailable`).
@@ -65,8 +66,14 @@ the async engine by default.
 
 Both implementations share readiness logic through `protean.utils.health`,
 which exposes `check_providers`, `check_brokers`, `check_event_store`,
-and `check_caches`. The async-engine probe adds a subscription count
-check on top.
+and `check_caches`. The async-engine probe adds the `subscriptions`
+block on top; the FastAPI router does not. Not because it couldn't —
+`collect_subscription_statuses()` walks the registry and works fine
+without a running engine — but because an API pod's readiness should
+not depend on how far behind a worker's consumers are. Those are
+separate deployments with separate failure modes, and a web pod that
+can serve requests is ready even when a worker is backed up. Only
+`circuit_state` and `total` are genuinely engine-only.
 
 **Transport choice: asyncio over aiohttp/ASGI.**
 
@@ -126,11 +133,35 @@ itself being unresponsive should fail liveness.
   adapter. For high-throughput systems this is negligible; for
   rate-limited upstreams (e.g., managed Redis with per-second caps)
   it is worth sizing.
-- Subscription count is reported as a single integer. We do not
-  currently expose per-subscription readiness, so a single
-  misbehaving subscription does not show up in `/readyz`. Operators
-  who need per-subscription visibility must reach for OTEL metrics
-  or the Observatory dashboard.
+- The `subscriptions` block queries infrastructure once per
+  subscription (Redis `XLEN`/`XINFO`, event-store reads, outbox
+  counts). That is far heavier than the adapter pings above, and
+  unlike them it can hang, so **it is not collected on the probe
+  path at all**: a background task refreshes it every two seconds
+  and the probe reads the result out of memory. Answering `/readyz`
+  therefore stays as cheap as it was when the field was a bare
+  integer. A deployment with very many subscriptions pays the
+  collection cost once per interval regardless of probe frequency.
+  This is deliberately the opposite trade from the adapter pings,
+  which still run inline: those decide the verdict, so they must be
+  current; the subscription block only informs, so it may be stale.
+- Reporting lag without acting on it is deliberate (see
+  "Per-subscription readiness" below), so `/readyz` alone will not
+  page anyone about a stuck subscription. Alerting still belongs on
+  the metrics.
+- The block inherits the coverage gaps of
+  `collect_subscription_statuses()`, which predate it and are shared
+  with the `protean subscriptions status` CLI and the OTEL gauges.
+  Three are known: outbox processors for `outbox.external_brokers`
+  get no row; providers with `managed = false` get a row for a
+  processor the engine never started; and a subscription on a
+  partitioned (`sequential_by`) category reports
+  `lag: null, status: "unknown"`, because the collector reads the base
+  stream while the consumers read `{category}:{key}` partitions. That
+  last one matters most: a halted partition is the framework's own
+  definition of a stuck subscription and it produces no signal here.
+  Fixing them belongs in the collector, not in the probe, so `total`
+  and `len(details)` can legitimately disagree until then.
 
 ## Alternatives Considered
 
@@ -161,12 +192,25 @@ Rejected. Kubernetes expects distinct paths with distinct behaviours
 from rotation). Conflating them in one endpoint obscures the
 semantic difference and invites misconfiguration.
 
-**Per-subscription readiness.** Deferred. Reporting subscription
-count rather than per-subscription state keeps the probe response
-small and fast. A richer readiness API — "which subscription is
-stuck?" — is the Observatory's job and is already addressed by
-OTEL metrics (`protean.engine.active_subscriptions`,
-`protean.subscription.consumer_lag`).
+**Per-subscription readiness.** Originally deferred in favour of a bare
+count; **adopted in 0.17 (#832)** as a reported-but-not-enforced block.
+`/readyz` now carries per-subscription lag, pending count, DLQ depth,
+status, and circuit-breaker state, sourced from the same
+`collect_subscription_statuses()` that feeds the
+`protean.subscription.consumer_lag` and
+`protean.subscription.pending_messages` gauges and the
+`protean subscriptions status` CLI. No new metric names were introduced.
+
+The block is **informational: it never changes the probe's verdict.**
+Letting lag flip readiness to `503` was considered and rejected. A
+backlog is a normal, self-correcting condition — a burst of traffic, a
+replay, a slow downstream — and it is precisely when a consumer is
+behind that you least want Kubernetes to pull it out of rotation and
+stop it draining. An open circuit breaker is treated the same way: one
+handler is paused, the engine is still healthy. Readiness answers "can
+this pod process messages?", which stays true under lag. Alerting on
+lag remains the metrics' job; the block exists so an operator debugging
+a pod can see *which* subscription is behind without leaving the probe.
 
 ## References
 

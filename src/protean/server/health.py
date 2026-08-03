@@ -7,8 +7,16 @@ built on ``asyncio.start_server`` with minimal HTTP/1.1 parsing.
 Endpoints:
     GET /healthz  — Liveness: engine running, event loop responsive → 200
     GET /livez    — Alias for /healthz
-    GET /readyz   — Readiness: providers alive, broker connected,
-                    subscriptions active, not shutting down → 200 / 503
+    GET /readyz   — Readiness: providers alive, broker connected, event store
+                    and caches reachable, not shutting down → 200 / 503
+
+The readiness response also carries a ``subscriptions`` block reporting per-
+subscription lag, status, and circuit-breaker state.  That block is
+**informational and is not one of the gates above**: a lagging subscription or
+an open breaker never flips the probe to 503, because a backlog is not a reason
+for Kubernetes to pull the pod out of service — the engine is still healthy and
+still draining the stream.  Building the block can never fail the probe either;
+if collection breaks, the block says so and readiness answers normally.
 
 Configuration (``domain.toml``):
 
@@ -24,10 +32,18 @@ Configuration (``domain.toml``):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from protean.server.subscription.profiles import CircuitBreakerState
+from protean.server.subscription_status import (
+    SubscriptionStatus,
+    collect_subscription_statuses,
+)
 from protean.utils.health import (
     STATUS_DEGRADED,
     STATUS_OK,
@@ -39,6 +55,7 @@ from protean.utils.health import (
 )
 
 if TYPE_CHECKING:
+    from protean.domain import Domain
     from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
@@ -46,6 +63,26 @@ logger = logging.getLogger(__name__)
 # When ``port_auto_increment`` is enabled, how many consecutive ports to try
 # starting from the configured one before giving up (8080..8179 by default).
 _MAX_PORT_ATTEMPTS = 100
+
+# How often the background task recollects subscription statuses.  Collection
+# queries infrastructure once per subscription (Redis XLEN/XINFO, event-store
+# reads, outbox counts), so this is a load knob on those backends, not a probe
+# latency knob — probes read whatever the last refresh produced.  Mirrors the
+# 2s scrape cache the OTEL gauges use in ``server/observatory/metrics.py``.
+_SUBSCRIPTION_REFRESH_SECONDS = 2.0
+
+# How many missed refreshes before the block is called stale.  One skipped tick
+# is normal jitter; several in a row means collection is wedged.
+_STALE_AFTER_INTERVALS = 3
+
+# SubscriptionStatus fields the readiness block drops: stream cursors and
+# bookkeeping that answer "where is it?" rather than "is it healthy?".
+_POSITION_FIELDS = (
+    "current_position",
+    "head_position",
+    "consumer_count",
+    "last_updated",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -98,11 +135,236 @@ def _check_liveness(engine: Engine) -> dict[str, Any]:
     }
 
 
-def _check_readiness(engine: Engine) -> dict[str, Any]:
+class _SubscriptionBlockRefresher:
+    """Keeps a current subscription block so the probe never touches I/O.
+
+    Collection talks to Redis, the event store, and the outbox: it can be slow
+    or hang outright.  None of that belongs on a readiness probe, where waiting
+    means blowing past the orchestrator's probe timeout (Kubernetes defaults to
+    one second) and losing the pod its place in the load balancer because a
+    *dashboard field* was slow.
+
+    So nothing collects on the probe path.  A background task refreshes the
+    block on an interval and the probe reads the last result out of memory,
+    which cannot block and cannot fail.  A hung backend just means the block
+    stops being updated, and the probe says so by reporting its age rather than
+    passing stale numbers off as current.
+    """
+
+    def __init__(
+        self,
+        engine: Engine,
+        interval: float = _SUBSCRIPTION_REFRESH_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if interval <= 0:
+            raise ValueError("interval must be positive")
+        self._engine = engine
+        self._interval = interval
+        # Injected so tests can drive the staleness boundary without patching
+        # the process-wide clock the event loop itself runs on.
+        self._clock = clock
+        self._block: dict[str, Any] | None = None
+        self._collected_at: float = 0.0
+        self._task: asyncio.Task[None] | None = None
+
+    @property
+    def block(self) -> dict[str, Any]:
+        """The most recent block.  Pure memory read: no I/O, never raises."""
+        if self._block is None:
+            return {
+                "total": _subscription_total(self._engine),
+                "collection_pending": True,
+                "details": [],
+            }
+
+        age = max(0.0, self._clock() - self._collected_at)
+        if age <= self._interval * _STALE_AFTER_INTERVALS:
+            return self._block
+
+        # Refreshes have stopped landing — a wedged backend, most likely.
+        # "lag: 0, status: ok" is reassuring and worthless if it was collected
+        # hours ago, so say how old it is.
+        return {**self._block, "stale": True, "age_seconds": round(age, 3)}
+
+    async def start(self) -> None:
+        """Begin refreshing in the background."""
+        if self._task is None:
+            self._task = asyncio.ensure_future(self._run())
+
+    async def stop(self) -> None:
+        """Stop refreshing and wait for the loop to unwind."""
+        task, self._task = self._task, None
+        if task is None:
+            return
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    async def _refresh_once(self) -> None:
+        """Collect once and adopt the result, keeping the old block on failure."""
+        try:
+            block = await _snapshot_and_collect(self._engine)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Keep serving the previous block and try again next tick.  A
+            # monitoring read must never take the refresher down.
+            logger.debug("Subscription block refresh failed", exc_info=True)
+            return
+
+        self._block = block
+        self._collected_at = self._clock()
+
+    async def _run(self) -> None:
+        while True:
+            await self._refresh_once()
+            await asyncio.sleep(self._interval)
+
+
+def _circuit_states(engine: Engine) -> dict[str, str]:
+    """Map the engine's own subscription name → circuit-breaker state.
+
+    Read straight off the live subscription objects, so this costs no I/O.
+    Only stream subscriptions carry a breaker, so a subscription missing from
+    this map has none rather than an unknown one.  The ``isinstance`` check is
+    deliberate: anything else in ``circuit_state`` is ignored instead of being
+    coerced, so a malformed subscription cannot take the readiness probe down.
+    """
+    states: dict[str, str] = {}
+    for name, subscription in engine._subscriptions.items():
+        state = getattr(subscription, "circuit_state", None)
+        if isinstance(state, CircuitBreakerState):
+            states[name] = state.value
+    return states
+
+
+def _collect_subscription_health(
+    domain: Domain,
+    total: int,
+    breakers: dict[str, str],
+) -> dict[str, Any]:
+    """Build the readiness ``subscriptions`` block.
+
+    Lag, pending counts, and status come from
+    :func:`~protean.server.subscription_status.collect_subscription_statuses`
+    — the same source behind the ``protean.subscription.consumer_lag`` and
+    ``protean.subscription.pending_messages`` gauges and the
+    ``protean subscriptions status`` CLI.  Circuit-breaker state is merged in
+    from *breakers*, snapshotted off the engine's live subscription objects,
+    which the status collector cannot see (it is designed to work without a
+    running engine).
+
+    ``total`` and ``details`` count different things and may legitimately
+    disagree in length: ``total`` is the engine's own tally of live
+    subscription objects, while ``details`` comes from walking the domain
+    registry.  One partitioned process manager, for instance, is a single
+    engine subscription but one detail row per stream category.
+
+    Runs the blocking collection, so callers hand it to a worker thread.  It
+    takes a plain domain and pre-read snapshots rather than the engine itself:
+    engine state must be read on the event-loop thread, not raced with it
+    from a worker.
+    """
+    try:
+        statuses: list[SubscriptionStatus] = collect_subscription_statuses(domain)
+
+        unmatched_breakers = dict(breakers)
+        details: list[dict[str, Any]] = []
+        for status in statuses:
+            # Keys mirror SubscriptionStatus, so a subscription reads the same
+            # here as it does from `protean subscriptions status` and the
+            # Observatory API.  Only the cursor/bookkeeping fields are dropped:
+            # a probe wants health, not stream positions.
+            detail = status.to_dict()
+            for field in _POSITION_FIELDS:
+                detail.pop(field, None)
+
+            breaker_state = unmatched_breakers.pop(status.name, None)
+            if breaker_state is not None:
+                detail["circuit_state"] = breaker_state
+            details.append(detail)
+
+        # Any breaker left over belongs to a live subscription the status
+        # collector named differently — a ``sequential_by`` process manager is
+        # keyed ``{name}-partitioned`` by the engine but reported per stream
+        # category by the collector.  Report those rather than dropping them:
+        # an operator hunting a tripped breaker must not find a hole where it
+        # should be.  Lag is null because it cannot be attributed to this key.
+        for name, breaker_state in unmatched_breakers.items():
+            details.append(
+                {
+                    "name": name,
+                    "handler_name": name,
+                    "subscription_type": "unknown",
+                    "stream_category": None,
+                    "lag": None,
+                    "pending": 0,
+                    "dlq_depth": 0,
+                    "status": "unknown",
+                    "circuit_state": breaker_state,
+                }
+            )
+    except Exception:
+        # Never let a monitoring read break the probe: readiness reflects
+        # whether the engine can process messages, and it still can.  This
+        # guards the whole build, not just the collection call — an exception
+        # escaping here would reach the connection handler, which closes the
+        # socket without writing a response, and an empty reply reads to
+        # Kubernetes as a failed probe.
+        logger.debug("Subscription status collection failed", exc_info=True)
+        return {"total": total, "collection_error": True, "details": []}
+
+    return {"total": total, "details": details}
+
+
+def _subscription_total(engine: Engine) -> int:
+    """Count the engine's live subscription objects.  No I/O."""
+    try:
+        return (
+            len(engine._subscriptions)
+            + len(engine._broker_subscriptions)
+            + len(engine._outbox_processors)
+        )
+    except Exception:
+        logger.debug("Counting engine subscriptions failed", exc_info=True)
+        return 0
+
+
+async def _snapshot_and_collect(engine: Engine) -> dict[str, Any]:
+    """Read engine state on this thread, then do the blocking reads off it.
+
+    Engine dicts are read here, on the event loop, rather than inside the
+    worker: iterating them from another thread could race the loop mutating
+    them.
+    """
+    total = _subscription_total(engine)
+    try:
+        breakers = _circuit_states(engine)
+    except Exception:
+        logger.debug("Reading circuit-breaker state failed", exc_info=True)
+        return {"total": total, "collection_error": True, "details": []}
+
+    return await asyncio.to_thread(
+        _collect_subscription_health, engine.domain, total, breakers
+    )
+
+
+async def _check_readiness(
+    engine: Engine,
+    subscriptions: dict[str, Any],
+) -> dict[str, Any]:
     """Readiness probe: is the engine ready to process messages?
 
-    Checks shutdown state, providers, brokers, event store, caches, and
-    subscription count.
+    The verdict is decided by shutdown state, providers, brokers, event store,
+    and caches.  Per-subscription lag, status, and circuit-breaker state are
+    also *reported*, but do not affect it — see the module docstring for why
+    lag must not take a pod out of service.
+
+    Args:
+        engine: The running engine to probe.
+        subscriptions: The already-collected subscription block.  Passed in
+            rather than gathered here, so probing never waits on I/O.
     """
     checks: dict[str, Any] = {}
     all_ok = True
@@ -136,12 +398,9 @@ def _check_readiness(engine: Engine) -> dict[str, Any]:
     if not caches_ok:
         all_ok = False
 
-    total_subscriptions = (
-        len(engine._subscriptions)
-        + len(engine._broker_subscriptions)
-        + len(engine._outbox_processors)
-    )
-    checks["subscriptions"] = total_subscriptions
+    # Reported last and never folded into `all_ok`: this block informs, it does
+    # not gate.
+    checks["subscriptions"] = subscriptions
 
     status = STATUS_OK if all_ok else STATUS_DEGRADED
     return {"status": status, "checks": checks}
@@ -162,6 +421,7 @@ class HealthServer:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
         self._server: asyncio.AbstractServer | None = None
+        self._subscriptions = _SubscriptionBlockRefresher(engine)
 
         try:
             health_config = engine.domain.config.get("server", {}).get("health", {})
@@ -191,7 +451,7 @@ class HealthServer:
                 result = _check_liveness(self.engine)
                 writer.write(_json_response(200, result))
             elif path == "/readyz":
-                result = _check_readiness(self.engine)
+                result = await _check_readiness(self.engine, self._subscriptions.block)
                 code = 200 if result["status"] == STATUS_OK else 503
                 writer.write(_json_response(code, result))
             else:
@@ -200,8 +460,20 @@ class HealthServer:
             await writer.drain()
         except (TimeoutError, ConnectionResetError, BrokenPipeError):
             pass
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            logger.debug("Health server connection error", exc_info=True)
+            # Answer, rather than closing the socket on an unwritten response.
+            # An empty reply is indistinguishable from a dead process to an
+            # orchestrator, so a bug in probe assembly would take the pod out
+            # of rotation. A 503 says "not ready", which is at least true and
+            # is what the caller can act on.
+            logger.warning("Health server connection error", exc_info=True)
+            with contextlib.suppress(Exception):
+                writer.write(
+                    _json_response(503, {"status": STATUS_UNAVAILABLE, "checks": {}})
+                )
+                await writer.drain()
         finally:
             try:
                 writer.close()
@@ -243,6 +515,7 @@ class HealthServer:
             # Reflect the port actually bound (candidate, or an OS-assigned one
             # when the configured port is 0).
             self.port = self._server.sockets[0].getsockname()[1]
+            await self._subscriptions.start()
             logger.info(
                 f"Health check server listening on http://{self.host}:{self.port}"
             )
@@ -261,9 +534,10 @@ class HealthServer:
         )
 
     async def stop(self) -> None:
-        """Stop the health check HTTP server."""
+        """Stop the health check HTTP server and release its collection thread."""
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
             self._server = None
             logger.info("Health check server stopped")
+        await self._subscriptions.stop()

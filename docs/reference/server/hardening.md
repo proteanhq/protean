@@ -121,10 +121,89 @@ Content-Type: application/json
     "brokers": {"default": "ok"},
     "event_store": "ok",
     "caches": {"default": "ok"},
-    "subscriptions": 12
+    "subscriptions": {
+      "total": 12,
+      "details": [
+        {
+          "name": "OrderProjector-order",
+          "handler_name": "OrderProjector",
+          "subscription_type": "stream",
+          "stream_category": "order",
+          "lag": 0,
+          "pending": 0,
+          "dlq_depth": 0,
+          "status": "ok",
+          "circuit_state": "closed"
+        }
+      ]
+    }
   }
 }
 ```
+
+The `subscriptions` block reports the same lag and status data as the
+`protean subscriptions status` CLI and the
+`protean.subscription.consumer_lag` / `protean.subscription.pending_messages`
+gauges, using the same field names, plus the circuit-breaker state of each
+stream subscription.
+
+| Field | Meaning |
+|-------|---------|
+| `total` | How many subscription objects the engine is running. |
+| `details` | One row per subscription found by walking the domain registry. |
+| `lag` | Messages behind the stream head, or `null` when it cannot be determined. |
+| `status` | `ok`, `lagging`, or `unknown`. |
+| `circuit_state` | `closed`, `open`, or `half_open`. Absent when the subscription has no breaker. |
+
+Two things worth knowing before you build on this:
+
+- **`total` and `details` count different things** and may differ in length.
+  `total` is the engine's own tally of live subscription objects; `details`
+  comes from walking the domain registry. One `sequential_by` process manager,
+  for example, is a single engine subscription but one row per stream category.
+- **`lag: null` does not always mean trouble.** It means the value could not be
+  determined: the backend was unreachable, *or* the consumer group does not
+  exist yet because nothing has been consumed. A freshly deployed subscription
+  reports `lag: null, status: "unknown"` against a perfectly healthy Redis.
+- **`status: "ok"` is not proof of health.** The block reuses the same collector
+  as `protean subscriptions status` and inherits its blind spots. A stream
+  subscription whose Redis is unreachable can still report
+  `lag: 0, status: "ok"`, because the collector falls back to the pending count
+  when it cannot read the stream. Treat the block as a debugging aid, not as an
+  alerting source: page on the metrics and on `/readyz` itself, not on these
+  rows.
+- **Some subscriptions are not covered yet.** Outbox processors configured
+  through `outbox.external_brokers` produce no row, providers with
+  `managed = false` produce a row for a processor that is not running, and a
+  subscription on a `sequential_by` (partitioned) category always reports
+  `lag: null, status: "unknown"` because the collector reads the base stream
+  while consumers read the per-key partitions. Do not read the block as a
+  complete inventory. The FastAPI health router omits it entirely, so a script
+  parsing both entry points must treat `subscriptions` as optional.
+
+The block is **informational and never changes the verdict**. A lagging
+subscription or an open circuit breaker leaves the probe at `200`, because a
+backlog is not a reason for Kubernetes to pull the pod out of service — the
+engine is healthy and still draining the stream. Alert on lag from the metrics,
+not from readiness.
+
+**The probe never collects.** Gathering this data queries infrastructure once
+per subscription, which can be slow or hang, so none of it happens on the probe
+path. A background task refreshes the block every two seconds and `/readyz`
+reads the last result out of memory. Answering a probe therefore costs nothing
+and cannot fail, no matter what the backends are doing. The two-second interval
+is a load knob on Redis and the event store, not a probe-latency knob.
+
+Three states tell you the data is not current:
+
+- `"collection_pending": true` with empty `details` — the first refresh has not
+  landed yet (normal for a second or two after startup).
+- `"collection_error": true` — the last refresh raised. The previous block is
+  not served in its place, so you are not shown stale numbers as if they were
+  fresh.
+- `"stale": true` with `"age_seconds"` — refreshes have stopped landing for
+  several intervals, which usually means a wedged backend. The last good data
+  is still shown, with its age, so you can judge it.
 
 Readiness when one component is unreachable — the status flips to
 `"degraded"` and the HTTP code to `503`, which K8s treats as
@@ -143,7 +222,7 @@ Content-Type: application/json
     "brokers": {"default": "unavailable"},
     "event_store": "ok",
     "caches": {"default": "ok"},
-    "subscriptions": 12
+    "subscriptions": {"total": 12, "details": [...]}
   }
 }
 ```
