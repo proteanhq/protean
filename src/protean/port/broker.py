@@ -8,7 +8,12 @@ from importlib import import_module, metadata
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from protean.core.subscriber import BaseSubscriber
-from protean.exceptions import ConfigurationError, ValidationError
+from protean.exceptions import (
+    ConfigurationError,
+    NotSupportedError,
+    ProteanException,
+    ValidationError,
+)
 from protean.utils import Processing
 from protean.utils.globals import current_uow
 
@@ -23,6 +28,18 @@ BACKOFF_MULTIPLIER = 2.0
 MESSAGE_TIMEOUT = 300.0
 ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
+
+
+class LeaseLostError(ProteanException):
+    """Raised when a fenced partition operation runs without holding the lease.
+
+    Partition ownership is enforced with a lease and a fencing token (ADR-0028
+    decision 5): every fenced read and ack checks, atomically, that the caller
+    still holds the lease at its generation. A stalled-then-resumed owner whose
+    lease has expired fails that check and gets this error instead of advancing
+    or acking the partition. The partitioned consumer catches it and gives up
+    the partition rather than treating it as a transient broker error.
+    """
 
 
 @dataclass
@@ -120,6 +137,63 @@ class BaseBroker(metaclass=ABCMeta):
             consumer_name: str,
             timeout_ms: int = 5000,
             count: int = 1,
+        ) -> list[tuple[str, dict[str, Any]]]: ...
+
+        # Partition-per-key methods (ADR-0028), implemented only by brokers
+        # advertising STREAM_PARTITIONING (the Redis Streams adapter). Declared
+        # here so the capability-gated public wrappers below type-check; there is
+        # no runtime attribute on BaseBroker itself.
+        def _record_partition(self, category: str, key: str) -> None: ...
+
+        def _partition_keys(self, category: str) -> set[str]: ...
+
+        def _reap_partition(
+            self,
+            category: str,
+            key: str,
+            min_idle_ms: int,
+            backfill_suffix: str | None,
+        ) -> bool: ...
+
+        def _acquire_partition_lease(
+            self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int
+        ) -> int | None: ...
+
+        def _renew_partition_lease(
+            self, lease_key: str, fence_token: str, ttl_ms: int
+        ) -> bool: ...
+
+        def _release_partition_lease(
+            self, lease_key: str, fence_token: str
+        ) -> bool: ...
+
+        def _read_partition_fenced(
+            self,
+            stream: str,
+            consumer_group: str,
+            consumer_name: str,
+            lease_key: str,
+            fence_token: str,
+            count: int,
+            new_messages: bool,
+        ) -> list[tuple[str, dict[str, Any]]]: ...
+
+        def _ack_partition_fenced(
+            self,
+            stream: str,
+            identifier: str,
+            consumer_group: str,
+            lease_key: str,
+            fence_token: str,
+        ) -> bool: ...
+
+        def _reclaim_partition_pending(
+            self,
+            stream: str,
+            consumer_group: str,
+            consumer_name: str,
+            min_idle_ms: int,
+            count: int,
         ) -> list[tuple[str, dict[str, Any]]]: ...
 
     def __init__(
@@ -792,6 +866,165 @@ class BaseBroker(metaclass=ABCMeta):
             Number of messages trimmed (0 by default).
         """
         return 0
+
+    # ------------------------------------------------------------------
+    # Partition-per-key support (ADR-0028)
+    # ------------------------------------------------------------------
+    # These back the partitioned stream consumer. Only a broker advertising
+    # STREAM_PARTITIONING implements the underscore methods; the public wrappers
+    # gate on that capability and raise ``NotSupportedError`` otherwise, so a
+    # ``sequential_by`` handler can never silently run without its ordering
+    # guarantee. They deliberately do not go through the ``_ensure_connection``
+    # retry wrapper the message methods use: a fenced read/ack must fail loud on
+    # a lost lease rather than be retried, and the partitioned consumer's poll
+    # loop already backs off on transient broker errors.
+
+    def _require_partitioning(self, operation: str) -> None:
+        """Raise ``NotSupportedError`` if the broker cannot partition streams."""
+        if not self.has_capability(BrokerCapabilities.STREAM_PARTITIONING):
+            raise NotSupportedError(
+                f"Broker {self.name} does not advertise STREAM_PARTITIONING, "
+                f"required for `{operation}` (ADR-0028)."
+            )
+
+    def record_partition(self, category: str, key: str) -> None:
+        """Record *key* in the maintained partition index for *category*.
+
+        Called on publish to ``{category}:{key}`` so the partitioned consumer
+        can discover the partition without scanning the keyspace (ADR-0028
+        decision 7). Idempotent — recording the same key twice is a no-op.
+        """
+        self._require_partitioning("record_partition")
+        self._record_partition(category, key)
+
+    def partition_keys(self, category: str) -> set[str]:
+        """Return the set of live partition keys recorded for *category*."""
+        self._require_partitioning("partition_keys")
+        return self._partition_keys(category)
+
+    def reap_partition(
+        self,
+        category: str,
+        key: str,
+        min_idle_ms: int,
+        backfill_suffix: str | None = None,
+    ) -> bool:
+        """Prune a cold partition from the index, atomically and race-safely.
+
+        Only reaps a partition when **no** consumer group on any of its streams
+        has pending entries (each stream is shared by every handler on the
+        category) and all of them have been idle for at least *min_idle_ms*
+        (ADR-0028 decision 7). When priority lanes are enabled, pass
+        *backfill_suffix* so the key's backfill lane
+        (``{category}:{key}:{backfill_suffix}``) is checked and deleted alongside
+        the main stream — otherwise a lane with unconsumed work would be
+        stranded. Removes the index entry and the streams; the generation counter
+        is left in place so a re-created partition keeps a monotonic fence.
+        Returns ``True`` when the partition was reaped. The publish/reap race is
+        tolerated: a publisher that re-adds the key right after a reap is
+        re-discovered on the next cycle. Meant to be called by the partition's
+        current owner once it has drained the partition.
+        """
+        self._require_partitioning("reap_partition")
+        return self._reap_partition(category, key, min_idle_ms, backfill_suffix)
+
+    def acquire_partition_lease(
+        self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int
+    ) -> int | None:
+        """Acquire the ownership lease for a partition, returning its generation.
+
+        Atomically (ADR-0028 decision 5): if the lease is unheld, increment the
+        durable generation counter, take the lease at that generation for
+        *ttl_ms*, and return the generation. If already held, return ``None``.
+        """
+        self._require_partitioning("acquire_partition_lease")
+        return self._acquire_partition_lease(
+            lease_key, generation_key, owner_id, ttl_ms
+        )
+
+    def renew_partition_lease(
+        self, lease_key: str, fence_token: str, ttl_ms: int
+    ) -> bool:
+        """Renew a held lease, extending its TTL. Returns ``False`` if lost.
+
+        *fence_token* is ``{owner_id}:{generation}``. The renew succeeds only
+        while the lease still holds that exact token, so an owner that lost the
+        lease (expiry, takeover) cannot resurrect it.
+        """
+        self._require_partitioning("renew_partition_lease")
+        return self._renew_partition_lease(lease_key, fence_token, ttl_ms)
+
+    def release_partition_lease(self, lease_key: str, fence_token: str) -> bool:
+        """Release a held lease on graceful shutdown. Returns ``False`` if not held."""
+        self._require_partitioning("release_partition_lease")
+        return self._release_partition_lease(lease_key, fence_token)
+
+    def read_partition_fenced(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        lease_key: str,
+        fence_token: str,
+        count: int = 1,
+        new_messages: bool = True,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Read from a partition stream, fenced by the ownership lease.
+
+        The lease check and the ``XREADGROUP`` are one atomic step (ADR-0028
+        decision 5): a caller that no longer holds the lease at *fence_token*
+        reads nothing and raises :class:`LeaseLostError` rather than advancing
+        the partition. ``new_messages`` selects undelivered (``>``) vs this
+        consumer's already-delivered pending (``0``) entries. Non-blocking.
+        """
+        self._require_partitioning("read_partition_fenced")
+        return self._read_partition_fenced(
+            stream,
+            consumer_group,
+            consumer_name,
+            lease_key,
+            fence_token,
+            count,
+            new_messages,
+        )
+
+    def ack_partition_fenced(
+        self,
+        stream: str,
+        identifier: str,
+        consumer_group: str,
+        lease_key: str,
+        fence_token: str,
+    ) -> bool:
+        """Ack a partition message, fenced by the ownership lease.
+
+        Like :meth:`read_partition_fenced`, the lease check and the ``XACK`` are
+        atomic: a fenced stale owner cannot ack out from under the new owner and
+        raises :class:`LeaseLostError`.
+        """
+        self._require_partitioning("ack_partition_fenced")
+        return self._ack_partition_fenced(
+            stream, identifier, consumer_group, lease_key, fence_token
+        )
+
+    def reclaim_partition_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int = 0,
+        count: int = 100,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Reclaim a dead owner's pending entries into *consumer_name* (XAUTOCLAIM).
+
+        On failover the new owner reclaims the previous owner's unacked entries
+        so none are lost or skipped (ADR-0028 decision 5, crash reclaim). Returns
+        the reclaimed ``(id, payload)`` entries, now owned by *consumer_name*.
+        """
+        self._require_partitioning("reclaim_partition_pending")
+        return self._reclaim_partition_pending(
+            stream, consumer_group, consumer_name, min_idle_ms, count
+        )
 
     def close(self) -> None:
         """Close the broker and release all connections.

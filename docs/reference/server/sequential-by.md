@@ -14,31 +14,25 @@ reaching for it, read
 [Designing for Concurrent Event Processing](../../patterns/designing-for-concurrent-event-processing.md):
 most concurrency problems have a simpler structural fix.
 
-!!! warning "Publishing side only — events only, inline broker only, today"
-    This page documents the **publishing** behaviour that ships today: the
-    option, its registration-time validation, and how the outbox routes a
-    partitioned event. The **consumer** side that actually enforces the ordering
-    across multiple engine instances (partition ownership lease, fencing token,
-    crash reclaim, partition discovery) is tracked separately and is not yet
-    active.
+!!! note "Events on the Redis broker; command handlers still inert"
+    The Redis broker advertises `STREAM_PARTITIONING`, so `sequential_by` is
+    fully active there for **event handlers** and **process managers**: the
+    publisher routes each event to its partition stream, and the consumer
+    described under [How the consumer enforces ordering](#how-the-consumer-enforces-ordering)
+    owns and serially drains each partition across engine instances.
 
     Commands do not currently go through the outbox at all — a command handler
     dispatches synchronously and never produces an outbox row, so it has no
     `stream_category` and nothing to partition. Declaring `sequential_by` on a
     **command handler** is accepted and checked at registration (field
     existence, one key per category), but that check is inert today: it has no
-    runtime effect until command publishing exists. Everything below about
-    extraction, validation, and routing describes **events** only.
+    runtime effect until command publishing exists.
 
-    No broker shipped with Protean advertises the `STREAM_PARTITIONING`
-    capability yet, so today `sequential_by` is usable **only on the inline
-    broker**, where it is a validated no-op (inline already processes messages in
-    submission order). On any other broker (for example Redis) declaring
-    `sequential_by` fails `domain.init()` with an `IncorrectUsageError` — the
-    broker-capability check below rejects it — and it stays that way until the
-    consumer side lands and a broker turns the capability on. The routing and
-    Redis-specific guidance below describe the target behaviour for that future
-    broker, not something you can switch on now.
+    The **inline** broker does not advertise `STREAM_PARTITIONING`. There
+    `sequential_by` is an accepted no-op (inline already processes messages in
+    submission order), so handlers keep an ordinary subscription. Any broker that
+    neither advertises the capability nor is the inline broker rejects a
+    `sequential_by` handler at `domain.init()` with an `IncorrectUsageError`.
 
 ## Declaring the key
 
@@ -122,6 +116,83 @@ Under a broker without the capability the key is carried on the row but not
 applied, so routing falls back to the base category. As a safety backstop, a row
 that somehow reaches publishing with an invalid key is marked `ABANDONED` at once
 rather than retried, so one bad row can never wedge the outbox behind it.
+
+## How the consumer enforces ordering
+
+Routing events to per-key streams is not enough on its own: a shared Redis
+consumer group hands different messages to different engine instances with no key
+affinity, so two events for the same key could still run at the same time on two
+instances. The ordering guarantee is enforced by **partition ownership**, not by
+a per-message lock.
+
+For each partition the engine sees in the [discovery index](#discovery-and-cold-partitions),
+one instance takes an **ownership lease** and becomes the sole consumer of that
+partition's stream. The lease carries a **fencing token** — a generation number
+that increases every time ownership changes hands — and every read and ack is
+guarded by an atomic "do I still hold the lease at this generation?" check. This
+gives four properties:
+
+- **Single active consumer per partition.** Only the lease owner reads a
+  partition, so two different same-key events are never processed at once and
+  their committed effects land in publish order. Different keys are owned
+  independently and drain in parallel.
+- **Crash failover with no loss.** If the owner dies, its lease expires, another
+  instance takes over at a new generation and reclaims the dead owner's unacked
+  entries (`XAUTOCLAIM`), then resumes in order. Delivery stays
+  at-least-once: the single in-flight event may be re-run on failover, so
+  handlers still lean on optimistic concurrency and idempotency for exactly-once
+  *effect*.
+- **Stall safety (the fence).** If an owner stalls past its lease and another
+  instance takes over, the stale owner's fenced read and ack are rejected — it
+  can neither advance the partition nor ack out from under the new owner, so
+  committed order stays intact.
+- **Halt on poison.** A message that a partition cannot process (after its
+  retries) halts that partition: it stays as the pending head and the partition
+  stops advancing, rather than being auto-moved to a DLQ (which would apply a
+  later same-key event before it and reorder the key). The halt is scoped to one
+  partition; other partitions keep flowing. Unwedging a halted partition is an
+  explicit operator action (inspect the head, then skip it or move it to the DLQ
+  by hand).
+
+### Discovery and cold partitions
+
+The consumer discovers live partitions by reading a maintained index — a Redis
+set `{stream_category}:__partitions__` the publisher writes on each publish — not
+by scanning the keyspace. New partitions are picked up on the next discovery
+cycle with no restart. A partition that has fully drained and been idle for
+`reap_idle_ms` is retired by its owner (its index entry and empty stream are
+pruned), so the index stays bounded; a publish that re-creates the partition is
+simply re-discovered.
+
+Process managers own by **correlation value** rather than by a single stream: one
+instance leases a correlation value and is the sole processor of every subscribed
+category's partition for that value, so no two events for the same process-manager
+instance are ever handled at once. Cross-category order for one instance is not
+promised (the events live on different streams) — only that they never overlap.
+
+### Priority lanes
+
+When [priority lanes](../../guides/server/using-priority-lanes.md) are enabled, a low-priority
+partitioned event is published to the key's backfill lane
+(`{category}:{key}:{backfill_suffix}`). The owner drains a key's primary lane
+before its backfill lane (production before backfill, as elsewhere), and reaping
+a cold key covers both lanes, so backfill-routed partitioned events are consumed
+and never stranded. Combining the two features means, within a key, a
+higher-priority event can be handled before a lower-priority one published
+earlier; strict publish order holds within each lane.
+
+## Configuration (`[server.partitioning]`)
+
+The partitioned consumer's timing is tunable under `[server.partitioning]` in
+`domain.toml`. The defaults suit most workloads; tune the lease TTL to trade
+failover speed against reclaim churn.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `lease_ttl_ms` | int | `15000` | How long an ownership lease is held before it must be renewed. Shorter means faster failover after a crash but more reclaim churn. |
+| `heartbeat_interval_seconds` | float | `lease_ttl_ms / 5000` (≈ `3.0`) | How often the owner renews its held leases. Must be well under the TTL so a live owner never lets a lease lapse. |
+| `poll_interval_seconds` | float | `0.25` | How long a per-partition worker waits between reads when its partition is empty. |
+| `reap_idle_ms` | int | `3600000` | How long a drained partition must sit idle before its owner retires it from the index. |
 
 ## Applicability
 
