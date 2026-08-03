@@ -142,15 +142,12 @@ The full reasoning is in
 
 ## What the contract covers
 
-The promise applies to the **Stable** tier of Protean's public surface: the
-top-level `protean` exports, the element decorators and their options,
-`protean.fields`, `protean.exceptions`, the public testing DSL, documented
-`domain.toml` keys, and documented CLI commands and exit codes.
-
-Alongside it sit a **Provisional** tier (usable and documented, may change in a
-minor with a changelog notice) and an **Internal** tier (underscore-prefixed
-names, `protean.core.*` internals, adapter implementation modules) which carries
-no promise at all.
+The promise applies to the **Stable** tier of Protean's public surface. That
+surface is enumerated, not implied: see [Stable surface](stable-surface.md) for
+exactly which imports, decorators, options, config keys, and CLI commands are
+covered, which are **Provisional** (usable and documented, may change in a minor
+with a changelog notice), and which are **Internal** and carry no promise at
+all.
 
 Two things worth knowing:
 
@@ -187,6 +184,7 @@ behind a flag.
 
 ## Related reading
 
+- [Stable surface](stable-surface.md): what is covered by the contract, tier by tier.
 - [Consistency & delivery guarantees](guarantees.md): the behavioral contract per port and adapter.
 - [Migration guides](migration/index.md): version-specific upgrade steps.
 - [`protean check`](cli/check.md): find deprecated usage in your domain.

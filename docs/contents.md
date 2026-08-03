@@ -414,6 +414,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 - [The Always-Valid Domain](./concepts/philosophy/always-valid.md) -- How four validation layers guarantee domain objects are never invalid.
 - [Consistency & Delivery Guarantees](./reference/guarantees.md) -- Per-port, per-adapter ordering, delivery, consistency, and isolation -- the contract conformance and property tests cite.
 - [Versioning Policy](./reference/versioning-policy.md) -- What a version number promises: code that runs warning-free on 1.N runs unmodified on 1.N+1.
+- [Stable Surface](./reference/stable-surface.md) -- Which imports, options, config keys, and commands the compatibility contract covers, tier by tier.
 - [Why Protean?](./why-protean.md) -- Four capabilities that set Protean apart: domain compiler, always-valid domain, progressive architecture, infrastructure portability.
 
 ---

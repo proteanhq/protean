@@ -123,4 +123,13 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Versioning Policy](versioning-policy.md)
 
+-   **:material-format-list-checks: Stable Surface**
+
+    ---
+
+    Which names the compatibility contract covers: Stable, Provisional, or
+    Internal.
+
+    [:material-arrow-right-box: Stable Surface](stable-surface.md)
+
 </div>

@@ -213,6 +213,7 @@ need by what you're trying to accomplish.
 | Add IR compatibility checks to CI               | [Compatibility Checking](./guides/compatibility-checking.md#step-4-add-ci-checks) |
 | Know whether a Protean upgrade will break me    | [Versioning Policy](./reference/versioning-policy.md) |
 | Fail CI on Protean deprecation warnings         | [Versioning Policy](./reference/versioning-policy.md#enforce-it-in-ci) |
+| Check whether an import is covered by the contract | [Stable Surface](./reference/stable-surface.md) |
 
 ## Enforce Architecture
 
