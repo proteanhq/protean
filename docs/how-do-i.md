@@ -211,6 +211,8 @@ need by what you're trying to accomplish.
 | Auto-fix stale IR during commit                 | [Compatibility Checking](./guides/compatibility-checking.md#protean-check-staleness) |
 | Check multiple domains with one hook entry      | [Compatibility Checking](./guides/compatibility-checking.md#multi-domain-support) |
 | Add IR compatibility checks to CI               | [Compatibility Checking](./guides/compatibility-checking.md#step-4-add-ci-checks) |
+| Know whether a Protean upgrade will break me    | [Versioning Policy](./reference/versioning-policy.md) |
+| Fail CI on Protean deprecation warnings         | [Versioning Policy](./reference/versioning-policy.md#enforce-it-in-ci) |
 
 ## Enforce Architecture
 

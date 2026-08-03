@@ -4,9 +4,9 @@
 |-------|-------|
 | **Status** | Accepted |
 | **Date** | 2026-03-11 |
-| **Last updated** | 2026-04-10 (removed release candidate workflow) |
+| **Last updated** | 2026-08-03 (post-1.0 policy: deprecation-managed 1.x, majors as eras) |
 | **Author** | Subhash Bhushan |
-| **Applies to** | Protean Framework (pre-1.0) |
+| **Applies to** | Protean Framework |
 | **Supersedes** | None |
 
 ---
@@ -254,12 +254,49 @@ For releases with Tier 2 or Tier 3 breaking changes, publish a standalone migrat
 
 The policies in this ADR apply to the current pre-1.0 phase. Pre-1.0, we have more latitude: the API is explicitly unstable, and early adopters accept that. However, the goal is to build the muscle and tooling now so that by 1.0, the process is mature.
 
-**What changes at 1.0:**
+### The post-1.0 model: deprecation-managed, not strict SemVer
 
-- Semantic versioning becomes strict: breaking changes only in major versions.
-- The deprecation survival window extends (minimum one major version cycle).
-- Automated migration tooling becomes a requirement, not a nice-to-have.
-- The `protean check` command becomes a first-class upgrade tool with comprehensive coverage.
+At 1.0 Protean adopts a **deprecation-managed** model for the 1.x series, in the style of Django and Rails rather than strict semantic versioning.
+
+**The contract, in one sentence:** code that runs warning-free on 1.N runs unmodified on 1.N+1.
+
+That is the promise users can plan against, and it is deliberately stated in terms of warnings rather than version numbers. Every removal is preceded by a `DeprecationWarning` and a `protean check` rule for at least two minor versions. Users enforce the contract mechanically in CI with the category filter from Section 3:
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+filterwarnings = ["error::protean.exceptions.ProteanDeprecationWarning"]
+```
+
+A user who does that has turned "will my upgrade break?" into a test run. (Filter on the **category**, not on a `:protean.*` module pattern: a `@deprecated`-decorated helper attributes its warning to the caller's module, so a module filter misses exactly those sites. Section 3 covers this.)
+
+**What each version position means:**
+
+- **Patch** (1.2.0 → 1.2.1) never changes API. Bug fixes only.
+- **Minor** (1.2 → 1.3) may add features, introduce deprecations, flip a Tier 2 flag that has already served its warning minor, and make Tier 3 changes with versioned schemas and shipped migrations. A minor never removes anything that was not already deprecated for two minors.
+- **Removals** happen only in **pre-announced cleanup releases** or at a major.
+- **Majors are eras**, not accumulated breakage.
+
+### Why not strict SemVer
+
+Strict SemVer says breaking changes only in majors. Applied to a framework, that produces one of two bad outcomes, and which one you get depends only on temperament:
+
+**Burn majors on trivia.** The first time a badly-named parameter needs correcting, you either ship 2.0 for it or you do not fix it. Version numbers stop carrying information: 4.0 might mean a rearchitecture or a renamed keyword argument, and users cannot tell without reading the notes. The signal the major version was supposed to carry is gone.
+
+**Or petrify.** More commonly, the cost of a major becomes so high that nothing is ever corrected. Mistakes calcify into permanent API. This is the more likely failure for Protean specifically, because the framework is opinionated: it is *supposed* to guide users toward correct patterns, and that requires the ability to move a pattern that turned out wrong.
+
+The deprecation-managed model separates the two questions SemVer conflates. "Is this safe to upgrade?" is answered by the warning-free contract, continuously, per release. "Has the nature of the project changed?" is answered by the major version. A user with a clean warning log upgrades minors without reading anything. A major means the boundary of what Protean claims to do has moved.
+
+**What a major is reserved for.** A major marks a shift in the declared scope boundary, not a pile of small breaks. Concretely: a change in the security posture (what Protean will hold and protect on the user's behalf), or a change in the concurrency model (for example, cluster-safe multi-worker operation, which changes the deployment contract rather than a signature). These are shifts a user must think about, not mechanically patch.
+
+### What hardens at 1.0
+
+The taxonomy, survival windows, and both exceptions (operational defaults, silent correctness bugs) carry over unchanged. Four things become stricter:
+
+- **Tier 3 migration tooling becomes mandatory**, not a nice-to-have. A persistence or event-schema change ships with a migration or it does not ship.
+- **A deprecation may not ship without a `protean check` rule that detects it.** The warning and the detector land together, so the mechanical upgrade path exists from the moment the deprecation does.
+- **The guarantees specification becomes part of the API.** Weakening a documented guarantee is a breaking change even when every signature is untouched. See `docs/reference/guarantees.md`.
+- **The public surface is enumerated in three tiers** (Stable / Provisional / Internal) so the contract above has a defined subject. See `docs/reference/stable-surface.md`.
 
 **What stays the same at 1.0:**
 
@@ -267,6 +304,10 @@ The policies in this ADR apply to the current pre-1.0 phase. Pre-1.0, we have mo
 - The changelog-driven release trigger.
 - The theme-based roadmap organization.
 - The principle that releases are cheap and frequent.
+
+### Related open question
+
+How a developer *acknowledges* an intentional breaking change in their own domain (the inverse problem: user code declaring "yes, I meant to change this") is tracked separately in issue #841. It is the same policy territory but a different actor, and nothing in this section depends on its outcome.
 
 ---
 
