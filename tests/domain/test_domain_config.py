@@ -128,3 +128,44 @@ class TestPriorityLanesConsumersReadDefault:
 
         assert subscription._lanes_enabled is False
         assert subscription._backfill_suffix == "backfill"
+
+
+@pytest.mark.no_test_domain
+class TestPriorityLanesMustBeATable:
+    """`priority_lanes = true` is the natural guess, and it used to crash.
+
+    Every documented example writes `[server.priority_lanes]` with `enabled`
+    inside it, but the shape a reader reaches for first is the scalar. That used
+    to fail with a bare `AttributeError: 'bool' object has no attribute 'get'`
+    from inside validation, which names neither the key nor the fix.
+    """
+
+    def test_a_scalar_names_the_key_and_shows_the_table_form(self):
+        domain = Domain(name="ScalarLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = True
+
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        message = str(exc.value)
+        assert "server.priority_lanes must be a table" in message
+        assert "[server.priority_lanes]" in message
+        assert "enabled = true" in message
+
+    def test_the_reported_type_is_the_one_configured(self):
+        domain = Domain(name="StringLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = "enabled"
+
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        assert "got str" in str(exc.value)
+
+    def test_a_table_still_initializes(self):
+        """The guard must not reject the documented form."""
+        domain = Domain(name="TableLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = {"enabled": True}
+
+        domain.init(traverse=False)
+
+        assert domain.config["server"]["priority_lanes"]["enabled"] is True

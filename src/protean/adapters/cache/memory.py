@@ -103,7 +103,7 @@ class MemoryCache(BaseCache):
         super().__init__(name, domain, conn_info)
 
         # The Data Cache
-        self._db = TTLDict(self.conn_info.get("TTL") or 300)
+        self._db = TTLDict(self.ttl)
 
         self._lock = RLock()
 

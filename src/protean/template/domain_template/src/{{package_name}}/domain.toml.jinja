@@ -92,7 +92,7 @@ channel = "{{ package_name }}"
 provider = "{{ cache }}"
 {%- if cache == "redis" %}
 URI = "${REDIS_URL|redis://localhost:6379/1}"
-TTL = 3600
+TTL = "${CACHE_TTL|3600}"
 {%- endif %}
 
 # Memory Cache
@@ -104,7 +104,7 @@ provider = "memory"
 [caches.redis]
 provider = "redis"
 URI = "${REDIS_URL|redis://localhost:6379/1}"
-TTL = 3600
+TTL = "${CACHE_TTL|3600}"
 {%- endif %}
 
 # Logging Configuration

@@ -152,7 +152,10 @@ class TestScaffoldedKeysMatchWhatAdaptersRead:
         """`sqlalchemy` is the library, not a provider name."""
         from importlib.metadata import entry_points
 
-        registered = {ep.name for ep in entry_points(group="protean.providers")}
+        # `.select(group=...)` is how ProviderRegistry discovers plugins.
+        registered = {
+            ep.name for ep in entry_points().select(group="protean.providers")
+        }
         assert registered, "no provider entry points found"
 
         project = _generate(tmp_path, [])

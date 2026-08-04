@@ -2,7 +2,7 @@
 
 import time
 
-import pytest
+from protean.adapters.broker.inline import CONSUMER_GROUP_SEPARATOR
 
 
 def test_basic_retry_mechanism(broker):
@@ -37,54 +37,70 @@ def test_basic_retry_mechanism(broker):
     assert result[1] == message
 
 
-@pytest.mark.flaky  # naked sleeps drift under parallel CPU load; run in isolation
 def test_exponential_backoff(broker):
-    """Test exponential backoff for retries."""
+    """Each retry waits `retry_delay * multiplier ** retries_already_made`.
+
+    This used to sleep 40ms against a 50ms delay and assert the message was
+    still withheld, so a 10ms scheduling hiccup between the `nack` and the
+    `get_next` failed it. It went red about 80% of the time in isolation
+    (issue #1297).
+
+    The schedule is now read rather than raced: `nack` records the time a
+    message next becomes eligible, so the delay it chose can be asserted
+    exactly. Redelivery is still exercised by moving that recorded time into
+    the past, which is what waiting for it would have proved.
+    """
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message = {"foo": "bar"}
 
-    # Configure retry parameters
-    broker._retry_delay = 0.05  # 50ms base delay
+    broker._retry_delay = 0.05
     broker._backoff_multiplier = 2.0
     broker._max_retries = 3
 
-    # Publish message
     identifier = broker.publish(stream, message)
+    assert broker.get_next(stream, consumer_group) is not None
 
-    # First attempt
-    result = broker.get_next(stream, consumer_group)
-    assert result is not None
-    broker.nack(stream, identifier, consumer_group)
+    for attempt in range(broker._max_retries):
+        nacked_at = time.time()
+        broker.nack(stream, identifier, consumer_group)
 
-    # First retry - wait base delay
-    time.sleep(0.04)  # Not enough
-    result = broker.get_next(stream, consumer_group)
-    assert result is None
+        # Still withheld: its retry time has not arrived.
+        assert broker.get_next(stream, consumer_group) is None
 
-    time.sleep(0.02)  # Now enough (total 0.06)
-    result = broker.get_next(stream, consumer_group)
-    assert result is not None
-    broker.nack(stream, identifier, consumer_group)
+        scheduled = _scheduled_retry_time(broker, stream, consumer_group, identifier)
+        expected_delay = broker._retry_delay * broker._backoff_multiplier**attempt
+        # `nacked_at` is read just before the delay is added, so the measured
+        # wait is the real delay plus however long the call itself took.
+        assert expected_delay <= scheduled - nacked_at < expected_delay + 0.5
 
-    # Second retry - wait base_delay * multiplier (0.05 * 2 = 0.1)
-    time.sleep(0.08)  # Not enough
-    result = broker.get_next(stream, consumer_group)
-    assert result is None
+        _make_retry_due(broker, stream, consumer_group, identifier)
+        assert broker.get_next(stream, consumer_group) is not None
 
-    time.sleep(0.03)  # Now enough (total 0.11)
-    result = broker.get_next(stream, consumer_group)
-    assert result is not None
-    broker.nack(stream, identifier, consumer_group)
 
-    # Third retry - wait base_delay * multiplier^2 (0.05 * 4 = 0.2)
-    time.sleep(0.18)  # Not enough
-    result = broker.get_next(stream, consumer_group)
-    assert result is None
+def _group_key(stream: str, consumer_group: str) -> str:
+    return f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
 
-    time.sleep(0.03)  # Now enough (total 0.21)
-    result = broker.get_next(stream, consumer_group)
-    assert result is not None
+
+def _retry_queue(broker, stream: str, consumer_group: str) -> list:
+    return broker._failed_messages[_group_key(stream, consumer_group)]
+
+
+def _scheduled_retry_time(broker, stream, consumer_group, identifier) -> float:
+    queue = _retry_queue(broker, stream, consumer_group)
+    times = [entry[3] for entry in queue if entry[0] == identifier]
+    assert len(times) == 1, f"expected one queued retry, found {len(times)}"
+    return times[0]
+
+
+def _make_retry_due(broker, stream, consumer_group, identifier) -> None:
+    """Bring a queued retry forward instead of sleeping until it is due."""
+    group_key = _group_key(stream, consumer_group)
+    queue = _retry_queue(broker, stream, consumer_group)
+    broker._failed_messages[group_key] = [
+        (msg_id, msg, count, 0.0 if msg_id == identifier else due)
+        for msg_id, msg, count, due in queue
+    ]
 
 
 def test_max_retries_enforcement(broker):
