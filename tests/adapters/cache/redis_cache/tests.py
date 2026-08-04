@@ -160,7 +160,7 @@ class TestCachePersistenceFlows:
         cache.add(token1)
 
         ttl = cache.get_ttl("token:::qux")
-        assert 0 <= ttl / 1000 <= 300
+        assert 0 <= ttl <= 300
 
     def test_set_ttl_on_key(self, test_domain):
         cache = test_domain.cache_for(Token)
@@ -169,12 +169,12 @@ class TestCachePersistenceFlows:
         cache.add(token1)
 
         ttl = cache.get_ttl("token:::qux")
-        assert 0 <= ttl / 1000 <= 300
+        assert 0 <= ttl <= 300
 
         cache.set_ttl("token:::qux", 3000)
 
         ttl = cache.get_ttl("token:::qux")
-        assert 2700 <= ttl / 1000 <= 3000
+        assert 2700 <= ttl <= 3000
 
     def test_setting_expiry_on_add_for_key(self, test_domain):
         cache = test_domain.cache_for(Token)
