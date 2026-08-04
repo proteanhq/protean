@@ -221,6 +221,8 @@ class BaseCache(metaclass=ABCMeta):
         because every entry is written with one.
 
         Unifying that is tracked in #1310, which adds the cross-adapter suite
-        this port has never had. Until then, a negative return means "not a
-        duration" and is worth checking for.
+        this port has never had. Until then, do not write a check that assumes
+        either shape: `ttl < 0` is meaningful on Redis and never reached on the
+        memory cache, which raises first, so a caller handling a missing key has
+        to handle both an exception and a sentinel to work on either adapter.
         """

@@ -98,9 +98,25 @@ unscaled: dividing them into seconds would turn flags into `-0.001` and
 `-0.002`, which read as "expiring imminently" to anything comparing against
 zero.
 
-So a negative return means "not a duration". Treat it as a flag, and do not
-assume a missing key behaves the same across adapters until
-[#1310](https://github.com/proteanhq/protean/issues/1310) settles it.
+**On the Redis cache**, a negative return is a flag rather than a duration.
+That is a Redis convention, not a port-wide one: the memory cache never returns
+a negative, because it raises `KeyError` before there is anything to return.
+
+So code that must work on either adapter has to handle both shapes:
+
+```python
+try:
+    remaining = cache.get_ttl(key)
+except KeyError:            # memory cache: no such key
+    remaining = None
+else:
+    if remaining < 0:       # redis: -2 no such key, -1 no expiry
+        remaining = None
+```
+
+Needing that at all is the divergence, not the fix.
+[#1310](https://github.com/proteanhq/protean/issues/1310) tracks making the two
+adapters answer alike, at which point one of these branches goes away.
 
 ## Interface
 
