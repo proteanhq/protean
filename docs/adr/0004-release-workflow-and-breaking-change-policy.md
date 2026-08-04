@@ -215,7 +215,7 @@ A removal lands in an ordinary minor. There is no separate release type for it; 
 
 Batching removals into one release rather than dribbling them across several is a courtesy worth keeping: it gives users one upgrade to plan for instead of many.
 
-Cleanup releases are the only releases that intentionally break user code. They should be clearly labeled and communicated.
+A release that removes something is the only kind that intentionally breaks user code, and only code that ignored its warnings. Label and communicate those clearly.
 
 ### Hotfix Release
 
@@ -321,7 +321,7 @@ An earlier draft of this section went the other way, reserving removals for "cle
 
 ### What hardens at 1.0
 
-The taxonomy, survival windows, and both exceptions (operational defaults, silent correctness bugs) carry over unchanged. Four things become stricter:
+The taxonomy and both exceptions (operational defaults, silent correctness bugs) carry over unchanged, as does the invariant that a removal is never in the same release as its deprecation. Four things become stricter:
 
 - **Tier 3 migration tooling becomes mandatory**, not a nice-to-have. A persistence or event-schema change ships with a migration or it does not ship.
 - **A deprecation may not ship without a `protean check` rule that detects it.** The warning and the detector land together, so the mechanical upgrade path exists from the moment the deprecation does.
