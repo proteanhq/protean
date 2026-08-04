@@ -190,7 +190,7 @@ class _SubscriptionBlockRefresher:
     async def start(self) -> None:
         """Begin refreshing in the background."""
         if self._task is None:
-            self._task = asyncio.ensure_future(self._run())
+            self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
         """Stop refreshing and wait for the loop to unwind."""
@@ -538,7 +538,12 @@ class HealthServer:
         )
 
     async def stop(self) -> None:
-        """Stop the health check HTTP server and release its collection thread."""
+        """Stop the health check HTTP server and its background refresher.
+
+        Cancels the refresh loop. A collection already handed to a worker
+        thread runs to completion, since ``asyncio.to_thread`` work cannot be
+        cancelled; its result is simply discarded.
+        """
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
