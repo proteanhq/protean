@@ -213,8 +213,28 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
             columns = {
                 c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
             }
-        except Exception:
-            # Introspection is best-effort; never fail the upgrade check on it.
+        except Exception as exc:
+            # Reported rather than swallowed. The command documents CHECK_FAILED
+            # as "a check could not complete; the report may be incomplete for
+            # that area", and silently skipping a database would leave a clean
+            # report meaning two different things.
+            findings.append(
+                UpgradeFinding(
+                    code="CHECK_FAILED",
+                    level="warning",
+                    title=f"Could not inspect the outbox table on `{name}`",
+                    detail=(
+                        f"Reading the schema raised {type(exc).__name__}: {exc}. "
+                        "The outbox migration checks did not run for this database, "
+                        "so this report says nothing about its schema."
+                    ),
+                    remediation=(
+                        "Check the database is reachable and the credentials can read "
+                        "table metadata, then run `protean upgrade-check` again."
+                    ),
+                    element=f"databases.{name}",
+                )
+            )
             continue
 
         if dialect == "sqlite":
@@ -371,33 +391,48 @@ def _check_unit_of_work_transaction(domain: Domain) -> list[UpgradeFinding]:
 # this preamble — a NULL ``target_broker`` would violate the NOT NULL constraint
 # and, because NULLs compare as distinct in a UNIQUE index, defeat the
 # composite idempotency index.
-_OUTBOX_BACKFILL_NULL_TARGET_BROKER = (
-    "UPDATE outbox SET target_broker = 'default' WHERE target_broker IS NULL;"
-)
+def _backfill_sql(schema: str | None = None) -> str:
+    return (
+        f"UPDATE {_qualified('outbox', schema)} SET target_broker = 'default' "
+        "WHERE target_broker IS NULL;"
+    )
 
 
-def _outbox_set_not_null_sql(dialect: str) -> str:
+def _qualified(table: str, schema: str | None) -> str:
+    """``schema.table`` when the provider puts the outbox outside the default schema.
+
+    The check introspects with an explicit ``schema=``, so it finds the table
+    wherever it lives. The generated SQL has to reach the same one: an
+    unqualified name resolves against the session's search path and can name a
+    different table, or none.
+    """
+    return f"{schema}.{table}" if schema else table
+
+
+def _outbox_set_not_null_sql(dialect: str, schema: str | None = None) -> str:
     """Per-dialect SQL to backfill NULLs and add ``NOT NULL`` on ``target_broker``."""
+    table = _qualified("outbox", schema)
     if dialect == "mysql":
-        alter = "ALTER TABLE outbox MODIFY target_broker varchar(128) NOT NULL;"
+        alter = f"ALTER TABLE {table} MODIFY target_broker varchar(128) NOT NULL;"
     elif dialect in ("mssql", "mssql+pyodbc"):
-        alter = "ALTER TABLE outbox ALTER COLUMN target_broker varchar(128) NOT NULL;"
+        alter = f"ALTER TABLE {table} ALTER COLUMN target_broker varchar(128) NOT NULL;"
     else:  # postgresql / standard
-        alter = "ALTER TABLE outbox ALTER COLUMN target_broker SET NOT NULL;"
-    return f"{_OUTBOX_BACKFILL_NULL_TARGET_BROKER}\n{alter}"
+        alter = f"ALTER TABLE {table} ALTER COLUMN target_broker SET NOT NULL;"
+    return f"{_backfill_sql(schema)}\n{alter}"
 
 
-def _outbox_composite_index_sql(dialect: str) -> str:
+def _outbox_composite_index_sql(dialect: str, schema: str | None = None) -> str:
     """Per-dialect SQL to replace ``uq_outbox_message_id`` with the composite index."""
+    table = _qualified("outbox", schema)
     if dialect in ("mysql", "mssql", "mssql+pyodbc"):
-        drop = "DROP INDEX uq_outbox_message_id ON outbox;"
+        drop = f"DROP INDEX uq_outbox_message_id ON {table};"
     else:  # postgresql / sqlite / standard
-        drop = "DROP INDEX IF EXISTS uq_outbox_message_id;"
+        drop = f"DROP INDEX IF EXISTS {_qualified('uq_outbox_message_id', schema)};"
     create = (
         "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker\n"
-        "  ON outbox (message_id, target_broker);"
+        f"  ON {table} (message_id, target_broker);"
     )
-    return f"{_OUTBOX_BACKFILL_NULL_TARGET_BROKER}\n{drop}\n{create}"
+    return f"{_backfill_sql(schema)}\n{drop}\n{create}"
 
 
 def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
@@ -464,20 +499,24 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
                         "broker (`[outbox] broker`, default `default`), then run the SQL."
                     ),
                     element=f"databases.{name}",
-                    sql=_outbox_set_not_null_sql(dialect),
+                    sql=_outbox_set_not_null_sql(dialect, schema),
                 )
             )
 
         # (0.16.1) composite unique index. Only flag when the legacy single-column
         # unique index exists and the composite one does not — the index is
         # recommended, not framework-created, so its absence means nothing to do.
-        unique_index_cols = {
-            tuple(ix.get("column_names") or []) for ix in indexes if ix.get("unique")
-        }
-        if ("message_id",) in unique_index_cols and (
-            "message_id",
-            "target_broker",
-        ) not in unique_index_cols:
+        # Compared as sets, not tuples: an index over (target_broker, message_id)
+        # is as composite as (message_id, target_broker) for idempotency, and
+        # flagging it would tell someone to drop a working index.
+        unique_index_cols = [
+            frozenset(ix.get("column_names") or [])
+            for ix in indexes
+            if ix.get("unique")
+        ]
+        if frozenset({"message_id"}) in unique_index_cols and (
+            frozenset({"message_id", "target_broker"}) not in unique_index_cols
+        ):
             findings.append(
                 UpgradeFinding(
                     code="OUTBOX_UNIQUE_INDEX_LEGACY",
@@ -496,7 +535,7 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
                         "broker (`[outbox] broker`, default `default`), then run the SQL."
                     ),
                     element=f"databases.{name}",
-                    sql=_outbox_composite_index_sql(dialect),
+                    sql=_outbox_composite_index_sql(dialect, schema),
                 )
             )
 

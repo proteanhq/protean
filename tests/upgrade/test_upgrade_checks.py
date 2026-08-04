@@ -464,3 +464,49 @@ CREATE TABLE outbox (
 );
 CREATE UNIQUE INDEX uq_outbox_message_id ON outbox (message_id)
 """
+
+
+class TestOutboxMigrationsAreNotOverEager:
+    """Three defects in the forward-ported checks (#1093), found in review.
+
+    They shipped in 0.16.2 on the release branch, so they were live for a month
+    before anyone read them next to a fresh pair of eyes.
+    """
+
+    def test_a_reversed_composite_index_is_not_called_legacy(self):
+        """`(target_broker, message_id)` is as composite as the other order.
+
+        Comparing tuples made column order significant, so a working index would
+        have been reported as legacy and the remediation would have told someone
+        to drop it.
+        """
+
+        indexes = [
+            {"name": "uq_a", "column_names": ["message_id"], "unique": True},
+            {
+                "name": "uq_b",
+                "column_names": ["target_broker", "message_id"],
+                "unique": True,
+            },
+        ]
+        cols = {frozenset(ix["column_names"]) for ix in indexes if ix["unique"]}
+        assert frozenset({"message_id", "target_broker"}) in cols
+
+    def test_generated_sql_is_schema_qualified(self):
+        """The check introspects with an explicit schema; the SQL must match it."""
+        from protean.upgrade import (
+            _outbox_composite_index_sql,
+            _outbox_set_not_null_sql,
+        )
+
+        assert "events.outbox" in _outbox_set_not_null_sql("postgresql", "events")
+        assert "events.outbox" in _outbox_composite_index_sql("postgresql", "events")
+        # Unqualified when there is no schema, so the common case is unchanged.
+        assert "events." not in _outbox_set_not_null_sql("postgresql")
+
+    def test_the_backfill_is_schema_qualified_too(self):
+        """It is the first statement a reader runs; wrong table, wrong rows."""
+        from protean.upgrade import _outbox_set_not_null_sql
+
+        first = _outbox_set_not_null_sql("postgresql", "events").splitlines()[0]
+        assert first.startswith("UPDATE events.outbox")
