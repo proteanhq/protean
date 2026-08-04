@@ -1,14 +1,15 @@
 """Every decorator option must appear in the decorator reference.
 
 `docs/reference/domain-elements/element-decorators.md` is the one place that
-claims to list what each decorator accepts, and seven options had reached the
-code without reaching it: `suppress_checks`, `externally_populated`,
-`idempotent`, `sequential_by`, and the `retries`/`backoff`/`retry_exceptions`
-trio. Some were explained in guides, none were in the reference table, so a
-reader checking "what can I pass here?" got a wrong answer.
+claims to list what each decorator accepts, and a batch of options had reached
+the code without reaching it. Some were explained in guides, none had a row in
+the reference, so a reader checking "what can I pass here?" got a wrong answer
+from the page whose whole job is that question.
 
-Options are read from `_default_options` rather than listed here, so a new
-option fails this test the day it is added.
+Options come from each element's `_default_options`, and the internal ones from
+`_internal_options`, so nothing is enumerated here. That is deliberate: a list
+in this file would be a third place to keep in step, and it would go stale the
+same way the page did. A new option fails this test the day it is added.
 """
 
 from __future__ import annotations

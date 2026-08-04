@@ -2,9 +2,13 @@
 
 Inspects a loaded domain (and, where reachable, its live database schema) and
 reports changes that may need operator attention when upgrading to a newer
-Protean, with concrete remediation. The checks accumulate across releases rather
-than targeting one; each finding names the release its change came from. Schema changes are *generated* as SQL to review and run;
-nothing is applied automatically.
+Protean, with concrete remediation.
+
+The checks accumulate across releases rather than targeting one. Each finding
+names the release its change came from.
+
+Nothing is applied automatically. Schema changes are *generated* as SQL for you
+to review and run.
 
 Usage::
 
