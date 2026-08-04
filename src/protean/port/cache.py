@@ -28,6 +28,16 @@ def _reject_ttl(source: str, value: Any, reason: str) -> ConfigurationError:
     )
 
 
+def _ttl_unset(value: Any) -> bool:
+    """Whether a caller supplied no TTL at all.
+
+    `""` counts because that is what an unset environment variable looks like
+    after substitution, and `os.getenv("CACHE_TTL", "")` is a normal way to
+    reach these methods. `0` does not count: it is a value, and a rejected one.
+    """
+    return value is None or value == ""
+
+
 def _resolve_ttl(value: Any, source: str) -> int | float:
     """Normalise a `TTL` to a positive, finite number of seconds.
 
@@ -98,8 +108,19 @@ class BaseCache(metaclass=ABCMeta):
         `add(p, ttl=os.getenv("CACHE_TTL", ""))` on a cache configured for an
         hour quietly caches for five minutes.
         """
-        if ttl is None or ttl == "":
+        if _ttl_unset(ttl):
             return self.ttl
+        return _resolve_ttl(ttl, f"Cache '{self.name}'")
+
+    def _explicit_ttl(self, ttl: TTLValue | None) -> int | float | None:
+        """The caller's TTL, resolved, or `None` if they did not supply one.
+
+        Separate from `_ttl_for` for adapters that only act when a TTL was
+        actually given, and so a bad one is rejected *before* anything is
+        written: `add` must not leave an entry behind after raising.
+        """
+        if _ttl_unset(ttl):
+            return None
         return _resolve_ttl(ttl, f"Cache '{self.name}'")
 
     def register_projection(self, projection_cls: type[BaseProjection]) -> None:

@@ -263,20 +263,20 @@ class TestAddWithAnExplicitTTL:
         return Token(key="tok-1", user_id="u-1", email="a@example.com")
 
     def test_an_explicit_ttl_is_applied_to_the_key(self, test_domain):
-        cache = test_domain.caches["default"]
+        cache = test_domain.cache_for(Token)
         cache.add(self._token(), ttl=45)
 
         assert cache.get_ttl("token:::tok-1") == pytest.approx(45, abs=1)
 
     def test_a_string_ttl_is_coerced(self, test_domain):
         """A caller reading a TTL out of config gets a string, same as `TTL=`."""
-        cache = test_domain.caches["default"]
+        cache = test_domain.cache_for(Token)
         cache.add(self._token(), ttl="45")
 
         assert cache.get_ttl("token:::tok-1") == pytest.approx(45, abs=1)
 
     def test_omitting_the_ttl_uses_the_cache_default(self, test_domain):
-        cache = test_domain.caches["default"]
+        cache = test_domain.cache_for(Token)
         cache.add(self._token())
 
         assert cache.get_ttl("token:::tok-1") == pytest.approx(cache.ttl, abs=1)
@@ -285,7 +285,7 @@ class TestAddWithAnExplicitTTL:
         """It used to fall through to the default, caching for 5 minutes."""
         from protean.exceptions import ConfigurationError
 
-        cache = test_domain.caches["default"]
+        cache = test_domain.cache_for(Token)
         with pytest.raises(ConfigurationError, match="positive"):
             cache.add(self._token(), ttl=0)
 
@@ -300,7 +300,7 @@ class TestSetTTLTakesTheSameShapesAsAdd:
     """
 
     def _stored(self, test_domain):
-        cache = test_domain.caches["default"]
+        cache = test_domain.cache_for(Token)
         cache.add(Token(key="tok-2", user_id="u-1", email="a@example.com"))
         return cache, "token:::tok-2"
 
@@ -321,3 +321,46 @@ class TestSetTTLTakesTheSameShapesAsAdd:
         cache, key = self._stored(test_domain)
         with pytest.raises(ConfigurationError):
             cache.set_ttl(key, bad)
+
+
+class TestAFailedAddLeavesNothingBehind:
+    """`add` wrote the value and *then* validated the TTL.
+
+    So an invalid TTL raised `ConfigurationError` with the projection already
+    cached: the call reports failure and the data is there anyway. The Redis
+    adapter resolved before writing and did not have this, which is the kind of
+    divergence between two adapters of one port that should not exist.
+    """
+
+    def test_a_rejected_ttl_caches_nothing(self, test_domain):
+        from protean.exceptions import ConfigurationError
+
+        cache = test_domain.cache_for(Token)
+        token = Token(key="tok-3", user_id="u-1", email="a@example.com")
+
+        with pytest.raises(ConfigurationError):
+            cache.add(token, ttl="nan")
+
+        assert cache.get("token:::tok-3") is None
+
+    @pytest.mark.parametrize("bad", [0, -1, "inf", "soon"])
+    def test_nothing_is_cached_for_any_rejected_shape(self, test_domain, bad):
+        from protean.exceptions import ConfigurationError
+
+        cache = test_domain.cache_for(Token)
+        token = Token(key="tok-4", user_id="u-1", email="a@example.com")
+
+        with pytest.raises(ConfigurationError):
+            cache.add(token, ttl=bad)
+
+        assert cache.get("token:::tok-4") is None
+
+    def test_an_empty_ttl_behaves_exactly_like_omitting_it(self, test_domain):
+        """Otherwise `ttl=""` restarts the expiry the insert had just set."""
+        cache = test_domain.cache_for(Token)
+        cache.add(Token(key="e1", user_id="u", email="a@b.com"), ttl="")
+        cache.add(Token(key="e2", user_id="u", email="a@b.com"))
+
+        assert cache.get_ttl("token:::e1") == pytest.approx(
+            cache.get_ttl("token:::e2"), abs=1
+        )

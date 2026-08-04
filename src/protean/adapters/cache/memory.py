@@ -139,10 +139,17 @@ class MemoryCache(BaseCache):
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
+        # Resolved before the write, so a bad TTL raises without leaving a
+        # cached entry behind. The Redis adapter already had this ordering.
+        explicit_ttl = self._explicit_ttl(ttl)
+
         self._db[key] = projection.to_dict()
 
-        if ttl is not None:
-            self._db.set_ttl(key, self._ttl_for(ttl))
+        # Only when the caller actually named one. Left out, the store applies
+        # this cache's TTL on insert, so re-setting it here would restart the
+        # countdown and make `ttl=""` behave differently from omitting it.
+        if explicit_ttl is not None:
+            self._db.set_ttl(key, explicit_ttl)
 
     def get(self, key: str) -> BaseProjection | None:
         projection_name = key.split(":::")[0]
