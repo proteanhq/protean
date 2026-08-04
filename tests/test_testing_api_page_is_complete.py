@@ -29,6 +29,7 @@ PAGE = Path(__file__).resolve().parents[1] / "docs" / "api" / "testing.md"
 
 def _documented_members() -> list[str]:
     """Every name listed under a `members:` block on the page."""
+    assert PAGE.is_file(), f"{PAGE} is missing"
     members: list[str] = []
     in_block = False
     for line in PAGE.read_text(encoding="utf-8").splitlines():

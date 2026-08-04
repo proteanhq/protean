@@ -103,8 +103,19 @@ class TestCustomProfileFieldListIsCurrent:
     def test_every_allowed_field_appears_in_the_allowed_list(self, reference_text):
         from protean.server.subscription.profiles import PROFILE_FIELDS
 
-        start = reference_text.index("**Allowed fields.**")
-        end = reference_text.index("**Validation**", start)
+        # `find` rather than `index`: if the page is restructured the useful
+        # failure is "the paragraph moved", not a bare `ValueError` from a
+        # string method several frames down.
+        start = reference_text.find("**Allowed fields.**")
+        assert start != -1, (
+            "The reference no longer has an '**Allowed fields.**' paragraph. "
+            "Point this test at wherever the allowed set is now listed."
+        )
+        end = reference_text.find("**Validation**", start)
+        assert end != -1, (
+            "'**Allowed fields.**' is no longer followed by '**Validation**', "
+            "so this test cannot tell where the list ends."
+        )
         listed = reference_text[start:end]
 
         missing = sorted(f for f in PROFILE_FIELDS if f"`{f}`" not in listed)

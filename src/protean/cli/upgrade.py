@@ -1,8 +1,9 @@
 """CLI command for ``protean upgrade-check`` — upgrade-readiness diagnostics.
 
 Inspects a loaded domain (and, where reachable, its live database schema) and
-reports changes that may need operator attention when upgrading to 0.16, with
-concrete remediation. Schema changes are *generated* as SQL to review and run;
+reports changes that may need operator attention when upgrading to a newer
+Protean, with concrete remediation. The checks accumulate across releases rather
+than targeting one; each finding names the release its change came from. Schema changes are *generated* as SQL to review and run;
 nothing is applied automatically.
 
 Usage::
@@ -90,7 +91,7 @@ def _print_rich(domain_name: str, findings: list[UpgradeFinding]) -> None:
 
     if not findings:
         print(f"\n  Domain: [bold]{domain_name}[/bold]  [bold green]READY[/bold green]")
-        print("  No upgrade actions detected for 0.16.\n")
+        print("  No upgrade actions detected.\n")
         return
 
     print(f"\n  Domain: [bold]{domain_name}[/bold]  [bold yellow]REVIEW[/bold yellow]")

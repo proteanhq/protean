@@ -80,6 +80,7 @@ def _user_facing_options(cls: type) -> set[str]:
 
 @pytest.fixture(scope="module")
 def reference_text() -> str:
+    assert REFERENCE.is_file(), f"{REFERENCE} is missing"
     text = REFERENCE.read_text(encoding="utf-8")
     assert text, f"{REFERENCE} is empty"
     return text
