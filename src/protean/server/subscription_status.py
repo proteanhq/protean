@@ -629,8 +629,13 @@ def _outbox_processor_names(
     ``None`` when it claims every row. It mirrors ``OutboxProcessor``'s own
     ``_filter_by_broker``: with external brokers configured, each processor takes
     only rows whose ``target_broker`` matches its own, so counting all of them
-    would report one combined backlog on every row. Without external brokers
-    ``target_broker`` is ``None`` on every row, and filtering would count zero.
+    would report one combined backlog on every row.
+
+    Without external brokers the answer is ``None``, meaning do not filter. The
+    single processor owns every row, so filtering would be a no-op at best, and
+    at worst it would drop legacy rows that hold NULL in the column:
+    ``_coerce_target_broker`` fills those in on read, in Python, which a SQL
+    predicate never sees.
     """
     outbox_config = domain.config.get("outbox", {})
     primary_broker = outbox_config.get("broker", "default")

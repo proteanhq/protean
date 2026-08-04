@@ -888,10 +888,11 @@ class OutboxRepository(BaseRepository):
             target_broker: Count only rows bound for this broker. Mirrors the
                 filter ``OutboxProcessor`` applies when
                 ``outbox.external_brokers`` is set, so a caller reporting
-                per-processor counts sees that processor's own backlog. Left
-                unset, every row counts, which is right when no external broker
-                is configured because ``target_broker`` is ``None`` on all of
-                them.
+                per-processor counts sees that processor's own backlog. ``None``
+                means do not filter, which is what a single processor wants: it
+                owns every row, and matching on the column would skip legacy
+                rows holding NULL, since ``_coerce_target_broker`` runs on read
+                in Python and not in the query.
 
         Returns:
             Dictionary with status as key and count as value
