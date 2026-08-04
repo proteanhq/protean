@@ -227,7 +227,6 @@ make check            # Run all checks (lint, typecheck, test)
 ```bash
 make shell            # Start Protean interactive shell
 make server           # Start Protean message processing server
-make generate-docker  # Generate docker-compose for infrastructure
 ```
 
 ### Docker Commands
@@ -323,9 +322,10 @@ make docs-serve       # Serve documentation locally
 make test
 
 # Run specific test suites
-make test-unit         # Unit tests only
+make test-domain       # Domain layer only
+make test-application  # Application layer only
 make test-integration  # Integration tests only
-make test-bdd         # BDD tests only
+make test-fast         # Domain + application, skipping integration
 
 # Run with coverage
 make test-cov
