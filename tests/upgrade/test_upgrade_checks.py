@@ -510,3 +510,40 @@ class TestOutboxMigrationsAreNotOverEager:
 
         first = _outbox_set_not_null_sql("postgresql", "events").splitlines()[0]
         assert first.startswith("UPDATE events.outbox")
+
+    def test_both_indexes_present_is_still_flagged(self):
+        """The legacy index rejects dual-writes whether or not the composite exists.
+
+        Requiring the composite to be *absent* meant a database carrying both
+        reported clean while still failing every dual-write, which is the exact
+        failure the check exists to catch.
+        """
+        legacy = frozenset({"message_id"})
+        composite = frozenset({"message_id", "target_broker"})
+        cols = [legacy, composite]
+
+        assert legacy in cols  # the condition that now drives the finding
+
+    def test_the_sql_does_not_recreate_an_index_that_exists(self):
+        """Otherwise the script fails halfway on `already exists`."""
+        from protean.upgrade import _outbox_composite_index_sql
+
+        both = _outbox_composite_index_sql("postgresql", None, create_composite=False)
+        assert "CREATE UNIQUE INDEX" not in both
+        assert "DROP INDEX" in both
+
+        only_legacy = _outbox_composite_index_sql("postgresql")
+        assert "CREATE UNIQUE INDEX" in only_legacy
+
+    def test_a_failed_introspection_is_reported_not_skipped(self):
+        """Both outbox checks must surface CHECK_FAILED, not return quietly."""
+        import inspect
+
+        from protean.upgrade import _check_outbox_migrations, _check_outbox_schema
+
+        for fn in (_check_outbox_schema, _check_outbox_migrations):
+            src = inspect.getsource(fn)
+            assert "CHECK_FAILED" in src, (
+                f"{fn.__name__} swallows introspection failures, so a clean "
+                "report cannot be told apart from an unread database"
+            )

@@ -225,8 +225,9 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
                     title=f"Could not inspect the outbox table on `{name}`",
                     detail=(
                         f"Reading the schema raised {type(exc).__name__}: {exc}. "
-                        "The outbox migration checks did not run for this database, "
-                        "so this report says nothing about its schema."
+                        "The outbox column-bounds check did not run for this "
+                        "database, so this report says nothing about its column "
+                        "widths."
                     ),
                     remediation=(
                         "Check the database is reachable and the credentials can read "
@@ -421,18 +422,27 @@ def _outbox_set_not_null_sql(dialect: str, schema: str | None = None) -> str:
     return f"{_backfill_sql(schema)}\n{alter}"
 
 
-def _outbox_composite_index_sql(dialect: str, schema: str | None = None) -> str:
-    """Per-dialect SQL to replace ``uq_outbox_message_id`` with the composite index."""
+def _outbox_composite_index_sql(
+    dialect: str, schema: str | None = None, create_composite: bool = True
+) -> str:
+    """Per-dialect SQL to replace ``uq_outbox_message_id`` with the composite index.
+
+    ``create_composite`` is ``False`` when the composite index is already there
+    and only the legacy one needs dropping. Emitting the ``CREATE`` anyway would
+    hand someone a script that fails halfway on an index that already exists.
+    """
     table = _qualified("outbox", schema)
     if dialect in ("mysql", "mssql", "mssql+pyodbc"):
         drop = f"DROP INDEX uq_outbox_message_id ON {table};"
     else:  # postgresql / sqlite / standard
         drop = f"DROP INDEX IF EXISTS {_qualified('uq_outbox_message_id', schema)};"
-    create = (
-        "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker\n"
-        f"  ON {table} (message_id, target_broker);"
-    )
-    return f"{_backfill_sql(schema)}\n{drop}\n{create}"
+    statements = [_backfill_sql(schema), drop]
+    if create_composite:
+        statements.append(
+            "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker\n"
+            f"  ON {table} (message_id, target_broker);"
+        )
+    return "\n".join(statements)
 
 
 def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
@@ -469,8 +479,31 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
                 c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
             }
             indexes = inspector.get_indexes("outbox", schema=schema)
-        except Exception:
-            # Introspection is best-effort; never fail the upgrade check on it.
+        except Exception as exc:
+            # Reported rather than swallowed. The command documents CHECK_FAILED
+            # as "a check could not complete; the report may be incomplete for
+            # that area", and skipping a database silently would leave a clean
+            # report meaning either "your schema is current" or "I could not
+            # read it", with no way to tell which.
+            findings.append(
+                UpgradeFinding(
+                    code="CHECK_FAILED",
+                    level="warning",
+                    title=f"Could not inspect the outbox table on `{name}`",
+                    detail=(
+                        f"Reading the schema raised {type(exc).__name__}: {exc}. "
+                        "The outbox migration checks did not run for this "
+                        "database, so this report says nothing about its "
+                        "`target_broker` column or its unique index."
+                    ),
+                    remediation=(
+                        "Check the database is reachable and the credentials can "
+                        "read table metadata, then run `protean upgrade-check` "
+                        "again."
+                    ),
+                    element=f"databases.{name}",
+                )
+            )
             continue
 
         # (0.16.2) target_broker NOT NULL. SQLite cannot add the constraint in
@@ -514,9 +547,14 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
             for ix in indexes
             if ix.get("unique")
         ]
-        if frozenset({"message_id"}) in unique_index_cols and (
-            frozenset({"message_id", "target_broker"}) not in unique_index_cols
-        ):
+        # The legacy index is the problem whether or not the composite one is
+        # also present: a unique index on `message_id` alone rejects the second
+        # dual-write row no matter what else exists. Requiring the composite to
+        # be absent meant a database carrying both reported clean while still
+        # failing every dual-write.
+        has_legacy = frozenset({"message_id"}) in unique_index_cols
+        has_composite = frozenset({"message_id", "target_broker"}) in unique_index_cols
+        if has_legacy:
             findings.append(
                 UpgradeFinding(
                     code="OUTBOX_UNIQUE_INDEX_LEGACY",
@@ -535,7 +573,9 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
                         "broker (`[outbox] broker`, default `default`), then run the SQL."
                     ),
                     element=f"databases.{name}",
-                    sql=_outbox_composite_index_sql(dialect, schema),
+                    sql=_outbox_composite_index_sql(
+                        dialect, schema, create_composite=not has_composite
+                    ),
                 )
             )
 
