@@ -59,7 +59,23 @@ def _anchors(text: str) -> set[str]:
     way to reach the fourth section.
     """
     anchors: set[str] = set()
+    fence: str | None = None
     for line in text.splitlines():
+        # A `#` inside a fenced block is a shell prompt or a Python comment, not
+        # a heading. The guides are full of them, and counting one is wrong
+        # twice over: it invents an anchor mkdocs never publishes, so a link to
+        # it passes, and if its slug matches a real heading it steals the base
+        # name and pushes the real section to `_1`.
+        stripped = line.lstrip()
+        if fence is None:
+            if stripped.startswith(("```", "~~~")):
+                fence = stripped[:3]
+                continue
+        else:
+            if stripped.startswith(fence):
+                fence = None
+            continue
+
         if not line.startswith("#"):
             continue
         title = line.lstrip("#").strip()
@@ -214,3 +230,51 @@ class TestAnchorsMatchWhatMkdocsPublishes:
             "one anchor per heading; a collapsed duplicate makes a real section "
             "unlinkable and the link test would reject a valid link to it"
         )
+
+    def test_a_hash_inside_a_fenced_block_is_not_a_heading(self):
+        """The guides are full of `# comment` lines in code samples."""
+        anchors = _anchors(
+            "## Real heading\n"
+            "```python\n"
+            "# ValidationError: string has 17 characters after sanitization\n"
+            "```\n"
+            "~~~bash\n"
+            "# protean server\n"
+            "~~~\n"
+        )
+        assert anchors == {"real-heading"}
+
+    def test_a_code_comment_cannot_steal_a_real_heading_s_anchor(self):
+        """The damage is not only a false anchor.
+
+        A phantom sharing a real heading's slug takes the base name, pushing the
+        real section to `_1` and breaking every link that pointed at it.
+        """
+        anchors = _anchors("```bash\n# Before\n```\n## Before\n## Before\n")
+        assert anchors == {"before", "before_1"}
+
+    def test_the_computed_anchors_match_the_published_ones(self):
+        """Checked against a real `mkdocs build` when this was written.
+
+        `_anchors()` is a model of what mkdocs does, and a model that drifts
+        makes this whole file lie in one direction or the other. Every guide
+        matched exactly: 18, 18 and 20 anchors. Counting per guide is the cheap
+        proxy that catches a drift without building the site in the test suite.
+        """
+        counts = {
+            p.name: len(_anchors(p.read_text(encoding="utf-8")))
+            for p in MIGRATION_DIR.glob("v0-*.md")
+        }
+        for name, count in counts.items():
+            headings = [
+                line
+                for line in (MIGRATION_DIR / name)
+                .read_text(encoding="utf-8")
+                .splitlines()
+                if line.startswith("#")
+            ]
+            assert count <= len(headings), (
+                f"{name}: {count} anchors from {len(headings)} `#` lines. More "
+                "anchors than lines starting with `#` means the parser invented "
+                "one."
+            )
