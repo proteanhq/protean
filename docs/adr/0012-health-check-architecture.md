@@ -67,9 +67,9 @@ the async engine by default.
 Both implementations share readiness logic through `protean.utils.health`,
 which exposes `check_providers`, `check_brokers`, `check_event_store`,
 and `check_caches`. The async-engine probe adds the `subscriptions`
-block on top; the FastAPI router does not. Not because it couldn't —
-`collect_subscription_statuses()` walks the registry and works fine
-without a running engine — but because an API pod's readiness should
+block on top; the FastAPI router does not. Not because it couldn't
+(`collect_subscription_statuses()` walks the registry and works fine
+without a running engine), but because an API pod's readiness should
 not depend on how far behind a worker's consumers are. Those are
 separate deployments with separate failure modes, and a web pod that
 can serve requests is ready even when a worker is backed up. Only
@@ -203,8 +203,8 @@ status, and circuit-breaker state, sourced from the same
 
 The block is **informational: it never changes the probe's verdict.**
 Letting lag flip readiness to `503` was considered and rejected. A
-backlog is a normal, self-correcting condition — a burst of traffic, a
-replay, a slow downstream — and it is precisely when a consumer is
+backlog is a normal, self-correcting condition (a burst of traffic, a
+replay, a slow downstream), and it is precisely when a consumer is
 behind that you least want Kubernetes to pull it out of rotation and
 stop it draining. An open circuit breaker is treated the same way: one
 handler is paused, the engine is still healthy. Readiness answers "can

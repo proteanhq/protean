@@ -183,7 +183,7 @@ Two things worth knowing before you build on this:
 
 The block is **informational and never changes the verdict**. A lagging
 subscription or an open circuit breaker leaves the probe at `200`, because a
-backlog is not a reason for Kubernetes to pull the pod out of service — the
+backlog is not a reason for Kubernetes to pull the pod out of service: the
 engine is healthy and still draining the stream. Alert on lag from the metrics,
 not from readiness.
 
@@ -196,12 +196,12 @@ is a load knob on Redis and the event store, not a probe-latency knob.
 
 Three states tell you the data is not current:
 
-- `"collection_pending": true` with empty `details` — the first refresh has not
+- `"collection_pending": true` with empty `details`: the first refresh has not
   landed yet (normal for a second or two after startup).
-- `"collection_error": true` — the last refresh raised. The previous block is
+- `"collection_error": true`: the last refresh raised. The previous block is
   not served in its place, so you are not shown stale numbers as if they were
   fresh.
-- `"stale": true` with `"age_seconds"` — refreshes have stopped landing for
+- `"stale": true` with `"age_seconds"`: refreshes have stopped landing for
   several intervals, which usually means a wedged backend. The last good data
   is still shown, with its age, so you can judge it.
 
