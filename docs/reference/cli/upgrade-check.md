@@ -33,6 +33,8 @@ databases. Exit code is `0` when only advisory (info) findings are present and
 | `NESTED_UNIT_OF_WORK` | warning | Source | A `UnitOfWork` opened inside another. After ADR-0027 it joins the outer transaction with no savepoints, so a nested rollback dooms the whole thing. |
 | `UNIT_OF_WORK_NESTING_REVIEW` | info | Source | No lexical nesting found, but nesting through a call cannot be seen statically. Reports how many blocks are worth walking. |
 | `IO_INSIDE_UNIT_OF_WORK` | warning | Source | An HTTP call, broker publish or email send inside a `UnitOfWork`, which now holds database locks for the length of the call. |
+| `OUTBOX_TARGET_BROKER_NULLABLE` | warning | Schema | A live `outbox` table whose `target_broker` still allows NULL. Emits the backfill plus the `SET NOT NULL` for your dialect. Shipped in 0.16.2; reaches `main` in 0.17. |
+| `OUTBOX_UNIQUE_INDEX_LEGACY` | warning | Schema | A live `outbox` table still carrying the `message_id`-only unique index. Emits the swap to the composite `(message_id, target_broker)` index that the dual-write idempotency guard depends on. |
 | `CHECK_FAILED` | warning | — | A check could not complete (e.g. the database was unreachable); the report may be incomplete for that area. |
 
 ## Generated SQL
