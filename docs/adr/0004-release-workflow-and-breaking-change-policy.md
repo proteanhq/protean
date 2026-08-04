@@ -4,9 +4,9 @@
 |-------|-------|
 | **Status** | Accepted |
 | **Date** | 2026-03-11 |
-| **Last updated** | 2026-04-10 (removed release candidate workflow) |
+| **Last updated** | 2026-08-03 (post-1.0 policy: deprecation-managed 1.x, majors as eras) |
 | **Author** | Subhash Bhushan |
-| **Applies to** | Protean Framework (pre-1.0) |
+| **Applies to** | Protean Framework |
 | **Supersedes** | None |
 
 ---
@@ -81,9 +81,9 @@ def run(self, debug=False):
 
 Each removal version maps internally to a `RemovedInProteanXXWarning` subclass of the public `protean.exceptions.ProteanDeprecationWarning` (itself a `DeprecationWarning`). The `@deprecated` decorator validates the version eagerly (a typo fails at import); the inline `warn_deprecated` helper never raises on the live deprecated path, degrading to the base `ProteanDeprecationWarning` for an unregistered version so a consumer's program keeps running. Promoting the `ProteanDeprecationWarning` category to an error in CI (see the guidance below) surfaces every Protean deprecation — filter by that category, not by module, since a decorated helper attributes its warning to the *caller's* module.
 
-**Survival window:** Deprecated items survive for a minimum of two minor versions. If deprecated in 0.15, the earliest removal is 0.17.
+**Survival window:** There is no fixed count. Each deprecation declares the version it will be removed in, via the `removal=` argument that also selects its warning class, and that declaration is the commitment. What is fixed is the invariant: **a removal is never in the same release as its deprecation**, so every removal is preceded by at least one released version that warned about it and named the release it was going away in.
 
-**Removal:** Deprecated items are removed in announced "cleanup releases" (see Section 4).
+Pick a removal version with judgement rather than arithmetic. A rarely-touched internal helper can go in the next minor; a decorator option in every user's domain file should be given several. `protean check` reads the declared targets, so a user can ask what a future version will remove without having to have seen the warning.
 
 ### Tier 2: Behavioral Breaks
 
@@ -103,9 +103,11 @@ class MyAggregate(BaseAggregate):
 
 **Transition sequence:**
 
-1. **v0.N** — New behavior is available but opt-in. Default preserves old behavior.
-2. **v0.N+1** — If the flag is not explicitly set, emit a warning: "The default for `strict_validation` will change to `True` in v0.N+2. Set it explicitly to suppress this warning."
-3. **v0.N+2** — Flip the default. Users who explicitly set the flag are unaffected.
+1. **Opt-in.** New behavior is available behind the flag. The default preserves the old behavior.
+2. **Warn.** If the flag is not set explicitly, emit a warning naming the version the default changes in: "The default for `strict_validation` will change to `True` in v0.N+2. Set it explicitly to suppress this warning."
+3. **Flip.** Change the default. Users who set the flag explicitly are unaffected.
+
+Each step is a separate release, so a user who sets the flag when warned is never surprised. How many releases sit between the steps is a judgement call about how widely the behavior is relied on, not a fixed number.
 
 ### Tier 3: Structural Breaks
 
@@ -125,10 +127,10 @@ In the short term (pre-1.0), a clear "Upgrade Notes" section in each release is 
 
 ### Summary Table
 
-| Tier | Example | Detection | Mitigation | Minimum Survival |
-|------|---------|-----------|------------|-----------------|
-| Surface | Renamed class, moved import | Immediate error | `DeprecationWarning` | 2 minor versions |
-| Behavioral | Changed return value, reordered execution | Silent incorrect behavior | Opt-in flag → warning → default flip | 3 minor versions |
+| Tier | Example | Detection | Mitigation | Before removal |
+|------|---------|-----------|------------|----------------|
+| Surface | Renamed class, moved import | Immediate error | `DeprecationWarning` naming the removal version | At least one warned release |
+| Behavioral | Changed return value, reordered execution | Silent incorrect behavior | Opt-in flag → warning → default flip | At least one warned release per step |
 | Structural | Event schema change, config format change | Varies | Versioned schema + migration docs | Case-by-case |
 
 ### Exception: Operational Defaults
@@ -203,15 +205,17 @@ Use pytest's `filterwarnings` (or a programmatic `warnings.filterwarnings(..., c
 
 **Target: releasing should take less than 10 minutes of manual effort.** Invest in CI automation to achieve this.
 
-### Cleanup Release
+### Releases That Remove
 
-Periodically (roughly every 4–6 releases, or when deprecated items have aged past their survival window), cut a cleanup release that removes deprecated code.
+A removal lands in an ordinary minor. There is no separate release type for it; what matters is that nobody is surprised.
 
-1. Pre-announce: "v0.X.0 will remove all deprecations from v0.Y.x and earlier. Run `protean check` or test with `-W error::DeprecationWarning` to identify affected code."
-2. Make the removals.
+1. Pre-announce: "v0.X.0 will remove the APIs deprecated in v0.Y.x. Run `protean check`, or test with the `ProteanDeprecationWarning` category promoted to an error, to identify affected code."
+2. Make the removals, and only of things whose declared removal version has arrived.
 3. Document every removal in the changelog with a migration path.
 
-Cleanup releases are the only releases that intentionally break user code. They should be clearly labeled and communicated.
+Batching removals into one release rather than dribbling them across several is a courtesy worth keeping: it gives users one upgrade to plan for instead of many.
+
+A release that removes something is the only kind that intentionally breaks user code, and only code that ignored its warnings. Label and communicate those clearly.
 
 ### Hotfix Release
 
@@ -235,7 +239,7 @@ The changelog is the primary release artifact. It is maintained continuously (no
 - **Added** — new features and capabilities
 - **Changed** — behavioral changes (always note if a flag or opt-in is involved)
 - **Deprecated** — items marked for future removal, with the target removal version
-- **Removed** — items deleted in this release (cleanup releases only)
+- **Removed** — items deleted in this release, each with its migration path
 - **Fixed** — bug fixes
 - **Upgrade Notes** — explicit steps users need to take, especially for Tier 2 and Tier 3 changes
 
@@ -254,12 +258,75 @@ For releases with Tier 2 or Tier 3 breaking changes, publish a standalone migrat
 
 The policies in this ADR apply to the current pre-1.0 phase. Pre-1.0, we have more latitude: the API is explicitly unstable, and early adopters accept that. However, the goal is to build the muscle and tooling now so that by 1.0, the process is mature.
 
-**What changes at 1.0:**
+### The post-1.0 model: deprecation-managed, not strict SemVer
 
-- Semantic versioning becomes strict: breaking changes only in major versions.
-- The deprecation survival window extends (minimum one major version cycle).
-- Automated migration tooling becomes a requirement, not a nice-to-have.
-- The `protean check` command becomes a first-class upgrade tool with comprehensive coverage.
+At 1.0 Protean adopts a **deprecation-managed** model for the 1.x series, in the style of Django, Rails, and SQLAlchemy rather than strict semantic versioning.
+
+**The contract, in one sentence:** Code that runs warning-free on 1.N runs unmodified on 1.N+1.
+
+That is the promise users can plan against, and it is deliberately stated in terms of warnings rather than version numbers. Every removal is preceded by at least one released version that warned about it and named the release it was going away in. Users enforce the contract mechanically in CI with the category filter from Section 3:
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+filterwarnings = ["error::protean.exceptions.ProteanDeprecationWarning"]
+```
+
+A user who does that has turned "will my upgrade break?" into a test run. (Filter on the **category**, not on a `:protean.*` module pattern: a `@deprecated`-decorated helper attributes its warning to the caller's module, so a module filter misses exactly those sites. Section 3 covers this.)
+
+**What each version position means:**
+
+- **Patch** (1.2.0 → 1.2.1) never changes API. Bug fixes only.
+- **Minor** (1.2 → 1.3) is where change lands: new features, new deprecations, Tier 2 flag flips, Tier 3 schema changes with shipped migrations, and **the removal of anything already deprecated**. A minor may break code that ignored its warnings. It may not break code that had none.
+- **Majors are eras**, not accumulated breakage.
+
+**There is no fixed deprecation window.** Every deprecation already declares its own removal version and gets a dedicated warning class (`@deprecated(removal="0.18.0")` → `RemovedInProtean018Warning`), and `protean check` reads those declarations. A blanket "survives two minors" rule adds nothing to a per-deprecation target that is explicit, machine-readable, and already shipping. It only adds false precision: with releases as cheap and frequent as Section 1 makes them, "two minors" can be two weeks, which is not the protection the number implies.
+
+What replaces it is one invariant, which is the thing the contract actually rests on:
+
+> **A removal is never in the same release as its deprecation.**
+
+Every removal is preceded by at least one released version that warned about it and named the release it was going away in. That is what makes "warning-free on 1.N runs on 1.N+1" mechanically true, and it is the only timing rule worth stating.
+
+**The cost, stated plainly.** Without a fixed window, a user who skips releases can miss the version that warned them: deprecated in 1.4, removed in 1.5, and someone going 1.3 → 1.5 never saw it. A counted window would have covered that case and this does not. Two things make it acceptable. Upgrading minor by minor is the documented path, and it is cheap precisely because minors are frequent. And `protean check` resolves it properly anyway: it reads the declared removal targets rather than replaying the warnings you missed, so it tells a user on 1.3 what 1.5 will remove, which no survival window could.
+
+### Why not strict SemVer
+
+Strict SemVer says breaking changes only in majors. Applied to a framework, that produces one of two bad outcomes, and which one you get depends only on temperament:
+
+**Burn majors on trivia.** The first time a badly-named parameter needs correcting, you either ship 2.0 for it or you do not fix it. Version numbers stop carrying information: 4.0 might mean a rearchitecture or a renamed keyword argument, and users cannot tell without reading the notes. The signal the major version was supposed to carry is gone.
+
+**Or petrify.** More commonly, the cost of a major becomes so high that nothing is ever corrected. Mistakes calcify into permanent API. This is the more likely failure for Protean specifically, because the framework is opinionated: it is *supposed* to guide users toward correct patterns, and that requires the ability to move a pattern that turned out wrong.
+
+The deprecation-managed model separates the two questions SemVer conflates. "Is this safe to upgrade?" is answered by the warning-free contract, continuously, per release. "Has the nature of the project changed?" is answered by the major version. A user with a clean warning log upgrades minors without reading anything. A major means the boundary of what Protean claims to do has moved.
+
+**What a major is reserved for.** A major marks a shift in the declared scope boundary, not a pile of small breaks. Concretely: a change in the security posture (what Protean will hold and protect on the user's behalf), or a change in the concurrency model (for example, cluster-safe multi-worker operation, which changes the deployment contract rather than a signature). These are shifts a user must think about, not mechanically patch.
+
+### Precedent: this is the SQLAlchemy model, and we already ship half of it
+
+The closest precedent is not Django but **SQLAlchemy**, which describes its scheme as a "modified semantic versioning scheme" and states plainly that point releases are fully compatible while minor releases are "typically backwards compatible within the range of not-previously-deprecated APIs, with some risk of non-backwards compatibility."
+
+Its upgrade mechanism is the one adopted here, almost exactly:
+
+- **A per-version deprecation warning class.** SQLAlchemy emits `RemovedIn20Warning`; Protean already emits `RemovedInProtean018Warning` and friends from `protean._deprecation`. This was built before the policy was written down, so the policy is ratifying existing machinery rather than proposing new work.
+- **Warning-free means upgrade-safe.** SQLAlchemy's stated strategy is that once an application runs on 1.4 with the deprecation flags on and emits no 2.0 warnings, it is cross-compatible with 2.0. That is our contract sentence, arrived at independently and validated by a project with a far larger blast radius than ours.
+- **An early-warning switch.** SQLAlchemy gates next-major warnings behind `SQLALCHEMY_WARN_20=1` so users opt into seeing them before they are due. `protean check` plays that role for us, with the advantage of not requiring the code path to actually execute.
+- **Opt-in flags for behavioral change.** SQLAlchemy's `future=True` let 1.4 users run 2.0 semantics early. That is exactly our Tier 2 flag sequence.
+
+We follow their shape: **the minor position is where breaking change lands**, patches are inert, and majors are reserved for a categorical shift. We also follow them in not fixing a deprecation window.
+
+The one place we promise **more** is the contract itself. SQLAlchemy accepts "some risk of non-backwards compatibility" in a minor even outside previously-deprecated APIs. We do not: a minor may remove a deprecated API, but it may not break code that was running warning-free. We can afford the stricter line because our surface is smaller and younger, and because the per-deprecation removal targets make it checkable rather than aspirational.
+
+An earlier draft of this section went the other way, reserving removals for "cleanup releases" and fixing a two-minor survival window. Both were dropped. The cleanup release was a distinction without a difference (it was a minor that had been announced), and writing it down produced a contradiction between this ADR and the reference page within a day. The fixed window was redundant with the removal version each deprecation already declares. Neither was buying anything the contract sentence and the invariant above do not buy more simply.
+
+### What hardens at 1.0
+
+The taxonomy and both exceptions (operational defaults, silent correctness bugs) carry over unchanged, as does the invariant that a removal is never in the same release as its deprecation. Four things become stricter:
+
+- **Tier 3 migration tooling becomes mandatory**, not a nice-to-have. A persistence or event-schema change ships with a migration or it does not ship.
+- **A deprecation may not ship without a `protean check` rule that detects it.** The warning and the detector land together, so the mechanical upgrade path exists from the moment the deprecation does.
+- **The guarantees specification becomes part of the API.** Weakening a documented guarantee is a breaking change even when every signature is untouched. See `docs/reference/guarantees.md`.
+- **The public surface is enumerated in three tiers** (Stable / Provisional / Internal) so the contract above has a defined subject. See `docs/reference/stable-surface.md`.
 
 **What stays the same at 1.0:**
 
@@ -267,6 +334,10 @@ The policies in this ADR apply to the current pre-1.0 phase. Pre-1.0, we have mo
 - The changelog-driven release trigger.
 - The theme-based roadmap organization.
 - The principle that releases are cheap and frequent.
+
+### Related open question
+
+How a developer *acknowledges* an intentional breaking change in their own domain (the inverse problem: user code declaring "yes, I meant to change this") is tracked separately in issue #841. It is the same policy territory but a different actor, and nothing in this section depends on its outcome.
 
 ---
 

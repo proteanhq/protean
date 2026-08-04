@@ -115,4 +115,12 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Guarantees](guarantees.md)
 
+-   **:material-tag-outline: Versioning Policy**
+
+    ---
+
+    What a version number promises, and how to enforce it in your own CI.
+
+    [:material-arrow-right-box: Versioning Policy](versioning-policy.md)
+
 </div>

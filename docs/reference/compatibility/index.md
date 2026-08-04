@@ -122,7 +122,8 @@ When deprecating a domain element or field:
    minor versions (default: 3, configurable in `.protean/config.toml`).
 3. **Add to `exclude`** in `.protean/config.toml` if the element should
    not trigger breaking change alerts during its deprecation period.
-4. **Remove** in a cleanup release after the survival window.
+4. **Remove** in a later release, once the declared removal version has
+   arrived and has been announced.
 
 The `protean ir diff` command distinguishes expected removals (deprecated
 elements past their removal version) from unexpected removals.

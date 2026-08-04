@@ -294,6 +294,7 @@ nav:
   - Reference:
     - reference/index.md
     - Guarantees: reference/guarantees.md
+    - Versioning Policy: reference/versioning-policy.md
     - Domain Elements:
       - reference/domain-elements/index.md
       - reference/domain-elements/domain-constructor.md
