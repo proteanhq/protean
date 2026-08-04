@@ -178,7 +178,12 @@ def _io_label(node: ast.Call, http_names: set[str]) -> str | None:
     elif isinstance(func, ast.Name):
         if func.id in _UNAMBIGUOUS_IO:
             return f"{func.id}()"
-        if func.id in http_names:
+        # A name imported from an HTTP library only counts when it is also a
+        # verb. These libraries export plenty that does no I/O at all
+        # (`urllib.parse.urlencode`, `urljoin`) and constructors that only build
+        # a client (`Session`), and flagging those inside a Unit of Work would
+        # be exactly the noise this rule is built to avoid.
+        if func.id in http_names and func.id in _HTTP_VERBS:
             return f"{func.id}()"
     return None
 

@@ -158,6 +158,37 @@ class TestDoesNotFireOnCorrectCode:
         src = "import httpx\nhttpx.post(url)\n"
         assert io_sites(src) == []
 
+    @pytest.mark.parametrize(
+        "helper", ["urlencode", "urljoin", "quote", "unquote", "urlparse"]
+    )
+    def test_url_helpers_are_not_io(self, helper):
+        """`urllib` exports plenty that never touches the network.
+
+        These come from a module in the HTTP list, so a rule that flagged any
+        imported name would flag them, and they are common inside a Unit of
+        Work while building a request to send *after* it.
+        """
+        src = (
+            f"from urllib.parse import {helper}\n"
+            "with UnitOfWork():\n"
+            f"    value = {helper}(payload)\n"
+        )
+        assert io_sites(src) == []
+
+    def test_building_a_client_is_not_io(self):
+        """A constructor only builds the client; it makes no request."""
+        src = (
+            "from requests import Session\n"
+            "with UnitOfWork():\n"
+            "    session = Session()\n"
+        )
+        assert io_sites(src) == []
+
+    def test_a_verb_imported_from_an_http_library_is_still_io(self):
+        """The narrowing must not lose the case it was protecting."""
+        src = "from httpx import get\nwith UnitOfWork():\n    get(url)\n"
+        assert io_sites(src) == ["get()"]
+
 
 class TestNestedBlocksAreNotDoubleCounted:
     def test_inner_block_calls_belong_to_the_inner_block(self):
