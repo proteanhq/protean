@@ -67,9 +67,6 @@ shell: ## Start Protean shell
 server: ## Start Protean server for async message processing
 	uv run protean server
 
-generate-docker: ## Generate docker-compose file for infrastructure
-	uv run protean generate docker
-
 # Docker
 docker-up: ## Start Docker services
 	docker-compose up -d
