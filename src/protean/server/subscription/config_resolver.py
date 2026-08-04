@@ -287,6 +287,7 @@ class ConfigResolver:
             "enable_dlq",
             "circuit_breaker_threshold",
             "circuit_breaker_reset_seconds",
+            "retention_maxlen",
         ]:
             if key in stream_config:
                 config[key] = stream_config[key]

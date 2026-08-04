@@ -368,8 +368,31 @@ class DomainValidator:
 
     def _validate_priority_lanes_config(self) -> None:
         """Check that priority lanes configuration values are well-typed."""
-        lanes_config = self._domain.config.get("server", {}).get("priority_lanes", {})
-        if not lanes_config:
+        server_config = self._domain.config.get("server", {})
+        if not isinstance(server_config, dict) or "priority_lanes" not in server_config:
+            return
+        lanes_config = server_config["priority_lanes"]
+
+        # `priority_lanes = true` is the natural guess, and it used to fail with
+        # a bare `AttributeError: 'bool' object has no attribute 'get'` from the
+        # next line, which says nothing about what to write instead.
+        #
+        # Absence is checked before emptiness on purpose. Testing the value for
+        # truthiness treats `false` and `0` as "unset" and lets them through
+        # silently, which is the wrong way round: `= false` is the likelier
+        # thing to write than `= true`, and accepting one while rejecting the
+        # other means a user turns lanes off with no complaint and then hits an
+        # error the day they turn them on.
+        if not isinstance(lanes_config, dict):
+            raise ConfigurationError(
+                f"server.priority_lanes must be a table, got "
+                f"{type(lanes_config).__name__}: {lanes_config!r}. Write it as "
+                f"a section:\n\n"
+                f"    [server.priority_lanes]\n"
+                f"    enabled = true"
+            )
+
+        if not lanes_config:  # an empty table has nothing to check
             return
 
         enabled = lanes_config.get("enabled", False)

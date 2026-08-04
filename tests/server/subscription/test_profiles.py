@@ -957,3 +957,26 @@ class TestRetentionMaxlen:
         config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
         assert config.subscription_type == SubscriptionType.EVENT_STORE
         assert config.retention_maxlen is None
+
+
+class TestTheProfilesSlotMustBeATable:
+    """A falsy scalar used to be accepted in silence.
+
+    The type check sat behind `if not custom_profiles: return`, so
+    `profiles = false`, `0` and `""` returned the built-in registry without
+    complaint while `profiles = "x"` raised. That asymmetry is the wrong way
+    round, and it is the same shape as the `priority_lanes` guard fixed
+    alongside it: the mis-typed value nobody hears about is the dangerous one.
+    """
+
+    @pytest.mark.parametrize("scalar", [False, 0, "", "x", 3.5, []])
+    def test_a_scalar_is_rejected_whether_truthy_or_not(self, scalar):
+        with pytest.raises(ConfigurationError, match=r"\[server.profiles\] must be"):
+            build_profile_registry(scalar)
+
+    @pytest.mark.parametrize("empty", [None, {}])
+    def test_nothing_configured_yields_the_built_ins(self, empty):
+        registry = build_profile_registry(empty)
+
+        assert registry
+        assert set(registry) == {p.value for p in SubscriptionProfile}

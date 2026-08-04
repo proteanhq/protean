@@ -386,8 +386,15 @@ if __name__ == "__main__":
 ```
 
 !!! note "Priority lanes must be enabled"
-    Priority lanes require `server.priority_lanes = true` in `domain.toml`
-    and a Redis broker. See
+    Priority lanes require `enabled = true` under `[server.priority_lanes]`
+    in `domain.toml`, and a Redis broker:
+
+    ```toml
+    [server.priority_lanes]
+    enabled = true
+    ```
+
+    See
     [Priority Lanes](../concepts/async-processing/priority-lanes.md) for
     configuration details.
 

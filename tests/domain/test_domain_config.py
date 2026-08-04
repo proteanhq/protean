@@ -128,3 +128,76 @@ class TestPriorityLanesConsumersReadDefault:
 
         assert subscription._lanes_enabled is False
         assert subscription._backfill_suffix == "backfill"
+
+
+@pytest.mark.no_test_domain
+class TestPriorityLanesMustBeATable:
+    """`priority_lanes = true` is the natural guess, and it used to crash.
+
+    Every documented example writes `[server.priority_lanes]` with `enabled`
+    inside it, but the shape a reader reaches for first is the scalar. That used
+    to fail with a bare `AttributeError: 'bool' object has no attribute 'get'`
+    from inside validation, which names neither the key nor the fix.
+    """
+
+    def test_a_scalar_names_the_key_and_shows_the_table_form(self):
+        domain = Domain(name="ScalarLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = True
+
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        message = str(exc.value)
+        assert "server.priority_lanes must be a table" in message
+        assert "[server.priority_lanes]" in message
+        assert "enabled = true" in message
+
+    def test_the_reported_type_is_the_one_configured(self):
+        domain = Domain(name="StringLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = "enabled"
+
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        assert "got str" in str(exc.value)
+
+    def test_a_table_still_initializes(self):
+        """The guard must not reject the documented form."""
+        domain = Domain(name="TableLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = {"enabled": True}
+
+        domain.init(traverse=False)
+
+        assert domain.config["server"]["priority_lanes"]["enabled"] is True
+
+    @pytest.mark.parametrize("falsy", [False, 0, ""])
+    def test_a_falsy_scalar_is_rejected_too(self, falsy):
+        """Checking truthiness let `false` through while rejecting `true`.
+
+        That is the wrong way round. `priority_lanes = false` is the likelier
+        thing to write than `= true`, so accepting one and rejecting the other
+        means a user turns lanes off with no complaint and then hits an error
+        the day they turn them on.
+        """
+        domain = Domain(name="FalsyLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = falsy
+
+        with pytest.raises(ConfigurationError, match="must be a table"):
+            domain.init(traverse=False)
+
+    def test_an_empty_table_is_accepted(self):
+        """Nothing configured inside it is nothing to validate."""
+        domain = Domain(name="EmptyLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = {}
+
+        domain.init(traverse=False)
+
+        assert domain.config["server"]["priority_lanes"] == {}
+
+    def test_the_key_being_absent_is_accepted(self):
+        domain = Domain(name="AbsentLanes", root_path=".")
+        domain.config["server"].pop("priority_lanes", None)
+
+        domain.init(traverse=False)
+
+        assert "priority_lanes" not in domain.config["server"]

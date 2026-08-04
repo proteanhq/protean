@@ -6,7 +6,7 @@ from threading import RLock
 from typing import Any
 
 from protean.core.projection import BaseProjection
-from protean.port.cache import BaseCache
+from protean.port.cache import BaseCache, TTLValue
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
 
@@ -103,7 +103,7 @@ class MemoryCache(BaseCache):
         super().__init__(name, domain, conn_info)
 
         # The Data Cache
-        self._db = TTLDict(self.conn_info.get("TTL") or 300)
+        self._db = TTLDict(self.ttl)
 
         self._lock = RLock()
 
@@ -115,17 +115,23 @@ class MemoryCache(BaseCache):
         """Get the connection object for the repository"""
         return self._db._values
 
-    def add(self, projection: BaseProjection, ttl: int | float | None = None) -> None:
+    def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
         """Add projection record to cache
 
         KEY: Projection ID
         Value: Projection Data (derived from `to_dict()`)
 
-        TTL is in seconds.
+        TTL is in seconds. Accepts a number, or a string holding one, because a
+        TTL sourced from config arrives as a string: environment substitution
+        runs over already-parsed TOML strings. Anything that is not a positive,
+        finite number of seconds raises a `ConfigurationError` naming the cache.
+
+        Omitted (or an empty string) means "use this cache's `TTL`", which falls
+        back to 300 seconds when the cache configures none.
 
         Args:
             projection (BaseProjection): Projection Instance containing data
-            ttl (int, float, optional): Timeout in seconds. Defaults to None.
+            ttl (int, float, str, optional): Timeout in seconds. Defaults to None.
         """
         id_f = id_field(projection)
         assert id_f is not None
@@ -133,10 +139,17 @@ class MemoryCache(BaseCache):
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
+        # Resolved before the write, so a bad TTL raises without leaving a
+        # cached entry behind. The Redis adapter already had this ordering.
+        explicit_ttl = self._explicit_ttl(ttl)
+
         self._db[key] = projection.to_dict()
 
-        if ttl:
-            self._db.set_ttl(key, ttl)
+        # Only when the caller actually named one. Left out, the store applies
+        # this cache's TTL on insert, so re-setting it here would restart the
+        # countdown and make `ttl=""` behave differently from omitting it.
+        if explicit_ttl is not None:
+            self._db.set_ttl(key, explicit_ttl)
 
     def get(self, key: str) -> BaseProjection | None:
         projection_name = key.split(":::")[0]
@@ -188,8 +201,8 @@ class MemoryCache(BaseCache):
         # preserved — reassigning a plain {} broke set_ttl/get_ttl afterwards.
         self._db.clear()
 
-    def set_ttl(self, key: str, ttl: int | float) -> None:
-        self._db.set_ttl(key, ttl)
+    def set_ttl(self, key: str, ttl: TTLValue) -> None:
+        self._db.set_ttl(key, self._ttl_for(ttl))
 
     def get_ttl(self, key: str) -> float:
         return self._db.get_ttl(key)
