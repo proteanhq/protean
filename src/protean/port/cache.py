@@ -131,13 +131,17 @@ class BaseCache(metaclass=ABCMeta):
         KEY: Projection ID
         Value: Projection Data (derived from `to_dict()`)
 
-        TTL is in seconds. If not specified explicitly in method call,
-        it can be picked up from broker configuration. In the absence of
-        configuration, it can be defaulted to an optimum value, say 300 seconds.
+        TTL is in seconds. Accepts a number, or a string holding one, because a
+        TTL sourced from config arrives as a string: environment substitution
+        runs over already-parsed TOML strings. Anything that is not a positive,
+        finite number of seconds raises a `ConfigurationError` naming the cache.
+
+        Omitted (or an empty string) means "use this cache's `TTL`", which falls
+        back to 300 seconds when the cache configures none.
 
         Args:
             projection (BaseProjection): Projection Instance containing data
-            ttl (int, float, optional): Timeout in seconds. Defaults to None.
+            ttl (int, float, str, optional): Timeout in seconds. Defaults to None.
         """
 
     @abstractmethod
@@ -172,7 +176,11 @@ class BaseCache(metaclass=ABCMeta):
 
     @abstractmethod
     def set_ttl(self, key: str, ttl: TTLValue) -> None:
-        """Set a TTL explicitly on a key"""
+        """Set a TTL explicitly on a key.
+
+        Takes the same shapes as `add`: a number, or a string holding one, and
+        rejects anything that is not a positive, finite number of seconds.
+        """
 
     @abstractmethod
     def get_ttl(self, key: str) -> float:
