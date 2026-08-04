@@ -210,8 +210,8 @@ if root:
 | `message_type` | `str` | The fully-qualified message type |
 | `kind` | `str` | `"EVENT"` or `"COMMAND"` |
 | `stream` | `str` | The stream name |
-| `time` | `str \| None` | Write timestamp |
-| `global_position` | `int \| None` | Global position in the event store |
+| `time` | <code>str &#124; None</code> | Write timestamp |
+| `global_position` | <code>int &#124; None</code> | Global position in the event store |
 | `children` | `list[CausationNode]` | Child messages caused by this message |
 
 Returns `None` if no messages exist for the given `correlation_id`.
