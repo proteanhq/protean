@@ -166,12 +166,14 @@ Two things worth knowing before you build on this:
   exist yet because nothing has been consumed. A freshly deployed subscription
   reports `lag: null, status: "unknown"` against a perfectly healthy Redis.
 - **`status: "ok"` is not proof of health.** The block reuses the same collector
-  as `protean subscriptions status` and inherits its blind spots. A stream
-  subscription whose Redis is unreachable can still report
-  `lag: 0, status: "ok"`, because the collector falls back to the pending count
-  when it cannot read the stream. Treat the block as a debugging aid, not as an
-  alerting source: page on the metrics and on `/readyz` itself, not on these
-  rows.
+  as `protean subscriptions status` and inherits its blind spots. An unreachable
+  Redis is reported honestly, as `lag: null, status: "unknown"`. The gap is
+  narrower and easier to miss: when the consumer group *is* readable but the lag
+  itself cannot be computed (no native `lag` field, and the range read that
+  would count the remainder fails), the collector falls back to the pending
+  count. With nothing pending that yields `lag: 0, status: "ok"` when the true
+  lag is simply unknown. Treat the block as a debugging aid, not an alerting
+  source: page on the metrics and on `/readyz` itself, not on these rows.
 - **Some subscriptions are not covered yet.** Outbox processors configured
   through `outbox.external_brokers` produce no row, providers with
   `managed = false` produce a row for a processor that is not running, and a

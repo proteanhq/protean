@@ -705,8 +705,12 @@ class TestSubscriptionHealthBlock:
             # The orphaned breaker is reported rather than silently dropped.
             orphan = by_name["OrderProcessManager-partitioned"]
             assert orphan["circuit_state"] == "open"
-            assert orphan["lag"] is None
             assert orphan["status"] == "unknown"
+            # Nothing is known about this key, so every count is null. A 0 here
+            # would read as "no backlog" rather than "no data".
+            assert orphan["lag"] is None
+            assert orphan["pending"] is None
+            assert orphan["dlq_depth"] is None
 
     async def test_lagging_subscription_does_not_make_engine_unready(self):
         """Lag is informational: it must never pull the pod out of service."""
@@ -808,9 +812,11 @@ class TestSubscriptionHealthAgainstRealDomain:
     """Exercise the real collector through the worker thread, unpatched.
 
     The rest of the block's tests patch ``collect_subscription_statuses`` to pin
-    lag values.  This one does not: it proves the collection actually runs to
-    completion inside ``asyncio.to_thread`` against a live domain, where
-    ``domain_context()`` is entered on a thread that is not the event loop.
+    lag values.  This one does not: it proves the collection runs to completion
+    in the worker thread against a live domain, producing a real, serialisable
+    row.  The collector enters its own ``domain_context()`` inside that worker,
+    which is the part most likely to break silently, since the context is
+    established on the event loop here in the test body.
     """
 
     async def test_real_handler_appears_in_the_block(self):
@@ -1191,4 +1197,7 @@ class TestHandleConnectionErrors:
         written = b"".join(call.args[0] for call in writer.write.call_args_list)
         assert written, "handler closed the socket without writing a response"
         assert b"503 Service Unavailable" in written
-        assert b'"unavailable"' in written
+        # `degraded`, not `unavailable`: the latter is the shutdown signal, and
+        # a client must not read a handler bug as "this pod is draining".
+        assert b'"degraded"' in written
+        assert b'"unavailable"' not in written

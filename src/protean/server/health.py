@@ -290,7 +290,8 @@ def _collect_subscription_health(
         # keyed ``{name}-partitioned`` by the engine but reported per stream
         # category by the collector.  Report those rather than dropping them:
         # an operator hunting a tripped breaker must not find a hole where it
-        # should be.  Lag is null because it cannot be attributed to this key.
+        # should be.  Every count is null rather than 0: nothing is known about
+        # this key, and a 0 would read as "no backlog" instead of "no data".
         for name, breaker_state in unmatched_breakers.items():
             details.append(
                 {
@@ -299,8 +300,8 @@ def _collect_subscription_health(
                     "subscription_type": "unknown",
                     "stream_category": None,
                     "lag": None,
-                    "pending": 0,
-                    "dlq_depth": 0,
+                    "pending": None,
+                    "dlq_depth": None,
                     "status": "unknown",
                     "circuit_state": breaker_state,
                 }
@@ -470,8 +471,11 @@ class HealthServer:
             # is what the caller can act on.
             logger.warning("Health server connection error", exc_info=True)
             with contextlib.suppress(Exception):
+                # `degraded`, not `unavailable`: the latter is reserved for
+                # the shutdown case and carries `shutting_down: true`, so
+                # reusing it here would read as "this pod is draining".
                 writer.write(
-                    _json_response(503, {"status": STATUS_UNAVAILABLE, "checks": {}})
+                    _json_response(503, {"status": STATUS_DEGRADED, "checks": {}})
                 )
                 await writer.drain()
         finally:
