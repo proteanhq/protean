@@ -149,6 +149,15 @@ class TestPartitionedCategoryLag:
             ]
 
         redis.xinfo_groups.side_effect = _groups
+
+        def _consumers(stream, group):
+            key = stream.split(":", 1)[1]
+            # Default to one worker per partition, which is what
+            # partition-per-key ownership produces.
+            names = partitions[key].get("consumers", ["worker-1"])
+            return [{"name": name} for name in names]
+
+        redis.xinfo_consumers.side_effect = _consumers
         broker._get_field_value.side_effect = lambda d, f, convert_to_int=False: d.get(
             f
         )
@@ -196,6 +205,58 @@ class TestPartitionedCategoryLag:
     def test_partition_count_is_reported(self):
         status = self._collect({"a": {"lag": 0}, "b": {"lag": 0}, "c": {"lag": 0}})
         assert status.current_position == "3 partition(s)"
+
+    def test_one_worker_on_many_partitions_counts_once(self):
+        """Counting consumers per partition would report the partition count.
+
+        Every partition is its own stream carrying its own copy of the consumer
+        group, so `XINFO GROUPS` reports one consumer on each of them for the
+        same worker. Summing turns one worker reading three partitions into
+        three consumers.
+        """
+        status = self._collect(
+            {
+                "a": {"lag": 0, "consumers": ["worker-1"]},
+                "b": {"lag": 0, "consumers": ["worker-1"]},
+                "c": {"lag": 0, "consumers": ["worker-1"]},
+            }
+        )
+        assert status.consumer_count == 1
+
+    def test_distinct_workers_are_counted_separately(self):
+        status = self._collect(
+            {
+                "a": {"lag": 0, "consumers": ["worker-1"]},
+                "b": {"lag": 0, "consumers": ["worker-2"]},
+                "c": {"lag": 0, "consumers": ["worker-2"]},
+            }
+        )
+        assert status.consumer_count == 2
+
+    def test_a_partition_with_no_consumers_adds_nobody(self):
+        status = self._collect(
+            {
+                "a": {"lag": 0, "consumers": ["worker-1"]},
+                "b": {"lag": 0, "consumers": []},
+            }
+        )
+        assert status.consumer_count == 1
+
+    def test_an_unreadable_consumer_list_does_not_break_collection(self):
+        """A partition deleted mid-collection must not lose the lag reading."""
+        domain = MagicMock()
+        broker = self._broker({"a": {"lag": 4, "len": 9}})
+        broker.redis_instance.xinfo_consumers.side_effect = RuntimeError("no such key")
+        domain.brokers.get.return_value = broker
+        handler = MagicMock()
+        handler.__name__ = "OrderHandler"
+
+        status = _collect_partitioned_stream_status(
+            domain, "orders", handler, "order", "grp"
+        )
+
+        assert status.lag == 4
+        assert status.consumer_count == 0
 
     def test_an_unreadable_partition_index_is_unknown(self):
         domain = MagicMock()

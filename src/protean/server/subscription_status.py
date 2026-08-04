@@ -256,6 +256,9 @@ def _collect_partitioned_stream_status(
     subscription producing no signal, so the partitions are read instead and
     their lag summed. The broker keeps a live index of a category's partition
     keys, which is what makes this cheap enough to do per collection.
+
+    Lag, pending and length add up across partitions. Consumers do not: they are
+    counted by name, because one worker appears once in every partition it reads.
     """
     base_broker = domain.brokers.get("default")
     if not base_broker or not hasattr(base_broker, "redis_instance"):
@@ -290,7 +293,7 @@ def _collect_partitioned_stream_status(
     total_lag = 0
     total_pending = 0
     total_len = 0
-    consumers = 0
+    consumer_names: set[str] = set()
     any_lag_known = False
 
     for key in sorted(keys):
@@ -319,10 +322,20 @@ def _collect_partitioned_stream_status(
                 # to remove.
                 any_lag_known = True
                 total_lag += native_lag
-            consumers += (
-                broker._get_field_value(group, "consumers", convert_to_int=True) or 0
-            )
             break
+
+        # Consumers are counted by name, not summed. Each partition is its own
+        # stream with its own copy of the consumer group, so a single worker
+        # reading five partitions is five consumers by `XINFO GROUPS` and one
+        # worker in reality. Summing reports the partition count dressed up as a
+        # consumer count. The names are what identify a worker across streams.
+        with contextlib.suppress(Exception):
+            for consumer in redis_conn.xinfo_consumers(partition, consumer_group):
+                if not isinstance(consumer, dict):
+                    continue
+                consumer_name = broker._get_field_value(consumer, "name")
+                if consumer_name is not None:
+                    consumer_names.add(consumer_name)
 
     dlq_depth = 0
     with contextlib.suppress(Exception):
@@ -339,7 +352,7 @@ def _collect_partitioned_stream_status(
         current_position=f"{len(keys)} partition(s)",
         head_position=str(total_len),
         status=_classify_status(lag, total_pending),
-        consumer_count=consumers,
+        consumer_count=len(consumer_names),
         dlq_depth=dlq_depth,
     )
 
