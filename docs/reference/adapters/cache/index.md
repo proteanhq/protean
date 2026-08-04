@@ -58,7 +58,7 @@ TTL = 300  # Default TTL in seconds
 |--------|---------|-------------|
 | `provider` | `"memory"` | Cache provider (`memory` or `redis`) |
 | `URI` | -- | Redis connection URI (required for Redis) |
-| `TTL` | `300` | Default time-to-live in seconds. May be a number or a string holding one, so `TTL = "${CACHE_TTL|3600}"` works. Anything that is not a number raises a `ConfigurationError` naming the cache. |
+| `TTL` | `300` | Default time-to-live in seconds. Must be a positive, finite number, or a string holding one, so `TTL = "${CACHE_TTL|3600}"` works. Anything else, including `0`, a negative, `nan` or `inf`, raises a `ConfigurationError` naming the cache. |
 
 ## Interface
 

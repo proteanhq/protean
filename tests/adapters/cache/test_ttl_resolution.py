@@ -80,3 +80,62 @@ class TestTheAdaptersUseTheResolvedValue:
         """`int(ttl * 1000)` is what `psetex` receives."""
         resolved = _resolve_ttl("3600", "default")
         assert int(resolved * 1000) == 3_600_000
+
+
+class TestTTLMustBePositiveAndFinite:
+    """`float()` parses more than numbers, and one of the results is silent.
+
+    `float("nan")` succeeds, and every comparison against NaN is false, so the
+    memory cache holds an entry with a NaN TTL **forever** with nothing raised
+    and nothing logged. NaN and infinity at least fail at the Redis write
+    (`ValueError`, `OverflowError`), but far from the config that caused them,
+    and a negative TTL reaches Redis as a negative expiry.
+    """
+
+    @pytest.mark.parametrize("configured", ["nan", "NaN", float("nan")])
+    def test_nan_is_rejected(self, configured):
+        with pytest.raises(ConfigurationError, match="finite"):
+            _resolve_ttl(configured, "Cache 'default'")
+
+    @pytest.mark.parametrize(
+        "configured", ["inf", "-inf", "Infinity", float("inf"), float("-inf")]
+    )
+    def test_infinity_is_rejected(self, configured):
+        with pytest.raises(ConfigurationError, match="finite"):
+            _resolve_ttl(configured, "Cache 'default'")
+
+    @pytest.mark.parametrize("configured", ["-5", -5, "0", 0, -0.5])
+    def test_zero_and_negative_are_rejected(self, configured):
+        with pytest.raises(ConfigurationError, match="positive"):
+            _resolve_ttl(configured, "Cache 'default'")
+
+    def test_the_message_names_the_cache(self):
+        with pytest.raises(ConfigurationError) as exc:
+            _resolve_ttl("nan", "Cache 'sessions'")
+        assert "sessions" in str(exc.value)
+
+    def test_a_nan_ttl_no_longer_reaches_the_memory_cache(self):
+        with pytest.raises(ConfigurationError):
+            MemoryCache("default", None, {"provider": "memory", "TTL": "nan"})
+
+
+class TestAPerCallTTL:
+    """`ttl or self.ttl` treated an explicit `0` as "not supplied"."""
+
+    def test_an_explicit_ttl_is_used(self):
+        cache = MemoryCache("default", None, {"provider": "memory", "TTL": 300})
+        assert cache._ttl_for(60) == 60
+
+    def test_omitting_it_falls_back_to_the_cache_default(self):
+        cache = MemoryCache("default", None, {"provider": "memory", "TTL": 900})
+        assert cache._ttl_for(None) == 900
+
+    def test_a_string_per_call_ttl_is_coerced_like_config(self):
+        cache = MemoryCache("default", None, {"provider": "memory"})
+        assert cache._ttl_for("60") == 60
+
+    def test_zero_is_rejected_rather_than_silently_becoming_the_default(self):
+        """It used to return 300, so "expire immediately" cached for 5 minutes."""
+        cache = MemoryCache("default", None, {"provider": "memory", "TTL": 300})
+        with pytest.raises(ConfigurationError, match="positive"):
+            cache._ttl_for(0)

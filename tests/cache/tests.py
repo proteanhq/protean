@@ -254,3 +254,37 @@ class TestCacheSerialization:
         value = cache.get("token:::qux")
         assert isinstance(value, Token)
         assert value == token
+
+
+class TestAddWithAnExplicitTTL:
+    """`add(..., ttl=...)` used to be read with `if ttl:`, so `0` was ignored."""
+
+    def _token(self):
+        return Token(key="tok-1", user_id="u-1", email="a@example.com")
+
+    def test_an_explicit_ttl_is_applied_to_the_key(self, test_domain):
+        cache = test_domain.caches["default"]
+        cache.add(self._token(), ttl=45)
+
+        assert cache.get_ttl("token:::tok-1") == pytest.approx(45, abs=1)
+
+    def test_a_string_ttl_is_coerced(self, test_domain):
+        """A caller reading a TTL out of config gets a string, same as `TTL=`."""
+        cache = test_domain.caches["default"]
+        cache.add(self._token(), ttl="45")
+
+        assert cache.get_ttl("token:::tok-1") == pytest.approx(45, abs=1)
+
+    def test_omitting_the_ttl_uses_the_cache_default(self, test_domain):
+        cache = test_domain.caches["default"]
+        cache.add(self._token())
+
+        assert cache.get_ttl("token:::tok-1") == pytest.approx(cache.ttl, abs=1)
+
+    def test_a_zero_ttl_is_rejected_not_silently_replaced(self, test_domain):
+        """It used to fall through to the default, caching for 5 minutes."""
+        from protean.exceptions import ConfigurationError
+
+        cache = test_domain.caches["default"]
+        with pytest.raises(ConfigurationError, match="positive"):
+            cache.add(self._token(), ttl=0)

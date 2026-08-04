@@ -135,8 +135,8 @@ class MemoryCache(BaseCache):
 
         self._db[key] = projection.to_dict()
 
-        if ttl:
-            self._db.set_ttl(key, ttl)
+        if ttl is not None:
+            self._db.set_ttl(key, self._ttl_for(ttl))
 
     def get(self, key: str) -> BaseProjection | None:
         projection_name = key.split(":::")[0]

@@ -1,3 +1,4 @@
+import math
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
@@ -9,38 +10,53 @@ DEFAULT_TTL = 300
 """Seconds a cached projection lives when the cache config sets no `TTL`."""
 
 
-def _resolve_ttl(value: Any, cache_name: str) -> int | float:
-    """Normalise a configured `TTL` to a number of seconds.
+def _reject_ttl(source: str, value: Any, reason: str) -> ConfigurationError:
+    return ConfigurationError(
+        f"{source} has TTL = {value!r}, which is not {reason}. Set a positive "
+        "number of seconds, or an environment variable holding one: "
+        'TTL = "${CACHE_TTL|3600}".'
+    )
 
-    A TTL that reaches here as a string is the normal case, not an edge one:
+
+def _resolve_ttl(value: Any, source: str) -> int | float:
+    """Normalise a `TTL` to a positive, finite number of seconds.
+
+    A TTL arriving here as a string is the normal case, not an edge one:
     `TTL = "${CACHE_TTL}"` substitutes to `"3600"`, because environment
     substitution runs over already-parsed TOML strings and has no type to
     restore. Left as a string it does not fail loudly. `ttl * 1000` in the Redis
     cache repeats the string a thousand times and then asks Redis to expire a
     key in a 4000-digit number of milliseconds, and the memory cache raises
     `TypeError: unsupported operand type(s) for +: 'float' and 'str'` on the
-    first write. So the coercion happens once, here, where a bad value can still
-    be reported against the cache that configured it.
+    first write.
+
+    The range check matters for the same reason. `float("nan")` parses happily
+    and every comparison against it is false, so a NaN TTL makes the memory
+    cache hold entries **forever** with nothing raised and nothing logged. NaN
+    and infinity then fail at the Redis write instead (`ValueError`,
+    `OverflowError`), and a negative TTL reaches Redis as a negative expiry. All
+    of them are rejected here, where the message can still name what set them.
     """
     if value is None or value == "":
         return DEFAULT_TTL
     # `bool` is an `int`, and `TTL = true` is a typo rather than one second.
     if isinstance(value, bool):
-        raise ConfigurationError(
-            f"Cache '{cache_name}' has TTL = {str(value).lower()}. "
-            "TTL is a number of seconds."
-        )
+        raise _reject_ttl(source, value, "a number of seconds")
+
     if isinstance(value, (int, float)):
-        return value
-    try:
-        text = str(value).strip()
-        return int(text) if text.lstrip("+-").isdigit() else float(text)
-    except (TypeError, ValueError):
-        raise ConfigurationError(
-            f"Cache '{cache_name}' has TTL = {value!r}, which is not a number "
-            "of seconds. Set a number, or an environment variable that holds "
-            'one: TTL = "${CACHE_TTL|3600}".'
-        ) from None
+        number: int | float = value
+    else:
+        try:
+            text = str(value).strip()
+            number = int(text) if text.lstrip("+-").isdigit() else float(text)
+        except (TypeError, ValueError):
+            raise _reject_ttl(source, value, "a number of seconds") from None
+
+    if not math.isfinite(number):
+        raise _reject_ttl(source, value, "a finite number of seconds")
+    if number <= 0:
+        raise _reject_ttl(source, value, "a positive number of seconds")
+    return number
 
 
 class BaseCache(metaclass=ABCMeta):
@@ -50,10 +66,22 @@ class BaseCache(metaclass=ABCMeta):
         self.domain = domain
         self.conn_info = conn_info
 
-        self.ttl = _resolve_ttl(conn_info.get("TTL"), name)
+        self.ttl = _resolve_ttl(conn_info.get("TTL"), f"Cache '{name}'")
 
         # Temporary cache of projections
         self._projections: dict[str, type[BaseProjection]] = {}
+
+    def _ttl_for(self, ttl: int | float | None) -> int | float:
+        """The TTL to use for one write: the caller's, else the cache default.
+
+        Checked against `None` rather than truthiness. `add(projection, ttl=0)`
+        used to fall through to the default, so a caller asking for immediate
+        expiry silently got 300 seconds. Zero is now rejected by the same rule
+        that rejects it in config, which is at least a visible answer.
+        """
+        if ttl is None:
+            return self.ttl
+        return _resolve_ttl(ttl, f"Cache '{self.name}'")
 
     def register_projection(self, projection_cls: type[BaseProjection]) -> None:
         """Registers a projection object for data serialization and de-serialization"""

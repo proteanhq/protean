@@ -89,7 +89,7 @@ class RedisCache(BaseCache):
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
-        resolved_ttl: int | float = ttl or self.ttl
+        resolved_ttl: int | float = self._ttl_for(ttl)
 
         # redis-py ships `py.typed` but leaves `psetex` without a return
         # annotation, so mypy --strict flags the call as untyped. Not our bug.
