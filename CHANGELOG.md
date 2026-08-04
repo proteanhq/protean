@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-04
+
 ### Added
 
 - Fields accept a `renamed_from=` option (an old name or a list of aliases). A stored payload written under the old key deserializes into the renamed field without an upcaster, the rename is emitted into the IR, and `protean ir diff` reports a single safe `field_renamed` change instead of a breaking remove+add. (#1139)
@@ -719,7 +721,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.16.3...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/proteanhq/protean/compare/v0.16.3...v0.17.0
 [0.16.3]: https://github.com/proteanhq/protean/compare/v0.16.2...v0.16.3
 [0.16.2]: https://github.com/proteanhq/protean/compare/v0.16.1...v0.16.2
 [0.16.1]: https://github.com/proteanhq/protean/compare/v0.16.0...v0.16.1
