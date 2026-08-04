@@ -219,6 +219,7 @@ During graceful shutdown:
 - [Using the Outbox](./outbox.md) — Reliably publish domain events via the outbox pattern
 - [Production Deployment](./production-deployment.md) — Process management, Docker, Kubernetes, scaling, and health checks
 - [Harden the Server](./hardening.md) — Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, and emit OTEL metrics
+- [Tuning Subscriptions](./tuning-subscriptions.md): Pick a profile, cap stream growth, use the circuit breaker, order events per entity, and check consumer lag
 - [Logging](./logging.md) — Configure structured logging, enrich wide events with business context, disable auto-configuration
 - [Monitoring](./monitoring.md) — Observatory dashboard, Prometheus metrics, and subscription lag tracking
 - [Multi-Worker Mode](../../reference/server/supervisor.md) — Run multiple Engine processes for higher throughput

@@ -163,6 +163,11 @@ need by what you're trying to accomplish.
 | Log one wide event per HTTP request             | [HTTP wide events](./guides/fastapi/http-wide-events.md) |
 | Correlate HTTP and domain wide events           | [HTTP wide events](./guides/fastapi/http-wide-events.md#correlate-http-and-domain-events) |
 | Exclude health checks from the access log       | [HTTP wide events](./guides/fastapi/http-wide-events.md#tune-via-domaintoml) |
+| Make a handler consume faster or slower         | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md) |
+| Stop a Redis stream growing without bound       | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever) |
+| Pause a handler that keeps failing              | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#stop-a-failing-handler-from-burning-through-its-backlog) |
+| Process events for the same entity in order     | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#process-events-for-the-same-entity-in-order) |
+| See how far behind a subscription is            | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#check-how-far-behind-a-subscription-is) |
 | Disable automatic logging configuration         | [Logging](./guides/server/logging.md#disable-auto-configuration) |
 | Set up structured logging                       | [Logging](./guides/server/logging.md) |
 | Add request-scoped context to logs              | [Logging](./guides/server/logging.md#use-structured-events-in-application-code) |
