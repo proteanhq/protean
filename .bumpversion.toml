@@ -20,8 +20,13 @@ setup_hooks = []
 pre_commit_hooks = []
 post_commit_hooks = []
 
+# Each file anchors its own search. The global `search = "{current_version}"` is
+# unanchored and replaces every match, which rewrote `"typer>=0.16.0"` on the
+# 0.17.0 bump: a dependency floor silently ratcheted once per release.
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
 
 [[tool.bumpversion.files]]
 filename = "src/protean/__init__.py"
