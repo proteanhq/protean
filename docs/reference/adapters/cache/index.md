@@ -99,7 +99,7 @@ All cache adapters implement these methods:
 | `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern |
 | `flush_all()` | Remove all entries |
 | `set_ttl(key, ttl)` | Set a TTL on a specific key |
-| `get_ttl(key)` | Get the remaining TTL on a key |
+| `get_ttl(key)` | Seconds remaining before a key expires |
 
 ### Key Format
 

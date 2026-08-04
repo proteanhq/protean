@@ -205,4 +205,10 @@ class BaseCache(metaclass=ABCMeta):
 
     @abstractmethod
     def get_ttl(self, key: str) -> float:
-        """Get the TTL set on a key"""
+        """Seconds remaining before `key` expires.
+
+        Seconds, like every other TTL on this port. Stating it is the point:
+        without a unit in the contract, the Redis adapter returned `PTTL`
+        directly and answered milliseconds while the memory adapter answered
+        seconds, and each adapter's own tests agreed with it (#1307).
+        """

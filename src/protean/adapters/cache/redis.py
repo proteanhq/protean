@@ -150,4 +150,8 @@ class RedisCache(BaseCache):
         self._client.pexpire(key, int(self._ttl_for(ttl) * 1000))
 
     def get_ttl(self, key: str) -> float:
-        return float(self._client.pttl(key))
+        # `PTTL` answers milliseconds. Every other TTL on this port is seconds
+        # (the `TTL` config key, `add(ttl=)`, `set_ttl`), and the memory cache
+        # returns seconds here too, so returning milliseconds made the same
+        # method mean different things depending on the adapter (#1307).
+        return float(self._client.pttl(key)) / 1000
