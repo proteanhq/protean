@@ -211,4 +211,16 @@ class BaseCache(metaclass=ABCMeta):
         without a unit in the contract, the Redis adapter returned `PTTL`
         directly and answered milliseconds while the memory adapter answered
         seconds, and each adapter's own tests agreed with it (#1307).
+
+        **Adapters disagree on the edge cases, so check yours before relying on
+        them.** Redis answers with two sentinels rather than a duration: `-1`
+        when the key exists with no expiry, `-2` when there is no such key.
+        Those are returned unscaled, since dividing them would turn documented
+        flags into `-0.001` and `-0.002`. The memory cache raises `KeyError` for
+        a missing key instead, and cannot reach the no-expiry state at all
+        because every entry is written with one.
+
+        Unifying that is tracked in #1310, which adds the cross-adapter suite
+        this port has never had. Until then, a negative return means "not a
+        duration" and is worth checking for.
         """

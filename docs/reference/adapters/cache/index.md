@@ -82,6 +82,26 @@ The same rule applies wherever a TTL is passed: `cache.add(projection, ttl=...)`
 and `cache.set_ttl(key, ttl)` take the same shapes and reject the same ones.
 Omitting the TTL (or passing an empty string) uses the cache's configured `TTL`.
 
+### What `get_ttl` returns when there is nothing to count
+
+`get_ttl(key)` answers the seconds remaining before a key expires. Two states
+are not durations, and the adapters do not answer them the same way:
+
+| State | Memory cache | Redis cache |
+|-------|--------------|-------------|
+| Key exists, expiry pending | seconds remaining | seconds remaining |
+| No such key | raises `KeyError` | returns `-2` |
+| Key exists, no expiry set | not reachable, every entry is written with one | returns `-1` |
+
+Redis' `-1` and `-2` are its own documented sentinels and are passed through
+unscaled: dividing them into seconds would turn flags into `-0.001` and
+`-0.002`, which read as "expiring imminently" to anything comparing against
+zero.
+
+So a negative return means "not a duration". Treat it as a flag, and do not
+assume a missing key behaves the same across adapters until
+[#1310](https://github.com/proteanhq/protean/issues/1310) settles it.
+
 ## Interface
 
 All cache adapters implement these methods:
@@ -99,7 +119,7 @@ All cache adapters implement these methods:
 | `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern |
 | `flush_all()` | Remove all entries |
 | `set_ttl(key, ttl)` | Set a TTL on a specific key |
-| `get_ttl(key)` | Seconds remaining before a key expires |
+| `get_ttl(key)` | Seconds remaining before a key expires. See below for how adapters answer when there is no such key |
 
 ### Key Format
 
