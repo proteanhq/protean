@@ -113,6 +113,20 @@ runs:
           docker rm -f $leaked
         fi
 
+        # Removing the containers is not enough on its own. `docker rm -f`
+        # returns once the container is signalled, but dockerd's userland proxy
+        # keeps the published port bound until it exits, so the next
+        # `docker run` can still lose the race. Cutting 0.17.0 this failed on
+        # 59200 ("failed to bind host port for 0.0.0.0:59200: address already
+        # in use") with every container already removed. Wait for the ports
+        # themselves.
+        for port in 55432 56379 55433 51433 59200 59300; do
+          for _ in $(seq 1 30); do
+            ss -ltnH "sport = :$port" 2>/dev/null | grep -q . || break
+            sleep 1
+          done
+        done
+
         docker run -d --name postgres \
           -p 55432:5432 \
           -e POSTGRES_PASSWORD=postgres \
