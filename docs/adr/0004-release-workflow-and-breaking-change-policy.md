@@ -258,7 +258,7 @@ The policies in this ADR apply to the current pre-1.0 phase. Pre-1.0, we have mo
 
 At 1.0 Protean adopts a **deprecation-managed** model for the 1.x series, in the style of Django and Rails rather than strict semantic versioning.
 
-**The contract, in one sentence:** code that runs warning-free on 1.N runs unmodified on 1.N+1.
+**The contract, in one sentence:** Code that runs warning-free on 1.N runs unmodified on 1.N+1.
 
 That is the promise users can plan against, and it is deliberately stated in terms of warnings rather than version numbers. Every removal is preceded by a `DeprecationWarning` and a `protean check` rule for at least two minor versions. Users enforce the contract mechanically in CI with the category filter from Section 3:
 

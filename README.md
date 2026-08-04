@@ -84,7 +84,7 @@ Online docs are available at [https://docs.proteanhq.com](https://docs.proteanhq
 ### Versioning
 
 Protean does not use strict semantic versioning. The promise is:
-**code that runs warning-free on 1.N runs unmodified on 1.N+1.** Every removal
+**Code that runs warning-free on 1.N runs unmodified on 1.N+1.** Every removal
 is preceded by a deprecation warning and a `protean check` rule for at least two
 minor versions, so you can turn "will this upgrade break us?" into a test run.
 See the [versioning policy](https://docs.proteanhq.com/reference/versioning-policy/)
