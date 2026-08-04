@@ -36,6 +36,9 @@ _ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*(\w+)\s*\|$")
 
 def _index() -> dict[tuple[str, str], str]:
     """Parse the export index into {(module, export): tier}."""
+    if not PAGE.is_file():
+        pytest.fail(f"{PAGE} is missing; the export index cannot be checked.")
+
     text = PAGE.read_text(encoding="utf-8")
     try:
         body = text.split("<!-- surface-index:start -->", 1)[1].split(
@@ -50,9 +53,18 @@ def _index() -> dict[tuple[str, str], str]:
     entries: dict[tuple[str, str], str] = {}
     for line in body.splitlines():
         match = _ROW.match(line.strip())
-        if match:
-            export, module, tier = match.groups()
-            entries[(module, export)] = tier
+        if not match:
+            continue
+        export, module, tier = match.groups()
+        key = (module, export)
+        if key in entries:
+            # Left alone, the second row would silently win, so the page could
+            # list one export under two tiers and still pass every check below.
+            pytest.fail(
+                f"`{export}` is listed twice for {module} in the export index "
+                f"(as {entries[key]} and {tier}). Each export gets one row."
+            )
+        entries[key] = tier
     return entries
 
 
@@ -65,10 +77,13 @@ class TestExportIndexIsParseable:
     def test_page_exists(self):
         assert PAGE.is_file(), f"{PAGE} is missing"
 
-    def test_index_has_entries(self, index):
-        # Guards against a formatting change silently reducing every
-        # comparison below to an empty-set-equals-empty-set tautology.
-        assert len(index) > 50
+    def test_index_covers_the_whole_shipped_surface(self, index):
+        # Guards against a formatting change silently reducing every comparison
+        # below to an empty-set-equals-empty-set tautology. Derived from what is
+        # actually shipped, so it stays meaningful if the surface shrinks.
+        expected = sum(len(module.__all__) for module in MODULES.values())
+        assert expected > 0
+        assert len(index) == expected
 
 
 class TestIndexMatchesShippedExports:

@@ -6,9 +6,23 @@ The [versioning policy](versioning-policy.md) makes one promise:
 
 This page says what that promise applies to.
 
-The surface is enumerated here rather than implied by what happens to be
-importable. If a name is not on this page, it is internal, whatever its module
-path looks like.
+The surface is defined here rather than implied by what happens to be
+importable. How precisely depends on the area:
+
+- **The Python import surface is enumerated name by name.** Every export of
+  `protean`, `protean.fields`, and `protean.exceptions` appears in the
+  [export index](#export-index) with its tier, and a test keeps that table in
+  step with the shipped `__all__`. For these three modules, a name absent from
+  the index is not exported at all.
+- **The rest is defined by tier, and enumerated by its own reference page.**
+  Documented `domain.toml` keys, documented CLI commands and exit codes, the
+  public `protean.testing` DSL, and the public `protean.integrations.*` names
+  are Stable, but the authoritative list of each lives with its own
+  documentation, not here. "Documented" is the test: a config key or CLI flag
+  with a reference page is covered; one you found by reading the source is not.
+
+So absence from the export index means "internal" only for the three modules it
+covers. Everywhere else, the tier definitions below are what to reason with.
 
 ---
 
@@ -125,10 +139,14 @@ gap Protean intends to close.
 
 ## Export index
 
-The normative list. Every name exported by `protean`, `protean.fields`, and
-`protean.exceptions`, with its tier. A test asserts this table matches the
-shipped `__all__` declarations exactly, so a new export cannot ship without
-being classified here.
+The normative list **for the Python import surface**. Every name exported by
+`protean`, `protean.fields`, and `protean.exceptions`, with its tier. A test
+asserts this table matches the shipped `__all__` declarations exactly, in both
+directions, so a new export cannot ship without being classified here and a row
+cannot outlive the export it describes.
+
+This index does not cover `domain.toml` keys, CLI commands, `protean.testing`,
+or `protean.integrations.*`; see their own reference pages for those.
 
 <!-- surface-index:start -->
 
