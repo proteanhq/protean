@@ -328,3 +328,51 @@ class TestPartitionReadDegradesGracefully:
         # No group matched, so nothing is known rather than zero.
         assert status.lag is None
         assert status.pending == 0
+
+
+class TestPartitionLagRequiresARealReading:
+    """Finding the consumer group is not the same as reading its lag.
+
+    A broker without the native `lag` field (Redis before 7.0) reports groups
+    fine but no lag. Treating "group found" as "lag known" made every partition
+    contribute 0 and reported a caught-up subscription whose lag was never read,
+    which is the exact failure this collector exists to remove.
+    """
+
+    def _collect(self, groups_per_partition):
+        broker = MagicMock()
+        broker._partition_keys.return_value = set(groups_per_partition)
+        redis = broker.redis_instance
+        redis.xlen.return_value = 10
+        redis.xinfo_groups.side_effect = lambda stream: groups_per_partition[
+            stream.split(":", 1)[1]
+        ]
+        broker._get_field_value.side_effect = lambda d, f, convert_to_int=False: d.get(
+            f
+        )
+        domain = MagicMock()
+        domain.brokers.get.return_value = broker
+        handler = MagicMock()
+        handler.__name__ = "H"
+        return _collect_partitioned_stream_status(
+            domain, "orders", handler, "order", "grp"
+        )
+
+    def test_group_without_a_lag_field_is_unknown_not_zero(self):
+        status = self._collect({"a": [{"name": "grp", "pending": 0, "consumers": 1}]})
+        assert status.lag is None
+        assert status.status == "unknown"
+
+    def test_pending_is_still_reported_when_lag_is_unknown(self):
+        status = self._collect({"a": [{"name": "grp", "pending": 4, "consumers": 1}]})
+        assert status.lag is None
+        assert status.pending == 4
+
+    def test_a_single_readable_partition_makes_the_total_known(self):
+        status = self._collect(
+            {
+                "a": [{"name": "grp", "pending": 0, "consumers": 1}],
+                "b": [{"name": "grp", "pending": 0, "lag": 6, "consumers": 1}],
+            }
+        )
+        assert status.lag == 6

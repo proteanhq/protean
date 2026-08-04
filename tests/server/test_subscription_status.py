@@ -1267,7 +1267,12 @@ class TestCollectBrokerStatus:
         assert result.consumer_count == 1
 
     def test_redis_broker_xrange_exception_leaves_lag_unknown(self):
-        """When xrange fails on broker, lag falls back to pending count."""
+        """When xrange fails, lag stays unknown rather than becoming pending.
+
+        `lag = pending` reads like a conservative lower bound, but with nothing
+        pending it is `lag: 0`, which classifies as `ok` and reports a
+        subscription as caught up when its lag was never read (#1288).
+        """
         mock_domain = MagicMock()
         mock_broker = MagicMock()
         mock_redis = MagicMock()

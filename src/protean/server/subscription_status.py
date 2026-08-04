@@ -291,7 +291,7 @@ def _collect_partitioned_stream_status(
     total_pending = 0
     total_len = 0
     consumers = 0
-    any_known = False
+    any_lag_known = False
 
     for key in sorted(keys):
         partition = f"{stream_category}:{key}"
@@ -306,12 +306,18 @@ def _collect_partitioned_stream_status(
                 continue
             if broker._get_field_value(group, "name") != consumer_group:
                 continue
-            any_known = True
             total_pending += (
                 broker._get_field_value(group, "pending", convert_to_int=True) or 0
             )
             native_lag = broker._get_field_value(group, "lag", convert_to_int=True)
             if native_lag is not None:
+                # Only a real reading counts as knowing the lag. Finding the
+                # group is not enough: a broker without the native `lag` field
+                # (Redis before 7.0) would otherwise contribute 0 from every
+                # partition and report a caught-up subscription whose lag was
+                # never read, which is the failure this whole function exists
+                # to remove.
+                any_lag_known = True
                 total_lag += native_lag
             consumers += (
                 broker._get_field_value(group, "consumers", convert_to_int=True) or 0
@@ -322,7 +328,7 @@ def _collect_partitioned_stream_status(
     with contextlib.suppress(Exception):
         dlq_depth = redis_conn.xlen(f"{stream_category}:dlq")
 
-    lag = total_lag if any_known else None
+    lag = total_lag if any_lag_known else None
     return SubscriptionStatus(
         name=name,
         handler_name=handler_cls.__name__,
