@@ -153,7 +153,7 @@ Q objects support three operators that build the tree:
 | Operator | Connector | Example |
 |----------|-----------|---------|
 | `&` | AND | `Q(a=1) & Q(b=2)` |
-| `|` | OR | `Q(a=1) \| Q(b=2)` |
+| `\|` | OR | `Q(a=1) \| Q(b=2)` |
 | `~` | Negate | `~Q(a=1)` |
 
 Combining two Q objects creates a new parent node:
