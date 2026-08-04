@@ -38,6 +38,8 @@ TTL = 300
 | `URI` | Required | Redis connection string |
 | `TTL` | `300` | Default time-to-live in seconds. Must be a positive, finite number, or a string holding one, so `TTL = "${CACHE_TTL|3600}"` works. Anything else, including `0`, a negative, `nan` or `inf`, raises a `ConfigurationError` naming the cache. |
 
+The same rule applies wherever a TTL is passed: `cache.add(projection, ttl=...)` and `cache.set_ttl(key, ttl)` accept a number or a string holding one, and reject anything that is not a positive, finite number of seconds.
+
 ### Connection String Format
 
 ```

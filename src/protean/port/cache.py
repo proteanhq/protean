@@ -9,6 +9,16 @@ from protean.utils.inflection import underscore
 DEFAULT_TTL = 300
 """Seconds a cached projection lives when the cache config sets no `TTL`."""
 
+TTLValue = int | float | str
+"""What a caller may pass as a TTL.
+
+`str` is in there because it is a shape that genuinely arrives: environment
+substitution runs over already-parsed TOML strings, so a TTL sourced from
+config is a string by the time anyone can pass it on. Every public entry point
+coerces through `_resolve_ttl`, so the annotation says what is accepted rather
+than what is stored.
+"""
+
 
 def _reject_ttl(source: str, value: Any, reason: str) -> ConfigurationError:
     return ConfigurationError(
@@ -71,7 +81,7 @@ class BaseCache(metaclass=ABCMeta):
         # Temporary cache of projections
         self._projections: dict[str, type[BaseProjection]] = {}
 
-    def _ttl_for(self, ttl: int | float | None) -> int | float:
+    def _ttl_for(self, ttl: TTLValue | None) -> int | float:
         """The TTL to use for one write: the caller's, else the cache default.
 
         Checked against `None` rather than truthiness. `add(projection, ttl=0)`
@@ -106,7 +116,7 @@ class BaseCache(metaclass=ABCMeta):
         """Get the connection object for the cache"""
 
     @abstractmethod
-    def add(self, projection: BaseProjection, ttl: int | float | None = None) -> None:
+    def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
         """Add projection record to cache
 
         KEY: Projection ID
@@ -152,7 +162,7 @@ class BaseCache(metaclass=ABCMeta):
         """Remove all entries in Cache"""
 
     @abstractmethod
-    def set_ttl(self, key: str, ttl: int | float) -> None:
+    def set_ttl(self, key: str, ttl: TTLValue) -> None:
         """Set a TTL explicitly on a key"""
 
     @abstractmethod

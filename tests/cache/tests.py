@@ -288,3 +288,36 @@ class TestAddWithAnExplicitTTL:
         cache = test_domain.caches["default"]
         with pytest.raises(ConfigurationError, match="positive"):
             cache.add(self._token(), ttl=0)
+
+
+class TestSetTTLTakesTheSameShapesAsAdd:
+    """`set_ttl` had the string bug that `add` had, one method along.
+
+    Both are public and both take a TTL, so a value that works in one has to
+    work in the other. `set_ttl(key, "45")` used to raise
+    `TypeError: unsupported operand type(s) for +: 'float' and 'str'` from
+    inside the TTL bookkeeping, nowhere near the call.
+    """
+
+    def _stored(self, test_domain):
+        cache = test_domain.caches["default"]
+        cache.add(Token(key="tok-2", user_id="u-1", email="a@example.com"))
+        return cache, "token:::tok-2"
+
+    def test_a_numeric_ttl_works(self, test_domain):
+        cache, key = self._stored(test_domain)
+        cache.set_ttl(key, 45)
+        assert cache.get_ttl(key) == pytest.approx(45, abs=1)
+
+    def test_a_string_ttl_works_too(self, test_domain):
+        cache, key = self._stored(test_domain)
+        cache.set_ttl(key, "45")
+        assert cache.get_ttl(key) == pytest.approx(45, abs=1)
+
+    @pytest.mark.parametrize("bad", [0, -5, "nan", "inf", "later"])
+    def test_a_bad_ttl_is_rejected_the_same_way_as_in_add(self, test_domain, bad):
+        from protean.exceptions import ConfigurationError
+
+        cache, key = self._stored(test_domain)
+        with pytest.raises(ConfigurationError):
+            cache.set_ttl(key, bad)

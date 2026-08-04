@@ -6,7 +6,7 @@ from threading import RLock
 from typing import Any
 
 from protean.core.projection import BaseProjection
-from protean.port.cache import BaseCache
+from protean.port.cache import BaseCache, TTLValue
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
 
@@ -115,7 +115,7 @@ class MemoryCache(BaseCache):
         """Get the connection object for the repository"""
         return self._db._values
 
-    def add(self, projection: BaseProjection, ttl: int | float | None = None) -> None:
+    def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
         """Add projection record to cache
 
         KEY: Projection ID
@@ -188,8 +188,8 @@ class MemoryCache(BaseCache):
         # preserved — reassigning a plain {} broke set_ttl/get_ttl afterwards.
         self._db.clear()
 
-    def set_ttl(self, key: str, ttl: int | float) -> None:
-        self._db.set_ttl(key, ttl)
+    def set_ttl(self, key: str, ttl: TTLValue) -> None:
+        self._db.set_ttl(key, self._ttl_for(ttl))
 
     def get_ttl(self, key: str) -> float:
         return self._db.get_ttl(key)

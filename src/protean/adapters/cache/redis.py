@@ -5,7 +5,7 @@ from typing import Any
 import redis
 
 from protean.core.projection import BaseProjection
-from protean.port.cache import BaseCache
+from protean.port.cache import BaseCache, TTLValue
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
 
@@ -69,7 +69,7 @@ class RedisCache(BaseCache):
     def get_connection(self) -> "redis.Redis[Any]":
         return self._client
 
-    def add(self, projection: BaseProjection, ttl: int | float | None = None) -> None:
+    def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
         """Add projection record to cache
 
         KEY: Projection ID
@@ -142,8 +142,8 @@ class RedisCache(BaseCache):
     def flush_all(self) -> None:
         self._client.flushall()
 
-    def set_ttl(self, key: str, ttl: int | float) -> None:
-        self._client.pexpire(key, int(ttl * 1000))
+    def set_ttl(self, key: str, ttl: TTLValue) -> None:
+        self._client.pexpire(key, int(self._ttl_for(ttl) * 1000))
 
     def get_ttl(self, key: str) -> float:
         return float(self._client.pttl(key))
