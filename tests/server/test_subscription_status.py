@@ -418,8 +418,8 @@ class TestCollectOutboxStatuses:
     def test_returns_status_per_provider(self):
         mock_domain = MagicMock()
         mock_domain.has_outbox = True
-        mock_domain.config.get.return_value = {"broker": "default"}
-        mock_domain.providers.__iter__.return_value = iter(["default"])
+        mock_domain.config = {"outbox": {"broker": "default"}}
+        mock_domain.providers = {"default": MagicMock(managed=True)}
 
         mock_outbox = MagicMock()
         mock_outbox.count_by_status.return_value = {
@@ -444,8 +444,8 @@ class TestCollectOutboxStatuses:
     def test_ok_when_no_pending(self):
         mock_domain = MagicMock()
         mock_domain.has_outbox = True
-        mock_domain.config.get.return_value = {"broker": "default"}
-        mock_domain.providers.__iter__.return_value = iter(["default"])
+        mock_domain.config = {"outbox": {"broker": "default"}}
+        mock_domain.providers = {"default": MagicMock(managed=True)}
 
         mock_outbox = MagicMock()
         mock_outbox.count_by_status.return_value = {
@@ -464,8 +464,8 @@ class TestCollectOutboxStatuses:
     def test_graceful_degradation_on_error(self):
         mock_domain = MagicMock()
         mock_domain.has_outbox = True
-        mock_domain.config.get.return_value = {"broker": "default"}
-        mock_domain.providers.__iter__.return_value = iter(["default"])
+        mock_domain.config = {"outbox": {"broker": "default"}}
+        mock_domain.providers = {"default": MagicMock(managed=True)}
         mock_domain.domain_context.return_value.__enter__ = MagicMock(
             side_effect=RuntimeError("db down")
         )
@@ -1266,7 +1266,7 @@ class TestCollectBrokerStatus:
         assert result.pending == 2
         assert result.consumer_count == 1
 
-    def test_redis_broker_xrange_exception_falls_back_to_pending(self):
+    def test_redis_broker_xrange_exception_leaves_lag_unknown(self):
         """When xrange fails on broker, lag falls back to pending count."""
         mock_domain = MagicMock()
         mock_broker = MagicMock()
@@ -1303,8 +1303,9 @@ class TestCollectBrokerStatus:
             mock_domain, "ext-handler", handler_cls, "external-events", "default"
         )
 
-        # Fallback: lag = pending
-        assert result.lag == 3
+        assert result.lag is None
+        assert result.status == "unknown"
+        assert result.pending == 3
 
 
 # ---------------------------------------------------------------------------
@@ -1368,8 +1369,13 @@ class TestStreamStatusEdgeCases:
             result.lag is None
         )  # No group info, no last_delivered_id → lag stays None
 
-    def test_xrange_exception_falls_back_to_pending(self):
-        """When xrange fails, lag falls back to pending count."""
+    def test_xrange_exception_leaves_lag_unknown(self):
+        """An unreadable lag is null, not the pending count.
+
+        Falling back to `pending` reported `lag: 0, status: "ok"` whenever
+        nothing happened to be pending, so a subscription whose lag could not
+        be read at all looked healthy (#1288).
+        """
         mock_domain, mock_broker, mock_redis = self._make_mock_domain_with_redis()
         handler_cls = self._make_handler()
 
@@ -1388,8 +1394,10 @@ class TestStreamStatusEdgeCases:
 
         result = _collect_stream_status(mock_domain, "sub", handler_cls, "my-stream")
 
-        # Fallback: lag = pending
-        assert result.lag == 4
+        assert result.lag is None
+        assert result.status == "unknown"
+        # The pending count is still reported; it just is not passed off as lag.
+        assert result.pending == 4
 
     def test_dlq_xlen_exception_sets_dlq_to_zero(self):
         """When DLQ xlen fails, dlq_depth stays 0."""

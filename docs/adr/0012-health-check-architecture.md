@@ -149,71 +149,15 @@ itself being unresponsive should fail liveness.
   "Per-subscription readiness" below), so `/readyz` alone will not
   page anyone about a stuck subscription. Alerting still belongs on
   the metrics.
-- The block inherits the coverage gaps of
-  `collect_subscription_statuses()`, which predate it and are shared
-  with the `protean subscriptions status` CLI and the OTEL gauges.
-  Three are known: outbox processors for `outbox.external_brokers`
-  get no row; providers with `managed = false` get a row for a
-  processor the engine never started; and a subscription on a
-  partitioned (`sequential_by`) category reports
-  `lag: null, status: "unknown"`, because the collector reads the base
-  stream while the consumers read `{category}:{key}` partitions. That
-  last one matters most: a halted partition is the framework's own
-  definition of a stuck subscription and it produces no signal here.
-  Fixing them belongs in the collector, not in the probe, so `total`
-  and `len(details)` can legitimately disagree until then.
-
-## Alternatives Considered
-
-**Unix domain socket instead of TCP.** Rejected. Kubernetes probes
-use HTTP over TCP; a Unix socket would force an `exec` probe, which
-is heavier and less portable across orchestrators (Nomad, ECS, etc.).
-
-**aiohttp or Starlette.** Rejected. Both would have satisfied the
-probe requirements, but each carries a non-trivial dependency tree.
-Protean's server surface is deliberately minimal to keep the base
-install small. The probe server's footprint in `src/protean/server/health.py`
-is under 250 lines.
-
-**TCP-only probe (no HTTP).** Rejected. TCP `SYN-ACK` is not a strong
-signal of readiness — the engine's event loop could be unresponsive
-while the socket layer still accepts connections. HTTP with a
-response body is the standard Kubernetes probe contract and signals
-something meaningful.
-
-**Mounting probes on an existing API app.** Considered. `create_health_router`
-does exactly this for FastAPI users. For the async engine, which has
-no HTTP surface otherwise, a standalone probe server was the simpler
-choice than mandating FastAPI as a runtime dependency.
-
-**One combined probe with query-parameter liveness vs readiness.**
-Rejected. Kubernetes expects distinct paths with distinct behaviours
-(`livenessProbe` restarts the container; `readinessProbe` pulls it
-from rotation). Conflating them in one endpoint obscures the
-semantic difference and invites misconfiguration.
-
-**Per-subscription readiness.** Originally deferred in favour of a bare
-count; **adopted in 0.17 (#832)** as a reported-but-not-enforced block.
-`/readyz` now carries per-subscription lag, pending count, DLQ depth,
-status, and circuit-breaker state, sourced from the same
-`collect_subscription_statuses()` that feeds the
-`protean.subscription.consumer_lag` and
-`protean.subscription.pending_messages` gauges and the
-`protean subscriptions status` CLI. No new metric names were introduced.
-
-The block is **informational: it never changes the probe's verdict.**
-Letting lag flip readiness to `503` was considered and rejected. A
-backlog is a normal, self-correcting condition (a burst of traffic, a
-replay, a slow downstream), and it is precisely when a consumer is
-behind that you least want Kubernetes to pull it out of rotation and
-stop it draining. An open circuit breaker is treated the same way: one
-handler is paused, the engine is still healthy. Readiness answers "can
-this pod process messages?", which stays true under lag. Alerting on
-lag remains the metrics' job; the block exists so an operator debugging
-a pod can see *which* subscription is behind without leaving the probe.
-
-## References
-
+- The block reports what the engine actually runs. Three earlier
+  gaps in `collect_subscription_statuses()` were closed in #1288:
+  outbox processors for `outbox.external_brokers` now get a row,
+  providers with `managed = false` no longer get one for a processor
+  the engine never started, and a partitioned (`sequential_by`)
+  category sums lag across its per-key partition streams rather than
+  reading an empty base stream. `total` and `len(details)` can still
+  differ, since one partitioned process manager is a single engine
+  subscription but one row per stream category.
 - `docs/guides/server/hardening.md` — operational guidance for probe
   wiring and Kubernetes `terminationGracePeriodSeconds`.
 - `docs/reference/server/hardening.md` — probe response bodies, status
