@@ -2290,6 +2290,22 @@ class Domain:
                 BaseRepository, self.event_store.repository_for(element_cls)
             )
         else:
+            # A cache-backed projection has no provider, so the lookup below
+            # fails with `No provider configured with name 'None'`, which names
+            # the wrong problem: the projection is not misconfigured, the caller
+            # is at the wrong door. Say which door (#1286).
+            if (
+                getattr(element_cls, "element_type", None) == DomainObjects.PROJECTION
+                and getattr(element_cls.meta_, "cache", None) is not None
+            ):
+                raise IncorrectUsageError(
+                    f"`{element_cls.__name__}` is cache-backed "
+                    f"(cache={element_cls.meta_.cache!r}), so it has no "
+                    f"repository. Use `domain.cache_for({element_cls.__name__})` "
+                    f"to write and `domain.view_for({element_cls.__name__})` to "
+                    f"read. `repository_for()` is for provider-backed elements."
+                )
+
             # This is a regular aggregate or a projection
             repository = self.providers.repository_for(element_cls)
         return repository
