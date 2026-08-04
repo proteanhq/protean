@@ -312,16 +312,30 @@ def _collect_partitioned_stream_status(
             total_pending += (
                 broker._get_field_value(group, "pending", convert_to_int=True) or 0
             )
+            # Only a real reading counts as knowing the lag. Finding the group
+            # is not enough: a broker that reports neither would otherwise
+            # contribute 0 from every partition and describe a caught-up
+            # subscription whose lag was never read, which is the failure this
+            # whole function exists to remove.
             native_lag = broker._get_field_value(group, "lag", convert_to_int=True)
             if native_lag is not None:
-                # Only a real reading counts as knowing the lag. Finding the
-                # group is not enough: a broker without the native `lag` field
-                # (Redis before 7.0) would otherwise contribute 0 from every
-                # partition and report a caught-up subscription whose lag was
-                # never read, which is the failure this whole function exists
-                # to remove.
                 any_lag_known = True
                 total_lag += native_lag
+            else:
+                # No native `lag` (Redis before 7.0). Count what is left after
+                # the group's last delivered entry, which is what the
+                # non-partitioned path does and what the subscription reference
+                # already promises for stream subscriptions. Without this, a
+                # partitioned category on Redis 6 reports `unknown` while an
+                # identical unpartitioned one reports a number.
+                last_delivered_id = broker._get_field_value(group, "last-delivered-id")
+                if last_delivered_id is not None:
+                    with contextlib.suppress(Exception):
+                        remaining = redis_conn.xrange(
+                            partition, min=f"({last_delivered_id}"
+                        )
+                        any_lag_known = True
+                        total_lag += len(remaining)
             break
 
         # Consumers are counted by name, not summed. Each partition is its own

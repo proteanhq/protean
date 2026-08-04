@@ -461,3 +461,84 @@ class TestPartitionLagRequiresARealReading:
             }
         )
         assert status.lag == 6
+
+
+class TestPartitionLagFallsBackToXrange:
+    """Redis before 7.0 has no native `lag`, and the partitioned path skipped it.
+
+    The non-partitioned path counts entries after the group's
+    `last-delivered-id`, and `docs/reference/server/subscription-types.md`
+    already promises that fallback for stream subscriptions. Without the same
+    fallback here, a partitioned category on Redis 6 reported `unknown` while an
+    identical unpartitioned one reported a number.
+    """
+
+    def _collect(self, groups_per_partition, remaining_per_partition=None):
+        broker = MagicMock()
+        broker._partition_keys.return_value = set(groups_per_partition)
+        redis = broker.redis_instance
+        redis.xlen.return_value = 10
+        redis.xinfo_groups.side_effect = lambda stream: groups_per_partition[
+            stream.split(":", 1)[1]
+        ]
+        remaining = remaining_per_partition or {}
+
+        def _xrange(stream, min=None):
+            key = stream.split(":", 1)[1]
+            if key not in remaining:
+                raise ConnectionError("cannot read range")
+            return ["entry"] * remaining[key]
+
+        redis.xrange.side_effect = _xrange
+        broker._get_field_value.side_effect = lambda d, f, convert_to_int=False: d.get(
+            f
+        )
+        domain = MagicMock()
+        domain.brokers.get.return_value = broker
+        handler = MagicMock()
+        handler.__name__ = "H"
+        return _collect_partitioned_stream_status(
+            domain, "orders", handler, "order", "grp"
+        )
+
+    def test_lag_is_counted_after_the_last_delivered_entry(self):
+        status = self._collect(
+            {"a": [{"name": "grp", "pending": 0, "last-delivered-id": "5-0"}]},
+            {"a": 7},
+        )
+        assert status.lag == 7
+        assert status.status == "lagging"
+
+    def test_the_fallback_sums_across_partitions_too(self):
+        status = self._collect(
+            {
+                "a": [{"name": "grp", "pending": 0, "last-delivered-id": "5-0"}],
+                "b": [{"name": "grp", "pending": 0, "last-delivered-id": "9-0"}],
+            },
+            {"a": 3, "b": 4},
+        )
+        assert status.lag == 7
+
+    def test_native_lag_wins_and_costs_no_extra_call(self):
+        """On Redis 7+ the fallback must not fire, so no `XRANGE` per partition."""
+        status = self._collect(
+            {
+                "a": [
+                    {"name": "grp", "pending": 0, "lag": 2, "last-delivered-id": "5-0"}
+                ]
+            },
+            {"a": 999},
+        )
+        assert status.lag == 2
+
+    def test_a_partition_whose_range_cannot_be_read_leaves_it_unknown(self):
+        status = self._collect(
+            {"a": [{"name": "grp", "pending": 4, "last-delivered-id": "5-0"}]},
+            {},  # xrange raises
+        )
+        assert status.lag is None
+        assert status.pending == 4
+
+    def test_a_group_with_neither_lag_nor_a_position_stays_unknown(self):
+        status = self._collect({"a": [{"name": "grp", "pending": 0}]})
+        assert status.lag is None

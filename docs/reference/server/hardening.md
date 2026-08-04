@@ -172,7 +172,11 @@ Two things worth knowing before you build on this:
 - **A partitioned category reports summed lag.** A `sequential_by` subscription
   consumes `{category}:{key}` partition streams, so its row aggregates lag and
   pending counts across every live partition, and `current_position` reports how
-  many there are. One halted partition therefore shows up in the total.
+  many there are. One halted partition therefore shows up in the total. Lag per
+  partition comes from the native `lag` field on Redis 7.0+, or from counting
+  entries after the group's last delivered ID before that, the same two sources
+  an unpartitioned stream uses. If neither can be read the row reports
+  `lag: null` while still summing pending, per the rule above.
 - **The FastAPI health router omits the block entirely**, so a script parsing
   both entry points must treat `subscriptions` as optional.
 
