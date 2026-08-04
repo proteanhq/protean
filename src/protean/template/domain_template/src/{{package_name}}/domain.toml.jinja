@@ -16,7 +16,7 @@ database_uri = "${DATABASE_URL|sqlite:///./{{ package_name }}.db}"
 {%- elif database == "mssql" %}
 database_uri = "${DATABASE_URL|mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes}"
 {%- elif database == "elasticsearch" %}
-database_uri = '${ELASTICSEARCH_URL|{"hosts": ["http://localhost:9200"]}}'
+database_uri = '{"hosts": ["${ELASTICSEARCH_HOST|http://localhost:9200}"]}'
 {%- endif %}
 
 # Memory Database (for testing)
@@ -48,7 +48,7 @@ database_uri = "${DATABASE_URL|mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1
 # Elasticsearch Database
 [databases.elasticsearch]
 provider = "elasticsearch"
-database_uri = '${ELASTICSEARCH_URL|{"hosts": ["http://localhost:9200"]}}'
+database_uri = '{"hosts": ["${ELASTICSEARCH_HOST|http://localhost:9200}"]}'
 {%- endif %}
 
 # Default Event Store Configuration

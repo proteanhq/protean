@@ -23,6 +23,10 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 
+# These generate and start their own projects; the autouse domain fixture would
+# build an unrelated Domain per test for nothing.
+pytestmark = pytest.mark.no_test_domain
+
 # Choices whose provider can start with nothing else running.
 OFFLINE_CHOICES: list[tuple[str, list[str]]] = [
     ("defaults", []),
