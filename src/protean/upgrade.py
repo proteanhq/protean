@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from protean.upgrade_uow import scan_domain_source
 from protean.utils.outbox import Outbox
 
 if TYPE_CHECKING:
@@ -271,11 +272,103 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
 # ---------------------------------------------------------------------------
 
 # All checks, in report order. Each takes the domain and returns findings.
+# ---------------------------------------------------------------------------
+# Source checks (ADR-0027: the Unit of Work is a real transaction)
+# ---------------------------------------------------------------------------
+
+
+def _summarise(sites: list[str], limit: int = 10) -> str:
+    shown = ", ".join(sorted(sites)[:limit])
+    extra = len(sites) - limit
+    return f"{shown} (and {extra} more)" if extra > 0 else shown
+
+
+def _check_unit_of_work_transaction(domain: Domain) -> list[UpgradeFinding]:
+    """Report the two shapes ADR-0027 makes newly consequential.
+
+    A Unit of Work is now one real database transaction, so a nested block joins
+    the outer transaction (an inner rollback dooms it all) and external I/O
+    inside a block holds row locks for the length of the call. Neither shows up
+    in a diff of the user's code, because the user's code did not change.
+    """
+    nested, io_sites, total_blocks = scan_domain_source(domain)
+    findings: list[UpgradeFinding] = []
+
+    if nested:
+        findings.append(
+            UpgradeFinding(
+                code="NESTED_UNIT_OF_WORK",
+                level="warning",
+                title=f"{len(nested)} nested Unit of Work block(s)",
+                detail=(
+                    "A Unit of Work opened while another is active now joins the "
+                    "outermost transaction instead of running independently "
+                    "(ADR-0027). There are no savepoints, so a rollback in the "
+                    "inner block rolls back the outer one too. Found at: "
+                    f"{_summarise(nested)}."
+                ),
+                remediation=(
+                    "Check each site for an inner rollback (an explicit "
+                    "`uow.rollback()`, or an exception caught outside the inner "
+                    "block) that previously left the outer work intact. If the "
+                    "inner block must be able to fail on its own, give it its "
+                    "own use case rather than nesting it."
+                ),
+            )
+        )
+    elif total_blocks:
+        findings.append(
+            UpgradeFinding(
+                code="UNIT_OF_WORK_NESTING_REVIEW",
+                level="info",
+                title=f"{total_blocks} Unit of Work block(s) to review for nesting",
+                detail=(
+                    "No Unit of Work is opened inside another in the same "
+                    "function. Nesting through a call, where a handler's Unit of "
+                    "Work invokes a service method that opens its own, cannot be "
+                    "seen statically, and after ADR-0027 a nested rollback dooms "
+                    "the whole transaction."
+                ),
+                remediation=(
+                    "Walk the call graph under these blocks looking for another "
+                    "`UnitOfWork()`. Nesting is safe as long as nothing inside "
+                    "relies on rolling back independently."
+                ),
+            )
+        )
+
+    if io_sites:
+        findings.append(
+            UpgradeFinding(
+                code="IO_INSIDE_UNIT_OF_WORK",
+                level="warning",
+                title=f"{len(io_sites)} external call(s) inside a Unit of Work",
+                detail=(
+                    "A Unit of Work is now one real database transaction "
+                    "(ADR-0027), so it holds its row locks and its pooled "
+                    "connection for as long as the block runs. Under the "
+                    "previous AUTOCOMMIT model no transaction was open, so a "
+                    "call out cost only wall-clock time. Found at: "
+                    f"{_summarise(io_sites)}."
+                ),
+                remediation=(
+                    "Move the call outside the Unit of Work: commit the domain "
+                    "change first and then do the external work, or raise an "
+                    "event and let the outbox publish it after the transaction "
+                    "commits."
+                ),
+            )
+        )
+
+    return findings
+
+
 _CHECKS: tuple[Callable[[Domain], list[UpgradeFinding]], ...] = (
     _check_pool_defaults,
     _check_elasticsearch_server,
     _check_health_port,
     _check_outbox_schema,
+    _check_unit_of_work_transaction,
 )
 
 
