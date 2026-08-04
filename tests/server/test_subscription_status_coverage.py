@@ -242,6 +242,30 @@ class TestPartitionedCategoryLag:
         )
         assert status.consumer_count == 1
 
+    def test_a_consumer_entry_that_is_not_a_mapping_is_skipped(self):
+        """`XINFO CONSUMERS` returns flat arrays, not maps, on some clients.
+
+        redis-py builds the dicts; a client or a proxy that does not leaves the
+        raw reply, and the same guard already sits on the `XINFO GROUPS` loop
+        above. One unreadable entry must not lose the readable ones.
+        """
+        domain = MagicMock()
+        broker = self._broker({"a": {"lag": 0}})
+        broker.redis_instance.xinfo_consumers.side_effect = None
+        broker.redis_instance.xinfo_consumers.return_value = [
+            ["name", "worker-1"],  # flat array, not a mapping
+            {"name": "worker-2"},
+        ]
+        domain.brokers.get.return_value = broker
+        handler = MagicMock()
+        handler.__name__ = "OrderHandler"
+
+        status = _collect_partitioned_stream_status(
+            domain, "orders", handler, "order", "grp"
+        )
+
+        assert status.consumer_count == 1
+
     def test_an_unreadable_consumer_list_does_not_break_collection(self):
         """A partition deleted mid-collection must not lose the lag reading."""
         domain = MagicMock()
