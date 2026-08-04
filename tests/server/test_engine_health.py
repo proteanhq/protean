@@ -979,6 +979,43 @@ class TestSubscriptionBlockRefresher:
             assert stale["stale"] is True
             assert stale["age_seconds"] == 45.0
 
+    async def test_the_loop_keeps_refreshing(self):
+        """The background loop must iterate, not collect once and stop.
+
+        Waits on the collector's own call count rather than on elapsed time, so
+        the test is deterministic under load instead of racing a sleep.
+        """
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        calls = []
+
+        def _collect(_domain):
+            calls.append(1)
+            return []
+
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = _SubscriptionBlockRefresher(engine, interval=0.01)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=_collect,
+            ):
+                await refresher.start()
+                try:
+                    for _ in range(500):
+                        if len(calls) >= 2:
+                            break
+                        await asyncio.sleep(0.01)
+                finally:
+                    await refresher.stop()
+
+            assert len(calls) >= 2, (
+                f"refresher ran {len(calls)} collection(s); the loop is not repeating"
+            )
+            # A completed refresh is adopted, so the block is real by now.
+            assert "collection_pending" not in refresher.block
+
     async def test_start_is_idempotent_and_stop_cancels(self):
         domain = Domain(name="Test")
         domain.init(traverse=False)
@@ -990,6 +1027,14 @@ class TestSubscriptionBlockRefresher:
             task = refresher._task
             await refresher.start()
             assert refresher._task is task
+
+            # Let the loop actually run before cancelling it, otherwise
+            # whether the loop body executed at all is a race.
+            for _ in range(500):
+                if refresher._block is not None:
+                    break
+                await asyncio.sleep(0.01)
+            assert refresher._block is not None
 
             await refresher.stop()
             assert task.cancelled() or task.done()
@@ -1016,6 +1061,39 @@ class TestSubscriptionBlockRefresher:
                 await refresher._refresh_once()
 
         assert seen["thread"] is not threading.current_thread()
+
+    async def test_a_broken_engine_does_not_break_the_block(self):
+        """Even the cheap in-memory reads are guarded: the probe answers."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            # Something the engine should never be, but if it ever is, the
+            # readiness probe is not where we want to find out.
+            engine._subscriptions = None
+
+            refresher = _SubscriptionBlockRefresher(engine)
+            assert refresher.block["total"] == 0
+
+            await refresher._refresh_once()
+            assert refresher.block["collection_error"] is True
+
+    async def test_unreadable_breaker_state_does_not_break_the_block(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = _SubscriptionBlockRefresher(engine)
+
+            with patch(
+                "protean.server.health._circuit_states",
+                side_effect=RuntimeError("subscription registry is a mess"),
+            ):
+                await refresher._refresh_once()
+
+            block = refresher.block
+            assert block["collection_error"] is True
+            assert block["details"] == []
 
     def test_rejects_a_nonsensical_interval(self):
         domain = Domain(name="Test")
