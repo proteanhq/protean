@@ -48,14 +48,28 @@ def _fragments() -> list[Path]:
 
 
 def _anchors(text: str) -> set[str]:
-    """GitHub-style anchors for every heading in a markdown document."""
-    anchors = set()
+    """Every anchor mkdocs will publish for the headings in a document.
+
+    Repeated headings are the reason this counts rather than collecting a set of
+    slugs. The guides use one "Who is affected" per change, four of them in
+    v0-16 alone, and mkdocs disambiguates by appending `_1`, `_2` and so on
+    (python-markdown's `toc`, an underscore; GitHub's own renderer uses a hyphen,
+    which is not the scheme the published links resolve against). Collapsing
+    them would reject `#who-is-affected_3` as a broken link when it is the only
+    way to reach the fourth section.
+    """
+    anchors: set[str] = set()
     for line in text.splitlines():
         if not line.startswith("#"):
             continue
         title = line.lstrip("#").strip()
         slug = re.sub(r"[^\w\s-]", "", title.lower())
-        anchors.add(re.sub(r"\s+", "-", slug).strip("-"))
+        slug = re.sub(r"\s+", "-", slug).strip("-")
+        candidate, repeat = slug, 0
+        while candidate in anchors:
+            repeat += 1
+            candidate = f"{slug}_{repeat}"
+        anchors.add(candidate)
     return anchors
 
 
@@ -64,6 +78,11 @@ def fragments() -> list[Path]:
     found = _fragments()
     assert found, "no changelog fragments found; the glob or path is wrong"
     return found
+
+
+@pytest.fixture(scope="module")
+def guide() -> str:
+    return (MIGRATION_DIR / "v0-17.md").read_text(encoding="utf-8")
 
 
 class TestFragmentNaming:
@@ -147,11 +166,6 @@ class TestTheAuditedBreaksAreCovered:
     "the guide is long enough" assertion would not have caught any of them.
     """
 
-    @pytest.fixture(scope="class")
-    @classmethod
-    def guide(cls) -> str:
-        return (MIGRATION_DIR / "v0-17.md").read_text(encoding="utf-8")
-
     @pytest.mark.parametrize(
         "topic",
         [
@@ -170,4 +184,33 @@ class TestTheAuditedBreaksAreCovered:
         assert topic in guide, (
             f"The 0.17 migration guide does not mention {topic!r}, which the "
             "release audit identified as a behaviour change users must act on."
+        )
+
+
+class TestAnchorsMatchWhatMkdocsPublishes:
+    """The link checker is only as good as its model of mkdocs' anchors."""
+
+    def test_repeated_headings_get_the_underscore_suffix(self):
+        anchors = _anchors(
+            "## Who is affected\n## Who is affected\n## Who is affected\n"
+        )
+        assert anchors == {
+            "who-is-affected",
+            "who-is-affected_1",
+            "who-is-affected_2",
+        }
+
+    def test_underscores_in_a_heading_survive(self):
+        """`retention_maxlen` is a config key, and the slug keeps the underscore."""
+        assert "retention_maxlen-trims-streams" in _anchors(
+            "## retention_maxlen trims streams\n"
+        )
+
+    def test_every_guides_repeated_headings_are_reachable(self):
+        """v0-16 has four "Who is affected" sections; all four need an anchor."""
+        guide = (MIGRATION_DIR / "v0-16.md").read_text(encoding="utf-8")
+        headings = [line for line in guide.splitlines() if line.startswith("#")]
+        assert len(_anchors(guide)) == len(headings), (
+            "one anchor per heading; a collapsed duplicate makes a real section "
+            "unlinkable and the link test would reject a valid link to it"
         )
