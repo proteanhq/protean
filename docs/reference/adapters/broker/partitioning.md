@@ -9,7 +9,7 @@ adapter, you do not need anything here.
 
     This surface is [Provisional](../../stable-surface.md): usable and
     documented, but it may change in a minor release with a changelog notice,
-    until the adapter conformance suite has been exercised by an adapter
+    until the adapter conformance suite has been exercised by an adapter that
     Protean does not maintain.
 
 ---
@@ -29,7 +29,8 @@ exist, and a way to **own** one safely while other workers are running.
 A broker opts in by advertising the capability:
 
 ```python
-from protean.port.broker import BrokerCapabilities
+from protean.port.broker import BaseBroker, BrokerCapabilities
+
 
 class MyBroker(BaseBroker):
     @property

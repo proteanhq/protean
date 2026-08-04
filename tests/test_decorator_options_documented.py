@@ -34,6 +34,10 @@ from protean.core.query_handler import BaseQueryHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.core.value_object import BaseValueObject
 
+# These read a markdown file and static class metadata. Nothing here needs a
+# domain, so skip the autouse fixture that builds one per test.
+pytestmark = pytest.mark.no_test_domain
+
 REFERENCE = (
     Path(__file__).resolve().parents[1]
     / "docs"

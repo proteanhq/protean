@@ -1,8 +1,10 @@
 # `protean upgrade-check`
 
-Reports the changes that need attention when upgrading a domain to Protean 0.16,
-with concrete remediation. It is **read-only**: schema changes are *generated* as
-SQL for you to review and run, never applied automatically.
+Reports the changes that need attention when upgrading a domain to a newer
+Protean, with concrete remediation. The checks accumulate across releases rather
+than targeting one, so the table below spans 0.16 and 0.17; each row says which
+release the change came from. It is **read-only**: schema changes are
+*generated* as SQL for you to review and run, never applied automatically.
 
 ```bash
 protean upgrade-check --domain=my_app

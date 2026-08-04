@@ -1,4 +1,4 @@
-"""CLI command for ``protean upgrade-check`` — 0.16 upgrade-readiness diagnostics.
+"""CLI command for ``protean upgrade-check`` — upgrade-readiness diagnostics.
 
 Inspects a loaded domain (and, where reachable, its live database schema) and
 reports changes that may need operator attention when upgrading to 0.16, with
@@ -51,7 +51,7 @@ def upgrade_check(
         ),
     ] = "rich",
 ) -> None:
-    """Report changes that need attention when upgrading a domain to 0.16."""
+    """Report changes that need attention when upgrading to a newer Protean."""
     if format not in ("rich", "json"):
         print(f"[red]Invalid --format: {format!r}. Use 'rich' or 'json'.[/red]")
         raise typer.Exit(code=1)

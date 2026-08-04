@@ -18,6 +18,10 @@ from protean.server.subscription.profiles import (
     SubscriptionConfig,
 )
 
+# These read a markdown file and static metadata. Nothing here needs a domain,
+# so skip the autouse fixture that builds one per test.
+pytestmark = pytest.mark.no_test_domain
+
 DOCS = Path(__file__).resolve().parents[2] / "docs"
 CONFIG_REFERENCE = DOCS / "reference" / "server" / "configuration.md"
 TUNING_GUIDE = DOCS / "guides" / "server" / "tuning-subscriptions.md"

@@ -16,7 +16,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 import protean.testing
+
+# These read a markdown file and static metadata. Nothing here needs a domain,
+# so skip the autouse fixture that builds one per test.
+pytestmark = pytest.mark.no_test_domain
 
 PAGE = Path(__file__).resolve().parents[1] / "docs" / "api" / "testing.md"
 
