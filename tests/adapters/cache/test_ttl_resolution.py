@@ -139,3 +139,27 @@ class TestAPerCallTTL:
         cache = MemoryCache("default", None, {"provider": "memory", "TTL": 300})
         with pytest.raises(ConfigurationError, match="positive"):
             cache._ttl_for(0)
+
+    def test_an_empty_string_falls_back_to_the_cache_not_the_global_default(self):
+        """`ttl=os.getenv("CACHE_TTL", "")` must not shorten a configured TTL.
+
+        `_resolve_ttl("")` answers `DEFAULT_TTL`, which is right when a cache is
+        being built and there is nothing else to fall back to. On a per-call
+        path the cache already has a TTL, so deferring to `_resolve_ttl` here
+        quietly cached for five minutes on a cache configured for an hour.
+        """
+        cache = MemoryCache("sessions", None, {"provider": "memory", "TTL": 3600})
+
+        assert cache._ttl_for("") == 3600
+        assert cache._ttl_for(None) == 3600
+
+    def test_an_empty_string_still_reaches_the_global_default_when_unconfigured(self):
+        cache = MemoryCache("plain", None, {"provider": "memory"})
+
+        assert cache._ttl_for("") == DEFAULT_TTL
+
+    def test_a_string_zero_is_still_rejected(self):
+        """Only `""` means unset; `"0"` is a value, and a bad one."""
+        cache = MemoryCache("sessions", None, {"provider": "memory", "TTL": 3600})
+        with pytest.raises(ConfigurationError, match="positive"):
+            cache._ttl_for("0")

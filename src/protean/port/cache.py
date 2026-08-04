@@ -84,12 +84,21 @@ class BaseCache(metaclass=ABCMeta):
     def _ttl_for(self, ttl: TTLValue | None) -> int | float:
         """The TTL to use for one write: the caller's, else the cache default.
 
-        Checked against `None` rather than truthiness. `add(projection, ttl=0)`
-        used to fall through to the default, so a caller asking for immediate
-        expiry silently got 300 seconds. Zero is now rejected by the same rule
-        that rejects it in config, which is at least a visible answer.
+        "Not supplied" is `None` or the empty string, and nothing else.
+        `add(projection, ttl=0)` used to fall through to the default, so a
+        caller asking for immediate expiry silently got 300 seconds. Zero is now
+        rejected by the same rule that rejects it in config, which is at least a
+        visible answer.
+
+        The empty string is here rather than left to `_resolve_ttl` because the
+        two have different ideas of what "unset" falls back to. `_resolve_ttl`
+        answers `DEFAULT_TTL`, which is right when a cache is being built and
+        there is nothing else to fall back to. On a per-call path the cache
+        already has a TTL, and that is what should win: otherwise
+        `add(p, ttl=os.getenv("CACHE_TTL", ""))` on a cache configured for an
+        hour quietly caches for five minutes.
         """
-        if ttl is None:
+        if ttl is None or ttl == "":
             return self.ttl
         return _resolve_ttl(ttl, f"Cache '{self.name}'")
 
