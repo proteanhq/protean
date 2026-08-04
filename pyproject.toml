@@ -39,10 +39,22 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    # The package ships `py.typed` and `src/protean` passes mypy --strict.
+    "Typing :: Typed",
+    # A real pytest plugin, registered on the `pytest11` entry point.
+    "Framework :: Pytest",
 ]
+
+# No `License ::` classifier on purpose. PEP 639 supersedes it: the license is
+# declared above as the SPDX expression `Apache-2.0` with `license-files`, and
+# PyPI rejects an upload carrying both a `License-Expression` and a legacy
+# license classifier. Neither `uv build` nor `twine check` catches the clash
+# locally, so it would surface only when pushing the release tag.
 
 dependencies = [
     "bleach>=6.1.0",

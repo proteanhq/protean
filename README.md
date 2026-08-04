@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/pypi/v/protean?label=Release&style=flat-square)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-10%2C386-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-12%2C000%2B-brightgreen)](https://docs.proteanhq.com/community/quality/)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 ## Installation
@@ -96,7 +96,7 @@ Protean is tested against 5 backing services across 4 Python versions on every c
 
 | Metric | Value |
 |---|---|
-| Tests | 7,674 (3.0:1 test-to-code ratio) |
+| Tests | 12,000+ ([quality report](https://docs.proteanhq.com/community/quality/)) |
 | Linting | Zero violations (Ruff) |
 | Complexity | Avg 3.38 cyclomatic (A grade) |
 | Maintainability | A rank (95% of files) |

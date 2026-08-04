@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/pypi/v/protean?label=Release)](https://pypi.org/project/protean/)
 [![Build Status](https://github.com/proteanhq/protean/actions/workflows/ci.yml/badge.svg)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/proteanhq/protean/graph/badge.svg?token=0sFuFdLBOx)](https://codecov.io/gh/proteanhq/protean)
-[![Tests](https://img.shields.io/badge/tests-7%2C674-brightgreen)](https://github.com/proteanhq/protean/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-12%2C000%2B-brightgreen)](community/quality.md)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
 A Python framework for domain-driven systems. Sketch aggregates, events,
@@ -138,7 +138,7 @@ Not sure? Start with DDD -- you can evolve later. See
 
 <div class="grid cards" markdown>
 
--   __:material-test-tube: 10,000+ Tests__
+-   __:material-test-tube: 12,000+ Tests__
 
     ---
 

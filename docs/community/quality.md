@@ -10,8 +10,8 @@ practices and metrics behind the framework.
 
 | Metric | Value |
 |---|---|
-| **Tests** | 10,640 |
-| **Test-to-Code Ratio** | 3.0:1 |
+| **Tests** | 12,445 |
+| **Test-to-Code Ratio** | 2.9:1 |
 | **Linting Violations** | 0 (Ruff) |
 | **Avg Cyclomatic Complexity** | 3.38 (A grade) |
 | **Maintainability Index** | A rank (95% of files) |
@@ -30,22 +30,32 @@ services, infrastructure adapters, and integration scenarios. The current
 counts are in the breakdown below — this page is the single source of truth
 for these numbers; other pages quote round figures and link here.
 
+Refresh them with one command:
+
+```bash
+uv run python scripts/metrics.py
+```
+
+`tests/test_metrics_are_single_sourced.py` keeps the policy honest: it fails if
+any other page states an exact count. The counts move with every PR, so they are
+not pinned; what is pinned is that there is only **one place to change**.
+
 ### Test Breakdown
 
 | Metric | Count |
 |---|---|
-| Total Tests | 10,640 |
-| Test Functions | 10,527 |
-| Test Classes | 2,427 |
-| Pytest Fixtures | 1,021 |
-| Parametrized Tests | 56 |
+| Total Tests | 12,445 |
+| Test Functions | 12,151 |
+| Test Classes | 2,737 |
+| Pytest Fixtures | 1,085 |
+| Parametrized Tests | 104 |
 
 ### Core vs. Integration
 
 | Category | Tests | Share |
 |---|---|---|
-| Core tests (in-memory, no infrastructure) | 9,246 | 87% |
-| Adapter/integration tests | 1,394 | 13% |
+| Core tests (in-memory, no infrastructure) | 11,611 | 93% |
+| Adapter/integration tests | 834 | 7% |
 
 Core tests run entirely in-memory with no external dependencies, making
 them fast and reliable for local development. Integration tests exercise

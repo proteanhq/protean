@@ -208,7 +208,7 @@ specific aggregate is a configuration change.
 
 Protean backs these capabilities with engineering rigor:
 
-- A comprehensive test suite (**10,000+ tests**, ~3:1 test-to-code ratio) —
+- A comprehensive test suite (**12,000+ tests**, ~3:1 test-to-code ratio) —
   see [Quality](community/quality.md) for the current breakdown
 - Every commit tested against PostgreSQL, Redis, Elasticsearch, MessageDB,
   MSSQL, and SQLite across **Python 3.11--3.14**

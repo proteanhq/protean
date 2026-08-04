@@ -68,11 +68,21 @@ $ python
 '0.16.0'
 ```
 
-## Upgrading from 0.14?
+## Upgrading an existing project?
 
-If you're upgrading an existing project, see the
-[Migration Guide](../../reference/migration/v0-15.md) for required
-changes.
+Start with the [migration guides](../../reference/migration/index.md), which
+carry one page per release describing what changed and what to do about it.
+Read every guide between your current version and the one you are moving to.
+
+Then let the framework tell you what your own code needs:
+
+```shell
+$ protean upgrade-check --domain=my_app
+```
+
+It inspects your domain and, where it can reach the database, your live schema,
+and reports what needs attention with the SQL to apply. It is read-only: nothing
+is changed for you.
 
 -------------------
 
