@@ -237,6 +237,25 @@ causes:
 - **Value object validation:** Embedded value objects validate their own
   constraints
 
+!!! warning "`messages` is not always a dict"
+
+    Field validation always produces the `dict[str, list[str]]` above, so code
+    handling *that* can index it safely. But `ValidationError` carries whatever
+    it was raised with, and an invariant or a domain service is free to raise
+    `ValidationError("Order is already shipped")`. Then `messages` is a plain
+    `str`, and a list raises it as a `list[str]`. A blanket
+    `except ValidationError` that does `e.messages.items()` will fail on those.
+
+    ```python
+    except ValidationError as e:
+        if isinstance(e.messages, dict):
+            for field, errors in e.messages.items():
+                ...
+        else:  # a str or a list[str] raised by domain code
+            ...
+    ```
+
+
 ---
 
 ## Message tracing and debugging event chains

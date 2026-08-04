@@ -18,6 +18,35 @@ All options are accessible at runtime via `element.meta_`.
 
 ---
 
+## Options every element accepts
+
+### `suppress_checks`
+
+Silences named [fitness-function](../../guides/architecture-fitness-functions.md)
+diagnostics for one element. Every decorator on this page accepts it; the
+default is `()`.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this element |
+
+```python
+@domain.aggregate(suppress_checks=("PROTEAN_R011",))
+class Order:
+    ...
+```
+
+Suppress the narrowest thing that works: one code on one element. It applies to
+that element only, so it cannot quietly disable a rule across the domain the way
+a config-level suppression can. Reach for it when a rule is wrong about *this*
+element, not when a rule is inconvenient; `protean check` reports what is
+suppressed, so a suppression is a claim you are making in public.
+
+Config-wide suppressions live under `[lint].suppressions` in
+[configuration](../configuration/index.md).
+
+---
+
 ## Domain Model
 
 ### `Domain.aggregate`
@@ -105,6 +134,12 @@ with imperative verbs (`PlaceOrder`, `RegisterUser`).
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Target aggregate class |
 | `version` | `1` | Schema version (positive integer). Also settable via a `__version__` class attribute — see [Events](#domainevent) |
+| `lenient` | `None` | Overrides the domain's `lenient_deserialization` for this class. `True` drops unknown fields when reading an old message instead of raising; `None` follows the domain setting |
+
+!!! warning "Deprecated: `published` on commands"
+    `published` describes an event's place in the bounded context's published
+    language, and means nothing on a command. Passing it emits a
+    `DeprecationWarning`; drop it.
 
 Guide: [Commands](../../guides/change-state/commands.md)
 
@@ -120,6 +155,8 @@ past tense (`OrderPlaced`, `CustomerRegistered`).
 | `version` | `1` | Schema version (positive integer). Feeds the `vN` suffix of the event's type string |
 | `deprecated` | `None` | Marks the event deprecated. A dict `{"since": ..., "removal": ...}` recording the deprecation and planned removal versions |
 | `superseded_by` | `None` | Names the replacement event (an Event class or a string). Raising a deprecated event emits a `DeprecationWarning` naming it |
+| `published` | `False` | The event is part of this context's published language, so other contexts may depend on its shape. See [Guarantees](../guarantees.md) |
+| `lenient` | `None` | Overrides the domain's `lenient_deserialization` for this class. `True` drops unknown fields when reading an old message instead of raising; `None` follows the domain setting |
 
 The schema version can be declared **either** with the `version=` decorator
 option **or** with a `__version__` class attribute (both default to `1`):
@@ -171,6 +208,11 @@ Receives commands and orchestrates aggregate state changes. Uses
 | `subscription_type` | `None` | Subscription behavior enum |
 | `subscription_profile` | `None` | Subscription profile enum |
 | `subscription_config` | `{}` | Custom subscription configuration |
+| `sequential_by` | `None` | Field name whose value partitions the stream, so commands sharing a value are processed one at a time. See [Sequential processing](../server/sequential-by.md) |
+| `timeout` | `None` | Default deadline in seconds for commands this handler processes. Falls back to `command_default_timeout`; an explicit deadline on `domain.process()` wins over both |
+| `retries` | `None` | Attempts before the message goes to the DLQ. Falls back to the subscription's `max_retries` |
+| `backoff` | `None` | Delay between retries, in seconds. Doubles per attempt |
+| `retry_exceptions` | `None` | Exception types worth retrying. Anything else fails straight to the DLQ |
 
 Guide: [Command Handlers](../../guides/change-state/command-handlers.md)
 
@@ -189,8 +231,18 @@ both synchronous and asynchronous processing.
 | `subscription_type` | `None` | Subscription behavior enum |
 | `subscription_profile` | `None` | Subscription profile enum |
 | `subscription_config` | `{}` | Custom subscription configuration |
+| `sequential_by` | `None` | Field name whose value partitions the stream, so events sharing a value are processed one at a time. See [Sequential processing](../server/sequential-by.md) |
+| `retries` | `None` | Attempts before the message goes to the DLQ. Falls back to the subscription's `max_retries` |
+| `backoff` | `None` | Delay between retries, in seconds. Doubles per attempt |
+| `retry_exceptions` | `None` | Exception types worth retrying. Anything else fails straight to the DLQ |
 
-Guide: [Event Handlers](../../guides/consume-state/event-handlers.md)
+`sequential_by` is a no-op unless the configured broker advertises
+`STREAM_PARTITIONING`, so a domain that declares it still runs on the inline
+broker in tests, without the ordering guarantee. See the
+[broker partitioning contract](../adapters/broker/partitioning.md).
+
+Guide: [Event Handlers](../../guides/consume-state/event-handlers.md) ·
+[Sequential processing](../server/sequential-by.md)
 
 ### `Domain.query_handler`
 
@@ -235,6 +287,7 @@ objects.
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `order_by` | `()` | Default field ordering |
 | `limit` | `100` | Default query result limit |
+| `externally_populated` | `False` | The projection is written by something outside this domain, so Protean does not require a projector for it and `protean check` stops reporting one as missing |
 
 Guide: [Projections](../../guides/consume-state/projections.md) ·
 [Declaring Indexes](../../guides/domain-definition/indexes.md)
@@ -253,6 +306,10 @@ explicitly target a projection and can listen to multiple stream categories.
 | `subscription_type` | `None` | Subscription behavior enum |
 | `subscription_profile` | `None` | Subscription profile enum |
 | `subscription_config` | `{}` | Custom subscription configuration |
+| `idempotent` | `False` | Track processed event IDs so a redelivered event is applied once. Costs a lookup and a write per event; leave it off when the projection's writes are naturally idempotent (a full overwrite) rather than incremental (a counter) |
+| `retries` | `None` | Attempts before the message goes to the DLQ. Falls back to the subscription's `max_retries` |
+| `backoff` | `None` | Delay between retries, in seconds. Doubles per attempt |
+| `retry_exceptions` | `None` | Exception types worth retrying. Anything else fails straight to the DLQ |
 
 Guide: [Projectors](../../guides/consume-state/projectors.md)
 
@@ -271,6 +328,7 @@ maintaining its own state to orchestrate multi-step workflows.
 | `subscription_type` | `None` | Subscription behavior enum |
 | `subscription_profile` | `None` | Subscription profile enum |
 | `subscription_config` | `{}` | Custom subscription configuration |
+| `sequential_by` | `None` | Field name whose value partitions the stream, so events sharing a value are processed one at a time. See [Sequential processing](../server/sequential-by.md) |
 
 Guide: [Process Managers](../../guides/consume-state/process-managers.md)
 
