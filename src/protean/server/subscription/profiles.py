@@ -273,17 +273,23 @@ def build_profile_registry(
         profile.value: dict(defaults) for profile, defaults in PROFILE_DEFAULTS.items()
     }
 
-    if not custom_profiles:
+    if custom_profiles is None:
         return registry
 
-    # The profiles slot must itself be a table of named sections. A mis-typed
-    # scalar (e.g. ``profiles = "x"``) is truthy and would otherwise blow up on
-    # ``.items()`` with a raw AttributeError.
+    # The profiles slot must itself be a table of named sections. Checked before
+    # emptiness, not after: testing truthiness first would return here for
+    # ``profiles = false``, ``0`` or ``""`` and accept a mis-typed scalar in
+    # silence while rejecting ``profiles = "x"``. A mis-typed scalar would then
+    # blow up on ``.items()`` with a raw AttributeError, or, worse, never be
+    # noticed at all.
     if not isinstance(custom_profiles, Mapping):
         raise ConfigurationError(
             f"[server.profiles] must be a table of named profile sections, got "
             f"{type(custom_profiles).__name__}."
         )
+
+    if not custom_profiles:  # an empty table adds nothing to the built-ins
+        return registry
 
     for raw_name, raw_config in custom_profiles.items():
         # TOML keys are always strings, but a programmatic config could use a
