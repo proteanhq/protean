@@ -288,8 +288,8 @@ a single subscription:
 
 | Field | Type | Default | Purpose |
 |-------|------|---------|---------|
-| `dlq_retention_hours` | `int \| None` | inherit global | Per-handler retention window |
-| `dlq_alert_threshold` | `int \| None` | inherit global | Per-handler alert threshold |
+| `dlq_retention_hours` | <code>int &#124; None</code> | inherit global | Per-handler retention window |
+| `dlq_alert_threshold` | <code>int &#124; None</code> | inherit global | Per-handler alert threshold |
 
 The maintenance task only runs when a broker that advertises the
 `DEAD_LETTER_QUEUE` capability is configured. Redis Streams implements
@@ -316,9 +316,9 @@ the full per-profile value dictionaries (`messages_per_tick`,
 | `retry_delay_seconds` | `float` | `1.0` | `STREAM` |
 | `enable_dlq` | `bool` | `true` | `STREAM` |
 | `position_update_interval` | `int` | `10` | `EVENT_STORE` |
-| `origin_stream` | `str \| None` | `None` | Both |
-| `dlq_retention_hours` | `int \| None` | `None` | `STREAM` |
-| `dlq_alert_threshold` | `int \| None` | `None` | `STREAM` |
+| `origin_stream` | <code>str &#124; None</code> | `None` | Both |
+| `dlq_retention_hours` | <code>int &#124; None</code> | `None` | `STREAM` |
+| `dlq_alert_threshold` | <code>int &#124; None</code> | `None` | `STREAM` |
 | `circuit_breaker_threshold` | `int` | `10` | `STREAM` |
 | `circuit_breaker_reset_seconds` | `float` | `60` | `STREAM` |
 

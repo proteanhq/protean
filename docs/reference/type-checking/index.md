@@ -41,14 +41,14 @@ Field factories resolve to their Python types:
 
 | Field | Resolved Type |
 |-------|---------------|
-| `String()` | `str \| None` |
+| `String()` | <code>str &#124; None</code> |
 | `String(required=True)` | `str` |
 | `String(default="hello")` | `str` |
-| `Integer()` | `int \| None` |
-| `Float()` | `float \| None` |
-| `Boolean()` | `bool \| None` |
-| `Date()` | `datetime.date \| None` |
-| `DateTime()` | `datetime.datetime \| None` |
+| `Integer()` | <code>int &#124; None</code> |
+| `Float()` | <code>float &#124; None</code> |
+| `Boolean()` | <code>bool &#124; None</code> |
+| `Date()` | <code>datetime.date &#124; None</code> |
+| `DateTime()` | <code>datetime.datetime &#124; None</code> |
 | `List()` | `list` |
 | `Dict()` | `dict` |
 | `Identifier(identifier=True)` | `str` |

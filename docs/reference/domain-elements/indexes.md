@@ -38,10 +38,10 @@ Index(*fields, name=None, unique=False, desc=(), where=None, include=())
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `*fields` | `str` | — | **Required.** One or more field names, in index order. At least one. |
-| `name` | `str \| None` | `None` | Explicit index name. Derived deterministically when omitted (see [Naming](#naming)). |
+| `name` | <code>str &#124; None</code> | `None` | Explicit index name. Derived deterministically when omitted (see [Naming](#naming)). |
 | `unique` | `bool` | `False` | Enforce uniqueness across the indexed fields. |
 | `desc` | `tuple[str, ...]` | `()` | Subset of `fields` to index in descending order. Every entry must also appear in `fields`. |
-| `where` | [`Q`](../../concepts/internals/query-system.md) `\| None` | `None` | Partial-index predicate. Honored on PostgreSQL and SQLite; ignored with a warning elsewhere. |
+| `where` | [`Q`](../../concepts/internals/query-system.md) <code>&#124; None</code> | `None` | Partial-index predicate. Honored on PostgreSQL and SQLite; ignored with a warning elsewhere. |
 | `include` | `tuple[str, ...]` | `()` | Covering (non-key) columns. Honored on PostgreSQL and SQL Server; ignored with a warning elsewhere. |
 
 `Index` is a frozen value object. Field names are validated against the
@@ -89,7 +89,7 @@ class Order:
 |-----------|------|-------------|
 | `dialect` | `str` | Dialect the DDL targets (`"postgresql"`, `"sqlite"`, `"mssql"`). |
 | `ddl` | `str` | Verbatim `CREATE INDEX …` statement. |
-| `name` | `str \| None` | Optional name, for reporting. |
+| `name` | <code>str &#124; None</code> | Optional name, for reporting. |
 
 `RawIndex` is the return type of `from_sql`. You never construct it directly —
 always go through `Index.from_sql`.

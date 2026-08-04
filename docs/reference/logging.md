@@ -203,16 +203,16 @@ processor chain as `get_logger()` events.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `level` | `str \| None` | `None` | Resolved via env vars when `None`. |
-| `format` | `"auto" \| "json" \| "console"` | `"auto"` | Output format. |
-| `log_dir` | `str \| Path \| None` | `None` | Enables rotating file handlers when set. |
-| `log_file_prefix` | `str \| None` | `"protean"` | Prefix for log file names. |
+| `level` | <code>str &#124; None</code> | `None` | Resolved via env vars when `None`. |
+| `format` | <code>"auto" &#124; "json" &#124; "console"</code> | `"auto"` | Output format. |
+| `log_dir` | <code>str &#124; Path &#124; None</code> | `None` | Enables rotating file handlers when set. |
+| `log_file_prefix` | <code>str &#124; None</code> | `"protean"` | Prefix for log file names. |
 | `max_bytes` | `int` | `10 MB` | Rotation size. |
 | `backup_count` | `int` | `5` | Number of rotated files. |
-| `extra_processors` | `list \| None` | `None` | Additional structlog processors inserted before the renderer. Redaction is appended after these so operator-supplied processors cannot smuggle sensitive values past it. |
-| `per_logger` | `dict[str, str] \| None` | `None` | Applied after main setup. |
-| `dict_config` | `dict \| None` | `None` | When provided, bypasses the environment-aware setup and applies `logging.config.dictConfig()`. The `ProteanCorrelationFilter` is still installed on the root logger. |
-| `redact` | `list[str] \| None` | `None` | Adds keys (case-insensitive) to the redact list; always unioned with [`DEFAULT_REDACT_KEYS`](#redaction). |
+| `extra_processors` | <code>list &#124; None</code> | `None` | Additional structlog processors inserted before the renderer. Redaction is appended after these so operator-supplied processors cannot smuggle sensitive values past it. |
+| `per_logger` | <code>dict[str, str] &#124; None</code> | `None` | Applied after main setup. |
+| `dict_config` | <code>dict &#124; None</code> | `None` | When provided, bypasses the environment-aware setup and applies `logging.config.dictConfig()`. The `ProteanCorrelationFilter` is still installed on the root logger. |
+| `redact` | <code>list[str] &#124; None</code> | `None` | Adds keys (case-insensitive) to the redact list; always unioned with [`DEFAULT_REDACT_KEYS`](#redaction). |
 
 ### `Domain.configure_logging`
 
@@ -333,7 +333,7 @@ Emitted once per successful or slow handler execution.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `kind` | `"command" \| "event" \| "query" \| "projector"` | Handler kind. |
+| `kind` | <code>"command" &#124; "event" &#124; "query" &#124; "projector"</code> | Handler kind. |
 | `message_type` | `str` | e.g. `"PlaceOrder"`. Uses `__type__` when set, else `__class__.__name__`. |
 | `message_id` | `str` | Message envelope id; `""` outside the server engine path. |
 | `aggregate` | `str` | Aggregate class name; `""` for handlers without a `part_of`. |
@@ -341,12 +341,12 @@ Emitted once per successful or slow handler execution.
 | `events_raised` | `list[str]` | Event class names raised during the handler. |
 | `events_raised_count` | `int` | `len(events_raised)`. |
 | `repo_operations` | `{"loads": int, "saves": int}` | Repository load / save counts. |
-| `uow_outcome` | `"committed" \| "rolled_back" \| "no_uow"` | |
+| `uow_outcome` | <code>"committed" &#124; "rolled_back" &#124; "no_uow"</code> | |
 | `handler` | `str` | `"ClassName.method"`. |
 | `duration_ms` | `float` | Handler duration, rounded to 2 decimals. |
-| `status` | `"ok" \| "slow" \| "failed"` | `slow` when `duration_ms > slow_handler_threshold_ms`. |
-| `error_type` | `str \| None` | Always `None` on success. |
-| `error_message` | `str \| None` | Always `None` on success. |
+| `status` | <code>"ok" &#124; "slow" &#124; "failed"</code> | `slow` when `duration_ms > slow_handler_threshold_ms`. |
+| `error_type` | <code>str &#124; None</code> | Always `None` on success. |
+| `error_message` | <code>str &#124; None</code> | Always `None` on success. |
 | **Application fields** | any | Everything passed to `bind_event_context()` in the handler. |
 
 #### `access.handler_failed`
@@ -428,8 +428,8 @@ Emitted on responses with status `< 500`.
 | `commands_dispatched_count` | `int` | `len(commands_dispatched)`. |
 | `client_ip` | `str` | First hop of `X-Forwarded-For`, else direct peer, else `""`. |
 | `user_agent` | `str` | `User-Agent` header, truncated to 256 characters. |
-| `http_request_headers` | `dict[str, str] \| None` | Present only when `[logging.http].log_request_headers = true`. |
-| `http_response_headers` | `dict[str, str] \| None` | Present only when `[logging.http].log_response_headers = true`. |
+| `http_request_headers` | <code>dict[str, str] &#124; None</code> | Present only when `[logging.http].log_request_headers = true`. |
+| `http_response_headers` | <code>dict[str, str] &#124; None</code> | Present only when `[logging.http].log_response_headers = true`. |
 | **Application fields** | any | Everything bound via `bind_event_context()` inside the endpoint; see [Two layers of wide events](../concepts/observability/logging.md#two-layers-of-wide-events). |
 
 #### `access.http_failed`

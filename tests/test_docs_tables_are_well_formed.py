@@ -1,20 +1,18 @@
-"""A markdown table cell may not contain an unescaped `|`.
+"""A markdown table cell may not contain a `|` in a backtick code span.
 
 GitHub Flavored Markdown splits table rows on `|` before inline parsing, so a
-pipe inside a code span still ends the cell unless it is escaped. The row then
-renders with the wrong number of columns and the text after the pipe is lost.
+pipe inside a code span still ends the cell. Escaping it as `\\|` satisfies
+GitHub and breaks the docs site instead: python-markdown does not strip the
+backslash inside a code span, so 33 rows published as `str \\| None`.
 
-The repo already writes `int \\| None` everywhere this comes up, 32 rows of it,
-so this is an established convention rather than a new rule. It is a convention
-nothing enforced: a `TTL = "${CACHE_TTL|3600}"` example went into a table cell
-unescaped and rendered fine under mkdocs, which is more forgiving, while being
-broken on github.com where the same file is browsed.
+There is no spelling of a pipe inside a backtick span that is right in both.
+The form that is uses a raw `<code>` tag with the HTML entity:
 
-This checks the GitHub-breaking half only. The escaped form has a problem of its
-own, tracked separately: python-markdown renders the backslash literally inside
-a code span, so those 32 rows publish as `str \\| None` on the docs site. The
-construct is unwinnable in a table cell and the real fix is to keep pipes out of
-one, which is why the cache TTL example moved to a fenced block below its table.
+    | `a` | <code>str &#124; None</code> |
+
+GFM resolves entities *after* splitting rows, so the cell survives, and a
+browser draws the entity as a pipe. Verified against a real `mkdocs build`:
+zero backslashes leaked, 40 spans showing a real pipe.
 """
 
 from __future__ import annotations
@@ -30,38 +28,39 @@ pytestmark = pytest.mark.no_test_domain
 
 
 def _offending_rows(text: str) -> list[tuple[int, str]]:
+    """Backtick code spans inside a table row that contain a pipe, escaped or not."""
     bad: list[tuple[int, str]] = []
     for number, line in enumerate(text.splitlines(), 1):
         if not line.lstrip().startswith("|"):
             continue
-        # `\|` is the escaped form and is fine; a bare `|` is not.
         bad.extend(
-            (number, span)
-            for span in re.findall(r"`([^`]+)`", line)
-            if re.search(r"(?<!\\)\|", span)
+            (number, span) for span in re.findall(r"`([^`]+)`", line) if "|" in span
         )
     return bad
 
 
-class TestTableCellsEscapeTheirPipes:
+class TestTableCellsCarryNoPipes:
     def test_the_docs_tree_is_there(self):
         assert DOCS.is_dir(), f"{DOCS} is missing"
         assert list(DOCS.rglob("*.md")), "no markdown found under docs/"
 
-    def test_no_table_cell_has_an_unescaped_pipe(self):
+    def test_no_table_cell_has_a_pipe_in_a_code_span(self):
         offenders = []
         for page in sorted(DOCS.rglob("*.md")):
             for number, span in _offending_rows(page.read_text(encoding="utf-8")):
                 offenders.append(f"{page.relative_to(DOCS)}:{number} -> `{span}`")
 
         assert not offenders, (
-            "A `|` inside a table cell ends the cell on GitHub even within a code "
-            "span, so the row renders short and the rest of the text disappears. "
-            "Escape it as `\\|`, or move the example out of the table:\n  "
-            + "\n  ".join(offenders)
+            "A `|` inside a backtick span in a table cell ends the cell on "
+            "GitHub; escaping it as `\\|` publishes the backslash on the docs "
+            "site. Use a raw code tag with the entity instead, which is correct "
+            "in both:\n"
+            "    <code>str &#124; None</code>\n  " + "\n  ".join(offenders)
         )
 
-    def test_the_check_recognises_both_forms(self):
-        """Guard the guard: it must accept `\\|` and reject a bare `|`."""
-        assert _offending_rows(r"| `a` | `int \| None` | fine |") == []
-        assert _offending_rows("| `a` | `int | None` | broken |")
+    def test_the_check_recognises_both_broken_forms(self):
+        """Guard the guard: a bare pipe and an escaped one are both rejected."""
+        assert _offending_rows("| `a` | `int | None` | bare |")
+        assert _offending_rows(r"| `a` | `int \| None` | escaped |")
+        # The accepted form carries no backticks at all.
+        assert _offending_rows("| `a` | <code>int &#124; None</code> | ok |") == []
