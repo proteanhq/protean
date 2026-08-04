@@ -312,7 +312,7 @@ def test_retry_failed_message_structure(broker):
     broker.nack(stream, identifier, consumer_group)
 
     # Check failed message structure
-    group_key = f"{stream}:{consumer_group}"
+    group_key = _group_key(stream, consumer_group)
     assert len(broker._failed_messages[group_key]) == 1
 
     failed_msg = broker._failed_messages[group_key][0]
@@ -377,6 +377,6 @@ def test_cleanup_operations_during_nack(broker):
     assert not broker._is_in_flight_message(stream, consumer_group, identifier)
 
     # Verify message is in failed queue
-    group_key = f"{stream}:{consumer_group}"
+    group_key = _group_key(stream, consumer_group)
     assert len(broker._failed_messages[group_key]) == 1
     assert broker._failed_messages[group_key][0][0] == identifier
