@@ -149,19 +149,15 @@ itself being unresponsive should fail liveness.
   "Per-subscription readiness" below), so `/readyz` alone will not
   page anyone about a stuck subscription. Alerting still belongs on
   the metrics.
-- The block inherits the coverage gaps of
-  `collect_subscription_statuses()`, which predate it and are shared
-  with the `protean subscriptions status` CLI and the OTEL gauges.
-  Three are known: outbox processors for `outbox.external_brokers`
-  get no row; providers with `managed = false` get a row for a
-  processor the engine never started; and a subscription on a
-  partitioned (`sequential_by`) category reports
-  `lag: null, status: "unknown"`, because the collector reads the base
-  stream while the consumers read `{category}:{key}` partitions. That
-  last one matters most: a halted partition is the framework's own
-  definition of a stuck subscription and it produces no signal here.
-  Fixing them belongs in the collector, not in the probe, so `total`
-  and `len(details)` can legitimately disagree until then.
+- The block reports what the engine actually runs. Three earlier
+  gaps in `collect_subscription_statuses()` were closed in #1288:
+  outbox processors for `outbox.external_brokers` now get a row,
+  providers with `managed = false` no longer get one for a processor
+  the engine never started, and a partitioned (`sequential_by`)
+  category sums lag across its per-key partition streams rather than
+  reading an empty base stream. `total` and `len(details)` can still
+  differ, since one partitioned process manager is a single engine
+  subscription but one row per stream category.
 
 ## Alternatives Considered
 

@@ -223,6 +223,154 @@ def _collect_event_store_status(
 # ---------------------------------------------------------------------------
 
 
+def _is_partitioned_category(domain: Domain, stream_category: str) -> bool:
+    """Whether events on *stream_category* are physically split per key.
+
+    Mirrors ``SubscriptionFactory._is_partitioned_category``: a category is
+    partitioned only when some handler declares ``sequential_by`` on it *and*
+    the default broker advertises ``STREAM_PARTITIONING``. Under a
+    non-partitioning broker ``sequential_by`` is a no-op and consumers stay on
+    the base stream (ADR-0028 decision 8).
+    """
+    from protean.server.subscription.factory import (  # noqa: PLC0415
+        broker_supports_partitioning,
+    )
+
+    if stream_category not in getattr(domain, "_partition_keys", {}):
+        return False
+    return broker_supports_partitioning(domain)
+
+
+def _collect_partitioned_stream_status(
+    domain: Domain,
+    name: str,
+    handler_cls: type[Any],
+    stream_category: str,
+    consumer_group: str,
+) -> SubscriptionStatus:
+    """Sum lag across a partitioned category's per-key streams.
+
+    Under ``sequential_by`` the publisher writes to ``{category}:{key}`` and the
+    base stream stays empty, so reading the base stream reports nothing and
+    classifies as ``unknown``. That is the framework's own definition of a stuck
+    subscription producing no signal, so the partitions are read instead and
+    their lag summed. The broker keeps a live index of a category's partition
+    keys, which is what makes this cheap enough to do per collection.
+
+    Lag, pending and length add up across partitions. Consumers do not: they are
+    counted by name, because one worker appears once in every partition it reads.
+    """
+    base_broker = domain.brokers.get("default")
+    if not base_broker or not hasattr(base_broker, "redis_instance"):
+        return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
+
+    broker = cast(_RedisStyleBroker, base_broker)
+    redis_conn = broker.redis_instance
+
+    try:
+        keys = base_broker._partition_keys(stream_category)
+    except Exception as exc:
+        logger.debug("Error listing partitions for %s: %s", stream_category, exc)
+        return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
+
+    if not keys:
+        # No partitions recorded yet: nothing has been published on this
+        # category. That is zero lag, not unknown lag.
+        return SubscriptionStatus(
+            name=name,
+            handler_name=handler_cls.__name__,
+            subscription_type="stream",
+            stream_category=stream_category,
+            lag=0,
+            pending=0,
+            current_position=None,
+            head_position="0",
+            status="ok",
+            consumer_count=0,
+            dlq_depth=0,
+        )
+
+    total_lag = 0
+    total_pending = 0
+    total_len = 0
+    consumer_names: set[str] = set()
+    any_lag_known = False
+
+    for key in sorted(keys):
+        partition = f"{stream_category}:{key}"
+        with contextlib.suppress(Exception):
+            total_len += redis_conn.xlen(partition)
+        try:
+            groups = redis_conn.xinfo_groups(partition)
+        except Exception:
+            continue
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            if broker._get_field_value(group, "name") != consumer_group:
+                continue
+            total_pending += (
+                broker._get_field_value(group, "pending", convert_to_int=True) or 0
+            )
+            # Only a real reading counts as knowing the lag. Finding the group
+            # is not enough: a broker that reports neither would otherwise
+            # contribute 0 from every partition and describe a caught-up
+            # subscription whose lag was never read, which is the failure this
+            # whole function exists to remove.
+            native_lag = broker._get_field_value(group, "lag", convert_to_int=True)
+            if native_lag is not None:
+                any_lag_known = True
+                total_lag += native_lag
+            else:
+                # No native `lag` (Redis before 7.0). Count what is left after
+                # the group's last delivered entry, which is what the
+                # non-partitioned path does and what the subscription reference
+                # already promises for stream subscriptions. Without this, a
+                # partitioned category on Redis 6 reports `unknown` while an
+                # identical unpartitioned one reports a number.
+                last_delivered_id = broker._get_field_value(group, "last-delivered-id")
+                if last_delivered_id is not None:
+                    with contextlib.suppress(Exception):
+                        remaining = redis_conn.xrange(
+                            partition, min=f"({last_delivered_id}"
+                        )
+                        any_lag_known = True
+                        total_lag += len(remaining)
+            break
+
+        # Consumers are counted by name, not summed. Each partition is its own
+        # stream with its own copy of the consumer group, so a single worker
+        # reading five partitions is five consumers by `XINFO GROUPS` and one
+        # worker in reality. Summing reports the partition count dressed up as a
+        # consumer count. The names are what identify a worker across streams.
+        with contextlib.suppress(Exception):
+            for consumer in redis_conn.xinfo_consumers(partition, consumer_group):
+                if not isinstance(consumer, dict):
+                    continue
+                consumer_name = broker._get_field_value(consumer, "name")
+                if consumer_name is not None:
+                    consumer_names.add(consumer_name)
+
+    dlq_depth = 0
+    with contextlib.suppress(Exception):
+        dlq_depth = redis_conn.xlen(f"{stream_category}:dlq")
+
+    lag = total_lag if any_lag_known else None
+    return SubscriptionStatus(
+        name=name,
+        handler_name=handler_cls.__name__,
+        subscription_type="stream",
+        stream_category=stream_category,
+        lag=lag,
+        pending=total_pending,
+        current_position=f"{len(keys)} partition(s)",
+        head_position=str(total_len),
+        status=_classify_status(lag, total_pending),
+        consumer_count=len(consumer_names),
+        dlq_depth=dlq_depth,
+    )
+
+
 def _collect_stream_status(
     domain: Domain,
     name: str,
@@ -236,6 +384,14 @@ def _collect_stream_status(
 
     try:
         with domain.domain_context():
+            # A `sequential_by` category is published to `{category}:{key}`
+            # streams, so the base stream this function reads is empty and would
+            # report `unknown`. Read the partitions instead.
+            if _is_partitioned_category(domain, stream_category):
+                return _collect_partitioned_stream_status(
+                    domain, name, handler_cls, stream_category, consumer_group
+                )
+
             base_broker = domain.brokers.get("default")
             if not base_broker or not hasattr(base_broker, "redis_instance"):
                 return _unknown_status(
@@ -293,7 +449,11 @@ def _collect_stream_status(
                     )
                     lag = len(remaining)
                 except Exception:
-                    lag = pending  # Lower bound fallback
+                    # Leave lag unknown rather than falling back to `pending`.
+                    # With nothing pending that fallback yields lag=0, which
+                    # classifies as "ok" and reports a subscription as healthy
+                    # when its lag could not be read at all.
+                    lag = None
 
             # DLQ depth
             dlq_depth = 0
@@ -398,7 +558,9 @@ def _collect_broker_status(
                         )
                         lag = len(remaining)
                     except Exception:
-                        lag = pending
+                        # See the stream path: an unknown lag must not be
+                        # reported as zero.
+                        lag = None
 
                 status = _classify_status(lag, pending)
 
@@ -450,24 +612,82 @@ def _collect_broker_status(
 # ---------------------------------------------------------------------------
 
 
+def _outbox_processor_names(
+    domain: Domain,
+) -> list[tuple[str, str, str, str | None]]:
+    """The Engine's outbox processors, as ``(name, provider, label, broker)``.
+
+    Mirrors ``Engine._initialize_outbox_processors``: one processor per *managed*
+    database provider for the primary broker, plus one per managed provider for
+    each broker in ``outbox.external_brokers``, whose name carries an
+    ``-external`` suffix. Both details matter: an unmanaged provider runs no
+    processor, so reporting one would invent a subscription that does not exist,
+    and an external processor that is not named here is invisible even though it
+    is the lane most likely to back up.
+
+    The fourth element is the broker whose rows that processor claims, or
+    ``None`` when it claims every row. It mirrors ``OutboxProcessor``'s own
+    ``_filter_by_broker``: with external brokers configured, each processor takes
+    only rows whose ``target_broker`` matches its own, so counting all of them
+    would report one combined backlog on every row.
+
+    Without external brokers the answer is ``None``, meaning do not filter. The
+    single processor owns every row, so filtering would be a no-op at best, and
+    at worst it would drop legacy rows that hold NULL in the column:
+    ``_coerce_target_broker`` fills those in on read, in Python, which a SQL
+    predicate never sees.
+    """
+    outbox_config = domain.config.get("outbox", {})
+    primary_broker = outbox_config.get("broker", "default")
+    external_brokers: list[str] = outbox_config.get("external_brokers", []) or []
+
+    managed = [
+        name
+        for name, provider in domain.providers.items()
+        if getattr(provider, "managed", True)
+    ]
+
+    filter_by_broker = bool(external_brokers)
+
+    names: list[tuple[str, str, str, str | None]] = [
+        (
+            f"outbox-processor-{provider_name}-to-{primary_broker}",
+            provider_name,
+            f"{provider_name} \u2192 {primary_broker}",
+            primary_broker if filter_by_broker else None,
+        )
+        for provider_name in managed
+    ]
+    names.extend(
+        (
+            f"outbox-processor-{provider_name}-to-{broker_name}-external",
+            provider_name,
+            f"{provider_name} \u2192 {broker_name} (external)",
+            broker_name,
+        )
+        for broker_name in external_brokers
+        for provider_name in managed
+    )
+    return names
+
+
 def _collect_outbox_statuses(domain: Domain) -> list[SubscriptionStatus]:
-    """Collect outbox processor statuses for all database providers."""
+    """Collect outbox processor statuses, one per processor the Engine runs."""
     statuses: list[SubscriptionStatus] = []
 
     if not domain.has_outbox:
         return statuses
 
-    outbox_config = domain.config.get("outbox", {})
-    broker_provider_name = outbox_config.get("broker", "default")
-
-    for database_provider_name in domain.providers:
-        name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
-        stream_label = f"{database_provider_name} \u2192 {broker_provider_name}"
-
+    for (
+        name,
+        database_provider_name,
+        stream_label,
+        target_broker,
+    ) in _outbox_processor_names(domain):
         try:
             with domain.domain_context():
                 outbox_repo = domain._get_outbox_repo(database_provider_name)
-                counts = outbox_repo.count_by_status()
+                counts = outbox_repo.count_by_status(target_broker)
 
                 pending_count = counts.get("pending", 0)
                 processing_count = counts.get("processing", 0)

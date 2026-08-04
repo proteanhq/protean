@@ -881,14 +881,30 @@ class OutboxRepository(BaseRepository):
 
         return self._apply_limit_and_execute(query, limit)
 
-    def count_by_status(self) -> dict[str, int]:
+    def count_by_status(self, target_broker: str | None = None) -> dict[str, int]:
         """Get count of messages by their status.
+
+        Args:
+            target_broker: Count only rows bound for this broker. Mirrors the
+                filter ``OutboxProcessor`` applies when
+                ``outbox.external_brokers`` is set, so a caller reporting
+                per-processor counts sees that processor's own backlog. ``None``
+                means do not filter, which is what a single processor wants: it
+                owns every row, and matching on the column would skip legacy
+                rows holding NULL, since ``_coerce_target_broker`` runs on read
+                in Python and not in the query.
 
         Returns:
             Dictionary with status as key and count as value
         """
         return {
-            status.value: self._dao.query.filter(status=status.value).count()
+            status.value: (
+                self._dao.query.filter(
+                    status=status.value, target_broker=target_broker
+                ).count()
+                if target_broker is not None
+                else self._dao.query.filter(status=status.value).count()
+            )
             for status in OutboxStatus
         }
 

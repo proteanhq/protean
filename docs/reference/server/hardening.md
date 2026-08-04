@@ -165,23 +165,20 @@ Two things worth knowing before you build on this:
   determined: the backend was unreachable, *or* the consumer group does not
   exist yet because nothing has been consumed. A freshly deployed subscription
   reports `lag: null, status: "unknown"` against a perfectly healthy Redis.
-- **`status: "ok"` is not proof of health.** The block reuses the same collector
-  as `protean subscriptions status` and inherits its blind spots. An unreachable
-  Redis is reported honestly, as `lag: null, status: "unknown"`. The gap is
-  narrower and easier to miss: when the consumer group *is* readable but the lag
-  itself cannot be computed (no native `lag` field, and the range read that
-  would count the remainder fails), the collector falls back to the pending
-  count. With nothing pending that yields `lag: 0, status: "ok"` when the true
-  lag is simply unknown. Treat the block as a debugging aid, not an alerting
-  source: page on the metrics and on `/readyz` itself, not on these rows.
-- **Some subscriptions are not covered yet.** Outbox processors configured
-  through `outbox.external_brokers` produce no row, providers with
-  `managed = false` produce a row for a processor that is not running, and a
-  subscription on a `sequential_by` (partitioned) category always reports
-  `lag: null, status: "unknown"` because the collector reads the base stream
-  while consumers read the per-key partitions. Do not read the block as a
-  complete inventory. The FastAPI health router omits it entirely, so a script
-  parsing both entry points must treat `subscriptions` as optional.
+- **An unreadable lag is reported as `null`, never as zero.** If the backend
+  cannot be reached, or the lag cannot be computed, the row says
+  `lag: null, status: "unknown"` rather than guessing. A `status: "ok"` row means
+  the collector read the subscription and found it caught up.
+- **A partitioned category reports summed lag.** A `sequential_by` subscription
+  consumes `{category}:{key}` partition streams, so its row aggregates lag and
+  pending counts across every live partition, and `current_position` reports how
+  many there are. One halted partition therefore shows up in the total. Lag per
+  partition comes from the native `lag` field on Redis 7.0+, or from counting
+  entries after the group's last delivered ID before that, the same two sources
+  an unpartitioned stream uses. If neither can be read the row reports
+  `lag: null` while still summing pending, per the rule above.
+- **The FastAPI health router omits the block entirely**, so a script parsing
+  both entry points must treat `subscriptions` as optional.
 
 The block is **informational and never changes the verdict**. A lagging
 subscription or an open circuit breaker leaves the probe at `200`, because a
