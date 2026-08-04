@@ -53,19 +53,36 @@ do not happen to exercise.
 | Position | Example | What it may contain |
 |----------|---------|---------------------|
 | **Patch** | 1.2.0 → 1.2.1 | Bug fixes only. Never an API change. |
-| **Minor** | 1.2 → 1.3 | New features. New deprecations. Behavior flags flipped after their warning period. Persistence and schema changes that ship with migrations. Never a removal that was not already deprecated for two minors. |
+| **Minor** | 1.2 → 1.3 | Where change lands: new features, new deprecations, behavior flags flipped after their warning release, schema changes with shipped migrations, and the removal of anything already deprecated. May break code that ignored its warnings. May not break code that had none. |
 | **Major** | 1.x → 2.0 | A shift in what Protean claims to do. See below. |
 
 ### Removals
 
-Before anything is removed it must have carried a `DeprecationWarning` and a
-`protean check` rule for **at least two minor versions**. Deprecated in 1.3
-means the earliest possible removal is 1.5.
+There is no fixed number of releases a deprecated API survives for. Instead,
+**every deprecation names the version it will be removed in**, and says so in
+the warning:
 
-Removals land in a **cleanup release** or at a major. A cleanup release is an
-ordinary minor that is announced in advance as containing removals; there is no
-separate version position for it. If you have kept your warning log clean, a
-cleanup release is not a migration for you either.
+```
+ProteanDeprecationWarning: old_method() is deprecated. Use new_method()
+instead. Will be removed in v1.5.0.
+```
+
+One rule is fixed, and it is the one the contract rests on:
+
+> A removal is never in the same release as its deprecation.
+
+So a removal is always preceded by at least one released version that warned you
+and told you which release to be ready for. How much runway you get beyond that
+depends on how widely the API is used, which is a judgement we make per
+deprecation rather than a number we apply to all of them.
+
+!!! warning "If you skip releases, run `protean check`"
+
+    The warnings only reach you if you actually run the versions that emit
+    them. Going straight from 1.3 to 1.5 can miss the 1.4 release that warned
+    you. `protean check` reads the declared removal versions rather than
+    replaying warnings, so it can tell you what a later version will remove
+    even if you never ran the one that announced it.
 
 ### How this compares to SQLAlchemy
 
@@ -75,14 +92,15 @@ where an application that runs clean under the deprecation warnings is ready for
 the next series. Protean uses per-version warning classes for the same reason
 they do.
 
-Two differences worth knowing:
+The shape is the same: patches are inert, the minor position is where breaking
+change lands, majors are reserved for a categorical shift, and neither project
+fixes a deprecation window.
 
-- SQLAlchemy's **minor** position is where its breaking changes land, so 1.3 to
-  1.4 is a genuine migration. Protean's minors are not: a minor may not break
-  warning-free code.
-- SQLAlchemy does not fix a deprecation window. Protean's is at least two
-  minors, stated up front, so you can plan around it without reading release
-  notes.
+One difference worth knowing. SQLAlchemy allows "some risk of non-backwards
+compatibility" in a minor even outside previously-deprecated APIs. Protean does
+not: a minor may remove a deprecated API, but it may not break code that was
+running warning-free. That is the whole point of the contract at the top of this
+page.
 
 ### Majors are eras, not accumulated breakage
 
@@ -151,7 +169,7 @@ When a break is unavoidable, it is classified and mitigated by type:
 
 | Type | What it looks like | How you find out |
 |------|--------------------|------------------|
-| **Surface** | A renamed class, a moved import, a changed signature | An immediate `ImportError` or `TypeError`, preceded by two minors of `DeprecationWarning` |
+| **Surface** | A renamed class, a moved import, a changed signature | An immediate `ImportError` or `TypeError`, preceded by a `DeprecationWarning` naming the removal version |
 | **Behavioral** | Same signature, different behavior | A config flag, defaulting to the old behavior, then a warning minor, then the flip |
 | **Structural** | Persistence format, event schema, serialization | A versioned schema and a shipped migration, plus upgrade notes |
 
