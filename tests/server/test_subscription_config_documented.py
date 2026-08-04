@@ -85,3 +85,26 @@ class TestTuningGuideCoversTheTuningFeatures:
     )
     def test_guide_covers(self, topic, guide_text):
         assert topic in guide_text, f"The tuning guide does not mention {topic!r}."
+
+
+class TestCustomProfileFieldListIsCurrent:
+    """The documented allowed-field list drifted from `PROFILE_FIELDS`.
+
+    The reference listed 10 of the 12 fields a custom profile may set, omitting
+    both circuit-breaker keys, so a user following it would think those could
+    only be set per handler. The per-field test above did not catch it because
+    the names appear elsewhere on the page; this one reads the actual list.
+    """
+
+    def test_every_allowed_field_appears_in_the_allowed_list(self, reference_text):
+        from protean.server.subscription.profiles import PROFILE_FIELDS
+
+        start = reference_text.index("**Allowed fields.**")
+        end = reference_text.index("**Validation**", start)
+        listed = reference_text[start:end]
+
+        missing = sorted(f for f in PROFILE_FIELDS if f"`{f}`" not in listed)
+        assert not missing, (
+            "A custom profile may set these fields, but the 'Allowed fields' "
+            f"paragraph in the reference does not list them: {missing}"
+        )

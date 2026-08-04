@@ -366,6 +366,7 @@ nav:
         - reference/adapters/broker/index.md
         - reference/adapters/broker/inline.md
         - reference/adapters/broker/redis.md
+        - reference/adapters/broker/partitioning.md
         - reference/adapters/broker/redis-pubsub.md
         - reference/adapters/broker/custom-brokers.md
       - Caches:

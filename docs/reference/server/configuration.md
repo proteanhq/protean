@@ -196,7 +196,8 @@ Without `inherits`, the profile starts from the framework's hardcoded defaults.
 **Allowed fields.** A custom profile may set `inherits` plus any of the standard
 profile fields: `subscription_type`, `messages_per_tick`, `tick_interval`,
 `blocking_timeout_ms`, `max_retries`, `retry_delay_seconds`, `enable_dlq`,
-`position_update_interval`, `origin_stream`, `retention_maxlen`.
+`position_update_interval`, `origin_stream`, `retention_maxlen`,
+`circuit_breaker_threshold`, `circuit_breaker_reset_seconds`.
 
 **Validation** is fail-fast — a `ConfigurationError` is raised when the profiles
 are first resolved if a custom profile:
