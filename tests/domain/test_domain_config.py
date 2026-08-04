@@ -169,3 +169,35 @@ class TestPriorityLanesMustBeATable:
         domain.init(traverse=False)
 
         assert domain.config["server"]["priority_lanes"]["enabled"] is True
+
+    @pytest.mark.parametrize("falsy", [False, 0, ""])
+    def test_a_falsy_scalar_is_rejected_too(self, falsy):
+        """Checking truthiness let `false` through while rejecting `true`.
+
+        That is the wrong way round. `priority_lanes = false` is the likelier
+        thing to write than `= true`, so accepting one and rejecting the other
+        means a user turns lanes off with no complaint and then hits an error
+        the day they turn them on.
+        """
+        domain = Domain(name="FalsyLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = falsy
+
+        with pytest.raises(ConfigurationError, match="must be a table"):
+            domain.init(traverse=False)
+
+    def test_an_empty_table_is_accepted(self):
+        """Nothing configured inside it is nothing to validate."""
+        domain = Domain(name="EmptyLanes", root_path=".")
+        domain.config["server"]["priority_lanes"] = {}
+
+        domain.init(traverse=False)
+
+        assert domain.config["server"]["priority_lanes"] == {}
+
+    def test_the_key_being_absent_is_accepted(self):
+        domain = Domain(name="AbsentLanes", root_path=".")
+        domain.config["server"].pop("priority_lanes", None)
+
+        domain.init(traverse=False)
+
+        assert "priority_lanes" not in domain.config["server"]

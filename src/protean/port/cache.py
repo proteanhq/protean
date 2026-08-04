@@ -22,9 +22,9 @@ def _resolve_ttl(value: Any, source: str) -> int | float:
     """Normalise a `TTL` to a positive, finite number of seconds.
 
     A TTL arriving here as a string is the normal case, not an edge one:
-    `TTL = "${CACHE_TTL}"` substitutes to `"3600"`, because environment
-    substitution runs over already-parsed TOML strings and has no type to
-    restore. Left as a string it does not fail loudly. `ttl * 1000` in the Redis
+    `TTL = "${CACHE_TTL|3600}"` substitutes to the string `"3600"`, because
+    environment substitution runs over already-parsed TOML strings and has no
+    type to restore. Left as a string it does not fail loudly. `ttl * 1000` in the Redis
     cache repeats the string a thousand times and then asks Redis to expire a
     key in a 4000-digit number of milliseconds, and the memory cache raises
     `TypeError: unsupported operand type(s) for +: 'float' and 'str'` on the
