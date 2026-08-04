@@ -242,12 +242,16 @@ server-level defaults. This is not new to custom profiles: a built-in named at
 | `max_retries` | int | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | int | 1 | Delay between retries |
 | `enable_dlq` | bool | true | Enable dead letter queue |
+| `dlq_retention_hours` | int \| None | inherit | Override `[server.dlq] retention_hours` (default 168) for this subscription's DLQ stream only |
+| `dlq_alert_threshold` | int \| None | inherit | Override `[server.dlq] alert_threshold` (default 100) for this subscription's DLQ stream only |
 | `circuit_breaker_threshold` | int | 10 | Consecutive handler failures that trip the circuit breaker OPEN |
 | `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected) |
 | `retention_maxlen` | int | none | Cap the stream at this many entries ([stream retention](subscription-types.md#stream-retention)) |
 
 See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
-the state machine, the metric, and the trace events.
+the state machine, the metric, and the trace events, and
+[Tuning subscriptions](../../guides/server/tuning-subscriptions.md) for how to
+choose between these options.
 
 ### EventStoreSubscription Options
 

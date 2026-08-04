@@ -175,6 +175,7 @@ specific area.
 - [OpenTelemetry Integration](./guides/server/opentelemetry.md) -- Distributed tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry.
 - [Running the Server](./guides/server/index.md) -- Start, configure, and operate the Protean server.
 - [Harden the Server](./guides/server/hardening.md) -- Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, emit OTEL metrics, and shut down gracefully.
+- [Tuning Subscriptions](./guides/server/tuning-subscriptions.md) -- Pick a profile, override one setting, cap stream growth, use the circuit breaker, process events for one entity in order, and check consumer lag.
 - [Server Hardening Reference](./reference/server/hardening.md) -- Every option, default, metric, and profile shipped by the hardening epic.
 - [Error Handling](./guides/server/error-handling.md) -- Retry logic, dead letter queues, and recovery mechanisms for message processing failures.
 - [Dead Letter Queues](./guides/server/dead-letter-queues.md) -- Discover, inspect, replay, and purge messages that failed after retries were exhausted.
