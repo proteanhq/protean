@@ -38,6 +38,17 @@ _DECLARES_BREAK = re.compile(
 )
 _MIGRATION_LINK = re.compile(r"\*\*Migration:\*\*\s*\[[^\]]+\]\(([^)]+)\)")
 
+# Phrases that describe a break whether or not the author called it one. Code
+# that "now raises" where it used to succeed is a break, and the fragment saying
+# so in prose while filing under `fixed` is exactly how the 0.17.0 audit found
+# seven of them. This list is deliberately about *newly refusing* work: "now
+# accepts" or "now reports" are not breaks and are not listed.
+_SOUNDS_LIKE_A_BREAK = re.compile(
+    r"\bnow (raises|rejects|fails|refuses|errors|stops|requires)\b"
+    r"|\bno longer (accepts|works|starts|runs)\b",
+    re.I,
+)
+
 
 def _fragments() -> list[Path]:
     return sorted(
@@ -278,3 +289,50 @@ class TestAnchorsMatchWhatMkdocsPublishes:
                 "anchors than lines starting with `#` means the parser invented "
                 "one."
             )
+
+
+class TestABreakCannotHideInProse:
+    """The guard above only fires on fragments that *declare* a break.
+
+    That is the smaller half of the problem. A fragment can describe a break
+    perfectly well in prose, file itself under `fixed`, and sail past, which is
+    how the 0.17.0 audit found seven Tier-2 breaks reading as safe. It happened
+    again on #1304: config that was silently ignored started failing start-up,
+    and the fragment mentioned the new error without ever calling it breaking.
+
+    So this looks for the *description* rather than the declaration. If a
+    fragment says something now raises or no longer works, it has to either
+    declare the break or point at the migration section, whichever the author
+    prefers, but not neither.
+    """
+
+    def test_a_fragment_describing_a_refusal_declares_it(self, fragments):
+        undeclared = []
+        for p in fragments:
+            text = p.read_text(encoding="utf-8")
+            match = _SOUNDS_LIKE_A_BREAK.search(text)
+            if not match:
+                continue
+            if _DECLARES_BREAK.search(text) or _MIGRATION_LINK.search(text):
+                continue
+            undeclared.append(f"{p.name}: says {match.group(0)!r}")
+
+        assert not undeclared, (
+            "These fragments describe something that now refuses work it used to "
+            "accept, without declaring a break or pointing at a migration "
+            "section. An upgrader reading the category takes them as safe.\n"
+            "Add either a `**Breaking...**` line or a `**Migration:**` link:\n  "
+            + "\n  ".join(undeclared)
+        )
+
+    def test_the_phrase_list_catches_the_case_that_got_through(self):
+        """Guard the guard, using the wording that actually slipped past."""
+        assert _SOUNDS_LIKE_A_BREAK.search(
+            "a bool there now raises a ConfigurationError"
+        )
+        assert _SOUNDS_LIKE_A_BREAK.search("the old shape no longer works")
+        # Not breaks: gaining an ability, or reporting something differently.
+        assert not _SOUNDS_LIKE_A_BREAK.search("`set_ttl` now accepts a string")
+        assert not _SOUNDS_LIKE_A_BREAK.search(
+            "the probe now reports per-partition lag"
+        )
