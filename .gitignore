@@ -143,6 +143,11 @@ TODO
 *.todo
 todos
 
+# `todo/` is a symlink to private planning notes, so git never sees it. Ignored
+# anyway: if the symlink is ever replaced by a real directory, this keeps the
+# notes out of `git add -A` instead of offering 45 files for commit.
+/todo/
+
 # SQLite DBs
 *.db
 

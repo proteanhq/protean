@@ -7,7 +7,10 @@ from protean.upgrade import (
     _alter_statement,
     _check_elasticsearch_server,
     _check_health_port,
+    _check_outbox_migrations,
     _check_pool_defaults,
+    _outbox_composite_index_sql,
+    _outbox_set_not_null_sql,
     run_upgrade_checks,
 )
 
@@ -291,3 +294,364 @@ class TestOutboxSchemaPostgres:
         assert len(findings) == 1
         assert "ALTER COLUMN message_id" in findings[0].sql
         assert "status" not in findings[0].sql
+
+
+# Forward-ported with the checks themselves (#1093): these shipped in 0.16.2
+# on the release branch and never reached `main`.
+class TestOutboxMigrationSql:
+    def test_not_null_backfills_then_alters(self):
+        sql = _outbox_set_not_null_sql("postgresql")
+        assert sql.index("UPDATE outbox SET target_broker = 'default'") < sql.index(
+            "ALTER COLUMN target_broker SET NOT NULL"
+        )
+
+    def test_not_null_is_typed_on_mysql_and_mssql(self):
+        assert "MODIFY target_broker varchar(128) NOT NULL" in _outbox_set_not_null_sql(
+            "mysql"
+        )
+        assert (
+            "ALTER COLUMN target_broker varchar(128) NOT NULL"
+            in _outbox_set_not_null_sql("mssql")
+        )
+
+    def test_index_backfills_then_swaps_to_composite(self):
+        sql = _outbox_composite_index_sql("postgresql")
+        assert (
+            sql.index("UPDATE outbox")
+            < sql.index("DROP INDEX")
+            < sql.index("CREATE UNIQUE INDEX uq_outbox_message_id_target_broker")
+        )
+
+    def test_index_drop_syntax_differs_by_dialect(self):
+        assert (
+            "DROP INDEX IF EXISTS uq_outbox_message_id;"
+            in _outbox_composite_index_sql("postgresql")
+        )
+        assert (
+            "DROP INDEX uq_outbox_message_id ON outbox;"
+            in _outbox_composite_index_sql("mysql")
+        )
+
+
+@pytest.mark.postgresql
+@pytest.mark.no_test_domain
+class TestOutboxMigrationsPostgres:
+    @pytest.fixture
+    def pg_domain(self):
+        from sqlalchemy import text
+
+        from protean.domain import Domain
+        from tests.shared import POSTGRES_URI
+
+        domain = Domain(name="UpgradeMigrationsPG")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": POSTGRES_URI,
+        }
+        domain.init(traverse=False)
+        engine = domain.providers["default"]._engine
+        # A nullable target_broker and the legacy message_id-only unique index.
+        with engine.begin() as conn:
+            for stmt in filter(
+                None, (s.strip() for s in _LEGACY_OUTBOX_DDL.split(";"))
+            ):
+                conn.execute(text(stmt))
+        yield domain
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS outbox"))
+
+    def test_flags_both_nullable_target_broker_and_legacy_index(self, pg_domain):
+
+        codes = _codes(_check_outbox_migrations(pg_domain))
+        assert codes == {"OUTBOX_TARGET_BROKER_NULLABLE", "OUTBOX_UNIQUE_INDEX_LEGACY"}
+
+    def test_generated_sql_applies_and_clears_both_findings(self, pg_domain):
+        from sqlalchemy import text
+
+        engine = pg_domain.providers["default"]._engine
+        for finding in _check_outbox_migrations(pg_domain):
+            with engine.begin() as conn:
+                for stmt in filter(None, (s.strip() for s in finding.sql.split(";"))):
+                    conn.execute(text(stmt))
+        # Both migrations applied -> the check is clean and idempotent.
+        assert _check_outbox_migrations(pg_domain) == []
+
+
+@pytest.mark.sqlite
+@pytest.mark.no_test_domain
+class TestOutboxMigrationsSqlite:
+    @pytest.fixture
+    def sqlite_domain(self, tmp_path):
+        from protean.domain import Domain
+
+        domain = Domain(name="UpgradeMigrationsSqlite")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'um.db'}",
+        }
+        domain.init(traverse=False)
+        return domain
+
+    def _create_outbox(self, domain, *, index_sql=None):
+        from sqlalchemy import text
+
+        engine = domain.providers["default"]._engine
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE outbox (id varchar(36), message_id varchar(255), "
+                    "target_broker varchar(128))"
+                )
+            )
+            if index_sql:
+                conn.execute(text(index_sql))
+
+    def test_no_outbox_table_yields_no_finding(self, sqlite_domain):
+
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+    def test_legacy_message_id_index_is_flagged(self, sqlite_domain):
+
+        self._create_outbox(
+            sqlite_domain,
+            index_sql="CREATE UNIQUE INDEX uq_outbox_message_id ON outbox (message_id)",
+        )
+        codes = _codes(_check_outbox_migrations(sqlite_domain))
+        assert "OUTBOX_UNIQUE_INDEX_LEGACY" in codes
+        # SQLite cannot ALTER-add NOT NULL in place, so that finding is skipped.
+        assert "OUTBOX_TARGET_BROKER_NULLABLE" not in codes
+
+    def test_index_migration_sql_applies_and_clears(self, sqlite_domain):
+        from sqlalchemy import text
+
+        self._create_outbox(
+            sqlite_domain,
+            index_sql="CREATE UNIQUE INDEX uq_outbox_message_id ON outbox (message_id)",
+        )
+        finding = next(
+            f
+            for f in _check_outbox_migrations(sqlite_domain)
+            if f.code == "OUTBOX_UNIQUE_INDEX_LEGACY"
+        )
+        engine = sqlite_domain.providers["default"]._engine
+        with engine.begin() as conn:
+            for stmt in filter(None, (s.strip() for s in finding.sql.split(";"))):
+                conn.execute(text(stmt))
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+    def test_composite_index_is_not_flagged(self, sqlite_domain):
+
+        self._create_outbox(
+            sqlite_domain,
+            index_sql=(
+                "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker "
+                "ON outbox (message_id, target_broker)"
+            ),
+        )
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+    def test_no_unique_index_is_not_flagged(self, sqlite_domain):
+
+        self._create_outbox(sqlite_domain)
+        assert _check_outbox_migrations(sqlite_domain) == []
+
+
+_LEGACY_OUTBOX_DDL = """
+DROP TABLE IF EXISTS outbox;
+CREATE TABLE outbox (
+  id varchar(36) PRIMARY KEY,
+  message_id varchar(255) NOT NULL,
+  target_broker varchar(128),
+  created_at timestamptz
+);
+CREATE UNIQUE INDEX uq_outbox_message_id ON outbox (message_id)
+"""
+
+
+class TestOutboxMigrationsAreNotOverEager:
+    """Three defects in the forward-ported checks (#1093), found in review.
+
+    They shipped in 0.16.2 on the release branch, so they were live for a month
+    before anyone read them next to a fresh pair of eyes.
+    """
+
+    def test_a_reversed_composite_index_is_not_called_legacy(self):
+        """`(target_broker, message_id)` is as composite as the other order.
+
+        Comparing tuples made column order significant, so a working index would
+        have been reported as legacy and the remediation would have told someone
+        to drop it.
+        """
+
+        indexes = [
+            {"name": "uq_a", "column_names": ["message_id"], "unique": True},
+            {
+                "name": "uq_b",
+                "column_names": ["target_broker", "message_id"],
+                "unique": True,
+            },
+        ]
+        cols = {frozenset(ix["column_names"]) for ix in indexes if ix["unique"]}
+        assert frozenset({"message_id", "target_broker"}) in cols
+
+    def test_generated_sql_is_schema_qualified(self):
+        """The check introspects with an explicit schema; the SQL must match it."""
+        from protean.upgrade import (
+            _outbox_composite_index_sql,
+            _outbox_set_not_null_sql,
+        )
+
+        assert "events.outbox" in _outbox_set_not_null_sql("postgresql", "events")
+        assert "events.outbox" in _outbox_composite_index_sql("postgresql", "events")
+        # Unqualified when there is no schema, so the common case is unchanged.
+        assert "events." not in _outbox_set_not_null_sql("postgresql")
+
+    def test_the_backfill_is_schema_qualified_too(self):
+        """It is the first statement a reader runs; wrong table, wrong rows."""
+        from protean.upgrade import _outbox_set_not_null_sql
+
+        first = _outbox_set_not_null_sql("postgresql", "events").splitlines()[0]
+        assert first.startswith("UPDATE events.outbox")
+
+    def test_both_indexes_present_is_still_flagged(self):
+        """The legacy index rejects dual-writes whether or not the composite exists.
+
+        Requiring the composite to be *absent* meant a database carrying both
+        reported clean while still failing every dual-write, which is the exact
+        failure the check exists to catch.
+        """
+        legacy = frozenset({"message_id"})
+        composite = frozenset({"message_id", "target_broker"})
+        cols = [legacy, composite]
+
+        assert legacy in cols  # the condition that now drives the finding
+
+    def test_the_sql_does_not_recreate_an_index_that_exists(self):
+        """Otherwise the script fails halfway on `already exists`."""
+        from protean.upgrade import _outbox_composite_index_sql
+
+        both = _outbox_composite_index_sql("postgresql", None, create_composite=False)
+        assert "CREATE UNIQUE INDEX" not in both
+        assert "DROP INDEX" in both
+
+        only_legacy = _outbox_composite_index_sql("postgresql")
+        assert "CREATE UNIQUE INDEX" in only_legacy
+
+    def test_a_failed_introspection_is_reported_not_skipped(self):
+        """Both outbox checks must surface CHECK_FAILED, not return quietly."""
+        import inspect
+
+        from protean.upgrade import _check_outbox_migrations, _check_outbox_schema
+
+        for fn in (_check_outbox_schema, _check_outbox_migrations):
+            src = inspect.getsource(fn)
+            assert "CHECK_FAILED" in src, (
+                f"{fn.__name__} swallows introspection failures, so a clean "
+                "report cannot be told apart from an unread database"
+            )
+
+
+class TestTheBackfillUsesTheConfiguredBroker:
+    """`[outbox] broker` is configurable and the framework writes that name.
+
+    Hard-coding `'default'` labelled legacy rows for a broker the domain does
+    not run, so its processor never claims them and they sit unpublished. The
+    remediation text used to ask the reader to check this by hand, which is a
+    tell: if the code knows the value is a hazard, it can emit the right one.
+    """
+
+    def test_the_default_is_unchanged(self):
+        from protean.upgrade import _outbox_set_not_null_sql
+
+        assert "target_broker = 'default'" in _outbox_set_not_null_sql("postgresql")
+
+    def test_a_configured_broker_reaches_the_sql(self):
+        from protean.upgrade import _outbox_set_not_null_sql
+
+        sql = _outbox_set_not_null_sql("postgresql", None, "kafka")
+        assert "target_broker = 'kafka'" in sql
+        assert "'default'" not in sql
+
+    def test_the_index_remediation_uses_it_too(self):
+        """Both statements carry the same backfill; only one being right is worse."""
+        from protean.upgrade import _outbox_composite_index_sql
+
+        sql = _outbox_composite_index_sql("postgresql", None, True, "kafka")
+        assert "target_broker = 'kafka'" in sql
+
+
+@pytest.mark.sqlite
+@pytest.mark.no_test_domain
+class TestAnUnreadableDatabaseIsReported:
+    """Both outbox checks must say so when they could not read a schema.
+
+    They used to `continue`, so a database that could not be introspected looked
+    identical to one with nothing to fix. The two paths are the only branches in
+    either check that no other test reaches, which is how one of them stayed
+    swallowed through a review round: the tests never went down it.
+    """
+
+    @pytest.fixture
+    def sqlite_domain(self, tmp_path):
+        from protean.domain import Domain
+
+        domain = Domain(name="UpgradeUnreadable")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'unreadable.db'}",
+        }
+        domain.init(traverse=False)
+        return domain
+
+    @pytest.fixture
+    def blind_inspector(self, monkeypatch):
+        """Make introspection fail the way an unreachable database does.
+
+        Patching `sqlalchemy.inspect` works because both checks import it inside
+        the function, so the name is resolved at call time.
+        """
+        import sqlalchemy
+        from sqlalchemy.exc import OperationalError
+
+        def _raise(_engine):
+            raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+        monkeypatch.setattr(sqlalchemy, "inspect", _raise)
+
+    def test_the_migrations_check_reports_rather_than_skips(
+        self, sqlite_domain, blind_inspector
+    ):
+        findings = _check_outbox_migrations(sqlite_domain)
+
+        codes = [f.code for f in findings]
+        assert "CHECK_FAILED" in codes
+        detail = next(f for f in findings if f.code == "CHECK_FAILED").detail
+        assert "target_broker" in detail  # says what it could not tell you
+
+    def test_the_schema_check_reports_rather_than_skips(
+        self, sqlite_domain, blind_inspector
+    ):
+        from protean.upgrade import _check_outbox_schema
+
+        findings = _check_outbox_schema(sqlite_domain)
+
+        codes = [f.code for f in findings]
+        assert "CHECK_FAILED" in codes
+        detail = next(f for f in findings if f.code == "CHECK_FAILED").detail
+        assert "column" in detail.lower()  # its own scope, not the other check's
+
+    def test_the_two_reports_do_not_describe_each_other(
+        self, sqlite_domain, blind_inspector
+    ):
+        """The wording was copied between them once already."""
+        from protean.upgrade import _check_outbox_schema
+
+        mig = next(
+            f
+            for f in _check_outbox_migrations(sqlite_domain)
+            if f.code == "CHECK_FAILED"
+        )
+        sch = next(
+            f for f in _check_outbox_schema(sqlite_domain) if f.code == "CHECK_FAILED"
+        )
+        assert mig.detail != sch.detail

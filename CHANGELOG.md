@@ -20,6 +20,37 @@ Epic 3.4 — Event Evolution: evolve domain events safely over their whole lifet
 - `protean ir diff` now reports an **Avro-style compatibility verdict** — `BACKWARD`, `FORWARD`, `FULL`, or `NONE` — alongside its breaking/non-breaking classification, in both the text output and `--format json` (under a new `compatibility` block with per-element `avro_verdicts`). `CompatibilityReport` gains an `avro_verdict` property and an `avro_verdicts_by_element()` method. The verdict maps Protean's change classes onto Avro's rules (add-optional → FULL; add-required-without-default → not BACKWARD; remove a required field → not FORWARD; type change → NONE; a declared rename → BACKWARD, or FULL when the old field was optional or had a static default) and honors upcaster mitigation (an upcaster-covered version bump reads as BACKWARD). It matches the schema `protean schema generate --format avro` emits, which now carries Avro `aliases` for declared field renames. Visibility flips are payload-neutral for the verdict but remain breaking. The verdict is informational — the CI exit code is still governed by `[compatibility] strictness`. (#1138)
 - An **"Evolving events over time"** how-to guide (`docs/guides/evolving-events.md`) walks the full v1→vN workflow on one running example — add a field with a default, rename a field with `renamed_from`, bump the version and write upcasters, deprecate + supersede an event, read legacy payloads leniently, inspect `protean events catalog`, generate JSON/Avro/Protobuf schemas, and read the `protean ir diff` Avro compatibility verdict — with real generated output and a lifecycle diagram. The `renamed_from` field option and the `lenient_deserialization` config key are now documented in the reference, and the scattered upcasting / schema-generation / compatibility docs cross-link the new guide. (#1136)
 
+## [0.16.3] - 2026-07-15
+
+### Changed
+
+- Add Redis broker DLQ management tests (`dlq_list`, `dlq_inspect`, `dlq_replay`, `dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`) against real Redis, backfilling coverage for the `_client` accessor refactor in #1086. (#1090)
+
+### Fixed
+
+- Fix foreign-key violations when persisting an aggregate with `HasMany`/`HasOne` children in one `repository.add` inside a `UnitOfWork`. The parent row is now flushed into the transaction before its FK-referencing children are written, so databases that enforce foreign keys immediately (MSSQL, MySQL/InnoDB, SQLite with `PRAGMA foreign_keys=ON`) accept the child inserts. Child-bearing aggregate saves now emit their buffered SQL at flush time rather than only at commit, so any constraint violation on such a save may surface at `add()` time instead of `commit()` time. (#1043)
+- The Redis Streams broker now transparently reconnects if its connection was closed (e.g. `redis_instance` set to `None` by engine shutdown) before a later operation runs, instead of raising `AttributeError: 'NoneType' object has no attribute ...` and killing a subscription's poll loop. This makes `Engine(test_mode=True).run()` against a Redis broker reliable in CI. (#1055)
+- Fix re-running `domain.init()` in a live process closing the running brokers out from under the Engine, which permanently halted message consumption (with the Redis broker, an unrecoverable flood of `AttributeError: 'NoneType' object has no attribute 'xreadgroup'`). This surfaced in a process that both runs the Engine and re-initializes the domain — e.g. an APScheduler cron job calling `domain.init()` on every tick. `Brokers._initialize()` is now non-destructive: a broker whose configuration is unchanged is reused in place rather than closed and recreated, so the instance the Engine holds stays alive. Only brokers whose configuration changed, or that are no longer configured, are closed. Regression from #885 (0.16.0), whose broker cleanup turned a previously-silent connection leak on re-init into a hard, consumption-halting crash. (#1213)
+
+## [0.16.2] - 2026-07-05
+
+### Fixed
+
+- Fix `datetime` values in serialized payloads being encoded with `str()` (a space-separated form) instead of ISO-8601. Datetime fields now serialize with `.isoformat()`, matching the message-metadata timestamp format. The naive/aware distinction and the UTC offset are preserved, so the instant round-trips unchanged (a named timezone is serialized as its fixed offset). This only affected real JSON-backed stores (event store, Elasticsearch, outbox); the in-memory adapter was unaffected. Records written before the fix remain readable (`datetime.fromisoformat()` and Pydantic parse both forms). (#1039)
+- Fix a `Date` (`datetime.date`) field on a command or event raising `TypeError: Object of type date is not JSON serializable` when the message is processed. `ResolvedField.as_dict` now serializes plain `date` values to ISO-8601 strings; previously only `datetime` had a branch, so a raw `date` reached the checksum's `json.dumps` and failed. (#1046)
+- Fix `repository.add()` leaving an `Auto(increment=True)` identity as `None` for stores that assign the value during create (e.g. the in-memory provider). The generated value is now reflected back onto the aggregate instance after `add()`, restoring parity with `dao.create()`. (#1056)
+- Fix a DB-assigned `Auto(increment=True)` identifier not being reflected back onto the aggregate when persisting through a relational adapter (SQLAlchemy → Postgres/SQLite/MSSQL). After `repository.add()` (or `dao.create()`) the generated primary key now populates the original instance, including when the persist runs inside an outer `UnitOfWork`, instead of staying `None` until commit. Because reflecting the value forces the insert to flush early, a constraint violation on such an insert may now surface at `add()`/`create()` time rather than only at commit. (#1059)
+- Fix an embedded `ValueObject` whose fields hold default/falsy values (e.g. all zeros) being reconstructed as `None` after persist + reload. Presence was gated on truthiness — and such a VO is falsy — so it was reset to `None` on assignment and dropped from serialization. Presence is now decided by identity (`is not None`), so an explicitly-assigned VO round-trips to an equal VO across the in-memory, relational, and Message-DB adapters (and on event-sourced aggregates); an unset VO still reads back as `None`. Note: `bool(vo)` still reports an all-default VO as falsy (check presence with `agg.vo_field is not None`), and a VO whose every field is `None` still reads back as `None` from flattened storage. (#1078)
+- Enforce `Index(unique=True)` declarations in the in-memory repository. A save or update that violates a single-column or composite unique index now raises `ValidationError` (the same error already raised for field-level `unique=True`), so memory-mode tests catch duplicate-key regressions instead of silently accepting them. NULLs are treated as distinct, matching PostgreSQL/SQLite semantics. (#1071)
+- Make `Outbox.target_broker` NOT NULL so a NULL row can no longer bypass the `(message_id, target_broker)` unique index — the dual-write idempotency guard (NULLs compare as distinct in a unique index, silently reopening the duplicate-publish window). It now defaults to the internal broker name; the framework always sets it on write, and legacy rows with a NULL `target_broker` are coerced to the default broker name on read. (#1041)
+- `protean upgrade-check` now diffs a live outbox table for the intra-0.16 structural migrations it previously missed: a nullable `target_broker` (emitting the backfill + `SET NOT NULL`) and a legacy `message_id`-only unique index (emitting the composite-index swap), alongside the existing VARCHAR-bounds check. The [v0.16 migration guide](docs/reference/migration/v0-16.md) gains the matching `target_broker` NOT NULL recipes. (#1093)
+- Fix projectors rejecting the `retries`, `backoff`, and `retry_exceptions` options with `Unknown option(s)`. Projectors now accept them for per-projector transient-failure retry, mirroring event and command handlers. (#1076)
+- Fix `protean check` raising a `PROJECTION_WITHOUT_PROJECTOR` false positive for projections populated by a subscriber or event handler (the anti-corruption-layer / cross-domain pattern) rather than a co-located `@projector`. Declare such projections with `@domain.projection(externally_populated=True)` to record that they are populated externally and suppress the warning. (#1013)
+
+### Upgrade Notes
+
+- **Outbox `target_broker` NOT NULL (#1041).** New deployments get a `NOT NULL target_broker` column automatically. Existing deployments keep their current (nullable) column — Protean does not auto-alter tables — and continue to read any legacy NULL rows safely. To enforce the constraint on an existing database, backfill and add it manually, e.g. `UPDATE outbox SET target_broker = 'default' WHERE target_broker IS NULL;` followed by an `ALTER TABLE ... ALTER COLUMN target_broker SET NOT NULL`.
+
 ## [0.16.1] - 2026-06-30
 
 ### Added
@@ -544,7 +575,9 @@ Epic 3.4 — Event Evolution: evolve domain events safely over their whole lifet
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.16.3...HEAD
+[0.16.3]: https://github.com/proteanhq/protean/compare/v0.16.2...v0.16.3
+[0.16.2]: https://github.com/proteanhq/protean/compare/v0.16.1...v0.16.2
 [0.16.1]: https://github.com/proteanhq/protean/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/proteanhq/protean/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/proteanhq/protean/compare/v0.15.0rc1...v0.15.0

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from protean.upgrade_uow import scan_domain_source
-from protean.utils.outbox import Outbox
+from protean.utils.outbox import DEFAULT_TARGET_BROKER, Outbox
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -213,8 +213,29 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
             columns = {
                 c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
             }
-        except Exception:
-            # Introspection is best-effort; never fail the upgrade check on it.
+        except Exception as exc:
+            # Reported rather than swallowed. The command documents CHECK_FAILED
+            # as "a check could not complete; the report may be incomplete for
+            # that area", and silently skipping a database would leave a clean
+            # report meaning two different things.
+            findings.append(
+                UpgradeFinding(
+                    code="CHECK_FAILED",
+                    level="warning",
+                    title=f"Could not inspect the outbox table on `{name}`",
+                    detail=(
+                        f"Reading the schema raised {type(exc).__name__}: {exc}. "
+                        "The outbox column-bounds check did not run for this "
+                        "database, so this report says nothing about its column "
+                        "widths."
+                    ),
+                    remediation=(
+                        "Check the database is reachable and the credentials can read "
+                        "table metadata, then run `protean upgrade-check` again."
+                    ),
+                    element=f"databases.{name}",
+                )
+            )
             continue
 
         if dialect == "sqlite":
@@ -363,11 +384,239 @@ def _check_unit_of_work_transaction(domain: Domain) -> list[UpgradeFinding]:
     return findings
 
 
+# Forward-ported from `release/0.16.x` (#1093). These shipped in 0.16.2 but
+# the prep commit never reached `main`, so 0.17 would have offered fewer
+# migration checks than the patch release before it.
+# The framework backfills a NULL ``target_broker`` to the configured internal
+# broker; ``'default'`` is the out-of-the-box name. Both migrations below share
+# this preamble — a NULL ``target_broker`` would violate the NOT NULL constraint
+# and, because NULLs compare as distinct in a UNIQUE index, defeat the
+# composite idempotency index.
+def _backfill_sql(
+    schema: str | None = None, broker: str = DEFAULT_TARGET_BROKER
+) -> str:
+    """Backfill legacy NULL ``target_broker`` rows with the domain's own broker.
+
+    `[outbox] broker` is configurable, and the framework writes that name, not
+    the literal ``'default'``. Hard-coding it here would label legacy rows for a
+    broker the domain does not run, so its processor never claims them and they
+    sit unpublished. The remediation text used to ask the reader to check this
+    by hand; emitting the right value is better than asking.
+    """
+    return (
+        f"UPDATE {_qualified('outbox', schema)} SET target_broker = '{broker}' "
+        "WHERE target_broker IS NULL;"
+    )
+
+
+def _qualified(table: str, schema: str | None) -> str:
+    """``schema.table`` when the provider puts the outbox outside the default schema.
+
+    The check introspects with an explicit ``schema=``, so it finds the table
+    wherever it lives. The generated SQL has to reach the same one: an
+    unqualified name resolves against the session's search path and can name a
+    different table, or none.
+    """
+    return f"{schema}.{table}" if schema else table
+
+
+def _outbox_set_not_null_sql(
+    dialect: str, schema: str | None = None, broker: str = DEFAULT_TARGET_BROKER
+) -> str:
+    """Per-dialect SQL to backfill NULLs and add ``NOT NULL`` on ``target_broker``."""
+    table = _qualified("outbox", schema)
+    if dialect == "mysql":
+        alter = f"ALTER TABLE {table} MODIFY target_broker varchar(128) NOT NULL;"
+    elif dialect in ("mssql", "mssql+pyodbc"):
+        alter = f"ALTER TABLE {table} ALTER COLUMN target_broker varchar(128) NOT NULL;"
+    else:  # postgresql / standard
+        alter = f"ALTER TABLE {table} ALTER COLUMN target_broker SET NOT NULL;"
+    return f"{_backfill_sql(schema, broker)}\n{alter}"
+
+
+def _outbox_composite_index_sql(
+    dialect: str,
+    schema: str | None = None,
+    create_composite: bool = True,
+    broker: str = DEFAULT_TARGET_BROKER,
+) -> str:
+    """Per-dialect SQL to replace ``uq_outbox_message_id`` with the composite index.
+
+    ``create_composite`` is ``False`` when the composite index is already there
+    and only the legacy one needs dropping. Emitting the ``CREATE`` anyway would
+    hand someone a script that fails halfway on an index that already exists.
+    """
+    table = _qualified("outbox", schema)
+    if dialect in ("mysql", "mssql", "mssql+pyodbc"):
+        drop = f"DROP INDEX uq_outbox_message_id ON {table};"
+    else:  # postgresql / sqlite / standard
+        drop = f"DROP INDEX IF EXISTS {_qualified('uq_outbox_message_id', schema)};"
+    statements = [_backfill_sql(schema, broker), drop]
+    if create_composite:
+        statements.append(
+            "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker\n"
+            f"  ON {table} (message_id, target_broker);"
+        )
+    return "\n".join(statements)
+
+
+def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
+    """Flag the intra-0.16 outbox structural migrations on each live outbox table.
+
+    Two changes landed after the initial VARCHAR bounds: the recommended unique
+    index became composite over (``message_id``, ``target_broker``) in 0.16.1,
+    and ``target_broker`` became ``NOT NULL`` in 0.16.2. Protean never alters a
+    populated table, so an outbox created on an earlier 0.16 release keeps the
+    old shape; generate the SQL to bring it in line. Complements
+    :func:`_check_outbox_schema`, which covers the column-length bounds.
+    """
+    try:
+        from sqlalchemy import inspect as sa_inspect  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
+        return []
+
+    from protean.adapters.repository.sqlalchemy import SAProvider  # noqa: PLC0415
+
+    # The name the framework actually writes, so the emitted SQL labels legacy
+    # rows for the broker this domain runs rather than a guess.
+    broker = domain.config.get("outbox", {}).get("broker", DEFAULT_TARGET_BROKER)
+
+    findings: list[UpgradeFinding] = []
+    for name, provider in domain.providers.items():
+        if not isinstance(provider, SAProvider):
+            continue
+        engine = getattr(provider, "_engine", None)
+        if engine is None:  # pragma: no cover - an initialized SAProvider has one
+            continue
+        dialect = engine.dialect.name
+        schema = getattr(getattr(provider, "_metadata", None), "schema", None)
+        try:
+            inspector = sa_inspect(engine)
+            if not inspector.has_table("outbox", schema=schema):
+                continue
+            columns = {
+                c["name"]: c for c in inspector.get_columns("outbox", schema=schema)
+            }
+            indexes = inspector.get_indexes("outbox", schema=schema)
+        except Exception as exc:
+            # Reported rather than swallowed. The command documents CHECK_FAILED
+            # as "a check could not complete; the report may be incomplete for
+            # that area", and skipping a database silently would leave a clean
+            # report meaning either "your schema is current" or "I could not
+            # read it", with no way to tell which.
+            findings.append(
+                UpgradeFinding(
+                    code="CHECK_FAILED",
+                    level="warning",
+                    title=f"Could not inspect the outbox table on `{name}`",
+                    detail=(
+                        f"Reading the schema raised {type(exc).__name__}: {exc}. "
+                        "The outbox migration checks did not run for this "
+                        "database, so this report says nothing about its "
+                        "`target_broker` column or its unique index."
+                    ),
+                    remediation=(
+                        "Check the database is reachable and the credentials can "
+                        "read table metadata, then run `protean upgrade-check` "
+                        "again."
+                    ),
+                    element=f"databases.{name}",
+                )
+            )
+            continue
+
+        # (0.16.2) target_broker NOT NULL. SQLite cannot add the constraint in
+        # place — it needs a full table rebuild — so only the enforcing backends
+        # get generated SQL here; the migration guide covers the SQLite rebuild.
+        target_broker = columns.get("target_broker")
+        if (
+            target_broker is not None
+            and target_broker.get("nullable", True)
+            and dialect != "sqlite"
+        ):
+            findings.append(
+                UpgradeFinding(
+                    code="OUTBOX_TARGET_BROKER_NULLABLE",
+                    level="warning",
+                    title=f"Outbox `target_broker` on `{name}` is still nullable",
+                    detail=(
+                        "0.16.2 makes `Outbox.target_broker` NOT NULL. A NULL row "
+                        "bypasses the (message_id, target_broker) idempotency index "
+                        "(NULLs compare as distinct), silently reopening the "
+                        "duplicate-publish window. The existing column keeps working; "
+                        "backfill and add the constraint to match the new schema."
+                    ),
+                    remediation=(
+                        "Review the generated SQL, then run it. The backfill uses "
+                        "this domain's configured internal broker."
+                    ),
+                    element=f"databases.{name}",
+                    sql=_outbox_set_not_null_sql(dialect, schema, broker),
+                )
+            )
+
+        # (0.16.1) composite unique index. Only flag when the legacy single-column
+        # unique index exists and the composite one does not — the index is
+        # recommended, not framework-created, so its absence means nothing to do.
+        # Compared as sets, not tuples: an index over (target_broker, message_id)
+        # is as composite as (message_id, target_broker) for idempotency, and
+        # flagging it would tell someone to drop a working index.
+        unique_index_cols = [
+            frozenset(ix.get("column_names") or [])
+            for ix in indexes
+            if ix.get("unique")
+        ]
+        # The legacy index is the problem whether or not the composite one is
+        # also present: a unique index on `message_id` alone rejects the second
+        # dual-write row no matter what else exists. Requiring the composite to
+        # be absent meant a database carrying both reported clean while still
+        # failing every dual-write.
+        has_legacy = frozenset({"message_id"}) in unique_index_cols
+        has_composite = frozenset({"message_id", "target_broker"}) in unique_index_cols
+        if has_legacy:
+            findings.append(
+                UpgradeFinding(
+                    code="OUTBOX_UNIQUE_INDEX_LEGACY",
+                    level="warning",
+                    title=f"Outbox unique index on `{name}` is `message_id`-only",
+                    detail=(
+                        "0.16.1 changed the recommended outbox unique index from "
+                        "`message_id` alone to a composite over (message_id, "
+                        "target_broker). A single event is dual-written once per "
+                        "target broker (all rows sharing one message_id), so the "
+                        "single-column index rejects the framework's own dual-write "
+                        "with a UniqueViolation."
+                    ),
+                    remediation=(
+                        "Review the generated SQL, then run it. The backfill uses "
+                        "this domain's configured internal broker."
+                    ),
+                    element=f"databases.{name}",
+                    sql=_outbox_composite_index_sql(
+                        dialect,
+                        schema,
+                        create_composite=not has_composite,
+                        broker=broker,
+                    ),
+                )
+            )
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Orchestration
+# ---------------------------------------------------------------------------
+
+# All checks, in report order. Each takes the domain and returns findings.
+
+
 _CHECKS: tuple[Callable[[Domain], list[UpgradeFinding]], ...] = (
     _check_pool_defaults,
     _check_elasticsearch_server,
     _check_health_port,
     _check_outbox_schema,
+    _check_outbox_migrations,
     _check_unit_of_work_transaction,
 )
 
