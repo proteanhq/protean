@@ -20,9 +20,17 @@ setup_hooks = []
 pre_commit_hooks = []
 post_commit_hooks = []
 
-# Each file anchors its own search. The global `search = "{current_version}"` is
-# unanchored and replaces every match, which rewrote `"typer>=0.16.0"` on the
-# 0.17.0 bump: a dependency floor silently ratcheted once per release.
+# The global `search = "{current_version}"` above is unanchored and replaces
+# every match in a file. That is what is wanted for the files below whose only
+# matches ARE version references, and it is a trap for any file that also
+# mentions the same version for another reason: on the 0.17.0 bump it rewrote
+# `"typer>=0.16.0"` to `"typer>=0.17.0"`, ratcheting a dependency floor once per
+# release inside the tagged commit.
+#
+# Files with a match that is not a version reference anchor their own search.
+# `tests/test_version_bump_touches_only_versions.py` checks that the ones which
+# do not have stayed safe, so the next `typer` fails the suite rather than the
+# release.
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
 search = 'version = "{current_version}"'
@@ -30,6 +38,8 @@ replace = 'version = "{new_version}"'
 
 [[tool.bumpversion.files]]
 filename = "src/protean/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'
 
 [[tool.bumpversion.files]]
 filename = "src/protean/template/domain_template/pyproject.toml.jinja"
