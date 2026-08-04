@@ -1,6 +1,6 @@
 [project]
 name = "protean"
-version = "0.16.0"
+version = "0.17.0"
 description = "An opinionated DDD, CQRS, and event-sourcing framework for Python"
 authors = [{name = "Subhash Bhushan C", email = "subhash@team8solutions.com"}]
 license = "Apache-2.0"
