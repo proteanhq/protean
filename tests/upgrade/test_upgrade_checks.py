@@ -334,6 +334,7 @@ class TestOutboxMigrationSql:
 
 
 @pytest.mark.postgresql
+@pytest.mark.no_test_domain
 class TestOutboxMigrationsPostgres:
     @pytest.fixture
     def pg_domain(self):
@@ -377,6 +378,7 @@ class TestOutboxMigrationsPostgres:
 
 
 @pytest.mark.sqlite
+@pytest.mark.no_test_domain
 class TestOutboxMigrationsSqlite:
     @pytest.fixture
     def sqlite_domain(self, tmp_path):
@@ -547,3 +549,32 @@ class TestOutboxMigrationsAreNotOverEager:
                 f"{fn.__name__} swallows introspection failures, so a clean "
                 "report cannot be told apart from an unread database"
             )
+
+
+class TestTheBackfillUsesTheConfiguredBroker:
+    """`[outbox] broker` is configurable and the framework writes that name.
+
+    Hard-coding `'default'` labelled legacy rows for a broker the domain does
+    not run, so its processor never claims them and they sit unpublished. The
+    remediation text used to ask the reader to check this by hand, which is a
+    tell: if the code knows the value is a hazard, it can emit the right one.
+    """
+
+    def test_the_default_is_unchanged(self):
+        from protean.upgrade import _outbox_set_not_null_sql
+
+        assert "target_broker = 'default'" in _outbox_set_not_null_sql("postgresql")
+
+    def test_a_configured_broker_reaches_the_sql(self):
+        from protean.upgrade import _outbox_set_not_null_sql
+
+        sql = _outbox_set_not_null_sql("postgresql", None, "kafka")
+        assert "target_broker = 'kafka'" in sql
+        assert "'default'" not in sql
+
+    def test_the_index_remediation_uses_it_too(self):
+        """Both statements carry the same backfill; only one being right is worse."""
+        from protean.upgrade import _outbox_composite_index_sql
+
+        sql = _outbox_composite_index_sql("postgresql", None, True, "kafka")
+        assert "target_broker = 'kafka'" in sql

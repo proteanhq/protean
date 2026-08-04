@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from protean.upgrade_uow import scan_domain_source
-from protean.utils.outbox import Outbox
+from protean.utils.outbox import DEFAULT_TARGET_BROKER, Outbox
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -392,9 +392,19 @@ def _check_unit_of_work_transaction(domain: Domain) -> list[UpgradeFinding]:
 # this preamble — a NULL ``target_broker`` would violate the NOT NULL constraint
 # and, because NULLs compare as distinct in a UNIQUE index, defeat the
 # composite idempotency index.
-def _backfill_sql(schema: str | None = None) -> str:
+def _backfill_sql(
+    schema: str | None = None, broker: str = DEFAULT_TARGET_BROKER
+) -> str:
+    """Backfill legacy NULL ``target_broker`` rows with the domain's own broker.
+
+    `[outbox] broker` is configurable, and the framework writes that name, not
+    the literal ``'default'``. Hard-coding it here would label legacy rows for a
+    broker the domain does not run, so its processor never claims them and they
+    sit unpublished. The remediation text used to ask the reader to check this
+    by hand; emitting the right value is better than asking.
+    """
     return (
-        f"UPDATE {_qualified('outbox', schema)} SET target_broker = 'default' "
+        f"UPDATE {_qualified('outbox', schema)} SET target_broker = '{broker}' "
         "WHERE target_broker IS NULL;"
     )
 
@@ -410,7 +420,9 @@ def _qualified(table: str, schema: str | None) -> str:
     return f"{schema}.{table}" if schema else table
 
 
-def _outbox_set_not_null_sql(dialect: str, schema: str | None = None) -> str:
+def _outbox_set_not_null_sql(
+    dialect: str, schema: str | None = None, broker: str = DEFAULT_TARGET_BROKER
+) -> str:
     """Per-dialect SQL to backfill NULLs and add ``NOT NULL`` on ``target_broker``."""
     table = _qualified("outbox", schema)
     if dialect == "mysql":
@@ -419,11 +431,14 @@ def _outbox_set_not_null_sql(dialect: str, schema: str | None = None) -> str:
         alter = f"ALTER TABLE {table} ALTER COLUMN target_broker varchar(128) NOT NULL;"
     else:  # postgresql / standard
         alter = f"ALTER TABLE {table} ALTER COLUMN target_broker SET NOT NULL;"
-    return f"{_backfill_sql(schema)}\n{alter}"
+    return f"{_backfill_sql(schema, broker)}\n{alter}"
 
 
 def _outbox_composite_index_sql(
-    dialect: str, schema: str | None = None, create_composite: bool = True
+    dialect: str,
+    schema: str | None = None,
+    create_composite: bool = True,
+    broker: str = DEFAULT_TARGET_BROKER,
 ) -> str:
     """Per-dialect SQL to replace ``uq_outbox_message_id`` with the composite index.
 
@@ -436,7 +451,7 @@ def _outbox_composite_index_sql(
         drop = f"DROP INDEX uq_outbox_message_id ON {table};"
     else:  # postgresql / sqlite / standard
         drop = f"DROP INDEX IF EXISTS {_qualified('uq_outbox_message_id', schema)};"
-    statements = [_backfill_sql(schema), drop]
+    statements = [_backfill_sql(schema, broker), drop]
     if create_composite:
         statements.append(
             "CREATE UNIQUE INDEX uq_outbox_message_id_target_broker\n"
@@ -461,6 +476,10 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
         return []
 
     from protean.adapters.repository.sqlalchemy import SAProvider  # noqa: PLC0415
+
+    # The name the framework actually writes, so the emitted SQL labels legacy
+    # rows for the broker this domain runs rather than a guess.
+    broker = domain.config.get("outbox", {}).get("broker", DEFAULT_TARGET_BROKER)
 
     findings: list[UpgradeFinding] = []
     for name, provider in domain.providers.items():
@@ -528,11 +547,11 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
                         "backfill and add the constraint to match the new schema."
                     ),
                     remediation=(
-                        "Confirm the backfill value matches your configured internal "
-                        "broker (`[outbox] broker`, default `default`), then run the SQL."
+                        "Review the generated SQL, then run it. The backfill uses "
+                        "this domain's configured internal broker."
                     ),
                     element=f"databases.{name}",
-                    sql=_outbox_set_not_null_sql(dialect, schema),
+                    sql=_outbox_set_not_null_sql(dialect, schema, broker),
                 )
             )
 
@@ -569,12 +588,15 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
                         "with a UniqueViolation."
                     ),
                     remediation=(
-                        "Confirm the backfill value matches your configured internal "
-                        "broker (`[outbox] broker`, default `default`), then run the SQL."
+                        "Review the generated SQL, then run it. The backfill uses "
+                        "this domain's configured internal broker."
                     ),
                     element=f"databases.{name}",
                     sql=_outbox_composite_index_sql(
-                        dialect, schema, create_composite=not has_composite
+                        dialect,
+                        schema,
+                        create_composite=not has_composite,
+                        broker=broker,
                     ),
                 )
             )
