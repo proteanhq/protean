@@ -612,8 +612,10 @@ def _collect_broker_status(
 # ---------------------------------------------------------------------------
 
 
-def _outbox_processor_names(domain: Domain) -> list[tuple[str, str, str]]:
-    """The outbox processors the Engine would run, as ``(name, provider, label)``.
+def _outbox_processor_names(
+    domain: Domain,
+) -> list[tuple[str, str, str, str | None]]:
+    """The Engine's outbox processors, as ``(name, provider, label, broker)``.
 
     Mirrors ``Engine._initialize_outbox_processors``: one processor per *managed*
     database provider for the primary broker, plus one per managed provider for
@@ -622,6 +624,13 @@ def _outbox_processor_names(domain: Domain) -> list[tuple[str, str, str]]:
     processor, so reporting one would invent a subscription that does not exist,
     and an external processor that is not named here is invisible even though it
     is the lane most likely to back up.
+
+    The fourth element is the broker whose rows that processor claims, or
+    ``None`` when it claims every row. It mirrors ``OutboxProcessor``'s own
+    ``_filter_by_broker``: with external brokers configured, each processor takes
+    only rows whose ``target_broker`` matches its own, so counting all of them
+    would report one combined backlog on every row. Without external brokers
+    ``target_broker`` is ``None`` on every row, and filtering would count zero.
     """
     outbox_config = domain.config.get("outbox", {})
     primary_broker = outbox_config.get("broker", "default")
@@ -633,11 +642,14 @@ def _outbox_processor_names(domain: Domain) -> list[tuple[str, str, str]]:
         if getattr(provider, "managed", True)
     ]
 
-    names: list[tuple[str, str, str]] = [
+    filter_by_broker = bool(external_brokers)
+
+    names: list[tuple[str, str, str, str | None]] = [
         (
             f"outbox-processor-{provider_name}-to-{primary_broker}",
             provider_name,
             f"{provider_name} \u2192 {primary_broker}",
+            primary_broker if filter_by_broker else None,
         )
         for provider_name in managed
     ]
@@ -646,6 +658,7 @@ def _outbox_processor_names(domain: Domain) -> list[tuple[str, str, str]]:
             f"outbox-processor-{provider_name}-to-{broker_name}-external",
             provider_name,
             f"{provider_name} \u2192 {broker_name} (external)",
+            broker_name,
         )
         for broker_name in external_brokers
         for provider_name in managed
@@ -660,11 +673,16 @@ def _collect_outbox_statuses(domain: Domain) -> list[SubscriptionStatus]:
     if not domain.has_outbox:
         return statuses
 
-    for name, database_provider_name, stream_label in _outbox_processor_names(domain):
+    for (
+        name,
+        database_provider_name,
+        stream_label,
+        target_broker,
+    ) in _outbox_processor_names(domain):
         try:
             with domain.domain_context():
                 outbox_repo = domain._get_outbox_repo(database_provider_name)
-                counts = outbox_repo.count_by_status()
+                counts = outbox_repo.count_by_status(target_broker)
 
                 pending_count = counts.get("pending", 0)
                 processing_count = counts.get("processing", 0)

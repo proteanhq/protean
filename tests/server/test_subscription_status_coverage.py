@@ -14,6 +14,7 @@ import pytest
 
 from protean.server.subscription_status import (
     _classify_status,
+    _collect_outbox_statuses,
     _collect_partitioned_stream_status,
     _is_partitioned_category,
     _outbox_processor_names,
@@ -38,12 +39,12 @@ class TestOutboxProcessorNaming:
 
     def test_one_row_per_managed_provider(self):
         names = _outbox_processor_names(_domain({"default": _provider()}))
-        assert [n for n, _, _ in names] == ["outbox-processor-default-to-default"]
+        assert [n for n, _, _, _ in names] == ["outbox-processor-default-to-default"]
 
     def test_unmanaged_providers_get_no_row(self):
         """The Engine skips them, so reporting one invents a subscription."""
         domain = _domain({"default": _provider(), "readonly": _provider(managed=False)})
-        providers = [p for _, p, _ in _outbox_processor_names(domain)]
+        providers = [p for _, p, _, _ in _outbox_processor_names(domain)]
         assert providers == ["default"]
 
     def test_external_brokers_get_their_own_processors(self):
@@ -52,7 +53,7 @@ class TestOutboxProcessorNaming:
             {"default": _provider()},
             {"broker": "default", "external_brokers": ["partner", "analytics"]},
         )
-        names = [n for n, _, _ in _outbox_processor_names(domain)]
+        names = [n for n, _, _, _ in _outbox_processor_names(domain)]
         assert names == [
             "outbox-processor-default-to-default",
             "outbox-processor-default-to-partner-external",
@@ -62,7 +63,7 @@ class TestOutboxProcessorNaming:
     def test_external_processors_are_named_as_the_engine_names_them(self):
         """The `-external` suffix is what the Engine keys them by."""
         domain = _domain({"db": _provider()}, {"external_brokers": ["partner"]})
-        names = [n for n, _, _ in _outbox_processor_names(domain)]
+        names = [n for n, _, _, _ in _outbox_processor_names(domain)]
         assert "outbox-processor-db-to-partner-external" in names
 
     def test_external_brokers_cross_every_managed_provider(self):
@@ -70,7 +71,7 @@ class TestOutboxProcessorNaming:
             {"a": _provider(), "b": _provider(), "skip": _provider(managed=False)},
             {"external_brokers": ["partner"]},
         )
-        names = [n for n, _, _ in _outbox_processor_names(domain)]
+        names = [n for n, _, _, _ in _outbox_processor_names(domain)]
         assert len(names) == 4  # 2 managed x (1 primary + 1 external)
         assert not any("skip" in n for n in names)
 
@@ -542,3 +543,48 @@ class TestPartitionLagFallsBackToXrange:
     def test_a_group_with_neither_lag_nor_a_position_stays_unknown(self):
         status = self._collect({"a": [{"name": "grp", "pending": 0}]})
         assert status.lag is None
+
+
+class TestEachOutboxRowCountsItsOwnBroker:
+    """One combined backlog repeated on every row is not per-processor status.
+
+    With `outbox.external_brokers` set, each `OutboxProcessor` claims only rows
+    whose `target_broker` is its own. Counting every row instead gave all of
+    them the same numbers, which disagree with what any one of them is actually
+    working through. Filing that under this issue because adding the external
+    rows is what made a single unfiltered count visibly wrong.
+    """
+
+    def _brokers(self, external):
+        domain = _domain({"default": _provider()}, {"external_brokers": external})
+        return {name: broker for name, _, _, broker in _outbox_processor_names(domain)}
+
+    def test_without_external_brokers_nothing_is_filtered(self):
+        """`target_broker` is `None` on every row, so a filter would count zero."""
+        assert self._brokers([]) == {"outbox-processor-default-to-default": None}
+
+    def test_with_external_brokers_each_row_names_its_own(self):
+        assert self._brokers(["partner"]) == {
+            "outbox-processor-default-to-default": "default",
+            "outbox-processor-default-to-partner-external": "partner",
+        }
+
+    def test_every_external_row_gets_a_distinct_broker(self):
+        brokers = self._brokers(["partner", "analytics"])
+        assert brokers["outbox-processor-default-to-partner-external"] == "partner"
+        assert brokers["outbox-processor-default-to-analytics-external"] == "analytics"
+        assert len(set(brokers.values())) == 3
+
+    def test_the_filter_reaches_the_repository(self):
+        """The value has to be passed on, not merely computed."""
+        domain = MagicMock()
+        domain.has_outbox = True
+        domain.providers = {"default": _provider()}
+        domain.config = {"outbox": {"external_brokers": ["partner"]}}
+        repo = domain._get_outbox_repo.return_value
+        repo.count_by_status.return_value = {"pending": 1}
+
+        _collect_outbox_statuses(domain)
+
+        passed = [c.args[0] for c in repo.count_by_status.call_args_list]
+        assert passed == ["default", "partner"]
