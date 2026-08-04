@@ -256,7 +256,7 @@ The policies in this ADR apply to the current pre-1.0 phase. Pre-1.0, we have mo
 
 ### The post-1.0 model: deprecation-managed, not strict SemVer
 
-At 1.0 Protean adopts a **deprecation-managed** model for the 1.x series, in the style of Django and Rails rather than strict semantic versioning.
+At 1.0 Protean adopts a **deprecation-managed** model for the 1.x series, in the style of Django, Rails, and SQLAlchemy rather than strict semantic versioning.
 
 **The contract, in one sentence:** Code that runs warning-free on 1.N runs unmodified on 1.N+1.
 
@@ -274,7 +274,7 @@ A user who does that has turned "will my upgrade break?" into a test run. (Filte
 
 - **Patch** (1.2.0 → 1.2.1) never changes API. Bug fixes only.
 - **Minor** (1.2 → 1.3) may add features, introduce deprecations, flip a Tier 2 flag that has already served its warning minor, and make Tier 3 changes with versioned schemas and shipped migrations. A minor never removes anything that was not already deprecated for two minors.
-- **Removals** happen only in **pre-announced cleanup releases** or at a major.
+- **Removals** happen only in **cleanup releases** or at a major. A cleanup release is itself a minor: what makes it a cleanup release is that it is announced in advance as containing removals, and that everything it removes has served its full deprecation window. So "removals only happen in a cleanup release" and "a minor may remove a long-deprecated API" are the same statement, not competing ones.
 - **Majors are eras**, not accumulated breakage.
 
 ### Why not strict SemVer
@@ -288,6 +288,24 @@ Strict SemVer says breaking changes only in majors. Applied to a framework, that
 The deprecation-managed model separates the two questions SemVer conflates. "Is this safe to upgrade?" is answered by the warning-free contract, continuously, per release. "Has the nature of the project changed?" is answered by the major version. A user with a clean warning log upgrades minors without reading anything. A major means the boundary of what Protean claims to do has moved.
 
 **What a major is reserved for.** A major marks a shift in the declared scope boundary, not a pile of small breaks. Concretely: a change in the security posture (what Protean will hold and protect on the user's behalf), or a change in the concurrency model (for example, cluster-safe multi-worker operation, which changes the deployment contract rather than a signature). These are shifts a user must think about, not mechanically patch.
+
+### Precedent: this is the SQLAlchemy model, and we already ship half of it
+
+The closest precedent is not Django but **SQLAlchemy**, which describes its scheme as a "modified semantic versioning scheme" and states plainly that point releases are fully compatible while minor releases are "typically backwards compatible within the range of not-previously-deprecated APIs, with some risk of non-backwards compatibility."
+
+Its upgrade mechanism is the one adopted here, almost exactly:
+
+- **A per-version deprecation warning class.** SQLAlchemy emits `RemovedIn20Warning`; Protean already emits `RemovedInProtean018Warning` and friends from `protean._deprecation`. This was built before the policy was written down, so the policy is ratifying existing machinery rather than proposing new work.
+- **Warning-free means upgrade-safe.** SQLAlchemy's stated strategy is that once an application runs on 1.4 with the deprecation flags on and emits no 2.0 warnings, it is cross-compatible with 2.0. That is our contract sentence, arrived at independently and validated by a project with a far larger blast radius than ours.
+- **An early-warning switch.** SQLAlchemy gates next-major warnings behind `SQLALCHEMY_WARN_20=1` so users opt into seeing them before they are due. `protean check` plays that role for us, with the advantage of not requiring the code path to actually execute.
+- **Opt-in flags for behavioral change.** SQLAlchemy's `future=True` let 1.4 users run 2.0 semantics early. That is exactly our Tier 2 flag sequence.
+
+Two places we deliberately promise **more** than SQLAlchemy does:
+
+- SQLAlchemy accepts "some risk of non-backwards compatibility" in a minor even outside deprecated APIs. We do not: a minor may not break warning-free code, full stop. We can afford the stricter line because our surface is smaller and younger.
+- SQLAlchemy's deprecation window is not a fixed number of releases. Ours is at least two minors, stated up front, so a user can plan around it without reading release notes.
+
+The one place we are **less** strict is the shape of the version number itself: SQLAlchemy's minor position is where its breaking changes land, so 1.3 → 1.4 is a real migration. Ours is not, because we reserve that for cleanup releases and majors.
 
 ### What hardens at 1.0
 

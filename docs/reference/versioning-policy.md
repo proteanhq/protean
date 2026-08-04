@@ -58,10 +58,31 @@ do not happen to exercise.
 
 ### Removals
 
-A removal happens only in a **pre-announced cleanup release** or at a major.
 Before anything is removed it must have carried a `DeprecationWarning` and a
 `protean check` rule for **at least two minor versions**. Deprecated in 1.3
 means the earliest possible removal is 1.5.
+
+Removals land in a **cleanup release** or at a major. A cleanup release is an
+ordinary minor that is announced in advance as containing removals; there is no
+separate version position for it. If you have kept your warning log clean, a
+cleanup release is not a migration for you either.
+
+### How this compares to SQLAlchemy
+
+If you already know SQLAlchemy's scheme, this will be familiar: they also use a
+"modified semantic versioning scheme" and the same warning-driven upgrade path,
+where an application that runs clean under the deprecation warnings is ready for
+the next series. Protean uses per-version warning classes for the same reason
+they do.
+
+Two differences worth knowing:
+
+- SQLAlchemy's **minor** position is where its breaking changes land, so 1.3 to
+  1.4 is a genuine migration. Protean's minors are not: a minor may not break
+  warning-free code.
+- SQLAlchemy does not fix a deprecation window. Protean's is at least two
+  minors, stated up front, so you can plan around it without reading release
+  notes.
 
 ### Majors are eras, not accumulated breakage
 
