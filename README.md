@@ -114,7 +114,7 @@ packages** built against the public conformance suite.
 
 - Found a bug or have a use case to share? [Open an issue](https://github.com/proteanhq/protean/issues). Clear, reproducible reports are the most valuable contribution you can make, and they are answered as a priority.
 - Planning a non-trivial code change? Open an issue to discuss it first, before investing in a pull request. Unsolicited large PRs may not be merged. Small, obvious fixes are welcome directly.
-- Building an adapter? Adapters live in their own packages, certified against the conformance suite. See the [contributing guide](https://docs.proteanhq.com/community/contributing/).
+- Building an adapter? Adapters live in their own packages, certified against the conformance suite. See the [contributing guide](https://docs.proteanhq.com/community/contributing/setup/).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [community](https://docs.proteanhq.com/community/) section for the full picture.
