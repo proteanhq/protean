@@ -152,6 +152,66 @@ class TestConfigResolverServerDefaults:
         assert config.blocking_timeout_ms == 8000
         assert config.max_retries == 7
 
+    def test_applies_server_retention_maxlen(self, test_domain):
+        """`retention_maxlen` resolves from `[server.stream_subscription]`.
+
+        The reference docs list it in that section's options table alongside
+        keys that did work, but the resolver never read it there, so setting it
+        was silently ignored and no stream was ever trimmed.
+
+        The handler has to be a stream subscription: retention is meaningless
+        for an event-store one, where an inherited value is deliberately cleared
+        (see below).
+        """
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+        test_domain.config["server"]["stream_subscription"]["retention_maxlen"] = 50_000
+
+        @test_domain.event_handler(part_of=Order)
+        class RetentionHandler(BaseEventHandler):
+            pass
+
+        resolver = ConfigResolver(test_domain)
+        config = resolver.resolve(RetentionHandler)
+
+        assert config.retention_maxlen == 50_000
+
+    def test_handler_level_retention_maxlen_wins_over_server_default(self, test_domain):
+        """A server-wide default must not override a per-handler setting."""
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+        test_domain.config["server"]["stream_subscription"]["retention_maxlen"] = 50_000
+        test_domain.config["server"]["subscriptions"] = {
+            "OverridingHandler": {"retention_maxlen": 900}
+        }
+
+        @test_domain.event_handler(part_of=Order)
+        class OverridingHandler(BaseEventHandler):
+            pass
+
+        resolver = ConfigResolver(test_domain)
+        config = resolver.resolve(OverridingHandler)
+
+        assert config.retention_maxlen == 900
+
+    def test_server_retention_is_cleared_for_event_store_subscriptions(
+        self, test_domain
+    ):
+        """A stream-wide default must not leak onto an event-store subscription.
+
+        It is inherited rather than chosen for this handler, so it is dropped
+        quietly instead of raising, which is what an explicit setting would do.
+        """
+        test_domain.config["server"]["default_subscription_type"] = "event_store"
+        test_domain.config["server"]["stream_subscription"]["retention_maxlen"] = 50_000
+
+        @test_domain.event_handler(part_of=Order)
+        class EventStoreRetentionHandler(BaseEventHandler):
+            pass
+
+        resolver = ConfigResolver(test_domain)
+        config = resolver.resolve(EventStoreRetentionHandler)
+
+        assert config.retention_maxlen is None
+
     def test_applies_server_event_store_subscription_settings(self, test_domain):
         """Server event_store_subscription settings are applied."""
         test_domain.config["server"]["event_store_subscription"][

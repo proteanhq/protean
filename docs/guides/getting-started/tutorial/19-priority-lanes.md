@@ -24,8 +24,8 @@ production traffic is never delayed by bulk operations.
 Enable priority lanes in `domain.toml`:
 
 ```toml
-[server]
-priority_lanes = true
+[server.priority_lanes]
+enabled = true
 ```
 
 ## The Import Script

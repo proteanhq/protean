@@ -1,6 +1,6 @@
 debug = true
 testing = false
-secret_key = ${SECRET_KEY|{{ 999999999999999999999999999999999|ans_random|hash('sha256') }}}
+secret_key = "${SECRET_KEY|{{ 999999999999999999999999999999999|ans_random|hash('sha256') }}}"
 identity_strategy = "uuid"
 identity_type = "string"
 event_processing = "sync"
@@ -10,17 +10,13 @@ command_processing = "sync"
 [databases.default]
 provider = "{{ database }}"
 {%- if database == "postgresql" %}
-database_uri = ${DATABASE_URL|"postgresql://postgres:postgres@localhost:5432/{{ package_name }}_db"}
+database_uri = "${DATABASE_URL|postgresql://postgres:postgres@localhost:5432/{{ package_name }}_db}"
 {%- elif database == "sqlite" %}
-database = "sqlite"
-database_uri = ${DATABASE_URL|"sqlite:///./{{ package_name }}.db"}
+database_uri = "${DATABASE_URL|sqlite:///./{{ package_name }}.db}"
 {%- elif database == "mssql" %}
-database_uri = ${DATABASE_URL|"mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"}
+database_uri = "${DATABASE_URL|mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes}"
 {%- elif database == "elasticsearch" %}
-host = ${ELASTICSEARCH_HOST|"localhost"}
-port = ${ELASTICSEARCH_PORT|9200}
-username = ${ELASTICSEARCH_USERNAME|}
-password = ${ELASTICSEARCH_PASSWORD|}
+database_uri = '${ELASTICSEARCH_URL|{"hosts": ["http://localhost:9200"]}}'
 {%- endif %}
 
 # Memory Database (for testing)
@@ -30,53 +26,47 @@ provider = "memory"
 {%- if database == "sqlite" %}
 # SQLite Database
 [databases.sqlite]
-provider = "sqlalchemy"
-database = "sqlite"
-database_uri = ${DATABASE_URL|"sqlite:///./{{ package_name }}.db"}
+provider = "sqlite"
+database_uri = "${DATABASE_URL|sqlite:///./{{ package_name }}.db}"
 {%- endif %}
 
 {%- if database == "postgresql" or event_store == "message-db" %}
 # PostgreSQL Database
 [databases.postgresql]
-provider = "sqlalchemy"
-database = "postgresql"
-database_uri = ${DATABASE_URL|"postgresql://postgres:postgres@localhost:5432/{{ package_name }}_db"}
+provider = "postgresql"
+database_uri = "${DATABASE_URL|postgresql://postgres:postgres@localhost:5432/{{ package_name }}_db}"
 {%- endif %}
 
 {%- if database == "mssql" %}
 # MS SQL Server Database
 [databases.mssql]
-provider = "sqlalchemy"
-database = "mssql"
-database_uri = ${DATABASE_URL|"mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"}
+provider = "mssql"
+database_uri = "${DATABASE_URL|mssql+pyodbc://sa:YourStrong@Passw0rd@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes}"
 {%- endif %}
 
 {%- if database == "elasticsearch" %}
 # Elasticsearch Database
 [databases.elasticsearch]
 provider = "elasticsearch"
-host = ${ELASTICSEARCH_HOST|"localhost"}
-port = ${ELASTICSEARCH_PORT|9200}
-username = ${ELASTICSEARCH_USERNAME|}
-password = ${ELASTICSEARCH_PASSWORD|}
+database_uri = '${ELASTICSEARCH_URL|{"hosts": ["http://localhost:9200"]}}'
 {%- endif %}
 
 # Default Event Store Configuration
 [event_store]
 {%- if event_store == "message-db" %}
 provider = "message_db"
-database_uri = ${MESSAGE_DB_URL|"postgresql://message_store:message_store@localhost:5433/message_store"}
+database_uri = "${MESSAGE_DB_URL|postgresql://message_store:message_store@localhost:5433/message_store}"
 {%- else %}
 provider = "{{ event_store }}"
 {%- endif %}
 
 # Default Broker Configuration
 [brokers.default]
-provider = "{{ broker }}"
+provider = "{{ 'redis_pubsub' if broker == 'redis-pubsub' else broker }}"
 {%- if broker == "redis" %}
-redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+URI = "${REDIS_URL|redis://localhost:6379/0}"
 {%- elif broker == "redis-pubsub" %}
-redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+URI = "${REDIS_URL|redis://localhost:6379/0}"
 channel = "{{ package_name }}"
 {%- endif %}
 
@@ -88,12 +78,12 @@ provider = "inline"
 # Redis Stream Broker
 [brokers.redis]
 provider = "redis"
-redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+URI = "${REDIS_URL|redis://localhost:6379/0}"
 
 # Redis Pub/Sub Broker
 [brokers.redis_pubsub]
 provider = "redis_pubsub"
-redis_url = ${REDIS_URL|"redis://localhost:6379/0"}
+URI = "${REDIS_URL|redis://localhost:6379/0}"
 channel = "{{ package_name }}"
 {%- endif %}
 
@@ -101,8 +91,8 @@ channel = "{{ package_name }}"
 [caches.default]
 provider = "{{ cache }}"
 {%- if cache == "redis" %}
-redis_url = ${REDIS_URL|"redis://localhost:6379/1"}
-ttl = ${CACHE_TTL|3600}
+URI = "${REDIS_URL|redis://localhost:6379/1}"
+TTL = 3600
 {%- endif %}
 
 # Memory Cache
@@ -113,8 +103,8 @@ provider = "memory"
 # Redis Cache
 [caches.redis]
 provider = "redis"
-redis_url = ${REDIS_URL|"redis://localhost:6379/1"}
-ttl = ${CACHE_TTL|3600}
+URI = "${REDIS_URL|redis://localhost:6379/1}"
+TTL = 3600
 {%- endif %}
 
 # Logging Configuration

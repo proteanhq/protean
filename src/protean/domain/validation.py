@@ -372,6 +372,18 @@ class DomainValidator:
         if not lanes_config:
             return
 
+        # `priority_lanes = true` is the natural guess, and it used to fail with
+        # a bare `AttributeError: 'bool' object has no attribute 'get'` from the
+        # next line, which says nothing about what to write instead.
+        if not isinstance(lanes_config, dict):
+            raise ConfigurationError(
+                f"server.priority_lanes must be a table, got "
+                f"{type(lanes_config).__name__}: {lanes_config!r}. Write it as "
+                f"a section:\n\n"
+                f"    [server.priority_lanes]\n"
+                f"    enabled = true"
+            )
+
         enabled = lanes_config.get("enabled", False)
         if not isinstance(enabled, bool):
             raise ConfigurationError(

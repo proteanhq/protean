@@ -115,7 +115,9 @@ provider = "memory"
 [server]
 default_subscription_type = "stream"
 messages_per_tick = 100
-priority_lanes = true
+
+[server.priority_lanes]
+enabled = true
 
 [server.stream_subscription]
 blocking_timeout_ms = 100
