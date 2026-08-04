@@ -499,6 +499,76 @@ source = ["myapp"]
 omit = ["myapp/__init__.py", "myapp/config.py"]
 ```
 
+## Freezing Time
+
+Anything with a deadline, a lock expiry, or a retry backoff is awkward to test
+against the real clock. The usual workaround is to sleep just under the
+threshold and assert the thing has not happened yet, which is a race: the margin
+you left is the margin a busy CI machine will eat.
+
+Every domain holds a clock on `domain.clock`. Replace it and the code that reads
+it sees whatever time you say. Restore it afterwards, or the frozen time leaks
+into every test that runs next:
+
+```python
+# tests/conftest.py
+from datetime import UTC, datetime
+
+import pytest
+
+from myapp import domain
+
+
+class FrozenClock:
+    """A `Clock` is anything with a `now()` returning an aware UTC datetime."""
+
+    def __init__(self, moment: datetime) -> None:
+        self.moment = moment
+
+    def now(self) -> datetime:
+        return self.moment
+
+
+@pytest.fixture
+def frozen_clock():
+    original = domain.clock
+    domain.clock = FrozenClock(datetime(2030, 1, 1, tzinfo=UTC))
+    yield domain.clock
+    domain.clock = original
+```
+
+A deadline test then states its intent directly, with nothing to race:
+
+```python
+from datetime import timedelta
+
+from protean.utils.eventing import MessageHeaders
+
+
+def test_a_message_past_its_deadline_is_expired(frozen_clock):
+    headers = MessageHeaders(deadline=frozen_clock.now() - timedelta(seconds=1))
+
+    assert headers.is_expired()
+
+
+def test_time_passing_expires_it(frozen_clock):
+    headers = MessageHeaders(deadline=frozen_clock.now() + timedelta(hours=1))
+    assert not headers.is_expired()
+
+    frozen_clock.moment += timedelta(hours=2)  # move time, do not wait for it
+
+    assert headers.is_expired()
+```
+
+The default is `SystemClock`, which returns `datetime.now(UTC)`, so a domain you
+have not touched behaves exactly as before. `Clock` is a `Protocol`, so a stub
+does not subclass anything: a `now()` returning a timezone-aware UTC `datetime`
+is the whole contract. Both live in `protean.utils`.
+
+Prefer this to patching `datetime` at module scope. Patching reaches into
+whichever module you named and misses the others, and it breaks as soon as the
+code moves; the clock is a seam the framework maintains.
+
 ## Anti-Patterns to Avoid
 
 ### Don't Mock Domain Objects

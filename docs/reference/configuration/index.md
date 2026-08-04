@@ -690,6 +690,7 @@ level = "warn"                        # exit-code severity floor
 aggregate_size_limit = 5              # entities before AGGREGATE_TOO_LARGE
 handler_breadth_limit = 5             # message types before HANDLER_TOO_BROAD
 check_infra_imports = false           # flag domain modules importing protean.adapters
+check_adapter_calls = false           # flag domain elements calling adapters directly
 rules = ["my_app.lint.check_names"]   # dotted paths to custom rule callables
 
 [lint.suppressions]
@@ -702,6 +703,7 @@ UNHANDLED_EVENT = 3                    # grandfather the first 3 findings
 | `aggregate_size_limit` | int | `5` | Entity count above which an aggregate emits `AGGREGATE_TOO_LARGE`. |
 | `handler_breadth_limit` | int | `5` | Message-type count above which a handler emits `HANDLER_TOO_BROAD`. |
 | `check_infra_imports` | bool | `false` | When `true`, `protean check` AST-parses each resolvable domain element's source module (skipping elements with no file-backed module and imports guarded by `TYPE_CHECKING`, `try`/`except`, or a function body) and emits `INFRA_IMPORT_IN_DOMAIN` for any top-level import from `protean.adapters`. Off by default because it reads source files. |
+| `check_adapter_calls` | bool | `false` | When `true`, `protean check` emits `ADAPTER_CALL_IN_DOMAIN` for a domain element calling into an adapter directly rather than through a port. Off by default because it reads source files. |
 | `rules` | list[str] | `[]` | Dotted import paths to custom lint callables with the signature `(ir: dict) -> list[dict]`. |
 | `suppressions` | table | `{}` | A `{CODE: N}` map that grandfathers the first `N` findings of each code, in a deterministic `(code, element, field, message)` order. Findings beyond `N` are still reported. |
 
@@ -712,6 +714,31 @@ Individual elements can silence specific codes for themselves with the
 `suppress_checks` decorator option (for example
 `@domain.aggregate(suppress_checks=["AGGREGATE_TOO_LARGE"])`), which takes
 precedence over the `[lint.suppressions]` allow-list.
+
+### `[server.partitioning]`
+
+Tunables for `sequential_by` partition ownership. Defaults suit most
+deployments; raise the lease TTL only if your handlers routinely pause longer
+than it.
+
+```toml
+[server.partitioning]
+lease_ttl_ms = 15000              # how long an ownership lease survives without renewal
+heartbeat_interval_seconds = 3.0  # how often the owner renews it
+poll_interval_seconds = 0.25      # how often a worker looks for unowned partitions
+reap_idle_ms = 3600000            # idle time before a cold partition is pruned
+```
+
+| Key | Type | Default | Purpose |
+|-----|------|---------|---------|
+| `lease_ttl_ms` | int | `15000` | How long a partition's ownership lease survives without renewal. A worker that dies frees its partitions after this. |
+| `heartbeat_interval_seconds` | float | `3.0` | How often the owner renews the lease. Keep it well under `lease_ttl_ms`. |
+| `poll_interval_seconds` | float | `0.25` | How often a worker looks for partitions it could take. |
+| `reap_idle_ms` | int | `3600000` | How long a partition must be empty and idle before it is pruned from the index. |
+
+See [Sequential processing](../server/sequential-by.md) for the model these
+configure, and [ADR-0028](https://github.com/proteanhq/protean/blob/main/docs/adr/0028-partition-per-key-sequential-processing.md)
+for why ownership is leased and fenced.
 
 ## Custom Attributes
 

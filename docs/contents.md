@@ -305,6 +305,7 @@ dependencies.
 - [Broker Overview](./reference/adapters/broker/index.md) -- Unified interface for message broker implementations.
 - [Inline Broker](./reference/adapters/broker/inline.md) -- Synchronous in-memory broker for development and testing.
 - [Redis Streams](./reference/adapters/broker/redis.md) -- Durable ordered messaging with consumer groups.
+- [Broker Partitioning Contract](./reference/adapters/broker/partitioning.md) -- The port contract an adapter implements to support `sequential_by`: partition discovery, fenced ownership leases, and stream trimming.
 - [Redis PubSub](./reference/adapters/broker/redis-pubsub.md) -- Redis Lists-based queuing with consumer groups.
 - [Custom Brokers](./reference/adapters/broker/custom-brokers.md) -- Build your own broker adapter.
 

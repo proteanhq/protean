@@ -84,6 +84,11 @@ supported, and `protean check` will not warn you before they move.
 - **`Field`** as the base class for custom field types.
 - **`FieldBase`**, the common ancestor of the field hierarchy.
 - **`ResolvedField`**, the field-reflection API adapter authors read.
+- **The broker partitioning contract** in `protean.port.broker`: the partition
+  discovery, fenced-lease and `trim` methods an adapter implements to support
+  `sequential_by`, plus the `LeaseLostError` they raise. Enumerated in
+  [Broker partitioning](adapters/broker/partitioning.md). It lives outside the
+  three modules the export index covers, so the index test does not police it.
 - **Observatory HTTP and JSON endpoints.** Useful for tooling, but the
   dashboard's payloads are shaped for the dashboard.
 - **`protean.server` internals reached by operations tooling**, such as the

@@ -1,9 +1,14 @@
-"""CLI command for ``protean upgrade-check`` — 0.16 upgrade-readiness diagnostics.
+"""CLI command for ``protean upgrade-check`` — upgrade-readiness diagnostics.
 
 Inspects a loaded domain (and, where reachable, its live database schema) and
-reports changes that may need operator attention when upgrading to 0.16, with
-concrete remediation. Schema changes are *generated* as SQL to review and run;
-nothing is applied automatically.
+reports changes that may need operator attention when upgrading to a newer
+Protean, with concrete remediation.
+
+The checks accumulate across releases rather than targeting one. Each finding
+names the release its change came from.
+
+Nothing is applied automatically. Schema changes are *generated* as SQL for you
+to review and run.
 
 Usage::
 
@@ -51,7 +56,7 @@ def upgrade_check(
         ),
     ] = "rich",
 ) -> None:
-    """Report changes that need attention when upgrading a domain to 0.16."""
+    """Report changes that need attention when upgrading to a newer Protean."""
     if format not in ("rich", "json"):
         print(f"[red]Invalid --format: {format!r}. Use 'rich' or 'json'.[/red]")
         raise typer.Exit(code=1)
@@ -90,7 +95,7 @@ def _print_rich(domain_name: str, findings: list[UpgradeFinding]) -> None:
 
     if not findings:
         print(f"\n  Domain: [bold]{domain_name}[/bold]  [bold green]READY[/bold green]")
-        print("  No upgrade actions detected for 0.16.\n")
+        print("  No upgrade actions detected.\n")
         return
 
     print(f"\n  Domain: [bold]{domain_name}[/bold]  [bold yellow]REVIEW[/bold yellow]")

@@ -16,7 +16,7 @@ protean server [OPTIONS]
 | `--test-mode`                   | Runs the server in test mode.                                               | `False` |
 | `--workers`                     | Number of worker processes to spawn.                                       | `1`     |
 | `--reload`                      | Auto-reload on file changes (development only; cannot combine with `--workers > 1`). | `False` |
-| `--allow-event-store-multiworker`| Allow `--workers > 1` even with event-store subscriptions (see below).      | `False` |
+| `--allow-event-store-multiworker`| Allow `--workers > 1` even with event-store subscriptions (see below). Also accepted as `--acknowledge-event-store-risk`.      | `False` |
 | `--help`                        | Shows the help message and exits.                                          |         |
 
 ### Multiple workers and the event-store single-writer boundary

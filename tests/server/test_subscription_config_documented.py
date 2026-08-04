@@ -18,6 +18,10 @@ from protean.server.subscription.profiles import (
     SubscriptionConfig,
 )
 
+# These read a markdown file and static metadata. Nothing here needs a domain,
+# so skip the autouse fixture that builds one per test.
+pytestmark = pytest.mark.no_test_domain
+
 DOCS = Path(__file__).resolve().parents[2] / "docs"
 CONFIG_REFERENCE = DOCS / "reference" / "server" / "configuration.md"
 TUNING_GUIDE = DOCS / "guides" / "server" / "tuning-subscriptions.md"
@@ -85,3 +89,37 @@ class TestTuningGuideCoversTheTuningFeatures:
     )
     def test_guide_covers(self, topic, guide_text):
         assert topic in guide_text, f"The tuning guide does not mention {topic!r}."
+
+
+class TestCustomProfileFieldListIsCurrent:
+    """The documented allowed-field list drifted from `PROFILE_FIELDS`.
+
+    The reference listed 10 of the 12 fields a custom profile may set, omitting
+    both circuit-breaker keys, so a user following it would think those could
+    only be set per handler. The per-field test above did not catch it because
+    the names appear elsewhere on the page; this one reads the actual list.
+    """
+
+    def test_every_allowed_field_appears_in_the_allowed_list(self, reference_text):
+        from protean.server.subscription.profiles import PROFILE_FIELDS
+
+        # `find` rather than `index`: if the page is restructured the useful
+        # failure is "the paragraph moved", not a bare `ValueError` from a
+        # string method several frames down.
+        start = reference_text.find("**Allowed fields.**")
+        assert start != -1, (
+            "The reference no longer has an '**Allowed fields.**' paragraph. "
+            "Point this test at wherever the allowed set is now listed."
+        )
+        end = reference_text.find("**Validation**", start)
+        assert end != -1, (
+            "'**Allowed fields.**' is no longer followed by '**Validation**', "
+            "so this test cannot tell where the list ends."
+        )
+        listed = reference_text[start:end]
+
+        missing = sorted(f for f in PROFILE_FIELDS if f"`{f}`" not in listed)
+        assert not missing, (
+            "A custom profile may set these fields, but the 'Allowed fields' "
+            f"paragraph in the reference does not list them: {missing}"
+        )
