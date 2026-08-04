@@ -102,9 +102,13 @@ def _anchors(text: str) -> set[str]:
 
 @pytest.fixture(scope="module")
 def fragments() -> list[Path]:
-    found = _fragments()
-    assert found, "no changelog fragments found; the glob or path is wrong"
-    return found
+    """Every queued fragment, which is legitimately none.
+
+    `changes/` is emptied when a release is assembled, so an empty list is the
+    normal state immediately after a cut, not a broken glob. Asserting
+    non-empty here turned the first commit after 0.17.0's assembly red.
+    """
+    return _fragments()
 
 
 @pytest.fixture(scope="module")
