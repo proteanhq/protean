@@ -4,6 +4,13 @@ import time
 
 from protean.adapters.broker.inline import CONSUMER_GROUP_SEPARATOR
 
+# `nack` stores `time.time() + delay`. A wall-clock timestamp is around 1.8e9,
+# where a float carries only about 2e-7 seconds of absolute precision, so that
+# addition rounds and the bracket below cannot be asserted exactly. One
+# microsecond covers the rounding and is still five orders of magnitude under
+# the smallest delay under test, so a real backoff error cannot hide in it.
+_CLOCK_EPSILON = 1e-6
+
 
 def test_basic_retry_mechanism(broker):
     """Test basic retry mechanism after NACK."""
@@ -62,17 +69,21 @@ def test_exponential_backoff(broker):
     assert broker.get_next(stream, consumer_group) is not None
 
     for attempt in range(broker._max_retries):
-        nacked_at = time.time()
+        # `nack` records `now() + delay` at some instant inside this window, so
+        # the delay it chose is bracketed by it. The bracket is what makes this
+        # deterministic: a slow machine widens the window, which admits a later
+        # `scheduled`, never a wrong delay. There is no tolerance to tune.
+        before = time.time()
         broker.nack(stream, identifier, consumer_group)
+        after = time.time()
 
         # Still withheld: its retry time has not arrived.
         assert broker.get_next(stream, consumer_group) is None
 
         scheduled = _scheduled_retry_time(broker, stream, consumer_group, identifier)
         expected_delay = broker._retry_delay * broker._backoff_multiplier**attempt
-        # `nacked_at` is read just before the delay is added, so the measured
-        # wait is the real delay plus however long the call itself took.
-        assert expected_delay <= scheduled - nacked_at < expected_delay + 0.5
+        assert scheduled - after - _CLOCK_EPSILON <= expected_delay
+        assert expected_delay <= scheduled - before + _CLOCK_EPSILON
 
         _make_retry_due(broker, stream, consumer_group, identifier)
         assert broker.get_next(stream, consumer_group) is not None
