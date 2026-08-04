@@ -154,4 +154,12 @@ class RedisCache(BaseCache):
         # (the `TTL` config key, `add(ttl=)`, `set_ttl`), and the memory cache
         # returns seconds here too, so returning milliseconds made the same
         # method mean different things depending on the adapter (#1307).
-        return float(self._client.pttl(key)) / 1000
+        remaining_ms = self._client.pttl(key)
+
+        # Two of Redis' answers are not durations: `-1` means the key exists
+        # with no expiry and `-2` means there is no such key. Scaling those
+        # would turn documented sentinels into `-0.001` and `-0.002`, which
+        # compare as "expiring imminently" rather than as the flags they are.
+        if remaining_ms < 0:
+            return float(remaining_ms)
+        return float(remaining_ms) / 1000

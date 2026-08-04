@@ -13,7 +13,6 @@ from protean.exceptions import (
 )
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
-from protean.utils.globals import current_domain
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +103,12 @@ def use_case(func: Callable[..., Any]) -> Callable[..., Any]:
         # `AttributeError: 'NoneType' object has no attribute 'providers'`
         # from inside the transaction machinery, which names neither the use
         # case nor the missing context and reads like a framework bug (#1293).
-        if not current_domain:
+        # Local import: `protean.domain.context` imports back into this module
+        # through the element registry. `exceptions.py` and `entity.py` take the
+        # same escape hatch for the same reason.
+        from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+        if not has_domain_context():
             raise ConfigurationError(
                 f"Use case `{func.__qualname__}` needs an active domain "
                 "context, because it runs inside a Unit of Work. Wrap the call "

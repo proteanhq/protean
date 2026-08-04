@@ -112,3 +112,20 @@ class TestUseCaseSaysWhatIsMissing:
 
         with domain.domain_context():
             assert service_cls(gateway="stripe").run() == "placed via stripe"
+
+    def test_the_check_does_not_emit_the_no_domain_warning(self):
+        """`current_domain` is a proxy: touching it with no context formats a
+        full stack trace and warns. The guard reads the context stack instead."""
+        import warnings
+
+        _domain, service_cls = self._service()
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(ConfigurationError):
+                service_cls(gateway="stripe").run()
+
+        assert not caught, (
+            "checking for a context should not warn; "
+            f"got {[str(w.message)[:60] for w in caught]}"
+        )
