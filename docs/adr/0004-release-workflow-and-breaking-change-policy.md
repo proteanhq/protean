@@ -205,13 +205,15 @@ Use pytest's `filterwarnings` (or a programmatic `warnings.filterwarnings(..., c
 
 **Target: releasing should take less than 10 minutes of manual effort.** Invest in CI automation to achieve this.
 
-### Cleanup Release
+### Releases That Remove
 
-Periodically (roughly every 4–6 releases, or when deprecated items have aged past their survival window), cut a cleanup release that removes deprecated code.
+A removal lands in an ordinary minor. There is no separate release type for it; what matters is that nobody is surprised.
 
-1. Pre-announce: "v0.X.0 will remove all deprecations from v0.Y.x and earlier. Run `protean check` or test with `-W error::DeprecationWarning` to identify affected code."
-2. Make the removals.
+1. Pre-announce: "v0.X.0 will remove the APIs deprecated in v0.Y.x. Run `protean check`, or test with the `ProteanDeprecationWarning` category promoted to an error, to identify affected code."
+2. Make the removals, and only of things whose declared removal version has arrived.
 3. Document every removal in the changelog with a migration path.
+
+Batching removals into one release rather than dribbling them across several is a courtesy worth keeping: it gives users one upgrade to plan for instead of many.
 
 Cleanup releases are the only releases that intentionally break user code. They should be clearly labeled and communicated.
 
@@ -237,7 +239,7 @@ The changelog is the primary release artifact. It is maintained continuously (no
 - **Added** — new features and capabilities
 - **Changed** — behavioral changes (always note if a flag or opt-in is involved)
 - **Deprecated** — items marked for future removal, with the target removal version
-- **Removed** — items deleted in this release (cleanup releases only)
+- **Removed** — items deleted in this release, each with its migration path
 - **Fixed** — bug fixes
 - **Upgrade Notes** — explicit steps users need to take, especially for Tier 2 and Tier 3 changes
 
