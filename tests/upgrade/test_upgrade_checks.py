@@ -578,3 +578,80 @@ class TestTheBackfillUsesTheConfiguredBroker:
 
         sql = _outbox_composite_index_sql("postgresql", None, True, "kafka")
         assert "target_broker = 'kafka'" in sql
+
+
+@pytest.mark.sqlite
+@pytest.mark.no_test_domain
+class TestAnUnreadableDatabaseIsReported:
+    """Both outbox checks must say so when they could not read a schema.
+
+    They used to `continue`, so a database that could not be introspected looked
+    identical to one with nothing to fix. The two paths are the only branches in
+    either check that no other test reaches, which is how one of them stayed
+    swallowed through a review round: the tests never went down it.
+    """
+
+    @pytest.fixture
+    def sqlite_domain(self, tmp_path):
+        from protean.domain import Domain
+
+        domain = Domain(name="UpgradeUnreadable")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'unreadable.db'}",
+        }
+        domain.init(traverse=False)
+        return domain
+
+    @pytest.fixture
+    def blind_inspector(self, monkeypatch):
+        """Make introspection fail the way an unreachable database does.
+
+        Patching `sqlalchemy.inspect` works because both checks import it inside
+        the function, so the name is resolved at call time.
+        """
+        import sqlalchemy
+        from sqlalchemy.exc import OperationalError
+
+        def _raise(_engine):
+            raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+        monkeypatch.setattr(sqlalchemy, "inspect", _raise)
+
+    def test_the_migrations_check_reports_rather_than_skips(
+        self, sqlite_domain, blind_inspector
+    ):
+        findings = _check_outbox_migrations(sqlite_domain)
+
+        codes = [f.code for f in findings]
+        assert "CHECK_FAILED" in codes
+        detail = next(f for f in findings if f.code == "CHECK_FAILED").detail
+        assert "target_broker" in detail  # says what it could not tell you
+
+    def test_the_schema_check_reports_rather_than_skips(
+        self, sqlite_domain, blind_inspector
+    ):
+        from protean.upgrade import _check_outbox_schema
+
+        findings = _check_outbox_schema(sqlite_domain)
+
+        codes = [f.code for f in findings]
+        assert "CHECK_FAILED" in codes
+        detail = next(f for f in findings if f.code == "CHECK_FAILED").detail
+        assert "column" in detail.lower()  # its own scope, not the other check's
+
+    def test_the_two_reports_do_not_describe_each_other(
+        self, sqlite_domain, blind_inspector
+    ):
+        """The wording was copied between them once already."""
+        from protean.upgrade import _check_outbox_schema
+
+        mig = next(
+            f
+            for f in _check_outbox_migrations(sqlite_domain)
+            if f.code == "CHECK_FAILED"
+        )
+        sch = next(
+            f for f in _check_outbox_schema(sqlite_domain) if f.code == "CHECK_FAILED"
+        )
+        assert mig.detail != sch.detail
