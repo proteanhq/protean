@@ -40,7 +40,16 @@ OFFLINE_CHOICES: list[tuple[str, list[str]]] = [
 _INIT = (
     "import sys; sys.path.insert(0, 'src')\n"
     "from {pkg}.domain import {pkg} as domain\n"
-    "domain.init(traverse=False)\n"
+    "domain.init()\n"
+    "print('initialised')\n"
+)
+
+_INIT_REVERSED = (
+    "import os; _listdir = os.listdir; "
+    "os.listdir = lambda path: list(reversed(_listdir(path)))\n"
+    "import sys; sys.path.insert(0, 'src')\n"
+    "from {pkg}.domain import {pkg} as domain\n"
+    "domain.init()\n"
     "print('initialised')\n"
 )
 
@@ -75,6 +84,23 @@ class TestGeneratedProjectStarts:
         assert completed.returncode == 0, (
             f"`protean new` with {label} generates a project whose domain does "
             f"not initialise:\n{completed.stderr}"
+        )
+        assert "initialised" in completed.stdout
+
+    def test_domain_initialises_with_reverse_discovery_order(self, tmp_path):
+        """Package discovery must not depend on filesystem enumeration order."""
+        project = _generate(tmp_path, [])
+
+        completed = subprocess.run(
+            [sys.executable, "-c", _INIT_REVERSED.format(pkg="scaffolded")],
+            cwd=project,
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            "The generated domain must initialise when module discovery order "
+            f"is reversed:\n{completed.stderr}"
         )
         assert "initialised" in completed.stdout
 
