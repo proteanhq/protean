@@ -46,7 +46,7 @@ _INIT = (
 
 _INIT_REVERSED = (
     "import os; _listdir = os.listdir; "
-    "os.listdir = lambda path: list(reversed(_listdir(path)))\n"
+    "os.listdir = lambda *args, **kwargs: list(reversed(_listdir(*args, **kwargs)))\n"
     "import sys; sys.path.insert(0, 'src')\n"
     "from {pkg}.domain import {pkg} as domain\n"
     "domain.init()\n"
