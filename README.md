@@ -9,6 +9,8 @@
 [![Tests](https://img.shields.io/badge/tests-12%2C000%2B-brightgreen)](https://docs.proteanhq.com/community/quality/)
 [![Maintainability](https://img.shields.io/badge/maintainability-A-brightgreen)](https://docs.proteanhq.com/community/quality/)
 
+**🗺️ Roadmap:** [where Protean is headed next](https://github.com/proteanhq/protean/discussions/1356), and the [current 0.18 milestone](https://github.com/proteanhq/protean/milestone/21) for the detail.
+
 ## Installation
 
 Protean is available on PyPI:
