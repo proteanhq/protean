@@ -1,23 +1,6 @@
-"""Example aggregate module."""
+"""Example aggregate package.
 
-from .aggregate import Example
-from .command_handlers import ExampleCommandHandler
-from .commands import ActivateExample, ArchiveExample, CreateExample
-from .event_handlers import ExampleEventHandler
-from .events import ExampleActivated, ExampleArchived, ExampleCreated
-from .repository import ExampleRepository
-from .value_objects import Address
-
-__all__ = [
-    "Example",
-    "ExampleRepository",
-    "CreateExample",
-    "ActivateExample",
-    "ArchiveExample",
-    "ExampleCreated",
-    "ExampleActivated",
-    "ExampleArchived",
-    "ExampleCommandHandler",
-    "ExampleEventHandler",
-    "Address",
-]
+Modules are discovered independently by ``domain.init()``. Keep this package
+initializer side-effect free so relative imports during traversal cannot create
+partially initialized-module cycles.
+"""

@@ -6,13 +6,14 @@ from typing import Annotated
 from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
+from protean.fields import Identifier
 
 
 @{{ domain_name }}.projection
 class ExampleSummary:
     """Read-optimized projection of Example aggregates."""
 
-    example_id: str
+    example_id: Identifier(identifier=True)
     name: Annotated[str, Field(max_length=100)]
     status: str
     created_at: datetime

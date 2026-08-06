@@ -2,14 +2,15 @@
 
 from datetime import UTC, datetime
 
-from protean import on
+from protean.core.projector import on
 
 from {{ package_name }}.domain import {{ domain_name }}
+from .aggregate import Example
 from {{ package_name }}.example.events import ExampleActivated, ExampleArchived, ExampleCreated
-from .example_summary import ExampleSummary
+from .projection import ExampleSummary
 
 
-@{{ domain_name }}.projector(projector_for=ExampleSummary, aggregates=["Example"])
+@{{ domain_name }}.projector(projector_for=ExampleSummary, aggregates=[Example])
 class ExampleProjector:
     """Update ExampleSummary projection based on Example events."""
 
