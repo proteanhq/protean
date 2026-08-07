@@ -56,7 +56,6 @@ The command creates a complete project structure with the following components:
 - `.gitignore` - Git ignore patterns
 - `.pre-commit-config.yaml` - Pre-commit hooks configuration
 - `.env.example` - Environment variables template
-- `logging.toml` - Logging configuration
 - `.dockerignore` - Docker ignore patterns
 
 ### Docker Configuration
@@ -175,7 +174,7 @@ The logging level is determined by the `ENVIRONMENT` variable:
 - `development`: DEBUG level
 - `test`: WARNING level
 
-Override with the `LOG_LEVEL` environment variable.
+Override with the `PROTEAN_LOG_LEVEL` environment variable.
 
 ### Exceptions Module (`shared/exceptions.py`)
 
