@@ -359,7 +359,7 @@ deployment is configured to persist.
 
 ---
 
-## Formal verification of the core concurrency protocols
+## Formal verification of the core correctness protocols
 
 The protocols where these guarantees are hardest to reason about, the `$all`
 subscription checkpoint advance, the outbox publish, and the aggregate

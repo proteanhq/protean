@@ -189,7 +189,12 @@ VersionMonotonic == version = high
 
 \* Model-trust -- a writer only reaches `conflicted` when the stored version has
 \* already moved past its base (a genuinely stale expected version), never on a
-\* fresh read. Holds under both the atomic protocol and the split-commit bug.
+\* fresh read. Holds at the two-writer bound the configs check, under both the
+\* atomic protocol and the split-commit bug. Like VersionMonotonic it is NOT
+\* general to the split-commit bug: with three or more writers a delayed Write
+\* from a stale base can drop the version below a later reader's base, so that
+\* reader conflicts with `base[w] >= version`. A failure here at the checked
+\* bound would signal a modeling bug, not a protocol bug.
 ConflictImpliesStale == \A w \in Conflicted : base[w] < version
 
 (***************************************************************************)
