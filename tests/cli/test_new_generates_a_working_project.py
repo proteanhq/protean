@@ -13,6 +13,7 @@ compares scaffolded keys against what each adapter actually reads.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tomllib
@@ -195,3 +196,61 @@ class TestScaffoldedKeysMatchWhatAdaptersRead:
                 f"[databases.{name}] names provider {provider!r}, which is not "
                 f"registered. Known: {sorted(registered)}"
             )
+
+    def test_no_orphaned_logging_toml(self, tmp_path):
+        """`logging.toml` shipped for years with nothing reading it (#1315).
+
+        `[logging]` in `domain.toml` is the one mechanism Protean reads
+        (`Domain.configure_logging`); a second, unread config file at the
+        project root is a bug, not an alternative.
+        """
+        project = _generate(tmp_path, [])
+
+        assert not (project / "logging.toml").exists(), (
+            "logging.toml is generated but nothing reads it; [logging] in "
+            "domain.toml is the only config Domain.configure_logging loads."
+        )
+
+    def test_commented_logging_keys_are_all_read_by_the_framework(self, tmp_path):
+        """Every key the scaffold shows a user in the commented `[logging]`
+        block must be a key some adapter actually reads, so uncommenting it
+        has an effect."""
+        # Union across every site that reads `domain.toml`'s `[logging]` table.
+        known_logging_keys = {
+            # Domain.configure_logging (src/protean/domain/__init__.py)
+            "level",
+            "format",
+            "log_dir",
+            "log_file_prefix",
+            "max_bytes",
+            "backup_count",
+            "redact",
+            "per_logger",
+            # src/protean/utils/logging.py
+            "slow_handler_threshold_ms",
+            # SQLAlchemy adapter (get_logging_config_value)
+            "slow_query_threshold_ms",
+            "slow_query_truncate_chars",
+        }
+
+        project = _generate(tmp_path, [])
+        text = (project / "src" / "scaffolded" / "domain.toml").read_text()
+
+        match = re.search(r"^# \[logging\]\n(.*?)(?=\n\n|\Z)", text, re.M | re.S)
+        assert match, "domain.toml no longer ships a commented [logging] block"
+
+        parsed_keys = set()
+        for line in match.group(1).splitlines():
+            if line.strip() == "#" or line.strip().startswith("# ["):
+                # Blank comment lines and the `[logging.per_logger]` subtable
+                # header; its body holds logger *names*, not [logging] keys.
+                break
+            key_match = re.match(r"# (\w+) = ", line)
+            if key_match:
+                parsed_keys.add(key_match.group(1))
+
+        assert parsed_keys, "no keys parsed out of the commented [logging] block"
+        assert parsed_keys <= known_logging_keys, (
+            f"domain.toml's commented [logging] block names keys nothing "
+            f"reads: {parsed_keys - known_logging_keys}"
+        )

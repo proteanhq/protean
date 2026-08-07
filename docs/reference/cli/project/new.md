@@ -56,7 +56,6 @@ The command creates a complete project structure with the following components:
 - `.gitignore` - Git ignore patterns
 - `.pre-commit-config.yaml` - Pre-commit hooks configuration
 - `.env.example` - Environment variables template
-- `logging.toml` - Logging configuration
 - `.dockerignore` - Docker ignore patterns
 
 ### Docker Configuration
