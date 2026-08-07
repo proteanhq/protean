@@ -222,10 +222,13 @@ class TestGeneratedProjectStarts:
             line
             for line in init.read_text().splitlines()
             # Any submodule import: relative (`from .x`, `from . import x`,
-            # `from ..pkg`) or absolute into this package
-            # (`import scaffolded.example.handlers`).
+            # `from ..pkg`) or absolute into this package, either form
+            # (`import scaffolded.example.handlers`,
+            # `from scaffolded.example import handlers`,
+            # `from scaffolded.example.handlers import X`).
             if re.match(r"\s*from\s+\.", line)
             or re.match(r"\s*import\s+scaffolded\.example\.\w", line)
+            or re.match(r"\s*from\s+scaffolded\.example\b", line)
         ]
         assert not offending, (
             "the example `__init__.py` must not import from submodules; a "
