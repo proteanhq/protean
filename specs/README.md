@@ -1,7 +1,7 @@
-# Formal specs of Protean's core delivery protocols
+# Formal specs of Protean's core correctness protocols
 
-This directory holds TLA+ specifications of the core concurrency protocols at the
-heart of Protean's delivery guarantees, model-checked with TLC:
+This directory holds TLA+ specifications of the core protocols at the heart of
+Protean's correctness guarantees, model-checked with TLC:
 
 - **`Checkpoint.tla`**: the `$all` (cross-category) subscription checkpoint
   advance, the settle-then-process low-watermark shipped for #1088
