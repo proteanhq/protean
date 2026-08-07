@@ -35,7 +35,7 @@ TLA+ verifies the *spec*, not the Python. There is always a spec-to-code gap. So
 - Any counterexample TLC finds against a shipped protocol should be turned into a
   concrete case in the #1251 property suite, which *does* run against the real
   code. As of this writing TLC finds **no** counterexample against the guarantee
-  invariants of either shipped protocol. The only counterexamples are the
+  invariants of any of the shipped protocols. The only counterexamples are the
   deliberate ones: the revert tests (which reintroduce a known bug) and the
   reachability probes (which witness that at-least-once redelivery, and OCC
   contention, are reachable).
