@@ -13,6 +13,8 @@ compares scaffolded keys against what each adapter actually reads.
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -66,6 +68,18 @@ def _generate(tmp_path: Path, extra: list[str], name: str = "scaffolded") -> Pat
     return out / name
 
 
+def _subprocess_env(project: Path) -> dict[str, str]:
+    """Env for running the generated project uninstalled.
+
+    The project is not pip-installed, so its ``src/`` goes on ``PYTHONPATH``.
+    ``VIRTUAL_ENV`` is dropped so it cannot point the child at a different
+    interpreter or source tree than ``sys.executable``.
+    """
+    env = {**os.environ, "PYTHONPATH": str(project / "src")}
+    env.pop("VIRTUAL_ENV", None)
+    return env
+
+
 class TestGeneratedProjectStarts:
     @pytest.mark.parametrize(
         ("label", "extra"), OFFLINE_CHOICES, ids=[c[0] for c in OFFLINE_CHOICES]
@@ -103,6 +117,83 @@ class TestGeneratedProjectStarts:
             f"is reversed:\n{completed.stderr}"
         )
         assert "initialised" in completed.stdout
+
+    def test_generated_test_suite_runs_and_passes(self, tmp_path):
+        """The scaffold ships tests that actually run and pass.
+
+        #1316 shipped because a fresh project's `protean test` was green on an
+        empty suite: nothing ran, so nothing could fail. The scaffold now
+        includes a write-path and a read-path test for the example slice; run
+        the generated suite the way a user would (`pytest`, driven by the
+        project's own `testpaths`) and require both tests to pass.
+        """
+        project = _generate(tmp_path, [])
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "tests"],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            "The generated project's own test suite does not pass:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+
+        match = re.search(r"(\d+) passed", completed.stdout)
+        assert match, f"no pass count in pytest output:\n{completed.stdout}"
+        assert int(match.group(1)) >= 2, (
+            "The scaffold must ship at least two passing tests so a fresh "
+            f"`protean test` is not green on nothing:\n{completed.stdout}"
+        )
+
+    def test_example_package_init_has_no_submodule_imports(self, tmp_path):
+        """The rendered example `__init__.py` must stay side-effect free.
+
+        A non-jinja `__init__.py` doing `from .handlers import *` (a module that
+        does not exist) used to sit beside the empty `__init__.py.jinja`. The
+        jinja version wins the copier collision, but the dead file was a #1319
+        hazard; guard that the rendered initializer imports no submodule.
+        """
+        project = _generate(tmp_path, [])
+        init = project / "src" / "scaffolded" / "example" / "__init__.py"
+
+        assert init.exists(), "the example package initializer was not generated"
+        offending = [
+            line
+            for line in init.read_text().splitlines()
+            if re.match(r"\s*from\s+\.\w+\s+import\b", line)
+        ]
+        assert not offending, (
+            "the example `__init__.py` must not import from submodules; a "
+            f"relative import during traversal risks a cycle: {offending}"
+        )
+
+    def test_generated_project_passes_check(self, tmp_path):
+        """`protean check` exits 0 on a fresh default project (#1319)."""
+        project = _generate(tmp_path, [])
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "protean",
+                "check",
+                "-d",
+                "src/scaffolded/domain.py:scaffolded",
+            ],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            "`protean check` must pass on a freshly generated project:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
 
 
 class TestGeneratedConfigIsValidToml:

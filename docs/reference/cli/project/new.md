@@ -96,29 +96,30 @@ src/
     │   ├── logging.py     # Structured logging setup
     │   ├── exceptions.py  # Domain exceptions
     │   └── value_objects.py
-    ├── example/           # Optional example aggregate
-    │   ├── __init__.py
-    │   ├── aggregate.py
-    │   ├── commands.py
-    │   ├── command_handlers.py
-    │   ├── events.py
-    │   ├── event_handlers.py
-    │   ├── repository.py
-    │   └── value_objects.py
-    └── projections/       # Read models (at domain level, not per aggregate)
+    └── example/           # Optional example aggregate
         ├── __init__.py
-        ├── example_projector.py
-        └── example_summary.py
+        ├── aggregate.py       # Example aggregate with a create() factory
+        ├── commands.py        # CreateExample
+        ├── command_handlers.py
+        ├── events.py          # ExampleCreated
+        ├── projection.py      # ExampleSummary read model
+        └── projectors.py      # Builds ExampleSummary from ExampleCreated
 ```
+
+The example is a minimal walking skeleton: one command creates the aggregate,
+which raises one event, which a projector turns into one read model. It shows
+the write path and the read path end to end with nothing to trim before you
+start. Delete the `example/` folder (or pass `--data include_example=false`)
+once you have your own aggregates.
 
 Key structural decisions:
 
 - **Aggregates are top-level folders** — each aggregate (`example/`) is a
   chapter heading a business stakeholder would recognize.
-- **Projections live at the domain level** — in `projections/`, organized
-  by the business question they answer, not by which aggregate sources
-  their data. This scales naturally when projections span multiple
-  aggregates.
+- **Projections live with the aggregate that sources them** — `projection.py`
+  (the read model) and `projectors.py` (the code that keeps it current) sit
+  inside `example/`. As projections grow to span aggregates, lift them into a
+  domain-level `projections/` folder.
 - **Shared vocabulary has its own folder** — cross-aggregate value objects
   and utilities live in `shared/`.
 - **`domain.py` and `domain.toml` are front matter** — a newcomer sees
@@ -136,14 +137,20 @@ commands with their handlers in capability files.
 tests/
 ├── README.md
 └── <package_name>/
-    ├── conftest.py         # Pytest configuration
+    ├── conftest.py         # Initialises the domain for the test session
     ├── domain/            # Domain logic tests
     │   └── __init__.py
     ├── application/       # Application layer tests
-    │   └── __init__.py
+    │   ├── __init__.py
+    │   └── test_example.py   # Write- and read-path tests for the example
     └── integration/       # Integration tests
         └── __init__.py
 ```
+
+The example ships with two passing tests (only when `include_example` is
+true): one drives the command/event write path, the other asserts the
+projection reflects the created aggregate. `pytest` runs green on a fresh
+project, so you have a working test to copy from on day one.
 
 ### CI/CD Configuration
 

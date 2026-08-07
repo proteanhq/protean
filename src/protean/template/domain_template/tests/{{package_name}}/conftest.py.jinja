@@ -1,29 +1,6 @@
-import os
-import pytest
 from pathlib import Path
 
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--env",
-        action="store",
-        default="test",
-        help="Config environment to run tests on",
-    )
-
-
-def pytest_sessionstart(session):
-    """Pytest hook to run before collecting tests.
-
-    Fetch and activate the domain by pushing the associated domain_context. The activated domain can then be referred to elsewhere as `current_domain`
-    """
-    os.environ["PROTEAN_ENV"] = session.config.option.env
-
-    from {{ package_name }}.domain import {{ package_name }}
-
-    {{ package_name }}.config = {{ package_name }}.load_config()
-    {{ package_name }}.init()
-    {{ package_name }}.domain_context().push()
+import pytest
 
 
 def pytest_collection_modifyitems(config, items):
@@ -44,12 +21,34 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(pytest.mark.slow)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def bootstrap_domain():
+    """Initialise the domain and activate its context for the whole session.
+
+    This is a session-scoped autouse fixture, not ``pytest_sessionstart``, on
+    purpose. ``pytest_sessionstart`` in a nested ``conftest.py`` only fires when
+    the collection path passes through this directory, so a plain ``pytest`` or
+    ``make test`` (both driven by ``testpaths = ["tests"]``) would never run it
+    and every test would fail with "no domain context". An autouse fixture runs
+    for any invocation that collects a test under this package.
+
+    Protean's pytest plugin sets ``PROTEAN_ENV`` to ``test`` before collection,
+    so domain modules already read the right config when they are imported.
+    """
+    from {{ package_name }}.domain import {{ package_name }}
+
+    {{ package_name }}.config = {{ package_name }}.load_config()
+    {{ package_name }}.init()
+    with {{ package_name }}.domain_context():
+        yield
+
+
 @pytest.fixture(autouse=True)
 def run_around_tests():
     """Fixture to automatically cleanup infrastructure after every test"""
     yield
 
-    from protean.globals import current_domain
+    from protean import current_domain
 
     # Clear all databases
     for _, provider in current_domain.providers.items():

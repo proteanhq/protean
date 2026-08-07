@@ -1,6 +1,6 @@
 """Events emitted by the Example aggregate."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import Field
@@ -16,19 +16,3 @@ class ExampleCreated:
     name: Annotated[str, Field(max_length=100)]
     description: Annotated[str, Field(max_length=500)] | None = None
     created_at: datetime
-
-
-@{{ domain_name }}.event(part_of="Example")
-class ExampleActivated:
-    """Event emitted when an Example is activated."""
-
-    example_id: str
-    activated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-
-@{{ domain_name }}.event(part_of="Example")
-class ExampleArchived:
-    """Event emitted when an Example is archived."""
-
-    example_id: str
-    archived_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

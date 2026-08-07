@@ -13,17 +13,3 @@ class CreateExample:
 
     name: Annotated[str, Field(max_length=100)]
     description: Annotated[str, Field(max_length=500)] | None = None
-
-
-@{{ domain_name }}.command(part_of="Example")
-class ActivateExample:
-    """Command to activate an Example."""
-
-    example_id: str
-
-
-@{{ domain_name }}.command(part_of="Example")
-class ArchiveExample:
-    """Command to archive an Example."""
-
-    example_id: str
