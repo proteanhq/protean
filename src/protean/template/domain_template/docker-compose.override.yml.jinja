@@ -20,7 +20,7 @@ services:
       - "5678:5678"  # Debugger port
     environment:
       - ENVIRONMENT=development
-      - LOG_LEVEL=DEBUG
+      - PROTEAN_LOG_LEVEL=DEBUG
       - PYTHONPATH=/app
     depends_on:
 {%- if database == "postgresql" %}
@@ -60,7 +60,7 @@ services:
       - ./.env:/app/.env
     environment:
       - ENVIRONMENT=development
-      - LOG_LEVEL=DEBUG
+      - PROTEAN_LOG_LEVEL=DEBUG
       - PYTHONPATH=/app
     depends_on:
 {%- if database == "postgresql" %}

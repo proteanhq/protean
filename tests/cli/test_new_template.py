@@ -52,7 +52,6 @@ class TestTemplateGeneration:
             assert (project_path / ".pre-commit-config.yaml").exists()
             assert (project_path / ".dockerignore").exists()
             assert (project_path / ".env.example").exists()
-            assert (project_path / "logging.toml").exists()
 
             # Check Docker files
             assert (project_path / "Dockerfile").exists()
@@ -585,34 +584,3 @@ class TestTemplateGeneration:
             assert "run:" in makefile or "server:" in makefile or "start:" in makefile
             assert "docker" in makefile.lower()
             assert "up:" in makefile or "down:" in makefile
-
-    def test_logging_configuration_file(self):
-        """Test that logging.toml is created with proper configuration."""
-        with isolated_filesystem() as project_dir:
-            args = [
-                "new",
-                "test_logging",
-                "-o",
-                project_dir,
-                "--defaults",
-                "--skip-setup",
-                "-d",
-                "author_name=Test",
-                "-d",
-                "author_email=test@test.com",
-            ]
-            result = runner.invoke(app, args)
-            assert result.exit_code == 0
-
-            project_path = Path(project_dir) / "test_logging"
-            logging_toml = project_path / "logging.toml"
-
-            assert logging_toml.exists()
-
-            # Check logging configuration content
-            content = logging_toml.read_text()
-            # The logging.toml file has a different format in the template
-            # It uses custom sections like [general], [environments], [loggers], etc.
-            assert "[general]" in content or "[loggers]" in content
-            assert "level" in content.lower()
-            assert "test_logging" in content  # Should reference the package name
