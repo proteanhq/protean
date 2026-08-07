@@ -1,0 +1,6 @@
+# TLC model-checker scratch output (state graphs, fingerprints, dumps).
+# check.sh writes these to a temp dir; this guards a stray direct run.
+states/
+*.old
+*.st
+*.fp

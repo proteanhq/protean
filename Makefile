@@ -55,5 +55,11 @@ TARGET ?= outbox
 mutation:
 	./scripts/mutation.sh $(TARGET)
 
+# Model-check the TLA+ specs of the checkpoint and outbox two-phase protocols
+# with TLC. Design-time verification, not a CI gate: run it deliberately when a
+# modeled protocol changes. Needs a JDK and tla2tools.jar; see specs/README.md.
+verify-specs:
+	./specs/check.sh
+
 cov: up
 	uv run pytest --slow --sqlite --postgresql --elasticsearch --redis --message_db --cov=protean --cov-config .coveragerc tests

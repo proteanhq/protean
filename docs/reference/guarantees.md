@@ -359,6 +359,23 @@ deployment is configured to persist.
 
 ---
 
+## Formal verification of the two-phase protocols
+
+The two protocols where these guarantees are hardest to reason about, the `$all`
+subscription checkpoint advance and the outbox publish, have machine-checked
+TLA+ specifications under [`specs/`](https://github.com/proteanhq/protean/tree/main/specs)
+in the repository. TLC explores every interleaving of out-of-order commits, lock
+expiry, redelivery, and crash points up to a bound, and asserts the invariants
+that state these guarantees. Each invariant maps to a specific row above; the
+mapping is in `specs/README.md`. Each spec also carries a revert test that
+reintroduces the corresponding bug (#1088 for the checkpoint, mark-before-publish
+for the outbox) so the model demonstrably has teeth.
+
+This is design-time verification, not a CI gate: it verifies the design, and is
+re-run deliberately when a protocol changes, not on every commit.
+
+---
+
 ## Out of scope
 
 - **Cross-bounded-context delivery of `published` events.** Whether a
