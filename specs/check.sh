@@ -107,6 +107,12 @@ run Outbox.tla     Outbox_claim.cfg        violation  NoDoubleActiveClaim
 run Outbox.tla     Outbox_dup.cfg          violation  NoDuplicateDelivery
 
 echo ""
+echo "OCC protocol (aggregate optimistic-concurrency no-lost-update, ADR-0013):"
+run OCC.tla        OCC.cfg                 pass
+run OCC.tla        OCC_bug.cfg             violation  NoLostUpdate
+run OCC.tla        OCC_conflict.cfg        violation  NoConflict
+
+echo ""
 if [[ "$fail" -eq 0 ]]; then
     echo "All checks met their expected outcome."
 else
