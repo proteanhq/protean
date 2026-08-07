@@ -139,11 +139,14 @@ def module_unavailable(*names: str, reload: tuple[str, ...] = ()) -> Iterator[No
     """Simulate optional packages being uninstalled, then restore them.
 
     Each name in ``names`` (and its submodules) is removed from ``sys.modules``
-    and the top-level name is set to ``None`` so a subsequent ``import <name>``
-    raises ``ImportError``, exactly as it would if the package were not
-    installed. Names in ``reload`` are only evicted (not set to ``None``) so they
-    re-execute on next import; use this for a Protean package that lazily imports
-    an absent extra, so its ``__init__`` runs again and hits the missing import.
+    and the top-level name is set to ``None``. A subsequent ``import <name>`` then
+    raises ``ModuleNotFoundError`` and ``importlib.util.find_spec(name)`` returns
+    ``None``: the same type and spec result an uninstalled package produces (the
+    error message differs, reading "None in sys.modules"), which is what the
+    dependency guards key off. Names in ``reload`` are only evicted (not set to
+    ``None``) so they re-execute on next import; use this for a Protean package
+    that lazily imports an absent extra, so its ``__init__`` runs again and hits
+    the missing import.
 
     Exercises the "optional dependency is missing" paths without touching the
     real environment; the original module table is restored on exit.

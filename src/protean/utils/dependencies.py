@@ -28,7 +28,7 @@ FEATURE_EXTRA_MODULES: dict[FeatureExtra, tuple[str, ...]] = {
 }
 
 
-def missing_dependency_message(package: str, extra: str, feature: str) -> str:
+def missing_dependency_message(package: str, extra: FeatureExtra, feature: str) -> str:
     """Build the standard actionable message for an absent optional dependency.
 
     ``feature`` names what the caller was trying to do (e.g. ``"'protean new'"``
