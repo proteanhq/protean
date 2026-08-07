@@ -198,7 +198,7 @@ class TestScaffoldedKeysMatchWhatAdaptersRead:
             )
 
     def test_no_orphaned_logging_toml(self, tmp_path):
-        """`logging.toml` shipped for months with nothing reading it (#1315).
+        """`logging.toml` shipped for months with nothing reading it.
 
         `[logging]` in `domain.toml` is the one mechanism Protean reads
         (`Domain.configure_logging`); a second, unread config file at the
@@ -241,10 +241,13 @@ class TestScaffoldedKeysMatchWhatAdaptersRead:
 
         parsed_keys = set()
         for line in match.group(1).splitlines():
-            if line.strip() == "#" or line.strip().startswith("# ["):
-                # Blank comment lines and the `[logging.per_logger]` subtable
-                # header; its body holds logger *names*, not [logging] keys.
+            if line.strip().startswith("# ["):
+                # The `[logging.per_logger]` subtable header; its body holds
+                # logger *names*, not [logging] keys.
                 break
+            if line.strip() == "#":
+                # A blank comment line, e.g. a separator between keys.
+                continue
             key_match = re.match(r"# (\w+) = ", line)
             if key_match:
                 parsed_keys.add(key_match.group(1))
