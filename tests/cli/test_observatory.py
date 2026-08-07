@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.exceptions import NoDomainException
-from tests.shared import change_working_directory_to
+from tests.shared import change_working_directory_to, module_unavailable
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -41,6 +41,20 @@ class TestObservatoryCommand:
         assert result.exit_code != 0
         assert isinstance(result.exception, SystemExit)
         assert "Aborted" in result.output
+
+    def test_observatory_without_server_extra_reports_actionable_error(self):
+        """`protean observatory` without the FastAPI stack fails with an install hint.
+
+        The import guard runs before the domain is loaded, so no domain is
+        needed. `reload` forces the observatory package to re-execute its imports
+        so it hits the (now-missing) fastapi import.
+        """
+        with module_unavailable("fastapi", reload=("protean.server.observatory",)):
+            result = runner.invoke(app, ["observatory", "--domain", "x"])
+
+        assert result.exit_code == 1
+        assert "fastapi" in result.output
+        assert 'pip install "protean[server]"' in result.output
 
     def test_observatory_with_valid_domain(self):
         """Test that the observatory command initializes and runs with a valid domain."""

@@ -8,6 +8,7 @@ import typer
 
 from protean.cli._helpers import (
     CTX_LOG_CONFIGURED,
+    abort_for_missing_dependency,
     handle_cli_exceptions,
 )
 from protean.exceptions import NoDomainException
@@ -39,7 +40,13 @@ def observatory(
     ] = "Protean Observatory",
 ) -> None:
     """Run the Observatory observability dashboard."""
-    from protean.server.observatory import Observatory  # noqa: PLC0415
+    # The Observatory runs on the optional FastAPI/uvicorn stack
+    # (protean[server]); a missing extra fails with an install hint instead of a
+    # raw ModuleNotFoundError from deep inside the server package.
+    try:
+        from protean.server.observatory import Observatory  # noqa: PLC0415
+    except ImportError as exc:
+        abort_for_missing_dependency("server", "'protean observatory'", exc)
 
     # Check parent context for CLI-level logging configuration.
     # click.get_current_context may fail when called directly (not via CLI).

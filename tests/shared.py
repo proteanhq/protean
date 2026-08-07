@@ -134,6 +134,41 @@ def change_working_directory_to(path):
     sys.path.insert(0, str(test_path))
 
 
+@contextlib.contextmanager
+def module_unavailable(*names: str, reload: tuple[str, ...] = ()) -> Iterator[None]:
+    """Simulate optional packages being uninstalled, then restore them.
+
+    Each name in ``names`` (and its submodules) is removed from ``sys.modules``
+    and the top-level name is set to ``None``. A subsequent ``import <name>`` then
+    raises ``ModuleNotFoundError`` and ``importlib.util.find_spec(name)`` returns
+    ``None``: the same type and spec result an uninstalled package produces (the
+    error message differs, reading "None in sys.modules"), which is what the
+    dependency guards key off. Names in ``reload`` are only evicted (not set to
+    ``None``) so they re-execute on next import; use this for a Protean package
+    that lazily imports an absent extra, so its ``__init__`` runs again and hits
+    the missing import.
+
+    Exercises the "optional dependency is missing" paths without touching the
+    real environment; the original module table is restored on exit.
+    """
+    to_clear = {
+        key
+        for key in list(sys.modules)
+        if any(key == n or key.startswith(f"{n}.") for n in (*names, *reload))
+    }
+    saved = {key: sys.modules[key] for key in to_clear}
+    for key in to_clear:
+        del sys.modules[key]
+    for name in names:
+        sys.modules[name] = None  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        for name in names:
+            sys.modules.pop(name, None)
+        sys.modules.update(saved)
+
+
 def has_key_or_attr(obj, name):
     try:
         return name in obj  # Works if obj is dict-like

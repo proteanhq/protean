@@ -385,6 +385,7 @@ nav:
       - reference/compatibility/index.md
     - Migration:
       - reference/migration/index.md
+      - reference/migration/v0-18.md
       - reference/migration/v0-17.md
       - reference/migration/v0-16.md
       - reference/migration/v0-15.md
@@ -419,6 +420,7 @@ nav:
       - adr/0026-max-length-bounds-the-sanitized-value.md
       - adr/0027-unit-of-work-is-a-real-transaction.md
       - adr/0028-partition-per-key-sequential-processing.md
+      - adr/0029-runtime-dependency-boundary-and-extras.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

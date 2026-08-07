@@ -5,10 +5,10 @@ import subprocess
 from typing import Annotated
 
 import typer
-from copier import run_copy
 from rich.console import Console
 
 import protean
+from protean.cli._helpers import abort_for_missing_dependency
 
 console = Console()
 
@@ -142,6 +142,14 @@ def new(
 ) -> None:
     if data is None:
         data = []
+
+    # `copier` is optional (protean[scaffold]). Import it before any filesystem
+    # work so a missing extra fails with an install hint rather than after we
+    # have already cleared the target directory.
+    try:
+        from copier import run_copy  # noqa: PLC0415
+    except ImportError as exc:
+        abort_for_missing_dependency("scaffold", "'protean new'", exc)
 
     def is_valid_project_name(project_name: str) -> bool:
         """

@@ -12,9 +12,8 @@ import typing
 from typing import Annotated
 
 import typer
-from IPython.terminal.embed import InteractiveShellEmbed
 
-from protean.cli._helpers import handle_cli_exceptions
+from protean.cli._helpers import abort_for_missing_dependency, handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
@@ -27,6 +26,15 @@ def shell(
     domain: Annotated[str, typer.Option()] = ".",
     traverse: Annotated[bool, typer.Option()] = False,
 ) -> None:
+    # `ipython` is optional (protean[shell]). Import it before loading the domain
+    # so a missing extra fails with an install hint rather than a raw traceback.
+    try:
+        from IPython.terminal.embed import (  # noqa: PLC0415
+            InteractiveShellEmbed,
+        )
+    except ImportError as exc:
+        abort_for_missing_dependency("shell", "'protean shell'", exc)
+
     try:
         domain_instance = derive_domain(domain)
     except NoDomainException as exc:

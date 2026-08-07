@@ -49,6 +49,30 @@ Within the activated environment, install Protean with the following command:
 $ pip install protean
 ```
 
+This installs a lean core: everything you need to define a domain, persist
+through the in-memory adapter, and run the async engine (`protean server`).
+
+## Optional features
+
+Some features live behind install extras so the core stays small (see
+[ADR-0029](https://github.com/proteanhq/protean/blob/main/docs/adr/0029-runtime-dependency-boundary-and-extras.md)).
+Install the extra for what you use:
+
+| Extra | Install | Enables |
+|-------|---------|---------|
+| `server` | `pip install "protean[server]"` | the Observatory dashboard (`protean observatory`) and the FastAPI integration |
+| `shell` | `pip install "protean[shell]"` | the interactive domain shell (`protean shell`) |
+| `scaffold` | `pip install "protean[scaffold]"` | project scaffolding (`protean new`) |
+| `cli` | `pip install "protean[cli]"` | the full interactive CLI (`shell` + `scaffold`) |
+| `all` | `pip install "protean[all]"` | all of the above |
+
+Adapters are extras too, for example `pip install "protean[postgresql]"` or
+`pip install "protean[redis]"`. You can combine extras:
+`pip install "protean[server,postgresql]"`.
+
+If you run a command without its extra, Protean tells you which one to install
+rather than failing with a raw import error.
+
 ## Verifying
 
 Use the ``protean`` CLI to verify the installation:

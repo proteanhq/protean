@@ -2267,22 +2267,28 @@ source = { editable = "." }
 dependencies = [
     { name = "bleach" },
     { name = "cffi" },
-    { name = "copier" },
-    { name = "fastapi" },
     { name = "greenlet" },
     { name = "inflection" },
-    { name = "ipython" },
-    { name = "jinja2" },
     { name = "marshmallow" },
     { name = "pydantic" },
     { name = "python-dateutil" },
     { name = "structlog" },
     { name = "typer" },
-    { name = "uvicorn" },
     { name = "werkzeug" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "copier" },
+    { name = "fastapi" },
+    { name = "ipython" },
+    { name = "jinja2" },
+    { name = "uvicorn" },
+]
+cli = [
+    { name = "copier" },
+    { name = "ipython" },
+]
 dev = [
     { name = "watchfiles" },
 ]
@@ -2306,8 +2312,19 @@ postgresql = [
 redis = [
     { name = "redis" },
 ]
+scaffold = [
+    { name = "copier" },
+]
 sendgrid = [
     { name = "sendgrid" },
+]
+server = [
+    { name = "fastapi" },
+    { name = "jinja2" },
+    { name = "uvicorn" },
+]
+shell = [
+    { name = "ipython" },
 ]
 sqlite = [
     { name = "sqlalchemy" },
@@ -2368,14 +2385,14 @@ types = [
 requires-dist = [
     { name = "bleach", specifier = ">=6.1.0" },
     { name = "cffi", specifier = ">=2.0.0" },
-    { name = "copier", specifier = ">=9.4.0,<10" },
+    { name = "copier", marker = "extra == 'scaffold'", specifier = ">=9.4.0,<10" },
     { name = "elasticsearch", marker = "extra == 'elasticsearch'", specifier = ">=8.18.0,<9.0.0" },
-    { name = "fastapi", specifier = ">=0.139.0" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.139.0" },
     { name = "flask", marker = "extra == 'flask'", specifier = ">=3.0.0" },
     { name = "greenlet", specifier = ">=3.2.3,<4" },
     { name = "inflection", specifier = ">=0.5.1" },
-    { name = "ipython", specifier = ">=9.0.0,<10.0" },
-    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "ipython", marker = "extra == 'shell'", specifier = ">=9.0.0,<10.0" },
+    { name = "jinja2", marker = "extra == 'server'", specifier = ">=3.1.6" },
     { name = "marshmallow", specifier = ">=4.0.0" },
     { name = "message-db-py", marker = "extra == 'message-db'", specifier = ">=0.3.4" },
     { name = "opentelemetry-api", marker = "extra == 'telemetry'", specifier = ">=1.36.0" },
@@ -2383,22 +2400,24 @@ requires-dist = [
     { name = "opentelemetry-exporter-prometheus", marker = "extra == 'telemetry'", specifier = ">=0.57b0" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'telemetry'", specifier = ">=0.57b0" },
     { name = "opentelemetry-sdk", marker = "extra == 'telemetry'", specifier = ">=1.36.0" },
+    { name = "protean", extras = ["server", "cli"], marker = "extra == 'all'" },
+    { name = "protean", extras = ["shell", "scaffold"], marker = "extra == 'cli'" },
     { name = "psycopg2-binary", marker = "extra == 'postgresql'", specifier = ">=2.9.11" },
     { name = "pydantic", specifier = ">=2.12.0,<3.0" },
     { name = "pyodbc", marker = "extra == 'mssql'", specifier = ">=5.3.0" },
     { name = "python-dateutil", specifier = ">=2.8.2" },
-    { name = "redis", marker = "extra == 'redis'", specifier = ">=8.0.0,<8.1.0" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=8.0.0,<8.2.0" },
     { name = "sendgrid", marker = "extra == 'sendgrid'", specifier = ">=6.11.0" },
     { name = "sqlalchemy", marker = "extra == 'mssql'", specifier = ">=2.0.36,<2.1" },
     { name = "sqlalchemy", marker = "extra == 'postgresql'", specifier = ">=2.0.36,<2.1" },
     { name = "sqlalchemy", marker = "extra == 'sqlite'", specifier = ">=2.0.36,<2.1" },
     { name = "structlog", specifier = ">=24.1.0" },
     { name = "typer", specifier = ">=0.16.0" },
-    { name = "uvicorn", specifier = ">=0.30.0" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30.0" },
     { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=1.2.0" },
     { name = "werkzeug", specifier = ">=3.1.0" },
 ]
-provides-extras = ["elasticsearch", "redis", "postgresql", "sqlite", "mssql", "message-db", "flask", "sendgrid", "dev", "telemetry"]
+provides-extras = ["elasticsearch", "redis", "postgresql", "sqlite", "mssql", "message-db", "flask", "sendgrid", "server", "shell", "scaffold", "cli", "all", "dev", "telemetry"]
 
 [package.metadata.requires-dev]
 dev = [
