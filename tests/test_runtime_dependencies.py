@@ -16,6 +16,8 @@ import pytest
 
 import protean
 
+pytestmark = pytest.mark.no_test_domain
+
 # Distribution name -> the extra that must provide it. None of these may be a
 # core dependency.
 OPTIONAL_DISTS = {

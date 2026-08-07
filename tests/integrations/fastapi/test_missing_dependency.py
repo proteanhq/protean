@@ -11,6 +11,8 @@ import pytest
 
 from tests.shared import module_unavailable
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_importing_integration_without_fastapi_reports_actionable_error():
     with module_unavailable("fastapi", reload=("protean.integrations.fastapi",)):

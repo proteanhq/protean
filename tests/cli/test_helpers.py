@@ -6,6 +6,8 @@ import typer
 from protean.cli._helpers import abort_for_missing_dependency
 from tests.shared import module_unavailable
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_abort_prints_hint_and_aborts_when_a_package_is_absent(capsys):
     with module_unavailable("fastapi"):

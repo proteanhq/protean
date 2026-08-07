@@ -1,6 +1,10 @@
 """Tests for the optional-dependency message builder (ADR-0029)."""
 
+import pytest
+
 from protean.utils.dependencies import missing_dependency_message
+
+pytestmark = pytest.mark.no_test_domain
 
 
 def test_message_names_the_package_extra_and_feature():
