@@ -120,6 +120,15 @@ document the change in the 0.18 migration guide. The actionable error plus the
   this change stays a packaging change and does not touch the context system's
   semantics.
 
+  *Amended (August 2026, #1376): the deferred review landed. Nothing in
+  `src/protean` imports `cffi` or `greenlet` on any runtime path (the SQLAlchemy
+  adapter uses the synchronous engine; werkzeug's locals are contextvars-based),
+  so both left core. Their floors moved to the extras whose trees pull them:
+  `greenlet` to `postgresql`/`sqlite`/`mssql` (SQLAlchemy requires it on common
+  platforms but pins no floor), `cffi` to `sendgrid` (its only consumer is
+  `cryptography`, also floorless). The ADR-0020 newest-Python-wheel floor still
+  holds where each package is actually installed.*
+
 ## Alternatives Considered
 
 - **One coarse `cli` extra covering shell + scaffold.** Fewer names to document,

@@ -1198,7 +1198,7 @@ name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -2266,8 +2266,6 @@ version = "0.17.0"
 source = { editable = "." }
 dependencies = [
     { name = "bleach" },
-    { name = "cffi" },
-    { name = "greenlet" },
     { name = "inflection" },
     { name = "marshmallow" },
     { name = "pydantic" },
@@ -2302,10 +2300,12 @@ message-db = [
     { name = "message-db-py" },
 ]
 mssql = [
+    { name = "greenlet" },
     { name = "pyodbc" },
     { name = "sqlalchemy" },
 ]
 postgresql = [
+    { name = "greenlet" },
     { name = "psycopg2-binary" },
     { name = "sqlalchemy" },
 ]
@@ -2316,6 +2316,7 @@ scaffold = [
     { name = "copier" },
 ]
 sendgrid = [
+    { name = "cffi" },
     { name = "sendgrid" },
 ]
 server = [
@@ -2327,6 +2328,7 @@ shell = [
     { name = "ipython" },
 ]
 sqlite = [
+    { name = "greenlet" },
     { name = "sqlalchemy" },
 ]
 telemetry = [
@@ -2384,12 +2386,14 @@ types = [
 [package.metadata]
 requires-dist = [
     { name = "bleach", specifier = ">=6.1.0" },
-    { name = "cffi", specifier = ">=2.0.0" },
+    { name = "cffi", marker = "extra == 'sendgrid'", specifier = ">=2.0.0" },
     { name = "copier", marker = "extra == 'scaffold'", specifier = ">=9.4.0,<10" },
     { name = "elasticsearch", marker = "extra == 'elasticsearch'", specifier = ">=8.18.0,<9.0.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.139.0" },
     { name = "flask", marker = "extra == 'flask'", specifier = ">=3.0.0" },
-    { name = "greenlet", specifier = ">=3.2.3,<4" },
+    { name = "greenlet", marker = "extra == 'mssql'", specifier = ">=3.2.3,<4" },
+    { name = "greenlet", marker = "extra == 'postgresql'", specifier = ">=3.2.3,<4" },
+    { name = "greenlet", marker = "extra == 'sqlite'", specifier = ">=3.2.3,<4" },
     { name = "inflection", specifier = ">=0.5.1" },
     { name = "ipython", marker = "extra == 'shell'", specifier = ">=9.0.0,<10.0" },
     { name = "jinja2", marker = "extra == 'server'", specifier = ">=3.1.6" },
