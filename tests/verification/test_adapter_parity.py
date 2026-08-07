@@ -151,10 +151,15 @@ def test_seeded_dropped_balance_divergence_is_caught_on_read_query_and_snapshot(
     corrupt = run_history(_dropped_balance_domain, _dropped_balance_repo, history)
 
     divergences = diff_observations(sqlite, corrupt)
-    kinds = {d[1][1] for d in divergences if isinstance(d[0], int)}
-    assert "read" in kinds, divergences  # Read(id0): balance 5 vs 0
-    assert "query" in kinds, divergences  # Query(3): id0 matches vs not
-    assert any(d[0] == "final" or d[1][0] == "final" for d in divergences), divergences
+    # Each divergence is (position, left_obs, right_obs). A per-op observation is
+    # (index, kind, ...); the final snapshot is ("final", ...). Split on that
+    # marker so the kinds set holds only operation kinds, no snapshot tuple.
+    diverged_ops = {left[1] for _, left, _ in divergences if left[0] != "final"}
+    final_diverged = any(left[0] == "final" for _, left, _ in divergences)
+
+    assert "read" in diverged_ops, divergences  # Read(id0): balance 5 vs 0
+    assert "query" in diverged_ops, divergences  # Query(3): id0 matches vs not
+    assert final_diverged, divergences  # end-state snapshot: balance 5 vs 0
 
 
 def test_diff_observations_reports_positions_and_length_mismatch():
