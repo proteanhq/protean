@@ -70,17 +70,24 @@ parity_settings = settings(property_settings, max_examples=150)
 _balances = st.integers(min_value=-50, max_value=50)
 
 
+def _exc_class_tag(cls: type[BaseException]) -> str:
+    """Tag an exception *class* by its fully-qualified name.
+
+    The module is included so two same-named exceptions from different packages
+    (a common clash, e.g. ``IntegrityError``) do not read as agreement and mask a
+    real exception-type divergence. Tests derive their expected tags through this
+    same function so a pin can never drift from what :func:`_exc_tag` records.
+    """
+    return f"err:{cls.__module__}.{cls.__qualname__}"
+
+
 def _exc_tag(exc: Exception) -> str:
     """Record an exception by its *fully-qualified* class, never its message.
 
     Messages carry adapter-specific text, so comparing them would report spurious
-    divergences; the class is the behavior two adapters must agree on. The module
-    is included so two same-named exceptions from different packages (a common
-    clash, e.g. ``IntegrityError``) do not read as agreement and mask a real
-    exception-type divergence.
+    divergences; the class is the behavior two adapters must agree on.
     """
-    cls = type(exc)
-    return f"err:{cls.__module__}.{cls.__qualname__}"
+    return _exc_class_tag(type(exc))
 
 
 def make_account_cls() -> type[BaseAggregate]:
@@ -221,9 +228,9 @@ class Update:
     balance: int
 
     def apply(self, repo: BaseRepository) -> Observation:
-        # The generator only updates a live id, so the load always finds it and a
-        # single-writer save always succeeds; an unexpected raise on a valid
-        # update is a real failure worth surfacing loudly, not an observation.
+        # The generator only updates a live id, so a single-writer save succeeds;
+        # any unexpected raise is caught and recorded by ``run_history`` so a
+        # cross-adapter difference is diffed rather than crashing the replay.
         agg = repo.get(self.id)
         agg.balance = self.balance
         repo.add(agg)
@@ -367,12 +374,20 @@ def run_history(
     appends a final snapshot of every surviving aggregate (id, name, balance,
     version) so divergences in end state are caught even when no per-step outcome
     differs.
+
+    An operation that raises unexpectedly (one the generator meant to succeed) is
+    recorded as a ``("raised", <class>)`` observation rather than propagated, so a
+    divergence where only one adapter raises is diffed as an outcome instead of
+    crashing the replay for whichever adapter happens to run first.
     """
     observations: list[Observation] = []
     with domain.domain_context():
         domain.providers["default"]._data_reset()
         for index, operation in enumerate(history):
-            observations.append((index, *operation.apply(repo)))
+            try:
+                observations.append((index, *operation.apply(repo)))
+            except Exception as exc:
+                observations.append((index, "raised", _exc_tag(exc)))
 
         final = repo.query.all()
         snapshot = sorted(

@@ -24,12 +24,15 @@ import pytest
 from hypothesis import find, given
 from hypothesis import settings as hypothesis_settings
 
+from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
 from tests.shared import POSTGRES_URI
 from tests.verification.differential import (
     Add,
     ConcurrentUpdate,
     Query,
     Read,
+    Update,
+    _exc_class_tag,
     build_parity_domain,
     diff_observations,
     format_divergences,
@@ -40,8 +43,10 @@ from tests.verification.differential import (
 
 pytestmark = pytest.mark.no_test_domain
 
-_EXPECTED_VERSION_ERROR = "err:protean.exceptions.ExpectedVersionError"
-_OBJECT_NOT_FOUND_ERROR = "err:protean.exceptions.ObjectNotFoundError"
+# Derived through the harness' own tagging function so a pin can never drift from
+# what the harness actually records for these exception classes.
+_EXPECTED_VERSION_ERROR = _exc_class_tag(ExpectedVersionError)
+_OBJECT_NOT_FOUND_ERROR = _exc_class_tag(ObjectNotFoundError)
 
 # Built once per module: constructing a domain, repository, and tables per
 # Hypothesis example would dominate runtime. ``run_history`` resets each provider
@@ -103,10 +108,10 @@ def test_seeded_lost_update_divergence_is_caught_and_shrunk():
     minimal = find(histories(), diverges, settings=parity_settings)
 
     # Only a concurrent update can expose last-write-wins, so the shrunk
-    # reproduction must contain one.
+    # reproduction must contain one. (The exact shrunk length is a property of
+    # Hypothesis' shrinker and varies by profile — e.g. CI's ``derandomize`` —
+    # so it is deliberately not asserted.)
     assert any(isinstance(op, ConcurrentUpdate) for op in minimal), minimal
-    # Shrinking reached a small reproduction, not the 12-op ceiling.
-    assert len(minimal) <= 8, minimal
     # And the race is the *cause*: with every concurrent update removed, the two
     # adapters agree again — nothing else in the reproduction drives the divergence.
     without_race = [op for op in minimal if not isinstance(op, ConcurrentUpdate)]
@@ -163,6 +168,16 @@ def test_diff_observations_reports_positions_and_length_mismatch():
 
     length = diff_observations([("a", 1), ("b", 2)], [("a", 1)])
     assert ("length", 2, 1) in length
+
+
+def test_run_history_records_an_unexpected_raise_as_an_observation():
+    """An operation the generator would never emit (here, an update to an absent
+    id) still yields a recorded ``("raised", <class>)`` observation instead of
+    crashing the replay, so a divergence where only one adapter raises would be
+    diffed order-independently rather than aborting whichever adapter ran first."""
+    observations = run_history(_sqlite_domain, _sqlite_repo, [Update("ghost", 5)])
+
+    assert observations[0] == (0, "raised", _OBJECT_NOT_FOUND_ERROR), observations
 
 
 # --- FULL leg: Memory vs PostgreSQL ---------------------------------------
