@@ -32,8 +32,9 @@ def bootstrap_domain():
     and every test would fail with "no domain context". An autouse fixture runs
     for any invocation that collects a test under this package.
 
-    Protean's pytest plugin sets ``PROTEAN_ENV`` to ``test`` before collection,
-    so domain modules already read the right config when they are imported.
+    Protean's pytest plugin defaults ``PROTEAN_ENV`` to ``test`` before
+    collection (without overriding an already-set value), so domain modules
+    read the right config when they are imported.
     """
     from {{ package_name }}.domain import {{ domain_name }} as domain
 

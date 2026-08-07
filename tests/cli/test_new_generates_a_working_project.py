@@ -73,7 +73,11 @@ def _subprocess_env(project: Path) -> dict[str, str]:
 
     The project is not pip-installed, so its ``src/`` goes on ``PYTHONPATH``.
     ``VIRTUAL_ENV`` is dropped so it cannot point the child at a different
-    interpreter or source tree than ``sys.executable``.
+    interpreter or source tree than ``sys.executable``. ``PROTEAN_ENV`` and
+    ``PROTEAN_DEBUG`` are dropped too: Protean's pytest plugin only sets
+    ``PROTEAN_ENV`` with ``setdefault``, so a value already exported in the
+    parent shell would otherwise leak into the generated project's own test
+    run and make it non-deterministic.
     """
     src = str(project / "src")
     existing = os.environ.get("PYTHONPATH", "")
@@ -82,6 +86,8 @@ def _subprocess_env(project: Path) -> dict[str, str]:
         "PYTHONPATH": src + os.pathsep + existing if existing else src,
     }
     env.pop("VIRTUAL_ENV", None)
+    env.pop("PROTEAN_ENV", None)
+    env.pop("PROTEAN_DEBUG", None)
     return env
 
 

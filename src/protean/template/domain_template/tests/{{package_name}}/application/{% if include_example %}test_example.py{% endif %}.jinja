@@ -19,8 +19,12 @@ from {{ package_name }}.example.events import ExampleCreated
 from {{ package_name }}.example.projection import ExampleSummary
 
 
-def test_command_creates_example_and_raises_event():
-    """The factory builds the aggregate and raises exactly one creation event."""
+def test_aggregate_create_raises_event():
+    """The factory builds the aggregate and raises exactly one creation event.
+
+    This exercises the aggregate directly; ``test_projection_reflects_created_example``
+    below drives the same creation through the command handler.
+    """
     example = Example.create(name="Widget")
 
     assert example.name == "Widget"
