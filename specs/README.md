@@ -93,7 +93,7 @@ compile down to the same TLA+.
 
 **Checkpoint.** `global_position` is a store-wide sequence assigned at insert (in
 order) but made visible at commit, and across categories a lower value can commit
-after a higher one. `Commit(p)` makes a committed-fated position visible in any
+after a higher one. `Commit(p)` makes a commit-fated position visible in any
 order, which is exactly the gap. The subscription processes the contiguous run
 from its cursor and holds at the first gap. A gap that stays unfilled past
 `gap_timeout_seconds` is abandoned (a rolled-back append leaves a permanent

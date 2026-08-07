@@ -88,7 +88,7 @@ Init ==
     /\ crashes = 0
 
 (***************************************************************************)
-(* A committed-fated position becomes visible (its transaction commits).     *)
+(* A commit-fated position becomes visible (its transaction commits).        *)
 (* The order is unconstrained, which is exactly the cross-category            *)
 (* out-of-order commit that produces a gap.                                  *)
 (***************************************************************************)

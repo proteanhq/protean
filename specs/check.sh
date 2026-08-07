@@ -42,7 +42,8 @@ fail=0
 
 # TLC writes state-graph scratch files; keep them out of the source tree, and
 # give each run its own subdir so no stale checkpoint is carried between runs.
-WORKDIR="$(mktemp -d)"
+# The explicit template keeps this portable across GNU and BSD/macOS mktemp.
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/protean-specs.XXXXXXXX")"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 # run <module.tla> <config.cfg> <expect: pass|violation> [expected-invariant]
