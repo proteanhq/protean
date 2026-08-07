@@ -2,7 +2,7 @@
 (***************************************************************************)
 (* The aggregate optimistic-concurrency no-lost-update protocol.            *)
 (*                                                                          *)
-(* Two (or more) concurrent Units of Work each update the same aggregate.    *)
+(* Two concurrent Units of Work each update the same aggregate.              *)
 (* Each writer: (1) READS the aggregate, capturing the stored version as its  *)
 (* expected base `b`; (2) COMMITS. The commit is the version check made        *)
 (* atomic with the write: a compare-and-set that advances the stored version  *)
@@ -22,8 +22,10 @@
 (*                                                                          *)
 (* Per ADR-0013 the aggregate root is the single concurrency boundary, so one   *)
 (* version cell is the right granularity, and one parameterized model covers    *)
-(* both adapters. This spec model-checks the protocol exhaustively over every   *)
-(* interleaving of concurrent writers.                                        *)
+(* both adapters. `Writers` is a constant set, so the model itself is generic,  *)
+(* but the shipped configs (OCC.cfg, OCC_bug.cfg, OCC_conflict.cfg) bind it to   *)
+(* two writers and TLC checks exhaustively over every interleaving of those      *)
+(* two -- the invariants below are stated, and verified, at that bound.          *)
 (*                                                                          *)
 (* Guarantees modeled (docs/reference/guarantees.md, "No lost update",         *)
 (* SQL and Memory adapters; ADR-0013):                                        *)
@@ -175,9 +177,14 @@ AtMostOneWinnerPerBase ==
 
 \* Model-trust -- the stored version never decreases: it always sits at the
 \* highest version any successful commit has reached (`high` only ever rises).
-\* Holds even under the split-commit bug (the split still increments by one and
-\* never rolls the version back), so it cannot pre-empt NoLostUpdate in the
-\* revert run. A failure here would signal a modeling bug, not a protocol bug.
+\* Holds under the two-writer bound checked by OCC.cfg / OCC_bug.cfg, including
+\* the split-commit bug there (the split still increments by one and never
+\* rolls the version back), so it cannot pre-empt NoLostUpdate in that revert
+\* run. It is NOT a general property of the split-commit bug: with three or
+\* more writers a delayed Write from a stale base can overwrite a higher
+\* version with a lower one (Write is an unconditional set, not a max). A
+\* failure here at the checked bound would signal a modeling bug, not a
+\* protocol bug.
 VersionMonotonic == version = high
 
 \* Model-trust -- a writer only reaches `conflicted` when the stored version has
