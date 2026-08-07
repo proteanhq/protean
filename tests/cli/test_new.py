@@ -5,11 +5,21 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from tests.shared import isolated_filesystem
+from tests.shared import isolated_filesystem, module_unavailable
 
 runner = CliRunner()
 
 PROJECT_NAME = "foobar"
+
+
+def test_new_without_scaffold_extra_reports_actionable_error():
+    """`protean new` without copier fails with an install hint, not a traceback."""
+    with module_unavailable("copier"):
+        result = runner.invoke(app, ["new", PROJECT_NAME])
+
+    assert result.exit_code == 1
+    assert "copier" in result.output
+    assert 'pip install "protean[scaffold]"' in result.output
 
 
 class TestGenerator:

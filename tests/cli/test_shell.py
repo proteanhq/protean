@@ -6,9 +6,22 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
-from tests.shared import change_working_directory_to
+from tests.shared import change_working_directory_to, module_unavailable
 
 runner = CliRunner()
+
+
+def test_shell_without_shell_extra_reports_actionable_error():
+    """`protean shell` without IPython fails with an install hint, not a traceback.
+
+    The import guard runs before the domain is loaded, so no domain is needed.
+    """
+    with module_unavailable("IPython"):
+        result = runner.invoke(app, ["shell"])
+
+    assert result.exit_code == 1
+    assert "IPython" in result.output
+    assert 'pip install "protean[shell]"' in result.output
 
 
 class TestShellCommand:

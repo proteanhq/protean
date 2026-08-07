@@ -9,12 +9,13 @@ import functools
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn
 
 import typer
 from rich import print
 
 from protean.exceptions import NoDomainException
+from protean.utils.dependencies import missing_dependency_message
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
@@ -44,6 +45,37 @@ def cli_exception_handler(command: str) -> Iterator[None]:
     except Exception:
         logger.exception("cli.command_failed", command=command, argv=sys.argv)
         raise
+
+
+def abort_for_missing_dependency(
+    extra: str,
+    feature: str,
+    modules: tuple[str, ...],
+    exc: ImportError,
+) -> NoReturn:
+    """Turn an absent optional dependency into a clean install hint and abort.
+
+    Call this from a subcommand's ``except ImportError`` block after a lazy
+    import of a feature's optional stack (``copier`` for ``protean new``,
+    ``IPython`` for ``protean shell``, the FastAPI stack for
+    ``protean observatory``). It prints a one-line message naming the extra to
+    install and raises ``typer.Abort`` so Typer exits non-zero, mirroring the
+    ``--reload``/watchfiles handling instead of surfacing a raw traceback.
+
+    ``modules`` lists the top-level packages the extra provides. If the
+    ``ImportError`` came from anything else, it is re-raised unchanged: a genuine
+    bug inside the imported module must not be masked as a missing extra.
+    """
+    top = (exc.name or "").split(".")[0]
+    if top not in modules:
+        raise exc
+    msg = f"Error: {missing_dependency_message(top, extra, feature)}"
+    # Use typer.echo, not rich's print: the message contains "protean[<extra>]",
+    # and rich would treat "[<extra>]" as a markup tag and strip it, printing a
+    # wrong (and unusable) install command.
+    typer.echo(msg)
+    logger.error(msg)
+    raise typer.Abort() from exc
 
 
 def load_domain(domain_path: str) -> "Domain":
