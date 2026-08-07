@@ -396,7 +396,7 @@ class TestTemplateGeneration:
             project_path = Path(project_dir) / "test_with_example"
             example_path = project_path / "src" / "test_with_example" / "example"
 
-            # The trimmed walking skeleton (see #1321) ships one write slice
+            # The trimmed walking skeleton ships one write slice
             # (command -> event -> aggregate) plus one read slice
             # (projector -> projection).
             assert example_path.is_dir()

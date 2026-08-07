@@ -137,8 +137,8 @@ class TestGeneratedProjectStarts:
     def test_generated_test_suite_runs_and_passes(self, tmp_path, label, extra):
         """The scaffold ships tests that actually run and pass.
 
-        #1316 shipped because a fresh project's suite was empty: nothing ran,
-        so nothing could fail. The scaffold now includes a write-path and a
+        A fresh project's suite used to be empty: nothing ran, so nothing
+        could fail. The scaffold now includes a write-path and a
         read-path test for the example slice; run the generated suite the way a
         user would (`pytest`, driven by the project's own `testpaths`) and
         require both to pass.
@@ -205,7 +205,7 @@ class TestGeneratedProjectStarts:
 
         A non-jinja `__init__.py` doing `from .handlers import *` (a module that
         does not exist) used to sit beside the empty `__init__.py.jinja`. The
-        jinja version wins the copier collision, but the dead file was a #1319
+        jinja version wins the copier collision, but the dead file was a
         hazard; guard that the rendered initializer imports no submodule.
         """
         project = _generate(tmp_path, [])
@@ -227,7 +227,7 @@ class TestGeneratedProjectStarts:
         )
 
     def test_generated_project_passes_check(self, tmp_path):
-        """`protean check` exits 0 on a fresh default project (#1319)."""
+        """`protean check` exits 0 on a fresh default project."""
         project = _generate(tmp_path, [])
 
         completed = subprocess.run(
