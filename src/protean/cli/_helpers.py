@@ -9,13 +9,18 @@ import functools
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any, NoReturn
 
 import typer
 from rich import print
 
 from protean.exceptions import NoDomainException
-from protean.utils.dependencies import missing_dependency_message
+from protean.utils.dependencies import (
+    FEATURE_EXTRA_MODULES,
+    FeatureExtra,
+    missing_dependency_message,
+)
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
@@ -48,9 +53,8 @@ def cli_exception_handler(command: str) -> Iterator[None]:
 
 
 def abort_for_missing_dependency(
-    extra: str,
+    extra: FeatureExtra,
     feature: str,
-    modules: tuple[str, ...],
     exc: ImportError,
 ) -> NoReturn:
     """Turn an absent optional dependency into a clean install hint and abort.
@@ -58,18 +62,22 @@ def abort_for_missing_dependency(
     Call this from a subcommand's ``except ImportError`` block after a lazy
     import of a feature's optional stack (``copier`` for ``protean new``,
     ``IPython`` for ``protean shell``, the FastAPI stack for
-    ``protean observatory``). It prints a one-line message naming the extra to
-    install and raises ``typer.Abort`` so Typer exits non-zero, mirroring the
+    ``protean observatory``). If a package the ``extra`` provides is genuinely
+    not installed, it prints a one-line message naming the extra to install and
+    raises ``typer.Abort`` so Typer exits non-zero, mirroring the
     ``--reload``/watchfiles handling instead of surfacing a raw traceback.
 
-    ``modules`` lists the top-level packages the extra provides. If the
-    ``ImportError`` came from anything else, it is re-raised unchanged: a genuine
-    bug inside the imported module must not be masked as a missing extra.
+    The "is it installed?" test uses ``importlib.util.find_spec`` on the extra's
+    packages, not ``exc.name``: an ``ImportError`` from a package that IS
+    installed but broken (an incompatible version, a renamed symbol) names that
+    same package, so keying off the name would tell the user to install a package
+    they already have. When every package the extra provides is importable, the
+    ``ImportError`` is a real bug inside the feature and is re-raised unchanged.
     """
-    top = (exc.name or "").split(".")[0]
-    if top not in modules:
+    missing = [pkg for pkg in FEATURE_EXTRA_MODULES[extra] if find_spec(pkg) is None]
+    if not missing:
         raise exc
-    msg = f"Error: {missing_dependency_message(top, extra, feature)}"
+    msg = f"Error: {missing_dependency_message(missing[0], extra, feature)}"
     # Use typer.echo, not rich's print: the message contains "protean[<extra>]",
     # and rich would treat "[<extra>]" as a markup tag and strip it, printing a
     # wrong (and unusable) install command.

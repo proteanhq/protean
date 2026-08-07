@@ -33,7 +33,7 @@ def shell(
             InteractiveShellEmbed,
         )
     except ImportError as exc:
-        abort_for_missing_dependency("shell", "'protean shell'", ("IPython",), exc)
+        abort_for_missing_dependency("shell", "'protean shell'", exc)
 
     try:
         domain_instance = derive_domain(domain)

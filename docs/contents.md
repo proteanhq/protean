@@ -403,7 +403,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 ## Migration
 
 - [Compatibility Reference](./reference/compatibility/index.md) -- Breaking change rules, three-tier taxonomy, deprecation lifecycle, and config.toml reference.
-- [Migrating to 0.18](./reference/migration/v0-18.md) -- Upgrade guide for the 0.18 release. Covers the right-sized dependency surface: the web/observatory stack, the shell, the scaffolder, and HTML sanitization move behind install extras.
+- [Migrating to 0.18](./reference/migration/v0-18.md) -- Upgrade guide for the 0.18 release. Covers the right-sized dependency surface: the web/observatory stack, the shell, and the scaffolder move behind install extras.
 - [Migrating to 0.17](./reference/migration/v0-17.md) -- Upgrade guide for the 0.17 API-consolidation release. Covers the `event_sourced` option rename, the internalized `is_fact_event` option, and the email subsystem deprecation.
 - [Migrating to 0.16](./reference/migration/v0-16.md) -- Upgrade guide for the 0.16 stability release. Covers the outbox column-bounds structural change and its per-backend `ALTER TABLE` recipes.
 - [Migrating to 0.15](./reference/migration/v0-15.md) -- Upgrade guide for the Pydantic v2 foundation release. Covers breaking changes, field style migration, and new features.

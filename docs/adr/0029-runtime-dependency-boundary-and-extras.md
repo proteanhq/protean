@@ -7,19 +7,19 @@
 ## Context
 
 A plain `pip install protean` used to pull a web server, an ASGI stack, a Jinja
-template engine, an interactive REPL, a project scaffolder, and an HTML
-sanitizer, whether or not the consumer ever ran a server, opened a shell, or
-generated a project. The adapter ecosystem was already right: `postgresql`,
-`redis`, `elasticsearch`, `flask`, and `sendgrid` are extras, installed only
-when the consumer talks to that infrastructure. But several install-time-optional
-concerns were hard runtime dependencies in `[project].dependencies`:
+template engine, an interactive REPL, and a project scaffolder, whether or not
+the consumer ever ran a server, opened a shell, or generated a project. The
+adapter ecosystem was already right: `postgresql`, `redis`, `elasticsearch`,
+`flask`, and `sendgrid` are extras, installed only when the consumer talks to
+that infrastructure. But several install-time-optional concerns were hard runtime
+dependencies in `[project].dependencies`:
 
-- `fastapi`, `uvicorn`, `jinja2` — the HTTP/ASGI/observatory stack, used only by
+- `fastapi`, `uvicorn`, `jinja2`: the HTTP/ASGI/observatory stack, used only by
   `protean observatory` and `protean.integrations.fastapi`.
-- `ipython` — the interactive shell, used only by `protean shell`.
-- `copier` — project scaffolding, used only by `protean new`.
+- `ipython`: the interactive shell, used only by `protean shell`.
+- `copier`: project scaffolding, used only by `protean new`.
 
-None of these are imported by `import protean` — the imports were already lazy,
+None of these are imported by `import protean`. The imports were already lazy,
 gated behind a CLI subcommand or an opt-in integration module. So the cost was
 not import coupling; it was **install footprint** and the dependency-conflict
 surface every consumer inherited. FastAPI itself models the fix (it pushes
@@ -27,7 +27,7 @@ surface every consumer inherited. FastAPI itself models the fix (it pushes
 dependencies.
 
 Two more packages were candidates but stay in core after review. `bleach` (HTML
-sanitization) looked optional — used only for String/Text field sanitization —
+sanitization) looked optional, used only for String/Text field sanitization,
 until you notice that `String()` and `Text()` default to `sanitize=True`. Nearly
 every domain has a string field, so bleach runs for nearly every domain; moving
 it behind an extra would make that extra a de-facto requirement and would
@@ -66,19 +66,30 @@ And two convenience bundles:
 | `all` | `server` + `cli` | everything that shipped in the pre-0.18 core; the one-line upgrade |
 
 **When a feature is used without its extra, fail with an actionable message that
-names the extra to install, never a bare `ModuleNotFoundError`.** The single
-message builder lives in `protean.utils.dependencies.missing_dependency_message`,
-so the wording is identical everywhere. The CLI commands (`new`, `shell`,
-`observatory`) import their optional stack lazily inside the command body and, on
-`ImportError`, print `Error: … requires the '<pkg>' package. Install it with
-'pip install "protean[<extra>]"'.` and exit non-zero. The check only translates
-the *expected* missing package; any other `ImportError` is re-raised so a genuine
-bug inside the imported module is not masked as a missing extra. The FastAPI
-integration package applies the same guard at import.
+names the extra to install, never a bare `ModuleNotFoundError`.** The message
+builder lives in `protean.utils.dependencies.missing_dependency_message`, and
+`FEATURE_EXTRA_MODULES` in the same module maps each extra to the packages it
+provides, so both facts live in one place. The CLI commands (`new`, `shell`,
+`observatory`) import their optional stack lazily inside the command body; on
+`ImportError` they hand off to `abort_for_missing_dependency`, which prints
+`Error: … requires the '<pkg>' package. Install it with 'pip install
+"protean[<extra>]"'.` and exits non-zero.
+
+To decide whether a package is actually missing, the guard uses
+`importlib.util.find_spec` over the extra's packages, not the `ImportError`'s
+name. An `ImportError` from a package that is installed but broken (an
+incompatible version, a renamed symbol) names that same package, so a name-based
+check would tell the user to install what they already have; and a package such
+as `jinja2` that is re-raised by a third party with no `name` at all would be
+missed. When every package the extra provides is importable, the `ImportError`
+is a real bug inside the feature and is re-raised unchanged. The FastAPI
+integration applies the same `find_spec` guard at import, raising a clear
+`ImportError` rather than a `typer.Abort` (a library import must not abort the
+process).
 
 **Land the break cleanly in 0.18.0.** Because the imports were already lazy,
 there is no `import protean` code path on which to emit a pre-removal
-`DeprecationWarning` — the deps simply were not loaded at import. A staged
+`DeprecationWarning`; the deps simply were not loaded at import. A staged
 "warn then move" runway would keep the fat install for a release while warning
 about a change whose fix is a single word, adding cycle time for no real
 protection. Instead: move to extras in 0.18.0, ship the `all` extra as the
@@ -98,7 +109,7 @@ document the change in the 0.18 migration guide. The actionable error plus the
 - CI and dev environments that already run `uv sync --all-extras` are unaffected;
   the new extras are picked up automatically.
 - Deriving the boundary per feature (rather than one big `cli` bucket) means more
-  extra names to document, but each install stays minimal — a REPL user does not
+  extra names to document, but each install stays minimal: a REPL user does not
   drag in the scaffolder.
 - `bleach`, `werkzeug`, `cffi`, and `greenlet` stay in core. `bleach` because
   String/Text fields sanitize by default (see Context); `werkzeug` because it
@@ -120,9 +131,15 @@ document the change in the 0.18 migration guide. The actionable error plus the
   `sanitize=True`, so bleach runs for nearly every domain. The extra would become
   a de-facto requirement, and the "fail fast" would fire on the *default* field
   declaration, not an opt-in one. Moving it out of core would also mean flipping
-  the `sanitize` default to `False` — a separate, security-relevant behavioral
+  the `sanitize` default to `False`, a separate and security-relevant behavioral
   break (string fields silently stop HTML-escaping) that does not belong in a
   packaging change. bleach stays in core; revisit if that default ever flips.
+- **Detect the missing package from `ImportError.name` instead of `find_spec`.**
+  Simpler, but wrong for the case that matters most: a package that is installed
+  but broken raises an `ImportError` naming itself, so a name check would tell the
+  user to reinstall a package they already have, and a `jinja2` miss re-raised
+  without a `name` would be missed entirely. `find_spec` distinguishes absent from
+  present-but-broken directly.
 - **Replace `werkzeug` with `contextvars` in this change to shrink core further.**
   Reimplementing the nested push/pop semantics of the domain-context and
   Unit-of-Work stacks is a real refactor with behavioral risk; folding it into a

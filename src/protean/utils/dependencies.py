@@ -12,6 +12,21 @@ single place that builds that message, so the wording stays identical across the
 CLI and the FastAPI integration.
 """
 
+from typing import Literal
+
+FeatureExtra = Literal["server", "shell", "scaffold"]
+
+# Each optional feature extra and the top-level import packages it provides. This
+# is the single source of truth for the "which extra is missing" checks: the CLI
+# abort helper and the FastAPI integration both derive their guard from it, so an
+# extra's package set is defined in exactly one place. Casing matches what
+# ``ImportError.name`` reports (e.g. ``IPython``, not ``ipython``).
+FEATURE_EXTRA_MODULES: dict[FeatureExtra, tuple[str, ...]] = {
+    "server": ("fastapi", "uvicorn", "jinja2"),
+    "shell": ("IPython",),
+    "scaffold": ("copier",),
+}
+
 
 def missing_dependency_message(package: str, extra: str, feature: str) -> str:
     """Build the standard actionable message for an absent optional dependency.

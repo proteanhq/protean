@@ -9,7 +9,7 @@ def test_message_names_the_package_extra_and_feature():
     assert "copier" in msg
     assert "'protean new'" in msg
     # The literal install command must survive intact, including the bracketed
-    # extra — this is what the caller pastes into a terminal.
+    # extra, which is what the caller pastes into a terminal.
     assert 'pip install "protean[scaffold]"' in msg
 
 

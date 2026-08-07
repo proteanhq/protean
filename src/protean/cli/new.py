@@ -149,7 +149,7 @@ def new(
     try:
         from copier import run_copy  # noqa: PLC0415
     except ImportError as exc:
-        abort_for_missing_dependency("scaffold", "'protean new'", ("copier",), exc)
+        abort_for_missing_dependency("scaffold", "'protean new'", exc)
 
     def is_valid_project_name(project_name: str) -> bool:
         """

@@ -75,14 +75,14 @@ def test_convenience_extras_compose_the_feature_extras():
     assert extras["all"] == ["protean[server,cli]"]
 
 
-def test_import_protean_does_not_pull_optional_stacks():
-    """A bare ``import protean`` must not import any optional feature stack.
+def _optional_stacks_pulled_by(import_stmt: str) -> str:
+    """Return the optional-stack modules `import_stmt` pulls, checked in a subprocess.
 
-    Runs in a subprocess so the check sees a clean module table, not one already
-    populated by the test session (which installs every extra).
+    A subprocess gives a clean module table, not one already populated by the
+    test session (which installs every extra).
     """
     code = (
-        "import sys, protean;"
+        f"import sys; {import_stmt};"
         f"watched=set({OPTIONAL_IMPORTS!r});"
         "pulled=sorted(m for m in sys.modules if m.split('.')[0] in watched);"
         "print(','.join(pulled))"
@@ -93,6 +93,22 @@ def test_import_protean_does_not_pull_optional_stacks():
         text=True,
         check=True,
     )
-    assert result.stdout.strip() == "", (
-        f"import protean pulled optional stacks: {result.stdout.strip()}"
-    )
+    return result.stdout.strip()
+
+
+def test_import_protean_does_not_pull_optional_stacks():
+    """A bare ``import protean`` must not import any optional feature stack."""
+    pulled = _optional_stacks_pulled_by("import protean")
+    assert pulled == "", f"import protean pulled optional stacks: {pulled}"
+
+
+def test_loading_the_cli_does_not_pull_optional_stacks():
+    """Loading the CLI must stay lean.
+
+    ``import protean`` never touches ``protean.cli``, so this is a separate
+    guarantee. The CLI package imports every subcommand module at load, so a
+    subcommand regaining a module-top ``import IPython``/``copier``/fastapi would
+    break ``protean --help`` on a lean install while the check above stayed green.
+    """
+    pulled = _optional_stacks_pulled_by("from protean.cli import app")
+    assert pulled == "", f"loading the CLI pulled optional stacks: {pulled}"

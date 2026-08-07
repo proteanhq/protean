@@ -22,6 +22,31 @@ def test_new_without_scaffold_extra_reports_actionable_error():
     assert 'pip install "protean[scaffold]"' in result.output
 
 
+def test_new_aborts_before_clearing_directory_when_copier_absent():
+    """The copier import guard must run before --force clears the target dir.
+
+    The guard sits above ``clear_directory_contents``; without that ordering a
+    lean install would wipe an existing project directory and only then fail.
+    This pins the ordering: with copier absent, ``--force`` must not delete the
+    existing contents.
+    """
+    with isolated_filesystem() as output_dir:
+        project_dir = os.path.join(output_dir, PROJECT_NAME)
+        os.makedirs(project_dir)
+        sentinel = Path(project_dir) / "keep.txt"
+        sentinel.write_text("precious", encoding="utf-8")
+
+        with module_unavailable("copier"):
+            result = runner.invoke(
+                app, ["new", PROJECT_NAME, "-o", output_dir, "--force"]
+            )
+
+        assert result.exit_code == 1
+        assert 'pip install "protean[scaffold]"' in result.output
+        assert sentinel.is_file(), "target directory was cleared before the guard fired"
+        assert sentinel.read_text(encoding="utf-8") == "precious"
+
+
 class TestGenerator:
     def test_successful_project_generation(self):
         with isolated_filesystem() as current_dir:

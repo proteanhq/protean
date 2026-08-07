@@ -46,9 +46,7 @@ def observatory(
     try:
         from protean.server.observatory import Observatory  # noqa: PLC0415
     except ImportError as exc:
-        abort_for_missing_dependency(
-            "server", "'protean observatory'", ("fastapi", "uvicorn", "jinja2"), exc
-        )
+        abort_for_missing_dependency("server", "'protean observatory'", exc)
 
     # Check parent context for CLI-level logging configuration.
     # click.get_current_context may fail when called directly (not via CLI).

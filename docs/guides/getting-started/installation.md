@@ -66,7 +66,7 @@ Install the extra for what you use:
 | `cli` | `pip install "protean[cli]"` | the full interactive CLI (`shell` + `scaffold`) |
 | `all` | `pip install "protean[all]"` | all of the above |
 
-Adapters are extras too — for example `pip install "protean[postgresql]"` or
+Adapters are extras too, for example `pip install "protean[postgresql]"` or
 `pip install "protean[redis]"`. You can combine extras:
 `pip install "protean[server,postgresql]"`.
 

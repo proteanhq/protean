@@ -140,7 +140,7 @@ def module_unavailable(*names: str, reload: tuple[str, ...] = ()) -> Iterator[No
 
     Each name in ``names`` (and its submodules) is removed from ``sys.modules``
     and the top-level name is set to ``None`` so a subsequent ``import <name>``
-    raises ``ImportError`` — exactly as it would if the package were not
+    raises ``ImportError``, exactly as it would if the package were not
     installed. Names in ``reload`` are only evicted (not set to ``None``) so they
     re-execute on next import; use this for a Protean package that lazily imports
     an absent extra, so its ``__init__`` runs again and hits the missing import.
