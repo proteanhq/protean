@@ -6,7 +6,8 @@ from typing import Annotated
 from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
-from .events import ExampleActivated, ExampleArchived, ExampleCreated
+
+from .events import ExampleCreated
 
 
 @{{ domain_name }}.aggregate
@@ -22,7 +23,6 @@ class Example:
     description: Annotated[str, Field(max_length=500)] | None = None
     status: str | None = "DRAFT"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Business methods
     @classmethod
@@ -40,30 +40,3 @@ class Example:
         )
 
         return example
-
-    def activate(self) -> None:
-        """Activate the example."""
-        if self.status == "ARCHIVED":
-            raise ValueError("Cannot activate an archived example")
-
-        self.status = "ACTIVE"
-        self.updated_at = datetime.now(UTC)
-
-        self.raise_(
-            ExampleActivated(
-                example_id=self.id,
-                activated_at=self.updated_at,
-            )
-        )
-
-    def archive(self) -> None:
-        """Archive the example."""
-        self.status = "ARCHIVED"
-        self.updated_at = datetime.now(UTC)
-
-        self.raise_(
-            ExampleArchived(
-                example_id=self.id,
-                archived_at=self.updated_at,
-            )
-        )

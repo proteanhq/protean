@@ -13,6 +13,7 @@ compares scaffolded keys against what each adapter actually reads.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -67,6 +68,29 @@ def _generate(tmp_path: Path, extra: list[str], name: str = "scaffolded") -> Pat
     return out / name
 
 
+def _subprocess_env(project: Path) -> dict[str, str]:
+    """Env for running the generated project uninstalled.
+
+    The project is not pip-installed, so its ``src/`` goes on ``PYTHONPATH``.
+    ``VIRTUAL_ENV`` is dropped so it cannot point the child at a different
+    interpreter or source tree than ``sys.executable``. ``PROTEAN_ENV`` and
+    ``PROTEAN_DEBUG`` are dropped too: Protean's pytest plugin only sets
+    ``PROTEAN_ENV`` with ``setdefault``, so a value already exported in the
+    parent shell would otherwise leak into the generated project's own test
+    run and make it non-deterministic.
+    """
+    src = str(project / "src")
+    existing = os.environ.get("PYTHONPATH", "")
+    env = {
+        **os.environ,
+        "PYTHONPATH": src + os.pathsep + existing if existing else src,
+    }
+    env.pop("VIRTUAL_ENV", None)
+    env.pop("PROTEAN_ENV", None)
+    env.pop("PROTEAN_DEBUG", None)
+    return env
+
+
 class TestGeneratedProjectStarts:
     @pytest.mark.parametrize(
         ("label", "extra"), OFFLINE_CHOICES, ids=[c[0] for c in OFFLINE_CHOICES]
@@ -104,6 +128,136 @@ class TestGeneratedProjectStarts:
             f"is reversed:\n{completed.stderr}"
         )
         assert "initialised" in completed.stdout
+
+    @pytest.mark.parametrize(
+        ("label", "extra"),
+        [
+            ("memory database", []),
+            ("sqlite database", ["-d", "database=sqlite"]),
+        ],
+        # Ids must not be a bare provider keyword (e.g. "sqlite"): the repo's
+        # conftest skips any item whose keywords contain one unless its --flag
+        # is passed, and the generated sqlite project needs no live service.
+        ids=["memory database", "sqlite database"],
+    )
+    def test_generated_test_suite_runs_and_passes(self, tmp_path, label, extra):
+        """The scaffold ships tests that actually run and pass.
+
+        A fresh project's suite used to be empty: nothing ran, so nothing
+        could fail. The scaffold now includes a write-path and a
+        read-path test for the example slice; run the generated suite the way a
+        user would (`pytest`, driven by the project's own `testpaths`) and
+        require both to pass.
+
+        Run it against a real on-disk database too, not just the in-memory
+        provider that auto-materializes tables. The read-path test persists an
+        aggregate and its projection, so a scaffold that never creates its
+        schema would fail here with "no such table" the moment a user picks a
+        real database.
+        """
+        project = _generate(tmp_path, extra)
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "tests"],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            f"The generated project's own test suite ({label}) does not pass:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+
+        match = re.search(r"(\d+) passed", completed.stdout)
+        assert match, f"no pass count in pytest output:\n{completed.stdout}"
+        assert int(match.group(1)) >= 2, (
+            "The scaffold must ship at least two passing tests so a fresh "
+            f"project is not green on nothing:\n{completed.stdout}"
+        )
+
+    def test_generated_suite_passes_without_the_example(self, tmp_path):
+        """An `include_example=false` project still ships a passing test.
+
+        Opting out of the example used to leave the tests tree empty, so
+        `pytest` collected nothing and exited 5 ("no tests ran") on first run.
+        The always-generated smoke test keeps the opt-out project green.
+        """
+        project = _generate(tmp_path, ["-d", "include_example=false"])
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "tests"],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            "An opt-out project's own test suite does not pass:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+
+        match = re.search(r"(\d+) passed", completed.stdout)
+        assert match, f"no pass count in pytest output:\n{completed.stdout}"
+        assert int(match.group(1)) >= 1, (
+            "An opt-out project must still ship at least one passing test so "
+            f"`pytest` does not exit 5 on nothing:\n{completed.stdout}"
+        )
+
+    def test_example_package_init_has_no_submodule_imports(self, tmp_path):
+        """The rendered example `__init__.py` must stay side-effect free.
+
+        A non-jinja `__init__.py` doing `from .handlers import *` (a module that
+        does not exist) used to sit beside the empty `__init__.py.jinja`. The
+        jinja version wins the copier collision, but the dead file was a
+        hazard; guard that the rendered initializer imports no submodule.
+        """
+        project = _generate(tmp_path, [])
+        init = project / "src" / "scaffolded" / "example" / "__init__.py"
+
+        assert init.exists(), "the example package initializer was not generated"
+        offending = [
+            line
+            for line in init.read_text().splitlines()
+            # Any submodule import: relative (`from .x`, `from . import x`,
+            # `from ..pkg`) or absolute into this package, either form
+            # (`import scaffolded.example.handlers`,
+            # `from scaffolded.example import handlers`,
+            # `from scaffolded.example.handlers import X`).
+            if re.match(r"\s*from\s+\.", line)
+            or re.match(r"\s*import\s+scaffolded\.example\.\w", line)
+            or re.match(r"\s*from\s+scaffolded\.example\b", line)
+        ]
+        assert not offending, (
+            "the example `__init__.py` must not import from submodules; a "
+            f"relative import during traversal risks a cycle: {offending}"
+        )
+
+    def test_generated_project_passes_check(self, tmp_path):
+        """`protean check` exits 0 on a fresh default project."""
+        project = _generate(tmp_path, [])
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "protean",
+                "check",
+                "-d",
+                "src/scaffolded/domain.py:scaffolded",
+            ],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            "`protean check` must pass on a freshly generated project:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
 
 
 class TestGeneratedConfigIsValidToml:

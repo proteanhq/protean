@@ -1,0 +1,55 @@
+"""Tests for the Example slice: the command/event write path and the
+projection read path.
+
+The domain is initialised and its context activated by the session-scoped
+``bootstrap_domain`` fixture in ``conftest.py``, so these tests run against a
+live domain with no extra setup. Both ``command_processing`` and
+``event_processing`` are ``sync`` in ``domain.toml``, so ``process`` runs the
+handler inline and the projector fires before it returns; the read-path
+assertion needs no async wait.
+"""
+
+import pytest
+from protean.exceptions import ObjectNotFoundError
+
+from {{ package_name }}.domain import {{ domain_name }} as domain
+from {{ package_name }}.example.aggregate import Example
+from {{ package_name }}.example.commands import CreateExample
+from {{ package_name }}.example.events import ExampleCreated
+from {{ package_name }}.example.projection import ExampleSummary
+
+
+def test_aggregate_create_raises_event():
+    """The factory builds the aggregate and raises exactly one creation event.
+
+    This exercises the aggregate directly; ``test_projection_reflects_created_example``
+    below drives the same creation through the command handler.
+    """
+    example = Example.create(name="Widget")
+
+    assert example.name == "Widget"
+    assert example.status == "DRAFT"
+
+    assert len(example._events) == 1
+    event = example._events[0]
+    assert isinstance(event, ExampleCreated)
+    assert event.name == "Widget"
+    assert event.example_id == example.id
+
+
+def test_projection_reflects_created_example():
+    """Processing the command writes the read-side projection synchronously."""
+    # Nothing has been created yet, so the read side has no matching summary.
+    with pytest.raises(ObjectNotFoundError):
+        domain.repository_for(ExampleSummary).get("does-not-exist")
+
+    example_id = domain.process(
+        CreateExample(name="Widget", description="A sample widget")
+    )
+    assert example_id is not None
+
+    summary = domain.repository_for(ExampleSummary).get(example_id)
+    # The name and description flow command -> event -> projection.
+    assert summary.example_id == example_id
+    assert summary.name == "Widget"
+    assert summary.description == "A sample widget"

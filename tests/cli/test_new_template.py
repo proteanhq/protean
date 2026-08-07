@@ -395,16 +395,25 @@ class TestTemplateGeneration:
             project_path = Path(project_dir) / "test_with_example"
             example_path = project_path / "src" / "test_with_example" / "example"
 
-            # Check example directory exists and contains expected files
+            # The trimmed walking skeleton ships one write slice
+            # (command -> event -> aggregate) plus one read slice
+            # (projector -> projection).
             assert example_path.is_dir()
             assert (example_path / "__init__.py").exists()
             assert (example_path / "aggregate.py").exists()
             assert (example_path / "commands.py").exists()
             assert (example_path / "command_handlers.py").exists()
             assert (example_path / "events.py").exists()
-            assert (example_path / "event_handlers.py").exists()
-            assert (example_path / "value_objects.py").exists()
-            assert (example_path / "repository.py").exists()
+            assert (example_path / "projection.py").exists()
+            assert (example_path / "projectors.py").exists()
+
+            # The breadth pieces that were not part of the minimal slice are
+            # gone: the standalone event handler (the projector is the reactor
+            # now), the custom repository (the default repository suffices), and
+            # the unrelated Address value object.
+            assert not (example_path / "event_handlers.py").exists()
+            assert not (example_path / "value_objects.py").exists()
+            assert not (example_path / "repository.py").exists()
 
     def test_generated_example_timestamps_are_tz_aware(self):
         """Generated example code must use tz-aware UTC timestamps.
