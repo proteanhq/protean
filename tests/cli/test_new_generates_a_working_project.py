@@ -75,7 +75,12 @@ def _subprocess_env(project: Path) -> dict[str, str]:
     ``VIRTUAL_ENV`` is dropped so it cannot point the child at a different
     interpreter or source tree than ``sys.executable``.
     """
-    env = {**os.environ, "PYTHONPATH": str(project / "src")}
+    src = str(project / "src")
+    existing = os.environ.get("PYTHONPATH", "")
+    env = {
+        **os.environ,
+        "PYTHONPATH": src + os.pathsep + existing if existing else src,
+    }
     env.pop("VIRTUAL_ENV", None)
     return env
 
@@ -118,16 +123,33 @@ class TestGeneratedProjectStarts:
         )
         assert "initialised" in completed.stdout
 
-    def test_generated_test_suite_runs_and_passes(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("label", "extra"),
+        [
+            ("memory database", []),
+            ("sqlite database", ["-d", "database=sqlite"]),
+        ],
+        # Ids must not be a bare provider keyword (e.g. "sqlite"): the repo's
+        # conftest skips any item whose keywords contain one unless its --flag
+        # is passed, and the generated sqlite project needs no live service.
+        ids=["memory database", "sqlite database"],
+    )
+    def test_generated_test_suite_runs_and_passes(self, tmp_path, label, extra):
         """The scaffold ships tests that actually run and pass.
 
-        #1316 shipped because a fresh project's `protean test` was green on an
-        empty suite: nothing ran, so nothing could fail. The scaffold now
-        includes a write-path and a read-path test for the example slice; run
-        the generated suite the way a user would (`pytest`, driven by the
-        project's own `testpaths`) and require both tests to pass.
+        #1316 shipped because a fresh project's suite was empty: nothing ran,
+        so nothing could fail. The scaffold now includes a write-path and a
+        read-path test for the example slice; run the generated suite the way a
+        user would (`pytest`, driven by the project's own `testpaths`) and
+        require both to pass.
+
+        Run it against a real on-disk database too, not just the in-memory
+        provider that auto-materializes tables. The read-path test persists an
+        aggregate and its projection, so a scaffold that never creates its
+        schema would fail here with "no such table" the moment a user picks a
+        real database.
         """
-        project = _generate(tmp_path, [])
+        project = _generate(tmp_path, extra)
 
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "tests"],
@@ -138,7 +160,7 @@ class TestGeneratedProjectStarts:
         )
 
         assert completed.returncode == 0, (
-            "The generated project's own test suite does not pass:\n"
+            f"The generated project's own test suite ({label}) does not pass:\n"
             f"{completed.stdout}\n{completed.stderr}"
         )
 
@@ -146,7 +168,36 @@ class TestGeneratedProjectStarts:
         assert match, f"no pass count in pytest output:\n{completed.stdout}"
         assert int(match.group(1)) >= 2, (
             "The scaffold must ship at least two passing tests so a fresh "
-            f"`protean test` is not green on nothing:\n{completed.stdout}"
+            f"project is not green on nothing:\n{completed.stdout}"
+        )
+
+    def test_generated_suite_passes_without_the_example(self, tmp_path):
+        """An `include_example=false` project still ships a passing test.
+
+        Opting out of the example used to leave the tests tree empty, so
+        `pytest` collected nothing and exited 5 ("no tests ran") on first run.
+        The always-generated smoke test keeps the opt-out project green.
+        """
+        project = _generate(tmp_path, ["-d", "include_example=false"])
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "tests"],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            "An opt-out project's own test suite does not pass:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+
+        match = re.search(r"(\d+) passed", completed.stdout)
+        assert match, f"no pass count in pytest output:\n{completed.stdout}"
+        assert int(match.group(1)) >= 1, (
+            "An opt-out project must still ship at least one passing test so "
+            f"`pytest` does not exit 5 on nothing:\n{completed.stdout}"
         )
 
     def test_example_package_init_has_no_submodule_imports(self, tmp_path):
@@ -164,7 +215,11 @@ class TestGeneratedProjectStarts:
         offending = [
             line
             for line in init.read_text().splitlines()
-            if re.match(r"\s*from\s+\.\w+\s+import\b", line)
+            # Any submodule import: relative (`from .x`, `from . import x`,
+            # `from ..pkg`) or absolute into this package
+            # (`import scaffolded.example.handlers`).
+            if re.match(r"\s*from\s+\.", line)
+            or re.match(r"\s*import\s+scaffolded\.example\.\w", line)
         ]
         assert not offending, (
             "the example `__init__.py` must not import from submodules; a "

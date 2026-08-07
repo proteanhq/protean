@@ -138,6 +138,7 @@ tests/
 ├── README.md
 └── <package_name>/
     ├── conftest.py         # Initialises the domain for the test session
+    ├── test_smoke.py       # Always generated: asserts the domain boots
     ├── domain/            # Domain logic tests
     │   └── __init__.py
     ├── application/       # Application layer tests
@@ -147,10 +148,12 @@ tests/
         └── __init__.py
 ```
 
-The example ships with two passing tests (only when `include_example` is
-true): one drives the command/event write path, the other asserts the
-projection reflects the created aggregate. `pytest` runs green on a fresh
-project, so you have a working test to copy from on day one.
+Every project gets `test_smoke.py`, which just asserts the domain boots, so
+`pytest` collects and passes at least one test even when you opt out of the
+example. With the example included, two more tests ship: one drives the
+command/event write path, the other asserts the projection reflects the
+created aggregate. `pytest` runs green on a fresh project, so you have a
+working test to copy from on day one.
 
 ### CI/CD Configuration
 

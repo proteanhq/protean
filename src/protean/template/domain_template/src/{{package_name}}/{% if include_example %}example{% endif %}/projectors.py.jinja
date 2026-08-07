@@ -19,6 +19,7 @@ class ExampleProjector:
         projection = ExampleSummary(
             example_id=event.example_id,
             name=event.name,
+            description=event.description,
             status="DRAFT",
             created_at=event.created_at,
         )

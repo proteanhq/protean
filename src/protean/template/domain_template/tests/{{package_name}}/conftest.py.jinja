@@ -35,11 +35,17 @@ def bootstrap_domain():
     Protean's pytest plugin sets ``PROTEAN_ENV`` to ``test`` before collection,
     so domain modules already read the right config when they are imported.
     """
-    from {{ package_name }}.domain import {{ package_name }}
+    from {{ package_name }}.domain import {{ domain_name }} as domain
 
-    {{ package_name }}.config = {{ package_name }}.load_config()
-    {{ package_name }}.init()
-    with {{ package_name }}.domain_context():
+    domain.config = domain.load_config()
+    domain.init()
+    with domain.domain_context():
+        # Create the database tables the read-side projection needs. This is a
+        # no-op for the in-memory provider and idempotent for real databases, so
+        # a project scaffolded with any database choice runs its tests on the
+        # first try. It builds provider models, which read the active domain, so
+        # it must run inside the context above.
+        domain.setup_database()
         yield
 
 

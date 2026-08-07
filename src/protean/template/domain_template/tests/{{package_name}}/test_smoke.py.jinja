@@ -1,0 +1,14 @@
+"""A smoke test that ships with every scaffolded project.
+
+It has no dependency on the example slice, so it is generated even when the
+project opts out of the example (``include_example = false``). That keeps a
+fresh project's ``pytest`` from collecting nothing: there is always at least
+one test that runs and passes, proving the domain boots.
+"""
+
+from protean import current_domain
+
+
+def test_domain_boots():
+    """The session fixture initialises the domain and activates its context."""
+    assert current_domain.name == "{{ domain_name }}"
