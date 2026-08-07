@@ -174,7 +174,7 @@ The logging level is determined by the `ENVIRONMENT` variable:
 - `development`: DEBUG level
 - `test`: WARNING level
 
-Override with the `LOG_LEVEL` environment variable.
+Override with the `PROTEAN_LOG_LEVEL` environment variable.
 
 ### Exceptions Module (`shared/exceptions.py`)
 

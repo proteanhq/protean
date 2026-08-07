@@ -12,7 +12,7 @@ services:
       - "8000:8000"
     environment:
       - ENVIRONMENT=production
-      - LOG_LEVEL=INFO
+      - PROTEAN_LOG_LEVEL=INFO
 {%- if database == "postgresql" %}
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/{{ package_name }}_db
 {%- endif %}

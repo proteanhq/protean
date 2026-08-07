@@ -198,7 +198,7 @@ class TestScaffoldedKeysMatchWhatAdaptersRead:
             )
 
     def test_no_orphaned_logging_toml(self, tmp_path):
-        """`logging.toml` shipped for years with nothing reading it (#1315).
+        """`logging.toml` shipped for months with nothing reading it (#1315).
 
         `[logging]` in `domain.toml` is the one mechanism Protean reads
         (`Domain.configure_logging`); a second, unread config file at the
