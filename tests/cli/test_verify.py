@@ -362,12 +362,34 @@ class TestVerifyUsageErrors:
 
     def test_empty_domain_arg_exits_1(self, tmp_path, monkeypatch):
         """``-d ""`` with PROTEAN_DOMAIN unset is domain-not-found (exit 1),
-        not an uncaught AssertionError."""
+        not an uncaught AssertionError.
+
+        With an empty ``--domain`` and no ``PROTEAN_DOMAIN``, ``derive_domain``
+        falls back to discovering a ``domain.py`` from the working directory and
+        ``sys.path``. Other CLI tests chdir into a support project (e.g. test10,
+        which has a ``domain.py``) and never restore ``sys.path``/``sys.modules``,
+        so a discoverable ``domain`` module can linger and make this find a real
+        domain instead of nothing. Isolate discovery: run from an empty dir, drop
+        any cached ``domain``/``subdomain`` module, and hide the ``sys.path``
+        entries that carry one. ``monkeypatch`` restores all of it afterwards.
+        """
         monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
-        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        monkeypatch.chdir(tmp_path)
+        for name in ("domain", "subdomain"):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+        clean_path = [
+            entry
+            for entry in sys.path
+            if not (
+                os.path.isfile(os.path.join(entry or ".", "domain.py"))
+                or os.path.isfile(os.path.join(entry or ".", "subdomain.py"))
+            )
+        ]
+        monkeypatch.setattr(sys, "path", clean_path)
+
         result = runner.invoke(
             app,
-            ["verify", "-d", "", "--path", str(tests_dir)],
+            ["verify", "-d", "", "--path", str(tmp_path)],
         )
         assert result.exit_code == 1
         assert "Traceback" not in result.output
