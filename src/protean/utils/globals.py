@@ -61,11 +61,11 @@ class _ContextLocalProxy(Generic[_T]):
 
     Replaces Werkzeug's ``LocalProxy`` for ``current_domain``,
     ``current_uow``, and ``g``. When a lookup returns an object, attribute
-    get/set/delete, containment, iteration, representation, and comparison
-    delegate to that object. When no object is active, the proxy behaves like
-    ``None``: it is falsy, its string form is ``"None"``, it compares equal to
-    ``None``, and containment/iteration raise the same ``TypeError`` that
-    ``None`` would.
+    get/set/delete, containment, iteration, representation, truthiness, and
+    comparison delegate to that object. When no object is active, the proxy
+    behaves like ``None``: it is falsy, its representation and string form are
+    ``"None"``, it compares equal to ``None``, and containment/iteration raise
+    the same ``TypeError`` that ``None`` would.
     """
 
     _lookup: Callable[[], _T | None]
@@ -99,12 +99,13 @@ class _ContextLocalProxy(Generic[_T]):
         delattr(self._get_object_or_raise(name), name)
 
     def __bool__(self) -> bool:
-        return self._get_current_object() is not None
+        obj = self._get_current_object()
+        return bool(obj) if obj is not None else False
 
     def __repr__(self) -> str:
         obj = self._get_current_object()
         if obj is None:
-            return "<unbound proxy>"
+            return repr(None)
         return repr(obj)
 
     def __str__(self) -> str:

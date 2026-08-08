@@ -13,6 +13,7 @@ import pytest
 
 from protean import Domain, UnitOfWork
 from protean.utils.globals import (
+    _ContextLocalProxy,
     _domain_context_stack,
     _uow_context_stack,
     current_domain,
@@ -231,16 +232,29 @@ class TestProxyBehavior:
         assert bool(current_domain) is False
 
     @pytest.mark.no_test_domain
+    def test_proxy_bool_delegates_to_wrapped_object(self):
+        class Falsy:
+            def __bool__(self):
+                return False
+
+        proxy = _ContextLocalProxy(lambda: Falsy())
+        assert bool(proxy) is False
+
+    @pytest.mark.no_test_domain
     def test_current_domain_warns_on_access_outside_context(self):
         # Resolving the proxy (truthiness, repr, or attribute access) triggers
         # the lookup and therefore the warning. The warning must appear to come
-        # from user code, not from inside protean.utils.globals.
+        # from this test file, not from inside protean.utils.globals.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             bool(current_domain)
         assert len(caught) == 1
         assert "Working outside of domain context" in str(caught[0].message)
-        assert "protean/utils/globals.py" not in caught[0].filename
+        assert (
+            caught[0]
+            .filename.replace("\\", "/")
+            .endswith("tests/utils/test_globals.py")
+        )
 
     @pytest.mark.no_test_domain
     def test_current_domain_attribute_access_outside_context_raises(self):
@@ -281,7 +295,8 @@ class TestProxyBehavior:
             assert "GlobalsTest" in repr(g)
 
     @pytest.mark.no_test_domain
-    def test_proxy_str_and_dir_outside_context(self):
+    def test_proxy_repr_str_and_dir_outside_context(self):
+        assert repr(current_domain) == "None"
         assert str(current_domain) == "None"
         assert "__class__" in dir(current_domain)
 
