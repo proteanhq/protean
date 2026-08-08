@@ -13,12 +13,14 @@ compares scaffolded keys against what each adapter actually reads.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -89,6 +91,21 @@ def _subprocess_env(project: Path) -> dict[str, str]:
     env.pop("PROTEAN_ENV", None)
     env.pop("PROTEAN_DEBUG", None)
     return env
+
+
+def _parse_verify_json(stdout: str) -> dict[str, Any]:
+    """Parse the JSON envelope printed by ``protean verify --json``.
+
+    ``verify`` emits the envelope via ``typer.echo`` to stdout, but subprocess
+    output can also contain stray log lines. Locate the first ``{`` and parse
+    from there so a parse failure produces a useful message.
+    """
+    start = stdout.find("{")
+    assert start != -1, f"no JSON object in verify stdout:\n{stdout}"
+    try:
+        return json.loads(stdout[start:])
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"invalid JSON envelope from verify:\n{stdout}") from exc
 
 
 class TestGeneratedProjectStarts:
@@ -257,6 +274,47 @@ class TestGeneratedProjectStarts:
         assert completed.returncode == 0, (
             "`protean check` must pass on a freshly generated project:\n"
             f"{completed.stdout}\n{completed.stderr}"
+        )
+
+    def test_generated_project_passes_verify(self, tmp_path):
+        """`protean verify --json` is green on a fresh default project."""
+        project = _generate(tmp_path, [])
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "protean",
+                "verify",
+                "--json",
+                "-d",
+                "src/scaffolded/domain.py:scaffolded",
+                "--path",
+                ".",
+            ],
+            cwd=project,
+            env=_subprocess_env(project),
+            capture_output=True,
+            text=True,
+        )
+
+        assert completed.returncode == 0, (
+            "`protean verify` must exit 0 on a freshly generated project:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+
+        envelope = _parse_verify_json(completed.stdout)
+        assert envelope["verdict"] == "pass", (
+            f"`protean verify` must report verdict 'pass': {envelope}"
+        )
+        for stage in ("init", "check", "tests"):
+            assert envelope["stages"][stage]["status"] == "pass", (
+                f"`protean verify` stage {stage!r} must pass: {envelope}"
+            )
+        assert envelope["stages"]["tests"]["returncode"] == 0
+        assert envelope["stages"]["tests"]["passed"] >= 1, (
+            "`protean verify` must run at least one real test, not report "
+            f"green on an empty suite: {envelope}"
         )
 
 
