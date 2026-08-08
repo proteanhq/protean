@@ -57,6 +57,9 @@ _BAD_LEVEL_DOMAIN = "tests/support/domains/test34/domain34.py:domain"
 _BAD_SUPPRESSIONS_DOMAIN = "tests/support/domains/test36/domain36.py:domain"
 # A domain whose [lint] is not a table at all (lint = 5).
 _BAD_LINT_TABLE_DOMAIN = "tests/support/domains/test37/domain37.py:domain"
+# A domain module that raises a bare RuntimeError on import — not the
+# ImportError that locate_domain wraps in NoDomainException.
+_IMPORT_RAISES_DOMAIN = "tests/support/domains/test40/domain40.py"
 
 
 def _write_test(directory: Path, body: str) -> Path:
@@ -249,6 +252,24 @@ class TestVerifyLoadFailures:
         assert missing.exit_code == 1
         assert found_broken.exit_code != missing.exit_code
 
+    def test_domain_module_import_error_exits_2(self):
+        """A domain module that fails to import with something other than
+        ``ImportError`` (here, a plain ``RuntimeError``) is a load failure (2),
+        not an unhandled traceback and not the domain-not-found usage error (1)."""
+        result = runner.invoke(app, ["verify", "-d", _IMPORT_RAISES_DOMAIN])
+        assert result.exit_code == 2, result.output
+        assert "Domain failed to initialize" in result.stdout
+        assert "Traceback" not in result.output
+
+    def test_domain_module_import_error_json_envelope(self):
+        result = runner.invoke(app, ["verify", "-d", _IMPORT_RAISES_DOMAIN, "--json"])
+        assert result.exit_code == 2
+        data = json.loads(result.stdout)
+        assert data["verdict"] == "fail"
+        assert data["stages"]["init"]["status"] == "fail"
+        assert data["stages"]["check"]["status"] == "skipped"
+        assert data["stages"]["tests"]["status"] == "skipped"
+
 
 class TestVerifyLintConfig:
     """A malformed ``[lint]`` config must fail check (exit 3), not read as a
@@ -394,6 +415,16 @@ class TestVerifyUsageErrors:
         assert result.exit_code == 1
         assert "Traceback" not in result.output
         assert "No domain found" in result.stdout
+
+    def test_bracketed_domain_name_survives_rich_markup(self):
+        """A domain-not-found message that itself contains ``[...]`` (e.g. the
+        module name echoed back in the error) must reach the user intact —
+        both in the early ``[red]...[/red]`` line and the compact table row.
+        Unescaped, ``rich`` treats ``[bogus]`` as a markup tag and strips it."""
+        result = runner.invoke(app, ["verify", "-d", "[bogus]"])
+        assert result.exit_code == 1
+        assert "Could not import '[bogus]'" in result.stdout
+        assert result.stdout.count("[bogus]") == 2  # early error line + table row
 
 
 class TestVerifySubprocessEnv:

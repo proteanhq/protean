@@ -133,6 +133,17 @@ def verify(
         msg = f"Error loading Protean domain: {exc.args[0]}"
         stages["init"] = {"status": "fail", "error": msg}
         _emit_and_exit(json_output, stages, "", _EXIT_USAGE, error_line=msg)
+    except Exception as exc:
+        # ``derive_domain`` wraps the domain-not-found and most import-error
+        # cases in ``NoDomainException`` (caught above), but a domain module
+        # that raises during import — a ``SyntaxError``, or any exception its
+        # own top-level code throws — comes through as that exception, not
+        # ``NoDomainException``. Treat it as an init failure (2), the same
+        # code a domain that imports fine but blows up in ``.init()`` gets,
+        # rather than letting it crash out as an unhandled traceback.
+        msg = f"Domain failed to initialize: {exc}"
+        stages["init"] = {"status": "fail", "error": msg}
+        _emit_and_exit(json_output, stages, "", _EXIT_INIT, error_line=msg)
 
     # ``derive_domain`` returns ``None`` (rather than raising) when the path is
     # empty and ``PROTEAN_DOMAIN`` is unset — e.g. ``-d ""`` or ``-d "$PROTEAN_DOMAIN"``
@@ -337,7 +348,7 @@ def _emit_and_exit(
     """Emit the result and raise ``typer.Exit`` with ``code`` (used on early
     init failures, where check and tests never run)."""
     if not json_output and error_line:
-        print(f"[red]{error_line}[/red]")
+        print(f"[red]{escape(error_line)}[/red]")
     _emit(json_output, stages, tests_output)
     raise typer.Exit(code)
 
@@ -381,7 +392,7 @@ def _stage_detail(stage: str, data: dict[str, Any]) -> str:
             return "  (no tests collected)"
         return f"  ({data['passed']} passed, {data['failed']} failed)"
     if stage == "init" and data.get("error"):
-        return f"  ({data['error']})"
+        return f"  ({escape(data['error'])})"
     return ""
 
 

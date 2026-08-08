@@ -89,7 +89,7 @@ as a **pass** for the tests stage. The returncode is preserved in the envelope s
 | Field | Description |
 |-------|-------------|
 | `verdict` | `pass` only when every stage passes; otherwise `fail`. |
-| `stages.init.status` | `pass` or `fail` — init is the first stage, so it always runs. |
+| `stages.init.status` | `pass` or `fail` once init runs; `skipped` (with no other sub-keys) if `verify` aborts before init — e.g. `--path` is not a directory. |
 | `stages.check` | The `status` plus the `counts`, `errors`, and `diagnostics` from `Domain.check()` (see the [check result schema](check.md#result-schema)). A malformed `[lint]` config is reported here as a single synthetic error. |
 | `stages.tests` | The `status`, the pytest `returncode`, and best-effort `passed`/`failed` counts parsed from pytest's summary line. The returncode — not the parsed counts — decides pass/fail. |
 
