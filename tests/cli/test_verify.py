@@ -60,6 +60,10 @@ _BAD_LINT_TABLE_DOMAIN = "tests/support/domains/test37/domain37.py:domain"
 # A domain module that raises a bare RuntimeError on import — not the
 # ImportError that locate_domain wraps in NoDomainException.
 _IMPORT_RAISES_DOMAIN = "tests/support/domains/test40/domain40.py"
+# A domain module whose own top-level `import` fails — the ImportError that
+# locate_domain *does* wrap in NoDomainException, distinct from "module not
+# found" (both raise NoDomainException, but only the latter is a usage error).
+_NESTED_IMPORT_ERROR_DOMAIN = "tests/support/domains/test41/domain41.py"
 
 
 def _write_test(directory: Path, body: str) -> Path:
@@ -263,6 +267,26 @@ class TestVerifyLoadFailures:
 
     def test_domain_module_import_error_json_envelope(self):
         result = runner.invoke(app, ["verify", "-d", _IMPORT_RAISES_DOMAIN, "--json"])
+        assert result.exit_code == 2
+        data = json.loads(result.stdout)
+        assert data["verdict"] == "fail"
+        assert data["stages"]["init"]["status"] == "fail"
+        assert data["stages"]["check"]["status"] == "skipped"
+        assert data["stages"]["tests"]["status"] == "skipped"
+
+    def test_nested_import_error_exits_2_not_1(self):
+        """A domain module found on disk, but whose own top-level ``import``
+        fails, is a load failure (2) — even though ``locate_domain`` raises
+        the same ``NoDomainException`` it uses for "module not found" (1)."""
+        result = runner.invoke(app, ["verify", "-d", _NESTED_IMPORT_ERROR_DOMAIN])
+        assert result.exit_code == 2, result.output
+        assert "Error loading Protean domain" in result.stdout
+        assert "While importing" in result.stdout
+
+    def test_nested_import_error_json_envelope(self):
+        result = runner.invoke(
+            app, ["verify", "-d", _NESTED_IMPORT_ERROR_DOMAIN, "--json"]
+        )
         assert result.exit_code == 2
         data = json.loads(result.stdout)
         assert data["verdict"] == "fail"

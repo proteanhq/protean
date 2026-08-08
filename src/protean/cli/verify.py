@@ -132,7 +132,18 @@ def verify(
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         stages["init"] = {"status": "fail", "error": msg}
-        _emit_and_exit(json_output, stages, "", _EXIT_USAGE, error_line=msg)
+        # ``locate_domain`` (domain_discovery.py) raises ``NoDomainException``
+        # both when the module can't be found at all, and when it *is* found
+        # but an ``ImportError`` happens while importing it — it wraps the
+        # latter with a "While importing ..." prefix. Only the former is a
+        # usage error (bad ``--domain``); the latter means the domain was
+        # found but failed to load, so it gets the init-failure code instead.
+        exit_code = (
+            _EXIT_INIT
+            if str(exc.args[0]).startswith("While importing ")
+            else _EXIT_USAGE
+        )
+        _emit_and_exit(json_output, stages, "", exit_code, error_line=msg)
     except Exception as exc:
         # ``derive_domain`` wraps the domain-not-found and most import-error
         # cases in ``NoDomainException`` (caught above), but a domain module
