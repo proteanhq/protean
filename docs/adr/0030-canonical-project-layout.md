@@ -51,7 +51,9 @@ projection of that domain.
 ## Decision
 
 We record the following as the canonical layout that `protean new` generates and that
-discovery and the IR expect. A default project (package `myproj`, example included) is:
+discovery and the IR expect. A default project (package `myproj`) is shown below. The
+`example` slice and its test are gated on the `include_example` copier flag (default on);
+everything else is generated either way.
 
 ```
 myproj/                     # project root
@@ -62,7 +64,7 @@ myproj/                     # project root
 │       ├── __init__.py     # empty
 │       ├── domain.py       # composition root: constructs Domain(name="myproj")
 │       ├── domain.toml     # domain config, co-located with domain.py
-│       ├── example/        # one feature slice, discovered by traversal
+│       ├── example/        # one feature slice; generated only when include_example is on
 │       │   ├── __init__.py # side-effect free (docstring only)
 │       │   ├── aggregate.py
 │       │   ├── commands.py
@@ -78,10 +80,14 @@ myproj/                     # project root
 └── tests/
     └── myproj/             # test tree, a sibling of src/, never traversed as domain code
         ├── conftest.py     # session fixture boots the domain
-        ├── test_smoke.py
+        ├── test_smoke.py   # always generated, so a fresh project never collects zero tests
         ├── domain/
+        │   └── __init__.py         # placeholder package; the __init__ keeps the empty dir in git
         ├── application/
+        │   ├── __init__.py
+        │   └── test_example.py     # generated only when include_example is on
         └── integration/
+            └── __init__.py         # placeholder package; the __init__ keeps the empty dir in git
 ```
 
 The rules that make this a contract, not a suggestion:
@@ -115,16 +121,6 @@ The rules that make this a contract, not a suggestion:
    as a separate boundary and is not traversed into. This is the escape hatch for a
    subtree that should not register into this domain.
 
-**The template ships nothing the IR can derive, so there is nothing to prune.** The
-structural IR is computed from the domain model, not from files, so a file can only be
-"IR-derivable" if it hard-codes something the IR already computes from the registered
-elements. No such file exists in the template: the Python element modules *are* the domain
-model the IR is built from, and the rest (packaging, Docker, CI, Makefile, scripts) is
-deployment scaffolding the IR never represents. The one stranded file, `logging.toml`, was
-an orphan that no adapter read, not an IR duplicate, and has already been removed separately
-(#1315). If a genuinely
-IR-derivable artifact ever ships in the scaffold, prune it then; today there is none.
-
 ## Consequences
 
 Later work builds against a written layout instead of re-reading the template. The `add`
@@ -151,9 +147,13 @@ it inline.
 ## Alternatives Considered
 
 **Prune "redundant" template files as originally scoped.** The issue first paired this ADR
-with deleting template files the IR can derive. On inspection there are none, for the
-reason given above, so the pruning half was dropped and this ADR records why. Keeping the
-scope honest avoids deleting a load-bearing file to satisfy a rule that does not apply.
+with deleting template files the IR can derive. On inspection there are none: the structural
+IR is computed from the registered domain model, not from files, so no shipped file
+duplicates it. The Python element modules are the domain model the IR is built from, and the
+rest is deployment scaffolding the IR never represents. (The one stranded file,
+`logging.toml`, was an orphan that no adapter read, not an IR duplicate, and was removed
+under #1315.) So the pruning half was dropped. Keeping the scope honest avoids deleting a
+load-bearing file to satisfy a rule that does not apply.
 
 **A flat layout (no `src/`, modules beside `domain.py` at the project root).** This works
 for discovery but blurs the packaging boundary and makes it easy for `tests/` or tooling
