@@ -3,7 +3,11 @@
 import pytest
 
 from protean.utils.globals import g
-from protean.utils.sync_dispatch import drain_sync_dispatch, enqueue_sync_dispatch
+from protean.utils.sync_dispatch import (
+    dispatch_events_sync,
+    drain_sync_dispatch,
+    enqueue_sync_dispatch,
+)
 
 
 def test_drain_processes_enqueued_pairs_in_fifo_order(test_domain):
@@ -106,3 +110,58 @@ def test_queue_and_flag_cleared_after_error(test_domain):
         # Later work starts from a clean slate.
         assert getattr(g, "_sync_dispatch_queue", None) is None
         assert getattr(g, "_sync_dispatch_draining", False) is False
+
+
+def test_dispatch_events_sync_fans_out_every_pair_and_drains(test_domain):
+    """The public entry point enqueues one (event, handler) pair per handler that
+    ``handlers_for`` resolves, then drains once. So a caller never enqueues or
+    drains by hand: every handler runs, event by event and in handler order, and
+    a single drain leaves no residual chain state."""
+    with test_domain.domain_context():
+        seen = []
+
+        class H1:
+            @classmethod
+            def _handle(cls, event):
+                seen.append(("h1", event))
+
+        class H2:
+            @classmethod
+            def _handle(cls, event):
+                seen.append(("h2", event))
+
+        handlers = {"a": [H1, H2], "b": [H1]}
+
+        dispatch_events_sync(["a", "b"], lambda event: handlers[event])
+
+        # Every (event, handler) pair ran, event-major and in handler order.
+        assert seen == [("h1", "a"), ("h2", "a"), ("h1", "b")]
+        assert getattr(g, "_sync_dispatch_queue", None) is None
+        assert getattr(g, "_sync_dispatch_draining", False) is False
+
+
+def test_none_context_is_removed_not_stored_as_none(test_domain):
+    """A captured context of ``None`` means 'no message in context': the drain
+    removes the key for the handler's scope rather than setting it to ``None``,
+    matching the command processor / engine save-restore convention. Storing
+    ``None`` would leave a spurious key that a downstream ``x in g`` check treats
+    as a real (empty) context."""
+    with test_domain.domain_context():
+        # No message_in_context is set: the key is absent on g.
+        g.pop("message_in_context", None)
+        sentinel = object()
+        during = []
+
+        class Handler:
+            @classmethod
+            def _handle(cls, event):
+                during.append(g.get("message_in_context", sentinel))
+
+        enqueue_sync_dispatch("e", Handler)  # captures a context of None
+        drain_sync_dispatch()
+
+        # The handler ran with the key genuinely absent, not present-as-None
+        # (get() with a default distinguishes the two).
+        assert during == [sentinel]
+        # And it is still absent afterwards.
+        assert "message_in_context" not in g

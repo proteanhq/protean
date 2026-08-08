@@ -62,9 +62,25 @@ case "$TARGET" in
     MODULE="src/protean/core/upcaster.py"
     TESTS="tests/upcaster"
     ;;
+  unit-of-work)
+    MODULE="src/protean/core/unit_of_work.py"
+    TESTS="tests/unit_of_work"
+    ;;
+  sync-dispatch)
+    MODULE="src/protean/utils/sync_dispatch.py"
+    TESTS="tests/utils/test_sync_dispatch.py tests/process_manager/test_sync_dispatch_integration.py tests/process_manager/test_reentrant_cascade.py tests/event_handler/test_any_handler_sync_dispatch.py"
+    ;;
+  checkpoint)
+    # event_store_subscription.py is large; scope a checkpoint-only run with
+    # MUT_FILTER, e.g.
+    #   MUT_FILTER="update_read_position|update_current_position_to_store|_gap_safe_batch|_write_recovery_checkpoint" \
+    #     make mutation TARGET=checkpoint
+    MODULE="src/protean/server/subscription/event_store_subscription.py"
+    TESTS="tests/subscription tests/server/test_event_store_subscription_errors.py"
+    ;;
   *)
     echo "Unknown mutation target: '$TARGET'" >&2
-    echo "Known targets: outbox, entity, status-field, event-sourcing, repositories-dao, upcaster" >&2
+    echo "Known targets: outbox, entity, status-field, event-sourcing, repositories-dao, upcaster, unit-of-work, sync-dispatch, checkpoint" >&2
     exit 2
     ;;
 esac
