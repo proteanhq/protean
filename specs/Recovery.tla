@@ -35,6 +35,13 @@
 (* advance (shipped). FALSE = the cursor may advance past a failed message      *)
 (* before (or without) its record, which is exactly the silent drop            *)
 (* `enable_recovery`'s crash-safety guard prevents.                           *)
+(*                                                                          *)
+(* Scope: this spec proves the durable Failed record survives a crash (the      *)
+(* record-before-advance ordering), not that the recovery pass then re-reads     *)
+(* and retries it. `Recover` is an atomic, always-terminal step; the retry-count *)
+(* / `max_retries` machinery and the `_rebuild_retry_counts` watermark-and-      *)
+(* snapshot reconstruction from the stream are abstracted away. See the "Out of  *)
+(* scope" section of specs/README.md.                                         *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -156,9 +163,13 @@ Flush ==
 
 (***************************************************************************)
 (* The periodic recovery pass takes a recorded, unresolved position terminal.  *)
-(* Model the retry as eventually terminal: either it succeeds (delivered) or    *)
-(* it exhausts max_retries (terminal but not delivered). Either way the durable *)
-(* Failed record stays, so the message was never dropped, and the position is   *)
+(* This is an abstraction: the retry is modeled as one atomic, eventually-       *)
+(* terminal step -- either it succeeds (delivered) or it gives up (terminal but  *)
+(* not delivered). The retry count and `max_retries` threshold are NOT modeled   *)
+(* (the count where it gives up does not change what the record guarantees), nor *)
+(* is the `_rebuild_retry_counts` reconstruction that re-reads the stream: this  *)
+(* step fires directly off the durable `recordDur`. Either way the durable       *)
+(* Failed record stays, so the message was never dropped, and the position is    *)
 (* resolved so liveness is checkable.                                          *)
 (***************************************************************************)
 Recover(p) ==

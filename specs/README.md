@@ -157,7 +157,9 @@ resets the in-memory cursor to the durable one and drops the volatile pending
 state (the durable Failed records, the resolved set, and delivered side effects
 all survive, matching `_rebuild_retry_counts` rebuilding from the stream on
 restart). A periodic `Recover` pass takes each recorded, unresolved position
-terminal — resolved on a retry success, or exhausted after `max_retries`. The
+terminal — resolved on a retry success, or given up (an abstraction of exhausting
+`max_retries`; the retry count and the stream reconstruction are not modeled, see
+"Out of scope"). The
 `RecordFirst` constant toggles the shipped ordering (record before advance)
 against the bug: when `FALSE` the cursor can advance past a failed message without
 its record, so a `Flush` and `Crash` there leave the durable cursor past a failed
@@ -302,6 +304,14 @@ from `guarantees.md` should not expect them:
   single broker; the dual-write-per-broker uniqueness is a row-creation concern,
   not part of the publish protocol.
 - **The startup reconciliation sweep** (ADR-0015), which is marked interim.
+- **The recovery pass's retry machinery.** `Recovery.tla` proves the durable
+  Failed record *survives a crash* (the record-before-advance ordering), not that
+  the recovery pass then re-reads and retries it. `Recover` is an atomic,
+  always-terminal step off the durable `recordDur`: the `retry_count` /
+  `max_retries` threshold and the `_rebuild_retry_counts` watermark-and-snapshot
+  reconstruction of `_failed_positions` from the stream are abstracted away. A bug
+  in that reconstruction that dropped a still-unresolved position would leave
+  `NoDrop` green, so it is outside this model.
 - One nuance the model surfaces but does not assert: `ABANDONED` means the
   framework stops attempting delivery. Because delivery is at-least-once, a
   message published on an earlier attempt but not confirmed (a crash before the
