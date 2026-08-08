@@ -60,7 +60,8 @@ classifiers = [
 # interactive shell, the project scaffolder) live behind the extras below so a
 # plain `pip install protean` does not drag them onto every consumer. `bleach`
 # stays here: String/Text fields sanitize by default, so it is a genuine runtime
-# need for nearly every domain. See ADR-0029 for the boundary and the rationale.
+# need for nearly every domain. `werkzeug` was removed: the context locals are
+# now backed by stdlib `contextvars` (see ADR-0029 and #1375).
 dependencies = [
     "bleach>=6.1.0",
     "inflection>=0.5.1",
@@ -68,7 +69,6 @@ dependencies = [
     "python-dateutil>=2.8.2",
     "typer>=0.16.0",
     "structlog>=24.1.0",
-    "werkzeug>=3.1.0",
     "pydantic>=2.12.0,<3.0",
 ]
 
@@ -209,7 +209,6 @@ types = [
     "types-mock>=5.2.0.20260518",
     "types-python-dateutil>=2.9.0.20260716",
     "types-redis>=4.6.0.20241004",
-    "types-Werkzeug>=1.0.9",
 ]
 # Mutation testing. Installed only into the dedicated .venv-mutation environment
 # built by `make mutation` / scripts/mutation.sh — never the project .venv. That

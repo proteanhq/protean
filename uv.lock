@@ -2258,7 +2258,6 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "structlog" },
     { name = "typer" },
-    { name = "werkzeug" },
 ]
 
 [package.optional-dependencies]
@@ -2366,7 +2365,6 @@ types = [
     { name = "types-mock" },
     { name = "types-python-dateutil" },
     { name = "types-redis" },
-    { name = "types-werkzeug" },
 ]
 
 [package.metadata]
@@ -2405,7 +2403,6 @@ requires-dist = [
     { name = "typer", specifier = ">=0.16.0" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30.0" },
     { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=1.2.0" },
-    { name = "werkzeug", specifier = ">=3.1.0" },
 ]
 provides-extras = ["elasticsearch", "redis", "postgresql", "sqlite", "mssql", "message-db", "flask", "sendgrid", "server", "shell", "scaffold", "cli", "all", "dev", "telemetry"]
 
@@ -2448,7 +2445,6 @@ types = [
     { name = "types-mock", specifier = ">=5.2.0.20260518" },
     { name = "types-python-dateutil", specifier = ">=2.9.0.20260716" },
     { name = "types-redis", specifier = ">=4.6.0.20241004" },
-    { name = "types-werkzeug", specifier = ">=1.0.9" },
 ]
 
 [[package]]
@@ -3629,15 +3625,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/fe/fa/deb7066a472bb23d28205a9dde66caef317db4b0f2ce612068c5d45a9f87/types_setuptools-83.0.0.20260716.tar.gz", hash = "sha256:a36ad71a57919b80db314e6104478ee75376a34abea88ba0f3d28db4d10006d7", size = 45672, upload-time = "2026-07-16T04:47:56.484Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/f9/b89c50c1f482b2b4e038a845c23a3b3fdfd735199634d2452b8951a8629b/types_setuptools-83.0.0.20260716-py3-none-any.whl", hash = "sha256:77315e9a921ced0c7cbef803d7cf06db8e60e9df5661955ee4ce3d1a1675e0dc", size = 68767, upload-time = "2026-07-16T04:47:55.484Z" },
-]
-
-[[package]]
-name = "types-werkzeug"
-version = "1.0.9"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/eb/43/161261d2ac1fc20e944aa108e48a98ff0d994e19b498d6fb19d6637caf05/types-Werkzeug-1.0.9.tar.gz", hash = "sha256:5cc269604c400133d452a40cee6397655f878fc460e03fde291b9e3a5eaa518c", size = 23909, upload-time = "2021-11-26T06:21:28.33Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/c1/eaf8426126eafa46d649afb2fddede327043fbc2e84021b8b09a7fa15115/types_Werkzeug-1.0.9-py3-none-any.whl", hash = "sha256:194bd5715a13c598f05c63e8a739328657590943bce941e8a3619a6b5d4a54ec", size = 36186, upload-time = "2021-11-26T06:21:27.37Z" },
 ]
 
 [[package]]

@@ -77,7 +77,7 @@ newest version available.** Concretely:
 
 - Applications gain a materially wider compatibility window for the
   pure-Python dependencies they are most likely to share and pin (`fastapi`
-  ecosystem: `typer`, `uvicorn`, `starlette`; plus `jinja2`, `werkzeug`,
+  ecosystem: `typer`, `uvicorn`, `starlette`; plus `jinja2`,
   `structlog`, `marshmallow`, `flask`, and others). They can adopt or hold a
   Protean upgrade without being forced onto the newest release of each.
 - The floors now mean something and are continuously verified. A future change

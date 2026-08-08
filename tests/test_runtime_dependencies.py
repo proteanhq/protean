@@ -3,7 +3,8 @@
 The web/observatory stack, the interactive shell, and the project scaffolder live
 behind install extras, not in the lean core. These tests pin that boundary so a
 stray eager import or a dependency creeping back into ``[project].dependencies``
-is caught. ``bleach`` and ``werkzeug`` intentionally stay in core.
+is caught. ``bleach`` intentionally stays in core; ``werkzeug`` was removed in
+favor of stdlib ``contextvars`` (#1375).
 """
 
 import re
@@ -32,7 +33,7 @@ OPTIONAL_DISTS = {
 OPTIONAL_IMPORTS = ["fastapi", "uvicorn", "jinja2", "IPython", "copier"]
 
 # Dependencies that must stay in the lean core.
-CORE_MUST_KEEP = {"bleach", "werkzeug", "pydantic", "marshmallow", "typer"}
+CORE_MUST_KEEP = {"bleach", "pydantic", "marshmallow", "typer"}
 
 
 def _pyproject() -> dict:
