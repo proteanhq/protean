@@ -3,9 +3,12 @@
 ``verify`` composes init + check + tests into one verdict with a stable exit
 code contract:
 
-    0 — all green            3 — check failed (errors or warnings)
-    1 — domain not found     4 — tests failed
-    2 — domain init failed
+    0 — all green            3 — check failed (bad [lint] config, or findings
+    1 — usage error              at or above the [lint].level floor)
+    2 — domain init failed   4 — tests failed
+
+Exit 1 covers verify's own usage errors: domain not found, or a ``--path`` that
+is not a directory.
 
 These tests exercise each exit code and the ``--json`` envelope. Most run
 in-process with ``CliRunner`` against existing support domains and a throwaway
@@ -46,6 +49,14 @@ _WARN_DOMAIN = "tests/support/domains/test25/domain25.py:domain"
 _INFO_DOMAIN = "tests/support/domains/test27/domain27.py:domain"
 # A domain that fails during init() (identity-strategy misconfiguration).
 _INIT_FAIL_DOMAIN = "tests/support/domains/test26/domain26.py:domain"
+# A domain with warnings that opts out of warning gating via [lint].level="error".
+_LEVEL_ERROR_DOMAIN = "tests/support/domains/test32/domain32.py:domain"
+# A domain with an invalid [lint].level value.
+_BAD_LEVEL_DOMAIN = "tests/support/domains/test34/domain34.py:domain"
+# A domain with a malformed [lint].suppressions count (a string, not an int).
+_BAD_SUPPRESSIONS_DOMAIN = "tests/support/domains/test36/domain36.py:domain"
+# A domain whose [lint] is not a table at all (lint = 5).
+_BAD_LINT_TABLE_DOMAIN = "tests/support/domains/test37/domain37.py:domain"
 
 
 def _write_test(directory: Path, body: str) -> Path:
@@ -237,6 +248,192 @@ class TestVerifyLoadFailures:
         assert found_broken.exit_code == 2
         assert missing.exit_code == 1
         assert found_broken.exit_code != missing.exit_code
+
+
+class TestVerifyLintConfig:
+    """A malformed ``[lint]`` config must fail check (exit 3), not read as a
+    false green. ``verify`` calls ``Domain.check()`` directly, whose IR build
+    swallows the ``ConfigurationError`` a bad ``[lint]`` block raises, so verify
+    runs the same config validation ``protean check`` does."""
+
+    def test_bad_suppressions_count_exits_3(self, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _BAD_SUPPRESSIONS_DOMAIN, "--path", str(empty), "--json"],
+        )
+        assert result.exit_code == 3, result.output
+        data = json.loads(result.stdout)
+        assert data["verdict"] == "fail"
+        assert data["stages"]["check"]["status"] == "fail"
+        # The config error is surfaced as a check error (not swallowed).
+        messages = " ".join(e["message"] for e in data["stages"]["check"]["errors"])
+        assert "[lint].suppressions" in messages
+        assert "non-negative integer" in messages
+
+    def test_bad_suppressions_named_in_rich_output(self, tmp_path):
+        """The check-error rendering branch (``✗ {message}``) is exercised."""
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _BAD_SUPPRESSIONS_DOMAIN, "--path", str(empty)],
+        )
+        assert result.exit_code == 3
+        assert "[lint].suppressions" in result.stdout
+
+    def test_non_table_lint_exits_3(self, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _BAD_LINT_TABLE_DOMAIN, "--path", str(empty), "--json"],
+        )
+        assert result.exit_code == 3, result.output
+        data = json.loads(result.stdout)
+        messages = " ".join(e["message"] for e in data["stages"]["check"]["errors"])
+        assert "[lint]" in messages
+        assert "must be a table" in messages
+
+    def test_invalid_lint_level_exits_3(self, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _BAD_LEVEL_DOMAIN, "--path", str(empty), "--json"],
+        )
+        assert result.exit_code == 3, result.output
+        data = json.loads(result.stdout)
+        messages = " ".join(e["message"] for e in data["stages"]["check"]["errors"])
+        assert "[lint].level" in messages
+
+
+class TestVerifyLintLevel:
+    """The check stage honours ``[lint].level`` (default ``warn``), the same
+    severity floor ``protean check`` uses — it does not hardcode the warn floor."""
+
+    def test_level_error_opts_out_of_warning_gating(self, tmp_path):
+        """A domain with warnings but ``[lint].level="error"`` passes check —
+        only errors gate. With the warn floor hardcoded, this would exit 3."""
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _LEVEL_ERROR_DOMAIN, "--path", str(tests_dir), "--json"],
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data["stages"]["check"]["status"] == "pass"
+        # It really does carry warnings — the pass is because level="error", not
+        # because the domain is clean.
+        assert data["stages"]["check"]["counts"]["warnings"] > 0
+
+
+class TestVerifyUsageErrors:
+    """``verify``'s own usage errors exit 1 with a clean message, no traceback."""
+
+    def test_path_not_a_directory_exits_1(self, tmp_path):
+        missing = tmp_path / "does" / "not" / "exist"
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(missing), "--json"],
+        )
+        assert result.exit_code == 1, result.output
+        assert "Traceback" not in result.output
+        data = json.loads(result.stdout)
+        assert data["verdict"] == "fail"
+        # Nothing ran — every stage is skipped.
+        assert all(
+            data["stages"][s]["status"] == "skipped" for s in ("init", "check", "tests")
+        )
+
+    def test_path_is_a_file_exits_1(self, tmp_path):
+        a_file = tmp_path / "not_a_dir.txt"
+        a_file.write_text("hi")
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(a_file)],
+        )
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+        # The clean usage message, which only the up-front guard emits — an
+        # unguarded subprocess would raise NotADirectoryError instead.
+        assert "--path is not a directory" in result.stdout
+
+    def test_empty_domain_arg_exits_1(self, tmp_path, monkeypatch):
+        """``-d ""`` with PROTEAN_DOMAIN unset is domain-not-found (exit 1),
+        not an uncaught AssertionError."""
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        result = runner.invoke(
+            app,
+            ["verify", "-d", "", "--path", str(tests_dir)],
+        )
+        assert result.exit_code == 1
+        assert "Traceback" not in result.output
+        assert "No domain found" in result.stdout
+
+
+class TestVerifySubprocessEnv:
+    """The tests stage runs pytest in a child process; ``verify`` scrubs a few
+    parent env vars and puts a ``src/`` layout on the path. These are behaviours
+    a consumer relies on, so they are pinned directly."""
+
+    def test_parent_env_vars_are_scrubbed_from_child(self, tmp_path, monkeypatch):
+        """VIRTUAL_ENV/PROTEAN_ENV/PROTEAN_DEBUG set in the parent must not reach
+        the child pytest — a leaked VIRTUAL_ENV in particular can point tests at
+        the wrong source tree."""
+        monkeypatch.setenv("VIRTUAL_ENV", "/tmp/bogus-venv-should-not-leak")
+        monkeypatch.setenv("PROTEAN_ENV", "leaked")
+        monkeypatch.setenv("PROTEAN_DEBUG", "1")
+        # PROTEAN_ENV is special: the Protean pytest plugin re-establishes it via
+        # ``setdefault`` at collection time. Popping it in verify lets the plugin's
+        # own default ("test") win instead of the leaked parent value — so the
+        # observable effect is "not the leaked value", not "absent". VIRTUAL_ENV
+        # and PROTEAN_DEBUG are only ever read, so they stay absent.
+        body = (
+            "import os\n"
+            "def test_env_scrubbed():\n"
+            "    assert 'VIRTUAL_ENV' not in os.environ\n"
+            "    assert 'PROTEAN_DEBUG' not in os.environ\n"
+            "    assert os.environ.get('PROTEAN_ENV') != 'leaked'\n"
+        )
+        tests_dir = _write_test(tmp_path / "tests", body)
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
+        )
+        # If verify did not scrub the vars, the child test asserts False → the
+        # tests stage fails → exit 4.
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data["stages"]["tests"]["status"] == "pass"
+        assert data["stages"]["tests"]["passed"] == 1
+
+    def test_src_layout_is_importable_in_child(self, tmp_path):
+        """A ``src/``-layout project that is not installed still has its ``src``
+        put on the child's PYTHONPATH, so its own tests import the package. The
+        package name is unique so the import can only succeed via the prepend."""
+        project = tmp_path / "proj"
+        pkg = project / "src" / "verify_srclayout_pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("")
+        (pkg / "thing.py").write_text("VALUE = 42\n")
+        body = (
+            "from verify_srclayout_pkg.thing import VALUE\n"
+            "def test_import_from_src():\n"
+            "    assert VALUE == 42\n"
+        )
+        _write_test(project / "tests", body)
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(project), "--json"],
+        )
+        # Without the src prepend the import fails → collection error → exit 4.
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)
+        assert data["stages"]["tests"]["status"] == "pass"
+        assert data["stages"]["tests"]["passed"] == 1
 
 
 def _generate_scaffold(tmp_path: Path) -> Path:

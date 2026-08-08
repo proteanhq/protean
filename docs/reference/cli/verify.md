@@ -44,15 +44,23 @@ before tests):
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | All green — init, check, and tests all pass. |
-| `1` | `verify`'s own error — bad arguments, or the domain was not found. |
+| `1` | `verify`'s own error — the domain was not found, or `--path` is not a directory. |
 | `2` | The domain was found but failed to initialize. |
-| `3` | Check failed — the domain has errors or warnings. |
+| `3` | Check failed — a malformed `[lint]` config, or findings at or above the `[lint].level` floor. |
 | `4` | Tests failed. |
 
-Check "fails" on **errors or warnings** (`status` `fail`/`warn`), matching
-`protean check`'s default `[lint].level="warn"` floor. An info-only domain still
-passes. Check and tests both run even when check fails (so the `--json` envelope
-carries every stage's result); the exit code follows the precedence above.
+A malformed command line (an unknown flag, a missing option value) is rejected
+by the argument parser **before** `verify` runs and exits `2` — Click's
+convention, which happens to share a code with init-failure. The table above
+applies once `verify` itself starts running.
+
+The check stage honours `[lint].level` (default `"warn"`), the **same** severity
+floor [`protean check`](check.md) uses: `"error"` gates on errors only, `"warn"`
+also gates on warnings, `"info"` gates on any finding. A malformed `[lint]` block
+(a bad `suppressions` count, a non-table `[lint]`, an invalid `level`) gates as a
+check failure too — `verify` validates it the way `check` does. Check and tests
+both run even when check fails (so the `--json` envelope carries every stage's
+result); the exit code follows the precedence above.
 
 An empty test directory — `pytest` collects nothing and returns `5` — is treated
 as a **pass** for the tests stage. The returncode is preserved in the envelope so
@@ -81,11 +89,15 @@ as a **pass** for the tests stage. The returncode is preserved in the envelope s
 | Field | Description |
 |-------|-------------|
 | `verdict` | `pass` only when every stage passes; otherwise `fail`. |
-| `stages.init.status` | `pass`, `fail`, or `skipped`. `skipped` when an earlier stage aborted the run. |
-| `stages.check` | The `status` plus the `counts`, `errors`, and `diagnostics` from `Domain.check()` (see the [check result schema](check.md#result-schema)). |
+| `stages.init.status` | `pass` or `fail` — init is the first stage, so it always runs. |
+| `stages.check` | The `status` plus the `counts`, `errors`, and `diagnostics` from `Domain.check()` (see the [check result schema](check.md#result-schema)). A malformed `[lint]` config is reported here as a single synthetic error. |
 | `stages.tests` | The `status`, the pytest `returncode`, and best-effort `passed`/`failed` counts parsed from pytest's summary line. The returncode — not the parsed counts — decides pass/fail. |
 
-When init fails, `check` and `tests` are reported as `skipped` (they never ran).
+When `verify` aborts early — the domain is not found (exit 1), `--path` is not a
+directory (exit 1), or init fails (exit 2) — the stages that never ran are
+reported as a bare `{ "status": "skipped" }` **without** their other sub-keys. A
+consumer that reads, say, `stages.check.counts` must guard for the skipped shape
+(or check the top-level `verdict` first).
 
 ## Related
 

@@ -23,17 +23,28 @@ Usage::
 Exit codes (a stable contract, ordered by precedence):
 
     0 — all green: init, check, and tests all pass
-    1 — verify's own error: bad arguments, or the domain was not found
+    1 — verify's own error: the domain was not found, or ``--path`` is not a
+        directory
     2 — the domain was found but failed to initialize
-    3 — check failed (errors or warnings)
+    3 — check failed (a malformed ``[lint]`` config, or findings at or above
+        the ``[lint].level`` floor)
     4 — tests failed
 
-``check`` "fails" on errors **or** warnings (``status`` ``fail``/``warn``),
-matching ``protean check``'s default ``[lint].level="warn"`` floor; an
-info-only domain still passes. Unlike ``check`` and the other commands,
-``verify`` does not use the ``handle_cli_exceptions`` decorator — it owns its
-exit-code contract, so it catches load/init failures itself and maps them to
-the codes above.
+A malformed command line (an unknown flag, a missing option value) is rejected
+by the argument parser *before* ``verify`` runs and exits ``2`` — Click's
+convention, which happens to overlap the init-failure code. The contract above
+applies once ``verify`` itself starts running.
+
+The check stage honours ``[lint].level`` (default ``"warn"``), the same
+severity floor ``protean check`` uses: ``"error"`` gates on errors only,
+``"warn"`` also gates on warnings, ``"info"`` gates on any finding. It also
+validates the ``[lint]`` config the way ``protean check`` does — ``verify``
+calls ``Domain.check`` directly, whose IR build swallows the ``ConfigurationError``
+a bad ``[lint]`` block raises, so without this validation a malformed config
+would read as a false green. Unlike ``check`` and the other commands, ``verify``
+does not use the ``handle_cli_exceptions`` decorator — it owns its exit-code
+contract, so it catches load/init failures itself and maps them to the codes
+above.
 """
 
 import json
@@ -45,6 +56,7 @@ from typing import Annotated, Any, NoReturn
 
 import typer
 from rich import print
+from rich.markup import escape
 
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
@@ -68,6 +80,10 @@ _PASSED_RE = re.compile(r"(\d+) passed")
 _FAILED_RE = re.compile(r"(\d+) failed")
 
 _STAGES = ("init", "check", "tests")
+
+# Valid values for the ``[lint].level`` config key (the check-stage severity
+# floor). Mirrors ``check.py``'s ``_LINT_LEVELS``.
+_LINT_LEVELS = frozenset({"error", "warn", "info"})
 
 
 def verify(
@@ -101,6 +117,15 @@ def verify(
         stage: {"status": "skipped"} for stage in _STAGES
     }
 
+    # ``--path`` is handed to ``subprocess.run(cwd=...)`` for the tests stage;
+    # a missing directory (or a file) would otherwise crash there with an
+    # uncaught ``FileNotFoundError``/``NotADirectoryError`` — and in ``--json``
+    # mode corrupt the envelope with a traceback. Reject it up front as a usage
+    # error, before doing any init work.
+    if not os.path.isdir(path):
+        msg = f"--path is not a directory: {path}"
+        _emit_and_exit(json_output, stages, "", _EXIT_USAGE, error_line=msg)
+
     # --- Init stage -------------------------------------------------------
     try:
         derived_domain = derive_domain(domain)
@@ -109,7 +134,13 @@ def verify(
         stages["init"] = {"status": "fail", "error": msg}
         _emit_and_exit(json_output, stages, "", _EXIT_USAGE, error_line=msg)
 
-    assert derived_domain is not None
+    # ``derive_domain`` returns ``None`` (rather than raising) when the path is
+    # empty and ``PROTEAN_DOMAIN`` is unset — e.g. ``-d ""`` or ``-d "$PROTEAN_DOMAIN"``
+    # with the var unset. Treat it as domain-not-found, not an ``AssertionError``.
+    if derived_domain is None:
+        msg = "No domain found. Provide --domain or set PROTEAN_DOMAIN."
+        stages["init"] = {"status": "fail", "error": msg}
+        _emit_and_exit(json_output, stages, "", _EXIT_USAGE, error_line=msg)
 
     try:
         derived_domain.init(traverse=True)
@@ -121,16 +152,7 @@ def verify(
     stages["init"] = {"status": "pass", "error": None}
 
     # --- Check stage ------------------------------------------------------
-    result = derived_domain.check()
-    # Fail on errors or warnings; info-only findings are a pass, matching
-    # ``protean check``'s default ``[lint].level="warn"`` floor.
-    check_failed = result["status"] in {"fail", "warn"}
-    stages["check"] = {
-        "status": "fail" if check_failed else "pass",
-        "counts": result["counts"],
-        "errors": result["errors"],
-        "diagnostics": result["diagnostics"],
-    }
+    check_failed, stages["check"] = _run_check(derived_domain)
 
     # --- Tests stage ------------------------------------------------------
     # Run tests even when check failed, so the envelope carries every stage's
@@ -146,6 +168,87 @@ def verify(
     if tests_stage["status"] == "fail":
         raise typer.Exit(_EXIT_TESTS)
     raise typer.Exit(_EXIT_OK)
+
+
+def _validate_lint_level(lint_config: dict[str, Any]) -> str | None:
+    """Return an error message if ``[lint].level`` is not a valid floor, else ``None``."""
+    level = lint_config.get("level", "warn")
+    if level not in _LINT_LEVELS:
+        return f"[lint].level: {level!r} is invalid. Use 'error', 'warn', or 'info'."
+    return None
+
+
+def _check_gates(counts: dict[str, Any], lint_level: str) -> bool:
+    """Whether a check result gates, honouring ``[lint].level`` — same rule as
+    ``protean check``: errors always gate; ``"warn"`` also gates warnings;
+    ``"info"`` gates any finding; ``"error"`` gates on errors alone."""
+    if counts["errors"] > 0:
+        return True
+    if lint_level == "error":
+        return False
+    if counts["warnings"] > 0:
+        return True
+    return bool(lint_level == "info" and counts["infos"] > 0)
+
+
+def _config_error_stage(message: str, code: str) -> dict[str, Any]:
+    """A check-stage dict that carries a single fatal error (bad config or a
+    ``check()`` crash), shaped like a real check result so the envelope keys and
+    the human renderer are unchanged."""
+    return {
+        "status": "fail",
+        "counts": {"errors": 1, "warnings": 0, "infos": 0},
+        "errors": [{"code": code, "message": message}],
+        "diagnostics": [],
+    }
+
+
+def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
+    """Validate the ``[lint]`` config, run ``Domain.check``, and decide whether
+    check gates. Returns ``(check_failed, stage_dict)``.
+
+    ``verify`` calls ``Domain.check()`` directly, which — unlike ``protean check``
+    — skips the ``[lint]`` config validation and wraps its IR build in a bare
+    ``except Exception: pass``. So a malformed ``[lint]`` block (a bad
+    ``suppressions`` count, a non-table ``[lint]``, an invalid ``level``) is
+    swallowed and reads as a false green. Run the same validation ``check`` runs,
+    up front, and surface any failure as a check-stage error (exit 3).
+    """
+    # Imported locally to keep ``protean --help`` from eagerly pulling in the
+    # heavy IR builder subsystem (mirrors ``check.py``).
+    from protean.ir.builder import (  # noqa: PLC0415
+        validate_lint_suppressions,
+        validate_lint_table,
+    )
+
+    lint_config = domain.config.get("lint", {})
+    # Order matters: the table check must run first — if ``[lint]`` is not a
+    # table, reading ``level``/``suppressions`` off it would raise. ``or``
+    # short-circuits, so the later reads never touch a non-dict.
+    config_error = validate_lint_table(lint_config) or _validate_lint_level(lint_config)
+    if config_error is None:
+        config_error = validate_lint_suppressions(lint_config.get("suppressions", {}))
+    if config_error is not None:
+        return True, _config_error_stage(config_error, "INVALID_LINT_CONFIG")
+
+    try:
+        result = domain.check()
+    except Exception as exc:
+        # Defensive: ``check()`` re-runs ``_prepare(traverse=True, validate=False)``
+        # and builds the IR, neither wrapped here. init already succeeded above,
+        # so no concrete trigger is known — but a crash must surface as the
+        # contracted exit 3, not a traceback.
+        return True, _config_error_stage(f"Domain check failed: {exc}", "CHECK_FAILED")
+
+    lint_level = lint_config.get("level", "warn")
+    check_failed = _check_gates(result["counts"], lint_level)
+    stage = {
+        "status": "fail" if check_failed else "pass",
+        "counts": result["counts"],
+        "errors": result["errors"],
+        "diagnostics": result["diagnostics"],
+    }
+    return check_failed, stage
 
 
 def _run_tests(path: str) -> tuple[dict[str, Any], str]:
@@ -174,6 +277,9 @@ def _run_tests(path: str) -> tuple[dict[str, Any], str]:
         cwd=path,
         capture_output=True,
         text=True,
+        # Decode leniently: under a non-UTF-8 locale, pytest output with
+        # non-decodable bytes would otherwise raise ``UnicodeDecodeError`` here.
+        errors="replace",
         env=env,
     )
     output = completed.stdout + completed.stderr
@@ -280,12 +386,18 @@ def _stage_detail(stage: str, data: dict[str, Any]) -> str:
 
 
 def _render_check_detail(check: dict[str, Any]) -> None:
-    """Print the check errors and diagnostics (the reason check gated)."""
+    """Print the check errors and diagnostics (the reason check gated).
+
+    Messages are arbitrary text (a config error naming ``[lint].suppressions``,
+    a rule message with a class name in brackets), so escape them before the
+    ``rich`` print — otherwise a bracketed token like ``[lint]`` is parsed as
+    markup and silently dropped from the output.
+    """
     for err in check.get("errors", []):
-        print(f"    [red]✗ {err['message']}[/red]")
+        print(f"    [red]✗ {escape(err['message'])}[/red]")
     for diag in check.get("diagnostics", []):
         level = diag.get("level", "info")
         marker = "[yellow]![/yellow]" if level == "warning" else "[cyan]·[/cyan]"
         code = diag.get("code", "")
-        prefix = f"[dim]{code}:[/dim] " if code else ""
-        print(f"    {marker} {prefix}{diag['message']}")
+        prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
+        print(f"    {marker} {prefix}{escape(diag['message'])}")
