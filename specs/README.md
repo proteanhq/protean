@@ -12,6 +12,10 @@ Protean's correctness guarantees, model-checked with TLC:
   the version check made atomic with the write (compare-and-set) shipped for
   #1087 (SQL) and #1258 (Memory)
   ([ADR-0013](../docs/adr/0013-optimistic-concurrency-and-claim-contract.md)).
+- **`Recovery.tla`**: the event-store subscription's failure-recovery
+  record-before-advance protocol, where a handler failure is written durably to
+  the recovery stream *before* the read cursor advances past it, so a failed
+  message is never silently dropped.
 
 They exist because these are where Protean's hardest correctness claims live, and
 where two silent-corruption bugs surfaced this cycle: #1087 (OCC lost update, now
@@ -90,16 +94,20 @@ The runs are small (a few thousand states each) and finish in about a second.
 | `OCC.cfg` | Shipped protocol (atomic compare-and-set); all invariants + liveness hold. |
 | `OCC_bug.cfg` | Revert test: split the commit into compare then unconditional write; TLC must fail on `NoLostUpdate`. |
 | `OCC_conflict.cfg` | Reachability probe: TLC must fail on `NoConflict`, witnessing that two writers genuinely contend from the same base. |
+| `Recovery.tla` | The subscription failure-recovery record-before-advance protocol. |
+| `Recovery.cfg` | Shipped protocol (record before advance); all invariants + liveness hold. |
+| `Recovery_bug.cfg` | Revert test: advance the cursor past a failed message without its record; TLC must fail on `NoDrop`. |
+| `Recovery_dup.cfg` | Reachability probe: TLC must fail on `NoRedeliver`, witnessing a crash-resume re-reading an already-recorded failed message. |
 | `check.sh` | Runs every config and asserts the expected pass/violation. |
 
 ## What is modeled
 
-Both specs are written as action-based TLA+ (a disjunction of next-state actions)
-rather than PlusCal. For fault-tolerant protocols the interesting behavior is a
-*crash between phases*, which is expressed directly by separating durable state
-from volatile state and having a `Crash` action clear only the volatile part.
-That is the idiomatic and auditable shape for this kind of spec; PlusCal would
-compile down to the same TLA+.
+All four specs are written as action-based TLA+ (a disjunction of next-state
+actions) rather than PlusCal. For fault-tolerant protocols the interesting
+behavior is a *crash between phases*, which is expressed directly by separating
+durable state from volatile state and having a `Crash` action clear only the
+volatile part. That is the idiomatic and auditable shape for this kind of spec;
+PlusCal would compile down to the same TLA+.
 
 **Checkpoint.** `global_position` is a store-wide sequence assigned at insert (in
 order) but made visible at commit, and across categories a lower value can commit
@@ -140,6 +148,20 @@ splits into a `Compare` step (decide "ok" without writing) and a later unconditi
 `Write` (set the version to the stale base + 1), so two writers that both read base
 `b` both write `b + 1` and one committed update is silently overwritten. That split
 is the read-compare-write race of #1087 / #1258.
+
+**Recovery.** When the handler fails on the message at the cursor, the failure is
+written durably to the failed-positions stream (`Record`) *before* the read cursor
+advances past it (`Advance`). The cursor's durable checkpoint is batched, so
+`Flush` copies the in-memory cursor to the durable one at any time, and a `Crash`
+resets the in-memory cursor to the durable one and drops the volatile pending
+state (the durable Failed records, the resolved set, and delivered side effects
+all survive, matching `_rebuild_retry_counts` rebuilding from the stream on
+restart). A periodic `Recover` pass takes each recorded, unresolved position
+terminal — resolved on a retry success, or exhausted after `max_retries`. The
+`RecordFirst` constant toggles the shipped ordering (record before advance)
+against the bug: when `FALSE` the cursor can advance past a failed message without
+its record, so a `Flush` and `Crash` there leave the durable cursor past a failed
+position with no durable record and no delivery — a silent drop.
 
 ## Invariant-to-guarantee mapping
 
@@ -187,12 +209,25 @@ negations whose counterexample witnesses that a behavior is reachable).
 | `NoConflict` (probe, `OCC_conflict.cfg`) | reachability | The witness that two writers genuinely race from the same base and one is forced to conflict, so the model is not vacuously safe and the revert test is meaningful. |
 | `EventuallyResolved` (liveness) | guarantee | No permanent stall: every writer eventually reaches a terminal state (committed or conflicted). |
 
+### Recovery (`Recovery.tla`) → guarantees.md, "Recovery of a failed message is crash-safe"
+
+| Invariant / property | Kind | Guarantee it checks |
+|---|---|---|
+| `NoDrop` | guarantee | "The failure is recorded to the recovery stream *before* the read cursor advances past it ... never dropped." A failed position the durable cursor has passed is either present as a durable Failed record (the recovery pass picks it up) or already delivered. `Recovery_bug.cfg` advances past a failed message without its record to demonstrate TLC catches the drop. |
+| `DurableBehindCursor` | guarantee | The durable checkpoint never leads the in-memory cursor, so a crash-resume re-reads from a safe position rather than skipping past a failed message. |
+| `RecordedAreFailed` | model-trust | Only genuinely failed positions ever get a durable record; guards against a successful position leaking into the record set and making `NoDrop` pass for the wrong reason. |
+| `ResolvedImpliesRecorded` | model-trust | The recovery pass only ever resolves a position that has a durable record; a resolve out of nowhere would be a modeling bug. |
+| `DeliveredImpliesHandled` | model-trust | Every delivered position was actually handled — a success on the first pass, or a recorded failed position recovered by the pass — so `NoDrop` cannot pass vacuously through its `delivered` disjunct. |
+| `NoRedeliver` (probe, `Recovery_dup.cfg`) | reachability | "Asynchronous delivery is at-least-once ... Handlers must tolerate duplicates." The witness is a crash after the record but before the flush that rewinds the cursor and re-reads the failed message. |
+| `AllFailedResolved` (liveness) | guarantee | No permanent stall: every failed message is eventually retried until it resolves (recovered) or is exhausted. |
+
 ## Revert tests and reachability probes
 
 A spec that passes proves nothing unless its invariants can fail. Each protocol
 carries a constant that reintroduces the real bug (`GapSafe`, `AckBeforePublish`,
-`ClaimSafe`, `Atomic`), and a probe that asserts the negation of a reachable
-behavior (`NoRedelivery`, `NoDuplicateDelivery`, `NoConflict`). `check.sh` asserts
+`ClaimSafe`, `Atomic`, `RecordFirst`), and a probe that asserts the negation of a
+reachable behavior (`NoRedelivery`, `NoDuplicateDelivery`, `NoConflict`,
+`NoRedeliver`). `check.sh` asserts
 TLC fails on the *named* invariant for each, so a check that stops demonstrating
 its bug (say a different invariant fails first) is caught, not silently accepted.
 The headline revert traces:
@@ -234,6 +269,20 @@ State 7: Write(w2)     version = 1  base = <<0,0>>  phase = <<committed, committ
          -> NoLostUpdate violated: two writers committed but version = 1
 ```
 
+**Recovery, `RecordFirst = FALSE` (advance before record).** The handler fails on
+position 1, the buggy cursor advances past it without writing the durable record,
+and a flush moves the durable cursor past it too, so a crash there would lose the
+message with no record to recover it:
+
+```
+State 1: fate = <<"F","S","S">>  cursorMem = 0  cursorDur = 0  recordDur = {}
+State 2: Fail(1)                 cursorMem = 0  cursorDur = 0  recordDur = {}  pending = {1}
+State 3: Advance(1)              cursorMem = 1  cursorDur = 0  recordDur = {}  pending = {}
+State 4: Flush                   cursorMem = 1  cursorDur = 1  recordDur = {}
+         -> NoDrop violated: position 1 is failed and <= cursorDur, with no
+            durable record and not delivered
+```
+
 ## Constants and bounds
 
 The configs use small bounds (3 to 4 positions, 1 to 2 workers and messages, 2
@@ -246,13 +295,9 @@ for each run.
 
 ## Out of scope
 
-The issue that produced these specs scoped them to the checkpoint and outbox
-two-phase protocols only. The following are related but deliberately not modeled
-here, and a reader arriving from `guarantees.md` should not expect them:
+The following are related but deliberately not modeled here, and a reader arriving
+from `guarantees.md` should not expect them:
 
-- **The subscription recovery-stream ordering** ("Recovery of a failed message is
-  crash-safe" in guarantees.md). It has the same record-before-flush shape as the
-  checkpoint, but it is a separate protocol (handler failure, not gap safety).
 - **Outbox write-side dedup on `(message_id, target_broker)`**. The model uses a
   single broker; the dual-write-per-broker uniqueness is a row-creation concern,
   not part of the publish protocol.

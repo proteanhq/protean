@@ -231,6 +231,9 @@ event-store subscriptions**; a DLQ applies only to broker/stream subscriptions.
     tracking, no retry). This is separate from the batched-checkpoint at-least-once
     property for the happy path, where a crash re-delivers the last unflushed batch.
 
+    This record-before-advance protocol has a machine-checked TLA+ specification
+    (`Recovery.tla`); see the formal-verification section below.
+
 **Exactly-once-effect is opt-in**, in two places:
 
 - A projector marked `@domain.projector(idempotent=True)` on a relational provider
@@ -362,16 +365,18 @@ deployment is configured to persist.
 ## Formal verification of the core correctness protocols
 
 The protocols where these guarantees are hardest to reason about, the `$all`
-subscription checkpoint advance, the outbox publish, and the aggregate
-optimistic-concurrency commit, have machine-checked
+subscription checkpoint advance, the outbox publish, the aggregate
+optimistic-concurrency commit, and the subscription failure-recovery
+record-before-advance, have machine-checked
 TLA+ specifications under [`specs/`](https://github.com/proteanhq/protean/tree/main/specs)
 in the repository. TLC explores every interleaving of out-of-order commits, lock
-expiry, redelivery, crash points, and concurrent writers up to a bound, and asserts
-the invariants that state these guarantees. Each invariant maps to a specific row
-above; the mapping is in `specs/README.md`. Each spec also carries a revert test
-that reintroduces the corresponding bug (#1088 for the checkpoint, mark-before-publish
-for the outbox, the split compare-then-write lost update for OCC / #1087 / #1258) so
-the model demonstrably has teeth.
+expiry, redelivery, crash points, concurrent writers, and handler failures up to a
+bound, and asserts the invariants that state these guarantees. Each invariant maps
+to a specific row above; the mapping is in `specs/README.md`. Each spec also carries
+a revert test that reintroduces the corresponding bug (#1088 for the checkpoint,
+mark-before-publish for the outbox, the split compare-then-write lost update for
+OCC / #1087 / #1258, advance-before-record for the recovery drop) so the model
+demonstrably has teeth.
 
 This is design-time verification, not a CI gate: it verifies the design, and is
 re-run deliberately when a protocol changes, not on every commit.
