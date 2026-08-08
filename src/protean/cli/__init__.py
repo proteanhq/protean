@@ -46,6 +46,7 @@ from protean.cli.snapshot import app as snapshot_app
 from protean.cli.subscriptions import app as subscriptions_app
 from protean.cli.test import app as test_app
 from protean.cli.upgrade import upgrade_check
+from protean.cli.verify import verify
 from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
 from protean.utils.domain_discovery import derive_domain
@@ -59,6 +60,7 @@ logger = get_logger(__name__)
 app = typer.Typer(no_args_is_help=True)
 
 app.command()(check)
+app.command()(verify)
 app.command()(upgrade_check)
 app.command()(new)
 app.command()(observatory)
