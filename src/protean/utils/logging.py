@@ -343,8 +343,8 @@ def _http_wide_event_extras() -> dict[str, Any] | None:
     """Return the HTTP wide-event extras dict, or ``None`` when absent.
 
     Only present when ``DomainContextMiddleware`` has initialised it for
-    the current request. Any failure to reach ``g`` (no domain context,
-    LocalProxy errors) yields ``None`` so callers can treat absence the
+    the current request. Any failure to reach ``g`` (no domain context, or a
+    proxy lookup that raises) yields ``None`` so callers can treat absence the
     same as "no middleware in play".
     """
     try:
@@ -441,9 +441,9 @@ def get_logging_config_value(key: str, default: _T) -> _T:
 
     Returns ``default`` when no domain is bound to the current context or when
     the key is absent. Uses ``has_domain_context()`` to avoid triggering the
-    ``LocalProxy`` warning that ``current_domain`` would emit outside a domain
-    context. Any unexpected failure also yields ``default`` so callers on a hot
-    path (e.g. per-query instrumentation) can safely swallow it.
+    outside-domain-context warning that ``current_domain`` would emit outside a
+    domain context. Any unexpected failure also yields ``default`` so callers on
+    a hot path (e.g. per-query instrumentation) can safely swallow it.
     """
     try:
         if has_domain_context():

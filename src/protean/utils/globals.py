@@ -83,7 +83,10 @@ class _ContextLocalProxy(Generic[_T]):
         return obj
 
     @property  # type: ignore[misc]
-    def __class__(self) -> type:
+    def __class__(self) -> type:  # pyright: ignore[reportIncompatibleMethodOverride]
+        # ``object.__class__`` is a read/write property; overriding it read-only
+        # is deliberate (the proxy reports the wrapped type for ``isinstance``),
+        # so silence the incompatible-override report.
         obj = self._get_current_object()
         if obj is None:
             return type(self)
