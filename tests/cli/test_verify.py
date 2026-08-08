@@ -32,6 +32,12 @@ pytestmark = pytest.mark.no_test_domain
 
 runner = CliRunner()
 
+# ``verify --json`` writes the envelope to stdout and every log line / warning to
+# stderr, so a real ``protean verify --json | jq`` stays clean. Parse
+# ``result.stdout`` (the pure stdout stream), never ``result.output`` — since
+# click 8.2 the latter mixes stdout and stderr in write order, which interleaves
+# the domain's init/check log lines into the JSON.
+
 # A clean domain (inits + checks with no findings).
 _CLEAN_DOMAIN = "tests/support/domains/test19/domain19.py:domain"
 # A domain that inits cleanly but check reports warnings (status "warn").
@@ -63,7 +69,7 @@ class TestVerifyGreen:
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
         )
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["verdict"] == "pass"
         # No stage may report a failure on the green path (guards a vacuous pass).
         assert all(
@@ -76,7 +82,7 @@ class TestVerifyGreen:
             app,
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
         )
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         # Top-level envelope is exactly {verdict, stages}.
         assert set(data.keys()) == {"verdict", "stages"}
         assert set(data["stages"].keys()) == {"init", "check", "tests"}
@@ -97,9 +103,9 @@ class TestVerifyGreen:
         )
         assert result.exit_code == 0
         for stage in ("init", "check", "tests"):
-            assert stage in result.output
-        assert "Overall" in result.output
-        assert "PASS" in result.output
+            assert stage in result.stdout
+        assert "Overall" in result.stdout
+        assert "PASS" in result.stdout
 
 
 class TestVerifyCheckFailure:
@@ -113,7 +119,7 @@ class TestVerifyCheckFailure:
             ["verify", "-d", _WARN_DOMAIN, "--path", str(empty), "--json"],
         )
         assert result.exit_code == 3, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["verdict"] == "fail"
         assert data["stages"]["check"]["status"] == "fail"
         assert data["stages"]["check"]["counts"]["warnings"] > 0
@@ -129,8 +135,8 @@ class TestVerifyCheckFailure:
             ["verify", "-d", _WARN_DOMAIN, "--path", str(empty)],
         )
         assert result.exit_code == 3
-        assert "FAIL" in result.output
-        assert "UNHANDLED_EVENT" in result.output
+        assert "FAIL" in result.stdout
+        assert "UNHANDLED_EVENT" in result.stdout
 
     def test_info_only_domain_does_not_gate(self, tmp_path):
         """Info-only findings must NOT fail check — a green scaffold carrying a
@@ -141,7 +147,7 @@ class TestVerifyCheckFailure:
             ["verify", "-d", _INFO_DOMAIN, "--path", str(tests_dir), "--json"],
         )
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["stages"]["check"]["status"] == "pass"
         # It really is info-only (proves the pass is not because it is clean).
         assert data["stages"]["check"]["counts"]["infos"] > 0
@@ -158,7 +164,7 @@ class TestVerifyTestFailure:
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
         )
         assert result.exit_code == 4, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["verdict"] == "fail"
         assert data["stages"]["tests"]["status"] == "fail"
         assert data["stages"]["tests"]["returncode"] != 0
@@ -174,7 +180,7 @@ class TestVerifyTestFailure:
             ["verify", "-d", _WARN_DOMAIN, "--path", str(tests_dir), "--json"],
         )
         assert result.exit_code == 3, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         # Both stages record their failure even though check's code wins.
         assert data["stages"]["check"]["status"] == "fail"
         assert data["stages"]["tests"]["status"] == "fail"
@@ -191,7 +197,7 @@ class TestVerifyNoTests:
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(empty), "--json"],
         )
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["stages"]["tests"]["status"] == "pass"
         # The returncode is preserved so "no tests" is distinguishable.
         assert data["stages"]["tests"]["returncode"] == 5
@@ -204,14 +210,14 @@ class TestVerifyLoadFailures:
     def test_domain_not_found_exits_1(self):
         result = runner.invoke(app, ["verify", "-d", "nonexistent.module"])
         assert result.exit_code == 1
-        assert "Error loading Protean domain" in result.output
+        assert "Error loading Protean domain" in result.stdout
         # A clean message, not a traceback.
         assert "Traceback" not in result.output
 
     def test_domain_not_found_json_envelope(self):
         result = runner.invoke(app, ["verify", "-d", "nonexistent.module", "--json"])
         assert result.exit_code == 1
-        data = json.loads(result.output)
+        data = json.loads(result.stdout)
         assert data["verdict"] == "fail"
         assert data["stages"]["init"]["status"] == "fail"
         # Check and tests never ran.
@@ -221,7 +227,7 @@ class TestVerifyLoadFailures:
     def test_init_failure_exits_2(self):
         result = runner.invoke(app, ["verify", "-d", _INIT_FAIL_DOMAIN])
         assert result.exit_code == 2
-        assert "Domain failed to initialize" in result.output
+        assert "Domain failed to initialize" in result.stdout
         assert "Traceback" not in result.output
 
     def test_init_failure_is_distinct_from_not_found(self):
