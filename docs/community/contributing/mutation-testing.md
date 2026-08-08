@@ -91,6 +91,19 @@ Prefer killing behavioural survivors (wrong comparison, dropped filter,
 off-by-one, swapped branch) over cosmetic ones. When you skip a survivor, a
 one-line note in the PR description on *why* keeps the next pass honest.
 
+!!! warning "Clear `__pycache__` if you hand-edit the real source to check a mutant"
+
+    `make mutation` is safe here: mutmut mutates a copy under `./mutants/`, never
+    the real tree. But if you sanity-check a survivor by editing the real source
+    directly (flip the operator, run the test, restore it), clear `__pycache__`
+    afterward: `find src tests -name __pycache__ -type d -exec rm -rf {} +`.
+    CPython's default `.pyc` validation is timestamp-based (source mtime + size).
+    A same-size flip such as `==` to `!=` restored within the same filesystem
+    mtime-second leaves a `.pyc` whose recorded `(mtime, size)` still matches the
+    restored source, so Python keeps running the *mutant* bytecode. The symptom is
+    a broad, baffling set of failures (here: every sync inline-dispatch test) that
+    vanish the moment you touch the file, with `git diff` showing nothing.
+
 ## Cadence
 
 Treat this as a **quarterly pass**: pick one or two core modules, drive their
