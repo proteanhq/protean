@@ -32,8 +32,8 @@ Config resolution follows the same root. `Config2.load_from_path(root_path)` loo
 `.domain.toml` / `domain.toml` / `pyproject.toml` in the root and up to two parent
 directories.
 
-Two failure modes in the 0.17 line traced directly to layout the discovery path did not
-expect. A generated `example/__init__.py` that re-exported from its own submodules created
+Two failure modes in the 0.17 line traced directly to layout that the discovery path did
+not expect. A generated `example/__init__.py` that re-exported from its own submodules created
 partially initialized module cycles during traversal, so a real `init(traverse=True)`
 crashed (#1316). And a `logging.toml` sat in the scaffold that no adapter read (#1315).
 Both are fixed, but they are the reason to fix the layout in writing rather than leave it
@@ -120,8 +120,9 @@ structural IR is computed from the domain model, not from files, so a file can o
 "IR-derivable" if it hard-codes something the IR already computes from the registered
 elements. No such file exists in the template: the Python element modules *are* the domain
 model the IR is built from, and the rest (packaging, Docker, CI, Makefile, scripts) is
-deployment scaffolding the IR never represents. The one stranded file, `logging.toml`, was an orphan no adapter
-read, not an IR duplicate, and has already been removed separately (#1315). If a genuinely
+deployment scaffolding the IR never represents. The one stranded file, `logging.toml`, was
+an orphan that no adapter read, not an IR duplicate, and has already been removed separately
+(#1315). If a genuinely
 IR-derivable artifact ever ships in the scaffold, prune it then; today there is none.
 
 ## Consequences
