@@ -403,7 +403,8 @@ def _stage_detail(stage: str, data: dict[str, Any]) -> str:
             return "  (no tests collected)"
         return f"  ({data['passed']} passed, {data['failed']} failed)"
     if stage == "init" and data.get("error"):
-        return f"  ({escape(data['error'])})"
+        first_line = data["error"].strip().splitlines()[0]
+        return f"  ({escape(first_line)})"
     return ""
 
 

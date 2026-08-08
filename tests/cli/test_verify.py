@@ -294,6 +294,21 @@ class TestVerifyLoadFailures:
         assert data["stages"]["check"]["status"] == "skipped"
         assert data["stages"]["tests"]["status"] == "skipped"
 
+    def test_nested_import_error_table_row_is_single_line(self):
+        """The multi-line ``While importing ...`` message (it embeds a full
+        ``traceback.format_exc()``) is already printed in full above the
+        table; the compact ``init`` row must collapse it to its first line
+        instead of reproducing the traceback and breaking the table layout."""
+        result = runner.invoke(app, ["verify", "-d", _NESTED_IMPORT_ERROR_DOMAIN])
+        assert result.exit_code == 2, result.output
+        table_lines = [
+            line
+            for line in result.stdout.splitlines()
+            if line.strip().startswith("init")
+        ]
+        assert len(table_lines) == 1
+        assert "Traceback" not in table_lines[0]
+
 
 class TestVerifyLintConfig:
     """A malformed ``[lint]`` config must fail check (exit 3), not read as a
