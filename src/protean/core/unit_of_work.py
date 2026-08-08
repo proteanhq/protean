@@ -24,20 +24,17 @@ if TYPE_CHECKING:
 
 
 class _UoWStack(Protocol):
-    """Typed view of the ``LocalStack`` methods this module relies on.
+    """Typed view of the context stack methods this module relies on.
 
-    The installed werkzeug ships ``LocalStack`` without usable annotations
-    (its ``push``/``pop`` resolve to ``Any``), which trips mypy ``--strict``'s
-    ``no-untyped-call`` on every stack access. Casting the shared stack to this
-    Protocol restores precise types at the call sites without suppressing the
-    diagnostic. Mirrors the ``cast`` precedent at the construction site in
-    ``protean.utils.globals``.
+    ``protean.utils.globals`` now supplies a stdlib ``contextvars``-backed
+    stack, but this protocol keeps the call sites in this module precisely
+    typed without leaking the implementation type.
     """
 
     @property
     def top(self) -> "UnitOfWork | None": ...
 
-    def push(self, obj: "UnitOfWork") -> list["UnitOfWork"]: ...
+    def push(self, obj: "UnitOfWork") -> None: ...
 
     def pop(self) -> "UnitOfWork | None": ...
 

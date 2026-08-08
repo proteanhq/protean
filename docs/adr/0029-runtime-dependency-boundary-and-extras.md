@@ -111,23 +111,24 @@ document the change in the 0.18 migration guide. The actionable error plus the
 - Deriving the boundary per feature (rather than one big `cli` bucket) means more
   extra names to document, but each install stays minimal: a REPL user does not
   drag in the scaffolder.
-- `bleach`, `werkzeug`, `cffi`, and `greenlet` stay in core. `bleach` because
-  String/Text fields sanitize by default (see Context); `werkzeug` because it
-  backs `current_domain`/`current_uow` via `LocalProxy`/`LocalStack`. `cffi` and
-  `greenlet` are not imported directly by `src/protean` and appear to be
-  transitive-only. Whether `werkzeug` can be replaced by `contextvars`, and
-  whether `cffi`/`greenlet` can leave core, is deferred to a separate review so
-  this change stays a packaging change and does not touch the context system's
-  semantics.
+- `bleach` stays in core because String/Text fields sanitize by default (see
+  Context). `werkzeug`, `cffi`, and `greenlet` stayed in core at the time of the
+  original decision, but each was later reviewed and moved out; see the
+  amendments below.
 
-  *Amended (August 2026, #1376): the deferred review landed. Nothing in
-  `src/protean` imports `cffi` or `greenlet` on any runtime path (the SQLAlchemy
-  adapter uses the synchronous engine; werkzeug's locals are contextvars-based),
-  so both left core. Their floors moved to the extras whose trees pull them:
-  `greenlet` to `postgresql`/`sqlite`/`mssql` (SQLAlchemy requires it on common
-  platforms but pins no floor), `cffi` to `sendgrid` (its only consumer is
-  `cryptography`, also floorless). The ADR-0020 newest-Python-wheel floor still
-  holds where each package is actually installed.*
+  *Amended (August 2026, #1376): `cffi` and `greenlet` left core. Nothing in
+  `src/protean` imports either package on any runtime path (the SQLAlchemy
+  adapter uses the synchronous engine), so both left core. Their floors moved to
+  the extras whose trees pull them: `greenlet` to `postgresql`/`sqlite`/`mssql`
+  (SQLAlchemy requires it on common platforms but pins no floor), `cffi` to
+  `sendgrid` (its only consumer is `cryptography`, also floorless). The
+  ADR-0020 newest-Python-wheel floor still holds where each package is actually
+  installed.*
+
+  *Amended (August 2026, #1375): `werkzeug` left core. `current_domain`,
+  `current_uow`, and `g` are now backed by a small stdlib `contextvars`
+  implementation that preserves the push/pop nesting semantics of the old
+  `LocalStack`/`LocalProxy`. The public API of the three proxies is unchanged.*
 
 ## Alternatives Considered
 

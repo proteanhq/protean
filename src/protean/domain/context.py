@@ -13,21 +13,17 @@ if TYPE_CHECKING:
 
 
 class _DomainContextStack(Protocol):
-    """Typed view of the ``LocalStack`` methods this module relies on.
+    """Typed view of the context stack methods this module relies on.
 
-    The installed werkzeug ships ``LocalStack`` without usable annotations
-    (its ``push``/``pop`` resolve to ``Any``), which trips mypy ``--strict``'s
-    ``no-untyped-call`` on every stack access. Casting the shared stack to this
-    Protocol restores precise types at the call sites without suppressing the
-    diagnostic. Mirrors the ``_UoWStack`` precedent in
-    ``protean.core.unit_of_work`` and the ``cast`` at the construction site in
-    ``protean.utils.globals``.
+    ``protean.utils.globals`` now supplies a stdlib ``contextvars``-backed
+    stack, but this protocol keeps the call sites in this module precisely
+    typed without leaking the implementation type.
     """
 
     @property
     def top(self) -> "DomainContext | None": ...
 
-    def push(self, obj: "DomainContext") -> list["DomainContext"]: ...
+    def push(self, obj: "DomainContext") -> None: ...
 
     def pop(self) -> "DomainContext | None": ...
 
@@ -102,8 +98,11 @@ def has_domain_context() -> bool:
 
 
 class DomainContext:
-    """The domain context binds an domain object implicitly
-    to the current thread or greenlet.
+    """The domain context binds a domain object implicitly to the current context.
+
+    The backing stack uses stdlib ``contextvars``, so the active domain follows
+    the execution context across OS threads, asyncio tasks, and ``await``
+    boundaries.
     """
 
     def __init__(self, domain: "Domain", **kwargs: Any) -> None:
