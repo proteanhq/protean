@@ -32,7 +32,7 @@ Config resolution follows the same root. `Config2.load_from_path(root_path)` loo
 `.domain.toml` / `domain.toml` / `pyproject.toml` in the root and up to two parent
 directories.
 
-Two failure modes in the 0.17 line traced directly to layout that the discovery path did
+Two failure modes in the 0.17 line traced directly to a layout that the discovery path did
 not expect. A generated `example/__init__.py` that re-exported from its own submodules created
 partially initialized module cycles during traversal, so a real `init(traverse=True)`
 crashed (#1316). And a `logging.toml` sat in the scaffold that no adapter read (#1315).
