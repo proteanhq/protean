@@ -421,6 +421,7 @@ nav:
       - adr/0027-unit-of-work-is-a-real-transaction.md
       - adr/0028-partition-per-key-sequential-processing.md
       - adr/0029-runtime-dependency-boundary-and-extras.md
+      - adr/0030-canonical-project-layout.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
