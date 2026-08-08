@@ -203,6 +203,18 @@ class TestVerifyTestFailure:
         assert data["stages"]["check"]["status"] == "fail"
         assert data["stages"]["tests"]["status"] == "fail"
 
+    def test_human_table_shows_pytest_output_on_failure(self, tmp_path):
+        """Without ``--json``, a failing test prints the tail of the pytest
+        output under the stage table, so a human run is actionable and not just
+        a FAIL label."""
+        tests_dir = _write_test(tmp_path / "tests", _FAILING_TEST)
+        result = runner.invoke(
+            app,
+            ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir)],
+        )
+        assert result.exit_code == 4, result.output
+        assert "pytest output:" in result.output
+
 
 class TestVerifyNoTests:
     """An empty test directory (pytest returncode 5) is a pass, not a failure."""
@@ -387,6 +399,35 @@ class TestVerifyLintLevel:
         # It really does carry warnings — the pass is because level="error", not
         # because the domain is clean.
         assert data["stages"]["check"]["counts"]["warnings"] > 0
+
+
+class TestVerifyInternals:
+    """Unit cover for the defensive helpers whose branches no end-to-end path
+    reaches: an error-severity finding gates regardless of ``[lint].level``, and
+    an unexpected ``Domain.check()`` crash is contracted to exit 3 rather than a
+    traceback. The re-run inside ``check()`` has no known concrete trigger, so it
+    can only be exercised directly."""
+
+    def test_errors_gate_even_at_error_level(self):
+        from protean.cli.verify import _check_gates
+
+        assert _check_gates({"errors": 1, "warnings": 0, "infos": 0}, "error") is True
+
+    def test_check_crash_is_surfaced_as_exit_3(self):
+        from protean.cli.verify import _run_check
+
+        class _BoomDomain:
+            config: dict = {}
+
+            def check(self):
+                raise RuntimeError("kaboom")
+
+        check_failed, stage = _run_check(_BoomDomain())
+
+        assert check_failed is True
+        assert stage["status"] == "fail"
+        assert stage["errors"][0]["code"] == "CHECK_FAILED"
+        assert "kaboom" in stage["errors"][0]["message"]
 
 
 class TestVerifyUsageErrors:
