@@ -25,8 +25,11 @@ boundary), `sync-dispatch` (breadth-first synchronous event dispatch, ADR-0016),
 and `checkpoint` (the `$all` gap-safe checkpoint path in the event-store
 subscription).
 
-`checkpoint` mutates a large module (`event_store_subscription.py`), so scope a
-run to the checkpoint methods with `MUT_FILTER` to keep it to a few minutes:
+`checkpoint` mutates a large module (`event_store_subscription.py`), so it is the
+slowest target: mutmut mutates the whole file. `MUT_FILTER` does not change that —
+it narrows the printed **survivor list** to the checkpoint methods so they are
+easy to pick out of the report (see "Reading the report" below). What keeps the
+run tractable is the tight test subset the target already uses.
 
 ```shell
 MUT_FILTER="update_read_position|update_current_position_to_store|_gap_safe_batch|_write_recovery_checkpoint" \
@@ -67,9 +70,12 @@ SURVIVORS: 83 (inspect one with: ... -m mutmut show <name>)
   ...
 ```
 
-Mutant names are function-scoped (`…ǁClassǁmethod__mutmut_N`), so you can focus a
-run on one area with `MUT_FILTER` (a grep pattern on the names) and inspect any
-single mutant with `mutmut show <name>` to see the exact change.
+Mutant names are function-scoped (`…ǁClassǁmethod__mutmut_N`), so `MUT_FILTER` (a
+grep pattern on the names) narrows the printed survivor list to one area — handy
+on a large module where you only care about a few methods. It filters the report,
+not the run: mutmut still mutates the whole target module and runs the full
+subset. Inspect any single survivor with `mutmut show <name>` to see the exact
+change.
 
 For each survivor, decide which of three buckets it falls into:
 
@@ -108,17 +114,26 @@ one-line note in the PR description on *why* keeps the next pass honest.
 
 Treat this as a **quarterly pass**: pick one or two core modules, drive their
 score up by adding the missing tests, and land the tests (never a lowered
-threshold). Modules already hardened this way include `utils/outbox.py`,
-`core/upcaster.py`, `core/unit_of_work.py`, `utils/sync_dispatch.py`, and the
-checkpoint path in `server/subscription/event_store_subscription.py`.
+threshold). `utils/outbox.py` and `core/upcaster.py` have had a full measured
+pass driven to completion.
+
+`core/unit_of_work.py` (the transaction boundary), `utils/sync_dispatch.py`
+(breadth-first dispatch), and the checkpoint path in
+`server/subscription/event_store_subscription.py` now have their own targets, and
+tests that pin the highest-value behavioural mutants on each (the sync/async
+commit-dispatch guard, the fan-out drain and `None`-context branch, the two
+position-write cadence decisions). Running each target to completion and driving
+down whatever survivors remain — `sync-dispatch` is close; `unit-of-work` and
+`checkpoint` still have uncovered regions (partition-key routing, the
+recovery-checkpoint writer, `_gap_safe_batch`) — is a good next quarterly pass.
 
 Some survivors in these paths are deliberately left alive because no test can
 kill them without restating a literal or freezing the clock to a single instant:
 
 - **Gap-timeout boundary** (`_gap_safe_batch`): `now - first_seen < gap_timeout_seconds`
-  is a wall-clock comparison, so a `<` to `<=` flip differs only at the exact
-  timeout instant — an equivalent mutant in practice, the same class as the
-  `datetime.now()` boundaries in the outbox module.
+  compares elapsed time on the monotonic clock (`time.monotonic()`), so a `<` to
+  `<=` flip differs only at the exact timeout instant — an equivalent mutant in
+  practice, the same class as the `datetime.now()` boundaries in the outbox module.
 - **Default cadence constants**: pinning that the default `position_update_interval`
   or `gap_timeout_seconds` is a specific number catches no realistic bug; the
   behaviour that matters (persist *at* the interval, hold *until* the timeout) is
