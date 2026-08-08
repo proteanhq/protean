@@ -100,3 +100,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0027](0027-unit-of-work-is-a-real-transaction.md) | The Unit of Work is a Real Database Transaction |
 | [0028](0028-partition-per-key-sequential-processing.md) | Partition-Per-Key Sequential Processing (`sequential_by`) |
 | [0029](0029-runtime-dependency-boundary-and-extras.md) | Runtime Dependency Boundary and Feature Extras |
+| [0030](0030-canonical-project-layout.md) | Canonical Generated Project Layout |
