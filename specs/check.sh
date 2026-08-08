@@ -113,6 +113,12 @@ run OCC.tla        OCC_bug.cfg             violation  NoLostUpdate
 run OCC.tla        OCC_conflict.cfg        violation  NoConflict
 
 echo ""
+echo "Recovery protocol (subscription failure-recovery record-before-advance):"
+run Recovery.tla   Recovery.cfg            pass
+run Recovery.tla   Recovery_bug.cfg        violation  NoDrop
+run Recovery.tla   Recovery_dup.cfg        violation  NoRedeliver
+
+echo ""
 if [[ "$fail" -eq 0 ]]; then
     echo "All checks met their expected outcome."
 else
