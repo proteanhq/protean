@@ -272,6 +272,9 @@ class TestVerifyLoadFailures:
         # Check and tests never ran.
         assert data["data"]["stages"]["check"]["status"] == "skipped"
         assert data["data"]["stages"]["tests"]["status"] == "skipped"
+        # The init stage already carries the message; data.error is reserved for
+        # a usage error caught before any stage ran, so it is not duplicated here.
+        assert "error" not in data["data"]
 
     def test_init_failure_json_envelope_carries_error(self):
         """A found-but-broken domain (init failure, exit 3) carries its message

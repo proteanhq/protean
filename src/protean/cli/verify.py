@@ -398,13 +398,16 @@ def _emit_and_exit(
 
     The envelope status follows the exit-code class: a usage error (exit 2) is
     ``"error"``; a detected failure (init, exit 3) is ``"fail"``. The red error
-    line goes to stderr so ``--json`` stdout stays a single parseable object;
-    ``error_line`` is also carried into the envelope itself (``data.error``) so
-    a ``--json`` consumer is not left with only an exit code to go on."""
+    line goes to stderr so ``--json`` stdout stays a single parseable object.
+    ``error_line`` also lands in the envelope, but only at ``data.error`` when
+    no stage already carries it — the up-front ``--path`` check, before init
+    has even been attempted — so the message is not duplicated with
+    ``data.stages.init.error`` for the domain-not-found/init-failure cases."""
     if not json_output and error_line:
         _ERR_CONSOLE.print(f"[red]{escape(error_line)}[/red]")
     status: EnvelopeStatus = "error" if code == _EXIT_USAGE else "fail"
-    _emit(json_output, stages, tests_output, status, error=error_line)
+    envelope_error = error_line if stages["init"]["status"] == "skipped" else ""
+    _emit(json_output, stages, tests_output, status, error=envelope_error)
     raise typer.Exit(code)
 
 
