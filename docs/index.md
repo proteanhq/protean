@@ -132,6 +132,10 @@ before it -- start simple and add sophistication as your needs evolve.
 Not sure? Start with DDD -- you can evolve later. See
 [Choose a Path](./guides/pathways/index.md) for a detailed comparison.
 
+Wondering whether Protean fits your system at all? The
+[Applicability Charter](./reference/applicability.md) states plainly what it is
+built for, and the shapes of system it is not.
+
 ---
 
 ## Built to last

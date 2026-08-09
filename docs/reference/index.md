@@ -106,6 +106,15 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: API Reference](../api/index.md)
 
+-   **:material-map-marker-check: Applicability Charter**
+
+    ---
+
+    What Protean is a good fit for, and the shapes of system it is not, with
+    the reason in each case.
+
+    [:material-arrow-right-box: Applicability Charter](applicability.md)
+
 -   **:material-shield-check: Guarantees**
 
     ---
