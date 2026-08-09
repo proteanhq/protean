@@ -8,6 +8,8 @@ param carries the `redis` marker, so the root conftest's `--redis` gate
 skips it on the core leg and runs it on the `--redis` leg.
 """
 
+from pathlib import Path
+
 import pytest
 
 from protean.core.projection import BaseProjection
@@ -18,6 +20,18 @@ from tests.shared import REDIS_URI
 # Distinct from the DB numbers other Redis-backed suites use (0, 2, 3, 4, 5),
 # so this suite does not see keys left behind by another suite's run.
 REDIS_DB = 6
+
+_SUITE_DIR = Path(__file__).parent
+
+
+def pytest_collection_modifyitems(items):
+    """Every test here builds its own domain via the `cache` fixture, so skip
+    the root autouse `test_domain` fixture for this suite to avoid building a
+    second, unused domain per test.
+    """
+    for item in items:
+        if _SUITE_DIR in item.path.parents:
+            item.add_marker(pytest.mark.no_test_domain)
 
 
 class CacheEntry(BaseProjection):
