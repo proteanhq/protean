@@ -32,7 +32,9 @@ def find_bare_code_literals(source: str, codes: set[str]) -> list[tuple[int, str
     Membership is exact, so a docstring or comment that merely mentions a code
     inside a longer sentence never matches — only a literal that IS the code,
     which is how a code is spelled at a producer site (``"code": "..."`` /
-    ``check_code="..."``).
+    ``check_code="..."``). This matches whole-literal spellings only; a code
+    assembled from fragments (``"UNHANDLED" + "_EVENT"``, ``"".join(...)``)
+    would evade it, but no producer ever builds a code that way.
     """
     tree = ast.parse(source)
     return [

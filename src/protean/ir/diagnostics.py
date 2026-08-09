@@ -1,12 +1,18 @@
 """Typed diagnostics and the stable diagnostic-code registry.
 
-This module is the single source of truth for every ``protean check`` /
-IR diagnostic code. Each code is a stable public identifier: renaming or
-removing one is a breaking change, guarded by the golden code-set snapshot
-test. Producers (``ir.builder``, ``domain.validation``, ``_deprecation``)
-reference :class:`DiagnosticCode` members instead of bare string literals,
-and build their wire records through :func:`build_diagnostic`, so the code
-string and its metadata live here once and nowhere else.
+This module is the single source of truth for every rule-based diagnostic
+code Protean emits from IR build, ``protean check``, and validation warnings.
+Each code is a stable public identifier: renaming or removing one is a
+breaking change, guarded by the golden code-set snapshot test. Producers
+(``ir.builder``, ``domain.validation``, ``_deprecation``) reference
+:class:`DiagnosticCode` members instead of bare string literals, and build
+their wire records through :func:`build_diagnostic`, so the code string and
+its metadata live here once and nowhere else.
+
+Out of scope: the ``_errors`` channel emits a diagnostic whose ``code`` is
+the raised exception's class name (``domain.validation``), not a rule code.
+Those dynamic codes are computed, not registered here, and the no-bare-literal
+linter does not flag them.
 
 The wire shape is unchanged: :func:`build_diagnostic` returns a plain
 ``dict`` with exactly the keys the IR JSON, SARIF, and ``check`` output

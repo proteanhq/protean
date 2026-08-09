@@ -14,6 +14,7 @@ code and its metadata. These tests hold three promises:
 """
 
 import ast
+import hashlib
 from pathlib import Path
 
 import protean
@@ -147,6 +148,93 @@ class TestGoldenSnapshot:
             "added (breaking if a rename)": sorted(actual - self.EXPECTED_CODES),
             "removed (breaking)": sorted(self.EXPECTED_CODES - actual),
         }
+
+
+def _meta_digest(meta: CodeMeta) -> str:
+    """A stable short hash over a code's full metadata text."""
+    canon = "␟".join(
+        [meta.category, meta.level, meta.meaning, meta.rationale, meta.fix]
+    )
+    return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16]
+
+
+class TestMetadataSnapshot:
+    # The frozen text of every code's metadata (category, level, meaning,
+    # rationale, fix), captured as a per-code digest. The code-set snapshot above
+    # freezes the identifiers; this freezes the words behind them. The rationale
+    # and fix are the public, human-facing surface a code resolves to (they ride
+    # the IR/SARIF/check wire), so a silent wording drift should fail the build,
+    # not slip through because the string stayed non-empty.
+    #
+    # A red test here means a code's metadata text changed. If that change is
+    # intentional, regenerate the digest for the affected code(s) in the SAME
+    # commit as the edit — that is the reviewed acknowledgement that the public
+    # text moved. Do not blanket-refresh to make the test green.
+    EXPECTED_DIGESTS = {
+        "ADAPTER_CALL_IN_DOMAIN": "b709063b030e4922",
+        "AGGREGATE_NOT_NOUN": "9b8de4a5ad83aec8",
+        "AGGREGATE_NO_INVARIANTS": "dcd39a6b24d9fb7b",
+        "AGGREGATE_TOO_LARGE": "65f3c1889382fd95",
+        "AGGREGATE_WITHOUT_COMMAND_HANDLER": "5a62e88120c81a8b",
+        "CIRCULAR_CLUSTER_DEPENDENCY": "88531b85d6e29964",
+        "COMMAND_HANDLER_CROSS_CLUSTER": "4f576d68764bd53c",
+        "COMMAND_NOT_IMPERATIVE": "baf655f1128a527f",
+        "CROSS_AGGREGATE_REFERENCE": "dac1046534ebd07a",
+        "DEPRECATED_CONFIG": "3adabed0433fa534",
+        "DEPRECATED_ELEMENT": "5ae99f3b24d74d4b",
+        "DEPRECATED_EMAIL": "d9dbcbba0b140002",
+        "DEPRECATED_FIELD": "19ea505765933f5d",
+        "DEPRECATED_IMPORT": "76194fd361610560",
+        "DEPRECATED_OPTION": "41573660a59e367d",
+        "ES_AGGREGATE_NO_EVENTS": "83f1637cf49c5525",
+        "ES_EVENT_MISSING_APPLY": "1686b4b443812f31",
+        "EVENT_HANDLER_FOREIGN_EVENT": "a691537144dd1fff",
+        "EVENT_NOT_PAST_TENSE": "991ca4dd80370014",
+        "EVENT_WITHOUT_DATA": "75f2114e226c119f",
+        "HANDLER_TOO_BROAD": "13aca3a2584e4377",
+        "INFRA_IMPORT_IN_DOMAIN": "e9473616069280ed",
+        "LOW_POOL_SIZE": "e709be40fa308c30",
+        "PROCESS_MANAGER_UNCLOSED": "047584f91a3ef45f",
+        "PROJECTION_WITHOUT_PROJECTOR": "a0e32732676a7838",
+        "PROJECTOR_HANDLES_ORPHANED_EVENT": "6f980c1bd8d0d845",
+        "PUBLISHED_NO_EXTERNAL_BROKER": "728d44e069135f88",
+        "QUERY_HANDLER_WITHOUT_QUERY": "7683d009f2abb890",
+        "SUBSCRIBER_NO_STREAMS": "30f85527c0e2d4c7",
+        "UNBOUNDED_INDEXED_STRING": "088562cdce47c001",
+        "UNHANDLED_EVENT": "27be7a540757fc9e",
+        "UNINDEXED_FILTER_PATH": "9addf817d45187a5",
+        "UNUSED_COMMAND": "8783ef193a40845a",
+        "UPCASTER_GAP": "000698e8cb76386a",
+        "VALUE_OBJECT_MUTABLE_FIELD": "1e01dfac9ba9bf00",
+    }
+
+    def test_metadata_text_is_frozen(self):
+        actual = {code.value: _meta_digest(meta) for code, meta in REGISTRY.items()}
+        drifted = {
+            code: (self.EXPECTED_DIGESTS.get(code), digest)
+            for code, digest in actual.items()
+            if self.EXPECTED_DIGESTS.get(code) != digest
+        }
+        assert not drifted, {"code: (expected, actual)": drifted}
+
+    def test_snapshot_has_an_entry_per_code(self):
+        # Guards against a new code that never got a frozen digest, or a stale
+        # digest left behind after a code was removed.
+        assert set(self.EXPECTED_DIGESTS) == {code.value for code in DiagnosticCode}
+
+    def test_digest_detects_a_text_change(self):
+        # Proves the digest actually reacts to a wording edit — a snapshot that
+        # hashed to a constant would pass test_metadata_text_is_frozen vacuously.
+        code = DiagnosticCode.AGGREGATE_TOO_LARGE
+        meta = REGISTRY[code]
+        tweaked = CodeMeta(
+            category=meta.category,
+            level=meta.level,
+            meaning=meta.meaning,
+            rationale=meta.rationale,
+            fix=meta.fix + " (edited)",
+        )
+        assert _meta_digest(tweaked) != _meta_digest(meta)
 
 
 class TestResolve:
