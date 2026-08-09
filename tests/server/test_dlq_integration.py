@@ -166,15 +166,15 @@ class TestBrokerSubscriptionDLQIntegration:
     async def test_persistent_dlq_publish_failure_lands_in_broker_native_dlq(
         self, test_domain, monkeypatch
     ):
-        """Pin the InlineBroker interaction under a *persistent* DLQ outage.
+        """InlineBroker's native DLQ preserves messages during a DLQ outage.
 
-        The subscription holds an undeliverable message by NACKing it (rather than
-        ACKing it away). On the InlineBroker the repeated NACKs feed the broker's
-        own retry ceiling, which then routes the message to the broker's *native*
-        DLQ. So the message is not lost, but it lands in the broker DLQ rather than
-        the published ``{stream}:dlq`` stream, and the subscription's retry count is
-        not cleaned up. Reconciling the two DLQ layers (and that leak) is tracked as
-        a follow-up; this test pins the current behaviour so it is not hidden.
+        When the subscription's published ``{stream}:dlq`` is persistently
+        unavailable, the subscription holds the message by NACKing it rather than
+        ACKing it away. On the InlineBroker the repeated NACKs eventually trip the
+        broker's own retry ceiling, which moves the message to the broker's native
+        DLQ. The message is not lost, it never reaches the published DLQ stream,
+        and the subscription cleans up its retry tracking so the entry does not
+        leak.
         """
         engine = Engine(test_domain, test_mode=True)
         broker = test_domain.brokers["default"]
@@ -230,9 +230,9 @@ class TestBrokerSubscriptionDLQIntegration:
         native_dlq = broker.get_dlq_messages(group, "integration_stream")
         dlq_ids = [entry[0] for entries in native_dlq.values() for entry in entries]
         assert identifier in dlq_ids
-        # Known gap (follow-up): the subscription's retry count is not cleaned up
-        # when the broker gives up on its own budget.
-        assert identifier in sub.retry_counts
+        # The subscription cleans up its retry count once the broker takes the
+        # message into its native DLQ.
+        assert identifier not in sub.retry_counts
 
 
 # ── Tests: EventStoreSubscription failed position tracking ──────────────

@@ -7,7 +7,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from protean.core.subscriber import BaseSubscriber
-from protean.port.broker import BaseBroker
+from protean.port.broker import BaseBroker, BrokerCapabilities
 from protean.utils import fqn
 from protean.utils.telemetry import get_domain_metrics
 
@@ -323,12 +323,44 @@ class BrokerSubscription(BaseSubscription):
                     f"[{self.subscriber_class_name}] Failed to NACK message "
                     f"{identifier} after a failed DLQ publish"
                 )
+            # If the broker has a native DLQ and has moved the held message
+            # there (e.g. InlineBroker's own retry ceiling tripped), the
+            # message is preserved but will never be redelivered. Clean up the
+            # subscription's retry tracking so the entry does not leak.
+            elif self._is_message_in_broker_dlq(identifier):
+                self.retry_counts.pop(identifier, None)
             return
 
         # DLQ move succeeded, or the DLQ is disabled (intentional discard): ACK
         # to remove from pending and clear the retry count.
         self.broker.ack(self.stream_name, identifier, self.subscriber_name)
         self.retry_counts.pop(identifier, None)
+
+    def _is_message_in_broker_dlq(self, identifier: str) -> bool:
+        """Check whether the broker has moved a message to its native DLQ.
+
+        Production brokers do not have a broker-native DLQ, so this is a
+        no-op for them. For adapters that do (the InlineBroker test double),
+        observing the native DLQ lets the subscription clean up retry state
+        when the broker has given up on a held message.
+
+        Args:
+            identifier: The broker message identifier.
+
+        Returns:
+            bool: True if the message is present in the broker's native DLQ.
+        """
+        if not self.broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            return False
+        try:
+            entries = self.broker.dlq_list([self.dlq_stream])
+            return any(entry.original_id == identifier for entry in entries)
+        except Exception:
+            logger.exception(
+                f"[{self.subscriber_class_name}] Failed to check broker DLQ "
+                f"for message {identifier}"
+            )
+            return False
 
     async def _move_to_dlq(self, identifier: str, payload: dict[str, Any]) -> bool:
         """Move a failed message to the dead letter queue.
