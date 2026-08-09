@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### 10.2 Scaffold that runs, and `verify` to prove it (#1318)
+
+#### Added
+
+- `protean verify` runs a project's three health steps in order and returns one verdict: it initializes the domain (`Domain.init`), runs the domain check (`Domain.check`, the engine behind `protean check`), then runs the project's own `pytest` suite. It prints a compact per-stage table, or a machine-readable envelope with `--json`, and has a stable exit-code contract: `0` all green, `2` verify's own usage error (domain not found, or `--path` is not a directory), `3` the domain failed to initialize, `4` check failed, `5` tests failed. The check stage honours `[lint].level` (default `"warn"`), the same severity floor `protean check` uses, and validates the `[lint]` block the way `check` does, so a malformed `[lint]` block fails the check instead of reading as a false green. (#1323)
+- An end-to-end acceptance test that runs `protean verify --json` on a freshly generated project and asserts a green verdict, with all three stages passing and at least one real test executed. (#1324)
+
+#### Changed
+
+- `protean new` now scaffolds a minimal walking skeleton instead of a broad demo. The example aggregate is trimmed to one slice that shows both paths end to end: `CreateExample` → `ExampleCreated` → an `ExampleProjector` that writes the `ExampleSummary` read model. The `activate`/`archive` transitions, the standalone event handler, the custom repository, and the unrelated `Address` value object are gone. The scaffold now also ships a smoke test plus two passing tests for that slice, and `pytest` (via `make test`) runs green on a fresh project. Previously a new project shipped no tests, so `pytest` collected nothing and exited 5 ("no tests ran") on first run. (#1321)
+  The generated `tests/conftest.py` initialises the domain through a session-scoped autouse fixture instead of `pytest_sessionstart`, so a plain `pytest` / `make test` (driven by `testpaths`) sets up the domain context. The old hook only fired when the collection path passed through the package's test directory.
+
+#### Removed
+
+- The `logging.toml` file that `protean new` generated at the project root. Nothing in the framework read it; `[logging]` in `domain.toml` is the one config Protean loads (see `Domain.configure_logging`). (#1320)
+
+#### Fixed
+
+- Fix `protean new` so the generated example project initialises through a normal `domain.init()` and passes `protean check`. The scaffold previously shipped package re-exports that broke traversal, plus a projector and projection with a missing-module import, an aggregate referenced by name instead of class, and no identifier field. (#1316)
+- Fix the scaffold's `.env.example`, `README.md`, and `docker-compose*.yml` to set `PROTEAN_LOG_LEVEL` instead of the unread `LOG_LEVEL`/`LOG_FORMAT`, so the documented env override actually takes effect. (#1320)
+
 ## [0.17.0] - 2026-08-04
 
 ### Added
