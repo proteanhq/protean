@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from protean.adapters.cache.memory import MemoryCache
-
 from .conftest import CacheEntry
 
 
@@ -23,7 +21,7 @@ class TestRemoveByKey:
         assert cache.get(_key("alpha")) is None
 
     def test_remove_by_key_is_silent_when_the_key_is_absent(self, cache, request):
-        if isinstance(cache, MemoryCache):
+        if request.node.callspec.params["cache"]["provider"] == "memory":
             request.applymarker(
                 pytest.mark.xfail(
                     strict=True,

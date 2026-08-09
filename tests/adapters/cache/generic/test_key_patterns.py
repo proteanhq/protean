@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from protean.adapters.cache.memory import MemoryCache
-
 from .conftest import CacheEntry
 
 
@@ -37,6 +35,36 @@ class TestSharedPatternBehaviour:
         assert cache.count("cache_entry:::*") == 0
 
 
+class TestRemoveByKeyPatternOnNoMatch:
+    def test_remove_by_key_pattern_is_silent_when_nothing_matches(self, cache, request):
+        """A 4th cross-adapter divergence, found by running this suite.
+
+        Memory's `remove_by_key_pattern` filters to an empty key list and
+        loops zero times: silent. Redis' builds `values` from `scan_iter`
+        and calls `self._client.delete(*values)`; when nothing matches that
+        is `delete()` with zero keys, which raises
+        `redis.exceptions.ResponseError: wrong number of arguments for 'del'
+        command`. Not one of #1391/#1392/#1393 — flagging here rather than
+        filing a follow-up issue myself, per the plan's guidance for a newly
+        surfaced divergence.
+        """
+        if request.node.callspec.params["cache"]["provider"] == "redis":
+            request.applymarker(
+                pytest.mark.xfail(
+                    strict=True,
+                    reason=(
+                        "Newly found divergence, not yet filed as a "
+                        "follow-up: remove_by_key_pattern on a pattern that "
+                        "matches nothing is silent on memory but raises "
+                        "redis.exceptions.ResponseError on Redis, because "
+                        "delete(*values) is called with zero keys."
+                    ),
+                )
+            )
+
+        cache.remove_by_key_pattern("cache_entry:::does-not-exist-*")
+
+
 class TestPatternLanguageIsAGlobOnEveryAdapter:
     def test_pattern_is_a_glob_on_every_adapter(self, cache, request):
         """A literal `.` is where glob and regex disagree.
@@ -47,7 +75,7 @@ class TestPatternLanguageIsAGlobOnEveryAdapter:
         a pattern built on a literal dot also matches an entry that has a
         different character in that position.
         """
-        if isinstance(cache, MemoryCache):
+        if request.node.callspec.params["cache"]["provider"] == "memory":
             request.applymarker(
                 pytest.mark.xfail(
                     strict=True,

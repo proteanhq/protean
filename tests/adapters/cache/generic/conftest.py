@@ -46,17 +46,26 @@ def cache(request):
     with domain.domain_context():
         provider = domain.cache_for(CacheEntry)
         yield provider
-        provider.flush_all()
+        if request.param["provider"] == "redis":
+            # `flush_all` calls Redis `FLUSHALL`, which clears every database
+            # on the server, not just this suite's `REDIS_DB`. Other suites'
+            # Redis-backed fixtures live on other DB numbers and may be
+            # running concurrently under xdist, so use `FLUSHDB` here to only
+            # clear the one this suite owns.
+            provider.get_connection().flushdb()
+        else:
+            provider.flush_all()
         provider.close()
 
 
 def pytest_collection_modifyitems(config, items):
     """Deselect the memory param for tests marked `never_expires`.
 
-    The memory cache writes every entry with a TTL
-    (`TTLDict.__setitem__`) and cannot represent a key that never expires;
-    Redis can. That is a missing capability rather than a disagreement, so
-    the test is scoped to Redis instead of xfailed on memory.
+    `_resolve_ttl` never returns `None` (`src/protean/port/cache.py:60-61`),
+    so `MemoryCache.__init__` always builds its `TTLDict` with a concrete
+    default TTL and every entry gets one; Redis can hold a key with no
+    expiry. That is a missing capability rather than a disagreement, so the
+    test is scoped to Redis instead of xfailed on memory.
     """
     deselected = []
     remaining = []
