@@ -1,8 +1,8 @@
 # Factory Methods for Aggregate Creation
 
-## The Problem
+## The problem
 
-A developer writes a command handler to place an order from a shopping cart:
+You write a command handler to place an order from a shopping cart:
 
 ```python
 @domain.command_handler(part_of=Order)
@@ -29,9 +29,9 @@ class OrderCommandHandler(BaseCommandHandler):
         repo.add(order)
 ```
 
-This is reasonable. The handler creates an Order, adds items from the command
-data, calls a domain method, and persists. But as the system matures, creation
-scenarios multiply:
+Nothing is wrong with it. The handler creates an Order, adds the items the
+command carried, calls a domain method, and saves. Then the system grows and you
+find yourself creating orders four more ways:
 
 - **Subscription renewal** creates an Order by copying line items from the
   previous cycle's order and applying the current pricing.
@@ -42,44 +42,38 @@ scenarios multiply:
 - **Return replacement** creates a new Order pre-populated from the original
   order, with only the returned items, flagged as a replacement.
 
-Each scenario has its own handler, and each handler independently assembles the
-Order aggregate. The construction logic, which items to include, how to
-calculate the total, which validations to apply, which events to raise, is
-duplicated across handlers, subtly different in each, and drifts apart over
-time.
+Each one gets its own handler, and each handler assembles the Order itself.
+Which items to include, how to total them, which rules to apply, which events to
+raise: all of it now exists four times. Each copy is slightly different, and they
+drift further apart over time.
 
-The consequences:
+That costs you in four ways:
 
-- **Duplicated construction knowledge**: Four handlers each know how to build a
-  valid Order. When the Order aggregate gains a new required field, all four must
-  be updated. When a business rule changes (e.g., "all orders must now include a
-  tax calculation"), each handler must be found and modified independently.
+- **Four handlers know how to build an Order.** Add a required field to the
+  aggregate and you update all four. Change a rule, say every order now needs a
+  tax calculation, and you have to find and edit each one.
 
-- **Construction bugs**: The subscription renewal handler forgets to raise
-  `OrderPlaced`. The bulk import handler doesn't apply the minimum-order-value
-  check. The return replacement handler sets the wrong status. Each handler is a
-  fresh opportunity to make a construction mistake.
+- **Every copy is a fresh chance to get it wrong.** The renewal handler forgets
+  to raise `OrderPlaced`. The bulk import skips the minimum-order-value check.
+  The return replacement sets the wrong status.
 
-- **Untestable creation logic**: To test that a subscription renewal correctly
-  copies line items and applies current pricing, you must construct a command,
-  set up a repository, and run the handler inside a UoW. The construction logic
-  itself can't be tested in isolation.
+- **You cannot test the creation on its own.** Checking that a renewal copies
+  line items and prices them correctly means building a command, setting up a
+  repository, and running the handler inside a unit of work.
 
-- **Thick handlers**: Handlers that should be three lines (load, call, save)
-  balloon to 20-40 lines because they're doing construction work that doesn't
-  belong to them.
+- **Handlers get fat.** What should be three lines, load, call, save, becomes 20
+  or 40, because the handler is doing assembly work that is not its job.
 
-The root cause: **complex construction knowledge is scattered across handlers
-instead of being encapsulated in the domain model**.
+All four come from the same thing: the knowledge of how to build a valid Order
+sits in the handlers, where the domain model should be holding it.
 
 ---
 
-## The Pattern
+## The pattern
 
-Encapsulate aggregate creation in **factory classmethods** on the aggregate
-itself. Each classmethod represents a named construction path, a specific way
-to bring an aggregate into existence, with its own inputs, validations, and
-events.
+Put creation in **factory classmethods** on the aggregate. Each one is a named
+way to bring the aggregate into existence, with its own inputs, its own rules,
+and its own events.
 
 ```
 Scattered construction (in handlers):
@@ -93,28 +87,28 @@ Factory classmethods (on the aggregate):
   Handler C:  order = Order.from_return(command.original_order_id, ...)
 ```
 
-Each classmethod is a **named factory**, a single, testable method that
-encapsulates the complete knowledge of how to create a valid aggregate from a
-specific set of inputs. The handler calls the factory and persists the result.
+Each classmethod is one testable place that holds everything needed to build a
+valid aggregate from one set of inputs. The handler calls it and saves what comes
+back.
 
-This is Eric Evans' Factory Method pattern from the Blue Book. Evans
-distinguished two forms of factories:
+This is Eric Evans' Factory Method pattern from the Blue Book. Evans described
+two forms:
 
 | Form | What it is | When to use |
 |------|-----------|-------------|
 | **Factory Method** | A classmethod on the aggregate | Construction belongs conceptually to the aggregate |
 | **Standalone Factory** | A separate class dedicated to creation | Construction needs external data or doesn't belong to the aggregate |
 
-Protean's recommendation: **start with classmethods on the aggregate.** They're
-simpler, more discoverable, and keep the construction knowledge close to the
-thing being constructed. Use standalone factory classes only when the classmethod
-approach proves insufficient (we cover when and how below).
+**Start with classmethods on the aggregate.** They are simpler, easier to find,
+and they keep the knowledge next to the thing it builds. Move to a standalone
+factory class only when a classmethod stops being enough, which the section
+below covers.
 
 ---
 
-## Applying the Pattern
+## Applying the pattern
 
-### Before: Construction in Handlers
+### Before: construction in handlers
 
 ```python
 @domain.command_handler(part_of=Order)
@@ -165,12 +159,11 @@ class OrderCommandHandler(BaseCommandHandler):
         repo.add(order)
 ```
 
-The renewal handler copies construction logic from the placement handler but
-gets pricing wrong. It uses the previous order's prices instead of current
-ones. This bug hides because the construction knowledge is spread across
-handlers, not centralized.
+The renewal handler copies the placement handler and gets pricing wrong: it
+reuses the previous order's prices when it should look up current ones. Spread
+the assembly across handlers and a bug like this has somewhere to hide.
 
-### After: Factory Classmethods on the Aggregate
+### After: factory classmethods on the aggregate
 
 ```python
 @domain.aggregate
@@ -322,13 +315,13 @@ directly, reused across handlers, and maintained in one place.
 
 ---
 
-## The Three Responsibilities of a Factory Classmethod
+## What a factory classmethod does
 
-Every factory classmethod should handle three things:
+A factory classmethod does three things:
 
-### 1. Assemble the Aggregate
+### 1. Assemble the aggregate
 
-Build the aggregate and its child entities from the inputs:
+Build the aggregate and its children from the inputs:
 
 ```python
 @classmethod
@@ -342,12 +335,11 @@ def from_cart(cls, customer_id, cart_items, shipping_address):
     return order
 ```
 
-### 2. Validate Construction Preconditions
+### 2. Check the preconditions
 
-Check conditions specific to this creation path. These are different from the
-aggregate's post-invariants, which check the aggregate's state after any
-mutation. Construction preconditions check whether the creation *should happen
-at all*:
+Check what this particular creation path requires. These are not the aggregate's
+post-invariants, which run after any change and check the state it ends up in.
+A precondition asks whether you should be creating the thing *at all*:
 
 ```python
 @classmethod
@@ -365,10 +357,9 @@ def from_subscription_renewal(cls, previous_order, current_prices):
     # Proceed with construction...
 ```
 
-### 3. Raise Creation Events
+### 3. Raise the creation events
 
-If the creation itself is a meaningful domain event, raise it inside the
-factory:
+When the creation is itself a domain event, raise it inside the factory:
 
 ```python
 @classmethod
@@ -381,17 +372,16 @@ def from_cart(cls, customer_id, cart_items, shipping_address):
     return order
 ```
 
-Events are raised through aggregate methods (like `place()`), not directly in
-the factory. The factory calls the method; the method owns the event. This
-keeps the [Encapsulate State Changes](encapsulate-state-changes.md) pattern
-intact.
+Raise events through aggregate methods such as `place()`, never directly in the
+factory. The factory calls the method and the method owns the event, which keeps
+[Encapsulate State Changes](encapsulate-state-changes.md) intact.
 
 ---
 
-## Naming Factory Methods
+## Naming factory methods
 
-Factory classmethod names should express **where the aggregate comes from** or
-**what kind of creation this is**, using the domain's ubiquitous language:
+Name a factory classmethod for **where the aggregate comes from**, or for **what
+kind of creation this is**, in the domain's own language:
 
 | Good Name | What It Expresses |
 |-----------|------------------|
@@ -405,35 +395,35 @@ Factory classmethod names should express **where the aggregate comes from** or
 | `Tenant.onboard(...)` | Created through onboarding |
 | `Payment.record_from_gateway(...)` | Created from a payment gateway callback |
 
-Avoid generic names like `create()`, `build()`, or `make()`. They don't express
-the business context of the creation.
+Avoid `create()`, `build()`, and `make()`. They say nothing about which
+creation this is.
 
 ---
 
-## When to Use a Standalone Factory Class
+## When to use a standalone factory class
 
-Factory classmethods on the aggregate cover the majority of creation scenarios.
-But sometimes the construction logic doesn't belong on the aggregate itself.
+Classmethods on the aggregate cover most cases. Sometimes the assembly work does
+not belong on the aggregate at all.
 
-### Signs You Need a Standalone Factory
+### Signs you need one
 
-1. **The factory needs repository access**: The aggregate shouldn't know about
-   repositories. If construction requires loading other aggregates (e.g.,
-   creating an Invoice requires loading the Order AND the Customer AND the
-   TaxPolicy), a standalone class is cleaner.
+1. **It needs a repository.** An aggregate should know nothing about
+   repositories. When building one means loading others first, say an Invoice
+   that needs the Order, the Customer, and the TaxPolicy, put it in a standalone
+   class.
 
-2. **The construction logic is large**: If a factory classmethod would be 40+
-   lines and dominate the aggregate class, extracting it improves readability.
+2. **It is large.** A classmethod running to 40 lines or more dominates the
+   aggregate class, and the aggregate reads better without it.
 
-3. **External data translation**: When creating an aggregate from an external
-   system's data format (Stripe webhook, ERP sync, CSV import), the aggregate
-   shouldn't know about external data shapes. A standalone factory acts as an
-   anti-corruption layer.
+3. **It translates outside data.** Building an aggregate from a Stripe webhook,
+   an ERP sync, or a CSV row means knowing that system's shape, which the
+   aggregate should never carry. A standalone factory is the anti-corruption
+   layer.
 
-### Standalone Factory as a Plain Class
+### A standalone factory as a plain class
 
-A standalone factory in Protean is a class in the domain layer. It
-doesn't need framework registration, it's plain Python:
+A standalone factory is just a class in the domain layer. It needs no framework
+registration; it is plain Python:
 
 ```python
 # domain/order/factories.py
@@ -491,10 +481,10 @@ def place_order(self, command: PlaceOrder):
     current_domain.repository_for(Order).add(order)
 ```
 
-### External Data Translation (Anti-Corruption Layer)
+### Translating external data (anti-corruption layer)
 
-When integrating with external systems, subscribers receive raw dict payloads.
-A standalone factory translates the external format into domain aggregates:
+Subscribers receive raw dicts from outside systems. A standalone factory turns
+that payload into a domain aggregate:
 
 ```python
 # domain/payment/factories.py
@@ -534,13 +524,12 @@ class StripeWebhookSubscriber:
         current_domain.repository_for(Payment).add(payment)
 ```
 
-The factory isolates the aggregate from external data formats. When Stripe
-changes their webhook schema, only the factory changes, the `Payment` aggregate and
-its invariants remain untouched.
+The aggregate never sees the outside format. When Stripe changes its webhook
+schema you edit the factory, and `Payment` and its invariants stay as they are.
 
 ---
 
-## Choosing Between Factory Patterns
+## Choosing between the two
 
 | Scenario | Recommended Approach |
 |----------|---------------------|
@@ -550,16 +539,16 @@ its invariants remain untouched.
 | Construction needs to load other aggregates | Standalone factory class |
 | Construction translates external data formats | Standalone factory class (ACL) |
 | Construction logic is 40+ lines and dominates the aggregate | Standalone factory class |
-| Single straightforward creation path | No factory needed, inline in handler |
+| Single simple creation path | No factory needed, inline in handler |
 
-The progression is: **inline < classmethod < standalone class**. Start simple,
-extract when complexity justifies it.
+The progression is **inline, then classmethod, then standalone class**. Start at
+the simplest one and move along it only when the work makes you.
 
 ---
 
-## Testing Benefits
+## What this does for tests
 
-Factory classmethods are directly testable without infrastructure:
+You can test a factory classmethod on its own, with no infrastructure:
 
 ```python
 class TestOrderCreation:
@@ -631,16 +620,15 @@ class TestOrderCreation:
         assert "delivered" in str(exc.value)
 ```
 
-No repository, no command, no handler, no UoW. call the classmethod,
-assert the result. Standalone factories are equally testable, they're plain
-classes with classmethods.
+No repository, no command, no handler, no unit of work: call the classmethod and
+assert on what it returns. Standalone factories test the same way, being plain
+classes.
 
 ---
 
-## Factories and Domain Services
+## Factories and domain services
 
-Factories and domain services serve different purposes and should not be
-confused:
+Factories and domain services do different jobs:
 
 | Aspect | Factory | Domain Service |
 |--------|---------|---------------|
@@ -651,39 +639,35 @@ confused:
 | **Example** | `Order.from_cart(items, customer_id)` | `TransferService.validate_and_debit(source, policy, amount)` |
 
 A factory answers "how do I bring this thing into existence?" A domain service
-answers "how do I coordinate a business rule that spans multiple things that
-already exist?"
+answers "how do I apply a rule that spans several things which already exist?"
 
 ---
 
-## Why Not a Framework Element?
+## Why this is not a framework element
 
-Evans listed Factories alongside Aggregates and Repositories as DDD lifecycle
-patterns. Some developers wonder whether Protean should provide a
-`@domain.factory` decorator and a `BaseFactory` class, making factories
-registered domain elements like command handlers or repositories.
+Evans listed Factories next to Aggregates and Repositories as DDD lifecycle
+patterns, which raises a fair question: should Protean ship a `@domain.factory`
+decorator and a `BaseFactory`, making factories registered elements the way
+command handlers and repositories are?
 
-Protean deliberately does not do this, for good reasons:
+It deliberately does not, for three reasons:
 
-- **Factories have no infrastructure concern**: Repositories need database
-  adapters. Event handlers need message routing. Command handlers need dispatch
-  and UoW wrapping. Factories just construct objects, pure domain logic with no
-  framework plumbing to manage.
+- **A factory touches no infrastructure.** Repositories need database adapters,
+  event handlers need message routing, command handlers need dispatch and a unit
+  of work. A factory builds an object. There is nothing for the framework to
+  manage.
 
-- **Factory shapes vary too widely**: Sometimes it's a constructor. Sometimes a
-  classmethod. Sometimes a method on another aggregate. Sometimes a standalone
-  class. A single `BaseFactory` abstraction would either be too thin to add
-  value or too prescriptive to accommodate this variety.
+- **Factories take too many shapes.** A constructor, a classmethod, a method on
+  another aggregate, a standalone class. One `BaseFactory` would be either too
+  thin to earn its place or too narrow to fit them all.
 
-- **Classmethods and plain classes are sufficient**: Python's classmethods are
-  the natural expression of factory methods. Standalone factory classes are just
-  classes. Neither needs framework registration to be discoverable, testable,
-  or maintainable.
+- **Python already has the tools.** A classmethod is the natural form of a
+  factory method, and a standalone factory is a class. Neither needs registering
+  to be findable, testable, or maintainable.
 
-The Factory pattern is a **design pattern**, not a **framework element**. The
-framework supports it by keeping aggregates flexible enough to have
-classmethods, and by keeping handlers thin enough that factories naturally
-emerge as the place for construction logic.
+The Factory pattern is a design pattern. Protean supports it by leaving
+aggregates free to carry classmethods, and by keeping handlers thin enough that
+the factory becomes the obvious place for the assembly work.
 
 ---
 
@@ -699,10 +683,9 @@ emerge as the place for construction logic.
 | External data knowledge | In the handler or subscriber | Not applicable | Factory translates (ACL) |
 | When to use | Single, simple creation | Multiple creation paths, moderate complexity | Repository access needed, external data, large logic |
 
-Construction knowledge belongs in the domain model, not in handlers. Start with
-classmethods on the aggregate. Extract to a standalone factory class when the
-classmethod needs repository access, external data translation, or grows too
-large.
+Keep the knowledge of how to build an aggregate in the domain model. Start with
+classmethods on the aggregate, and move to a standalone factory class when the
+classmethod needs a repository, has to translate outside data, or grows too big.
 
 ---
 
