@@ -69,9 +69,9 @@ class TestGetAllPaginationAgrees:
 
         Memory treats `last_position` as a list offset into a freshly
         sorted-by-insertion key list (`results[last_position:last_position
-        + size]`, `memory.py:172`). Redis passes it straight through as an
-        opaque `SCAN` cursor (`self._client.scan(cursor=last_position, ...)`,
-        `redis.py:117`), where `count` is only a hint and the continuation
+        + size]` in `memory.py`). Redis passes it straight through as an
+        opaque `SCAN` cursor (`self._client.scan(cursor=last_position, ...)`
+        in `redis.py`), where `count` is only a hint and the continuation
         cursor `get_all` should return for the next call is discarded. A
         caller that walks pages with `last_position` counting 0, 1, 2, ...
         (the only option `get_all` leaves it, since it never hands back a
@@ -110,7 +110,7 @@ class TestPatternLanguageIsAGlobOnEveryAdapter:
 
         Redis' `SCAN ... MATCH` is a real glob, where `.` is an ordinary
         character. The memory cache compiles `key_pattern` straight into a
-        Python regex (`memory.py:168`), where `.` matches any character, so
+        Python regex, where `.` matches any character, so
         a pattern built on a literal dot also matches an entry that has a
         different character in that position.
         """
