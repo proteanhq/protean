@@ -247,10 +247,12 @@ class TestVerifyEnvelopeConformance:
 
 
 class TestMachineOutputCleanStdout:
-    """Machine output is exactly one JSON object on stdout; error text is on
-    stderr. A domain that logs during check must not corrupt the payload."""
+    """Machine output is exactly one JSON object on stdout. In human mode error
+    text goes to stderr; under --json it is carried in the envelope alone, not
+    printed to either stream. A domain that logs during check must not corrupt
+    the payload."""
 
-    def test_check_json_stdout_is_one_object_with_error_on_stderr(self):
+    def test_check_json_stdout_is_one_object_with_error_suppressed(self):
         result = runner.invoke(app, ["check", "-d", "nonexistent.module", "-f", "json"])
         # stdout parses as one object and nothing else.
         _sole_json_object(result.stdout)
