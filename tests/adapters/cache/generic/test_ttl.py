@@ -9,6 +9,8 @@ here instead of shipping unnoticed.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from protean.exceptions import ConfigurationError
@@ -146,9 +148,7 @@ class TestGetTTLOnANeverExpiringKey:
     on memory rather than xfailed.
     """
 
-    def test_get_ttl_of_a_never_expiring_key_is_the_documented_sentinel(
-        self, cache, request
-    ):
+    def test_get_ttl_of_a_never_expiring_key_is_math_inf(self, cache, request):
         if request.node.callspec.params["cache"]["provider"] == "memory":
             pytest.skip(
                 "The memory cache cannot hold a key with no expiry: "
@@ -156,11 +156,20 @@ class TestGetTTLOnANeverExpiringKey:
                 "concrete default TTL. Redis can."
             )
 
+        request.applymarker(
+            pytest.mark.xfail(
+                strict=True,
+                reason=(
+                    "#1392: get_ttl on a never-expiring key should return "
+                    "math.inf on every adapter. Redis returns the raw PTTL "
+                    "sentinel -1 instead."
+                ),
+            )
+        )
+
         # Bypass `add()`, which always resolves and applies a TTL, and write
         # the key directly through the raw connection so it has no expiry.
         conn = cache.get_connection()
         conn.set("cache_entry:::forever", "1")
 
-        # `BaseCache.get_ttl` documents -1 as "the key exists with no expiry",
-        # returned unscaled rather than converted to a duration.
-        assert cache.get_ttl("cache_entry:::forever") == -1
+        assert cache.get_ttl("cache_entry:::forever") == math.inf

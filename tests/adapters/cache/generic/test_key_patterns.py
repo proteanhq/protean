@@ -44,17 +44,15 @@ class TestRemoveByKeyPatternOnNoMatch:
         and calls `self._client.delete(*values)`; when nothing matches that
         is `delete()` with zero keys, which raises
         `redis.exceptions.ResponseError: wrong number of arguments for 'del'
-        command`. Not one of #1391/#1392/#1393 — flagging here rather than
-        filing a follow-up issue myself, per the plan's guidance for a newly
-        surfaced divergence.
+        command`. Not one of #1391/#1392/#1393 — filed as its own follow-up,
+        #1399.
         """
         if request.node.callspec.params["cache"]["provider"] == "redis":
             request.applymarker(
                 pytest.mark.xfail(
                     strict=True,
                     reason=(
-                        "Newly found divergence, not yet filed as a "
-                        "follow-up: remove_by_key_pattern on a pattern that "
+                        "#1399: remove_by_key_pattern on a pattern that "
                         "matches nothing is silent on memory but raises "
                         "redis.exceptions.ResponseError on Redis, because "
                         "delete(*values) is called with zero keys."
