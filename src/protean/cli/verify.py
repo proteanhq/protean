@@ -165,7 +165,7 @@ def verify(
         # cases in ``NoDomainException`` (caught above), but a domain module
         # that raises during import — a ``SyntaxError``, or any exception its
         # own top-level code throws — comes through as that exception, not
-        # ``NoDomainException``. Treat it as an init failure (2), the same
+        # ``NoDomainException``. Treat it as an init failure (3), the same
         # code a domain that imports fine but blows up in ``.init()`` gets,
         # rather than letting it crash out as an unhandled traceback.
         msg = f"Domain failed to initialize: {exc}"
@@ -251,7 +251,7 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
     ``except Exception: pass``. So a malformed ``[lint]`` block (a bad
     ``suppressions`` count, a non-table ``[lint]``, an invalid ``level``) is
     swallowed and reads as a false green. Run the same validation ``check`` runs,
-    up front, and surface any failure as a check-stage error (exit 3).
+    up front, and surface any failure as a check-stage error (exit 4).
     """
     # Imported locally to keep ``protean --help`` from eagerly pulling in the
     # heavy IR builder subsystem (mirrors ``check.py``).
@@ -276,7 +276,7 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
         # Defensive: ``check()`` re-runs ``_prepare(traverse=True, validate=False)``
         # and builds the IR, neither wrapped here. init already succeeded above,
         # so no concrete trigger is known — but a crash must surface as the
-        # contracted exit 3, not a traceback.
+        # contracted exit 4, not a traceback.
         return True, _config_error_stage(f"Domain check failed: {exc}", "CHECK_FAILED")
 
     lint_level = lint_config.get("level", "warn")

@@ -7,7 +7,7 @@
   "type": "object",
   "properties": {
     "version": {
-      "type": "string",
+      "const": "0.1.0",
       "description": "Semantic version of the envelope format"
     },
     "status": {
