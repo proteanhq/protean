@@ -297,3 +297,98 @@ class TestMachineOutputCleanStdout:
         # ...and it must actually have fired (else this test asserts nothing):
         # it lands on stderr, which the runner captures separately.
         assert marker in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# --log-config precedence (route_logs_to_stderr must not clobber it)
+# ---------------------------------------------------------------------------
+
+
+class TestRouteLogsToStderrRespectsLogConfig:
+    """``route_logs_to_stderr`` calls ``configure_logging()`` unconditionally
+    if left unguarded, which rebuilds the root logger's handlers and would
+    silently discard a ``--log-config``/``--log-level``/``--log-format``
+    configuration the CLI callback already applied. ``check`` and ``verify``
+    read the ``CTX_LOG_CONFIGURED`` flag off the context and skip the call
+    when it is set — the same guard ``server`` and ``observatory`` use."""
+
+    @staticmethod
+    def _log_config_path(tmp_path: Path) -> Path:
+        path = tmp_path / "logconf.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "disable_existing_loggers": False,
+                    "handlers": {"custom": {"class": "logging.NullHandler"}},
+                    "root": {"handlers": ["custom"], "level": "DEBUG"},
+                }
+            )
+        )
+        return path
+
+    def test_check_with_log_config_does_not_reconfigure(self, tmp_path, monkeypatch):
+        import protean.utils.logging as logging_module
+
+        calls = []
+        monkeypatch.setattr(
+            logging_module,
+            "configure_logging",
+            lambda *a, **kw: calls.append((a, kw)),
+        )
+        log_config = self._log_config_path(tmp_path)
+        result = runner.invoke(
+            app,
+            [
+                "--log-config",
+                str(log_config),
+                "check",
+                "-d",
+                "nonexistent.module",
+                "-f",
+                "json",
+            ],
+        )
+        assert result.exit_code == EXIT_USAGE
+        # The CLI callback's own call is bound at import time, so this spy only
+        # observes route_logs_to_stderr's (lazily imported) call — it must not
+        # fire when --log-config already configured logging.
+        assert calls == []
+
+    def test_verify_with_log_config_does_not_reconfigure(self, tmp_path, monkeypatch):
+        import protean.utils.logging as logging_module
+
+        calls = []
+        monkeypatch.setattr(
+            logging_module,
+            "configure_logging",
+            lambda *a, **kw: calls.append((a, kw)),
+        )
+        log_config = self._log_config_path(tmp_path)
+        result = runner.invoke(
+            app,
+            [
+                "--log-config",
+                str(log_config),
+                "verify",
+                "-d",
+                "nonexistent.module",
+                "--json",
+            ],
+        )
+        assert result.exit_code == EXIT_USAGE
+        assert calls == []
+
+    def test_verify_without_log_config_still_configures(self, monkeypatch):
+        """The guard must not swallow the normal (no --log-config) case."""
+        import protean.utils.logging as logging_module
+
+        calls = []
+        monkeypatch.setattr(
+            logging_module,
+            "configure_logging",
+            lambda *a, **kw: calls.append((a, kw)),
+        )
+        result = runner.invoke(app, ["verify", "-d", "nonexistent.module", "--json"])
+        assert result.exit_code == EXIT_USAGE
+        assert len(calls) == 1

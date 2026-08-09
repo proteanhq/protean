@@ -51,7 +51,7 @@ from rich.console import Console
 from rich.markup import escape
 
 import protean
-from protean.cli._helpers import handle_cli_exceptions
+from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
 from protean.cli.result import (
     EXIT_FAILURE,
     EXIT_USAGE,
@@ -93,6 +93,7 @@ _SARIF_SCHEMA = (
 
 @handle_cli_exceptions("check")
 def check(
+    ctx: typer.Context,
     domain: Annotated[
         str,
         typer.Option(
@@ -128,8 +129,13 @@ def check(
 ) -> None:
     """Validate a Protean domain and report errors, warnings, and diagnostics."""
     # Route logs to stderr before ``derive_domain`` imports the domain module, so
-    # a stray import-time log cannot corrupt the machine payload on stdout.
-    route_logs_to_stderr()
+    # a stray import-time log cannot corrupt the machine payload on stdout. Skip
+    # if the CLI's --log-config/--log-level/--log-format callback already
+    # configured logging, so that configuration is not silently discarded.
+    parent_obj = ctx.obj or {}
+    route_logs_to_stderr(
+        log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED))
+    )
 
     if format not in _FORMATS:
         _fail_usage(

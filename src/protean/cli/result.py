@@ -63,7 +63,7 @@ EXIT_USAGE = 2
 EnvelopeStatus = Literal["pass", "fail", "error"]
 
 
-def route_logs_to_stderr() -> None:
+def route_logs_to_stderr(log_already_configured: bool = False) -> None:
     """Route all Protean logging to stderr, before the domain is imported.
 
     A command that emits a machine payload on stdout must call this first. Until
@@ -78,9 +78,19 @@ def route_logs_to_stderr() -> None:
     ``Domain.init`` also auto-configures logging, but only after the import has
     already happened; it then sees the root handler this installed and skips,
     so calling both is safe and idempotent.
+
+    ``log_already_configured`` is a no-op guard: pass ``True`` when the CLI's
+    ``--log-config``/``--log-level``/``--log-format`` callback already
+    configured logging (the caller reads this off the ``CTX_LOG_CONFIGURED``
+    flag on ``ctx.obj``) — ``configure_logging()`` unconditionally rebuilds
+    the root logger's handlers, so calling it again here would silently
+    discard that configuration, the same guard ``server`` and ``observatory``
+    apply.
     """
-    # Local import: keep ``protean --help`` from eagerly pulling the logging
-    # subsystem for commands that never emit a machine payload.
+    if log_already_configured:
+        return
+    # Local import: keep ``protean --help`` from eagerly pulling in the
+    # logging subsystem for commands that never emit a machine payload.
     from protean.utils.logging import configure_logging  # noqa: PLC0415
 
     configure_logging()

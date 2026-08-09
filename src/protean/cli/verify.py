@@ -99,6 +99,7 @@ _LINT_LEVELS = frozenset({"error", "warn", "info"})
 
 
 def verify(
+    ctx: typer.Context,
     domain: Annotated[
         str,
         typer.Option(
@@ -124,8 +125,15 @@ def verify(
 ) -> None:
     """Initialize a domain, run check, and run its tests — one verdict."""
     # Route logs to stderr before ``derive_domain`` imports the domain module, so
-    # a stray import-time log cannot corrupt the JSON envelope on stdout.
-    route_logs_to_stderr()
+    # a stray import-time log cannot corrupt the JSON envelope on stdout. Skip if
+    # the CLI's --log-config/--log-level/--log-format callback already configured
+    # logging, so that configuration is not silently discarded.
+    from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: PLC0415
+
+    parent_obj = ctx.obj or {}
+    route_logs_to_stderr(
+        log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED))
+    )
 
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.
