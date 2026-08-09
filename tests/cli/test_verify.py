@@ -1,14 +1,18 @@
 """Tests for the ``protean verify`` CLI command.
 
 ``verify`` composes init + check + tests into one verdict with a stable exit
-code contract:
+code contract (the CLI-wide convention, with the stage classes pinned):
 
-    0 — all green            3 — check failed (bad [lint] config, or findings
-    1 — usage error              at or above the [lint].level floor)
-    2 — domain init failed   4 — tests failed
+    0 — all green            3 — domain init failed
+    2 — usage error          4 — check failed (bad [lint] config, or findings
+    5 — tests failed             at or above the [lint].level floor)
 
-Exit 1 covers verify's own usage errors: domain not found, or a ``--path`` that
-is not a directory.
+Exit 2 covers verify's own usage errors: domain not found, or a ``--path`` that
+is not a directory (Click's own default for a bad command line, too).
+
+Under ``--json`` the result is the shared CLI envelope (see
+``src/protean/cli/result.py``): ``{version, status, data, diagnostics}`` with
+the verdict and stage tree under ``data``.
 
 These tests exercise each exit code and the ``--json`` envelope. Most run
 in-process with ``CliRunner`` against existing support domains and a throwaway
@@ -89,10 +93,11 @@ class TestVerifyGreen:
         )
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)
-        assert data["verdict"] == "pass"
+        assert data["data"]["verdict"] == "pass"
         # No stage may report a failure on the green path (guards a vacuous pass).
         assert all(
-            data["stages"][s]["status"] == "pass" for s in ("init", "check", "tests")
+            data["data"]["stages"][s]["status"] == "pass"
+            for s in ("init", "check", "tests")
         )
 
     def test_json_envelope_has_settled_keys(self, tmp_path):
@@ -102,17 +107,22 @@ class TestVerifyGreen:
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
         )
         data = json.loads(result.stdout)
-        # Top-level envelope is exactly {verdict, stages}.
-        assert set(data.keys()) == {"verdict", "stages"}
-        assert set(data["stages"].keys()) == {"init", "check", "tests"}
+        # Top-level envelope is the shared CLI frame.
+        assert set(data.keys()) == {"version", "status", "data", "diagnostics"}
+        assert data["version"] == "0.1.0"
+        # Verify's own detail — verdict + stage tree — lives under ``data``.
+        assert set(data["data"].keys()) == {"verdict", "stages"}
+        assert set(data["data"]["stages"].keys()) == {"init", "check", "tests"}
         # Each stage carries its settled sub-keys.
-        assert "status" in data["stages"]["init"]
-        assert {"status", "counts", "diagnostics"} <= set(data["stages"]["check"])
-        assert {"status", "returncode", "passed", "failed"} <= set(
-            data["stages"]["tests"]
+        assert "status" in data["data"]["stages"]["init"]
+        assert {"status", "counts", "diagnostics"} <= set(
+            data["data"]["stages"]["check"]
         )
-        assert data["stages"]["tests"]["passed"] == 1
-        assert data["stages"]["tests"]["returncode"] == 0
+        assert {"status", "returncode", "passed", "failed"} <= set(
+            data["data"]["stages"]["tests"]
+        )
+        assert data["data"]["stages"]["tests"]["passed"] == 1
+        assert data["data"]["stages"]["tests"]["returncode"] == 0
 
     def test_human_table_names_each_stage(self, tmp_path):
         tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
@@ -128,22 +138,22 @@ class TestVerifyGreen:
 
 
 class TestVerifyCheckFailure:
-    """A domain with check warnings exits 3, independent of the tests stage."""
+    """A domain with check warnings exits 4, independent of the tests stage."""
 
-    def test_check_warnings_exit_3(self, tmp_path):
+    def test_check_warnings_exit_4(self, tmp_path):
         empty = tmp_path / "empty"
         empty.mkdir()
         result = runner.invoke(
             app,
             ["verify", "-d", _WARN_DOMAIN, "--path", str(empty), "--json"],
         )
-        assert result.exit_code == 3, result.output
+        assert result.exit_code == 4, result.output
         data = json.loads(result.stdout)
-        assert data["verdict"] == "fail"
-        assert data["stages"]["check"]["status"] == "fail"
-        assert data["stages"]["check"]["counts"]["warnings"] > 0
+        assert data["data"]["verdict"] == "fail"
+        assert data["data"]["stages"]["check"]["status"] == "fail"
+        assert data["data"]["stages"]["check"]["counts"]["warnings"] > 0
         # The failing diagnostics are carried in the envelope.
-        codes = {d["code"] for d in data["stages"]["check"]["diagnostics"]}
+        codes = {d["code"] for d in data["data"]["stages"]["check"]["diagnostics"]}
         assert "UNHANDLED_EVENT" in codes
 
     def test_check_failure_named_in_rich_output(self, tmp_path):
@@ -153,7 +163,7 @@ class TestVerifyCheckFailure:
             app,
             ["verify", "-d", _WARN_DOMAIN, "--path", str(empty)],
         )
-        assert result.exit_code == 3
+        assert result.exit_code == 4
         assert "FAIL" in result.stdout
         assert "UNHANDLED_EVENT" in result.stdout
 
@@ -167,42 +177,42 @@ class TestVerifyCheckFailure:
         )
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)
-        assert data["stages"]["check"]["status"] == "pass"
+        assert data["data"]["stages"]["check"]["status"] == "pass"
         # It really is info-only (proves the pass is not because it is clean).
-        assert data["stages"]["check"]["counts"]["infos"] > 0
-        assert data["stages"]["check"]["counts"]["warnings"] == 0
+        assert data["data"]["stages"]["check"]["counts"]["infos"] > 0
+        assert data["data"]["stages"]["check"]["counts"]["warnings"] == 0
 
 
 class TestVerifyTestFailure:
-    """A clean domain with a failing test exits 4; check stays independent."""
+    """A clean domain with a failing test exits 5; check stays independent."""
 
-    def test_failing_test_exits_4(self, tmp_path):
+    def test_failing_test_exits_5(self, tmp_path):
         tests_dir = _write_test(tmp_path / "tests", _FAILING_TEST)
         result = runner.invoke(
             app,
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir), "--json"],
         )
-        assert result.exit_code == 4, result.output
+        assert result.exit_code == 5, result.output
         data = json.loads(result.stdout)
-        assert data["verdict"] == "fail"
-        assert data["stages"]["tests"]["status"] == "fail"
-        assert data["stages"]["tests"]["returncode"] != 0
-        assert data["stages"]["tests"]["failed"] == 1
+        assert data["data"]["verdict"] == "fail"
+        assert data["data"]["stages"]["tests"]["status"] == "fail"
+        assert data["data"]["stages"]["tests"]["returncode"] != 0
+        assert data["data"]["stages"]["tests"]["failed"] == 1
         # Check passed — the codes are independent and precedence is right.
-        assert data["stages"]["check"]["status"] == "pass"
+        assert data["data"]["stages"]["check"]["status"] == "pass"
 
     def test_check_failure_takes_precedence_over_test_failure(self, tmp_path):
-        """When check AND tests both fail, the exit code is check's (3), not 4."""
+        """When check AND tests both fail, the exit code is check's (4), not 5."""
         tests_dir = _write_test(tmp_path / "tests", _FAILING_TEST)
         result = runner.invoke(
             app,
             ["verify", "-d", _WARN_DOMAIN, "--path", str(tests_dir), "--json"],
         )
-        assert result.exit_code == 3, result.output
+        assert result.exit_code == 4, result.output
         data = json.loads(result.stdout)
         # Both stages record their failure even though check's code wins.
-        assert data["stages"]["check"]["status"] == "fail"
-        assert data["stages"]["tests"]["status"] == "fail"
+        assert data["data"]["stages"]["check"]["status"] == "fail"
+        assert data["data"]["stages"]["tests"]["status"] == "fail"
 
     def test_human_table_shows_pytest_output_on_failure(self, tmp_path):
         """Without ``--json``, a failing test prints the tail of the pytest
@@ -213,7 +223,7 @@ class TestVerifyTestFailure:
             app,
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(tests_dir)],
         )
-        assert result.exit_code == 4, result.output
+        assert result.exit_code == 5, result.output
         assert "pytest output:" in result.output
 
 
@@ -229,70 +239,93 @@ class TestVerifyNoTests:
         )
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)
-        assert data["stages"]["tests"]["status"] == "pass"
+        assert data["data"]["stages"]["tests"]["status"] == "pass"
         # The returncode is preserved so "no tests" is distinguishable.
-        assert data["stages"]["tests"]["returncode"] == 5
-        assert data["stages"]["tests"]["passed"] == 0
+        assert data["data"]["stages"]["tests"]["returncode"] == 5
+        assert data["data"]["stages"]["tests"]["passed"] == 0
 
 
 class TestVerifyLoadFailures:
-    """Domain-not-found (1) and domain-init-failed (2) are distinct codes."""
+    """Domain-not-found (usage, 2) and domain-init-failed (3) are distinct codes."""
 
-    def test_domain_not_found_exits_1(self):
+    def test_domain_not_found_exits_2(self):
         result = runner.invoke(app, ["verify", "-d", "nonexistent.module"])
-        assert result.exit_code == 1
+        assert result.exit_code == 2
+        # The error line goes to stderr; the compact init row still names it on
+        # stdout (result.output mixes both streams).
         assert "Error loading Protean domain" in result.stdout
         # A clean message, not a traceback.
         assert "Traceback" not in result.output
 
     def test_domain_not_found_json_envelope(self):
         result = runner.invoke(app, ["verify", "-d", "nonexistent.module", "--json"])
-        assert result.exit_code == 1
-        data = json.loads(result.stdout)
-        assert data["verdict"] == "fail"
-        assert data["stages"]["init"]["status"] == "fail"
-        # Check and tests never ran.
-        assert data["stages"]["check"]["status"] == "skipped"
-        assert data["stages"]["tests"]["status"] == "skipped"
-
-    def test_init_failure_exits_2(self):
-        result = runner.invoke(app, ["verify", "-d", _INIT_FAIL_DOMAIN])
         assert result.exit_code == 2
+        data = json.loads(result.stdout)
+        # A usage error is envelope status "error".
+        assert data["status"] == "error"
+        assert data["data"]["verdict"] == "fail"
+        assert data["data"]["stages"]["init"]["status"] == "fail"
+        # The human-facing message survives in the JSON payload — an agent reads
+        # it from data.stages.init.error, not from the (stderr) red line. This is
+        # the JSON error payload that matters most to a consumer, so pin it.
+        assert "Error loading Protean domain" in data["data"]["stages"]["init"]["error"]
+        # Check and tests never ran.
+        assert data["data"]["stages"]["check"]["status"] == "skipped"
+        assert data["data"]["stages"]["tests"]["status"] == "skipped"
+        # The init stage already carries the message; data.error is reserved for
+        # a usage error caught before any stage ran, so it is not duplicated here.
+        assert "error" not in data["data"]
+
+    def test_init_failure_json_envelope_carries_error(self):
+        """A found-but-broken domain (init failure, exit 3) carries its message
+        under data.stages.init.error in the JSON envelope, with status "fail"."""
+        result = runner.invoke(app, ["verify", "-d", _INIT_FAIL_DOMAIN, "--json"])
+        assert result.exit_code == 3, result.output
+        data = json.loads(result.stdout)
+        assert data["status"] == "fail"
+        assert data["data"]["stages"]["init"]["status"] == "fail"
+        assert "Domain failed to initialize" in data["data"]["stages"]["init"]["error"]
+
+    def test_init_failure_exits_3(self):
+        result = runner.invoke(app, ["verify", "-d", _INIT_FAIL_DOMAIN])
+        assert result.exit_code == 3
         assert "Domain failed to initialize" in result.stdout
         assert "Traceback" not in result.output
 
     def test_init_failure_is_distinct_from_not_found(self):
-        """A found-but-broken domain is 2; a missing one is 1."""
+        """A found-but-broken domain is 3; a missing one is 2."""
         found_broken = runner.invoke(app, ["verify", "-d", _INIT_FAIL_DOMAIN])
         missing = runner.invoke(app, ["verify", "-d", "nonexistent.module"])
-        assert found_broken.exit_code == 2
-        assert missing.exit_code == 1
+        assert found_broken.exit_code == 3
+        assert missing.exit_code == 2
         assert found_broken.exit_code != missing.exit_code
 
-    def test_domain_module_import_error_exits_2(self):
+    def test_domain_module_import_error_exits_3(self):
         """A domain module that fails to import with something other than
-        ``ImportError`` (here, a plain ``RuntimeError``) is a load failure (2),
-        not an unhandled traceback and not the domain-not-found usage error (1)."""
+        ``ImportError`` (here, a plain ``RuntimeError``) is a load failure (3),
+        not an unhandled traceback and not the domain-not-found usage error (2)."""
         result = runner.invoke(app, ["verify", "-d", _IMPORT_RAISES_DOMAIN])
-        assert result.exit_code == 2, result.output
+        assert result.exit_code == 3, result.output
         assert "Domain failed to initialize" in result.stdout
         assert "Traceback" not in result.output
 
     def test_domain_module_import_error_json_envelope(self):
         result = runner.invoke(app, ["verify", "-d", _IMPORT_RAISES_DOMAIN, "--json"])
-        assert result.exit_code == 2
+        assert result.exit_code == 3
         data = json.loads(result.stdout)
-        assert data["verdict"] == "fail"
-        assert data["stages"]["init"]["status"] == "fail"
-        assert data["stages"]["check"]["status"] == "skipped"
-        assert data["stages"]["tests"]["status"] == "skipped"
+        # An init failure is a detected failure — envelope status "fail".
+        assert data["status"] == "fail"
+        assert data["data"]["verdict"] == "fail"
+        assert data["data"]["stages"]["init"]["status"] == "fail"
+        assert data["data"]["stages"]["check"]["status"] == "skipped"
+        assert data["data"]["stages"]["tests"]["status"] == "skipped"
 
-    def test_nested_import_error_exits_2_not_1(self):
+    def test_nested_import_error_exits_3_not_2(self):
         """A domain module found on disk, but whose own top-level ``import``
-        fails, is a load failure (2) — even though ``locate_domain`` raises
-        the same ``NoDomainException`` it uses for "module not found" (1)."""
+        fails, is a load failure (3) — even though ``locate_domain`` raises
+        the same ``NoDomainException`` it uses for "module not found" (2)."""
         result = runner.invoke(app, ["verify", "-d", _NESTED_IMPORT_ERROR_DOMAIN])
-        assert result.exit_code == 2, result.output
+        assert result.exit_code == 3, result.output
         assert "Error loading Protean domain" in result.stdout
         assert "While importing" in result.stdout
 
@@ -300,12 +333,12 @@ class TestVerifyLoadFailures:
         result = runner.invoke(
             app, ["verify", "-d", _NESTED_IMPORT_ERROR_DOMAIN, "--json"]
         )
-        assert result.exit_code == 2
+        assert result.exit_code == 3
         data = json.loads(result.stdout)
-        assert data["verdict"] == "fail"
-        assert data["stages"]["init"]["status"] == "fail"
-        assert data["stages"]["check"]["status"] == "skipped"
-        assert data["stages"]["tests"]["status"] == "skipped"
+        assert data["data"]["verdict"] == "fail"
+        assert data["data"]["stages"]["init"]["status"] == "fail"
+        assert data["data"]["stages"]["check"]["status"] == "skipped"
+        assert data["data"]["stages"]["tests"]["status"] == "skipped"
 
     def test_nested_import_error_table_row_is_single_line(self):
         """The multi-line ``While importing ...`` message (it embeds a full
@@ -313,7 +346,7 @@ class TestVerifyLoadFailures:
         table; the compact ``init`` row must collapse it to its first line
         instead of reproducing the traceback and breaking the table layout."""
         result = runner.invoke(app, ["verify", "-d", _NESTED_IMPORT_ERROR_DOMAIN])
-        assert result.exit_code == 2, result.output
+        assert result.exit_code == 3, result.output
         table_lines = [
             line
             for line in result.stdout.splitlines()
@@ -324,24 +357,26 @@ class TestVerifyLoadFailures:
 
 
 class TestVerifyLintConfig:
-    """A malformed ``[lint]`` config must fail check (exit 3), not read as a
+    """A malformed ``[lint]`` config must fail check (exit 4), not read as a
     false green. ``verify`` calls ``Domain.check()`` directly, whose IR build
     swallows the ``ConfigurationError`` a bad ``[lint]`` block raises, so verify
     runs the same config validation ``protean check`` does."""
 
-    def test_bad_suppressions_count_exits_3(self, tmp_path):
+    def test_bad_suppressions_count_exits_4(self, tmp_path):
         empty = tmp_path / "empty"
         empty.mkdir()
         result = runner.invoke(
             app,
             ["verify", "-d", _BAD_SUPPRESSIONS_DOMAIN, "--path", str(empty), "--json"],
         )
-        assert result.exit_code == 3, result.output
+        assert result.exit_code == 4, result.output
         data = json.loads(result.stdout)
-        assert data["verdict"] == "fail"
-        assert data["stages"]["check"]["status"] == "fail"
+        assert data["data"]["verdict"] == "fail"
+        assert data["data"]["stages"]["check"]["status"] == "fail"
         # The config error is surfaced as a check error (not swallowed).
-        messages = " ".join(e["message"] for e in data["stages"]["check"]["errors"])
+        messages = " ".join(
+            e["message"] for e in data["data"]["stages"]["check"]["errors"]
+        )
         assert "[lint].suppressions" in messages
         assert "non-negative integer" in messages
 
@@ -353,32 +388,36 @@ class TestVerifyLintConfig:
             app,
             ["verify", "-d", _BAD_SUPPRESSIONS_DOMAIN, "--path", str(empty)],
         )
-        assert result.exit_code == 3
+        assert result.exit_code == 4
         assert "[lint].suppressions" in result.stdout
 
-    def test_non_table_lint_exits_3(self, tmp_path):
+    def test_non_table_lint_exits_4(self, tmp_path):
         empty = tmp_path / "empty"
         empty.mkdir()
         result = runner.invoke(
             app,
             ["verify", "-d", _BAD_LINT_TABLE_DOMAIN, "--path", str(empty), "--json"],
         )
-        assert result.exit_code == 3, result.output
+        assert result.exit_code == 4, result.output
         data = json.loads(result.stdout)
-        messages = " ".join(e["message"] for e in data["stages"]["check"]["errors"])
+        messages = " ".join(
+            e["message"] for e in data["data"]["stages"]["check"]["errors"]
+        )
         assert "[lint]" in messages
         assert "must be a table" in messages
 
-    def test_invalid_lint_level_exits_3(self, tmp_path):
+    def test_invalid_lint_level_exits_4(self, tmp_path):
         empty = tmp_path / "empty"
         empty.mkdir()
         result = runner.invoke(
             app,
             ["verify", "-d", _BAD_LEVEL_DOMAIN, "--path", str(empty), "--json"],
         )
-        assert result.exit_code == 3, result.output
+        assert result.exit_code == 4, result.output
         data = json.loads(result.stdout)
-        messages = " ".join(e["message"] for e in data["stages"]["check"]["errors"])
+        messages = " ".join(
+            e["message"] for e in data["data"]["stages"]["check"]["errors"]
+        )
         assert "[lint].level" in messages
 
 
@@ -388,7 +427,7 @@ class TestVerifyLintLevel:
 
     def test_level_error_opts_out_of_warning_gating(self, tmp_path):
         """A domain with warnings but ``[lint].level="error"`` passes check —
-        only errors gate. With the warn floor hardcoded, this would exit 3."""
+        only errors gate. With the warn floor hardcoded, this would exit 4."""
         tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
         result = runner.invoke(
             app,
@@ -396,25 +435,25 @@ class TestVerifyLintLevel:
         )
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)
-        assert data["stages"]["check"]["status"] == "pass"
+        assert data["data"]["stages"]["check"]["status"] == "pass"
         # It really does carry warnings — the pass is because level="error", not
         # because the domain is clean.
-        assert data["stages"]["check"]["counts"]["warnings"] > 0
+        assert data["data"]["stages"]["check"]["counts"]["warnings"] > 0
 
 
 class TestVerifyInternals:
     """Unit cover for the defensive helpers whose branches no end-to-end path
     reaches: an error-severity finding gates regardless of ``[lint].level``, and
-    an unexpected ``Domain.check()`` crash is contracted to exit 3 rather than a
-    traceback. The re-run inside ``check()`` has no known concrete trigger, so it
-    can only be exercised directly."""
+    an unexpected ``Domain.check()`` crash is contracted to a check failure
+    (exit 4) rather than a traceback. The re-run inside ``check()`` has no known
+    concrete trigger, so it can only be exercised directly."""
 
     def test_errors_gate_even_at_error_level(self):
         from protean.cli.verify import _check_gates
 
         assert _check_gates({"errors": 1, "warnings": 0, "infos": 0}, "error") is True
 
-    def test_check_crash_is_surfaced_as_exit_3(self):
+    def test_check_crash_is_surfaced_as_exit_4(self):
         from protean.cli.verify import _run_check
 
         class _BoomDomain:
@@ -432,38 +471,47 @@ class TestVerifyInternals:
 
 
 class TestVerifyUsageErrors:
-    """``verify``'s own usage errors exit 1 with a clean message, no traceback."""
+    """``verify``'s own usage errors exit 2 with a clean message, no traceback."""
 
-    def test_path_not_a_directory_exits_1(self, tmp_path):
+    def test_path_not_a_directory_exits_2(self, tmp_path):
         missing = tmp_path / "does" / "not" / "exist"
         result = runner.invoke(
             app,
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(missing), "--json"],
         )
-        assert result.exit_code == 1, result.output
+        assert result.exit_code == 2, result.output
         assert "Traceback" not in result.output
         data = json.loads(result.stdout)
-        assert data["verdict"] == "fail"
+        # A usage error is envelope status "error".
+        assert data["status"] == "error"
+        assert data["data"]["verdict"] == "fail"
         # Nothing ran — every stage is skipped.
         assert all(
-            data["stages"][s]["status"] == "skipped" for s in ("init", "check", "tests")
+            data["data"]["stages"][s]["status"] == "skipped"
+            for s in ("init", "check", "tests")
         )
+        # No stage carries this error (nothing ran), so it lands on data.error —
+        # otherwise a --json consumer would have only the bare exit code to go on.
+        assert "--path is not a directory" in data["data"]["error"]
 
-    def test_path_is_a_file_exits_1(self, tmp_path):
+    def test_path_is_a_file_exits_2(self, tmp_path):
         a_file = tmp_path / "not_a_dir.txt"
         a_file.write_text("hi")
         result = runner.invoke(
             app,
             ["verify", "-d", _CLEAN_DOMAIN, "--path", str(a_file)],
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 2
         assert "Traceback" not in result.output
         # The clean usage message, which only the up-front guard emits — an
-        # unguarded subprocess would raise NotADirectoryError instead.
-        assert "--path is not a directory" in result.stdout
+        # unguarded subprocess would raise NotADirectoryError instead. It goes
+        # to stderr so stdout stays clean; the stage table (all SKIPPED) is the
+        # only thing on stdout.
+        assert "--path is not a directory" in result.stderr
+        assert "--path is not a directory" not in result.stdout
 
-    def test_empty_domain_arg_exits_1(self, tmp_path, monkeypatch):
-        """``-d ""`` with PROTEAN_DOMAIN unset is domain-not-found (exit 1),
+    def test_empty_domain_arg_exits_2(self, tmp_path, monkeypatch):
+        """``-d ""`` with PROTEAN_DOMAIN unset is domain-not-found (exit 2),
         not an uncaught AssertionError.
 
         With an empty ``--domain`` and no ``PROTEAN_DOMAIN``, ``derive_domain``
@@ -493,19 +541,23 @@ class TestVerifyUsageErrors:
             app,
             ["verify", "-d", "", "--path", str(tmp_path)],
         )
-        assert result.exit_code == 1
+        assert result.exit_code == 2
         assert "Traceback" not in result.output
         assert "No domain found" in result.stdout
 
     def test_bracketed_domain_name_survives_rich_markup(self):
         """A domain-not-found message that itself contains ``[...]`` (e.g. the
-        module name echoed back in the error) must reach the user intact —
-        both in the early ``[red]...[/red]`` line and the compact table row.
-        Unescaped, ``rich`` treats ``[bogus]`` as a markup tag and strips it."""
+        module name echoed back in the error) must reach the user intact — both
+        in the early ``[red]...[/red]`` line (now on stderr) and the compact
+        table row (on stdout). Unescaped, ``rich`` treats ``[bogus]`` as a
+        markup tag and strips it."""
         result = runner.invoke(app, ["verify", "-d", "[bogus]"])
-        assert result.exit_code == 1
+        assert result.exit_code == 2
+        # Table row on stdout, early error line on stderr — the bracketed name
+        # survives markup in both.
         assert "Could not import '[bogus]'" in result.stdout
-        assert result.stdout.count("[bogus]") == 2  # early error line + table row
+        assert "[bogus]" in result.stderr
+        assert result.output.count("[bogus]") == 2  # early error line + table row
 
 
 class TestVerifySubprocessEnv:
@@ -541,8 +593,8 @@ class TestVerifySubprocessEnv:
         # tests stage fails → exit 4.
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)
-        assert data["stages"]["tests"]["status"] == "pass"
-        assert data["stages"]["tests"]["passed"] == 1
+        assert data["data"]["stages"]["tests"]["status"] == "pass"
+        assert data["data"]["stages"]["tests"]["passed"] == 1
 
     def test_src_layout_is_importable_in_child(self, tmp_path):
         """A ``src/``-layout project that is not installed still has its ``src``
@@ -566,8 +618,8 @@ class TestVerifySubprocessEnv:
         # Without the src prepend the import fails → collection error → exit 4.
         assert result.exit_code == 0, result.output
         data = json.loads(result.stdout)
-        assert data["stages"]["tests"]["status"] == "pass"
-        assert data["stages"]["tests"]["passed"] == 1
+        assert data["data"]["stages"]["tests"]["status"] == "pass"
+        assert data["data"]["stages"]["tests"]["passed"] == 1
 
 
 def _generate_scaffold(tmp_path: Path) -> Path:
@@ -652,14 +704,16 @@ class TestVerifyOnRealScaffold:
             f"{completed.stdout}\n{completed.stderr}"
         )
         envelope = _parse_verify_json(completed.stdout)
-        assert envelope["verdict"] == "pass"
+        assert envelope["status"] == "pass"
+        stages = envelope["data"]["stages"]
+        assert envelope["data"]["verdict"] == "pass"
         for stage in ("init", "check", "tests"):
-            assert envelope["stages"][stage]["status"] == "pass", (
+            assert stages[stage]["status"] == "pass", (
                 f"`protean verify` stage {stage!r} must pass: {envelope}"
             )
-        assert envelope["stages"]["tests"]["returncode"] == 0
+        assert stages["tests"]["returncode"] == 0
         # The scaffold ships passing tests; verify actually ran them.
-        assert envelope["stages"]["tests"]["passed"] >= 1, (
+        assert stages["tests"]["passed"] >= 1, (
             "`protean verify` must run at least one real test, not report "
             f"green on an empty suite: {envelope}"
         )

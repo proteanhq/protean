@@ -20,12 +20,19 @@ Usage::
     # Quiet mode (counts only, for CI scripts)
     protean check --domain=my_app --quiet
 
-Exit codes are gated by the ``[lint].level`` config key (default ``"warn"``),
-which sets the severity floor that fails CI. ``--level`` only affects display.
+Under ``--format json`` the result is the shared CLI envelope (see
+:mod:`protean.cli.result`): the check report under ``data``, the diagnostics
+list at the top level, and a coarse ``status``.
 
-    1 — errors found (always, regardless of ``[lint].level``)
-    2 — a gating finding at-or-above the floor (no errors)
-    0 — nothing at-or-above the floor
+Exit codes follow the CLI-wide convention. They are gated by the
+``[lint].level`` config key (default ``"warn"``), which sets the severity floor
+that fails CI; ``--level`` only affects display.
+
+    0 — nothing at or above the configured floor
+    1 — a findings failure: errors, or a warning/info at or above the floor
+        (the fine-grained severity moves into the envelope, not the code)
+    2 — a usage or environment error: a bad ``--domain``/``--level``/``--format``,
+        a domain that will not load, or a malformed ``[lint]`` config
 
 ``[lint].level`` maps to the floor as:
     "error" — only errors gate (warnings and info exit 0)
@@ -36,21 +43,31 @@ which sets the severity floor that fails CI. ``--level`` only affects display.
 import importlib.util
 import json
 import os
-from typing import Annotated, Any
+from typing import Annotated, Any, NoReturn
 
 import typer
 from rich import print
 from rich.console import Console
+from rich.markup import escape
 
 import protean
-from protean.cli._helpers import handle_cli_exceptions
+from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
+from protean.cli.result import (
+    EXIT_FAILURE,
+    EXIT_USAGE,
+    build_envelope,
+    route_logs_to_stderr,
+)
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
-from protean.utils.logging import get_logger
 
-logger = get_logger(__name__)
+# Error paths write to stderr so ``--format json`` keeps stdout to the envelope
+# alone (the #1010 fix, generalized). Human/rich output stays on stdout.
+_ERR_CONSOLE = Console(stderr=True)
 
-_CONSOLE = Console()
+# Valid ``--format`` values. An unknown format is a usage error (exit 2), not a
+# silent fall-through to the rich renderer.
+_FORMATS = frozenset({"rich", "json", "sarif", "github-annotations"})
 
 # Ordered from most severe to least — used for --level threshold filtering
 _LEVEL_ORDER = {"error": 0, "warning": 1, "info": 2}
@@ -76,6 +93,7 @@ _SARIF_SCHEMA = (
 
 @handle_cli_exceptions("check")
 def check(
+    ctx: typer.Context,
     domain: Annotated[
         str,
         typer.Option(
@@ -110,19 +128,32 @@ def check(
     ] = False,
 ) -> None:
     """Validate a Protean domain and report errors, warnings, and diagnostics."""
-    if level not in _LEVEL_ORDER:
-        print(
-            f"[red]Invalid --level: {level!r}. Use 'error', 'warning', or 'info'.[/red]"
+    # Route logs to stderr before ``derive_domain`` imports the domain module, so
+    # a stray import-time log cannot corrupt the machine payload on stdout. Skip
+    # if the CLI's --log-config/--log-level/--log-format callback already
+    # configured logging, so that configuration is not silently discarded.
+    parent_obj = ctx.obj or {}
+    route_logs_to_stderr(
+        log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED))
+    )
+
+    if format not in _FORMATS:
+        _fail_usage(
+            format,
+            f"Invalid --format: {format!r}. Use 'rich', 'json', 'sarif', "
+            "or 'github-annotations'.",
         )
-        raise typer.Exit(code=1)
+    if level not in _LEVEL_ORDER:
+        _fail_usage(
+            format,
+            f"Invalid --level: {level!r}. Use 'error', 'warning', or 'info'.",
+        )
 
     try:
         derived_domain = derive_domain(domain)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(f"[red]{msg}[/red]")
-        logger.error(msg)
-        raise typer.Exit(code=1) from exc
+        _fail_usage(format, msg)
 
     assert derived_domain is not None
 
@@ -139,97 +170,142 @@ def check(
     lint_config = derived_domain.config.get("lint", {})
     lint_table_error = validate_lint_table(lint_config)
     if lint_table_error:
-        # Escape the literal ``[lint]`` so Rich does not parse it as markup.
-        escaped = lint_table_error.replace("[lint]", r"\[lint]")
-        print(f"[red]Invalid config: {escaped}[/red]")
-        raise typer.Exit(code=1)
+        _fail_usage(format, f"Invalid config: {lint_table_error}")
 
     lint_level = lint_config.get("level", "warn")
     if lint_level not in _LINT_LEVELS:
-        # Escape the literal ``[lint]`` so Rich does not parse it as markup.
-        print(
-            rf"[red]Invalid \[lint].level: {lint_level!r}. "
-            f"Use 'error', 'warn', or 'info'.[/red]"
+        _fail_usage(
+            format,
+            f"Invalid [lint].level: {lint_level!r}. Use 'error', 'warn', or 'info'.",
         )
-        raise typer.Exit(code=1)
 
     # ``[lint].suppressions`` is consumed by the IR builder; validate it here
     # too so a config typo produces a clean CLI error instead of the builder's
     # ``ConfigurationError`` traceback.
     suppressions_error = validate_lint_suppressions(lint_config.get("suppressions", {}))
     if suppressions_error:
-        # Escape the literal ``[lint]`` so Rich does not parse it as markup.
-        escaped = suppressions_error.replace("[lint]", r"\[lint]")
-        print(f"[red]Invalid config: {escaped}[/red]")
-        raise typer.Exit(code=1)
+        _fail_usage(format, f"Invalid config: {suppressions_error}")
 
     result = derived_domain.check()
 
-    # Preserve unfiltered counts for exit code — --level only affects display
-    unfiltered_counts = dict(result["counts"])
-    # Preserve the unfiltered diagnostics too: the SARIF/annotation formats are
-    # consumed by machines (Code Scanning upload, CI annotations) where a
-    # display-level filter must not silently drop findings. --level only shapes
-    # the human-facing rich/json/quiet views below.
-    unfiltered_diagnostics = list(result["diagnostics"])
+    # Exit code and every machine format come from the UNFILTERED result;
+    # ``--level`` is a display filter that shapes only the human rich/quiet views
+    # (applied below). A machine consumer (the JSON envelope, SARIF, or the
+    # annotations) must never have findings silently dropped — it can filter for
+    # itself. This keeps the JSON envelope consistent with the exit code: a
+    # ``status="fail"`` always carries the diagnostics and counts that caused it.
+    gates = _gates(result["counts"], lint_level)
 
-    # Apply --level filter to displayed diagnostics
+    if format == "json":
+        # The shared CLI envelope: the check report under ``data``, the (full,
+        # unfiltered) diagnostics at the top level, and a coarse status that
+        # mirrors the exit code (``pass`` at 0, ``fail`` at 1).
+        envelope = build_envelope(
+            status="fail" if gates else "pass",
+            data={k: result[k] for k in ("domain", "status", "counts", "errors")},
+            diagnostics=result["diagnostics"],
+        )
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True))
+    elif format == "sarif":
+        typer.echo(
+            json.dumps(
+                _format_sarif(result, derived_domain),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    elif format == "github-annotations":
+        typer.echo(_format_github_annotations(result, derived_domain))
+    else:
+        # Human views only: apply the ``--level`` display filter, then render.
+        _filter_for_display(result, level, gates)
+        if quiet:
+            _print_quiet(result)
+        else:
+            _print_rich(result)
+
+    # Exit codes use UNFILTERED counts — ``--level`` only affects display, not
+    # the CI result. Any findings failure collapses to exit 1 (the severity
+    # detail lives in the envelope); usage/IO errors exit 2 on the paths above.
+    if gates:
+        raise typer.Exit(code=EXIT_FAILURE)
+
+
+def _filter_for_display(result: dict[str, Any], level: str, gates: bool) -> None:
+    """Apply the ``--level`` severity threshold to the human view, in place.
+
+    ``--level`` is a display filter only: it shapes the rich/quiet output but
+    never the exit code (computed from the unfiltered counts, passed in as
+    ``gates``) or the machine formats (json/sarif/github-annotations emit the
+    full result). Drops diagnostics below the threshold and recomputes the
+    displayed counts and status to match, so the human summary is internally
+    consistent.
+
+    ``gates`` guards against a display lie: ``--level`` can filter out the very
+    findings that make ``[lint].level`` fail the run (e.g. only warnings exist,
+    ``[lint].level`` is the default ``"warn"``, and ``--level=error`` hides
+    them), which would otherwise recompute ``status`` as ``"pass"`` while the
+    process still exits non-zero. When that happens, status stays ``"fail"``
+    instead of a display-only, contradicted "pass".
+    """
     threshold = _LEVEL_ORDER[level]
     result["diagnostics"] = [
         d
         for d in result["diagnostics"]
         if _LEVEL_ORDER.get(d.get("level"), 2) <= threshold
     ]
-    # Recompute displayed counts after filtering
     result["counts"]["warnings"] = sum(
         1 for d in result["diagnostics"] if d.get("level") == "warning"
     )
     result["counts"]["infos"] = sum(
         1 for d in result["diagnostics"] if d.get("level") == "info"
     )
-    # Recompute status from filtered counts for consistent display
     if result["counts"]["errors"] > 0:
         result["status"] = "fail"
     elif result["counts"]["warnings"] > 0:
         result["status"] = "warn"
     elif result["counts"]["infos"] > 0:
         result["status"] = "info"
+    elif gates:
+        result["status"] = "fail"
     else:
         result["status"] = "pass"
 
-    if quiet:
-        _print_quiet(result)
-    elif format == "json":
-        typer.echo(json.dumps(result, indent=2, sort_keys=True))
-    elif format == "sarif":
-        # Machine formats ignore --level (see unfiltered_diagnostics above).
-        machine_result = {**result, "diagnostics": unfiltered_diagnostics}
-        typer.echo(
-            json.dumps(
-                _format_sarif(machine_result, derived_domain),
-                indent=2,
-                sort_keys=True,
-            )
-        )
-    elif format == "github-annotations":
-        machine_result = {**result, "diagnostics": unfiltered_diagnostics}
-        typer.echo(_format_github_annotations(machine_result, derived_domain))
-    else:
-        _print_rich(result)
 
-    # Exit codes use UNFILTERED counts — ``--level`` only affects display, not
-    # the CI result. ``[lint].level`` sets the severity floor that gates:
-    #   "error" → exit 1 on errors only
-    #   "warn"  → exit 1 on errors, exit 2 on warnings (default; info never gates)
-    #   "info"  → exit 1 on errors, exit 2 on any warning or info
-    if unfiltered_counts["errors"] > 0:
-        raise typer.Exit(code=1)
+def _gates(counts: dict[str, int], lint_level: str) -> bool:
+    """Whether the unfiltered counts fail CI at ``[lint].level``.
+
+    Errors always gate; ``"warn"`` also gates warnings; ``"info"`` gates any
+    finding; ``"error"`` gates on errors alone. This is the single findings
+    failure class (exit 1) — the old 1-error-vs-2-warning split collapsed, with
+    the severity moved into the envelope.
+    """
+    if counts["errors"] > 0:
+        return True
     if lint_level == "error":
-        return
-    if unfiltered_counts["warnings"] > 0:
-        raise typer.Exit(code=2)
-    if lint_level == "info" and unfiltered_counts["infos"] > 0:
-        raise typer.Exit(code=2)
+        return False
+    if counts["warnings"] > 0:
+        return True
+    return bool(lint_level == "info" and counts["infos"] > 0)
+
+
+def _fail_usage(fmt: str, message: str) -> NoReturn:
+    """Emit a usage/environment error and exit ``EXIT_USAGE`` with clean stdout.
+
+    Under ``--format json`` the error is the shared envelope (``status="error"``,
+    the message under ``data``) on stdout and nothing else, so a ``| jq`` stays
+    parseable; every other format prints a red line to stderr instead. ``escape``
+    keeps a bracketed token in the message (``[lint]``) from being parsed as
+    rich markup and dropped.
+    """
+    if fmt == "json":
+        envelope = build_envelope(
+            status="error", data={"error": message}, diagnostics=[]
+        )
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True))
+    else:
+        _ERR_CONSOLE.print(f"[red]{escape(message)}[/red]")
+    raise typer.Exit(code=EXIT_USAGE)
 
 
 def _print_quiet(result: dict[str, Any]) -> None:
@@ -296,6 +372,12 @@ def _print_rich(result: dict[str, Any]) -> None:
         print("\n  [green]All checks passed.[/green]")
     elif status == "info":
         print("\n  [cyan]All checks passed with informational findings.[/cyan]")
+    elif status == "fail" and not counts["errors"] and not warnings and not infos:
+        # ``--level`` hid every finding that made [lint].level gate the run.
+        print(
+            "\n  [red]Failing findings are hidden by --level; rerun with a "
+            "lower --level to see them.[/red]"
+        )
 
     print()
 

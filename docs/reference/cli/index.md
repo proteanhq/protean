@@ -6,6 +6,11 @@ Most commands accept a domain instance to load and initialize, prepping it for
 shell access. The [`--domain`](project/discovery.md) option is used to specify how to
 load the domain.
 
+`check` and `verify` emit one shared
+[result envelope and exit-code convention](conventions.md), so a script or an
+agent can consume them uniformly. Other commands that print JSON are being
+converged onto it; see that page for what is standardized today.
+
 | Command                        |                                    |
 | :----------------------------- | :----------------------------------|
 | [`protean check`](check.md)            | Validate a domain and report architecture fitness diagnostics |

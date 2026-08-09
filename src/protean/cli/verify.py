@@ -20,20 +20,25 @@ Usage::
     # Machine-readable envelope (CI-friendly)
     protean verify --json
 
-Exit codes (a stable contract, ordered by precedence):
+Under ``--json`` the result is the shared CLI envelope (see
+:mod:`protean.cli.result`): the verdict and per-stage tree under ``data``, the
+check-stage diagnostics at the top level, and a coarse ``status``.
+
+Exit codes follow the CLI-wide convention (see :mod:`protean.cli.result`), with
+the stage classes pinned. Ordered by precedence:
 
     0 — all green: init, check, and tests all pass
-    1 — verify's own error: the domain was not found, or ``--path`` is not a
-        directory
-    2 — the domain was found but failed to initialize
-    3 — check failed (a malformed ``[lint]`` config, or findings at or above
+    2 — a usage error: the domain was not found, or ``--path`` is not a
+        directory (Click also exits ``2`` for a malformed command line)
+    3 — the domain was found but failed to initialize
+    4 — check failed (a malformed ``[lint]`` config, or findings at or above
         the ``[lint].level`` floor)
-    4 — tests failed
+    5 — tests failed
 
 A malformed command line (an unknown flag, a missing option value) is rejected
-by the argument parser *before* ``verify`` runs and exits ``2`` — Click's
-convention, which happens to overlap the init-failure code. The contract above
-applies once ``verify`` itself starts running.
+by the argument parser *before* ``verify`` runs and also exits ``2`` — Click's
+convention, which the usage class here matches. The contract above applies once
+``verify`` itself starts running.
 
 The check stage honours ``[lint].level`` (default ``"warn"``), the same
 severity floor ``protean check`` uses: ``"error"`` gates on errors only,
@@ -56,17 +61,24 @@ from typing import Annotated, Any, NoReturn
 
 import typer
 from rich import print
+from rich.console import Console
 from rich.markup import escape
 
+from protean.cli.result import EnvelopeStatus, build_envelope, route_logs_to_stderr
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 
-# Exit codes — the settled contract (see module docstring).
+# Exit codes — the settled contract (see module docstring). Usage is 2 (the
+# CLI-wide convention and Click's own default); the stage classes shift up by
+# one so 2 is reserved for usage.
 _EXIT_OK = 0
-_EXIT_USAGE = 1
-_EXIT_INIT = 2
-_EXIT_CHECK = 3
-_EXIT_TESTS = 4
+_EXIT_USAGE = 2
+_EXIT_INIT = 3
+_EXIT_CHECK = 4
+_EXIT_TESTS = 5
+
+# Error lines write to stderr so ``--json`` keeps stdout to the envelope alone.
+_ERR_CONSOLE = Console(stderr=True)
 
 # pytest returns 5 when it collected no tests. ``verify`` treats that as a pass
 # for the tests stage: a project may legitimately have no tests yet, and the
@@ -87,6 +99,7 @@ _LINT_LEVELS = frozenset({"error", "warn", "info"})
 
 
 def verify(
+    ctx: typer.Context,
     domain: Annotated[
         str,
         typer.Option(
@@ -111,6 +124,17 @@ def verify(
     ] = False,
 ) -> None:
     """Initialize a domain, run check, and run its tests — one verdict."""
+    # Route logs to stderr before ``derive_domain`` imports the domain module, so
+    # a stray import-time log cannot corrupt the JSON envelope on stdout. Skip if
+    # the CLI's --log-config/--log-level/--log-format callback already configured
+    # logging, so that configuration is not silently discarded.
+    from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: PLC0415
+
+    parent_obj = ctx.obj or {}
+    route_logs_to_stderr(
+        log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED))
+    )
+
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.
     stages: dict[str, dict[str, Any]] = {
@@ -149,7 +173,7 @@ def verify(
         # cases in ``NoDomainException`` (caught above), but a domain module
         # that raises during import — a ``SyntaxError``, or any exception its
         # own top-level code throws — comes through as that exception, not
-        # ``NoDomainException``. Treat it as an init failure (2), the same
+        # ``NoDomainException``. Treat it as an init failure (3), the same
         # code a domain that imports fine but blows up in ``.init()`` gets,
         # rather than letting it crash out as an unhandled traceback.
         msg = f"Domain failed to initialize: {exc}"
@@ -182,7 +206,8 @@ def verify(
     tests_stage, tests_output = _run_tests(path)
     stages["tests"] = tests_stage
 
-    _emit(json_output, stages, tests_output)
+    status: EnvelopeStatus = "pass" if _verdict(stages) == "pass" else "fail"
+    _emit(json_output, stages, tests_output, status)
 
     # --- Verdict + exit ---------------------------------------------------
     if check_failed:
@@ -234,7 +259,7 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
     ``except Exception: pass``. So a malformed ``[lint]`` block (a bad
     ``suppressions`` count, a non-table ``[lint]``, an invalid ``level``) is
     swallowed and reads as a false green. Run the same validation ``check`` runs,
-    up front, and surface any failure as a check-stage error (exit 3).
+    up front, and surface any failure as a check-stage error (exit 4).
     """
     # Imported locally to keep ``protean --help`` from eagerly pulling in the
     # heavy IR builder subsystem (mirrors ``check.py``).
@@ -259,7 +284,7 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
         # Defensive: ``check()`` re-runs ``_prepare(traverse=True, validate=False)``
         # and builds the IR, neither wrapped here. init already succeeded above,
         # so no concrete trigger is known — but a crash must surface as the
-        # contracted exit 3, not a traceback.
+        # contracted exit 4, not a traceback.
         return True, _config_error_stage(f"Domain check failed: {exc}", "CHECK_FAILED")
 
     lint_level = lint_config.get("level", "warn")
@@ -334,17 +359,37 @@ def _verdict(stages: dict[str, dict[str, Any]]) -> str:
     return "pass" if all(stages[s]["status"] == "pass" for s in _STAGES) else "fail"
 
 
-def _envelope(stages: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """Build the settled JSON envelope from the accumulated stage results."""
-    return {"verdict": _verdict(stages), "stages": stages}
+def _envelope(
+    stages: dict[str, dict[str, Any]], status: EnvelopeStatus, error: str = ""
+) -> dict[str, Any]:
+    """Build the shared CLI envelope from the accumulated stage results.
+
+    The verdict and per-stage tree go under ``data``; the check-stage
+    diagnostics surface at the top level (empty when check never ran).
+    ``status`` is the coarse verdict: ``"pass"`` all green, ``"fail"`` a stage
+    the command detected as failing, ``"error"`` a usage error it could not run
+    past. ``error`` — set only for a usage error caught before any stage
+    ran — lands at ``data.error`` (mirrors ``check``'s usage-error shape), so
+    the message survives in ``--json`` output even though no stage carries it.
+    """
+    diagnostics = stages["check"].get("diagnostics", [])
+    data: dict[str, Any] = {"verdict": _verdict(stages), "stages": stages}
+    if error:
+        data["error"] = error
+    return build_envelope(status=status, data=data, diagnostics=diagnostics)
 
 
 def _emit(
-    json_output: bool, stages: dict[str, dict[str, Any]], tests_output: str
+    json_output: bool,
+    stages: dict[str, dict[str, Any]],
+    tests_output: str,
+    status: EnvelopeStatus,
+    error: str = "",
 ) -> None:
     """Print either the JSON envelope or the human table."""
     if json_output:
-        typer.echo(json.dumps(_envelope(stages), indent=2, sort_keys=True))
+        envelope = _envelope(stages, status, error=error)
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True))
     else:
         _render(stages, tests_output)
 
@@ -357,10 +402,20 @@ def _emit_and_exit(
     error_line: str = "",
 ) -> NoReturn:
     """Emit the result and raise ``typer.Exit`` with ``code`` (used on early
-    init failures, where check and tests never run)."""
+    exits, where check and tests never run).
+
+    The envelope status follows the exit-code class: a usage error (exit 2) is
+    ``"error"``; a detected failure (init, exit 3) is ``"fail"``. The red error
+    line goes to stderr so ``--json`` stdout stays a single parseable object.
+    ``error_line`` also lands in the envelope, but only at ``data.error`` when
+    no stage already carries it — the up-front ``--path`` check, before init
+    has even been attempted — so the message is not duplicated with
+    ``data.stages.init.error`` for the domain-not-found/init-failure cases."""
     if not json_output and error_line:
-        print(f"[red]{escape(error_line)}[/red]")
-    _emit(json_output, stages, tests_output)
+        _ERR_CONSOLE.print(f"[red]{escape(error_line)}[/red]")
+    status: EnvelopeStatus = "error" if code == _EXIT_USAGE else "fail"
+    envelope_error = error_line if stages["init"]["status"] == "skipped" else ""
+    _emit(json_output, stages, tests_output, status, error=envelope_error)
     raise typer.Exit(code)
 
 
