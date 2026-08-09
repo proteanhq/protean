@@ -64,7 +64,9 @@ class TestRemoveByKeyPatternOnNoMatch:
 
 
 class TestGetAllPaginationAgrees:
-    def test_last_position_means_the_same_thing_on_every_adapter(self, cache, request):
+    def test_last_position_means_the_same_thing_on_every_adapter(
+        self, cache, request, monkeypatch
+    ):
         """A 5th cross-adapter divergence, found by running this suite.
 
         Memory treats `last_position` as a list offset into a freshly
@@ -81,14 +83,16 @@ class TestGetAllPaginationAgrees:
         #1401.
 
         The assertion below only pins the `size`-as-a-cap half of the
-        divergence: it is guaranteed true on memory and, empirically,
-        overwhelmingly likely to be violated by at least one call on Redis
-        for a keyspace this size, regardless of Redis' per-server random
-        hash seed. An earlier version asserted that walking
-        `last_position=0, 1, 2, ...` visits every entry, but Redis' `SCAN`
-        `COUNT` being a hint means a single call can happen to return every
-        matching key, which would XPASS a `strict=True` xfail.
+        divergence. It is guaranteed true on memory as-is. On Redis, `scan`
+        is stubbed to always answer with more keys than `size`, so the
+        violation is deterministic instead of depending on `COUNT` being a
+        hint that Redis happens to overshoot for this keyspace and the
+        server's hash seed.
         """
+        entries = [CacheEntry(key=f"k{i}", value=str(i)) for i in range(20)]
+        for entry in entries:
+            cache.add(entry)
+
         if request.node.callspec.params["cache"]["provider"] == "redis":
             request.applymarker(
                 pytest.mark.xfail(
@@ -102,10 +106,15 @@ class TestGetAllPaginationAgrees:
                     ),
                 )
             )
-
-        entries = [CacheEntry(key=f"k{i}", value=str(i)) for i in range(20)]
-        for entry in entries:
-            cache.add(entry)
+            oversized_batch = [
+                f"cache_entry:::{entries[0].key}",
+                f"cache_entry:::{entries[1].key}",
+            ]
+            monkeypatch.setattr(
+                cache.get_connection(),
+                "scan",
+                lambda cursor=0, match=None, count=None: (0, oversized_batch),
+            )
 
         pages = [
             cache.get_all("cache_entry:::*", last_position=last_position, size=1)
