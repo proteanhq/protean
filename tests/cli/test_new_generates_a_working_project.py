@@ -97,14 +97,15 @@ def _parse_verify_json(stdout: str) -> dict[str, Any]:
     """Parse the JSON envelope printed by ``protean verify --json``.
 
     ``verify`` emits the envelope via ``typer.echo`` to stdout. Locate the
-    first ``{`` and parse from there so a parse failure produces a useful
-    message. All logging goes to stderr, so stdout is expected to be clean,
-    but finding the first brace gives a slightly clearer error if it is not.
+    first ``{`` and decode only that JSON object, ignoring any stray output
+    before or after it (e.g. warnings or extra prints that end up on
+    stdout instead of stderr).
     """
     start = stdout.find("{")
     assert start != -1, f"no JSON object in verify stdout:\n{stdout}"
     try:
-        return json.loads(stdout[start:])
+        envelope, _ = json.JSONDecoder().raw_decode(stdout, start)
+        return envelope
     except json.JSONDecodeError as exc:
         raise AssertionError(f"invalid JSON envelope from verify:\n{stdout}") from exc
 
