@@ -89,11 +89,15 @@ class _DiagnosticRequired(TypedDict):
 
 
 class Diagnostic(_DiagnosticRequired, total=False):
-    """The wire shape of a single ``_diagnostics`` record.
+    """The wire shape of a diagnostic built by :func:`build_diagnostic`.
 
     ``field`` is present only on field-scoped diagnostics; every other key is
-    always present. Field order is irrelevant — the IR, SARIF, and ``check``
-    serializers all emit with ``sort_keys=True``.
+    always present on diagnostics built through :func:`build_diagnostic`.
+    This does not describe every entry in ``ir["diagnostics"]``: custom lint
+    rules (``ir.builder._run_custom_lint_rules``) contribute dicts that only
+    require ``code``/``element``/``level``/``message``, with ``rule`` and
+    ``suggestion`` left optional. Field order is irrelevant — the IR, SARIF,
+    and ``check`` serializers all emit with ``sort_keys=True``.
     """
 
     field: str
