@@ -15,6 +15,9 @@ as you drew them.
 Start with DDD, evolve to CQRS or Event Sourcing, swap
 infrastructure through configuration.
 
+Protean is built for **ambitious systems**: ones whose shape you can't fully
+see on day one, that have to grow safely instead of being rewritten.
+
 **Your domain model is the architecture.**
 
 [Ship the Whiteboard](./guides/getting-started/hello.md){ .md-button .md-button--primary }

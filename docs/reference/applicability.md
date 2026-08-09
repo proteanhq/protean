@@ -1,46 +1,65 @@
 # Applicability charter
 
-This page states plainly what Protean is a good fit for, and the shapes of
-systems it is **not** a good fit for, with the reason in each case. Read it
-before you invest, so you can decide whether the framework matches the system
-you are building.
+This page helps you decide whether Protean fits what you are building. It is as
+clear about what Protean is **not** for as about what it is for. That is on
+purpose. A framework that only tells you what it is good at is not much help when
+you are the one who has to live with the choice.
 
-An honest "when not to use this" saves you from a bad fit and spares the project
-from being stretched into shapes it was never designed for. Falling outside the
-scope below is not a failure on your part or a bug in Protean. It is a signal to
-reach for a different tool, and the sooner you see the mismatch the cheaper it
-is to act on.
+You can check most of this in an afternoon. Protean runs entirely in memory, with
+no database, message broker, or other services to install, so you can build a
+real slice of your system, see how it feels, and throw it away if it does not
+fit. The [installation guide](../guides/getting-started/installation.md) and
+[Hello, Protean!](../guides/getting-started/hello.md) get you to a running
+example in a few minutes. Nothing here asks you to commit before you have tried
+it.
+
+Protean is Apache-2.0 licensed and pre-1.0. What the pre-1.0 status means for an
+upgrade is covered under [Deciding, honestly](#deciding-honestly); the short
+version is that its public surface changes only under a written contract, not
+without warning.
+
+Falling outside the cases below is not a failure on your part or a bug in
+Protean. It is a signal to reach for a different tool, and the sooner you see the
+mismatch the cheaper it is to act on.
 
 ---
 
 ## In one sentence
 
-**Protean is for domain-rich, transactional backend systems in Python whose hard
-part is the business model, not raw throughput or data volume.**
+**Protean is for backend systems in Python where the hard part is the business
+rules, not moving large volumes of data at very low latency.**
 
-If the difficulty in your system lives in the rules ("an order cannot ship
-before it is paid", "a subscription in trial cannot be dunned"), Protean is built
-to help. If the difficulty lives in moving a firehose of data with the lowest
-possible latency, or in crunching analytics over billions of rows, it is not.
+If the difficulty in your system is the rules ("an order cannot ship before it is
+paid", "a subscription in trial cannot be charged"), Protean is built to help. If
+the difficulty is raw speed, or moving and crunching enormous amounts of data,
+it is not.
+
+Often these are **ambitious systems**: ones whose shape you cannot fully see on
+day one, that have to grow safely over years instead of being rebuilt each time
+they outgrow their last design. Protean is built for that kind of system in
+particular, and the rest of this page says why, and where it stops.
 
 ---
 
 ## What Protean is built for
 
+An "aggregate" below means one object and the data it owns, treated as a single
+unit; that is the main term you need for this page.
+
 | Shape of system | Why it fits |
 |---|---|
-| **Domain-rich backend services** where the complexity is in business rules and invariants | Aggregates, invariants, and the always-valid model exist precisely to keep those rules correct and in one place. |
-| **Systems you would sketch as aggregates, events, and bounded contexts** | Those DDD concepts are the framework's native building blocks; you write the model as you drew it, not translated into tables. |
-| **Systems that grow in sophistication over time** | Start with plain DDD, add CQRS for one aggregate, adopt Event Sourcing where it earns its keep, all in one codebase. See [Choose a path](../guides/pathways/index.md). |
-| **Event-driven integration between bounded contexts in one deployment** | Within a deployment, events keep contexts in sync without shared databases or direct calls. Delivery of `published` events to separately-deployed contexts is a different case; see [Scale and deployment shape](#scale-and-deployment-shape). |
-| **Specific aggregates that need a full audit trail or temporal queries** | Model those aggregates as event-sourced and their state reconstructs from the event stream. It is opt-in per aggregate, not automatic for every one. |
-| **Python backends on 3.11 or newer** | Protean is a Python framework; the domain model is ordinary typed Python. |
-| **Modular monoliths and a small set of services you deploy and operate yourself** | The bounded-context model and the single-deployment server fit a monolith you can later split; the guarantees are stated for stores you run, not a managed global fabric. |
+| **Systems whose hard part is the business rules** and the states things move through | Protean keeps those rules in one place and checks them on every change, so an object cannot pass through the domain layer in an invalid state. |
+| **New products whose final shape you cannot see yet** (a startup, a brand-new build, a proof of concept meant to become the real thing) | You do not have to fix the model, the boundaries, or the technology up front. Start in memory with the simplest approach, let the design emerge, and add more advanced patterns and real infrastructure as they prove necessary. The model and its tests carry across those changes, so the prototype grows into the product instead of being rewritten. |
+| **Systems that start simple and get more demanding over time** | Start plain, then adopt richer patterns (separate read and write models, or a full event history) for the one part of the system that needs them, without disturbing the rest. |
+| **Systems where separate parts of the business must stay in step** by reacting to things that happened | Within one deployment, one part can react to another's events instead of calling it directly or sharing its database, so the parts stay loosely coupled. |
+| **Parts of the system that need a complete history** (an audit trail, or "what did this look like last month") | Record those parts as a stream of events and their state can be rebuilt from that history. You opt in where it is worth it, not everywhere. |
+| **Python backends on 3.11 or newer** | Protean is a Python framework; your model is ordinary, typed Python. |
+| **A system you deploy and run yourself** that may later split into services | It fits a single application you can grow and later divide, and its promises are stated for stores you run, not a managed global service. |
 
-The infrastructure it supports (relational and document databases, Redis, an
-event store, and in-memory equivalents for prototyping and tests) is listed in
-[Adapters](adapters/index.md). The in-memory adapters are for development and
-tests, not production.
+The databases it ships adapters for are specific ones (PostgreSQL, SQLite, and
+Elasticsearch), not any SQL or document store; Redis backs the broker and cache,
+and MessageDB backs the event store. There are in-memory versions of all of them
+for development and tests. See [Adapters](adapters/index.md) for the details.
 
 ---
 
@@ -48,49 +67,81 @@ tests, not production.
 
 | Shape of system | Why it is a poor fit | Consider instead |
 |---|---|---|
-| **CRUD applications with little domain logic** | Aggregates, invariants, commands, and events are overhead you pay for and never use; the model earns its keep only when there are rules to protect. | A CRUD-oriented web framework or a plain ORM. |
-| **Ultra-low-latency or high-throughput data-plane hot paths** (ad bidding, high-frequency trading, packet processing) | Every field assignment runs validation, events dispatch through the engine, and persistence is aggregate-at-a-time on the Python runtime. That is correctness-first, not microsecond-first. | A purpose-built low-latency service, often outside Python. |
-| **Big-data, analytics, or stream-processing pipelines** | Protean is a transactional domain framework, not a data-processing engine. It transacts at the aggregate boundary; it does not do batch or streaming computation over massive datasets. | A stream processor (Flink, Kafka Streams) or a data warehouse. |
-| **Table-first or migrations-first modeling** | Validation lives in the domain as invariants, not as declarative database CHECK or exclusion constraints, and an aggregate has a single surrogate identity (no composite keys). Uniqueness is the exception: `unique=` fields and unique or partial indexes are declared and enforced in the database. If the relational schema is your model, the rest will fight you. | An ORM or query builder with a schema-migration workflow. |
-| **Bolting onto an existing ORM-centric application** by wrapping its models | Protean owns persistence for the aggregates it manages, through its own adapters; it does not adopt or wrap your existing ORM models. | Introduce Protean for a new bounded context beside the existing app, rather than retrofitting it onto current models. |
-| **Real-time collaborative editing with automatic merge** | Concurrency control is optimistic at the aggregate root: a conflicting write is detected and rejected, not merged. | A CRDT library or an operational-transform engine. |
-| **Multi-region active-active with strong cross-region consistency** | The concurrency and delivery guarantees are stated for a single deployment against stores you run; global strong consistency is not part of the model. | A globally distributed database with its own consistency model. |
-| **Non-Python stacks, or frontend and UI work** | Protean is a backend Python framework. It exposes the domain over HTTP through FastAPI, but it is not a UI toolkit or a polyglot runtime. | The native framework for that language or layer. |
-| **Throwaway scripts and one-off jobs** | The setup that pays off across a long-lived domain is pure cost for a script you run once. | A plain script; reach for Protean when the model has to last. |
+| **Simple create/read/update/delete apps with little logic** | The parts that protect complex rules are pure overhead when there are no complex rules to protect. | A standard web framework or a plain database toolkit. |
+| **Systems whose main challenge is speed or data volume** (ad bidding, high-frequency trading, packet processing) | Protean checks every change and processes work one object at a time on the Python runtime. That favours correctness, not the lowest possible latency. | A purpose-built low-latency service, often written in another language. |
+| **Analytics, reporting, or data-processing pipelines** | Protean handles transactions one business action at a time. It is not an engine for computing over huge datasets in batches or streams. | A stream processor or a data warehouse. |
+| **Systems modeled around database tables first** | In Protean the rules live in the code, not in database constraints, and each object has one simple identity. Uniqueness is the exception: you can declare unique fields and unique or partial indexes, and the database enforces them. But if the table schema is your real model, you will be working against the framework. | A database toolkit or ORM with a schema-and-migrations workflow. |
+| **Adding Protean on top of an existing app** by wrapping its current database models | Protean manages persistence for the objects it owns, through its own layer; it does not adopt or wrap the models an existing app already has. | Introduce Protean for a new, separate part of the system, rather than retrofitting it onto current models. |
+| **Real-time collaborative editing** where concurrent edits are merged automatically | When two changes collide, Protean detects the conflict and rejects one; it does not merge them. | A library built for automatic conflict resolution. |
+| **Active-active across regions with strong consistency everywhere** | Its promises are stated for a single deployment against stores you run, not for one global, always-consistent system. | A globally distributed database with its own consistency model. |
+| **Anything not a Python backend**: other languages, or the frontend and UI | Protean is a backend Python framework. It can expose your system over HTTP through [FastAPI](../guides/fastapi/index.md), but it is not a user-interface toolkit or a multi-language runtime. | The native framework for that language or layer. |
+| **One-off scripts and short-lived jobs** | The upfront structure pays off across a long-lived system, and is pure cost for something you run once. | A plain script; reach for Protean when the system has to last. |
 
 ---
 
-## Scale and deployment shape
+## What you keep control of
 
-Protean is designed for domain complexity, not for raw scale, and its scaling
-model follows from that.
+New frameworks are worth being wary of, because the cost of a bad one is not the
+first week, it is the years you then spend unable to move off it. So it is worth
+being concrete about what Protean does and does not take over.
 
-- **The aggregate is the unit of consistency and concurrency.** Each aggregate
-  is guarded by optimistic concurrency on its root ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)).
-  You scale by keeping aggregates small and well-partitioned, not by holding
-  large graphs in one transaction.
-- **Asynchronous work scales horizontally through stream subscriptions.** A
-  handler fans out across workers using a stream subscription backed by Redis
-  consumer groups.
-- **A single event-store subscription is single-writer.** Protean refuses to run
-  more than one worker for an event-store subscription unless you explicitly opt
-  out, because those subscriptions have no cluster-wide ownership. Scale that
-  kind of handler with a stream subscription, not by cloning the worker.
-- **Asynchronous processing needs a long-lived worker.** The background engine,
-  the periodic recovery pass, and the outbox processor all assume a persistent
-  process, so the async path does not fit a scale-to-zero or function runtime.
-  Synchronous, in-process processing carries no such requirement and runs fine in
-  a request-scoped service.
+- **Your model is plain Python that you own.** There are no framework base classes
+  to inherit and no generated code you cannot read. A newcomer can read a class
+  and understand what it does.
+- **Infrastructure is configuration, not code.** Which database, broker, or cache
+  you use is a setting. Swapping one for another, or in-memory for a real one,
+  does not touch your business logic.
+- **There are escape hatches.** When the defaults do not fit, you can supply your
+  own database models, write raw queries, or use a specific database's features
+  directly.
+- **You can test the whole model in memory**, with no services running, which
+  keeps the feedback loop fast. See [Test your application](../guides/testing/index.md).
+- **Trying it is cheap, and leaving is bounded.** Trying it costs an afternoon. If
+  you build on it and later move off, the business logic is the part you keep, as
+  plain Python; what you would replace is the wiring around it (persistence and
+  the event and handler plumbing), not the rules themselves.
 
-A few things are deliberately outside this scope. The
-[guarantees reference](guarantees.md#out-of-scope) lists them, including
-delivery of `published` events to separately-deployed bounded contexts (not yet
-a settled guarantee) and nested Units of Work (an inner unit reuses the outer
-transaction rather than nesting).
+Protean also states its promises in writing and tests against them: see the
+[guarantees](guarantees.md) for exactly what it holds per store, and the
+[versioning policy](versioning-policy.md) for what an upgrade can and cannot do
+to your code.
 
-For the exact per-port, per-adapter promises on ordering, delivery, consistency,
-and isolation, read the [guarantees reference](guarantees.md). That is the
-normative contract; this page tells you whether your system is one it applies to.
+---
+
+## Scale and how you run it
+
+Most business systems sit between the two extremes this page rules out. Ordinary
+web, API, and line-of-business backends, and SaaS products, are well within what
+Protean is built to handle; it is the two ends, the lowest-latency work and the
+highest-volume data processing, that fall outside its design.
+
+Protean is built for systems that grow in complexity, and its scaling model
+follows from that.
+
+- **The unit of consistency is one object and the data it owns.** You scale by
+  keeping those small and splitting the data across many of them, not by locking
+  large graphs of objects in one transaction.
+- **Background work scales across many workers.** Processing that runs in the
+  background can be spread across workers to keep up with load.
+- **One kind of background reader runs as a single writer by design.** An
+  event-store subscription is not meant to be cloned across workers; Protean
+  refuses to start more than one of it by default (a best-effort guard). When you
+  need that kind of work to scale out, you use a stream subscription instead,
+  which is built for it. See
+  [Subscriptions & delivery](guarantees.md#subscriptions-delivery).
+- **Background processing needs an always-on worker.** The background engine and
+  its retry and delivery machinery assume a process that keeps running, so that
+  side of Protean does not fit a scale-to-zero or serverless-function model.
+  Handling work synchronously, inside a normal request, has no such requirement.
+
+A few things are deliberately out of scope, and the
+[guarantees reference](guarantees.md#out-of-scope) lists them, including delivery
+of events to separately-deployed parts of the system (not yet a firm promise) and
+nesting one transaction inside another.
+
+For the exact promises on ordering, delivery, consistency, and isolation per
+store, read the [guarantees reference](guarantees.md). That is the precise
+contract; this page tells you whether your system is one it applies to.
 
 ---
 
@@ -99,39 +150,33 @@ normative contract; this page tells you whether your system is one it applies to
 Work through these before you commit:
 
 - **Where is the hard part of your system?** Business rules put you in scope;
-  throughput, latency, or analytics volume put you out of it.
-- **Would you naturally draw this as aggregates, events, and bounded contexts?**
-  If not, the framework's shape will feel imposed rather than helpful.
-- **Do the shipped [adapters](adapters/index.md) cover your infrastructure?** A
-  datastore that is not in the list, with no one to write an adapter, is a real
-  cost.
+  speed or data volume put you out of it.
+- **Would you describe your system as objects with rules, and things that happen
+  to them over time?** If that description does not fit your system, the framework
+  will not either.
+- **Do the shipped [adapters](adapters/index.md) cover your datastore?** A store
+  that is not on the list, with no one to write an adapter for it, is a real cost.
 - **Do the [guarantees](guarantees.md) cover what your system relies on?** If you
-  need something they mark out of scope, plan for it explicitly or pick a
-  different tool.
-- **Is your team comfortable with DDD?** The questions above assume fluency with
-  aggregates, events, and bounded contexts. If those are new, budget for the
-  learning curve; Protean guides you toward the patterns but expects them.
-- **Is the framework mature enough for your commitment?** Protean is pre-1.0. Its
-  public surface changes only under a deprecation-managed
-  [compatibility contract](versioning-policy.md), and some guarantees are still
-  marked interim. Weigh that before a long-lived bet.
+  need something they place out of scope, plan for it or pick another tool.
+- **Is your team ready to learn the modeling approach?** Protean is built around
+  Domain-Driven Design. Those are standard, widely documented patterns, so the
+  skills transfer, but expect a learning curve if they are new to your team.
+- **Is a pre-1.0 framework acceptable for your commitment?** Protean's public
+  surface changes only under a written
+  [compatibility contract](versioning-policy.md), and a few promises are still
+  marked interim. Weigh that against how long-lived your system needs to be.
 
-Two pointers help you stay in scope once you have chosen Protean:
-
-- The [philosophy](../concepts/philosophy/index.md) explains what belongs in the
-  framework and what does not. It applies the same test to Protean that these
-  questions apply to your system.
-- [`protean check`](cli/check.md) and its [fitness functions](fitness-functions.md)
-  flag specific patterns that hurt at scale or couple the domain to its
-  infrastructure. They check habits inside a system Protean already fits; this
-  page is the earlier question of whether it fits at all.
+For the thinking behind these boundaries, see the
+[philosophy](../concepts/philosophy/index.md), which applies the same test to
+Protean itself.
 
 ---
 
 ## Related reading
 
-- [Consistency & delivery guarantees](guarantees.md): the exact per-port, per-adapter contract.
+- [Hello, Protean!](../guides/getting-started/hello.md): build and run a real slice in a few minutes.
+- [Consistency & delivery guarantees](guarantees.md): the exact promises per store.
 - [Versioning policy](versioning-policy.md): what a version number promises, so you can plan upgrades.
-- [Stable surface](stable-surface.md): which names the compatibility contract covers.
-- [Philosophy & design principles](../concepts/philosophy/index.md): the convictions behind the boundaries above.
-- [Choose a path](../guides/pathways/index.md): DDD, CQRS, or Event Sourcing, and how to grow between them.
+- [Stable surface](stable-surface.md): which parts of Protean the compatibility contract covers.
+- [Philosophy & design principles](../concepts/philosophy/index.md): the thinking behind the boundaries above.
+- [Choose a path](../guides/pathways/index.md): the simplest approach to start with, and how to grow from it.

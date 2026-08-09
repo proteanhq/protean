@@ -96,9 +96,10 @@ calls. The aggregate simply refuses to accept changes that violate its rules.
 
 ## 3. Progressive architecture
 
-You don't need to decide your final architecture on day one. Protean supports
-three approaches that build on each other -- start simple, add sophistication
-only where and when you need it.
+Ambitious systems rarely arrive fully formed. You don't need to decide your
+final architecture on day one. Protean supports three approaches that build on
+each other -- start simple, add sophistication only where and when you need it,
+so an early prototype grows into the product instead of being rewritten.
 
 **Start with DDD.** Aggregates, application services, repositories. The
 simplest way to build with Protean -- no commands, no event handlers, no
