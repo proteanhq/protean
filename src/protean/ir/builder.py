@@ -20,7 +20,7 @@ import types as _types
 import typing
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from protean._deprecation import DEPRECATIONS
 from protean.core.aggregate import BaseAggregate
@@ -39,7 +39,7 @@ from protean.ir.analysis import (
     SourceProvider,
 )
 from protean.ir.constants import VOLATILE_IR_KEYS
-from protean.ir.diagnostics import DiagnosticCode, build_diagnostic
+from protean.ir.diagnostics import Diagnostic, DiagnosticCode, build_diagnostic
 from protean.utils import _DEPRECATED_PLUMBING, fqn
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
@@ -206,7 +206,7 @@ class IRBuilder:
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
-        self._diagnostics: list[dict[str, Any]] = []
+        self._diagnostics: list[Diagnostic] = []
         self._source: SourceProvider | None = None
         self._index: ElementIndex | None = None
         self._view: BehavioralView | None = None
@@ -2091,7 +2091,7 @@ class IRBuilder:
         if error:
             raise ConfigurationError(error)
         seen: dict[str, int] = {}
-        kept: list[dict[str, Any]] = []
+        kept: list[Diagnostic] = []
         for d in survivors:
             code = d.get("code", "")
             seen[code] = seen.get(code, 0) + 1
@@ -3513,9 +3513,11 @@ class IRBuilder:
                     continue
                 # Custom findings default to the ``custom`` category so they
                 # carry the same schema shape as built-in diagnostics; the
-                # forward-compat ``rule``/``suggestion`` keys stay optional.
+                # forward-compat ``rule``/``suggestion`` keys stay optional,
+                # unlike the ``Diagnostic`` shape ``build_diagnostic`` always
+                # fills, hence the cast rather than a structural match.
                 item.setdefault("category", "custom")
-                self._diagnostics.append(item)
+                self._diagnostics.append(cast(Diagnostic, item))
 
     @staticmethod
     def _import_callable(dotted_path: str) -> Any:

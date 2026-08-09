@@ -37,13 +37,14 @@ def find_bare_code_literals(source: str, codes: set[str]) -> list[tuple[int, str
     would evade it, but no producer ever builds a code that way.
     """
     tree = ast.parse(source)
-    return [
+    hits = [
         (node.lineno, node.value)
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant)
         and isinstance(node.value, str)
         and node.value in codes
     ]
+    return sorted(hits)
 
 
 def _src_root() -> Path:

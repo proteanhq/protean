@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, TypedDict
+from typing import TypedDict
 
 
 class DiagnosticCode(StrEnum):
@@ -620,7 +620,7 @@ def build_diagnostic(
     rationale: str | None = None,
     fix: str | None = None,
     suggestion: str | None = None,
-) -> dict[str, Any]:
+) -> Diagnostic:
     """Build one ``_diagnostics`` wire record for ``code``.
 
     Resolves ``category``/``level``/``rationale``/``fix`` from the registry;
@@ -632,7 +632,7 @@ def build_diagnostic(
     meta = REGISTRY[code]
     resolved_rationale = rationale if rationale is not None else meta.rationale
     resolved_fix = fix if fix is not None else meta.fix
-    diagnostic: dict[str, Any] = {
+    diagnostic: Diagnostic = {
         "code": code.value,
         "category": meta.category,
         "element": element,
