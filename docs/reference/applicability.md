@@ -1,7 +1,7 @@
 # Applicability charter
 
 This page states plainly what Protean is a good fit for, and the shapes of
-system it is **not** a good fit for, with the reason in each case. Read it
+systems it is **not** a good fit for, with the reason in each case. Read it
 before you invest, so you can decide whether the framework matches the system
 you are building.
 

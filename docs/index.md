@@ -134,7 +134,7 @@ Not sure? Start with DDD -- you can evolve later. See
 
 Wondering whether Protean fits your system at all? The
 [Applicability Charter](./reference/applicability.md) states plainly what it is
-built for, and the shapes of system it is not.
+built for, and the shapes of systems it is not.
 
 ---
 

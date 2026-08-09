@@ -7,7 +7,7 @@ below from top to bottom, or jump to the topic you need.
 
 Before you invest, the
 [Applicability Charter](./reference/applicability.md) states plainly what
-Protean is a good fit for, and the shapes of system it is not, with the reason
+Protean is a good fit for, and the shapes of systems it is not, with the reason
 in each case.
 
 ## Installation
