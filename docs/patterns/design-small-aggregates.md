@@ -1,57 +1,51 @@
 # Design Small Aggregates
 
-## The Problem
+## The problem
 
-The most common structural mistake in Domain-Driven Design is making aggregates
-too large. Developers naturally want to group related concepts together,
-placing `Customer`, `Order`, `OrderItem`, `ShippingAddress`, `PaymentMethod`, and `LoyaltyPoints` into a single massive `Customer` aggregate
-feels intuitive because these concepts are related in the real world.
+The most common structural mistake in Domain-Driven Design is an aggregate that
+is too big. Grouping related things feels right: a customer really does have
+orders, addresses, payment methods, and loyalty points, so they all go into one
+`Customer`.
 
-This instinct produces aggregates that work in demos but fail in production:
+That instinct gives you an aggregate that demos well and fails in production:
 
-- **Contention and locking**: When an aggregate is persisted, the entire object
-  graph is written as a unit. A large aggregate means that any change (updating
-  a shipping address, adding a loyalty point, placing an order) locks the same
-  row or document. Two users acting on unrelated aspects of the same customer
-  will contend for the same lock, serializing operations that should be
-  independent.
+- **Everything contends for one lock.** Saving an aggregate writes the whole
+  object graph as a unit, so changing a shipping address, adding a loyalty
+  point, and placing an order all lock the same row. Two users touching
+  unrelated parts of one customer queue behind each other for no reason.
 
-- **Performance degradation**: Loading a large aggregate means hydrating its
-  entire object graph. To update a customer's email, the system loads all of
-  their orders, addresses, payment methods, and loyalty history. The data
-  transfer, deserialization, and memory overhead scale with the aggregate's
-  total size, not with the operation being performed.
+- **Every read pays for the whole graph.** Changing a customer's email loads
+  their orders, addresses, payment methods, and loyalty history first. What you
+  transfer, deserialize, and hold in memory tracks the size of the aggregate,
+  not the size of the job.
 
-- **Transaction scope creep**: A large aggregate implies a large transaction.
-  The more data in a transaction, the higher the chance of conflict, the longer
-  the lock is held, and the more work is lost on rollback. In event-sourced
-  systems, large aggregates produce long event streams that are slow to replay.
+- **Transactions grow with it.** More data in a transaction means more chance
+  of a conflict, a lock held longer, and more work thrown away on rollback. In
+  an event-sourced system it also means a long stream that is slow to replay.
 
-- **False invariants**: The justification for including data in an aggregate is
-  that it must be consistent with other data in the same aggregate. But many
-  relationships don't require transactional consistency. Does changing a
-  customer's email need to be atomically consistent with their order history?
-  Almost never. Large aggregates enforce consistency guarantees that the business
-  doesn't actually need.
+- **You end up enforcing invariants nobody asked for.** Data earns its place in
+  an aggregate by having to stay consistent with the rest of it. Most
+  relationships do not. Does an email change have to be atomic with the order
+  history? Almost never. A big aggregate guarantees consistency the business
+  never wanted.
 
-- **Rigid boundaries**: Once an aggregate grows large and other code depends on
-  its structure, splitting it becomes a significant refactoring effort. The
-  aggregate's internal structure leaks into commands, events, handlers, and
-  projections. What should have been a simple boundary adjustment becomes a
-  cross-cutting migration.
+- **It sets hard.** Once other code depends on the shape, splitting it is a
+  large piece of work. The internal structure has by then leaked into commands,
+  events, handlers, and projections, so moving one boundary turns into a
+  migration across all of them.
 
-These problems share a root cause: **the aggregate boundary was drawn around
-data relationships rather than consistency requirements**.
+All five come from one thing: the boundary was drawn around **what relates to
+what**, when it should follow **what has to stay consistent**.
 
 ---
 
-## The Pattern
+## The pattern
 
 Design aggregates around **consistency boundaries**, not data relationships.
 
-An aggregate should contain only the data that must change together atomically
-to enforce a business invariant. Everything else should live in its own
-aggregate, referenced by identity.
+Keep in an aggregate only the data that has to change together, in one
+transaction, to hold a business rule. Everything else gets its own aggregate and
+is referenced by identity.
 
 ```
 Wrong mental model:
@@ -62,16 +56,16 @@ Right mental model:
    so they belong in the same aggregate."
 ```
 
-### The Consistency Boundary Test
+### The consistency boundary test
 
-For every piece of data you're considering adding to an aggregate, ask:
+Before you add anything to an aggregate, ask:
 
 > "If this data changes, must it be atomically consistent with the rest of the
 > aggregate in the same transaction?"
 
-If the answer is no, it belongs in a separate aggregate.
+If the answer is no, it belongs somewhere else.
 
-Consider an e-commerce system:
+Take an e-commerce system:
 
 | Concept | Must be consistent with Order in same transaction? | Belongs in Order aggregate? |
 |---------|----------------------------------------------------|-----------------------------|
@@ -83,19 +77,19 @@ Consider an e-commerce system:
 | Payment record | No, payment is processed asynchronously | **No** |
 | Product catalog | No, product details are reference data | **No** |
 
-The Order aggregate shrinks to: order ID, line items, status, total, and perhaps
-a snapshot of the shipping address at order time. Everything else is a separate
-aggregate, referenced by identity.
+Order comes down to an ID, its line items, a status, a total, and perhaps a
+snapshot of the shipping address as it was at the time. Everything else is its
+own aggregate, referenced by identity.
 
 ---
 
-## Reference by Identity
+## Reference by identity
 
-When one aggregate needs to know about another, store the **identity** of the
-referenced aggregate, not the aggregate itself. This is the fundamental
-mechanism for keeping aggregates small while maintaining relationships.
+When one aggregate needs to know about another, store its **identity**, never
+the object. This is what lets you keep aggregates small and still model the
+relationships between them.
 
-### The Anti-Pattern: Embedding Aggregates
+### The anti-pattern: embedding aggregates
 
 ```python
 # Anti-pattern: Customer embedded inside Order
@@ -108,14 +102,14 @@ class Order:
     total: Float(default=0.0)
 ```
 
-This design means:
+Which gives you:
 
-- Loading an Order loads the entire Customer (and all of the Customer's data)
-- Changing the Customer's email requires loading the Order
-- The Order and Customer are in the same transaction boundary
-- You cannot scale Order and Customer persistence independently
+- Loading an Order loads the whole Customer with it
+- Changing the Customer's email means loading the Order
+- Order and Customer share one transaction boundary
+- You cannot scale their storage separately
 
-### The Pattern: Reference by Identity
+### The pattern: reference by identity
 
 ```python
 # Pattern: Order references Customer by identity
@@ -128,18 +122,18 @@ class Order:
     total: Float(default=0.0)
 ```
 
-Now the Order knows *which* customer placed it, but doesn't own or embed the
-Customer. The `Identifier` field stores the customer's identity (a lightweight
-string, integer, or UUID) not the customer object.
+Now the Order knows *which* customer placed it without owning or embedding
+them. The `Identifier` field holds the identity, a string, integer, or UUID,
+and nothing more.
 
-### When You Need Data, Not the Aggregate
+### When you need data, not the aggregate
 
-Sometimes a command handler needs data from another aggregate to make a decision.
-The instinct is to embed that aggregate, but there are better options:
+Sometimes a handler needs data from another aggregate to decide something. The
+instinct is to embed it. You have three better options.
 
 **Option 1: Include the data in the command.**
 
-The caller already has the data and passes it to the command:
+The caller already holds the data, so it goes in the command:
 
 ```python
 @domain.command(part_of=Order)
@@ -151,12 +145,12 @@ class PlaceOrder(BaseCommand):
     items: List(required=True)
 ```
 
-The command handler doesn't need to load the Customer aggregate. The command
-carries everything needed to create the Order.
+The handler never loads the Customer. The command carries everything the Order
+needs.
 
 **Option 2: Store a snapshot as a value object.**
 
-When you need a frozen-in-time copy of another aggregate's data:
+When you want another aggregate's data frozen as it was:
 
 ```python
 @domain.value_object
@@ -175,13 +169,13 @@ class Order:
     total: Float(default=0.0)
 ```
 
-The `CustomerSnapshot` is a value object, immutable, embedded, and representing the customer's
-details at the time the order was placed. It doesn't change when the customer
-updates their profile later.
+`CustomerSnapshot` is a value object: immutable, embedded, and holding the
+customer's details as of the moment the order was placed. Later profile edits
+do not touch it.
 
 **Option 3: Look up in a read model.**
 
-For decisions that need current data from another aggregate, query a
+When the decision needs the other aggregate's *current* data, query a
 projection:
 
 ```python
@@ -206,19 +200,18 @@ class OrderCommandHandler(BaseCommandHandler):
         current_domain.repository_for(Order).add(order)
 ```
 
-This approach reads from a projection without creating a dependency between the
-Order and Customer aggregates.
+You read what you need without tying Order to Customer.
 
 ---
 
-## How Protean Supports This
+## What Protean gives you
 
-Protean provides the building blocks for small, well-bounded aggregates:
+Protean gives you four pieces for this:
 
-### The `Identifier` Field
+### The `Identifier` field
 
-The `Identifier` field is purpose-built for cross-aggregate references. It
-stores the identity of another aggregate without embedding it:
+`Identifier` exists for exactly this. It holds another aggregate's identity
+without embedding it:
 
 ```python
 @domain.aggregate
@@ -234,13 +227,13 @@ class Shipment:
     carrier_id: Identifier(required=True)   # References Carrier aggregate
 ```
 
-Each aggregate stands alone. Relationships are expressed as identities, not
-object references.
+Each aggregate stands alone, and the relationships between them are
+identities.
 
-### Entities for True Composition
+### Entities for real composition
 
-When data genuinely belongs inside an aggregate (because it must be consistent
-in the same transaction) use entities:
+When data really does belong inside the aggregate, because it has to be
+consistent in the same transaction, use entities:
 
 ```python
 @domain.entity(part_of=Order)
@@ -273,15 +266,15 @@ class Order:
             raise ValidationError({"items": ["Order must have at least one item"]})
 ```
 
-`OrderItem` is an entity inside the `Order` aggregate because:
+`OrderItem` sits inside `Order` because:
 
-- Adding or removing items must atomically update the order's total
-- The order has invariants about its items (must have at least one)
-- Items don't exist independently of the order
+- Adding or removing one has to update the order's total in the same breath
+- The order has rules about its items, such as needing at least one
+- An item does not exist without its order
 
-### Value Objects for Embedded Data
+### Value objects for embedded data
 
-When data describes an aspect of the aggregate but doesn't have identity:
+When data describes part of the aggregate but has no identity of its own:
 
 ```python
 @domain.value_object
@@ -308,14 +301,14 @@ class Order:
     shipping_address = ValueObject(ShippingAddress)  # Snapshot at order time
 ```
 
-The `ShippingAddress` is embedded as a value object, a frozen snapshot of where
-to ship. It doesn't reference an `Address` aggregate because the order needs
-the address *at the time of order*, not the customer's current address.
+`ShippingAddress` is embedded as a value object, a frozen record of where this
+order goes. It does not point at an `Address` aggregate, because the order needs
+the address *as it was when the order was placed*, not whatever the customer has
+today.
 
-### Domain Events for Cross-Aggregate Communication
+### Domain events across aggregates
 
-When an operation on one aggregate needs to trigger a change in another, use
-domain events:
+When something in one aggregate has to change another, raise a domain event:
 
 ```python
 @domain.event(part_of=Order)
@@ -353,20 +346,18 @@ class CustomerLoyaltyEventHandler(BaseEventHandler):
         repo.add(loyalty)
 ```
 
-The `Order` aggregate doesn't know about `CustomerLoyalty`. It raises an event.
-A separate event handler reacts to update the loyalty points. The two aggregates
-are independently deployable, independently scalable, and independently
-testable.
+`Order` knows nothing about `CustomerLoyalty`. It raises an event, and a
+separate handler updates the points. You can deploy, scale, and test the two on
+their own.
 
 ---
 
-## The "Two Aggregate Rule"
+## The two-aggregate rule
 
-A useful heuristic: **if a business operation seems to require modifying two
-aggregates, it probably needs an event**.
+A rule of thumb: **if an operation looks like it has to change two aggregates,
+it probably wants an event instead**.
 
-When you find yourself writing a command handler that loads and modifies two
-aggregates:
+When you catch yourself loading and changing two aggregates in one handler:
 
 ```python
 # Anti-pattern: modifying two aggregates in one handler
@@ -385,8 +376,8 @@ def place_order(self, command: PlaceOrder):
         inventory_repo.add(inventory)
 ```
 
-Split it: the command handler modifies only the Order. An event handler reacts
-to `OrderPlaced` and reserves inventory:
+Split it. The command handler changes only the Order, and an event handler
+reacts to `OrderPlaced` by reserving the inventory:
 
 ```python
 # Pattern: one aggregate per handler, events for the rest
@@ -413,14 +404,14 @@ class InventoryEventHandler(BaseEventHandler):
             inventory_repo.add(inventory)
 ```
 
-This is the natural architecture of a well-designed DDD system: small aggregates
-connected by events.
+That is the shape a well-designed DDD system settles into: small aggregates,
+joined by events.
 
 ---
 
-## Applying the Pattern: A Worked Example
+## A worked example
 
-Consider a project management system with these requirements:
+Take a project management system with these requirements:
 
 - A **Project** has a name, description, and status
 - A **Team** is assigned to a project and has members
@@ -429,7 +420,7 @@ Consider a project management system with these requirements:
 - **Time entries** are logged against tasks
 - When a task is completed, the project's progress percentage updates
 
-### The Naive Design (Too Large)
+### The naive design
 
 ```python
 # Anti-pattern: everything in one aggregate
@@ -444,13 +435,13 @@ class Project:
     progress: Float(default=0.0)
 ```
 
-Every time someone logs a time entry, the entire Project (with all its tasks,
-team members, comments, and time entries) is loaded and saved. For a project
-with 500 tasks and 2000 time entries, this is catastrophic for performance.
+Logging a single time entry loads and saves the whole Project, with every task,
+team member, comment, and time entry attached. On a project with 500 tasks and
+2,000 time entries that is unusable.
 
-### The Refactored Design (Small Aggregates)
+### The refactored design
 
-Apply the consistency boundary test to each relationship:
+Put each relationship through the consistency boundary test:
 
 | Concept | Must be atomically consistent with Project? | Decision |
 |---------|----------------------------------------------|----------|
@@ -523,7 +514,7 @@ class TimeEntry:
     description: Text()
 ```
 
-Now each aggregate is small and focused:
+Each aggregate is now small:
 
 - **Project**: Just name, status, progress (updated eventually via events)
 - **Team**: Members for a project (changes independently of project)
@@ -531,7 +522,7 @@ Now each aggregate is small and focused:
   to the task's consistency boundary)
 - **TimeEntry**: Standalone records (no invariant ties them to the task's state)
 
-When a task is completed, an event updates the project's progress:
+Completing a task raises an event, and the project's progress follows:
 
 ```python
 @domain.event_handler(part_of=Project)
@@ -554,51 +545,47 @@ class ProjectEventHandler(BaseEventHandler):
 
 ---
 
-## When Not to Use This Pattern
+## When to do something else
 
-### Data That Genuinely Must Be Consistent
+### Data that really must be consistent
 
-Sometimes data does need to be in the same aggregate. An invoice and its line
-items must always be consistent. The total must match the sum of the lines. A
-bank transfer's debit and credit within the same account must be atomic. Don't
-split these apart.
+Sometimes data does have to share an aggregate. An invoice and its line items
+always have to agree, because the total has to match the sum of the lines. The
+debit and credit of a transfer within one account have to be atomic. Leave those
+alone.
 
-The test remains: "must these change together in the same transaction?" If yes,
-they belong together.
+The test does not change: must these move together, in one transaction? If yes,
+they stay together.
 
 ### Small domains
 
-In a small application with a handful of entities and low concurrency, the
-overhead of splitting into many small aggregates may not be worth it. If you
-have one user at a time and a few hundred records total, a larger aggregate
-that simplifies the code is a reasonable trade-off.
+In a small application with a handful of entities and almost no concurrency,
+splitting into many aggregates may cost more than it returns. With one user at a
+time and a few hundred records, a larger aggregate that keeps the code short is
+a fair trade.
 
-Start simple. Split when you feel the pain of contention, performance, or
-complexity.
+Start there, and split when contention, performance, or complexity starts to
+hurt.
 
-### Event Sourced Aggregates
+### Event-sourced aggregates
 
-Event-sourced aggregates have an additional consideration: the event stream
-length. A long-lived aggregate with many events takes longer to replay. This is
-another argument for small aggregates, but also consider using snapshots
-(Protean supports `_version` tracking) to mitigate replay cost rather than
-splitting an aggregate that genuinely needs to be a single consistency
-boundary.
+Event-sourced aggregates carry one more concern: stream length. A long-lived
+aggregate with thousands of events takes longer to replay, which argues for
+keeping them small. Where an aggregate genuinely needs to be one consistency
+boundary, reach for snapshots (Protean tracks `_version`) before you split it.
 
 ---
 
-## Common Mistakes
+## Common mistakes
 
-### Mistake 1: Splitting Based on UI Screens
+### Mistake 1: splitting on UI screens
 
-"The order details page shows orders, and the customer page shows customer
-info, so they should be separate aggregates." This reasoning happens to produce
-the right result for the wrong reason. Aggregate boundaries come from
-**business invariants**, not UI layout. If tomorrow the UI changes to show
-orders and customers on the same page, the aggregate boundaries shouldn't
-change.
+"The order page shows orders and the customer page shows customer info, so
+they should be separate aggregates." That lands on the right answer for the
+wrong reason. Boundaries come from **business rules**, not screen layout. Put
+orders and customers on one page tomorrow and the boundaries should not move.
 
-### Mistake 2: Using HasOne/HasMany for Cross-Aggregate References
+### Mistake 2: using HasOne/HasMany across aggregates
 
 ```python
 # Mistake: using association fields for separate aggregates
@@ -607,8 +594,8 @@ class Order:
     customer = HasOne(Customer)  # This embeds Customer inside Order
 ```
 
-`HasOne` and `HasMany` are for entities **within** the aggregate. For references
-to other aggregates, use `Identifier`:
+`HasOne` and `HasMany` are for entities **inside** the aggregate. To point at
+another aggregate, use `Identifier`:
 
 ```python
 # Correct: identity reference to another aggregate
@@ -617,12 +604,11 @@ class Order:
     customer_id: Identifier(required=True)  # References Customer
 ```
 
-### Mistake 3: Premature Splitting
+### Mistake 3: splitting too early
 
-Don't split an aggregate just because it has many fields. A `User` aggregate
-with 15 fields (name, email, phone, preferences, settings) is fine if those
-fields must be consistent with each other. The number of fields is not the
-criterion. The consistency requirement is.
+A long field list is not a reason to split. A `User` with 15 fields covering
+name, email, phone, preferences, and settings is fine when those fields have to
+agree with each other. Count of fields is not the test. Consistency is.
 
 ---
 
@@ -639,9 +625,8 @@ criterion. The consistency requirement is.
 | Scalability | Limited | Independent per aggregate |
 | Testability | Requires full graph | Isolated units |
 
-Draw aggregate boundaries around consistency requirements, not data
-relationships. Reference other aggregates by identity. Use domain events for
-cross-aggregate communication.
+Draw the boundary around what has to stay consistent. Point at other aggregates
+by identity, and let domain events carry the work between them.
 
 ---
 
