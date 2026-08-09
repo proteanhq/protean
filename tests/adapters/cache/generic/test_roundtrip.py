@@ -56,8 +56,9 @@ class TestRemoveByProjection:
 
         `remove(projection)` on an absent projection raises `KeyError` on
         the memory cache (`del self._db[key]`) and is silent on Redis
-        (`DEL` on a missing key). #1391 only names `remove_by_key`; this is
-        the same underlying bug reached through `remove` instead.
+        (`DEL` on a missing key). #1391 tables this alongside
+        `remove_by_key` and `set_ttl` as the same class of bug, reached
+        through `remove` instead.
         """
         if request.node.callspec.params["cache"]["provider"] == "memory":
             request.applymarker(

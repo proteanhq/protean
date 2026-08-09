@@ -80,15 +80,24 @@ class TestTTLShapesAreAcceptedIdentically:
     def test_add_accepts_a_valid_ttl(self, cache, good_ttl):
         cache.add(CacheEntry(key="alpha", value="one"), ttl=good_ttl)
 
-        assert cache.get(_key("alpha")) is not None
+        # Read back the resolved seconds, not just "something got cached":
+        # a shape that mis-parses to a different-but-positive number would
+        # still pass a bare `get(...) is not None` check.
+        expected = float(str(good_ttl).strip())
+        ttl = cache.get_ttl(_key("alpha"))
+        assert expected - 5 < ttl <= expected
 
     @pytest.mark.parametrize("good_ttl", ACCEPTED_TTLS)
     def test_set_ttl_accepts_a_valid_ttl(self, cache, good_ttl):
-        cache.add(CacheEntry(key="alpha", value="one"))
+        # A TTL far from every value in ACCEPTED_TTLS, so a `set_ttl` that
+        # silently no-ops (and leaves this one in place) cannot pass.
+        cache.add(CacheEntry(key="alpha", value="one"), ttl=3000)
 
         cache.set_ttl(_key("alpha"), good_ttl)
 
-        assert cache.get_ttl(_key("alpha")) > 0
+        expected = float(str(good_ttl).strip())
+        ttl = cache.get_ttl(_key("alpha"))
+        assert expected - 5 < ttl <= expected
 
 
 class TestFailedAddLeavesNothingCached:
@@ -108,8 +117,8 @@ class TestSetTTLOnAMissingKey:
         `set_ttl` on a missing key raises `KeyError` on the memory cache
         (`TTLDict.set_ttl` indexes `self._values[key]`) and is a silent
         no-op on Redis (`PEXPIRE` on a missing key returns `False`, does not
-        raise). #1391 only names `remove_by_key`; this is the same class of
-        bug reached through `set_ttl` instead.
+        raise). #1391 tables this alongside `remove_by_key` and `remove` as
+        the same class of bug, reached through `set_ttl` instead.
         """
         if request.node.callspec.params["cache"]["provider"] == "memory":
             request.applymarker(

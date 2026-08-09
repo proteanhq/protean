@@ -63,6 +63,47 @@ class TestRemoveByKeyPatternOnNoMatch:
         cache.remove_by_key_pattern("cache_entry:::does-not-exist-*")
 
 
+class TestGetAllPaginationAgrees:
+    def test_last_position_means_the_same_thing_on_every_adapter(self, cache, request):
+        """A 5th cross-adapter divergence, found by running this suite.
+
+        Memory treats `last_position` as a list offset into a freshly
+        sorted-by-insertion key list (`results[last_position:last_position
+        + size]`, `memory.py:172`). Redis passes it straight through as an
+        opaque `SCAN` cursor (`self._client.scan(cursor=last_position, ...)`,
+        `redis.py:117`), where `count` is only a hint and the continuation
+        cursor `get_all` should return for the next call is discarded. A
+        caller that walks pages with `last_position` counting 0, 1, 2, ...
+        (the only option `get_all` leaves it, since it never hands back a
+        cursor to resume from) visits every entry exactly once on memory
+        and an adapter-dependent, incomplete subset on Redis. Not one of
+        #1391/#1392/#1393/#1399 — filed as its own follow-up, #1401.
+        """
+        if request.node.callspec.params["cache"]["provider"] == "redis":
+            request.applymarker(
+                pytest.mark.xfail(
+                    strict=True,
+                    reason=(
+                        "#1401: get_all's last_position means 'skip this "
+                        "many results' on memory but is an opaque Redis "
+                        "SCAN cursor, so walking last_position=0,1,2,... "
+                        "does not visit every entry on Redis."
+                    ),
+                )
+            )
+
+        entries = [CacheEntry(key=f"k{i}", value=str(i)) for i in range(20)]
+        for entry in entries:
+            cache.add(entry)
+
+        seen = set()
+        for last_position in range(30):
+            page = cache.get_all("cache_entry:::*", last_position=last_position, size=1)
+            seen.update(result.key for result in page)
+
+        assert seen == {entry.key for entry in entries}
+
+
 class TestPatternLanguageIsAGlobOnEveryAdapter:
     def test_pattern_is_a_glob_on_every_adapter(self, cache, request):
         """A literal `.` is where glob and regex disagree.

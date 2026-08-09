@@ -21,6 +21,15 @@ REDIS_DB = 6
 
 
 class CacheEntry(BaseProjection):
+    """`Identifier` + `String` only.
+
+    Narrow on purpose, but it means the memory cache's live `to_dict()`
+    dict vs Redis' `json.dumps`/`json.loads` round trip is never exercised
+    for value shapes where the two diverge (e.g. a `Dict` field with
+    integer keys survives on memory but comes back with string keys from
+    Redis' JSON round trip). Deliberately deferred, not covered here.
+    """
+
     key: Identifier(identifier=True)
     value: String(required=True)
 

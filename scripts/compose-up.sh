@@ -11,7 +11,7 @@
 # The services are shared and stateless for test purposes, so if a port is already
 # answering, that service is usable as-is and there is nothing to start.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 # service:host-port, matching the ports docker-compose.yml publishes.
 SERVICES=(
