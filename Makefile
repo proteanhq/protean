@@ -11,7 +11,7 @@ build:
 	docker-compose build
 
 up:
-	docker-compose up -d redis elasticsearch postgres message-db mssql
+	@./scripts/compose-up.sh
 
 down:
 	docker-compose down --remove-orphans
