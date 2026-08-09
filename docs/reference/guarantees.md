@@ -397,3 +397,14 @@ re-run deliberately when a protocol changes, not on every commit.
   guarantee. Treat a UoW as flat.
 - **Email adapters.** The shipped email adapters are fire-and-forget with no
   delivery guarantee, retry, or outbox integration.
+
+---
+
+## Related reading
+
+- [Applicability charter](applicability.md): whether Protean fits your system at
+  all, before you weigh this contract.
+- [Versioning policy](versioning-policy.md): a weakened guarantee here is a
+  breaking change; this is how such changes are handled.
+- [Stable surface](stable-surface.md): what the compatibility contract covers,
+  tier by tier.

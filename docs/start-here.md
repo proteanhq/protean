@@ -3,6 +3,14 @@
 A guided reading order through Protean's documentation. Follow the sections
 below from top to bottom, or jump to the topic you need.
 
+## Is Protean right for you?
+
+Protean is built for ambitious systems, and it is honest about the ones it is
+not for. Before you invest, the
+[Applicability Charter](./reference/applicability.md) states plainly what
+Protean is a good fit for, and the shapes of systems it is not, with the reason
+in each case.
+
 ## Installation
 
 Get Protean up and running. The
@@ -65,7 +73,7 @@ For a broader overview of what makes Protean different, see
 
 ## Building with Protean
 
-Everything you need to know to build ambitious applications with Protean is in
+Everything you need to know to build ambitious systems with Protean is in
 the [Guides](./guides/index.md) section.
 
 Protean supports three architectural approaches — **DDD**, **CQRS**, and

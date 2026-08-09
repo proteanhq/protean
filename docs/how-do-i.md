@@ -7,6 +7,7 @@ need by what you're trying to accomplish.
 
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
+| Decide whether Protean is a good fit for my system | [Applicability Charter](./reference/applicability.md) |
 | See Protean working in under 20 lines           | [Hello, Protean!](./guides/getting-started/hello.md) |
 | Build a full domain in 5 minutes                | [Quickstart](./guides/getting-started/quickstart.md) |
 | Follow a guided tutorial from scratch           | [Tutorial](./guides/getting-started/tutorial/index.md) |
