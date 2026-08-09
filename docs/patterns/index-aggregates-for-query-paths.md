@@ -16,8 +16,8 @@ in the domain code. The team discovers the missing index by watching the
 database burn.
 
 The framework already knows which queries it issues. The outbox poll, the
-process-manager correlation lookup, the uniqueness check on an identifier —
-these are structural, not incidental. The query shape is knowable when the
+process-manager correlation lookup, the uniqueness check on an identifier.
+These are structural, not incidental. The query shape is knowable when the
 aggregate is designed, not just when it is profiled.
 
 ## The Pattern
@@ -31,11 +31,11 @@ Three forces shape what to declare:
 
 ### 1. Index the query path, not every field
 
-Add an index for each non-primary-key access path the aggregate actually has:
-a uniqueness constraint on a natural identifier, a composite index whose column
+Add an index for each non-primary-key access path the aggregate actually has: a
+uniqueness constraint on a natural identifier, a composite index whose column
 order matches a filter-plus-sort, a single-column index for a correlation
-lookup. Do not index fields nothing queries — every index costs write
-throughput and storage.
+lookup. Do not index fields nothing queries. Every index costs write throughput
+and storage.
 
 ### 2. Match composite order to filter-then-sort
 
@@ -46,8 +46,8 @@ design, not a detail.
 
 ### 3. Keep the working set small with partial indexes
 
-When the rows you query are a small slice of the table — the *active* rows
-against a large archive of *completed* ones — a partial index covers only that
+When the rows you query are a small slice of the table (the *active* rows
+against a large archive of *completed* ones) a partial index covers only that
 slice. The index stays proportional to the working set, not the table, which is
 often a 100×+ difference.
 
@@ -78,9 +78,10 @@ SQL Server. Storage-specific indexes (GIN, BRIN, expression indexes) drop to
 `Index.from_sql(dialect, ddl)`, keeping the aggregate clean while still
 expressing the tuning.
 
-This is exactly how Protean's own `Outbox` is indexed — the example above ships
-with the framework. See the [Indexes reference](../reference/domain-elements/indexes.md)
-for the full option set and [ADR-0014](../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md)
+This is exactly how Protean's own `Outbox` is indexed, the example above ships
+with the framework. See the [Indexes
+reference](../reference/domain-elements/indexes.md) for the full option set and
+[ADR-0014](../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md)
 for why indexes live on the decorator.
 
 ## Applying the Pattern
@@ -120,7 +121,7 @@ protean schema render --indexes --domain=my_app.domain
 
 Each index slows every write and consumes storage. An index that no query uses
 is pure cost. Index the access paths you have, and add new indexes when new
-query paths appear — not preemptively.
+query paths appear, not preemptively.
 
 ### Leaving indexes to the operator
 
@@ -130,9 +131,9 @@ author knows the query shape; capture it where the aggregate is defined.
 
 ### A composite index in the wrong order
 
-`(priority, status)` does not serve "filter by status, sort by priority" —
-the leading column must match the filter. Column order is not cosmetic; an
-index in the wrong order is an index the query cannot use.
+`(priority, status)` does not serve "filter by status, sort by priority". The
+leading column must match the filter. Column order is not cosmetic; an index in
+the wrong order is an index the query cannot use.
 
 ### Smuggling storage tuning into the domain
 
@@ -149,8 +150,8 @@ backend understands.
   insert for a query that almost never runs. Weigh the read benefit against the
   write tax.
 - **The memory provider** ignores indexes (they are advisory there), so the
-  benefit only materializes on a real SQL backend. This is intentional — it
-  keeps development against memory friction-free — but means index quality is
+  benefit only materializes on a real SQL backend. This is intentional (it
+  keeps development against memory friction-free) but means index quality is
   not exercised until you run against PostgreSQL or SQLite.
 - **Event-sourced aggregates** are reconstructed from their event stream, not
   queried as tables, so table indexes on them do not apply.
@@ -170,6 +171,6 @@ backend understands.
 
 ## Related reading
 
-- [Declaring Indexes](../guides/domain-definition/indexes.md): the how-to guide.
-- [Indexes reference](../reference/domain-elements/indexes.md): every `Index` option and dialect support.
-- [Design Small Aggregates](design-small-aggregates.md): smaller aggregates have simpler, cheaper indexes.
+- [Declaring Indexes](../guides/domain-definition/indexes.md): The how-to guide.
+- [Indexes reference](../reference/domain-elements/indexes.md): Every `Index` option and dialect support.
+- [Design Small Aggregates](design-small-aggregates.md): Smaller aggregates have simpler, cheaper indexes.

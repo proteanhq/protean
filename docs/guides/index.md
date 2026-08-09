@@ -11,9 +11,9 @@ serve as a reference you'll return to as your application grows.
 
 ## Choose Your Path
 
-Protean supports three architectural approaches — **DDD**, **CQRS**, and
-**Event Sourcing** — each building on the one before it. Not sure which
-to use? Start with DDD and evolve later.
+Protean supports three architectural approaches (**DDD**, **CQRS**, and **Event
+Sourcing**) each building on the one before it. Not sure which to use? Start
+with DDD and evolve later.
 
 [:material-arrow-right-box: Compare pathways and choose](./pathways/index.md){ .md-button }
 

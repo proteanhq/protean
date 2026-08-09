@@ -1,6 +1,6 @@
 # BaseEntity
 
-Base class for entities -- domain objects with unique identity that live within
+Base class for entities, domain objects with unique identity that live within
 an aggregate. Entities are always accessed through their parent aggregate and
 cannot exist independently.
 

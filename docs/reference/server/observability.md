@@ -4,9 +4,9 @@ Protean provides built-in observability for the async message processing
 pipeline. Two components work together to give you real-time visibility into
 how messages flow through the engine:
 
-- **TraceEmitter** -- Lightweight instrumentation embedded in the engine that
+- **TraceEmitter**: Lightweight instrumentation embedded in the engine that
   emits structured trace events as messages are processed.
-- **Protean Observatory** -- A standalone monitoring server that subscribes to
+- **Protean Observatory**: A standalone monitoring server that subscribes to
   those trace events and exposes them through a dashboard, SSE stream, REST
   API, and Prometheus metrics endpoint.
 
@@ -35,12 +35,12 @@ graph LR
 
 The TraceEmitter writes to two Redis channels:
 
-- **Pub/Sub** (`protean:trace`) -- Real-time fan-out for live SSE clients. The
+- **Pub/Sub** (`protean:trace`). Real-time fan-out for live SSE clients. The
   emitter checks `PUBSUB NUMSUB` and skips publishing when nobody is listening.
-- **Stream** (`protean:traces`) -- Time-bounded history for the dashboard and
-  REST API. Always writes when persistence is enabled (the default). Old entries
-  are automatically trimmed using Redis `MINID` based on the configured
-  retention period.
+- **Stream** (`protean:traces`), Time-bounded history for the dashboard and REST API.
+  Always writes when persistence is enabled (the default). Old entries are
+  automatically trimmed using Redis `MINID` based on the configured retention
+  period.
 
 ## Trace events
 
@@ -110,15 +110,15 @@ every write, so no separate cleanup process is needed.
 The TraceEmitter is designed to add no measurable overhead when nobody is
 listening and persistence is disabled:
 
-1. **Lazy initialization** -- The Redis connection is not established until the
+1. **Lazy initialization**: The Redis connection is not established until the
    first emit call.
-2. **Subscriber check** -- Before serializing any trace, the emitter runs
+2. **Subscriber check**: Before serializing any trace, the emitter runs
    `PUBSUB NUMSUB` to check if anyone is subscribed to the trace channel. This
    result is cached for 2 seconds.
-3. **Short-circuit** -- If no Pub/Sub subscribers are found *and* persistence is
+3. **Short-circuit**: If no Pub/Sub subscribers are found *and* persistence is
    disabled (`trace_retention_days = 0`), `emit()` returns immediately without
    constructing or serializing the `MessageTrace`.
-4. **Silent failure** -- If Redis is unavailable or publishing fails, the error
+4. **Silent failure**: If Redis is unavailable or publishing fails, the error
    is logged at DEBUG level and swallowed. Tracing never affects message
    processing.
 
@@ -158,18 +158,18 @@ app = create_observatory_app(domains=[identity, catalogue])
 
 ### Endpoints
 
-#### Dashboard -- `GET /`
+#### Dashboard: `GET /`
 
 An embedded HTML dashboard that connects to the SSE stream and displays
 real-time message flow. Open `http://localhost:9000` in your browser.
 
 The dashboard includes a **DLQ tab** alongside Messages, Events, and Errors.
 The DLQ tab provides a filterable list of failed messages with buttons to
-inspect, replay, or purge entries — the same operations available through the
-[`protean dlq`](../cli/data/dlq.md) CLI commands and the `/api/dlq/*` REST
-endpoints documented below.
+inspect, replay, or purge entries, the same operations available through the
+[`protean dlq`](../cli/data/dlq.md) CLI commands and the `/api/dlq/*` REST endpoints documented
+below.
 
-#### SSE stream -- `GET /stream`
+#### SSE stream: `GET /stream`
 
 Server-Sent Events endpoint for real-time trace streaming. Supports
 server-side filtering via query parameters:
@@ -195,7 +195,7 @@ curl -N "http://localhost:9000/stream?domain=identity&stream=identity::customer"
 Each SSE message has `event: trace` and a JSON `data` payload matching the
 `MessageTrace` structure.
 
-#### Health -- `GET /api/health`
+#### Health: `GET /api/health`
 
 Infrastructure health check returning broker connectivity, version, memory
 usage, and throughput:
@@ -217,7 +217,7 @@ usage, and throughput:
 }
 ```
 
-#### Outbox -- `GET /api/outbox`
+#### Outbox: `GET /api/outbox`
 
 Outbox message counts per domain, broken down by status:
 
@@ -230,7 +230,7 @@ Outbox message counts per domain, broken down by status:
 }
 ```
 
-#### Streams -- `GET /api/streams`
+#### Streams: `GET /api/streams`
 
 Redis stream lengths, message counts, and consumer group information:
 
@@ -242,11 +242,11 @@ Redis stream lengths, message counts, and consumer group information:
 }
 ```
 
-#### Stats -- `GET /api/stats`
+#### Stats: `GET /api/stats`
 
 Combined outbox and stream statistics for dashboard consumption.
 
-#### Trace history -- `GET /api/traces`
+#### Trace history: `GET /api/traces`
 
 Query persisted trace history from the Redis Stream. Returns traces in
 reverse chronological order (newest first).
@@ -294,7 +294,7 @@ making it useful for debugging individual message flows.
 }
 ```
 
-#### Trace statistics -- `GET /api/traces/stats`
+#### Trace statistics: `GET /api/traces/stats`
 
 Aggregated statistics over a time window, including event type breakdown,
 error rate, and average handler latency.
@@ -332,11 +332,11 @@ The `error_rate` is the percentage of trace events that are error types
 (`handler.failed` or `message.dlq`). The `avg_latency_ms` is calculated from
 `handler.completed` events only.
 
-#### Subscriptions -- `GET /api/subscriptions`
+#### Subscriptions: `GET /api/subscriptions`
 
 Subscription lag status for all domains. Returns per-subscription lag,
 pending count, DLQ depth, and summary aggregation. Works without the engine
-running -- queries infrastructure directly.
+running, queries infrastructure directly.
 
 ```bash
 curl http://localhost:9000/api/subscriptions
@@ -374,7 +374,7 @@ curl http://localhost:9000/api/subscriptions
 }
 ```
 
-#### DLQ Messages -- `GET /api/dlq`
+#### DLQ Messages: `GET /api/dlq`
 
 List dead letter queue messages across all subscriptions. Returns messages
 sorted by failure time (newest first).
@@ -412,7 +412,7 @@ curl "http://localhost:9000/api/dlq?subscription=order&limit=50"
 }
 ```
 
-#### DLQ Inspect -- `GET /api/dlq/{dlq_id}`
+#### DLQ Inspect: `GET /api/dlq/{dlq_id}`
 
 Inspect a single DLQ message with full payload details.
 
@@ -420,7 +420,7 @@ Inspect a single DLQ message with full payload details.
 curl http://localhost:9000/api/dlq/1705312200000-0
 ```
 
-#### DLQ Replay -- `POST /api/dlq/{dlq_id}/replay`
+#### DLQ Replay: `POST /api/dlq/{dlq_id}/replay`
 
 Replay a single DLQ message back to its original stream for reprocessing.
 
@@ -432,7 +432,7 @@ curl -X POST http://localhost:9000/api/dlq/1705312200000-0/replay
 {"status": "ok", "replayed": true, "dlq_id": "1705312200000-0"}
 ```
 
-#### DLQ Replay All -- `POST /api/dlq/replay-all`
+#### DLQ Replay All: `POST /api/dlq/replay-all`
 
 Replay all DLQ messages for a subscription. The `subscription` query parameter
 is required.
@@ -445,7 +445,7 @@ curl -X POST "http://localhost:9000/api/dlq/replay-all?subscription=order"
 {"status": "ok", "replayed_count": 5, "subscription": "order"}
 ```
 
-#### DLQ Purge -- `DELETE /api/dlq`
+#### DLQ Purge: `DELETE /api/dlq`
 
 Purge all DLQ messages for a subscription. The `subscription` query parameter
 is required.
@@ -458,12 +458,12 @@ curl -X DELETE "http://localhost:9000/api/dlq?subscription=order"
 {"status": "ok", "purged_count": 5, "subscription": "order"}
 ```
 
-#### Queue Depth -- `GET /api/queue-depth`
+#### Queue Depth: `GET /api/queue-depth`
 
 Queue depth snapshot for backpressure visualization. Returns outbox pending
 counts per domain, per-stream XLEN, and per-consumer-group XPENDING.
 
-#### Delete traces -- `DELETE /api/traces`
+#### Delete traces: `DELETE /api/traces`
 
 Clear all persisted trace history from the Redis Stream.
 
@@ -475,7 +475,7 @@ curl -X DELETE http://localhost:9000/api/traces
 {"status": "ok", "deleted": true}
 ```
 
-#### Prometheus metrics -- `GET /metrics`
+#### Prometheus metrics: `GET /metrics`
 
 Metrics in Prometheus text exposition format, suitable for scraping by
 Prometheus, Grafana Agent, or any compatible collector:
@@ -554,7 +554,7 @@ observatory = Observatory(
 The observability system requires **Redis** as the message broker. The
 TraceEmitter uses Redis Pub/Sub (channel `protean:trace`) as the transport
 between the engine and the Observatory. When using the `InlineBroker` (the
-default for development), the TraceEmitter gracefully no-ops -- no errors, no
+default for development), the TraceEmitter gracefully no-ops, no errors, no
 overhead.
 
 The Observatory server requires the `fastapi` and `uvicorn` packages:
@@ -577,12 +577,12 @@ propagation details.
 
 ## Next steps
 
-- [OpenTelemetry Integration](../../guides/server/opentelemetry.md) -- Distributed
+- [OpenTelemetry Integration](../../guides/server/opentelemetry.md): Distributed
   tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry
-- [Message Tracing](../../guides/domain-behavior/message-tracing.md) -- Correlation
+- [Message Tracing](../../guides/domain-behavior/message-tracing.md): Correlation
   and causation IDs for end-to-end traceability across commands and events
-- [Engine Architecture](../../concepts/async-processing/engine.md) -- How the engine manages subscriptions
+- [Engine Architecture](../../concepts/async-processing/engine.md): How the engine manages subscriptions
   and lifecycle
-- [Running the Server](../../guides/server/index.md) -- CLI options, deployment, and monitoring
-- [Subscription Types](subscription-types.md) -- StreamSubscription vs
+- [Running the Server](../../guides/server/index.md): CLI options, deployment, and monitoring
+- [Subscription Types](subscription-types.md): StreamSubscription vs
   EventStoreSubscription

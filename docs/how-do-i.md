@@ -189,7 +189,7 @@ need by what you're trying to accomplish.
 | Override DLQ retention per handler              | [Harden the Server](./guides/server/hardening.md#keep-the-dlq-under-control) |
 | Pick a subscription profile for a handler       | [Harden the Server](./guides/server/hardening.md#pick-a-subscription-profile) |
 | Emit per-subscription OpenTelemetry metrics     | [Harden the Server](./guides/server/hardening.md#emit-opentelemetry-metrics) |
-| Reload the server on file changes (dev)         | [Run the Server — Hot Reload](./guides/server/index.md#hot-reload-in-development) |
+| Reload the server on file changes (dev)         | [Run the Server, Hot Reload](./guides/server/index.md#hot-reload-in-development) |
 | Shut the server down gracefully                 | [Harden the Server](./guides/server/hardening.md#shut-down-gracefully) |
 | Look up a specific hardening option or metric   | [Server Hardening Reference](./reference/server/hardening.md) |
 | Learn about subscription types                  | [Subscription Types](./reference/server/subscription-types.md) |
@@ -257,8 +257,8 @@ need by what you're trying to accomplish.
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
 | Evolve an event safely from v1 to vN            | [Evolving Events Over Time](./guides/evolving-events.md) |
-| Rename an event field without breaking readers  | [Evolving Events — Rename a field](./guides/evolving-events.md#rename-a-field-with-renamed_from) |
-| Deprecate and supersede an old event            | [Evolving Events — Deprecate](./guides/evolving-events.md#deprecate-and-supersede-an-old-event) |
+| Rename an event field without breaking readers  | [Evolving Events, Rename a field](./guides/evolving-events.md#rename-a-field-with-renamed_from) |
+| Deprecate and supersede an old event            | [Evolving Events, Deprecate](./guides/evolving-events.md#deprecate-and-supersede-an-old-event) |
 | Transform old event schemas during replay       | [Event Upcasting](./guides/consume-state/event-upcasting.md) |
 | Check schema compatibility before shipping      | [Compatibility Checking](./guides/compatibility-checking.md) |
 | Add type checking to my domain code             | [Type Checking](./reference/type-checking/index.md) |

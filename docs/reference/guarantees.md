@@ -19,21 +19,22 @@ Not every dimension applies to every port; each table shows only the relevant
 ones, and may fold two into one column (for example *OCC & consistency*). The
 dimensions:
 
-- **Ordering** — the order in which writes become visible or messages are
+- **Ordering**: The order in which writes become visible or messages are
   delivered. *Per-stream* order is within a single aggregate stream (or queue);
   *global* order is across streams.
-- **Delivery** — how many times a write or message takes effect.
+- **Delivery**: How many times a write or message takes effect.
   - *At-least-once*: delivered one or more times; a consumer may see duplicates
     (on crash/retry) and must tolerate them.
   - *At-most-once (best-effort)*: delivered zero or one time; on failure it may be
     lost and is **not** redelivered.
   - *Exactly-once-effect*: duplicates may still be delivered, but an idempotency
     mechanism ensures the *effect* applies once. Protean never promises
-    exactly-once *delivery* — only exactly-once *effect*, and only where opted in.
-- **Consistency** — when a write is visible to a later read. *Read-your-writes*:
+    exactly-once *delivery*. It offers exactly-once *effect* instead, and only
+    where you opt in.
+- **Consistency**: When a write is visible to a later read. *Read-your-writes*:
   a reader that made a write sees it on a subsequent read. *Eventual*: the write
   becomes visible after some delay.
-- **Isolation / concurrency model** — the database isolation level, or the
+- **Isolation / concurrency model**: The database isolation level, or the
   concurrency-control mechanism, under which the guarantee holds.
 
 A few terms used below: the **outbox** is the table a Unit of Work writes
@@ -54,8 +55,8 @@ raises `ExpectedVersionError` if it has moved. See
 A repository persists an aggregate through a Unit of Work. The aggregate root is
 the concurrency boundary
 ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)): OCC is
-enforced on both write paths — `repository.add` (which routes through the DAO's
-`save()`) and the DAO's `update()` (which now persists through `save()` too) — on
+enforced on both write paths (`repository.add`, which routes through the DAO's
+`save()`, and the DAO's `update()`, which now persists through `save()` too) on
 the root's `_version`.
 
 !!! note "Child changes are guarded through the root, not independently"
@@ -75,13 +76,13 @@ the root's `_version`.
 given provider* shares one session, and a read sees the UoW's own uncommitted
 writes.
 
-- **Memory / SQLite** — all reads see the UoW's own uncommitted writes.
-- **PostgreSQL / MSSQL**: the UoW is a real transaction with `autoflush=True`
+- **Memory / SQLite**: All reads see the UoW's own uncommitted writes.
+- **PostgreSQL / MSSQL**: The UoW is a real transaction with `autoflush=True`
   ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), so all reads
   (`filter` / `count` / `exists` / `get`) inside the UoW see the UoW's own pending
   writes, and in-UoW uniqueness validation sees them too. On a rollback none of it
   persists.
-- **Elasticsearch** — has no session isolation: every write lands immediately
+- **Elasticsearch**: Has no session isolation: every write lands immediately
   (`refresh=True`) and is **not** rolled back, so read-your-writes (both `get` and
   criteria) is trivially satisfied, but a rolled-back UoW's writes persist and are
   visible to others.
@@ -114,7 +115,7 @@ deep-copied snapshot, but commit is no longer a wholesale replacement: it is a
 compare-and-set. Under the per-provider lock, `MemorySession.commit` re-checks
 each aggregate's `_version` against the *live* store and then merges only the
 records this session changed, key by key. So two overlapping sessions that both
-passed the snapshot check no longer both win — the second commit finds the
+passed the snapshot check no longer both win. The second commit finds the
 version already moved and raises `ExpectedVersionError`, and sessions writing
 *different* records never clobber each other. This holds on the same
 version-guarded write paths as every adapter (`repository.add` and the DAO's
@@ -126,7 +127,7 @@ database, so aggregate-level concurrency tests can run against it.
 
 **Ordering.** A query without an explicit `order_by` has **no guaranteed order**.
 Some adapters are incidentally stable (SQLAlchemy appends `ORDER BY <pk> ASC`,
-Memory preserves insertion order); do not rely on it — pass `order_by`.
+Memory preserves insertion order); do not rely on it. Pass `order_by`.
 
 **Isolation (the OCC floor).** On PostgreSQL / MSSQL the lost-update fix
 ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)) relies on
@@ -157,15 +158,15 @@ stream pages by its per-stream `position`; a category or `$all` read pages by
 
 | Adapter | Per-stream order | Global / `$all` order | Append & OCC | Consistency |
 |---|---|---|---|---|
-| **Memory** | Gapless per-stream `position`, ascending | `global_position` ascending; no gaps (single process, no rollback) | Version check + append atomic under a class lock (conflict raises) **for single-threaded use**. When the append is deferred into an enclosing Unit of Work it publishes after that class lock is released, so overlapping UoWs on the same stream are not serialized — do not rely on the Memory event store under concurrent writers | Read-your-writes (in process); single-writer test/dev store |
-| **MessageDB** | Gapless per-stream `position`, ascending | `global_position` ascending, strictly increasing. **Globally** it may contain gaps — a rolled-back append permanently consumes a value. **Within a single category it is gap-free**: MessageDB serializes same-category writes with a per-category advisory lock held to commit. | `write_message(… expected_version)` stored proc; conflict raises | Read-your-writes (committed before `append` returns) |
+| **Memory** | Gapless per-stream `position`, ascending | `global_position` ascending; no gaps (single process, no rollback) | Version check + append atomic under a class lock (conflict raises) **for single-threaded use**. When the append is deferred into an enclosing Unit of Work it publishes after that class lock is released, so overlapping UoWs on the same stream are not serialized. Do not rely on the Memory event store under concurrent writers | Read-your-writes (in process); single-writer test/dev store |
+| **MessageDB** | Gapless per-stream `position`, ascending | `global_position` ascending, strictly increasing. **Globally** it may contain gaps, because a rolled-back append permanently consumes a value. **Within a single category it is gap-free**: MessageDB serializes same-category writes with a per-category advisory lock held to commit. | `write_message(… expected_version)` stored proc; conflict raises | Read-your-writes (committed before `append` returns) |
 
 **Append is per message.** A Unit of Work that raises N events performs N
 individual OCC-guarded appends; they are not a single atomic batch. The event-store
 append is the durable anchor of the commit sequence, and the relational/outbox
 commit follows it non-atomically.
 
-!!! note "Interim — not yet a stable contract"
+!!! note "Interim, not yet a stable contract"
     The cross-store atomicity story
     ([ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md)) is marked
     *Proposed*: the window between the event-store append and the relational/outbox
@@ -188,7 +189,7 @@ The two differ on every dimension:
 | **Ordering** | Breadth-first chain order (ADR-0016) | Per-category contiguous `global_position`; `$all` in `global_position` order |
 | **Consistency** | Read-your-writes for the projection | Eventual |
 | **Retry / recovery** | None | Retried up to `max_retries` on a recovery pass |
-| **Terminal state** | Propagates to the caller | `Exhausted` — position dropped, no DLQ |
+| **Terminal state** | Propagates to the caller | `Exhausted`: position dropped, no DLQ |
 
 The defaults quoted below (`position_update_interval` 10, `max_retries` 3,
 `recovery_interval_seconds` 30, `gap_timeout_seconds` 5) are the base profile;
@@ -209,10 +210,11 @@ batches (every `position_update_interval` messages, 10 by default), so a crash
 re-delivers up to that many messages. Handlers must tolerate duplicates.
 
 **Failure handling and terminal state.** A failed message is retried up to
-`max_retries` (default 3) on a `recovery_interval_seconds` cadence (default 30).
-On exhaustion the position is marked **`Exhausted`** and dropped from tracking (a
-`handler.failed` event is emitted) — there is **no dead-letter queue for
-event-store subscriptions**; a DLQ applies only to broker/stream subscriptions.
+`max_retries` (default 3) on a `recovery_interval_seconds` cadence (default
+30). On exhaustion the position is marked **`Exhausted`** and dropped from
+tracking (a `handler.failed` event is emitted). There is **no dead-letter queue
+for event-store subscriptions**; a DLQ applies only to broker/stream
+subscriptions.
 
 !!! note "Recovery of a failed message is crash-safe"
     With recovery enabled (the default), the failure is recorded to the recovery
@@ -225,7 +227,7 @@ event-store subscriptions**; a DLQ applies only to broker/stream subscriptions.
       the message is re-read and retried on the next poll.
     - If the record is written and the process then crashes, the durable cursor is
       either still behind the position (the message is re-read) or already past it
-      (the durable record is picked up by the recovery pass) — never dropped.
+      (the durable record is picked up by the recovery pass), never dropped.
 
     With `enable_recovery=False` a failed message is intentionally dropped (no
     tracking, no retry). This is separate from the batched-checkpoint at-least-once
@@ -240,7 +242,7 @@ event-store subscriptions**; a DLQ applies only to broker/stream subscriptions.
   records `(message_id, handler)` in the same transaction as the read-model write,
   so a redelivered message is a no-op
   ([ADR-0017](../adr/0017-consume-side-idempotency-for-projectors.md)). On the
-  in-memory provider it degrades to dedup by last-processed message id — it
+  in-memory provider it degrades to dedup by last-processed message id. It
   protects against **serial** redelivery only, not concurrent delivery. Markers
   are pruned after a retention window (default 7 days); a redelivery after the
   window re-applies.
@@ -257,10 +259,10 @@ subscription → projector) and is **eventually** consistent. (The outbox is not
 involved in internal projector delivery; it publishes to external brokers.)
 
 **Ordering.** A per-category subscription delivers in `global_position`-ascending,
-contiguous order, which preserves each stream's order (a category is gap-free per
-the per-category advisory lock above). A `$all` subscription delivers in
-`global_position`-ascending order — this is **assignment order, not cross-category
-commit or causal order**; only per-category order is preserved.
+contiguous order, which preserves each stream's order (a category is gap-free
+per the per-category advisory lock above). A `$all` subscription delivers in
+`global_position`-ascending order. This is **assignment order, not
+cross-category commit or causal order**; only per-category order is preserved.
 
 **No silent skip for `$all`.** Because a lower `global_position` can commit *after*
 a higher one across categories, a naive "advance past the highest seen" cursor
@@ -268,7 +270,7 @@ could permanently skip a late-committing position. A `$all` subscription instead
 processes only the contiguous run from its cursor, **holds at the first gap**, and
 advances the cursor past a hole only *after* the batch is processed
 ([ADR-0025](../adr/0025-all-subscription-gap-safety.md)). A gap that does not fill
-within `gap_timeout_seconds` (default 5) is assumed rolled back and abandoned —
+within `gap_timeout_seconds` (default 5) is assumed rolled back and abandoned,
 **logged, not silent**. The guarantee is therefore: **no committed `$all` event is
 silently skipped; a genuinely slow commit (> `gap_timeout_seconds`) is logged and
 dropped.** Single-category subscriptions are gap-free by construction and run none
@@ -276,7 +278,7 @@ of this machinery.
 
 **Single writer.** Event-store subscriptions have no cluster-wide ownership;
 Protean refuses to start more than one worker when an event-store subscription is
-registered — **unless the operator sets `acknowledge_event_store_risk`** (an
+registered, **unless the operator sets `acknowledge_event_store_risk`** (an
 explicit opt-out). The guard is best-effort: if the domain cannot be classified at
 startup it defers to the workers rather than refusing. Horizontal scaling of a
 handler is done with a stream subscription (Redis consumer groups), below.
@@ -292,9 +294,9 @@ broker. This decouples the domain commit from broker availability.
 | Dimension | Guarantee |
 |---|---|
 | **Delivery** | At-least-once to the broker: a crash after `broker.publish` but before the row is marked published re-delivers. |
-| **Terminal state** | After `max_retries` (default 3) with exponential backoff, a message is marked **`abandoned`** (`OutboxStatus.ABANDONED`) — permanently *not* delivered, retained for observability, cleaned up after a retention period. |
+| **Terminal state** | After `max_retries` (default 3) with exponential backoff, a message is marked **`abandoned`** (`OutboxStatus.ABANDONED`): permanently *not* delivered, retained for observability, cleaned up after a retention period. |
 | **Dedup** | Write-side idempotency on `(message_id, target_broker)`; a published event is written once per configured external broker. |
-| **Ordering** | Claimed **by priority**, not per-stream/commit order — a higher-priority later message can overtake a lower-priority earlier one, and same-priority order is database-dependent. Do not assume end-to-end FIFO through the outbox. |
+| **Ordering** | Claimed **by priority**, not per-stream/commit order, so a higher-priority later message can overtake a lower-priority earlier one, and same-priority order is database-dependent. Do not assume end-to-end FIFO through the outbox. |
 | **Crash recovery** | A startup sweep rebuilds missing *internal* outbox rows from the event store (ADR-0015); external-broker rows are not reconciled. |
 
 ---
@@ -308,16 +310,16 @@ DB commit.
 
 | Adapter | Tier | Ordering | Delivery | Durability |
 |---|---|---|---|---|
-| **Inline** | `reliable_messaging` | Per-stream FIFO *in practice — not advertised, not a contract* | At-least-once — ack/nack with backoff requeue on nack; stale in-flight messages time out to the DLQ; DLQ on exhausted retries | In-process only (non-durable) |
-| **Redis PubSub** | `simple_queuing` | Per-stream FIFO *in practice — not advertised, not a contract* | **At-most-once (best-effort)**: no ack/nack; the read advances the consumer position across the whole batch *before* any message is processed, so a crash loses **every not-yet-processed message in that batch** (up to `messages_per_tick`). Concurrent consumers in one group can also duplicate-and-skip (non-atomic read/increment). | Redis-backed state; lost messages are not recoverable |
-| **Redis Streams** | `ordered_messaging` | Per-stream FIFO — **guaranteed** (`MESSAGE_ORDERING`, native stream IDs) | At-least-once — `XREADGROUP` pending list, `XACK`, redelivery across restarts | Durable in Redis Streams |
+| **Inline** | `reliable_messaging` | Per-stream FIFO *in practice, though not advertised and not a contract* | At-least-once, with ack/nack and backoff requeue on nack; stale in-flight messages time out to the DLQ; DLQ on exhausted retries | In-process only (non-durable) |
+| **Redis PubSub** | `simple_queuing` | Per-stream FIFO *in practice, though not advertised and not a contract* | **At-most-once (best-effort)**: no ack/nack; the read advances the consumer position across the whole batch *before* any message is processed, so a crash loses **every not-yet-processed message in that batch** (up to `messages_per_tick`). Concurrent consumers in one group can also duplicate-and-skip (non-atomic read/increment). | Redis-backed state; lost messages are not recoverable |
+| **Redis Streams** | `ordered_messaging` | Per-stream FIFO, **guaranteed** (`MESSAGE_ORDERING`, native stream IDs) | At-least-once, via the `XREADGROUP` pending list, `XACK`, and redelivery across restarts | Durable in Redis Streams |
 
 Ordering is a *contract* only where the adapter advertises `MESSAGE_ORDERING`
 (Redis Streams). The Inline and PubSub brokers preserve order in practice but do
 not advertise it, so cross-adapter code must not depend on it.
 
 End-to-end order for `published` domain events is set by the **outbox** (by
-priority — see [Outbox → Ordering](#outbox-transactional-delivery-to-brokers)),
+priority; see [Outbox → Ordering](#outbox-transactional-delivery-to-brokers)),
 not by commit order; a broker's per-stream FIFO only preserves the order the
 outbox published in.
 
@@ -356,7 +358,7 @@ deployment is configured to persist.
 | Fix | Guarantee restored |
 |---|---|
 | **#1087** | *No lost update.* The aggregate OCC check is atomic with the write (`UPDATE … WHERE _version = :expected`), so two concurrent updates can no longer both succeed and silently drop one. Holds at READ COMMITTED on PostgreSQL / MSSQL. |
-| **#1249** ([ADR-0024](../adr/0024-event-store-read-position-contract.md)) | *Correct read position.* Category and `$all` reads page by `global_position`, inclusive and ordered, uniformly across adapters — the substrate the no-skip guarantee is expressed on. |
+| **#1249** ([ADR-0024](../adr/0024-event-store-read-position-contract.md)) | *Correct read position.* Category and `$all` reads page by `global_position`, inclusive and ordered, uniformly across adapters, which is the substrate the no-skip guarantee is expressed on. |
 | **#1088** ([ADR-0025](../adr/0025-all-subscription-gap-safety.md)) | *No silent skip for `$all`.* A late-committing lower `global_position` is no longer stepped over; the cursor holds at the gap until it fills or times out. |
 | **#1258** | *No lost update on the Memory adapter.* `MemorySession.commit` is now a compare-and-set: it re-checks each aggregate's version against the live store under the provider lock and merges only the records it changed, so two concurrent sessions can no longer both succeed and silently drop one. Makes the in-memory adapter a faithful concurrency stand-in (single process, no MVCC). |
 
@@ -385,26 +387,26 @@ re-run deliberately when a protocol changes, not on every commit.
 
 ## Out of scope
 
-- **Cross-bounded-context delivery of `published` events.** Whether a
+- **Cross-bounded-context delivery of `published` events**: Whether a
   `published=True` event carries a delivery guarantee to *external* subscribers is
-  not yet settled — the routing mechanism is being refined
+  not yet settled. The routing mechanism is being refined
   ([ADR-0002](../adr/0002-event-publication-visibility.md), *Proposed*).
-- **Horizontal scaling of a single event-store subscription.** Event-store
+- **Horizontal scaling of a single event-store subscription**: Event-store
   subscriptions are single-writer by construction (see *Single writer*); scaling a
   handler across workers uses a stream subscription and Redis consumer groups.
-- **Nested Units of Work.** Opening a UoW inside a UoW reuses the in-progress one
+- **Nested Units of Work**: Opening a UoW inside a UoW reuses the in-progress one
   rather than nesting with savepoints; there is no independent inner-commit
   guarantee. Treat a UoW as flat.
-- **Email adapters.** The shipped email adapters are fire-and-forget with no
+- **Email adapters**: The shipped email adapters are fire-and-forget with no
   delivery guarantee, retry, or outbox integration.
 
 ---
 
 ## Related reading
 
-- [Applicability charter](applicability.md): whether Protean fits your system at
+- [Applicability charter](applicability.md): Whether Protean fits your system at
   all, before you weigh this contract.
-- [Versioning policy](versioning-policy.md): a weakened guarantee here is a
+- [Versioning policy](versioning-policy.md): A weakened guarantee here is a
   breaking change; this is how such changes are handled.
-- [Stable surface](stable-surface.md): what the compatibility contract covers,
+- [Stable surface](stable-surface.md): What the compatibility contract covers,
   tier by tier.

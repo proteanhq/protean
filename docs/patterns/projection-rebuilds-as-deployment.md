@@ -2,9 +2,9 @@
 
 ## The Problem
 
-In an event-sourced CQRS system, projections *can* be rebuilt from scratch --
-the event store holds the complete history, and replaying those events through
-a projector produces a fresh, correct read model. This is one of the great
+In an event-sourced CQRS system, projections *can* be rebuilt from scratch. The
+event store holds the complete history, and replaying those events through a
+projector produces a fresh, correct read model. This is one of the great
 operational advantages of event sourcing: read models are disposable.
 
 But teams rarely plan for this operationally.
@@ -23,8 +23,8 @@ class OrderSummary:
     status = String(max_length=20)
 ```
 
-The developer's instinct -- trained by years of traditional database
-migrations -- is to reach for `ALTER TABLE`:
+The developer's instinct (trained by years of traditional database migrations)
+is to reach for `ALTER TABLE`:
 
 ```sql
 ALTER TABLE order_summary ADD COLUMN subtotal FLOAT;
@@ -41,26 +41,26 @@ upcasters). A rebuild would produce the correct projection with no manual data
 fixups.
 
 The reason teams reach for `ALTER TABLE` instead of a rebuild is that they have
-not treated rebuilds as a first-class deployment operation. They do not know:
+not treated rebuilds as a deployment operation in its own right. They do not know:
 
-- **How long a rebuild takes.** Without measurement, a rebuild feels risky.
+- **How long a rebuild takes**: Without measurement, a rebuild feels risky.
   Will it take 10 seconds or 10 hours?
 
-- **How to handle the transition period.** While the old projection serves
+- **How to handle the transition period**: While the old projection serves
   traffic, the new one needs to build in the background. Without a plan, the
   team faces a choice between downtime and stale data.
 
-- **Whether upcasters are correct.** If old events have a different schema, the
+- **Whether upcasters are correct**: If old events have a different schema, the
   rebuild exercises the entire upcaster chain. If that chain has never been
   tested end-to-end, the rebuild is the worst time to find out.
 
-- **How to run rebuilds without blocking production.** A naive rebuild that
+- **How to run rebuilds without blocking production**: A naive rebuild that
   replays 500,000 events through the same pipeline as production traffic will
   starve real-time consumers.
 
 The result: projections become as rigid as traditional database tables, schema
 changes accumulate technical debt, and the team loses the ability to freely
-evolve read models -- the very capability that justified event sourcing in the
+evolve read models, the very capability that justified event sourcing in the
 first place.
 
 ---
@@ -78,19 +78,19 @@ The core principles:
    rebuild the projection from events. Reserve `ALTER TABLE` for cases where
    a rebuild is genuinely impractical (billions of events, hours-long replay).
 
-2. **Test rebuilds in staging first.** A rebuild exercises every upcaster in the
+2. **Test rebuilds in staging first**: A rebuild exercises every upcaster in the
    chain, every projector handler, and every event version since the beginning
    of time. Staging catches transformation errors before production.
 
-3. **Use blue-green deployment for zero-downtime rebuilds.** Deploy a new
+3. **Use blue-green deployment for zero-downtime rebuilds**: Deploy a new
    projection class with a different `schema_name`, rebuild it in the
    background, then switch traffic once the rebuild completes.
 
-4. **Monitor rebuild progress.** Use the `RebuildResult` dataclass to track
+4. **Monitor rebuild progress**: Use the `RebuildResult` dataclass to track
    events dispatched, events skipped, and errors. Treat a rebuild with
    skipped events as a warning that needs investigation.
 
-5. **Use priority lanes for background rebuilds.** Route rebuild work through
+5. **Use priority lanes for background rebuilds**: Route rebuild work through
    the backfill lane so production event processing is not affected.
 
 ---
@@ -102,7 +102,7 @@ The core principles:
 The most common scenario: you add, rename, or remove fields on a projection.
 Deploy the updated projector, then rebuild.
 
-**Before** -- original projection:
+**Before**, original projection:
 
 ```python
 @domain.projection
@@ -113,7 +113,7 @@ class OrderSummary:
     status = String(max_length=20)
 ```
 
-**After** -- updated projection with decomposed total:
+**After**: the updated projection, with the total decomposed:
 
 ```python
 @domain.projection
@@ -172,8 +172,8 @@ with domain.domain_context():
 
 !!! note "Rebuild is idempotent"
     `rebuild_projection()` truncates existing data before replaying. Running it
-    twice produces the same result. There is no need to "undo" a failed rebuild
-    -- just fix the issue and rebuild again.
+    twice produces the same result. There is no need to "undo" a failed rebuild. Fix
+    the cause and rebuild again.
 
 ---
 
@@ -423,7 +423,7 @@ with engine.connect() as conn:
 This creates several problems:
 
 - The `UPDATE` statement uses guesswork to backfill `subtotal`. The events in
-  the event store contain the actual values -- a rebuild would produce correct
+  the event store contain the actual values. A rebuild would produce correct
   data.
 - The projection's Python class and its database schema are now out of sync.
   The `OrderSummary` class defines `subtotal` as a field, but the column was
@@ -497,7 +497,7 @@ then switch traffic once the rebuild completes.
 
 If you deploy a projector that populates new fields but do not rebuild, only
 *future* events produce projections with the new fields. Historical records
-still have the old shape. The read model is inconsistent -- some rows have
+still have the old shape. The read model is inconsistent. Some rows have
 `subtotal`, `tax`, and `shipping`; others do not.
 
 **Instead:** Always rebuild after deploying projector changes that affect the
@@ -518,27 +518,26 @@ projection's schema or data mapping.
 | **Background execution** | Custom batching logic | `processing_priority(Priority.LOW)` |
 | **Progress monitoring** | Custom logging | `RebuildResult` stats |
 | **CLI support** | Manual scripts | `protean projection rebuild` |
-| **Idempotency** | Depends on script | Always -- truncate and replay |
+| **Idempotency** | Depends on script | Always, truncate and replay |
 
-The principle: **projections are derived data. They can always be reconstructed
-from events. Treat the rebuild as a deployment operation -- test it, monitor
-it, automate it -- and you free yourself from the constraints of traditional
-schema migration.**
+Projections are derived data. They can always be reconstructed from events.
+Treat the rebuild as a deployment operation (test it, monitor it, automate it)
+and you free yourself from the constraints of traditional schema migration.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Event Versioning and Evolution](event-versioning-and-evolution.md) -- Evolve event schemas that projections consume.
+    - [Event Versioning and Evolution](event-versioning-and-evolution.md): Evolve event schemas that projections consume.
 
     **Concepts:**
 
-    - [Projections](../concepts/building-blocks/projections.md) -- What projections are.
-    - [Projectors](../concepts/building-blocks/projectors.md) -- How projectors maintain projections.
+    - [Projections](../concepts/building-blocks/projections.md): What projections are.
+    - [Projectors](../concepts/building-blocks/projectors.md): How projectors maintain projections.
 
     **Guides:**
 
-    - [Projections](../guides/consume-state/projections.md) -- Defining projections.
-    - [`protean projection rebuild`](../reference/cli/data/projection.md) -- CLI command for projection rebuilds.
-    - [Event Upcasting](../guides/consume-state/event-upcasting.md) -- Transforming old event schemas during replay.
+    - [Projections](../guides/consume-state/projections.md): Defining projections.
+    - [`protean projection rebuild`](../reference/cli/data/projection.md): CLI command for projection rebuilds.
+    - [Event Upcasting](../guides/consume-state/event-upcasting.md): Transforming old event schemas during replay.

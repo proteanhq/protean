@@ -1,8 +1,8 @@
 # Chapter 13: Looking Back in Time
 
-A regulatory inquiry arrives: "What was account ACC-7742's balance on
-March 15th at 4:00 PM?" This is not about the current balance — it is
-about the balance at a specific moment in the past.
+A regulatory inquiry arrives: "What was account ACC-7742's balance on March
+15th at 4:00 PM?" This is not about the current balance. It is about the
+balance at a specific moment in the past.
 
 Event Sourcing makes this possible. Because we have the complete event
 history, we can reconstruct the aggregate at **any historical point**.
@@ -57,10 +57,9 @@ except IncorrectUsageError as e:
     # "Cannot raise events on a temporally-loaded aggregate..."
 ```
 
-When an aggregate is loaded with `at_version` or `as_of`, it is marked
-as **temporal**. Any attempt to call `raise_()` raises
-`IncorrectUsageError`. This is a safety mechanism — you should never
-raise new events on a historical view.
+When an aggregate is loaded with `at_version` or `as_of`, it is marked as
+**temporal**. Any attempt to call `raise_()` raises `IncorrectUsageError`. This
+is a safety mechanism. You should never raise new events on a historical view.
 
 ## Interaction with Snapshots
 
@@ -95,13 +94,13 @@ Add `--data` to see full event payloads:
 $ protean events history --aggregate=Account --id=acc-7742 --data --domain=fidelis
 ```
 
-This is invaluable for debugging — you can see exactly what happened
-to an aggregate and when.
+This is invaluable for debugging. You can see exactly what happened to an
+aggregate and when.
 
 ## What We Built
 
-- **`repo.get(id, at_version=N)`** — reconstruct at a specific version.
-- **`repo.get(id, as_of=datetime)`** — reconstruct at a specific
+- **`repo.get(id, at_version=N)`**: Reconstruct at a specific version.
+- **`repo.get(id, as_of=datetime)`**: Reconstruct at a specific
   timestamp.
 - **Read-only temporal aggregates** that prevent accidental mutations.
 - **Event history CLI** for exploring an aggregate's timeline.

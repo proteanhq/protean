@@ -1,9 +1,9 @@
 # `protean projection`
 
-The `protean projection` command group manages projections -- read-optimized
-views built from domain events. It provides a `rebuild` command that
-reconstructs projections by replaying events from the event store, and a
-`status` command that reports how far behind each projection is.
+The `protean projection` command group manages projections, read-optimized views built from
+domain events. It provides a `rebuild` command that reconstructs projections by
+replaying events from the event store, and a `status` command that reports how far
+behind each projection is.
 
 Projection rebuilding is essential when:
 
@@ -84,10 +84,10 @@ Rebuilt projection 'Balances': 40 events processed through 1 projector(s) across
 Rebuilt 2 projection(s), 60 total events processed.
 ```
 
-Events are "skipped" when they cannot be resolved to a domain object --
-typically deprecated event types that have been removed from the codebase
-without an upcaster chain. Skipped events are logged as warnings but do
-not cause the rebuild to fail.
+Events are "skipped" when they cannot be resolved to a domain object, typically
+deprecated event types that have been removed from the codebase without an
+upcaster chain. Skipped events are logged as warnings but do not cause the
+rebuild to fail.
 
 ## Error handling
 
@@ -111,12 +111,12 @@ protean projection status --domain=my_domain
 
 For each projection the report shows:
 
-- **Staleness**: seconds since the projection last advanced. `0` when caught
+- **Staleness**: Seconds since the projection last advanced. `0` when caught
   up, blank when the projector has never run or its position is unknown.
-- **Lag**: events behind the stream head, taken from the worst (most behind)
+- **Lag**: Events behind the stream head, taken from the worst (most behind)
   of its feeding projectors.
-- **Last updated**: when the projection last advanced.
-- **Rows**: number of records currently in the projection store.
+- **Last updated**: When the projection last advanced.
+- **Rows**: Number of records currently in the projection store.
 - **Status**: `ok` (caught up), `lagging` (behind), or `unknown`.
 
 A projection fed by several projectors reports the worst staleness and lag
@@ -228,9 +228,9 @@ Existing projection data is cleared:
 
 For each projector, events are read from all of its stream categories and
 merged in global position order. This ensures correct cross-aggregate
-ordering -- for example, a `Registered` event from the `user` category is
-always processed before a `Transacted` event from the `transaction` category
-if that is the order in which they were originally stored.
+ordering, for example, a `Registered` event from the `user` category is always processed
+before a `Transacted` event from the `transaction` category if that is the order in which they
+were originally stored.
 
 Each event is dispatched through the projector's `_handle()` method, which:
 
@@ -241,9 +241,9 @@ Each event is dispatched through the projector's `_handle()` method, which:
 - Events with no matching `@on` handler are silently skipped (no error)
 
 If an event type cannot be resolved (deprecated event without an upcaster
-chain), a `ConfigurationError` is caught, a warning is logged, and the
-event is skipped. Other exceptions during handler execution are also caught,
-logged, and skipped -- the rebuild continues with the remaining events.
+chain), a `ConfigurationError` is caught, a warning is logged, and the event is
+skipped. Other exceptions during handler execution are also caught, logged, and
+skipped, the rebuild continues with the remaining events.
 
 The rebuild is **idempotent**: running it again truncates and replays from
 scratch. No checkpointing or partial state is maintained.

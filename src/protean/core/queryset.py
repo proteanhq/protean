@@ -210,9 +210,9 @@ class QuerySet:
 
         Returns a new ``QuerySet`` that, when evaluated, fetches only the
         requested columns (plus the identifier, which is always included) and
-        yields read-only :class:`Record` objects instead of fully materialized
+        yields read-only [`Record`][protean.core.queryset.Record] objects instead of fully materialized
         domain entities. This avoids the I/O of loading large columns (e.g.
-        JSON blobs) on read-optimized paths — counts, cleanups, statistics —
+        JSON blobs) on read-optimized paths (counts, cleanups, statistics)
         that never need the whole record.
 
         A ``Record`` is **not** a domain entity: it has no behavior, runs no
@@ -382,12 +382,12 @@ class QuerySet:
         """Updates all objects with details given if they match a set of conditions supplied.
 
         This method updates each object individually, to fire callback methods and ensure
-        validations are run — so each matched aggregate advances its version and,
+        validations are run, so each matched aggregate advances its version and,
         by default, has its ``auto_now`` timestamps and enrichers applied. Pass
         ``apply_hooks=False`` to skip those hooks for a raw bulk write.
 
         Because each row is updated individually with an optimistic-concurrency
-        check, a mid-batch conflict raises :class:`ExpectedVersionError`. Run
+        check, a mid-batch conflict raises `ExpectedVersionError`. Run
         inside a ``UnitOfWork`` to keep the batch atomic (the raise rolls the whole
         batch back); run standalone and the rows updated before the conflict are
         already committed.
@@ -706,7 +706,7 @@ class ResultSet:
 class Record:
     """A read-only selection of fields from a single result.
 
-    Returned by :meth:`QuerySet.only` instead of a fully materialized domain
+    Returned by [`QuerySet.only`][protean.core.queryset.QuerySet.only] instead of a fully materialized domain
     entity. A ``Record`` is intentionally **inert**: it is not a domain entity, it
     carries no behavior, runs no invariants, and cannot be persisted. It exists
     purely to carry a subset of column values on read-optimized paths (counts,
@@ -716,7 +716,7 @@ class Record:
 
     Access selected values by attribute (``record.status``) or item
     (``record["status"]``). Reading a field that was not selected raises
-    :class:`AttributeError` / :class:`KeyError` rather than returning a silent
+    `AttributeError` / `KeyError` rather than returning a silent
     ``None``, so an unselected field is never mistaken for a null value.
     """
 

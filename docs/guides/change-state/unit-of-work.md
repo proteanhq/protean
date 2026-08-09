@@ -2,8 +2,8 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Every meaningful state change in a Protean application — persisting an
-aggregate, raising domain events, writing to the outbox — must happen
+Every meaningful state change in a Protean application (persisting an
+aggregate, raising domain events, writing to the outbox) must happen
 atomically. Either all of it commits, or none of it does. The Unit of Work
 (UoW) is the mechanism that makes this guarantee.
 
@@ -65,9 +65,9 @@ except Exception:
 ```
 
 !!!note
-    The context manager form (`with UnitOfWork()`) is preferred — it
-    handles commit and rollback automatically and cannot accidentally leave a
-    UoW dangling.
+    The context manager form (`with UnitOfWork()`) is preferred. It handles
+    commit and rollback automatically and cannot accidentally leave a UoW
+    dangling.
 
 ## `current_uow`
 
@@ -122,15 +122,15 @@ scope roll back on its own; a separate (suspend-and-new) transaction lets an inn
 scope commit even if the outer later rolls back. Protean's Unit of Work supports
 neither, for three reasons:
 
-- **It is an infrastructure concern, not a domain one.** A savepoint or a
+- **It is an infrastructure concern, not a domain one**: A savepoint or a
   sub-transaction is a persistence-layer mechanism. The domain-layer Unit of Work
   exists to keep one aggregate consistent for one use case, and the aggregate is
   the consistency boundary. Sub-transactions do not belong at that layer.
-- **Uniformity across adapters.** Not every adapter can offer them: the Memory
+- **Uniformity across adapters**: Not every adapter can offer them: the Memory
   adapter has no savepoints and Elasticsearch has no transactions at all. Exposing
   savepoints would make a Unit of Work behave differently per adapter and break the
   "write once, run on any adapter" promise.
-- **Simplicity, and it keeps your design honest.** There are no savepoint stacks or
+- **Simplicity, and it keeps your design honest**: There are no savepoint stacks or
   partial-rollback rules to reason about: a Unit of Work is one transaction,
   all-or-nothing. And when you find yourself reaching for an inner transaction, it
   is usually a signal to re-examine the aggregate boundary rather than paper over
@@ -139,7 +139,7 @@ neither, for three reasons:
 Note that Protean does not *forbid* nesting. Raising an error would break
 legitimate composition, like an application service called from a command handler.
 It *joins*, so the correct single-transaction behavior is automatic and an
-independent inner commit is simply not expressible. When you genuinely need the
+independent inner commit is not expressible. When you genuinely need the
 effect of an inner transaction, model it explicitly:
 
 - for cross-aggregate coordination, raise a domain event and let a separate
@@ -156,8 +156,8 @@ rationale.
 
 ## What happens during commit
 
-When the UoW commits — either at the end of a `with` block or via an explicit
-`uow.commit()` call — the following steps execute in order:
+When the UoW commits (either at the end of a `with` block or via an explicit `uow.commit()`
+call) the following steps execute in order:
 
 ```mermaid
 sequenceDiagram
@@ -179,29 +179,29 @@ sequenceDiagram
     UoW->>IM: Clear events from tracked aggregates
 ```
 
-1. **Gather events** — The UoW walks its identity map and collects all
+1. **Gather events**: The UoW walks its identity map and collects all
    domain events that aggregates have raised (via `self.raise_()`).
 
-2. **Write outbox messages** — Each event is serialized and written to the
+2. **Write outbox messages**: Each event is serialized and written to the
    outbox table as part of the same database transaction. The outbox ensures
    reliable delivery even if the broker is temporarily unavailable. Events
    inherit the current processing priority (normal or backfill).
 
-3. **Commit database sessions** — The UoW commits every open database session.
+3. **Commit database sessions**: The UoW commits every open database session.
    Each provider's session is committed independently. If a commit fails, a
    `TransactionError` is raised with diagnostic `extra_info` (original
    exception, session names, event/message counts).
 
-4. **Append to event store** — After the database commit succeeds, events are
+4. **Append to event store**: After the database commit succeeds, events are
    appended to the event store for the permanent event log.
 
-5. **Publish to broker** — Any messages registered during the transaction
+5. **Publish to broker**: Any messages registered during the transaction
    (via `uow.register_message()`) are published to their designated broker.
 
-6. **Dispatch sync handlers** — If `event_processing` is set to `"sync"`,
+6. **Dispatch sync handlers**: If `event_processing` is set to `"sync"`,
    the UoW dispatches each event to its registered event handlers immediately.
 
-7. **Clear events** — Events are cleared from the aggregates in the identity
+7. **Clear events**: Events are cleared from the aggregates in the identity
    map so they are not re-processed.
 
 ## Rollback semantics
@@ -237,21 +237,21 @@ except ValidationError:
 
 ## The identity map
 
-The UoW maintains an **identity map** — a dictionary of all aggregates that
-have been persisted via `repository.add()` during the current transaction.
-The identity map serves two purposes:
+The UoW maintains an **identity map**, a dictionary of all aggregates that have
+been persisted via `repository.add()` during the current transaction. The identity map serves
+two purposes:
 
-1. **Event collection** — At commit time, the UoW walks the identity map to
+1. **Event collection**: At commit time, the UoW walks the identity map to
    gather all events raised by tracked aggregates. Without the identity map,
    events raised between `add()` and `commit()` would be lost.
 
-2. **Per-provider tracking** — Aggregates are grouped by their database
+2. **Per-provider tracking**: Aggregates are grouped by their database
    provider, so the UoW can commit each provider's session independently.
 
 ## One transaction, one aggregate
 
 **Never enclose updates to multiple aggregates in a single Unit of Work.**
-Aggregates are consistency boundaries — each transaction should modify at most
+Aggregates are consistency boundaries. Each transaction should modify at most
 one aggregate.
 
 Cross-aggregate state changes are coordinated through domain events and
@@ -298,8 +298,8 @@ roll back another provider's already-committed changes.
 
 The UoW relies on the underlying database provider's transaction support.
 
-- **Full transactions** (e.g., PostgreSQL, SQLite): Changes are atomic —
-  commit succeeds entirely or rolls back entirely.
+- **Full transactions** (e.g., PostgreSQL, SQLite): Changes are atomic, commit
+  succeeds entirely or rolls back entirely.
 - **Simulated transactions** (e.g., Memory adapter in tests): The UoW manages
   the identity map and event collection, but rollback does not undo persisted
   changes. A debug-level log message notes this limitation.
@@ -310,16 +310,16 @@ The UoW relies on the underlying database provider's transaction support.
 
 When the event store detects a version conflict during commit (another
 transaction modified the same aggregate stream), the UoW raises an
-`ExpectedVersionError`. This is Protean's optimistic concurrency mechanism —
-the first writer wins, and subsequent writers must retry with the latest
-version.
+`ExpectedVersionError`. This is Protean's optimistic concurrency mechanism. The
+first writer wins, and subsequent writers must retry with the latest version.
 
 In async handlers (command handlers and event handlers decorated with
 `@handle`), the framework **automatically retries** `ExpectedVersionError`
 with exponential backoff. Each retry creates a fresh `UnitOfWork`, so the
-handler re-reads the aggregate at the latest version. This is transparent —
-most version conflicts resolve without any manual intervention. For details,
-see [Version conflict auto-retry](../server/error-handling.md#version-conflict-auto-retry).
+handler re-reads the aggregate at the latest version. This is transparent, most
+version conflicts resolve without any manual intervention. For details, see
+[Version conflict
+auto-retry](../server/error-handling.md#version-conflict-auto-retry).
 
 For application services or direct `UnitOfWork` usage, you must handle
 `ExpectedVersionError` yourself. See
@@ -352,11 +352,11 @@ except TransactionError as exc:
 !!! tip "See also"
     **Related guides:**
 
-    - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.
-    - [Command Handlers](./command-handlers.md) — Each handler method runs within an implicit Unit of Work.
-    - [Application Services](./application-services.md) — Use `@use_case` for automatic Unit of Work management.
+    - [Persist Aggregates](./persist-aggregates.md): Save and update aggregates through repositories.
+    - [Command Handlers](./command-handlers.md): Each handler method runs within an implicit Unit of Work.
+    - [Application Services](./application-services.md): Use `@use_case` for automatic Unit of Work management.
 
     **Error handling:**
 
-    - [Error Handling](../server/error-handling.md#version-conflict-auto-retry) — Automatic version conflict retry in async handlers.
-    - [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md) — Classify version conflicts by business meaning.
+    - [Error Handling](../server/error-handling.md#version-conflict-auto-retry): Automatic version conflict retry in async handlers.
+    - [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md): Classify version conflicts by business meaning.

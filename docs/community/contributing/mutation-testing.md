@@ -25,11 +25,11 @@ boundary), `sync-dispatch` (breadth-first synchronous event dispatch, ADR-0016),
 and `checkpoint` (the `$all` gap-safe checkpoint path in the event-store
 subscription).
 
-`checkpoint` mutates a large module (`event_store_subscription.py`), so it is the
-slowest target: mutmut mutates the whole file. `MUT_FILTER` does not change that —
-it narrows the printed **survivor list** to the checkpoint methods so they are
-easy to pick out of the report (see "Reading the report" below). What keeps the
-run tractable is the tight test subset the target already uses.
+`checkpoint` mutates a large module (`event_store_subscription.py`), so it is
+the slowest target: mutmut mutates the whole file. `MUT_FILTER` does not change
+that. It narrows the printed **survivor list** to the checkpoint methods so
+they are easy to pick out of the report (see "Reading the report" below). What
+keeps the run tractable is the tight test subset the target already uses.
 
 ```shell
 MUT_FILTER="update_read_position|update_current_position_to_store|_gap_safe_batch|_write_recovery_checkpoint" \
@@ -47,7 +47,7 @@ which:
 3. Prints a mutation score and the list of surviving mutants.
 
 It uses [mutmut](https://github.com/boxed/mutmut) 3.x, which copies the source
-tree into a `./mutants/` directory and runs the tests against the copy — so the
+tree into a `./mutants/` directory and runs the tests against the copy, so the
 real source is never edited in place. The script cleans up `mutants/` (and the
 temporary `setup.cfg` it writes for mutmut's config) when it finishes.
 
@@ -71,25 +71,24 @@ SURVIVORS: 83 (inspect one with: ... -m mutmut show <name>)
 ```
 
 Mutant names are function-scoped (`…ǁClassǁmethod__mutmut_N`), so `MUT_FILTER` (a
-grep pattern on the names) narrows the printed survivor list to one area — handy
-on a large module where you only care about a few methods. It filters the report,
-not the run: mutmut still mutates the whole target module and runs the full
-subset. Inspect any single survivor with `mutmut show <name>` to see the exact
-change.
+grep pattern on the names) narrows the printed survivor list to one area, handy
+on a large module where you only care about a few methods. It filters the
+report, not the run: mutmut still mutates the whole target module and runs the
+full subset. Inspect any single survivor with `mutmut show <name>` to see the exact change.
 
 For each survivor, decide which of three buckets it falls into:
 
-- **A real gap.** A behaviour that a test should pin but does not. Write the
+- **A real gap**: A behaviour that a test should pin but does not. Write the
   test, then re-run to confirm the mutant is now killed. This is the whole point
   of the exercise.
-- **An equivalent mutant.** A change that cannot alter observable behaviour, so
+- **An equivalent mutant**: A change that cannot alter observable behaviour, so
   no test can kill it. The classic case in Protean is a `<` to `<=` flip on a
   `datetime.now()` comparison: the two differ only at the exact boundary
   instant, which a wall-clock test can never hit. These are killable only by
   freezing the clock to that instant (see the boundary tests in
   `tests/outbox/test_outbox_aggregate.py`), and are worth a test only when the
   boundary semantics are meaningful.
-- **Low value.** Pinning a constant default (for example that a page size is
+- **Low value**: Pinning a constant default (for example that a page size is
   exactly 50) is brittle and catches no realistic bug. Skip these deliberately
   rather than writing a test that only restates the literal.
 
@@ -123,18 +122,18 @@ pass driven to completion.
 tests that pin the highest-value behavioural mutants on each (the sync/async
 commit-dispatch guard, the fan-out drain and `None`-context branch, the two
 position-write cadence decisions). Running each target to completion and driving
-down whatever survivors remain — `sync-dispatch` is close; `unit-of-work` and
-`checkpoint` still have uncovered regions (partition-key routing, the
-recovery-checkpoint writer, `_gap_safe_batch`) — is a good next quarterly pass.
+down whatever survivors remain, `sync-dispatch` is close; `unit-of-work` and `checkpoint` still have uncovered
+regions (partition-key routing, the recovery-checkpoint writer, `_gap_safe_batch`), is a good
+next quarterly pass.
 
 Some survivors in these paths are deliberately left alive because no test can
 kill them without restating a literal or freezing the clock to a single instant:
 
 - **Gap-timeout boundary** (`_gap_safe_batch`): `now - first_seen < gap_timeout_seconds`
   compares elapsed time on the monotonic clock (`time.monotonic()`), so a `<` to
-  `<=` flip differs only at the exact timeout instant — an equivalent mutant in
+  `<=` flip differs only at the exact timeout instant, an equivalent mutant in
   practice, the same class as the `datetime.now()` boundaries in the outbox module.
-- **Default cadence constants**: pinning that the default `position_update_interval`
+- **Default cadence constants**: Pinning that the default `position_update_interval`
   or `gap_timeout_seconds` is a specific number catches no realistic bug; the
   behaviour that matters (persist *at* the interval, hold *until* the timeout) is
   tested instead.

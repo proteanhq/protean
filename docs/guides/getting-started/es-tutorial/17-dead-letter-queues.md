@@ -1,12 +1,13 @@
-# Chapter 17: When Things Go Wrong — Dead Letter Queues
+# Chapter 17: Handling Failures with Dead Letter Queues
 
-A production bug in the `ComplianceAlertHandler` causes it to crash
-with a `TypeError` on deposits where `source_type` is `None` — a
-pre-upcasting edge case. The handler exhausts its retry attempts and
-messages pile up in the **dead-letter queue**.
+A production bug in the `ComplianceAlertHandler` causes it to crash with a
+`TypeError` on deposits where `source_type` is `None`, a pre-upcasting edge
+case. The handler exhausts its retry attempts and messages pile up in the
+**dead-letter queue**.
 
-This chapter covers the operational workflow for discovering, diagnosing,
-and recovering from handler failures.
+When a handler keeps failing, the message ends up in a dead letter queue.
+This chapter walks the workflow around that: finding those messages,
+working out what went wrong, and getting them processed.
 
 ## How DLQ Works
 
@@ -63,9 +64,9 @@ The inspection shows everything needed to diagnose the issue:
 
 - The **failure reason** (`TypeError`) tells you what went wrong.
 - The **payload** shows the exact message that caused the failure.
-- The **type** (`Fidelis.DepositMade.v1`) reveals it was a v1 event
-  — the `source_type` field is missing because the upcaster has not
-  run yet at the handler level.
+- The **type** (`Fidelis.DepositMade.v1`) reveals it was a v1 event. The
+  `source_type` field is missing because the upcaster has not run yet at the
+  handler level.
 
 ## Fixing and Replaying
 
@@ -111,11 +112,11 @@ No DLQ messages found.
 
 This pattern will become your standard operating procedure:
 
-1. **Discover** — `protean dlq list` finds failed messages
-2. **Inspect** — `protean dlq inspect` reveals the cause
-3. **Fix** — update handler code and redeploy
-4. **Replay** — `protean dlq replay-all` reprocesses the messages
-5. **Verify** — `protean dlq list` confirms the DLQ is empty
+1. **Discover**: `protean dlq list` finds failed messages
+2. **Inspect**: `protean dlq inspect` reveals the cause
+3. **Fix**: Update handler code and redeploy
+4. **Replay**: `protean dlq replay-all` reprocesses the messages
+5. **Verify**: `protean dlq list` confirms the DLQ is empty
 
 ## DLQ Configuration
 
@@ -134,10 +135,10 @@ exhausting retries. This is almost never what you want in production.
 ## What We Built
 
 - The **fix-and-replay cycle** for production incident response.
-- **`protean dlq list`** — discover failed messages.
-- **`protean dlq inspect`** — diagnose the root cause.
-- **`protean dlq replay`** / **`replay-all`** — reprocess after fixing.
-- **`protean dlq purge`** — discard unrecoverable messages.
+- **`protean dlq list`**: Discover failed messages.
+- **`protean dlq inspect`**: Diagnose the root cause.
+- **`protean dlq replay`** and **`replay-all`** reprocess messages after you fix the cause.
+- **`protean dlq purge`**: Discard unrecoverable messages.
 - DLQ configuration for retries and backoff.
 
 Next, we set up proactive monitoring to catch problems before they

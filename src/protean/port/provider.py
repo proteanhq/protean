@@ -76,7 +76,7 @@ class SessionProtocol(Protocol):
     should provide no-op implementations and set ``is_active = True``
     in ``__init__``.
 
-    ``begin()`` is optional — only needed for adapters with deferred
+    ``begin()`` is optional, needed only for adapters with deferred
     transaction start (e.g., SQLAlchemy).  The Unit of Work calls
     ``begin()`` only when ``is_active`` is ``False``.
     """
@@ -109,7 +109,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
          ``_update_all``, ``_delete``, ``_delete_all``, ``_raw``, ``has_table``
        - Handles data access operations using sessions from the Provider
        - ``BaseDAO`` provides lifecycle wrappers (``get``, ``save``, ``create``,
-         ``update``, ``delete``) — you implement the underscored internals
+         ``update``, ``delete``); you implement the underscored internals
 
     3. **DatabaseModel** (extends ``BaseDatabaseModel`` from
        ``protean.core.database_model``)
@@ -136,7 +136,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     ================
 
     ``get_session()`` and ``get_connection()`` must return objects that
-    satisfy :class:`SessionProtocol` (``commit``, ``rollback``, ``close``,
+    satisfy `SessionProtocol` (``commit``, ``rollback``, ``close``,
     and an ``is_active`` flag).
 
     The ``BaseDAO``'s ``_commit_if_standalone()`` calls these methods when
@@ -161,7 +161,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
             → DAO._validate_and_update_version(aggregate)
             → DatabaseModel.from_entity(aggregate)    # your conversion
             → DAO._create(model_obj) or DAO._update(model_obj)
-            # UoW holds session — no commit yet
+            # UoW holds session, no commit yet
 
         UnitOfWork.__exit__()
           → session.commit()                          # your session
@@ -271,7 +271,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def get_session(self) -> SessionProtocol:
         """Establish a new session with the database.
 
-        Must return an object satisfying :class:`SessionProtocol`.
+        Must return an object satisfying `SessionProtocol`.
 
         Typically the session factory should be created once per application. Which is then
         held on to and passed to different transactions.
@@ -289,7 +289,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def get_connection(self) -> Any:
         """Get the connection object for the repository.
 
-        Must return an object satisfying :class:`SessionProtocol`.
+        Must return an object satisfying `SessionProtocol`.
         """
 
     @abstractmethod
@@ -302,6 +302,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
 
         This method should be called to properly dispose of connections and free up
         resources when the provider is no longer needed. Implementations should:
+
         - Close any connection pools
         - Dispose of any persistent connections
         - Clean up any other resources (engines, clients, etc.)
@@ -318,7 +319,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         """Enhance a user-defined DatabaseModel class with adapter internals.
 
         Called when the user has defined a custom ``@domain.model`` for an
-        entity. The model class is passed in — add adapter-specific base
+        entity. The model class is passed in, so add adapter-specific base
         classes, column mappings, or metadata as needed.
 
         Must return the decorated model class.
@@ -380,17 +381,17 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         artifact/reset loops that iterate registered elements. It returns
         ``False`` for:
 
-        - **Event-sourced aggregates** — they persist to the event store, not a
+        - **Event-sourced aggregates**: They persist to the event store, not a
           database table/index.
-        - **Entities of event-sourced aggregates** (at any nesting depth) — they
+        - **Entities of event-sourced aggregates** (at any nesting depth): They
           follow their root aggregate into the event store.
-        - **Cache-backed elements** (e.g. ``@domain.projection(cache=...)``) —
-          they persist to a cache adapter and carry ``meta_.provider is None``.
-        - **Elements owned by a different provider** — in multi-provider domains,
+        - **Cache-backed elements** (e.g. ``@domain.projection(cache=...)``):
+          They persist to a cache adapter and carry ``meta_.provider is None``.
+        - **Elements owned by a different provider**: In multi-provider domains,
           each provider materializes only the elements configured to it.
 
         An element referencing a provider name that is not configured raises
-        ``ConfigurationError`` — a misconfiguration must fail fast at setup, not
+        ``ConfigurationError``. A misconfiguration must fail fast at setup, not
         be silently skipped.
 
         Assumes a fully-initialized domain (``meta_.aggregate_cluster`` is
@@ -437,7 +438,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def _create_database_artifacts(self) -> None:
         """Create tables, indices, or other storage structures.
 
-        Should be idempotent — existing structures are left untouched.
+        Should be idempotent: existing structures are left untouched.
         """
 
     @abstractmethod

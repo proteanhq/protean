@@ -22,8 +22,8 @@ All commands accept a `--domain` option to specify the domain module path
 Scans the tail of the event store and creates an outbox row for any event
 that is durable in the store but has no internal-broker outbox row. This is
 the manual counterpart to the [automatic startup
-sweep](#automatic-startup-sweep) — run it on demand after a suspected crash,
-or from a cron job as a periodic safety net.
+sweep](#automatic-startup-sweep), run it on demand after a suspected crash, or
+from a cron job as a periodic safety net.
 
 ```bash
 # Reconcile the default provider's outbox
@@ -47,8 +47,8 @@ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 Reconciled 2 outbox row(s) from the event store.
 ```
 
-When the outbox already matches the event store — the common, no-crash case
-— nothing is rewritten:
+When the outbox already matches the event store (the common, no-crash case)
+nothing is rewritten:
 
 ```
 Nothing to reconcile: the outbox is consistent with the event store.
@@ -57,9 +57,8 @@ Nothing to reconcile: the outbox is consistent with the event store.
 The scan is cheap when there is nothing to repair: it first checks the single
 newest event, and only walks the `--limit` window when that newest event is
 itself missing its row (the signature of a crash at the tail). Reconciliation
-is idempotent — the composite unique index on (`message_id`, `target_broker`)
-means running it repeatedly, or concurrently with the startup sweep, never
-duplicates a row.
+is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
+repeatedly, or concurrently with the startup sweep, never duplicates a row.
 
 Only the **internal-broker** row is reconciled. External published-broker rows
 (from `[outbox].external_brokers`) are re-derived by the outbox processor once
@@ -76,7 +75,7 @@ protean server --domain=my_domain
 ```
 
 The sweep is gated on the outbox being enabled, is cheap in the common case
-(the newest-event check above), and can never block startup — a failure during
+(the newest-event check above), and can never block startup. A failure during
 the sweep is logged and boot continues. With `--workers N` it runs once per
 worker; the idempotent index makes the overlap safe.
 

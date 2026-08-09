@@ -1,13 +1,13 @@
 # Using the Outbox
 
-The outbox pattern guarantees that domain events are published to your
-message broker if — and only if — the transaction that produced them
-committed. Without it, a broker outage after a successful database
-commit would silently drop the event; with it, the event stays in the
-outbox table until the broker can accept it.
+The outbox pattern guarantees that domain events are published to your message
+broker if (and only if) the transaction that produced them committed. Without
+it, a broker outage after a successful database commit would silently drop the
+event; with it, the event stays in the outbox table until the broker can accept
+it.
 
-This guide walks through enabling the outbox, verifying it's working,
-and tuning its retry and cleanup behavior. For the end-to-end sequence,
+Here is how to enable the outbox, confirm it is working, and tune its retry
+and cleanup behaviour. For the end-to-end sequence,
 lifecycle states, and rationale, see
 [Outbox Pattern](../../concepts/async-processing/outbox.md).
 
@@ -32,7 +32,7 @@ provider = "redis"
 URI = "redis://localhost:6379/0"
 ```
 
-You also need a database provider that can hold the outbox table — any
+You also need a database provider that can hold the outbox table. Any
 relational provider works (PostgreSQL, SQLite, MSSQL). The outbox is not
 compatible with the `memory` provider for production use.
 
@@ -62,8 +62,8 @@ outbox table without touching the rest of the schema:
 $ protean db setup-outbox --domain=my_domain
 ```
 
-Multiple database providers produce one outbox per provider — each
-provider owns its own outbox table and its own `OutboxProcessor`.
+Multiple database providers produce one outbox per provider. Each provider owns
+its own outbox table and its own `OutboxProcessor`.
 
 The outbox table ships with the indexes the processor needs, created
 automatically by the commands above: a partial index on the active set
@@ -107,8 +107,7 @@ DEBUG: Outbox batch: 1/1 processed
 
 If no batch processing logs appear, check that:
 
-- The outbox table exists (run `protean db setup-outbox` again — it's
-  idempotent).
+- The outbox table exists (run `protean db setup-outbox` again, it's idempotent).
 - A broker is configured and reachable.
 - The aggregate that raised the event was persisted through a
   repository (the outbox row is written in the same transaction as the
@@ -137,9 +136,8 @@ With defaults (3 attempts, 60s base, 2× multiplier), a failed message
 is retried at roughly 60s, 120s, and 240s before being marked as
 `ABANDONED`.
 
-Keep `jitter = true` in production — it prevents a broker recovery
-from triggering a thundering herd of simultaneous retries across
-workers.
+Keep `jitter = true` in production. It prevents a broker recovery from
+triggering a thundering herd of simultaneous retries across workers.
 
 ---
 
@@ -198,18 +196,18 @@ at or below `tick_interval`) and the processor polls at a constant
 
 ## Investigate abandoned messages
 
-Messages that exhaust `max_attempts` move to the `ABANDONED` state and
-stop retrying. They do **not** route to a DLQ — the outbox table itself
-is durable storage.
+Messages that exhaust `max_attempts` move to the `ABANDONED` state and stop
+retrying. They do **not** route to a DLQ. The outbox table itself is durable
+storage.
 
 There is no dedicated CLI for inspecting abandoned outbox rows today.
 Use the runtime options available:
 
-**Observatory** — the `/api/outbox` endpoint reports per-domain outbox
-status including counts by state. See
-[Observatory Dashboard](../../reference/cli/runtime/observatory.md#endpoints).
+**Observatory**, the `/api/outbox` endpoint reports per-domain outbox status including
+counts by state. See [Observatory
+Dashboard](../../reference/cli/runtime/observatory.md#endpoints).
 
-**A shell session** — query the outbox repository directly:
+**A shell session**, query the outbox repository directly:
 
 ```python
 from protean.globals import current_domain
@@ -222,9 +220,8 @@ with domain.domain_context():
         print(msg.id, msg.stream_name, msg.last_error)
 ```
 
-**The database** — abandoned rows can be inspected, re-queued, or
-deleted with regular SQL. Re-queue a row by setting its status back to
-`pending` and clearing `retry_count`:
+**The database**: abandoned rows can be inspected, re-queued, or deleted with
+regular SQL. Re-queue a row by setting its status back to `pending` and clearing `retry_count`:
 
 ```sql
 UPDATE outbox
@@ -239,14 +236,14 @@ The next `OutboxProcessor` tick picks it up.
 ## Run with multiple workers
 
 When the server runs with `--workers N`, every worker runs its own
-`OutboxProcessor`. They don't collide — messages are claimed atomically
-by an `UPDATE ... WHERE status='pending'` that only one worker can win
-per row. If a worker crashes mid-publish, its lock expires after 5
-minutes and the message becomes eligible again.
+`OutboxProcessor`. They don't collide. Messages are claimed atomically by an
+`UPDATE ... WHERE status='pending'` that only one worker can win per row. If a
+worker crashes mid-publish, its lock expires after 5 minutes and the message
+becomes eligible again.
 
 Scale the outbox throughput by increasing `messages_per_tick` or the
-worker count, not by lowering `tick_interval` — smaller ticks just
-increase database load without increasing throughput.
+worker count, not by lowering `tick_interval`, smaller ticks just increase database load
+without increasing throughput.
 
 See [Multi-Worker Mode](../../reference/server/supervisor.md) for the
 supervisor configuration and
@@ -258,13 +255,13 @@ for the locking details.
 ## Recover from a crash: reconciliation
 
 The commit sequence appends events to the event store *before* it commits the
-relational transaction that carries aggregate state and the outbox rows — the
+relational transaction that carries aggregate state and the outbox rows. The
 event store is the durable anchor (see
-[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). This closes
-the corrupting failure where the event store could be left missing a committed
-event, but it leaves a narrow, **recoverable** window: if the process dies
-between the append and the relational commit, the event is durable in the store
-while its outbox row never landed — so the event would never be published.
+[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). This
+closes the corrupting failure where the event store could be left missing a
+committed event, but it leaves a narrow, **recoverable** window: if the process
+dies between the append and the relational commit, the event is durable in the
+store while its outbox row never landed, so the event would never be published.
 
 Reconciliation repairs that window by re-deriving the missing outbox rows
 directly from the event store. It runs two ways:
@@ -279,9 +276,8 @@ $ protean server --domain=my_domain
 
 The sweep is cheap when there is nothing to repair (it checks only the newest
 stored event unless that one is itself missing its row), never blocks boot (a
-failure is logged and startup continues), and is safe under `--workers N` — the
-composite unique index on (`message_id`, `target_broker`) makes concurrent
-sweeps idempotent.
+failure is logged and startup continues), and is safe under `--workers N`, the composite
+unique index on (`message_id`, `target_broker`) makes concurrent sweeps idempotent.
 
 **On demand with the CLI.** Run the same reconciliation yourself after a
 suspected crash, or from a cron job as a periodic safety net:
@@ -312,9 +308,9 @@ other bounded contexts, configure additional brokers in
 `[outbox].external_brokers`. Each published event creates one outbox
 row per broker, and each row is processed independently.
 
-The full workflow — including envelope stripping for external
-consumers — is covered in
-[Dispatching Published Events to External Brokers](./external-event-dispatch.md).
+The full workflow (including envelope stripping for external consumers) is
+covered in [Dispatching Published Events to External
+Brokers](./external-event-dispatch.md).
 
 ---
 
@@ -323,19 +319,19 @@ consumers — is covered in
 | Condition | Behavior |
 |---|---|
 | `ConfigurationError` at startup: "`enable_outbox` is True but subscription type is `event_store`" | You have the legacy `enable_outbox = true` flag set, but `default_subscription_type` is `event_store`. The outbox publishes to brokers; event-store subscriptions never read from brokers. Remove `enable_outbox` or switch the subscription type to `stream`. |
-| No rows appear in the outbox after raising events | The aggregate was likely not persisted through a repository. The outbox write happens in the same transaction as the aggregate `add()` — direct model writes bypass it. |
+| No rows appear in the outbox after raising events | The aggregate was likely not persisted through a repository. The outbox write happens in the same transaction as the aggregate `add()`, direct model writes bypass it. |
 | Messages stuck in `PROCESSING` long after worker restart | A worker crashed while holding the lock. The default 5-minute `locked_until` expiry releases the row; no manual cleanup is required. |
-| `ABANDONED` rows accumulating | A handler or broker endpoint is failing persistently. Inspect `last_error` on the row — the common causes are schema drift, missing broker streams, or downstream authentication failures. |
+| `ABANDONED` rows accumulating | A handler or broker endpoint is failing persistently. Inspect `last_error` on the row; the common causes are schema drift, missing broker streams, or downstream authentication failures. |
 
 ---
 
 ## See also
 
-- [Outbox Pattern](../../concepts/async-processing/outbox.md) — Sequence diagram, lifecycle states, retry mechanics, locking details.
-- [Dispatching Published Events to External Brokers](./external-event-dispatch.md) — Routing events to partner systems.
-- [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md) — When and why to use external dispatch.
-- [Subscription Types Reference](../../reference/server/subscription-types.md) — How StreamSubscription consumes outbox-published messages.
-- [Dead Letter Queues](./dead-letter-queues.md) — Recovery for consumer-side failures (outbox is publisher-side).
-- [`protean db setup-outbox` Reference](../../reference/cli/data/database.md#protean-db-setup-outbox) — CLI details.
-- [`protean outbox reconcile` Reference](../../reference/cli/data/outbox.md) — Crash-window recovery from the event store.
-- [ADR-0015: Event-Store Append as the Durable Anchor](../../adr/0015-event-store-append-as-durable-anchor.md) — Why the append precedes the relational commit, and the reconciliation contract.
+- [Outbox Pattern](../../concepts/async-processing/outbox.md): Sequence diagram, lifecycle states, retry mechanics, locking details.
+- [Dispatching Published Events to External Brokers](./external-event-dispatch.md): Routing events to partner systems.
+- [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md): When and why to use external dispatch.
+- [Subscription Types Reference](../../reference/server/subscription-types.md): How StreamSubscription consumes outbox-published messages.
+- [Dead Letter Queues](./dead-letter-queues.md): Recovery for consumer-side failures (outbox is publisher-side).
+- [`protean db setup-outbox` Reference](../../reference/cli/data/database.md#protean-db-setup-outbox): CLI details.
+- [`protean outbox reconcile` Reference](../../reference/cli/data/outbox.md): Crash-window recovery from the event store.
+- [ADR-0015: Event-Store Append as the Durable Anchor](../../adr/0015-event-store-append-as-durable-anchor.md): Why the append precedes the relational commit, and the reconciliation contract.

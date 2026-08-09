@@ -1,4 +1,4 @@
-# Chapter 8: Going Async — The Server
+# Chapter 8: Going Async with the Server
 
 Processing everything synchronously was fine for development. But in
 production, a slow compliance check should not block the deposit
@@ -18,8 +18,8 @@ projectors reliably. Protean uses the **outbox pattern**:
 3. **StreamSubscriptions** consume from Redis Streams and dispatch to
    handlers.
 
-This guarantees **at-least-once delivery** — events are never lost, even
-if Redis is temporarily unavailable.
+This guarantees **at-least-once delivery**. Events are never lost, even if
+Redis is temporarily unavailable.
 
 ## Configuration
 
@@ -50,14 +50,14 @@ enable_dlq = true
 
 Key settings:
 
-- **`brokers.default.provider = "redis"`** — use Redis as the message
+- **`brokers.default.provider = "redis"`**: Use Redis as the message
   broker.
-- **`event_processing = "async"`** — events flow through the broker
+- **`event_processing = "async"`**: Events flow through the broker
   instead of being processed inline.
-- **`enable_outbox = true`** — reliable delivery via the outbox pattern.
-- **`default_subscription_type = "stream"`** — use `StreamSubscription`
+- **`enable_outbox = true`**: Reliable delivery via the outbox pattern.
+- **`default_subscription_type = "stream"`**: Use `StreamSubscription`
   (Redis Streams with consumer groups) for all handlers.
-- **`enable_dlq = true`** — failed messages go to a dead-letter queue
+- **`enable_dlq = true`**: Failed messages go to a dead-letter queue
   instead of being lost.
 
 ## Starting Docker Services
@@ -165,8 +165,8 @@ to the command handler asynchronously.
   outbox to Redis Streams to handlers.
 
 The system is now truly asynchronous. In the next chapter, we will add
-account-to-account transfers — a multi-aggregate workflow that requires
-a process manager.
+account-to-account transfers. A multi-aggregate workflow that requires a
+process manager.
 
 ## Next
 

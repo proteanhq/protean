@@ -4,15 +4,18 @@
 
 Integration tests that touch real databases are essential for verifying that your domain model works correctly with actual persistence infrastructure. But they introduce problems that in-memory tests do not have:
 
-- **Data leaks between tests.** A test that creates an `Order` leaves that order in the database for the next test to find. Tests that pass in isolation start failing when run together, and the failures change depending on execution order.
+- **Data leaks between tests**: A test that creates an `Order` leaves that order in the database for the next test to find. Tests that pass in isolation start failing when run together, and the failures change depending on execution order.
 
-- **Missing schema.** The first test runs against a database that has no tables. Without explicit schema setup, every test fails with a "table not found" error -- or worse, silently passes because an exception is caught somewhere and swallowed.
+- **Missing schema**: The first test runs against a database that has no
+  tables. Without explicit schema setup, every test fails with a "table not
+  found" error, or worse, silently passes because an exception is caught
+  somewhere and swallowed.
 
-- **Stale schema.** After adding a new field to an aggregate, the database tables still reflect the old schema. Tests pass locally because the developer remembered to recreate the tables, but fail in CI where the database is fresh.
+- **Stale schema**: After adding a new field to an aggregate, the database tables still reflect the old schema. Tests pass locally because the developer remembered to recreate the tables, but fail in CI where the database is fresh.
 
-- **Forgotten infrastructure cleanup.** Database tables get created and reset, but the broker still holds messages from the previous test. An event handler fires unexpectedly because a message was left over from three tests ago.
+- **Forgotten infrastructure cleanup**: Database tables get created and reset, but the broker still holds messages from the previous test. An event handler fires unexpectedly because a message was left over from three tests ago.
 
-- **Slow test suites.** Creating and dropping the entire database schema before every single test is correct but slow. A test suite that takes 30 seconds with in-memory adapters takes 10 minutes against PostgreSQL because of schema overhead.
+- **Slow test suites**: Creating and dropping the entire database schema before every single test is correct but slow. A test suite that takes 30 seconds with in-memory adapters takes 10 minutes against PostgreSQL because of schema overhead.
 
 These problems share a root cause: **the lifecycle of database schema and test data are not managed separately.** Schema changes rarely (only when the domain model changes), but data changes every test. Treating them the same leads to either correctness problems (no cleanup) or performance problems (full recreation per test).
 
@@ -24,7 +27,9 @@ Separate the **schema lifecycle** from the **data lifecycle**:
 
 1. **Schema** (tables, indexes, constraints) is created once at the start of the test session and dropped once at the end. This is the expensive operation, but it only happens twice per test run.
 
-2. **Data** (rows, messages, cached entries) is reset after every test. This is cheap -- it truncates tables and flushes in-memory stores rather than recreating them.
+2. **Data** (rows, messages, cached entries) is reset after every test. This
+   is cheap. It truncates tables and flushes in-memory stores rather than
+   recreating them.
 
 3. **All infrastructure** (database providers, brokers, event stores, caches) is cleaned up, not just the database. A test that publishes an event to a broker is just as capable of leaking state as one that writes a row to PostgreSQL.
 
@@ -70,7 +75,7 @@ The in-memory adapters implement these same methods as no-ops or simple dictiona
 
 ---
 
-## `DomainFixture` — The Recommended Approach
+## `DomainFixture`: The Recommended Approach
 
 Protean provides `DomainFixture` (from `protean.integrations.pytest`) that encapsulates the entire pattern described above. It handles domain initialization, schema creation, schema teardown, and per-test data cleanup across **all** adapters automatically.
 
@@ -188,7 +193,10 @@ def _ctx(app_fixture):
         yield
 ```
 
-`DomainFixture.setup()` calls `domain.init()` and creates tables for every configured provider. `teardown()` drops them. `domain_context()` resets data after each test. Schema creation happens once; data cleanup happens hundreds of times -- but it is fast because it only truncates.
+`DomainFixture.setup()` calls `domain.init()` and creates tables for every
+configured provider. `teardown()` drops them. `domain_context()` resets data
+after each test. Schema creation happens once; data cleanup happens hundreds of
+times, but it is fast because it only truncates.
 
 ---
 
@@ -327,7 +335,9 @@ TEST_INFRA=full \
 
 ### Recipe 5: Separate Unit and Integration Fixtures
 
-For larger projects, separate `conftest.py` files allow unit tests to run with in-memory adapters while integration tests use real infrastructure -- without environment variables.
+For larger projects, separate `conftest.py` files allow unit tests to run with in-memory
+adapters while integration tests use real infrastructure, without environment
+variables.
 
 ```
 tests/
@@ -499,7 +509,7 @@ The recommended approach is to use `DomainFixture` from `protean.integrations.py
 | Schema teardown | `teardown()` | Once per session |
 | Data cleanup (all adapters) | `domain_context()` exit | After every test |
 
-Under the hood, `DomainFixture` calls these adapter methods:
+`DomainFixture` calls these adapter methods:
 
 | Concern | Adapter Method | Scope |
 |---------|----------|-------|
@@ -512,7 +522,7 @@ Under the hood, `DomainFixture` calls these adapter methods:
 
 `domain.truncate_database()` deletes all rows from every table while preserving
 the schema. It is also available as a CLI command (`protean db truncate`) for
-use outside of tests -- for example, to reset a development database without
+use outside of tests, for example, to reset a development database without
 dropping and recreating tables.
 
 **The key principle: create schema once, reset data often.** This gives you the correctness of full isolation with the performance of shared infrastructure.

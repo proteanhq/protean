@@ -3,7 +3,7 @@
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Commands carry intent, but someone needs to act on them. Command handlers are
-the "doers" — they receive a command, load the right aggregate, call the
+the "doers". They receive a command, load the right aggregate, call the
 appropriate domain method, and persist the result. They keep your aggregates
 free of infrastructure concerns and your API layer free of domain logic.
 
@@ -41,7 +41,7 @@ from protean import handle
 `@handle(CommandClass)` registers the method as the handler for that command
 type. It also wraps the method body in a [Unit of Work](./unit-of-work.md),
 providing automatic transaction management. A single command can only be
-handled by one handler method across the entire domain — Protean enforces
+handled by one handler method across the entire domain. Protean enforces
 one-handler-per-command.
 
 ### How routing works
@@ -49,7 +49,7 @@ one-handler-per-command.
 When you call `domain.process(command)`, Protean uses the command's `part_of`
 aggregate to find the registered command handler for that aggregate. It then
 looks up the `@handle`-decorated method that matches the command's type and
-invokes it. You never need to wire this routing manually — it is all derived
+invokes it. You never need to wire this routing manually. It is all derived
 from the `part_of` associations on the command and command handler.
 
 ### Stream Category {#stream-category}
@@ -191,9 +191,9 @@ event-sourced aggregate strategies, see the
 
 ## Unit of Work
 
-Each command handler method runs within a `UnitOfWork` context — if the method
-completes successfully, all changes are committed; if an exception is raised,
-everything is rolled back.
+Each command handler method runs within a `UnitOfWork` context, if the method completes
+successfully, all changes are committed; if an exception is raised, everything
+is rolled back.
 
 For details on how the Unit of Work pattern works, see the
 [Unit of Work](unit-of-work.md) guide.
@@ -211,8 +211,8 @@ Error handling differs between synchronous and asynchronous command processing:
 
 - **Synchronous** (`asynchronous=False`): Exceptions raised in the handler
   propagate directly to the caller (the code that called `domain.process()`).
-  The UoW is rolled back automatically. There is no `handle_error` hook —
-  the caller is responsible for catching and handling the exception.
+  The UoW is rolled back automatically. There is no `handle_error` hook. The
+  caller is responsible for catching and handling the exception.
 
 - **Asynchronous** (default): The Protean Engine catches exceptions during
   background processing and invokes the handler's `handle_error` class method
@@ -270,7 +270,7 @@ def handle_error(cls, exc: Exception, message):
 
 ### Best Practices
 
-1. Make error handlers robust and avoid complex logic that might fail.
+1. Keep error handlers simple, and avoid logic that might itself fail.
 2. Use error handlers for logging, notification, and simple recovery.
 3. Don't throw exceptions from error handlers unless absolutely necessary.
 4. Consider enabling [transient-failure retries](#retrying-transient-failures)
@@ -345,17 +345,17 @@ Key points:
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Command Handlers](../../concepts/building-blocks/command-handlers.md) — The role of command handlers in processing commands and persisting state.
+    **Concept overview:** [Command Handlers](../../concepts/building-blocks/command-handlers.md): The role of command handlers in processing commands and persisting state.
 
     **Related guides:**
 
-    - [Commands](./commands.md) — Defining commands and submitting them for processing.
-    - [Repositories](./repositories.md) — Persisting and retrieving aggregates.
-    - [Application Services](./application-services.md) — An alternative to command handlers for synchronous use cases.
-    - [Unit of Work](./unit-of-work.md) — Transaction management and commit lifecycle.
+    - [Commands](./commands.md): Defining commands and submitting them for processing.
+    - [Repositories](./repositories.md): Persisting and retrieving aggregates.
+    - [Application Services](./application-services.md): An alternative to command handlers for synchronous use cases.
+    - [Unit of Work](./unit-of-work.md): Transaction management and commit lifecycle.
 
     **Patterns:**
 
-    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — When to use which, with decision tree and comparison table.
-    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by pushing logic into the domain model.
-    - [Command Idempotency](../../patterns/command-idempotency.md) — Handling duplicate commands safely.
+    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md): When to use which, with decision tree and comparison table.
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by pushing logic into the domain model.
+    - [Command Idempotency](../../patterns/command-idempotency.md): Handling duplicate commands safely.

@@ -167,7 +167,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
     def __validate_for_basic_field_types(cls) -> None:
         """Reject Reference and Association descriptors.
 
-        ValueObject descriptors are allowed — they are handled via shadow
+        ValueObject descriptors are allowed; they are handled via shadow
         fields for flat persistence storage.
         """
         for field_name, field_obj in vars(cls).items():

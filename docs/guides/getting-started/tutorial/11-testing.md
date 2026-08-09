@@ -1,12 +1,12 @@
 # Chapter 11: Testing Your Domain
 
 In this chapter we will set up pytest for Bookshelf and write tests that
-verify our business logic — commands, events, invariants, projections,
-and API endpoints.
+verify our business logic, commands, events, invariants, projections, and API
+endpoints.
 
 !!! tip "Focus on business logic"
     Protean handles field validation, immutability, and wiring automatically.
-    Your tests should focus on the behavior *you* wrote — invariants, state
+    Your tests should focus on the behavior *you* wrote, invariants, state
     transitions, command flows, and event reactions. For a deeper discussion,
     see [Testing](../../testing/index.md).
 
@@ -49,8 +49,8 @@ domain.
 
 ## Testing Aggregates and Invariants
 
-Test the business rules *you* wrote — invariants, state guards, and
-meaningful state transitions:
+Test the business rules *you* wrote, invariants, state guards, and meaningful
+state transitions:
 
 ```python
 from bookshelf.models import Book, Order, OrderItem, Money
@@ -78,8 +78,8 @@ def test_cannot_modify_shipped_order():
 
 ### Testing Value Objects
 
-Value object tests should focus on domain behavior — equality semantics
-and any custom logic:
+Value object tests should focus on domain behavior, equality semantics and any
+custom logic:
 
 ```python
 from bookshelf.models import Money
@@ -252,10 +252,10 @@ Run the tests:
 $ pytest -v
 ```
 
-All tests use in-memory adapters by default — no Docker, no database
-setup, no manual cleanup. For testing against real infrastructure, see
-the [Testing guide](../../testing/index.md) and the
-[Dual-Mode Testing](../../../patterns/dual-mode-testing.md) pattern.
+All tests use in-memory adapters by default, no Docker, no database setup, no
+manual cleanup. For testing against real infrastructure, see the [Testing
+guide](../../testing/index.md) and the [Dual-Mode
+Testing](../../../patterns/dual-mode-testing.md) pattern.
 
 ## What We Built
 
@@ -267,11 +267,10 @@ the [Testing guide](../../testing/index.md) and the
 - **API endpoint tests** using FastAPI's `TestClient`.
 - An **integration test** covering a complete end-to-end flow.
 
-Congratulations — Part II is complete! We have a fully tested bookstore
-with a web API, a real database, and organized code. In the next
-chapter, we will move to asynchronous processing so the system can
-handle real production traffic.
+That completes Part II. We have a fully tested bookstore with a
+web API, a real database, and organized code. In the next chapter, we will move
+to asynchronous processing so the system can handle real production traffic.
 
 ## Next
 
-[Chapter 12: Going Async — The Server →](12-going-async.md)
+[Chapter 12: Going Async with the Server →](12-going-async.md)

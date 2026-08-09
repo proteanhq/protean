@@ -1,8 +1,8 @@
 # `protean check`
 
 Validate a Protean domain and report errors, warnings, and diagnostics. Unlike
-`protean server` or `protean shell`, `check` does **not** initialize adapters —
-it resolves references, wires handlers, runs every validation check, and builds
+`protean server` or `protean shell`, `check` does **not** initialize adapters.
+It resolves references, wires handlers, runs every validation check, and builds
 the IR to collect [architecture fitness function](../fitness-functions.md)
 diagnostics. It is designed to run in CI and pre-commit hooks.
 
@@ -24,7 +24,7 @@ protean check --format=sarif > protean.sarif
 |--------|-------|---------|-------------|
 | `--domain` | `-d` | `.` | Path to the domain module (e.g. `my_app.domain`). Uses the same [domain discovery](project/discovery.md) as other commands. |
 | `--format` | `-f` | `rich` | Output format: `rich`, `json`, `sarif`, or `github-annotations`. |
-| `--level` | `-l` | `info` | Minimum severity to **display**: `error`, `warning`, or `info`. Filters the `rich`/`--quiet` human output only — it never changes the exit code, and it never filters the machine formats (`json`, `sarif`, `github-annotations`). |
+| `--level` | `-l` | `info` | Minimum severity to **display**: `error`, `warning`, or `info`. Filters the `rich`/`--quiet` human output only. It never changes the exit code, and it never filters the machine formats (`json`, `sarif`, `github-annotations`). |
 | `--quiet` | `-q` | `false` | Show only a one-line count summary and set the exit code. |
 
 ## Output formats
@@ -41,7 +41,7 @@ The `json`, `sarif`, and `github-annotations` formats always emit the
 machines (an agent consuming the envelope, a Code Scanning upload, CI
 annotations) where a display filter must not silently drop findings. So a
 `json` envelope with `status="fail"` always carries the diagnostics and counts
-that caused it — filter with `jq` if you want a subset.
+that caused it. Filter with `jq` if you want a subset.
 
 ## Exit codes
 
@@ -130,7 +130,7 @@ On a usage/environment error (`status: "error"`, exit 2) `data` carries a single
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `category` | str | Rule category — one of `aggregate_design`, `bounded_context`, `handler_completeness`, `naming_conventions`, `persistence`, `versioning`, `deprecation`, or `custom`. |
+| `category` | str | Rule category, one of `aggregate_design`, `bounded_context`, `handler_completeness`, `naming_conventions`, `persistence`, `versioning`, `deprecation`, or `custom`. |
 | `code` | str | The rule code (e.g. `CROSS_AGGREGATE_REFERENCE`). See the [catalog](../fitness-functions.md). |
 | `element` | str | Fully-qualified name of the offending element. |
 | `field` | str | The offending field, on field-scoped rules only. |
@@ -148,13 +148,14 @@ protean check --domain=my_app.domain --format=sarif > protean.sarif
 protean check --domain=my_app.domain --format=github-annotations
 ```
 
-See the [Architecture Fitness Functions guide](../../guides/architecture-fitness-functions.md#ci-integration)
-for the full CI walkthrough — the GitHub Actions workflow, SARIF upload, and how
-to choose the gating floor.
+See the [Architecture Fitness Functions
+guide](../../guides/architecture-fitness-functions.md#ci-integration) for the
+full CI walkthrough: the GitHub Actions workflow, SARIF upload, and how to
+choose the gating floor.
 
 ## Related
 
-- [Architecture Fitness Functions guide](../../guides/architecture-fitness-functions.md) — running, suppressing, and extending the checks.
-- [Fitness Function Catalog](../fitness-functions.md) — every rule, its rationale, and its fix.
-- [`[lint]` configuration](../configuration/index.md#lint) — config keys.
-- [`protean upgrade-check`](upgrade-check.md) — a separate read-only 0.16 upgrade diagnostic.
+- [Architecture Fitness Functions guide](../../guides/architecture-fitness-functions.md): Running, suppressing, and extending the checks.
+- [Fitness Function Catalog](../fitness-functions.md): Every rule, its rationale, and its fix.
+- [`[lint]` configuration](../configuration/index.md#lint), config keys.
+- [`protean upgrade-check`](upgrade-check.md): A separate read-only 0.16 upgrade diagnostic.

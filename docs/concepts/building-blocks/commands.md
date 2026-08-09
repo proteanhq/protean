@@ -1,17 +1,17 @@
 # Commands
 
-In most applications, the code that *requests* a change (an API controller,
-a background job, a saga) is not the code that *performs* the change (the
-domain model). A command bridges that gap: it captures the caller's intent as
-an explicit, immutable data object that can be validated, serialized, routed,
-retried, and audited — all before any business logic runs.
+In most applications, the code that *requests* a change (an API controller, a
+background job, a saga) is not the code that *performs* the change (the domain
+model). A command bridges that gap: it captures the caller's intent as an
+explicit, immutable data object that can be validated, serialized, routed,
+retried, and audited. All before any business logic runs.
 
 Commands and [events](./events.md) are complementary halves of a message-driven
 architecture. They differ in tense and semantics:
 
 | | Command | Event |
 |---|---------|-------|
-| **Tense** | Imperative — *do this* | Past tense — *this happened* |
+| **Tense** | Imperative, *do this* | Past tense, *this happened* |
 | **Meaning** | An intent that may be rejected | A fact that has already occurred |
 | **Naming** | `PlaceOrder`, `CancelReservation` | `OrderPlaced`, `ReservationCancelled` |
 | **Consumers** | Exactly one command handler | Zero or more event handlers |
@@ -101,7 +101,7 @@ multiple times should result in the same state without unintended side effects.
 
 ### Secure sensitive data. { data-toc-label="Security" }
 Be mindful of sensitive data within commands, especially when they are
-transmitted over a network. Ensure that appropriate security measures are in
+transmitted over a network. Make sure that appropriate security measures are in
 place to protect this data.
 
 ---
@@ -110,8 +110,8 @@ place to protect this data.
 
 For practical details on defining and processing commands in Protean, see the guide:
 
-- [Commands](../../guides/change-state/commands.md) — Defining commands, submitting them, idempotency, and processing modes.
+- [Commands](../../guides/change-state/commands.md): Defining commands, submitting them, idempotency, and processing modes.
 
 For design guidance:
 
-- [Command Idempotency](../../patterns/command-idempotency.md) — Ensuring commands can be safely retried without side effects.
+- [Command Idempotency](../../patterns/command-idempotency.md): Ensuring commands can be safely retried without side effects.

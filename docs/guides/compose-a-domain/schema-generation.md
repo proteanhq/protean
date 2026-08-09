@@ -6,13 +6,13 @@ objects, commands, events, and projections.
 
 Generated schemas are useful for:
 
-- **Contract testing** — validate that payloads conform to expected shapes
-- **Schema registries** — publish schemas to Confluent Schema Registry, AWS
+- **Contract testing**: Validate that payloads conform to expected shapes
+- **Schema registries**: Publish schemas to Confluent Schema Registry, AWS
   Glue, or similar
-- **OpenAPI integration** — JSON Schema Draft 2020-12 is natively supported by
+- **OpenAPI integration**: JSON Schema Draft 2020-12 is natively supported by
   OpenAPI 3.1
-- **Documentation** — auto-generate API docs from schema definitions
-- **Code generation** — generate client SDKs in other languages from schemas
+- **Documentation**: Auto-generate API docs from schema definitions
+- **Code generation**: Generate client SDKs in other languages from schemas
 
 ---
 
@@ -47,8 +47,8 @@ protean schema generate --domain=my_app.domain --output=build
 ### Other output formats
 
 By default `protean schema generate` emits JSON Schema. Pass `--format` to emit
-other contract formats — `json`, `avro`, `protobuf`, or `all` (which writes JSON
-Schema, Avro, and Protobuf into one tree):
+other contract formats, `json`, `avro`, `protobuf`, or `all` (which writes JSON Schema, Avro,
+and Protobuf into one tree):
 
 ```bash
 protean schema generate --domain=my_app.domain --format all
@@ -215,7 +215,7 @@ jsonschema.validate(payload, schema)  # Passes
 
 ## Design decisions
 
-- **IR-first generation** — schemas are built from IR field metadata, not
+- **IR-first generation**: Schemas are built from IR field metadata, not
   Pydantic's `model_json_schema()`.  See [ADR-0005](../../adr/0005-ir-first-schema-generation.md).
-- **Standard JSON Schema with `x-` extensions** — not a custom envelope.
+- **Standard JSON Schema with `x-` extensions**: Not a custom envelope.
   See [ADR-0006](../../adr/0006-standard-json-schema-with-x-extensions.md).

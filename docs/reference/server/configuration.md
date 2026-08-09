@@ -8,14 +8,14 @@ hierarchy, with more specific settings overriding general ones.
 
 Configuration is resolved using this priority order (highest to lowest):
 
-1. **Handler Meta `subscription_config`** - Explicit configuration dict on
+1. **Handler Meta `subscription_config`**: Explicit configuration dict on
    handler
-2. **Handler Meta `subscription_profile`** - Profile specified on handler
-3. **Handler Meta `subscription_type`** - Type specified on handler
-4. **Server config handler-specific** - `server.subscriptions.HandlerName`
-5. **Server config defaults** - `server.default_subscription_*`
-6. **Profile defaults** - Defaults from the resolved profile
-7. **Hardcoded defaults** - Built-in fallback values
+2. **Handler Meta `subscription_profile`**: Profile specified on handler
+3. **Handler Meta `subscription_type`**: Type specified on handler
+4. **Server config handler-specific**: `server.subscriptions.HandlerName`
+5. **Server config defaults**: `server.default_subscription_*`
+6. **Profile defaults**: Defaults from the resolved profile
+7. **Hardcoded defaults**: Built-in fallback values
 
 ```mermaid
 flowchart TD
@@ -151,9 +151,9 @@ Optimized for building read models:
 
 `retention_maxlen` bounds a StreamSubscription's broker stream so processed
 messages don't accumulate forever. It is trimmed after each batch. How tight the
-bound is depends on the consumer topology — see
-[Stream retention](subscription-types.md#stream-retention) for the multi-group
-and single-group behavior and their caveats. Each profile carries a default cap:
+bound is depends on the consumer topology, see [Stream
+retention](subscription-types.md#stream-retention) for the multi-group and
+single-group behavior and their caveats. Each profile carries a default cap:
 
 | Profile | `retention_maxlen` |
 | ------- | ------------------ |
@@ -165,7 +165,7 @@ and single-group behavior and their caveats. Each profile carries a default cap:
 
 The framework-wide default (when no profile applies) is `none`, which leaves
 trimming off. Set `retention_maxlen` on a profile, a per-handler config, or a
-custom profile to enable it. This is size-based retention only — there is no
+custom profile to enable it. This is size-based retention only. There is no
 time-based TTL.
 
 ### Custom Profiles
@@ -199,8 +199,8 @@ profile fields: `subscription_type`, `messages_per_tick`, `tick_interval`,
 `position_update_interval`, `origin_stream`, `retention_maxlen`,
 `circuit_breaker_threshold`, `circuit_breaker_reset_seconds`.
 
-**Validation** is fail-fast — a `ConfigurationError` is raised when the profiles
-are first resolved if a custom profile:
+**Validation** is fail-fast, a `ConfigurationError` is raised when the profiles are first
+resolved if a custom profile:
 
 - reuses a built-in name (`production`, `fast`, `batch`, `debug`, `projection` are
   reserved),
@@ -220,10 +220,10 @@ of those that are set overwrite the matching fields the profile provides. In a
 stock `domain.toml` (which sets several of them), `default_subscription_profile`
 therefore only governs fields the server-level defaults leave unset. To let it
 govern a field, clear that field at the server level, or name the profile at a
-higher-priority level instead — a per-handler `profile` (priority 4) or a
-handler's Meta `subscription_profile` (priority 2-3), which both sit above the
-server-level defaults. This is not new to custom profiles: a built-in named at
-`default_subscription_profile` is shadowed the same way.
+higher-priority level instead, a per-handler `profile` (priority 4) or a handler's
+Meta `subscription_profile` (priority 2-3), which both sit above the server-level defaults. This
+is not new to custom profiles: a built-in named at `default_subscription_profile` is shadowed the same
+way.
 
 ## Configuration Options Reference
 
@@ -587,7 +587,7 @@ enable_dlq is not supported for EVENT_STORE subscription type.
 EventStoreSubscription handles messages without DLQ support.
 ```
 
-## Best Practices
+## Configuration guidance
 
 ### 1. Use Profiles as a Starting Point
 
@@ -637,8 +637,8 @@ Always enable DLQ for production workloads to capture failed messages:
 subscription_config={"enable_dlq": True}
 ```
 
-## Next Steps
+## Related pages
 
-- [Subscription Types](subscription-types.md) - Deep dive into subscription
+- [Subscription Types](subscription-types.md): Subscription
   types
-- [Running the Server](../../guides/server/index.md) - CLI options and deployment
+- [Running the Server](../../guides/server/index.md): CLI options and deployment

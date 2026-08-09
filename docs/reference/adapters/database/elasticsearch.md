@@ -55,7 +55,7 @@ set, it is prepended to every index name:
 |--------|-----------|-----------|------------|
 | `prod` | `-` | `Person` | `prod-person` |
 | `prod` | `_` | `Person` | `prod_person` |
-| (none) | -- | `Person` | `person` |
+| (none) | —  | `Person` | `person` |
 
 Using `namespace_prefix = "${PROTEAN_ENV}"` lets you share a single
 Elasticsearch cluster across environments by giving each environment a distinct
@@ -65,21 +65,21 @@ prefix.
 
 The Elasticsearch provider supports the following capabilities:
 
-- :white_check_mark: **CRUD** -- Create, Read, Update, Delete single records
-- :white_check_mark: **FILTER** -- Query/filter records with lookup criteria
-- :white_check_mark: **BULK_OPERATIONS** -- `update_all()`, `delete_all()`
-- :white_check_mark: **ORDERING** -- Server-side ordering of results
-- :white_check_mark: **SCHEMA_MANAGEMENT** -- Create/drop indices
-- :white_check_mark: **OPTIMISTIC_LOCKING** -- Version-based concurrency control
-- :x: **TRANSACTIONS** -- No transaction support (session has no-op
+- :white_check_mark: **CRUD**: Create, Read, Update, Delete single records
+- :white_check_mark: **FILTER**: Query/filter records with lookup criteria
+- :white_check_mark: **BULK_OPERATIONS**: `update_all()`, `delete_all()`
+- :white_check_mark: **ORDERING**: Server-side ordering of results
+- :white_check_mark: **SCHEMA_MANAGEMENT**: Create/drop indices
+- :white_check_mark: **OPTIMISTIC_LOCKING**: Version-based concurrency control
+- :x: **TRANSACTIONS**: No transaction support (session has no-op
   commit/rollback)
-- :x: **SIMULATED_TRANSACTIONS** -- Not applicable
-- :x: **RAW_QUERIES** -- Not supported
-- :x: **CONNECTION_POOLING** -- Managed by the `elasticsearch` client
+- :x: **SIMULATED_TRANSACTIONS**: Not applicable
+- :x: **RAW_QUERIES**: Not supported
+- :x: **CONNECTION_POOLING**: Managed by the `elasticsearch` client
   internally
-- :x: **NATIVE_JSON** -- Elasticsearch stores JSON natively, but this flag
+- :x: **NATIVE_JSON**: Elasticsearch stores JSON natively, but this flag
   refers to SQL-style JSON columns
-- :x: **NATIVE_ARRAY** -- No SQL-style array columns
+- :x: **NATIVE_ARRAY**: No SQL-style array columns
 
 ## Indexes
 
@@ -87,7 +87,7 @@ Elasticsearch does not use relational indexes, so portable
 [`Index`](../../domain-elements/indexes.md) declarations are not translated into
 DDL here. Configure search behavior through the Elasticsearch field mapping
 (below) instead. Index declarations on an aggregate remain valid (they are
-honored by SQL providers); they are simply not applied by this adapter.
+honored by SQL providers); they are not applied by this adapter.
 
 ## Field Mapping
 
@@ -108,9 +108,9 @@ aggregate. Each Protean field type is mapped to an appropriate
 | `List` | *(dynamic)* | Uses ES dynamic mapping |
 | `ValueObjectList` | `nested` | Nested objects |
 
-String fields default to `keyword` — they support exact matching, sorting,
-and aggregations out of the box. If you need full-text search with
-analyzers, define a custom Elasticsearch Model (see below).
+String fields default to `keyword`. They support exact matching, sorting, and
+aggregations. If you need full-text search with analyzers, define a custom
+Elasticsearch Model (see below).
 
 ## Custom Elasticsearch Model
 
@@ -157,17 +157,17 @@ class ArticleModel:
 
 ## Limitations
 
-- **No Real Transactions** -- Elasticsearch does not support ACID transactions.
+- **No Real Transactions**: Elasticsearch does not support ACID transactions.
   The session object provides no-op `commit()` and `rollback()` methods. Data
   is indexed immediately on write.
-- **Eventual Consistency** -- Newly indexed documents may not be immediately
+- **Eventual Consistency**: Newly indexed documents may not be immediately
   searchable. Elasticsearch refreshes indices periodically (default: 1 second).
-- **No Raw Queries** -- The `raw()` method is not supported. Use the
+- **No Raw Queries**: The `raw()` method is not supported. Use the
   Elasticsearch DSL directly if you need advanced query features.
-- **Requires Running Service** -- Elasticsearch must be installed and running.
+- **Requires Running Service**: Elasticsearch must be installed and running.
   Use `make up` to start Protean's Docker-based development services.
 
-## Next Steps
+## Related pages
 
 - Learn about [database capabilities](./index.md#database-capabilities) in
   detail

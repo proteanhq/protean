@@ -152,8 +152,8 @@ def capture_queries(
     """Capture ``(statement, parameters)`` for each query in the block.
 
     Unlike the ``assert_*`` helpers, this makes no assertion of its own; it just
-    yields the captured statements so a test can make a custom assertion — e.g.
-    that a parent table's ``INSERT`` is emitted before a child table's. The list
+    yields the captured statements so a test can make a custom assertion, for
+    example that a parent table's ``INSERT`` is emitted before a child table's. The list
     is empty and nothing is observed when no SQLAlchemy engine is resolved (the
     in-memory adapter or no domain bound), so callers must guard on it and mark
     the test ``@pytest.mark.database`` (or a backend marker) to run it where the

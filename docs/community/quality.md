@@ -27,8 +27,8 @@ practices and metrics behind the framework.
 
 Protean has a comprehensive test suite covering domain logic, application
 services, infrastructure adapters, and integration scenarios. The current
-counts are in the breakdown below — this page is the single source of truth
-for these numbers; other pages quote round figures and link here.
+counts are in the breakdown below. This page is the single source of truth for
+these numbers; other pages quote round figures and link here.
 
 Refresh them with one command:
 
@@ -176,15 +176,15 @@ all infrastructure adapters exercised**.
 Each pull request runs these gates, all in CI so none can be bypassed by a
 missing pre-commit hook, a `--no-verify`, or a web edit:
 
-1. **Lint.** `ruff check` and `ruff format --check`, the same checks as the
+1. **Lint**: `ruff check` and `ruff format --check`, the same checks as the
    pre-commit hook.
-2. **Type check.** `mypy --strict` over `src/protean`.
-3. **Full test suite.** `protean test -c FULL` across 4 Python versions with all
+2. **Type check**: `mypy --strict` over `src/protean`.
+3. **Full test suite**: `protean test -c FULL` across 4 Python versions with all
    5 backing service containers running.
-4. **Coverage floor.** Overall coverage must stay at or above 94%
+4. **Coverage floor**: Overall coverage must stay at or above 94%
    (`coverage report --fail-under=94`); patch coverage is enforced separately by
    Codecov, and results are uploaded to Codecov on every run.
-5. **Security scanning.** CodeQL (SAST) and a dependency-review check on any
+5. **Security scanning**: CodeQL (SAST) and a dependency-review check on any
    changed dependencies.
 
 Documentation is deployed on merge to `main`.
@@ -208,14 +208,14 @@ Protean maintains a lean dependency footprint:
 | Dev dependencies | 7 |
 | Test dependencies | 8 |
 
-All database and message broker drivers are **optional extras** -- the
-core framework installs only what's needed for in-memory development.
-Infrastructure dependencies are added when you're ready to deploy:
+All database and message broker drivers are **optional extras**, the core
+framework installs only what's needed for in-memory development. Infrastructure
+dependencies are added when you're ready to deploy:
 
 ```bash
 pip install protean[postgresql]   # Adds SQLAlchemy + psycopg2-binary
 pip install protean[redis]        # Adds redis-py
-pip install protean[elasticsearch] # Adds elasticsearch + elasticsearch-dsl
+pip install protean[elasticsearch] # Adds the elasticsearch client
 ```
 
 ---

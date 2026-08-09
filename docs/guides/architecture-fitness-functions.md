@@ -2,13 +2,13 @@
 
 Architecture fitness functions are automated, objective, repeatable checks that
 enforce your architectural decisions on every commit. Protean runs them with
-`protean check`: it builds your domain's
-[Intermediate Representation (IR)](compose-a-domain/inspecting-the-ir.md) — the
-complete structural snapshot of the domain — and reports every place the model
-drifts from sound Domain-Driven Design.
+`protean check`: it builds your domain's [Intermediate Representation
+(IR)](compose-a-domain/inspecting-the-ir.md) (the complete structural snapshot
+of the domain) and reports every place the model drifts from sound
+Domain-Driven Design.
 
-This guide covers running the checks, tuning severity, suppressing findings
-during gradual adoption, wiring them into CI, and writing your own rules. For
+Here is how to run the checks, tune severity, suppress findings while you
+adopt them gradually, wire them into CI, and write your own rules. For
 the full list of rules see the [Fitness Function Catalog](../reference/fitness-functions.md);
 for the CLI flags and output schema see the
 [`protean check` reference](../reference/cli/check.md).
@@ -23,11 +23,10 @@ a handler, bounded contexts don't import each other's infrastructure. These are
 easy to state and easy to erode as a codebase grows.
 
 Because Protean holds the whole domain as an IR, many of these promises are
-*decidable* — they can be checked mechanically at build time, with no runtime and
-no database. `protean check` walks the IR and emits a **diagnostic** for each
-violation, each carrying a rule `code`, a `category`, a severity `level`, the
-offending `element`, the reason it fired (`rule.rationale`), and how to fix it
-(`rule.fix`).
+*decidable*. They can be checked mechanically at build time, with no runtime
+and no database. `protean check` walks the IR and emits a **diagnostic** for each
+violation, each carrying a rule `code`, a `category`, a severity `level`, the offending `element`,
+the reason it fired (`rule.rationale`), and how to fix it (`rule.fix`).
 
 The checks are deterministic: the same domain always produces the same findings
 in the same order. That makes them safe to gate CI on.
@@ -51,16 +50,16 @@ protean check --quiet
 ```
 
 `protean check` prints a human-readable report by default. The `--level` flag
-filters what is *displayed* — it never changes the exit code. See
-[Strictness and CI gating](#strictness-and-ci-gating) below for how the exit code
-is actually decided.
+filters what is *displayed*. It never changes the exit code. See [Strictness
+and CI gating](#strictness-and-ci-gating) below for how the exit code is
+actually decided.
 
 ---
 
 ## Built-in rules
 
-`protean check` ships the following rules, grouped by category. Each links to its
-full entry — rationale, fix, and configuration — in the
+`protean check` ships the following rules, grouped by category. Each links to
+its full entry (rationale, fix, and configuration) in the
 [catalog](../reference/fitness-functions.md).
 
 ### Aggregate design
@@ -141,13 +140,13 @@ class Note:
 ```
 
 `suppress_checks` accepts a list of rule codes (a bare string is treated as a
-single code). It is available on every domain element decorator — aggregates,
+single code). It is available on every domain element decorator, aggregates,
 entities, value objects, events, commands, handlers, projections, and so on.
 
 ### Config-level: `[lint].suppressions`
 
 For gradual remediation across the whole domain, the `[lint].suppressions`
-allow-list *grandfathers* the first `N` findings of a code — you adopt a rule
+allow-list *grandfathers* the first `N` findings of a code. You adopt a rule
 without failing CI on pre-existing violations, while any *new* violation beyond
 `N` still surfaces:
 
@@ -183,12 +182,12 @@ Per-element `suppress_checks` takes precedence over the config allow-list.
 
 ## Strictness and CI gating
 
-Severity has two independent knobs — do not confuse them:
+Severity has two independent knobs, do not confuse them:
 
 - **`--level`** (CLI, default `info`) filters what is *displayed*. It never
   changes the exit code and never filters the machine formats.
 - **`[lint].level`** (config, default `warn`) is the *severity floor* that
-  decides the exit code — this is what gates CI.
+  decides the exit code. This is what gates CI.
 
 ```toml
 [lint]
@@ -251,8 +250,8 @@ the run:
 
 ## Writing custom rules
 
-Register additional rules with the `[lint].rules` config key — a list of dotted
-import paths to callables with the signature `(ir: dict) -> list[dict]`:
+Register additional rules with the `[lint].rules` config key, a list of dotted import
+paths to callables with the signature `(ir: dict) -> list[dict]`:
 
 ```toml
 [lint]
@@ -277,13 +276,13 @@ def check_naming(ir: dict) -> list[dict]:
     return findings
 ```
 
-The `ir` argument is the full IR document — see the
-[IR specification](../concepts/internals/ir-specification.md) for its structure.
-A custom finding requires `code`, `element`, `level` (`warning` or `info`), and
-`message`; `category` defaults to `custom`, and `rule`/`suggestion` are optional.
-A rule that raises, returns a non-list, or returns a finding missing a required
-key is logged and skipped — it never crashes `protean check`. Custom findings
-pass through the same suppression and gating machinery as built-in rules.
+The `ir` argument is the full IR document, see the [IR
+specification](../concepts/internals/ir-specification.md) for its structure. A
+custom finding requires `code`, `element`, `level` (`warning` or `info`), and `message`; `category` defaults to
+`custom`, and `rule`/`suggestion` are optional. A rule that raises, returns a non-list, or
+returns a finding missing a required key is logged and skipped. It never
+crashes `protean check`. Custom findings pass through the same suppression and gating
+machinery as built-in rules.
 
 ---
 
@@ -299,7 +298,7 @@ The pre-commit hook wiring is documented in the
 
 ## Related
 
-- [Fitness Function Catalog](../reference/fitness-functions.md) — every rule in detail.
-- [`protean check` reference](../reference/cli/check.md) — flags, formats, exit codes, JSON schema.
-- [`[lint]` configuration](../reference/configuration/index.md#lint) — config keys.
-- [Compatibility checking](compatibility-checking.md) — the complementary IR-diff breaking-change checks.
+- [Fitness Function Catalog](../reference/fitness-functions.md): Every rule in detail.
+- [`protean check` reference](../reference/cli/check.md): Flags, formats, exit codes, JSON schema.
+- [`[lint]` configuration](../reference/configuration/index.md#lint), config keys.
+- [Compatibility checking](compatibility-checking.md): The complementary IR-diff breaking-change checks.

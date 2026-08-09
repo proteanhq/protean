@@ -892,7 +892,7 @@ class BaseBroker(metaclass=ABCMeta):
 
         Called on publish to ``{category}:{key}`` so the partitioned consumer
         can discover the partition without scanning the keyspace (ADR-0028
-        decision 7). Idempotent — recording the same key twice is a no-op.
+        decision 7). Idempotent: recording the same key twice is a no-op.
         """
         self._require_partitioning("record_partition")
         self._record_partition(category, key)
@@ -917,7 +917,7 @@ class BaseBroker(metaclass=ABCMeta):
         (ADR-0028 decision 7). When priority lanes are enabled, pass
         *backfill_suffix* so the key's backfill lane
         (``{category}:{key}:{backfill_suffix}``) is checked and deleted alongside
-        the main stream — otherwise a lane with unconsumed work would be
+        the main stream; otherwise a lane with unconsumed work would be
         stranded. Removes the index entry and the streams; the generation counter
         is left in place so a re-created partition keeps a monotonic fence.
         Returns ``True`` when the partition was reaped. The publish/reap race is
@@ -973,7 +973,7 @@ class BaseBroker(metaclass=ABCMeta):
 
         The lease check and the ``XREADGROUP`` are one atomic step (ADR-0028
         decision 5): a caller that no longer holds the lease at *fence_token*
-        reads nothing and raises :class:`LeaseLostError` rather than advancing
+        reads nothing and raises `LeaseLostError` rather than advancing
         the partition. ``new_messages`` selects undelivered (``>``) vs this
         consumer's already-delivered pending (``0``) entries. Non-blocking.
         """
@@ -998,9 +998,9 @@ class BaseBroker(metaclass=ABCMeta):
     ) -> bool:
         """Ack a partition message, fenced by the ownership lease.
 
-        Like :meth:`read_partition_fenced`, the lease check and the ``XACK`` are
+        Like [`read_partition_fenced`][protean.port.broker.BaseBroker.read_partition_fenced], the lease check and the ``XACK`` are
         atomic: a fenced stale owner cannot ack out from under the new owner and
-        raises :class:`LeaseLostError`.
+        raises `LeaseLostError`.
         """
         self._require_partitioning("ack_partition_fenced")
         return self._ack_partition_fenced(

@@ -50,28 +50,28 @@ class OrderCommandHandler:
 
 It compiles. It passes the happy-path tests. Then things go wrong:
 
-- **A cancelled order gets shipped.** Nothing prevents calling `ship_order`
+- **A cancelled order gets shipped**: Nothing prevents calling `ship_order`
   on an order whose status is `"cancelled"`. The handler blindly sets
   `status = "shipped"` regardless of the current state.
 
-- **Valid states are implicit.** Is `"refund_requested"` a valid status?
+- **Valid states are implicit**: Is `"refund_requested"` a valid status?
   What about `"PAID"` or `"Shipped"`? The set of allowed states lives only
   in the developer's head and whatever strings happen to appear in handler
   code.
 
-- **Transitions are invisible.** Which states can transition to which? Can a
+- **Transitions are invisible**: Which states can transition to which? Can a
   `"delivered"` order be cancelled? The only way to answer is to read every
   handler, every event handler, and every batch job that touches the
   `status` field.
 
-- **Invalid transitions are silent.** Setting `order.status = "shipped"`
+- **Invalid transitions are silent**: Setting `order.status = "shipped"`
   when the order is in `"draft"` produces no error, no log, no event. The
   aggregate happily accepts any string, and downstream consumers see
   nonsensical state sequences.
 
-- **New team members guess.** A developer who joined last month adds a new
-  handler that sets `status = "processing"` -- a state that no consumer
-  knows about. Nothing in the codebase prevents it.
+- **New team members guess**: A developer who joined last month adds a new
+  handler that sets `status = "processing"`, a state that no consumer knows
+  about. Nothing in the codebase prevents it.
 
 The root cause: **the aggregate has a lifecycle, but the lifecycle is
 encoded as ad-hoc string assignments scattered across the codebase instead
@@ -84,14 +84,14 @@ of being modeled as an explicit, enforced state machine**.
 Model the aggregate's lifecycle as an **explicit state machine** with three
 components:
 
-1. **A closed set of states** -- an enum or choices list that defines every
+1. **A closed set of states**: An enum or choices list that defines every
    valid status value. No other values are possible.
 
-2. **Named transition methods** -- each method represents one valid
+2. **Named transition methods**: Each method represents one valid
    transition (e.g., `place()`, `ship()`, `cancel()`). The method name
    comes from the ubiquitous language.
 
-3. **Pre-transition guards** -- each method checks that the aggregate is in
+3. **Pre-transition guards**: Each method checks that the aggregate is in
    a valid source state before performing the transition. Invalid
    transitions raise an error immediately.
 
@@ -306,7 +306,7 @@ class Order:
     The precondition check lives directly inside each transition method as
     an early `if` guard. This is the simplest and most readable approach.
     Protean's `@invariant.pre` decorator is an alternative that runs
-    before every mutation -- useful as a safety net but less precise for
+    before every mutation, useful as a safety net but less precise for
     per-method guards.
 
 ### Step 3: Keep handlers thin
@@ -441,19 +441,17 @@ class Order:
 ```
 
 !!! tip "Use the `Status` field for automatic enforcement"
-    Protean's `Status` field can enforce transitions automatically —
-    no manual guards required. The `Status` field uses a simpler format
-    (`state → [allowed_targets]`) rather than the method-mapped dict above.
-    See the
-    [Status Transitions](../guides/domain-behavior/status-transitions.md)
-    guide for details.
+    Protean's `Status` field can enforce transitions automatically, no manual
+    guards required. The `Status` field uses a simpler format (`state →
+    [allowed_targets]`) rather than the method-mapped dict above. See the
+    [Status Transitions](../guides/domain-behavior/status-transitions.md) guide
+    for details.
 
 !!! note "Idempotent transitions"
-    Some operations should be safe to call twice — e.g., `cancel()` on an
-    already-cancelled order. With `Status` field transitions, add the state
-    to its own target list (`OrderStatus.CANCELLED: [OrderStatus.CANCELLED]`).
-    Without `Status` transitions, add an explicit early return in the
-    method guard.
+    Some operations should be safe to call twice, e.g., `cancel()` on an
+    already-cancelled order. With `Status` field transitions, add the state to its
+    own target list (`OrderStatus.CANCELLED: [OrderStatus.CANCELLED]`). Without `Status` transitions, add an explicit early
+    return in the method guard.
 
 ---
 
@@ -656,20 +654,20 @@ machine, consumers can trust the events they receive.
 | Testing | Requires handlers + infrastructure | Direct method calls on aggregate |
 | Adding a new state | Touch every handler that checks status | Add enum value + one method |
 
-The principle: **an aggregate with a `status` field is a state machine.
-Make it an explicit one. Define the states as an enum. Define each
-transition as a named method with a guard. Raise events from the
-transition. Let the aggregate enforce its own lifecycle.**
+An aggregate with a `status` field is a state machine. Make it an explicit one.
+Define the states as an enum. Define each transition as a named method with a
+guard. Raise events from the transition. Let the aggregate enforce its own
+lifecycle.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Encapsulate State Changes](encapsulate-state-changes.md) -- Named methods for every state transition.
-    - [Validation Layering](validation-layering.md) -- Different validation at different layers.
+    - [Encapsulate State Changes](encapsulate-state-changes.md): Named methods for every state transition.
+    - [Validation Layering](validation-layering.md): Different validation at different layers.
 
     **Guides:**
 
-    - [Invariants](../guides/domain-behavior/invariants.md) -- Pre and post invariants on aggregates.
-    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md) -- Named methods and state changes.
+    - [Invariants](../guides/domain-behavior/invariants.md): Pre and post invariants on aggregates.
+    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md): Named methods and state changes.

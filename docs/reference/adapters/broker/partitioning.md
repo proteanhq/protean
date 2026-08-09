@@ -120,6 +120,6 @@ for the operator-facing consequences.
 
 ## Related reading
 
-- [Sequential processing](../../server/sequential-by.md): the user-facing option.
-- [ADR-0028](https://github.com/proteanhq/protean/blob/main/docs/adr/0028-partition-per-key-sequential-processing.md): why partition-per-key rather than a fixed partition count.
-- [Stable surface](../../stable-surface.md): what Provisional means for this contract.
+- [Sequential processing](../../server/sequential-by.md): The user-facing option.
+- [ADR-0028](https://github.com/proteanhq/protean/blob/main/docs/adr/0028-partition-per-key-sequential-processing.md): Why partition-per-key rather than a fixed partition count.
+- [Stable surface](../../stable-surface.md): What Provisional means for this contract.

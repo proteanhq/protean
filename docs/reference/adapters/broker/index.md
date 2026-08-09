@@ -11,7 +11,7 @@ The Broker port in Protean provides a unified interface for different message br
 
 ## Available Brokers
 
-Protean includes several broker adapters out of the box:
+Protean includes several broker adapters:
 
 ### Inline Broker
 
@@ -57,6 +57,7 @@ URI = "redis://localhost:6379/1"
 ```
 
 Each broker configuration must specify:
+
 - `provider`: The broker adapter to use (`inline`, `redis`, `redis_pubsub`, or custom)
 - Additional provider-specific options (like `URI` for Redis brokers)
 
@@ -166,6 +167,7 @@ protean --domain path.to.domain server
 ```
 
 The engine automatically:
+
 - Discovers all registered subscribers
 - Manages consumer groups
 - Handles message acknowledgment
@@ -174,7 +176,7 @@ The engine automatically:
 
 ## Error Handling
 
-Brokers provide robust error handling mechanisms:
+Brokers provide these error handling mechanisms:
 
 ```python
 from protean.exceptions import BrokerConnectionError
@@ -203,13 +205,13 @@ print(f"Healthy: {health_stats.get('healthy', False)}")
 print(f"Message counts: {health_stats.get('message_counts', {})}")
 ```
 
-## Best Practices
+## Configuring a broker
 
-1. **Always define a default broker** - Even if it's just the inline broker for development
+1. **A default broker is required**: Even if it's just the inline broker for development
 
-2. **Check capabilities before using features** - Not all brokers support all features
+2. **Check capabilities before using features**: Not all brokers support all features
 
-3. **Handle broker failures gracefully** - Implement retry logic and circuit breakers
+3. **Handle broker failures gracefully**: Implement retry logic and circuit breakers
 
 4. **Use appropriate brokers for different concerns**:
 
@@ -217,9 +219,9 @@ print(f"Message counts: {health_stats.get('message_counts', {})}")
     - Redis PubSub for notifications
     - Redis Streams for reliable event processing
 
-5. **Monitor broker health** - Set up alerts for connection failures and high queue depths
+5. **Monitor broker health**: Set up alerts for connection failures and high queue depths
 
-6. **Consider message size limits** - Different brokers have different message size constraints
+6. **Consider message size limits**: Different brokers have different message size constraints
 
 ## Broker Registry
 
@@ -246,7 +248,7 @@ External packages can register their own brokers the same way. See
 [Custom Brokers](./custom-brokers.md) for a complete guide including a Kafka
 example.
 
-## Next Steps
+## Related pages
 
 - [Configure specific brokers](./inline.md) for your use case
 - [Create custom broker adapters](./custom-brokers.md) for other technologies

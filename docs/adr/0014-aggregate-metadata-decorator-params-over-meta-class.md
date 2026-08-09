@@ -57,34 +57,34 @@ the aggregate clean and the storage concern in the adapter layer.
 We revisit the convention only if **four or more** orthogonal aggregate-level
 metadata concerns accumulate (today there are a handful: `provider`,
 `is_event_sourced`, `fact_events`, `indexes`, plus internal options). At that
-point a `Meta` block may earn its place — but it would migrate *all* options at
+point a `Meta` block may earn its place, but it would migrate *all* options at
 once, not split metadata across two homes.
 
 ## Consequences
 
-- **Consistency.** All aggregate metadata is declared in one place, the
+- **Consistency**: All aggregate metadata is declared in one place, the
   decorator. A reader does not have to look in two locations to understand how
   an aggregate is configured.
-- **No split-home migration pressure.** Introducing `class Meta:` for one new
+- **No split-home migration pressure**: Introducing `class Meta:` for one new
   concern would put half the metadata on the decorator and half on `Meta`, and
   create pressure to later migrate the existing options (a Tier-1 break under
   ADR-0004). Avoiding it keeps the surface stable.
-- **Signature length.** The decorator signature grows as options are added.
+- **Signature length**: The decorator signature grows as options are added.
   With many indexes the `indexes=[...]` list can be long. This is the main cost,
   and the trigger documented above for revisiting the decision.
-- **Clean domain/infrastructure split.** Portable indexes live on the
+- **Clean domain/infrastructure split**: Portable indexes live on the
   aggregate; dialect-specific DDL lives on the model. This maps cleanly to the
   ports-and-adapters architecture.
 
 ## Alternatives Considered
 
-- **`class Meta: indexes = [...]`.** Rejected. It splits aggregate metadata
+- **`class Meta: indexes = [...]`**: Rejected. It splits aggregate metadata
   across two homes and reverses a convention the framework already settled on.
   The organizational benefit does not yet outweigh the inconsistency.
-- **`Field(index=True)` only, no composite support.** Rejected. Single-column
+- **`Field(index=True)` only, no composite support**: Rejected. Single-column
   indexes cannot express the composite ordering the outbox polling path needs
   (`status, priority DESC`). Composite indexes are a first-class requirement.
-- **Indexes only on `@domain.model`.** Considered. Indexes are a property of the
+- **Indexes only on `@domain.model`**: Considered. Indexes are a property of the
   persistence representation, so model-level placement is defensible. Rejected
   because the most common indexes (uniqueness on identifiers, composite query
   ordering) encode business invariants and query patterns that are

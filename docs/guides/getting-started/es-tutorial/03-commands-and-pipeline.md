@@ -2,10 +2,9 @@
 
 Calling `account.deposit()` directly works for in-process code, but
 external APIs need a clear contract. In this chapter we will introduce
-**commands** — typed data objects that represent the intent to do
-something — and **command handlers** that receive those commands, load
-the aggregate from the event store, call the appropriate domain method,
-and persist the result.
+**commands**, typed data objects that represent the intent to do something, and
+**command handlers** that receive those commands, load the aggregate from the
+event store, call the appropriate domain method, and persist the result.
 
 ## Defining Commands
 
@@ -23,9 +22,9 @@ Notice the naming convention:
   `DepositMade`, `WithdrawalMade`.
 
 Commands express **intent** ("I want to make a deposit"). Events express
-**facts** ("A deposit was made"). This distinction matters — a command
-can be rejected, but an event is an immutable record of something that
-already happened.
+**facts** ("A deposit was made"). This distinction matters. A command can be
+rejected, but an event is an immutable record of something that already
+happened.
 
 Each command is linked to an aggregate via `part_of=Account`. This tells
 Protean which aggregate the command targets.
@@ -44,9 +43,9 @@ The command handler follows a consistent pattern:
 2. **Call** the domain method with data from the command
 3. **Save** the aggregate back to the repository
 
-The handler is a thin coordinator — it does not contain business logic.
-Business logic lives in the aggregate (the `deposit()` and `withdraw()`
-methods we wrote in Chapter 2).
+The handler is a thin coordinator. It does not contain business logic. Business
+logic lives in the aggregate (the `deposit()` and `withdraw()` methods we wrote
+in Chapter 2).
 
 !!! tip "current_domain"
     `current_domain` is a thread-local reference to the active domain.
@@ -98,12 +97,12 @@ flow through a message broker.
 Behind the scenes, events are organized into **streams**. Each
 aggregate instance has its own stream:
 
-- `fidelis::account-{id}` — events for a specific account
-- `fidelis::account` — the category stream containing all account events
+- `fidelis::account-{id}`: Events for a specific account
+- `fidelis::account`: The category stream containing all account events
 
 Commands are dispatched through a command stream:
 
-- `fidelis::account:command-{id}` — commands for a specific account
+- `fidelis::account:command-{id}`: Commands for a specific account
 
 Stream categories are derived from the aggregate's class name. You
 rarely need to think about them, but they become important when

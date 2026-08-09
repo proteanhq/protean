@@ -10,14 +10,14 @@ internal messaging backbone within a Protean-based application.
 An event store is fundamentally an append-only log. Events are written to named
 streams and read back in order. Protean's `BaseEventStore` interface provides:
 
-- **Stream writes** -- Append events and commands to named streams
-- **Stream reads** -- Read messages from streams by position
-- **Aggregate loading** -- Reconstitute event-sourced aggregates by replaying
+- **Stream writes**: Append events and commands to named streams
+- **Stream reads**: Read messages from streams by position
+- **Aggregate loading**: Reconstitute event-sourced aggregates by replaying
   events
-- **Temporal queries** -- Load an aggregate at a specific version or point in
+- **Temporal queries**: Load an aggregate at a specific version or point in
   time
-- **Snapshots** -- Create and restore aggregate snapshots for performance
-- **Causation tracing** -- Traverse causal chains to understand how events
+- **Snapshots**: Create and restore aggregate snapshots for performance
+- **Causation tracing**: Traverse causal chains to understand how events
   triggered other events
 
 ## Available Event Stores
@@ -30,12 +30,12 @@ and prototyping.
 
 - **No external dependencies**
 - All data is lost on process restart
-- Full interface compliance -- same API as production event stores
+- Full interface compliance, same API as production event stores
 
 ### Message DB
 
 [Message DB](./message-db.md) is a PostgreSQL-based event store that provides
-durable, production-grade event storage with SQL-based stream operations.
+durable event storage with SQL-based stream operations.
 
 - **Requires**: PostgreSQL with the Message DB extension
 - Persistent, durable storage
@@ -62,7 +62,7 @@ database_uri = "postgresql://postgres:postgres@localhost:5433/message_store"
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | `"memory"` | Event store provider (`memory` or `message_db`) |
-| `database_uri` | -- | Connection string (required for Message DB) |
+| `database_uri` | —  | Connection string (required for Message DB) |
 
 ## Core Operations
 
@@ -166,7 +166,7 @@ protean events trace --correlation-id "corr-abc"
 
 See [`protean events`](../../cli/data/events.md) for the full CLI reference.
 
-## Next Steps
+## Related pages
 
 - Learn about [Message DB](./message-db.md) for production event storage
 - Explore [temporal queries](../../../guides/change-state/temporal-queries.md)

@@ -13,9 +13,9 @@ specification.
 
 Two approaches were considered for embedding this metadata:
 
-1. **Custom envelope** — wrap the JSON Schema in a Protean-specific container
+1. **Custom envelope**: Wrap the JSON Schema in a Protean-specific container
    with a `schema` field for the JSON Schema and sibling fields for metadata.
-2. **Standard JSON Schema with `x-` extensions** — emit a standard Draft
+2. **Standard JSON Schema with `x-` extensions**: Emit a standard Draft
    2020-12 JSON Schema and embed metadata as `x-protean-*` prefixed properties
    at the schema root.
 
@@ -46,21 +46,21 @@ specifications for vendor extensions.
 
 **Positive:**
 
-- **Interoperability** — schemas can be used directly with standard JSON Schema
+- **Interoperability**: Schemas can be used directly with standard JSON Schema
   validators (`jsonschema`, `ajv`), schema registries (Confluent Schema
   Registry, AWS Glue), and OpenAPI 3.1 (which uses JSON Schema Draft 2020-12
   natively).
-- **Tooling compatibility** — editors, linters, and documentation generators
+- **Tooling compatibility**: Editors, linters, and documentation generators
   that understand JSON Schema work out of the box.
-- **No custom parsing** — consumers that only need validation can ignore the
+- **No custom parsing**: Consumers that only need validation can ignore the
   `x-protean-*` fields entirely; consumers that need metadata can read them
   without understanding a custom envelope format.
-- **Standards compliance** — every generated schema validates against the Draft
+- **Standards compliance**: Every generated schema validates against the Draft
   2020-12 meta-schema.
 
 **Negative:**
 
-- Extension properties are not validated by standard validators — incorrect
+- Extension properties are not validated by standard validators. Incorrect
   `x-protean-*` values will not be caught by `jsonschema.validate()`.
 - Consumers must know to look for `x-protean-*` keys to extract domain
   metadata; the properties are not self-documenting without Protean's
@@ -68,11 +68,11 @@ specifications for vendor extensions.
 
 ## Alternatives Considered
 
-**Custom envelope format** — rejected because it breaks compatibility with
-standard JSON Schema validators and registries.  Consumers would need
+**Custom envelope format**, rejected because it breaks compatibility with
+standard JSON Schema validators and registries. Consumers would need
 Protean-specific tooling to validate payloads, and OpenAPI 3.1 integration
 would require schema extraction from the envelope.
 
-**JSON-LD / `@context`** — rejected as over-engineered for this use case.
-JSON-LD adds complexity without meaningful benefit since the metadata is
-framework-specific, not intended for linked data interoperability.
+**JSON-LD / `@context`**, rejected as over-engineered for this use case. JSON-LD adds
+complexity without meaningful benefit since the metadata is framework-specific,
+not intended for linked data interoperability.

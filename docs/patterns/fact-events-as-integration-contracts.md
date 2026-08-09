@@ -88,28 +88,28 @@ class CustomerEventSubscriber(BaseSubscriber):
 
 This creates a cascade of problems:
 
-- **Taxonomy coupling.** The Fulfillment domain must know about every granular
+- **Taxonomy coupling**: The Fulfillment domain must know about every granular
   event type the Customer domain publishes. When the Customer domain adds
   `CustomerPreferredLanguageSet`, the Fulfillment domain must decide whether to
-  handle it -- even if it doesn't care. Miss one event and local state drifts.
+  handle it. Even if it doesn't care. Miss one event and local state drifts.
 
-- **State reconstruction from deltas.** The subscriber must process events in
+- **State reconstruction from deltas**: The subscriber must process events in
   order and incrementally update its local model. If events arrive out of order,
   or if the subscriber misses one, the local representation becomes inconsistent.
   Recovering requires replaying the entire event stream from the beginning.
 
-- **Brittle initialization.** When a new customer is created, the Fulfillment
+- **Brittle initialization**: When a new customer is created, the Fulfillment
   domain must handle the `CustomerRegistered` event and then correctly process
   every subsequent delta. If the Fulfillment domain comes online after the
   customer already exists, it must replay every event to reconstruct the current
   state.
 
-- **Schema evolution amplified.** Every time the Customer domain adds, renames,
+- **Schema evolution amplified**: Every time the Customer domain adds, renames,
   or restructures a granular event, every consuming domain must update its
   subscriber. With five consuming domains and twelve event types, a single event
   rename requires coordination across five codebases.
 
-- **Testing complexity.** Testing the subscriber requires constructing sequences
+- **Testing complexity**: Testing the subscriber requires constructing sequences
   of granular events that simulate realistic state transitions. A test for
   "customer with verified email and updated address" requires generating three
   events in the correct order.
@@ -147,11 +147,11 @@ This creates a **dual-stream architecture**:
     Update cache                       Analytics
 ```
 
-**Granular delta events** flow to internal consumers -- event handlers and
-projectors within the same domain -- that react to specific state transitions.
+**Granular delta events** flow to internal consumers (event handlers and
+projectors within the same domain) that react to specific state transitions.
 
-**Fact events** flow to external consumers -- subscribers in other bounded
-contexts -- that need the aggregate's current state without reconstructing it
+**Fact events** flow to external consumers (subscribers in other bounded
+contexts) that need the aggregate's current state without reconstructing it
 from a history of deltas.
 
 The consuming domain receives a single event type (`CustomerFactEvent`) that
@@ -328,14 +328,14 @@ class CustomerFactEventSubscriber(BaseSubscriber):
         repo.add(profile)
 ```
 
-The subscriber handles **one event type** -- the fact event -- and always
+The subscriber handles **one event type** (the fact event) and always
 overwrites the entire local representation. It doesn't matter whether the
 customer changed their name, address, phone, or tier. The subscriber receives
 the current state and replaces its local copy.
 
 When the Customer domain later adds `preferred_language` to the aggregate,
 the fact event automatically includes it. The Fulfillment subscriber can
-choose to map it to a local field or simply ignore it. No new event type
+choose to map it to a local field or ignore it. No new event type
 to handle. No risk of silent drift.
 
 ### Multiple external consumers
@@ -492,32 +492,32 @@ The two mechanisms serve different audiences.
 | Semantic meaning | High (named operation) | Low (generic "state changed") |
 | Best audience | Internal handlers, projectors | External subscribers, other bounded contexts |
 | Consumer complexity | Must handle each event type | One handler, replace entire local state |
-| Ordering sensitivity | Must process in order | Idempotent -- latest snapshot wins |
+| Ordering sensitivity | Must process in order | Idempotent, latest snapshot wins |
 | New field in producer | May require new event type | Automatically included in snapshot |
 | Taxonomy coupling | High (consumer tracks every event type) | None (one event type) |
 | Initialization | Must handle creation event + all deltas | First fact event bootstraps full state |
 | Protean mechanism | `self.raise_(...)` in aggregate methods | `fact_events=True` on aggregate decorator |
 | Stream separation | Aggregate's primary event stream | Separate fact event stream (`-fact-`) |
 
-The principle: **use fact events as the integration contract between bounded
-contexts. External consumers receive complete state snapshots, freeing them
-from reconstructing state from a stream of deltas. Reserve granular delta
-events for internal reactions where semantic meaning -- knowing what specific
-operation occurred -- is essential.**
+Use fact events as the integration contract between bounded contexts. External
+consumers receive complete state snapshots, freeing them from reconstructing
+state from a stream of deltas. Reserve granular delta events for internal
+reactions where semantic meaning (knowing what specific operation occurred) is
+essential.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Design Events for Consumers](design-events-for-consumers.md) -- Events carry enough context for consumers.
-    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md) -- Subscribers as anti-corruption layers.
-    - [Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md) -- Share schemas, not code.
-    - [Connecting Concepts Across Bounded Contexts](connect-concepts-across-domains.md) -- Cross-context synchronization.
+    - [Design Events for Consumers](design-events-for-consumers.md): Events carry enough context for consumers.
+    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md): Subscribers as anti-corruption layers.
+    - [Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md): Share schemas, not code.
+    - [Connecting Concepts Across Bounded Contexts](connect-concepts-across-domains.md): Cross-context synchronization.
 
     **Guides:**
 
-    - [Raising Events](../guides/domain-behavior/raising-events.md) -- How events are raised and enriched.
-    - [Subscribers](../guides/consume-state/subscribers.md) -- Consuming messages from external brokers.
-    - [Publishing Events to External Brokers](publishing-events-to-external-brokers.md) -- Delivering published events to external brokers via the outbox.
-    - [External Event Dispatch](../guides/server/external-event-dispatch.md) -- Step-by-step setup for external broker dispatch.
+    - [Raising Events](../guides/domain-behavior/raising-events.md): How events are raised and enriched.
+    - [Subscribers](../guides/consume-state/subscribers.md): Consuming messages from external brokers.
+    - [Publishing Events to External Brokers](publishing-events-to-external-brokers.md): Delivering published events to external brokers via the outbox.
+    - [External Event Dispatch](../guides/server/external-event-dispatch.md): Step-by-step setup for external broker dispatch.

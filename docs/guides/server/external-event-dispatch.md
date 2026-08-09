@@ -1,8 +1,7 @@
 # Dispatching Published Events to External Brokers
 
-This guide shows how to deliver `published=True` domain events to external
-message brokers so that other bounded contexts and partner systems can consume
-them.
+Here is how to deliver `published=True` domain events to external message
+brokers, so other bounded contexts and partner systems can consume them.
 
 For the architectural rationale and trade-off analysis, see
 [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md).
@@ -218,11 +217,11 @@ external brokers.
 
 ## Next steps
 
-- [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md)
-  -- Pattern: architecture, trade-offs, and anti-patterns
-- [Outbox Pattern](../../concepts/async-processing/outbox.md) -- How the
+- [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md):
+  Pattern: architecture, trade-offs, and anti-patterns
+- [Outbox Pattern](../../concepts/async-processing/outbox.md): How the
   transactional outbox works
-- [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md)
-  -- The consumer side: subscribers as anti-corruption layers
-- [Server Configuration](../../reference/server/configuration.md) -- Full
+- [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md):
+  The consumer side: subscribers as anti-corruption layers
+- [Server Configuration](../../reference/server/configuration.md): Full
   configuration reference

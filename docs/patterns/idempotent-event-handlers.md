@@ -17,34 +17,34 @@ class LoyaltyEventHandler(BaseEventHandler):
 ```
 
 In production, the Protean server processes events from the event store via
-subscriptions. The subscription tracks its position in the stream, advancing
-as events are processed. But the server crashes between processing the event
-and persisting the updated position. On restart, the subscription resumes from
-its last saved position -- and delivers the same `OrderPlaced` event again.
+subscriptions. The subscription tracks its position in the stream, advancing as
+events are processed. But the server crashes between processing the event and
+persisting the updated position. On restart, the subscription resumes from its
+last saved position, and delivers the same `OrderPlaced` event again.
 
 The handler runs a second time. The customer gets double loyalty points.
 
 This is not a rare edge case. It happens routinely in distributed systems:
 
-- **Server restart during processing.** The event was handled, the aggregate
+- **Server restart during processing**: The event was handled, the aggregate
   was persisted, but the subscription position wasn't updated before the crash.
 
-- **Broker redelivery.** The message broker delivered the event, but the
+- **Broker redelivery**: The message broker delivered the event, but the
   consumer didn't acknowledge it before disconnecting. The broker redelivers.
 
-- **Subscription replay.** A subscription is restarted from an earlier position
+- **Subscription replay**: A subscription is restarted from an earlier position
   for debugging, migration, or recovery.
 
-- **Network partitions.** The handler commits to the database but the
+- **Network partitions**: The handler commits to the database but the
   acknowledgment to the event store is lost. The event is redelivered.
 
-- **Competing consumers.** In a multi-instance deployment, two instances
+- **Competing consumers**: In a multi-instance deployment, two instances
   briefly process the same event before coordination kicks in.
 
 Unlike commands (covered in [Command Idempotency](command-idempotency.md)),
 events represent **facts that already happened**. You cannot reject an event or
 return an error to its producer. The Order was placed. The handler must deal
-with it -- potentially more than once.
+with it, potentially more than once.
 
 ---
 
@@ -56,10 +56,10 @@ should be identical to its state after one.
 
 This is achieved through one of three strategies:
 
-1. **Naturally idempotent operations** -- operations that produce the same
+1. **Naturally idempotent operations**: Operations that produce the same
    result regardless of repetition (set-based, not additive).
-2. **Deduplication** -- detecting and skipping duplicate deliveries.
-3. **Upsert instead of insert** -- using database semantics that handle
+2. **Deduplication**: Detecting and skipping duplicate deliveries.
+3. **Upsert instead of insert**: Using database semantics that handle
    duplicates gracefully.
 
 ---
@@ -87,12 +87,13 @@ are periodic, not per-message).
 
 ## Strategy 1: Naturally Idempotent Operations
 
-The simplest and most robust approach. If the handler's operation produces the
+The simplest and most reliable approach. If the handler's operation produces the
 same result whether executed once or ten times, duplicates are harmless.
 
 ### Set-Based Operations
 
-Operations that **set** state rather than **add** to it are naturally idempotent:
+Operations that **set** state rather than **add** to it are naturally
+idempotent:
 
 ```python
 @domain.event_handler(part_of=OrderStatus)
@@ -317,8 +318,8 @@ class ShipmentEventHandler(BaseEventHandler):
 
 ### Example 1: Loyalty Points (Additive Operation)
 
-Loyalty points are additive -- awarding points twice doubles the reward.
-This requires explicit deduplication.
+Loyalty points are additive, awarding points twice doubles the reward. This
+requires explicit deduplication.
 
 ```python
 @domain.aggregate
@@ -591,18 +592,18 @@ deduplication).
 
 ## Signs Your Handler Isn't Idempotent
 
-1. **Counter increments.** `stats.count += 1` is not idempotent.
+1. **Counter increments**: `stats.count += 1` is not idempotent.
 
-2. **List appends without checking.** `items.append(new_item)` without
+2. **List appends without checking**: `items.append(new_item)` without
    checking if the item is already present.
 
-3. **Creating records without existence checks.** `repo.add(new_record)`
+3. **Creating records without existence checks**: `repo.add(new_record)`
    without checking if a record for this event already exists.
 
-4. **Direct external API calls.** Sending emails, SMS, or API requests
+4. **Direct external API calls**: Sending emails, SMS, or API requests
    without deduplication.
 
-5. **Generating new identifiers.** If the handler creates a new aggregate
+5. **Generating new identifiers**: If the handler creates a new aggregate
    with `Auto(identifier=True)`, a duplicate delivery creates a second
    aggregate with a different ID.
 
@@ -619,18 +620,18 @@ deduplication).
 | Upsert | Creating or updating projections | Low | High |
 | Status flags | External side effects | Medium | High |
 
-The principle: **every event handler must produce the same result whether it
-processes an event once or multiple times. Prefer naturally idempotent
-operations. When that's not possible, deduplicate explicitly. The handler,
-not the framework, is the primary defense against duplicate events.**
+Every event handler must produce the same result whether it processes an event
+once or multiple times. Prefer naturally idempotent operations. When that's not
+possible, deduplicate explicitly. The handler, not the framework, is the
+primary defense against duplicate events.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Event Handlers](../concepts/building-blocks/event-handlers.md) — How event handlers consume and process events.
+    - [Event Handlers](../concepts/building-blocks/event-handlers.md): How event handlers consume and process events.
 
     **Guides:**
 
-    - [Event Handlers](../guides/consume-state/event-handlers.md) — Defining handlers, configuration, and error handling.
+    - [Event Handlers](../guides/consume-state/event-handlers.md): Defining handlers, configuration, and error handling.

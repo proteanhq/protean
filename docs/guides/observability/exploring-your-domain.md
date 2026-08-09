@@ -5,7 +5,7 @@ into something you can navigate: a **Domain Visualizer** that draws your
 aggregates and their relationships from the live IR, and a **Timeline** that
 lets you browse, filter, and trace every message the system has processed.
 
-This guide covers how to use both. For startup options and the full endpoint
+Here is how to use both. For startup options and the full endpoint
 list see the [`protean observatory` reference](../../reference/cli/runtime/observatory.md);
 for the tracing data behind the views see
 [Correlation and causation IDs](correlation-and-causation.md).
@@ -78,7 +78,7 @@ stat cards refresh without a reload.
 
 - [`protean observatory` reference](../../reference/cli/runtime/observatory.md):
   CLI options and the complete endpoint catalog.
-- [Correlation and causation IDs](correlation-and-causation.md): how the
+- [Correlation and causation IDs](correlation-and-causation.md): How the
   chains the Timeline draws are propagated and assembled.
-- [Monitoring](../server/monitoring.md): metrics, subscription lag, and
+- [Monitoring](../server/monitoring.md): Metrics, subscription lag, and
   Prometheus scraping for the same server.

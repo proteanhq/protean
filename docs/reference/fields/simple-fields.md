@@ -21,16 +21,15 @@ Defaults to `None` (no minimum).
 - **`sanitize`**: Optionally turn off HTML sanitization. Default is `True`.
 
 !!! note "Length bounds apply to the sanitized value"
-    Sanitization changes the length of a value — HTML-escaping grows it
-    (`&` → `&amp;`) and stripping HTML comments/attributes shrinks it — so
-    `min_length`/`max_length` are checked against **both** the raw input and the
-    **stored** (sanitized) form. Because the stored form is bounded, a value that
-    is accepted always round-trips through serialization and event-sourced replay.
-    An input is rejected on write if *either* form is out of bounds (so a raw
-    length that looks fine can still be rejected once sanitized, and vice versa);
-    widen the bound or set `sanitize=False` if you need the escaped form. A
-    `choices` field is **never** sanitized — its value must match a declared
-    choice exactly. See
+    Sanitization changes the length of a value, HTML-escaping grows it (`&` →
+    `&amp;`) and stripping HTML comments/attributes shrinks it. So `min_length`/`max_length` are
+    checked against **both** the raw input and the **stored** (sanitized) form.
+    Because the stored form is bounded, a value that is accepted always
+    round-trips through serialization and event-sourced replay. An input is
+    rejected on write if *either* form is out of bounds (so a raw length that
+    looks fine can still be rejected once sanitized, and vice versa); widen the
+    bound or set `sanitize=False` if you need the escaped form. A `choices` field is **never**
+    sanitized. Its value must match a declared choice exactly. See
     [ADR-0026](../../adr/0026-max-length-bounds-the-sanitized-value.md).
 
 ## Text
@@ -162,9 +161,9 @@ Out[2]:
 `DateTime` and `Date` support two Django-parity flags that let the persistence
 layer stamp the field on save:
 
-- **`auto_now_add=True`** — set to the current UTC time on the **create** save,
+- **`auto_now_add=True`**: Set to the current UTC time on the **create** save,
   then never touched again. Use it for `created_at`.
-- **`auto_now=True`** — set to the current UTC time on **every** save (create and
+- **`auto_now=True`**: Set to the current UTC time on **every** save (create and
   update). Use it for `updated_at`.
 
 ```python
@@ -178,9 +177,9 @@ class Article:
 ```
 
 The two flags are mutually exclusive, are only valid on `DateTime`/`Date`
-fields, and cannot be combined with `required=True` (the value is filled at save
-time, so the field must be optional). Unlike a construction-time
-`default=utc_now`, an `auto_now*` field is `None` until the first save — the
+fields, and cannot be combined with `required=True` (the value is filled at
+save time, so the field must be optional). Unlike a construction-time
+`default=utc_now`, an `auto_now*` field is `None` until the first save. The
 value is stamped on the `repository.add()` → save path, not at construction and
 not on a bulk `query.update()` (matching Django's `Model.save()` vs
 `QuerySet.update()` behavior).
@@ -261,7 +260,7 @@ Out[3]:
 Identity values are UUIDs by default. You can customize this behavior with
 `identity_strategy` and `identity_type` [config attributes](../configuration/index.md#identity_strategy).
 
-The [Identity](../domain-elements/identity.md) section deep dives into identities in Protean.
+The [Identity](../domain-elements/identity.md) section covers identities in Protean.
 
 ## Identifier
 
@@ -286,7 +285,7 @@ In [2]: user.to_dict()
 Out[2]: {'user_id': 1, 'name': 'John Doe', 'subscribed': False}
 ```
 
-Refer to [Identity](../domain-elements/identity.md) section for a deep dive into identities
+Refer to [Identity](../domain-elements/identity.md) section for more on identities
 in Protean.
 
 ## Status
@@ -312,8 +311,8 @@ class Order:
     status = Status(OrderStatus, default="DRAFT")
 ```
 
-Without `transitions`, `Status` behaves like `String(choices=Enum)` — it constrains
-values but does not enforce transition rules.
+Without `transitions`, `Status` behaves like `String(choices=Enum)`. It
+constrains values but does not enforce transition rules.
 
 ### Enforcing transitions
 
@@ -331,8 +330,8 @@ class Order:
     })
 ```
 
-States not appearing as keys in the transitions dict are **terminal states** — no
-outgoing transitions are allowed from them.
+States not appearing as keys in the transitions dict are **terminal states**,
+no outgoing transitions are allowed from them.
 
 Same-value assignments are also validated against the map. To make a state
 **idempotent** (self-transition allowed), include it in its own target list:

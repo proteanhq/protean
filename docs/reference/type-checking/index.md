@@ -1,16 +1,16 @@
 # Type Checking
 
 Protean ships a **mypy plugin** that teaches static type checkers about
-the framework's runtime transformations — field factories that resolve
-to native Python types and decorators that inject base classes. Without
-the plugin, mypy reports false errors on perfectly correct Protean code.
+the framework's runtime transformations, field factories that resolve to native
+Python types and decorators that inject base classes. Without the plugin, mypy
+reports false errors on perfectly correct Protean code.
 
 The plugin handles two patterns:
 
-1. **Field factories** — `String()`, `Integer()`, and peers return
+1. **Field factories**: `String()`, `Integer()`, and peers return
    `FieldSpec` at the class level but resolve to `str`, `int`, etc. at
    runtime. The plugin maps each factory to its Python type.
-2. **Decorator-based registration** — `@domain.aggregate`,
+2. **Decorator-based registration**: `@domain.aggregate`,
    `@domain.entity`, and the other element decorators dynamically inject
    base classes at runtime. The plugin injects the same base classes
    during type analysis so methods like `raise_()`, `to_dict()`, and
@@ -29,8 +29,8 @@ Add the plugin to `[tool.mypy]` in `pyproject.toml` (or an equivalent
 plugins = ["protean.ext.mypy_plugin"]
 ```
 
-Field type resolution and decorator base class injection are both
-enabled by this single entry — there are no further flags.
+Field type resolution and decorator base class injection are both enabled by
+this single entry. There are no further flags.
 
 Debug mode: set `PROTEAN_MYPY_DEBUG=1` to print plugin diagnostic
 traces to stderr while mypy runs.
@@ -64,7 +64,7 @@ After `@domain.aggregate`-decorated (or equivalently decorated) classes are
 analyzed, mypy sees them as if they inherit from the corresponding base
 class. For aggregates, this exposes:
 
-- `.id` — auto-injected `str`
+- `.id`: Auto-injected `str`
 - `.raise_(event)`
 - `.to_dict()`
 - `._events`
@@ -97,14 +97,14 @@ Protean's own repository ships this configuration in its
 
 ## Known Limitations
 
-- **`auto_add_id_field=False`** — The plugin does not inspect decorator
+- **`auto_add_id_field=False`**: The plugin does not inspect decorator
   arguments. If you pass `auto_add_id_field=False` to `@domain.aggregate`,
   the plugin still injects `id`. Use `# type: ignore[attr-defined]` if needed.
 
-- **Autocomplete for injected methods** — While mypy correctly type-checks
+- **Autocomplete for injected methods**: While mypy correctly type-checks
   injected base class methods, some IDE autocomplete engines may not show them
   in suggestions because the base class is not in the explicit MRO.
 
-- **Explicit inheritance** — If you already inherit from a base class
+- **Explicit inheritance**: If you already inherit from a base class
   (e.g. `class Order(BaseAggregate):`), the plugin detects this and skips
   injection to avoid duplicates.

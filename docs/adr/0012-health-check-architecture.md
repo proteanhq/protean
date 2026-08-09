@@ -8,22 +8,21 @@
 
 ## Context
 
-Before the 5.1 hardening work, Protean had no built-in health probes.
-Operators deploying to Kubernetes wrote their own liveness and
-readiness checks — typically a Python script that imported the domain
-and called `broker.ping()` — and exposed it through a sidecar or a
-manual HTTP server. The pattern in `docs/guides/server/production-deployment.md`
-showed this exact workaround. Three problems made this approach
-untenable at scale:
+Before the 5.1 hardening work, Protean had no built-in health probes. Operators
+deploying to Kubernetes wrote their own liveness and readiness checks,
+typically a Python script that imported the domain and called `broker.ping()`,
+and exposed it through a sidecar or a manual HTTP server. The pattern in
+`docs/guides/server/production-deployment.md` showed this exact workaround.
+Three problems made this approach untenable at scale:
 
-1. **No uniform probe contract.** Each team invented its own probe
+1. **No uniform probe contract**: Each team invented its own probe
    semantics. Some checked only broker connectivity; some checked every
    adapter; some returned `200` even when the domain was mid-shutdown.
    There was no standard for what "ready" meant.
-2. **FastAPI vs engine duplication.** Teams running both an API tier
+2. **FastAPI vs engine duplication**: Teams running both an API tier
    (FastAPI) and the async engine (`protean server`) wrote two
    separate probes. The async engine had no HTTP surface at all.
-3. **Shutdown invisibility.** A pod mid-drain looked identical to a
+3. **Shutdown invisibility**: A pod mid-drain looked identical to a
    healthy pod from outside. Load balancers and service meshes had no
    way to know a pod was winding down until TCP connections started
    failing.
@@ -39,12 +38,12 @@ the async engine by default.
 
 **Probe endpoints (uniform across implementations):**
 
-- `GET /healthz` — liveness. Proves the process is alive and able to
+- `GET /healthz`: Liveness. Proves the process is alive and able to
   respond. Returns `200` with
   `{"status": "ok", "checks": {"event_loop": "responsive"}}` on the
   async engine; `{"application": "running"}` on the FastAPI router.
-- `GET /livez` — alias for `/healthz`.
-- `GET /readyz` — readiness. Inspects every provider, broker, event
+- `GET /livez`: Alias for `/healthz`.
+- `GET /readyz`: Readiness. Inspects every provider, broker, event
   store, and cache; on the async engine it also reports a
   `subscriptions` block (see "Per-subscription readiness" below).
   Returns `200` when every check passes, `503`
@@ -77,20 +76,18 @@ can serve requests is ready even when a worker is backed up. Only
 
 **Transport choice: asyncio over aiohttp/ASGI.**
 
-The engine's probe server uses `asyncio.start_server` directly, not
-`aiohttp` or an ASGI framework. Health probes are the simplest
-possible HTTP workload — a few fixed routes returning small JSON
-payloads — and bringing in an HTTP framework for a probe server
-inflates the dependency graph of a package that is deliberately
-minimal.
+The engine's probe server uses `asyncio.start_server` directly, not `aiohttp`
+or an ASGI framework. Health probes are the simplest possible HTTP workload (a
+few fixed routes returning small JSON payloads) and bringing in an HTTP
+framework for a probe server inflates the dependency graph of a package that is
+deliberately minimal.
 
 **Readiness during shutdown:**
 
 `/readyz` returns `503` the moment `Engine.shutdown()` sets
 `shutting_down = True`, well before subscriptions stop or handlers
-drain. This is the "graceful drain" signal to load balancers — pull
-the pod out of rotation first, then let in-flight work complete on the
-old pod.
+drain. This is the "graceful drain" signal to load balancers, pull the pod out
+of rotation first, then let in-flight work complete on the old pod.
 
 **Liveness during shutdown:**
 
@@ -172,10 +169,9 @@ install small. The probe server's footprint in `src/protean/server/health.py`
 is under 250 lines.
 
 **TCP-only probe (no HTTP).** Rejected. TCP `SYN-ACK` is not a strong
-signal of readiness — the engine's event loop could be unresponsive
-while the socket layer still accepts connections. HTTP with a
-response body is the standard Kubernetes probe contract and signals
-something meaningful.
+signal of readiness. The engine's event loop could be unresponsive while the
+socket layer still accepts connections. HTTP with a response body is the
+standard Kubernetes probe contract and signals something meaningful.
 
 **Mounting probes on an existing API app.** Considered. `create_health_router`
 does exactly this for FastAPI users. For the async engine, which has
@@ -210,9 +206,9 @@ a pod can see *which* subscription is behind without leaving the probe.
 
 ## References
 
-- `docs/guides/server/hardening.md` — operational guidance for probe
+- `docs/guides/server/hardening.md`: Operational guidance for probe
   wiring and Kubernetes `terminationGracePeriodSeconds`.
-- `docs/reference/server/hardening.md` — probe response bodies, status
+- `docs/reference/server/hardening.md`: Probe response bodies, status
   codes, and configuration reference.
-- ADR-0011 — Engine shutdown and resource lifecycle contract (the
-  shutdown sequence that `/readyz` signals during).
+- ADR-0011, Engine shutdown and resource lifecycle contract (the shutdown
+  sequence that `/readyz` signals during).

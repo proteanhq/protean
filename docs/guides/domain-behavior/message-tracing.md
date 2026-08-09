@@ -4,8 +4,8 @@
 
 In event-driven systems, a single user action can trigger a chain of commands
 and events that cascade across multiple aggregates and handlers. **Message
-tracing** lets you follow the full causal chain -- from the initial request
-through every command and event it spawns -- using two identifiers that Protean
+tracing** lets you follow the full causal chain (from the initial request
+through every command and event it spawns) using two identifiers that Protean
 attaches to every message automatically:
 
 - **`correlation_id`**: A constant identifier shared by *every* message in the
@@ -35,9 +35,8 @@ points to the message that directly caused it.
 
 ## Supplying an External Correlation ID
 
-In production, the `correlation_id` often originates outside Protean -- from an
-API gateway, frontend client, or upstream service. You can pass it into
-`domain.process()`:
+In production, the `correlation_id` often originates outside Protean, from an API gateway,
+frontend client, or upstream service. You can pass it into `domain.process()`:
 
 ```python
 # Accept correlation_id from the HTTP request header
@@ -116,8 +115,8 @@ Protean maintains two distinct tracing layers:
 | **Domain tracing** | `DomainMeta.correlation_id` + `causation_id` | Protean-internal causation chain | Flexible strings |
 | **Distributed tracing** | `MessageHeaders.traceparent` | External tool integration (Jaeger, Zipkin) | W3C hex format |
 
-`correlation_id` bridges both layers -- it identifies the same business
-operation whether you're looking at Protean's domain metadata or a W3C trace.
+`correlation_id` bridges both layers. It identifies the same business operation
+whether you're looking at Protean's domain metadata or a W3C trace.
 `causation_id`, however, is domain-layer only because Protean's message IDs
 (like `"myapp::order-abc123-0.1"`) are intentionally human-readable and cannot
 fit in W3C's 16-hex-char `parent_id` format.
@@ -276,16 +275,16 @@ This is useful for operational dashboards and debugging delivery issues.
 ---
 
 !!! tip "See also"
-    **Complete guide:** [Correlation and Causation IDs](../observability/correlation-and-causation.md) -- End-to-end guide covering HTTP headers, OTEL span attributes, Observatory traces, structured logging, and cross-service propagation.
+    **Complete guide:** [Correlation and Causation IDs](../observability/correlation-and-causation.md): End-to-end guide covering HTTP headers, OTEL span attributes, Observatory traces, structured logging, and cross-service propagation.
 
-    **Related guide:** [Message Enrichment](message-enrichment.md) -- Automatically add custom metadata (user context, tenant ID, audit data) to every event and command via enricher hooks.
+    **Related guide:** [Message Enrichment](message-enrichment.md): Automatically add custom metadata (user context, tenant ID, audit data) to every event and command via enricher hooks.
 
-    **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) -- Design considerations, when to use external vs generated IDs, and multi-service tracing strategies.
+    **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md): Design considerations, when to use external vs generated IDs, and multi-service tracing strategies.
 
-    **Reference:** [`protean events trace`](../../reference/cli/data/events.md) -- CLI command for following causal chains.
+    **Reference:** [`protean events trace`](../../reference/cli/data/events.md): CLI command for following causal chains.
 
-    **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#causation-chain-traversal) -- Algorithm details for the traversal methods.
+    **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#causation-chain-traversal): Algorithm details for the traversal methods.
 
-    **API:** [BaseEventStore](../../api/ports/event-store.md) -- Auto-generated API reference for `trace_causation`, `trace_effects`, `build_causation_tree`, and `CausationNode`.
+    **API:** [BaseEventStore](../../api/ports/event-store.md): Auto-generated API reference for `trace_causation`, `trace_effects`, `build_causation_tree`, and `CausationNode`.
 
-    **Concept:** [Observability](../../reference/server/observability.md) -- Real-time tracing and monitoring with the Protean Observatory.
+    **Concept:** [Observability](../../reference/server/observability.md): Real-time tracing and monitoring with the Protean Observatory.

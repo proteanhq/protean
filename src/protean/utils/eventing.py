@@ -366,8 +366,9 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
     def _resolve_declared_version(cls) -> None:
         """Apply the ``version=`` decorator option to ``__version__``.
 
-        Called from ``_derive_element_class`` once ``meta_`` is populated —
-        ``__init_subclass__`` runs too early to observe the decorator option.
+        Called from ``_derive_element_class`` once ``meta_`` is populated,
+        because ``__init_subclass__`` runs too early to observe the decorator
+        option.
         The class-attribute form (``__version__ = N``) is resolved eagerly in
         ``__init_subclass__``; this method only handles the decorator option and
         rejects declaring the version both ways.
@@ -390,7 +391,7 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
     def _convert_vo_descriptors(cls) -> None:
         """Convert ValueObject descriptors to direct type annotations.
 
-        Commands/Events don't need shadow fields — VOs serialize as
+        Commands/Events don't need shadow fields, because VOs serialize as
         nested dicts.  This converts ``email = ValueObject(Email)`` to
         the equivalent of ``email: Email | None = None``.
         """
@@ -948,7 +949,7 @@ class Message(Element, BaseModel, OptionsMixin):
 
         The per-class ``lenient`` meta option wins when set (``True``/``False``);
         otherwise the domain's ``lenient_deserialization`` config key applies
-        (default ``False`` — strict).
+        (default ``False``, meaning strict).
         """
         per_class = getattr(getattr(element_cls, "meta_", None), "lenient", None)
         if per_class is not None:
@@ -1224,7 +1225,7 @@ class Message(Element, BaseModel, OptionsMixin):
 
         Protean is a compliant CloudEvents producer: every required and
         optional context attribute is derived from existing metadata at
-        serialization time — no internal metadata classes are modified.
+        serialization time. No internal metadata classes are modified.
 
         **Required attributes** (always present):
 
@@ -1410,7 +1411,7 @@ class Message(Element, BaseModel, OptionsMixin):
             ValueError: If required CloudEvents attributes are missing
                 or ``specversion`` is not ``"1.0"``.
 
-        Example — consuming an external CloudEvent in a subscriber::
+        Example, consuming an external CloudEvent in a subscriber::
 
             @domain.subscriber(stream="orders")
             class OrderEventsSubscriber:
@@ -1419,7 +1420,7 @@ class Message(Element, BaseModel, OptionsMixin):
                     # Access data
                     order_id = message.data["order_id"]
 
-        Example — round-tripping a Protean CloudEvent::
+        Example, round-tripping a Protean CloudEvent::
 
             original = Message.from_domain_object(event)
             ce = original.to_cloudevent()

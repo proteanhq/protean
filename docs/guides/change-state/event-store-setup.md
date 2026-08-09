@@ -2,8 +2,9 @@
 
 <span class="pathway-tag pathway-tag-es">ES</span>
 
-This guide covers choosing, configuring, and operating an event store
-for event-sourced aggregates. For the conceptual background, see
+Event-sourced aggregates need somewhere to append their events and read them
+back. Here is how to choose an event store, configure it, and operate it. For
+the conceptual background, see
 [Event Sourcing](../../concepts/architecture/event-sourcing.md).
 
 ---
@@ -15,8 +16,8 @@ for event-sourced aggregates. For the conceptual background, see
 | `memory` | Development, testing, prototyping | None |
 | `message_db` | Production, durable storage | PostgreSQL + Message DB |
 
-Both providers implement the same interface -- your domain code is
-identical regardless of provider.
+Both providers implement the same interface. Your domain code is identical
+regardless of provider.
 
 ---
 
@@ -162,9 +163,9 @@ storing periodic state checkpoints. See [Snapshots](./snapshots.md).
 ---
 
 !!! tip "See also"
-    - [Event Store Reference](../../reference/adapters/eventstore/index.md)
-      -- Provider configuration details.
-    - [Message DB Reference](../../reference/adapters/eventstore/message-db.md)
-      -- Message DB-specific setup and options.
-    - [Causation Tracing](../observability/correlation-and-causation.md)
-      -- Tracing causal chains through the event store.
+    - [Event Store Reference](../../reference/adapters/eventstore/index.md):
+      Provider configuration details.
+    - [Message DB Reference](../../reference/adapters/eventstore/message-db.md):
+      Message DB-specific setup and options.
+    - [Causation Tracing](../observability/correlation-and-causation.md):
+      Tracing causal chains through the event store.

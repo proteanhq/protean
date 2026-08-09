@@ -81,7 +81,7 @@ class BaseCommand(BaseMessageType):
 
         Accepts keyword arguments matching the declared fields. Optionally,
         a ``dict`` can be passed as a positional argument to serve as a
-        template — keyword arguments take precedence over template values.
+        template. Keyword arguments take precedence over template values.
 
         Args:
             *args (dict): Optional template dictionaries for field values.

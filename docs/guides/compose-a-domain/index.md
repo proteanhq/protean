@@ -41,7 +41,7 @@ For the full list of constructor parameters, see
 For configuration options, see
 [Configuration](../../reference/configuration/index.md).
 
-## What's in This Section
+## Guides in this section
 
 ### [Register Elements](./register-elements.md)
 
@@ -81,11 +81,11 @@ Generate JSON Schema files for domain elements.
 
 ## Related
 
-- [Domain Constructor Reference](../../reference/domain-elements/domain-constructor.md)
-  -- Full parameter documentation.
-- [Element Decorators](../../reference/domain-elements/element-decorators.md)
-  -- All decorators and their options.
-- [Object Model](../../reference/domain-elements/object-model.md)
-  -- Common structure and traits shared by all domain elements.
-- [Compatibility Checking](../compatibility-checking.md)
-  -- Detect breaking changes with IR diffing, hooks, and CI.
+- [Domain Constructor Reference](../../reference/domain-elements/domain-constructor.md):
+  Full parameter documentation.
+- [Element Decorators](../../reference/domain-elements/element-decorators.md):
+  All decorators and their options.
+- [Object Model](../../reference/domain-elements/object-model.md):
+  Common structure and traits shared by all domain elements.
+- [Compatibility Checking](../compatibility-checking.md):
+  Detect breaking changes with IR diffing, hooks, and CI.

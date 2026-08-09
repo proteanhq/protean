@@ -3,7 +3,7 @@
 Protean ships with native OpenTelemetry (OTel) support for distributed tracing
 and metrics. When enabled, command processing, event handling, repository
 operations, and server message dispatch automatically emit OTel spans and
-metrics -- plugging into any APM backend (Datadog, Jaeger, Grafana Tempo, etc.)
+metrics, plugging into any APM backend (Datadog, Jaeger, Grafana Tempo, etc.)
 with zero user code changes.
 
 ## Installation
@@ -64,16 +64,16 @@ These attributes appear on every span and metric exported by the domain.
 When telemetry is disabled (the default) or the `opentelemetry` packages are
 not installed, all instrumentation is a no-op:
 
-1. **No imports at module level** -- the `opentelemetry` package is imported
+1. **No imports at module level**: The `opentelemetry` package is imported
    lazily inside `src/protean/utils/telemetry.py` and only when enabled.
-2. **No-op fallbacks** -- `domain.tracer` and `domain.meter` return lightweight
+2. **No-op fallbacks**: `domain.tracer` and `domain.meter` return lightweight
    no-op objects (`_NoOpTracer`, `_NoOpMeter`) whose methods do nothing.
-3. **Context managers still work** -- every `with tracer.start_as_current_span()`
+3. **Context managers still work**: Every `with tracer.start_as_current_span()`
    call works identically whether real or no-op, so instrumented code never
    needs conditional guards.
 
-The rest of the codebase never imports `opentelemetry` directly -- all OTel
-interaction flows through `protean.utils.telemetry`.
+The rest of the codebase never imports `opentelemetry` directly, all OTel interaction flows
+through `protean.utils.telemetry`.
 
 ---
 
@@ -280,14 +280,14 @@ the W3C `traceparent` header format.
 
 ### How it works
 
-1. **Injection** -- When a command is enriched (`CommandProcessor.enrich()`),
+1. **Injection**: When a command is enriched (`CommandProcessor.enrich()`),
    the current OTel span context is serialized into a `TraceParent` value
    object and stored in `message.metadata.headers.traceparent`.
 
-2. **Storage** -- The `TraceParent` header travels with the message through
+2. **Storage**: The `TraceParent` header travels with the message through
    the event store or broker, surviving serialization/deserialization.
 
-3. **Extraction** -- When the Engine processes a message
+3. **Extraction**: When the Engine processes a message
    (`handle_message()`), it extracts the `TraceParent` from message headers
    and passes it as the parent OTel context to
    `tracer.start_as_current_span()`.
@@ -309,18 +309,18 @@ protean.engine.handle_message          (Server, links to same trace)
 
 The key functions are in `protean.utils.telemetry`:
 
-- `inject_traceparent_from_context()` -- captures the current span as a
+- `inject_traceparent_from_context()`: Captures the current span as a
   `TraceParent` value object
-- `extract_context_from_traceparent(traceparent)` -- converts a `TraceParent`
+- `extract_context_from_traceparent(traceparent)`: Converts a `TraceParent`
   back to an OTel `Context`
 
 !!! note "Domain-level correlation vs. distributed tracing"
     `TraceParent` provides *infrastructure* span lineage (parent-child spans
     in Jaeger/Datadog). Protean's `correlation_id` and `causation_id` provide
     *business* operation lineage (which command caused which event). Both are
-    complementary -- the `correlation_id` attribute on OTEL spans bridges the
-    two layers. See
-    [Correlation and Causation IDs](../observability/correlation-and-causation.md#relationship-to-opentelemetry)
+    complementary, the `correlation_id` attribute on OTEL spans bridges the two
+    layers. See [Correlation and Causation
+    IDs](../observability/correlation-and-causation.md#relationship-to-opentelemetry)
     for the full picture.
 
 ---
@@ -358,8 +358,8 @@ instrument_app(
 )
 ```
 
-The call is safe even when `opentelemetry` is not installed -- it returns
-`False` and logs a warning.
+The call is safe even when `opentelemetry` is not installed. It returns `False`
+and logs a warning.
 
 ### Excluding Observatory endpoints
 
@@ -385,8 +385,8 @@ is installed:
    registered as `ObservableGauge` callbacks on the OTel meter
 
 When OTel is **not** enabled, the endpoint falls back to the original
-hand-rolled Prometheus implementation with identical behavior. No
-configuration change is needed -- the convergence is automatic.
+hand-rolled Prometheus implementation with identical behavior. No configuration
+change is needed. The convergence is automatic.
 
 ---
 
@@ -405,13 +405,13 @@ Protean offers two complementary observability paths:
 
 ### When to use which
 
-- **Observatory** -- Local development and debugging. Real-time SSE dashboard,
+- **Observatory**: Local development and debugging. Real-time SSE dashboard,
   REST API for trace history, zero configuration beyond having Redis.
-- **OpenTelemetry** -- Production monitoring. Vendor-agnostic spans and metrics
+- **OpenTelemetry**: Production monitoring. Vendor-agnostic spans and metrics
   exported to your APM platform. Distributed tracing across service boundaries.
 
 They share instrumentation callsites but have independent emission paths. Both
-can run simultaneously -- the Observatory's trace emitter and OTel spans are
+can run simultaneously, the Observatory's trace emitter and OTel spans are
 emitted from the same code points in the Engine and handlers without
 interference.
 
@@ -592,24 +592,23 @@ Key rules:
 
 - **Metric name**: `protean.<subsystem>.<metric>` (e.g.,
   `protean.cache.hits`).
-- **Units**: Use OTEL conventions -- `"s"` for seconds, `"{item}"` for
-  counts, `"By"` for bytes.
+- **Units**: Use OTEL conventions, `"s"` for seconds, `"{item}"` for counts, `"By"` for
+  bytes.
 - **Labels at recording time**, not at creation time. The instrument is
   created once; labels are passed with each `.add()` or `.record()` call.
 - **Counters** for events that happened (commands processed, messages
   published). **Histograms** for distributions (latency, batch sizes).
-- The `DomainMetrics` instance is **cached per domain** -- created on
-  first access via `get_domain_metrics(domain)` and cleared on
-  `shutdown_telemetry()`. Never create instruments outside this class.
+- The `DomainMetrics` instance is **cached per domain**, created on first access via `get_domain_metrics(domain)`
+  and cleared on `shutdown_telemetry()`. Never create instruments outside this class.
 
 ### Adding TraceParent propagation to a new message pathway
 
 If you add a new message pathway (e.g., a new subscription type or a
 new way commands enter the system), ensure trace continuity:
 
-- **On message creation**: call `inject_traceparent_from_context()` and
+- **On message creation**: Call `inject_traceparent_from_context()` and
   store the result in the message's `MessageHeaders.traceparent`.
-- **On message arrival**: call `extract_context_from_traceparent(msg.metadata.headers.traceparent)`
+- **On message arrival**: Call `extract_context_from_traceparent(msg.metadata.headers.traceparent)`
   and pass the result as `context=` to `start_as_current_span()`.
 
 If either side is missed, the distributed trace will break at that
@@ -621,10 +620,10 @@ for reference.
 
 ## Next steps
 
-- [Observability reference](../../reference/server/observability.md) -- Full
+- [Observability reference](../../reference/server/observability.md): Full
   Observatory API, trace events, and Prometheus metric reference
-- [Monitoring](./monitoring.md) -- Observatory setup, key metrics, alerting
-- [FastAPI Integration](../fastapi/index.md) -- Domain context middleware and
+- [Monitoring](./monitoring.md): Observatory setup, key metrics, alerting
+- [FastAPI Integration](../fastapi/index.md): Domain context middleware and
   exception handlers
-- [Engine Architecture](../../concepts/async-processing/engine.md) -- How the
+- [Engine Architecture](../../concepts/async-processing/engine.md): How the
   engine manages subscriptions and lifecycle

@@ -6,9 +6,9 @@ result, and handle errors. If this orchestration lived in the API controller,
 domain logic would leak into infrastructure code. If it lived in the
 aggregate, the aggregate would need to know about persistence.
 
-Command handlers solve this by acting as thin orchestrators — they receive a
-command, coordinate the necessary steps, and delegate all business logic to
-the aggregate. The handler itself contains no business rules.
+Command handlers solve this by acting as thin orchestrators. They receive a
+command, coordinate the necessary steps, and delegate all business logic to the
+aggregate. The handler itself contains no business rules.
 
 ## Facts
 
@@ -91,7 +91,7 @@ returned to the caller.
 
 ### Validate commands. { data-toc-label="Validation" }
 
-Ensure that commands are validated before processing. This can be done in a
+Make sure that commands are validated before processing. This can be done in a
 separate validation layer or within the command handler itself.
 
 ### Return values only when necessary. { data-toc-label="Return Values" }
@@ -107,14 +107,14 @@ of the caller.
 
 For practical details on defining and using command handlers in Protean, see the guide:
 
-- [Command Handlers](../../guides/change-state/command-handlers.md) — Defining handlers, workflow, return values, idempotency, and error handling.
+- [Command Handlers](../../guides/change-state/command-handlers.md): Defining handlers, workflow, return values, idempotency, and error handling.
 
 For the read-side counterpart:
 
-- [Query Handlers](./query-handlers.md) — Processing structured read intents from projections (the read side of CQRS).
+- [Query Handlers](./query-handlers.md): Processing structured read intents from projections (the read side of CQRS).
 
 For design guidance:
 
-- [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — When to use which, with decision tree and comparison table.
-- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by pushing logic into the domain model.
-- [Command Idempotency](../../patterns/command-idempotency.md) — Handling duplicate commands safely.
+- [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md): When to use which, with decision tree and comparison table.
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by pushing logic into the domain model.
+- [Command Idempotency](../../patterns/command-idempotency.md): Handling duplicate commands safely.

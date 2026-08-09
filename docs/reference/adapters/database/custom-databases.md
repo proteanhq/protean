@@ -28,7 +28,7 @@ property.
 | `capabilities` | Property returning `DatabaseCapabilities` flags |
 | `get_session()` | Return a session object for transaction management |
 | `get_connection()` | Return the underlying database connection |
-| `is_alive()` | Health check -- return `True` if the database is reachable |
+| `is_alive()` | Health check, return `True` if the database is reachable |
 | `close()` | Release connections and clean up resources |
 | `get_dao(entity_cls, model_cls)` | Return a DAO for a given entity |
 | `construct_database_model_class(entity_cls)` | Auto-generate a database model |
@@ -43,7 +43,7 @@ property.
 **Extends**: `protean.port.dao.BaseDAO`
 
 The DAO encapsulates data access operations. `BaseDAO` provides lifecycle
-wrappers (`get`, `save`, `create`, `update`, `delete`) -- you implement the
+wrappers (`get`, `save`, `create`, `update`, `delete`). You implement the
 underscored internals:
 
 | Method | Purpose |
@@ -302,9 +302,9 @@ region = "us-east-1"
 The objects returned by `get_session()` and `get_connection()` must support
 three methods:
 
-- `commit()` -- Flush pending changes to the database
-- `rollback()` -- Discard pending changes
-- `close()` -- Release the connection back to the pool
+- `commit()`: Flush pending changes to the database
+- `rollback()`: Discard pending changes
+- `close()`: Release the connection back to the pool
 
 `BaseDAO._commit_if_standalone()` calls these methods when operating outside a
 Unit of Work. Adapters without real transactions (like the DynamoDB example
@@ -371,7 +371,7 @@ dao.query.filter(...).count()
 ## Declaring Capabilities
 
 Choose the `DatabaseCapabilities` flags that accurately represent what your
-adapter supports. Capabilities are orthogonal -- combine them freely:
+adapter supports. Capabilities are orthogonal, combine them freely:
 
 ```python
 from protean.port.provider import DatabaseCapabilities
@@ -424,23 +424,23 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
     "$(python -c 'from protean.testing import get_generic_test_dir; print(get_generic_test_dir())')"
 ```
 
-## Best Practices
+## Guidance for adapter authors
 
-1. **Handle Connection Failures** -- Implement reconnection logic and return
+1. **Handle Connection Failures**: Implement reconnection logic and return
    meaningful results from `is_alive()`.
-2. **Declare Accurate Capabilities** -- Only declare capabilities you actually
+2. **Declare Accurate Capabilities**: Only declare capabilities you actually
    support. Use the conformance test suite to verify.
-3. **Use `_entity_to_dict()`** -- Avoid duplicating entity-to-dict conversion
+3. **Use `_entity_to_dict()`**: Avoid duplicating entity-to-dict conversion
    logic. The helper handles value objects, shadow fields, and associations
    consistently.
-4. **Register All Required Lookups** -- Protean validates that all 12 standard
+4. **Register All Required Lookups**: Protean validates that all 12 standard
    lookups are registered. Missing lookups produce warnings at domain init.
-5. **Provide No-Op Sessions** -- If your database does not support transactions,
+5. **Provide No-Op Sessions**: If your database does not support transactions,
    provide a session with no-op `commit()`, `rollback()`, and `close()`.
-6. **Test with Conformance Suite** -- Run `protean test test-adapter` as part
+6. **Test with Conformance Suite**: Run `protean test test-adapter` as part
    of your CI pipeline to catch regressions early.
 
-## Next Steps
+## Related pages
 
 - Review [existing adapter implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/repository)
   for reference

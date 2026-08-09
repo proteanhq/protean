@@ -2,7 +2,7 @@
 
 ## The Problem
 
-Events and commands in a domain-driven system carry a business payload -- the
+Events and commands in a domain-driven system carry a business payload. The
 fields that matter to the domain model. But downstream processing often needs
 more than the business payload. Multi-tenant applications need to know which
 tenant an event belongs to. Audit systems need the user who triggered the
@@ -31,27 +31,27 @@ class OrderPlaced(BaseEvent):
 
 This creates several problems:
 
-- **Domain model pollution.** The `OrderPlaced` event now mixes business facts
+- **Domain model pollution**: The `OrderPlaced` event now mixes business facts
   (`order_id`, `items`, `total`) with infrastructure concerns (`tenant_id`,
-  `request_id`, `feature_flags`). The event's purpose -- recording what
-  happened in the business -- is diluted by operational plumbing.
+  `request_id`, `feature_flags`). The event's purpose (recording what happened
+  in the business) is diluted by operational plumbing.
 
-- **Repetition across every event and command.** Every event class needs the
+- **Repetition across every event and command**: Every event class needs the
   same cross-cutting fields. Every `raise_()` call must populate them. Every
   command must carry them. Miss one, and downstream processing silently loses
   context.
 
-- **Coupling between domain logic and operational context.** The aggregate's
+- **Coupling between domain logic and operational context**: The aggregate's
   `place_order()` method now needs to know about tenants, users, and feature
   flags. It reaches into request-scoped globals to populate fields that have
   nothing to do with order placement.
 
-- **Schema evolution friction.** Adding a new cross-cutting field (say,
+- **Schema evolution friction**: Adding a new cross-cutting field (say,
   `deployment_version`) requires updating every event class, every `raise_()`
   call, and every handler that reads the field. The change fans out across the
   entire domain.
 
-- **Testing complexity.** Unit tests for business logic must now construct
+- **Testing complexity**: Unit tests for business logic must now construct
   events with tenant IDs, user IDs, and request IDs, even when testing
   something as simple as "placing an order emits `OrderPlaced`."
 
@@ -82,7 +82,7 @@ Domain Model                    Enrichment Layer               Message Store
 The enrichment layer sits between the domain model and the message store:
 
 1. **Enrichers are registered once** during domain initialization. They are
-   plain callables -- no base class, no decorator protocol.
+   plain callables, no base class, no decorator protocol.
 
 2. **Enrichers read from ambient context** (Protean's `g`, which is a
    thread-local/request-scoped namespace) rather than from the event payload
@@ -110,9 +110,9 @@ class.
 ### Setting Up Tenant Context
 
 In a multi-tenant SaaS application, every request arrives with a tenant
-identifier -- typically extracted from an authentication token, a request
-header, or a subdomain. The application stores this in Protean's global
-context `g` early in the request lifecycle.
+identifier, typically extracted from an authentication token, a request header,
+or a subdomain. The application stores this in Protean's global context `g`
+early in the request lifecycle.
 
 ```python
 # middleware.py -- FastAPI middleware that sets tenant context
@@ -370,7 +370,7 @@ domain.register_command_enricher(tenant_command_enricher)
 
 Because enrichers read from `g`, tests that need enriched metadata must set up
 the global context. Tests that only care about business logic can ignore
-enrichers entirely -- they just get empty extensions:
+enrichers entirely. They just get empty extensions:
 
 ```python
 class TestOrderPlacement:
@@ -557,21 +557,21 @@ request in middleware and store it in `g`.
 | Persistence | Event payload (business schema) | Extensions dict (infrastructure schema) |
 | Serialization | Survives round-trips | Survives round-trips |
 
-The principle: **event and command payloads carry business facts. Operational
-context -- tenancy, audit, tracing, feature flags -- belongs in
-`metadata.extensions`, injected automatically by enrichers that read from
-ambient context. The domain model never knows, and never needs to know,
-about the infrastructure that surrounds it.**
+Event and command payloads carry business facts. Operational context (tenancy,
+audit, tracing, feature flags) belongs in `metadata.extensions`, injected
+automatically by enrichers that read from ambient context. The domain model
+never knows, and never needs to know, about the infrastructure that surrounds
+it.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Message Tracing](message-tracing.md) -- Correlation and causation IDs for traceability.
-    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md) -- Enriching external events during translation.
+    - [Message Tracing](message-tracing.md): Correlation and causation IDs for traceability.
+    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md): Enriching external events during translation.
 
     **Guides:**
 
-    - [Raising Events](../guides/domain-behavior/raising-events.md) -- How events are raised and enriched.
-    - [Message Tracing](../guides/domain-behavior/message-tracing.md) -- Correlation and causation IDs.
+    - [Raising Events](../guides/domain-behavior/raising-events.md): How events are raised and enriched.
+    - [Message Tracing](../guides/domain-behavior/message-tracing.md): Correlation and causation IDs.

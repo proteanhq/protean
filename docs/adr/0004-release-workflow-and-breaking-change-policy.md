@@ -13,7 +13,12 @@
 
 ## Context
 
-Protean has reached a level of complexity and feature richness where it is approaching production readiness. Development velocity has increased significantly with LLM-assisted workflows, compressing what used to be weeks of work into days. However, the release process has not kept pace — releases are treated as heavyweight, batched events tied to epic completion, and are frequently blocked by open-ended validation from early adopters.
+Protean has reached a level of complexity and feature richness where it is
+approaching production readiness. Development velocity has increased
+significantly with LLM-assisted workflows, compressing what used to be weeks of
+work into days. However, the release process has not kept pace. Releases are
+treated as heavyweight, batched events tied to epic completion, and are
+frequently blocked by open-ended validation from early adopters.
 
 The specific friction that prompted this decision: Release R1 was feature-complete but remained unshipped while waiting for developers to validate against their existing codebases. Meanwhile, R2 development was implicitly blocked on shipping R1, creating unnecessary coupling between development and release activities.
 
@@ -31,13 +36,18 @@ We adopt a **continuous release model** with a **tiered breaking change policy**
 
 Releases are cheap, frequent, and decoupled from epic completion. The guiding question for cutting a release is not "have we completed the epic?" but **"is this release better than what's currently on PyPI?"** If yes, ship it.
 
-Version numbers are coordination signals, not milestones. Minor version bumps (0.15 → 0.16) can happen as frequently as meaningful work lands — weekly or even more often during periods of high velocity.
+Version numbers are coordination signals, not milestones. Minor version bumps
+(0.15 → 0.16) can happen as frequently as meaningful work lands, weekly or even
+more often during periods of high velocity.
 
 Development and stabilization run in parallel. Completing an epic and shipping a release are independent activities. Work on the next set of features begins immediately, without waiting for the current release to go through validation.
 
 ### Release Cadence
 
-There is no fixed schedule. Releases are cut when there is something worth telling users about — a meaningful feature, a significant fix, or an important behavioral improvement. The changelog is the release trigger: when the unreleased section has substantive entries, it's time to ship.
+There is no fixed schedule. Releases are cut when there is something worth
+telling users about: a meaningful feature, a significant fix, or an important
+behavioral improvement. The changelog is the release trigger: when the
+unreleased section has substantive entries, it's time to ship.
 
 ### No Release Candidates
 
@@ -45,7 +55,9 @@ Protean does **not** use release candidates. Minor versions are cut directly fro
 
 **Rationale:** RCs added ceremony without buying meaningful safety. In practice, the RC window became a bottleneck that delayed shipping without producing the early-adopter feedback it was meant to generate. With frequent minor releases, patch releases, and the three-tier breaking change policy (deprecations, flags, versioned schemas), users already have multiple layers of protection without needing an explicit pre-release phase.
 
-If a future release contains a change so large or risky that pre-release validation is warranted, that is a signal to split the change across more incremental releases — not to gate the release train behind a feedback window.
+If a future release contains a change so large or risky that pre-release
+validation is warranted, that is a signal to split the change across more
+incremental releases, not to gate the release train behind a feedback window.
 
 ---
 
@@ -57,7 +69,7 @@ Not all breaking changes carry the same risk or require the same mitigation. We 
 
 **What they are:** Renamed classes, moved imports, changed method signatures, removed configuration keys. These produce immediate and obvious errors (`ImportError`, `TypeError`) on startup.
 
-**Detection:** Loud — users discover them instantly.
+**Detection:** Loud. Users discover them instantly.
 
 **Mitigation: Deprecation warnings.**
 
@@ -79,7 +91,14 @@ def run(self, debug=False):
         warn_deprecated("debug=True", removal="0.17.0", alternative="Use log_level.")
 ```
 
-Each removal version maps internally to a `RemovedInProteanXXWarning` subclass of the public `protean.exceptions.ProteanDeprecationWarning` (itself a `DeprecationWarning`). The `@deprecated` decorator validates the version eagerly (a typo fails at import); the inline `warn_deprecated` helper never raises on the live deprecated path, degrading to the base `ProteanDeprecationWarning` for an unregistered version so a consumer's program keeps running. Promoting the `ProteanDeprecationWarning` category to an error in CI (see the guidance below) surfaces every Protean deprecation — filter by that category, not by module, since a decorated helper attributes its warning to the *caller's* module.
+Each removal version maps internally to a `RemovedInProteanXXWarning` subclass of the public `protean.exceptions.ProteanDeprecationWarning`
+(itself a `DeprecationWarning`). The `@deprecated` decorator validates the version eagerly (a typo fails
+at import); the inline `warn_deprecated` helper never raises on the live deprecated path,
+degrading to the base `ProteanDeprecationWarning` for an unregistered version so a consumer's program
+keeps running. Promoting the `ProteanDeprecationWarning` category to an error in CI (see the guidance
+below) surfaces every Protean deprecation, filter by that category, not by
+module, since a decorated helper attributes its warning to the *caller's*
+module.
 
 **Survival window:** There is no fixed count. Each deprecation declares the version it will be removed in, via the `removal=` argument that also selects its warning class, and that declaration is the commitment. What is fixed is the invariant: **a removal is never in the same release as its deprecation**, so every removal is preceded by at least one released version that warned about it and named the release it was going away in.
 
@@ -89,7 +108,8 @@ Pick a removal version with judgement rather than arithmetic. A rarely-touched i
 
 **What they are:** A method still exists with the same signature but does something different. Examples include a repository method that previously returned `None` for missing entities now raising an exception, event handlers executing in a different order, or validation rules being enforced at a different lifecycle point.
 
-**Detection:** Silent — the user's code runs without errors but produces incorrect results. This is the most dangerous category.
+**Detection:** Silent. The user's code runs without errors but produces
+incorrect results. This is the most dangerous category.
 
 **Mitigation: Explicit opt-in flags with eventual default flip.**
 
@@ -103,9 +123,9 @@ class MyAggregate(BaseAggregate):
 
 **Transition sequence:**
 
-1. **Opt-in.** New behavior is available behind the flag. The default preserves the old behavior.
-2. **Warn.** If the flag is not set explicitly, emit a warning naming the version the default changes in: "The default for `strict_validation` will change to `True` in v0.N+2. Set it explicitly to suppress this warning."
-3. **Flip.** Change the default. Users who set the flag explicitly are unaffected.
+1. **Opt-in**: New behavior is available behind the flag. The default preserves the old behavior.
+2. **Warn**: If the flag is not set explicitly, emit a warning naming the version the default changes in: "The default for `strict_validation` will change to `True` in v0.N+2. Set it explicitly to suppress this warning."
+3. **Flip**: Change the default. Users who set the flag explicitly are unaffected.
 
 Each step is a separate release, so a user who sets the flag when warned is never surprised. How many releases sit between the steps is a judgement call about how widely the behavior is relied on, not a fixed number.
 
@@ -113,7 +133,8 @@ Each step is a separate release, so a user who sets the flag when warned is neve
 
 **What they are:** Changes to persistence formats, event schemas, serialization conventions, or configuration structures that affect stored data or deployed infrastructure. For a framework with an event store, this is the highest-consequence category.
 
-**Detection:** Varies — may be loud (deserialization errors) or silent (data read incorrectly under a new schema).
+**Detection:** Varies, may be loud (deserialization errors) or silent (data
+read incorrectly under a new schema).
 
 **Mitigation: Versioned schemas and documented migration paths.**
 
@@ -135,30 +156,59 @@ In the short term (pre-1.0), a clear "Upgrade Notes" section in each release is 
 
 ### Exception: Operational Defaults
 
-A narrow exception to the Tier-2 transition path applies to **operational defaults** — values that tune infrastructure behaviour (connection pool sizes, bound ports, timeout thresholds, retention windows) without changing any public API signature or method semantics. These may be flipped in a single release when **all** of the following hold:
+A narrow exception to the Tier-2 transition path applies to **operational
+defaults**, values that tune infrastructure behaviour (connection pool sizes,
+bound ports, timeout thresholds, retention windows) without changing any public
+API signature or method semantics. These may be flipped in a single release
+when **all** of the following hold:
 
-1. The previous value remains available via a config key in `domain.toml` — operators can restore old behaviour declaratively without touching code.
+1. The previous value remains available via a config key in `domain.toml`.
+   Operators can restore old behaviour declaratively without touching code.
 2. The flip is documented as a Tier-2 change in the release notes with an explicit opt-out recipe.
-3. Failures caused by the new value are observable and non-silent — typically a domain validator warning (e.g. `LOW_POOL_SIZE`) or a logged runtime warning on first use.
+3. Failures caused by the new value are observable and non-silent, typically a
+   domain validator warning (e.g. `LOW_POOL_SIZE`) or a logged runtime warning
+   on first use.
 
 This exception exists because operational defaults have different risk economics than API breaks: they fail loudly when wrong (connection exhaustion, port collision) rather than silently producing incorrect results, and operators who have invested in tuning already set these keys explicitly. Forcing the 3-version transition imposes friction without commensurate safety gain.
 
-Epic 5.1 applied this exception to two shipped changes — SQLAlchemy pool defaults `2/5 → 5/10` (#794) and the Engine health server binding port 8080 by default (#795). Both carry opt-out paths in `domain.toml` and non-silent failure modes (pool warning, port-collision log entry).
+Epic 5.1 applied this exception to two shipped changes, SQLAlchemy pool
+defaults `2/5 → 5/10` (#794) and the Engine health server binding port 8080 by default
+(#795). Both carry opt-out paths in `domain.toml` and non-silent failure modes (pool
+warning, port-collision log entry).
 
 ### Exception: Silent Correctness Bug
 
-A second narrow exception to the Tier-2 transition path applies when the "old behaviour" being changed was never an intentional contract but a **silent correctness bug** — code that ran without error yet produced incorrect or unsafe results (reads executed inside a UnitOfWork, events double-processed, a validation that never fired). Such behaviour may be rejected outright in a single release — no opt-in flag, no warning window — when **all** of the following hold:
+A second narrow exception to the Tier-2 transition path applies when the "old
+behaviour" being changed was never an intentional contract but a **silent
+correctness bug**, code that ran without error yet produced incorrect or unsafe
+results (reads executed inside a UnitOfWork, events double-processed, a
+validation that never fired). Such behaviour may be rejected outright in a
+single release (no opt-in flag, no warning window) when **all** of the
+following hold:
 
 1. The prior behaviour violated a documented or clearly-implied contract; no correct program should have depended on it.
-2. The failure is **loud and immediate** — typically an `IncorrectUsageError` at `domain.init()` or on startup — carrying a message that names the fix, rather than a silent change of results.
+2. The failure is **loud and immediate**, typically an `IncorrectUsageError`
+   at `domain.init()` or on startup, carrying a message that names the fix, rather than a
+   silent change of results.
 3. The migration is mechanical and unambiguous (usually a one-line edit), so the loud failure is self-resolving.
-4. A transition window would not help: keeping the old path alive would either *perpetuate the incorrect result* or *silently change semantics* — itself a Tier-2 silent break, the most dangerous category.
+4. A transition window would not help: keeping the old path alive would either
+   *perpetuate the incorrect result* or *silently change semantics*, itself a
+   Tier-2 silent break, the most dangerous category.
 
 An opt-out is offered only when a legitimate use of the old behaviour may exist; where none does, the mechanical migration is the only path forward.
 
-This exception exists for the same risk-economics reason as operational defaults: a loud, immediate, mechanically-fixable failure carries none of the danger the 3-version transition is designed to absorb, and a transition window here would *prolong* incorrect behaviour rather than protect against it. It is deliberately narrow — it covers bugs, not disliked-but-intentional API; the burden is on the change to show the old behaviour was never a contract.
+This exception exists for the same risk-economics reason as operational
+defaults: a loud, immediate, mechanically-fixable failure carries none of the
+danger the 3-version transition is designed to absorb, and a transition window
+here would *prolong* incorrect behaviour rather than protect against it. It is
+deliberately narrow. It covers bugs, not disliked-but-intentional API; the
+burden is on the change to show the old behaviour was never a contract.
 
-Applied to #1089 (multi-worker event-store double-processing — the server now refuses to start, with an `--allow-event-store-multiworker` opt-out for the rare legitimate case) and #1104 (`@handle` on a Query Handler method — now raises `IncorrectUsageError` at `domain.init()` naming `@read`, with no opt-out, since a stateless read must never run in a UnitOfWork).
+Applied to #1089 (multi-worker event-store double-processing; the server now
+refuses to start, with an `--allow-event-store-multiworker` opt-out for the
+rare legitimate case) and #1104 (`@handle` on a Query Handler method, now raises `IncorrectUsageError`
+at `domain.init()` naming `@read`, with no opt-out, since a stateless read must never run in a
+UnitOfWork).
 
 ---
 
@@ -198,8 +248,9 @@ Use pytest's `filterwarnings` (or a programmatic `warnings.filterwarnings(..., c
 
 1. Work lands on `main` through normal PR workflow.
 2. Every PR that touches a public API answers: **does this break existing usage?**
-   - No — merge and continue.
-   - Yes — classify the tier and apply the appropriate mitigation in the same PR.
+   - No, merge and continue.
+   - Yes. Classify the tier and apply the appropriate mitigation in the same
+     PR.
 3. Each PR adds an entry to the unreleased section of `CHANGELOG.md`.
 4. When the changelog has substantive entries, cut a release: bump version, tag, build, publish to PyPI.
 
@@ -236,12 +287,12 @@ No ceremony needed for patch releases. The changelog entry on the release branch
 
 The changelog is the primary release artifact. It is maintained continuously (not written at release time) and organized by release version with the following sections:
 
-- **Added** — new features and capabilities
-- **Changed** — behavioral changes (always note if a flag or opt-in is involved)
-- **Deprecated** — items marked for future removal, with the target removal version
-- **Removed** — items deleted in this release, each with its migration path
-- **Fixed** — bug fixes
-- **Upgrade Notes** — explicit steps users need to take, especially for Tier 2 and Tier 3 changes
+- **Added**: New features and capabilities
+- **Changed**: Behavioral changes (always note if a flag or opt-in is involved)
+- **Deprecated**: Items marked for future removal, with the target removal version
+- **Removed**: Items deleted in this release, each with its migration path
+- **Fixed**: Bug fixes
+- **Upgrade Notes**: Explicit steps users need to take, especially for Tier 2 and Tier 3 changes
 
 ### Migration Guides
 
@@ -308,10 +359,10 @@ The closest precedent is not Django but **SQLAlchemy**, which describes its sche
 
 Its upgrade mechanism is the one adopted here, almost exactly:
 
-- **A per-version deprecation warning class.** SQLAlchemy emits `RemovedIn20Warning`; Protean already emits `RemovedInProtean018Warning` and friends from `protean._deprecation`. This was built before the policy was written down, so the policy is ratifying existing machinery rather than proposing new work.
-- **Warning-free means upgrade-safe.** SQLAlchemy's stated strategy is that once an application runs on 1.4 with the deprecation flags on and emits no 2.0 warnings, it is cross-compatible with 2.0. That is our contract sentence, arrived at independently and validated by a project with a far larger blast radius than ours.
-- **An early-warning switch.** SQLAlchemy gates next-major warnings behind `SQLALCHEMY_WARN_20=1` so users opt into seeing them before they are due. `protean check` plays that role for us, with the advantage of not requiring the code path to actually execute.
-- **Opt-in flags for behavioral change.** SQLAlchemy's `future=True` let 1.4 users run 2.0 semantics early. That is exactly our Tier 2 flag sequence.
+- **A per-version deprecation warning class**: SQLAlchemy emits `RemovedIn20Warning`; Protean already emits `RemovedInProtean018Warning` and friends from `protean._deprecation`. This was built before the policy was written down, so the policy is ratifying existing machinery rather than proposing new work.
+- **Warning-free means upgrade-safe**: SQLAlchemy's stated strategy is that once an application runs on 1.4 with the deprecation flags on and emits no 2.0 warnings, it is cross-compatible with 2.0. That is our contract sentence, arrived at independently and validated by a project with a far larger blast radius than ours.
+- **An early-warning switch**: SQLAlchemy gates next-major warnings behind `SQLALCHEMY_WARN_20=1` so users opt into seeing them before they are due. `protean check` plays that role for us, with the advantage of not requiring the code path to actually execute.
+- **Opt-in flags for behavioral change**: SQLAlchemy's `future=True` let 1.4 users run 2.0 semantics early. That is exactly our Tier 2 flag sequence.
 
 We follow their shape: **the minor position is where breaking change lands**, patches are inert, and majors are reserved for a categorical shift. We also follow them in not fixing a deprecation window.
 
@@ -324,8 +375,8 @@ An earlier draft of this section went the other way, reserving removals for "cle
 The taxonomy and both exceptions (operational defaults, silent correctness bugs) carry over unchanged, as does the invariant that a removal is never in the same release as its deprecation. Four things become stricter:
 
 - **Tier 3 migration tooling becomes mandatory**, not a nice-to-have. A persistence or event-schema change ships with a migration or it does not ship.
-- **A deprecation may not ship without a `protean check` rule that detects it.** The warning and the detector land together, so the mechanical upgrade path exists from the moment the deprecation does.
-- **The guarantees specification becomes part of the API.** Weakening a documented guarantee is a breaking change even when every signature is untouched. See `docs/reference/guarantees.md`.
+- **A deprecation may not ship without a `protean check` rule that detects it**: The warning and the detector land together, so the mechanical upgrade path exists from the moment the deprecation does.
+- **The guarantees specification becomes part of the API**: Weakening a documented guarantee is a breaking change even when every signature is untouched. See `docs/reference/guarantees.md`.
 - **The public surface is enumerated in three tiers** (Stable / Provisional / Internal) so the contract above has a defined subject. See `docs/reference/stable-surface.md`.
 
 **What stays the same at 1.0:**
@@ -353,10 +404,12 @@ How a developer *acknowledges* an intentional breaking change in their own domai
 
 ### Negative
 
-- More releases means more changelog discipline — every PR must include a changelog entry.
+- More releases means more changelog discipline. Every PR must include a
+  changelog entry.
 - The tiered deprecation system adds overhead to PRs that touch public APIs.
 - `protean check` is an additional tool to build and maintain.
-- Frequent releases may cause "update fatigue" for users who prefer stability — mitigate this post-1.0 with LTS versions if needed.
+- Frequent releases may cause "update fatigue" for users who prefer stability,
+  mitigate this post-1.0 with LTS versions if needed.
 
 ### Risks
 
@@ -370,6 +423,6 @@ How a developer *acknowledges* an intentional breaking change in their own domai
 - [Keep a Changelog](https://keepachangelog.com/)
 - [Semantic Versioning](https://semver.org/)
 - [Python Deprecation Warning Documentation](https://docs.python.org/3/library/warnings.html)
-- [Django Deprecation Timeline](https://docs.djangoproject.com/en/stable/internals/deprecation/) — exemplar of the opt-in flag pattern
-- [Rust Release Process](https://forge.rust-lang.org/release/process.html) — exemplar of the release train model
-- [VS Code Iteration Plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans) — exemplar of theme-based planning with continuous delivery
+- [Django Deprecation Timeline](https://docs.djangoproject.com/en/stable/internals/deprecation/): Exemplar of the opt-in flag pattern
+- [Rust Release Process](https://forge.rust-lang.org/release/process.html): Exemplar of the release train model
+- [VS Code Iteration Plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans): Exemplar of theme-based planning with continuous delivery

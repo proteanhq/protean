@@ -3,11 +3,11 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 When an aggregate changes state, other parts of the system often need to
-react — updating a different aggregate, sending a notification, or triggering
-a downstream process. Putting that logic inside the originating aggregate
-would violate its boundary. Event handlers solve this: they listen for
-domain events and execute side effects in their own transaction, keeping
-aggregates decoupled.
+react, updating a different aggregate, sending a notification, or triggering a
+downstream process. Putting that logic inside the originating aggregate would
+violate its boundary. Event handlers solve this: they listen for domain events
+and execute side effects in their own transaction, keeping aggregates
+decoupled.
 
 Event handlers consume events raised in an aggregate and help sync the state of
 the aggregate with other aggregates and other systems. They are the preferred
@@ -50,7 +50,7 @@ typically use `part_of=Inventory, stream_category="order"` to keep the handler
 associated with its owning aggregate while listening to another aggregate's
 stream.
 
-3. Event handler calls `reduce_stock()` on the `Inventory` aggregate —
+3. Event handler calls `reduce_stock()` on the `Inventory` aggregate
 delegating to a domain method rather than mutating state directly.
 
 Simulating the example, we can see that the stock levels were decreased in
@@ -222,7 +222,7 @@ category](../../concepts/async-processing/stream-categories.md). The stream cate
 
 - **`source_stream`**: When specified, the event handler only consumes events
 whose `origin_stream` matches this value. This filters events based on what
-originally triggered them — useful when the same event type can be raised from
+originally triggered them, useful when the same event type can be raised from
 different contexts and you only want to react to a specific trigger.
 
     ```python
@@ -244,7 +244,7 @@ transient infrastructure exceptions, applied inside the handler before any
 subscription-level retry. See [Transient-failure retries](#transient-failure-retries).
 
 !!! note "Required: `part_of`"
-    Every event handler must specify `part_of` — the aggregate it belongs to.
+    Every event handler must specify `part_of`, the aggregate it belongs to.
     This association determines the default stream category. You can override
     the stream with `stream_category` to listen to a *different* aggregate's
     events, but `part_of` is always required.
@@ -356,7 +356,7 @@ domain-wide defaults.
 
 ## Error Handling
 
-Protean provides a robust error handling mechanism for event handlers through the optional `handle_error` method. This method allows event handlers to gracefully recover from exceptions without disrupting the overall event processing pipeline.
+Protean provides error handling for event handlers through the optional `handle_error` method. This method allows event handlers to gracefully recover from exceptions without disrupting the overall event processing pipeline.
 
 ### The `handle_error` Method
 
@@ -409,15 +409,15 @@ def handle_error(cls, exc: Exception, message):
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Event Handlers](../../concepts/building-blocks/event-handlers.md) — How event handlers consume and react to domain events.
+    **Concept overview:** [Event Handlers](../../concepts/building-blocks/event-handlers.md): How event handlers consume and react to domain events.
 
     **Related guides:**
 
-    - [Subscribers](./subscribers.md) — For consuming messages from *external* brokers instead of the internal event store.
-    - [Projectors](./projectors.md) — For maintaining read-optimized projections from domain events.
+    - [Subscribers](./subscribers.md): For consuming messages from *external* brokers instead of the internal event store.
+    - [Projectors](./projectors.md): For maintaining read-optimized projections from domain events.
 
     **Patterns:**
 
-    - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring handlers produce correct results even with duplicate delivery.
-    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by delegating to domain logic.
-    - [Testing Event-Driven Flows](../../patterns/testing-event-driven-flows.md) — Strategies for testing event handlers with pytest.
+    - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md): Ensuring handlers produce correct results even with duplicate delivery.
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by delegating to domain logic.
+    - [Testing Event-Driven Flows](../../patterns/testing-event-driven-flows.md): Strategies for testing event handlers with pytest.

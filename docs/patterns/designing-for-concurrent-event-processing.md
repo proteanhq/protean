@@ -94,8 +94,8 @@ position update causes the event to be redelivered on restart.
 ## The Pattern
 
 Map each concurrency problem class to the Protean mechanism that
-addresses it. Don't invent new infrastructure -- compose the existing
-building blocks.
+addresses it. Don't invent new infrastructure, compose the existing building
+blocks.
 
 | Problem Class | Primary Solution | Protean Mechanism |
 |--------------|-----------------|-------------------|
@@ -132,20 +132,20 @@ max_delay_seconds = 1.0
 ```
 
 This means **Class 2 (concurrent mutation) is already handled.** If two
-handlers modify the same aggregate concurrently, one succeeds and the
-other retries with fresh state. You don't need to opt into this -- it is
-the default behavior.
+handlers modify the same aggregate concurrently, one succeeds and the other
+retries with fresh state. You don't need to opt into this. It is the default
+behavior.
 
-For a deep dive into classifying version conflicts by business meaning,
+For more on classifying version conflicts by business meaning,
 see [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md).
 
 ### Process Managers (for coordination)
 
-When events have causal dependencies -- one event must be processed
-before another can safely execute -- a
-[Process Manager](coordinating-long-running-processes.md) is the
-DDD-correct solution. The PM correlates related events, tracks what has
-happened, and issues commands in the right order.
+When events have causal dependencies (one event must be processed before
+another can safely execute) a [Process
+Manager](coordinating-long-running-processes.md) is the DDD-correct solution.
+The PM correlates related events, tracks what has happened, and issues commands
+in the right order.
 
 ### Idempotent handler patterns (for duplicates)
 
@@ -171,8 +171,8 @@ complexity of your integration.
 ### Solution A: Combine into a single handler
 
 The simplest fix. If both events target the same aggregate, a single
-handler serializes processing naturally -- within one handler's
-subscription, events are processed sequentially.
+handler serializes processing naturally, within one handler's subscription,
+events are processed sequentially.
 
 ```python
 @domain.event_handler(part_of=Client)
@@ -377,11 +377,11 @@ for how to classify these conflicts correctly.
 # "This can't race because we only run one worker"
 ```
 
-Single-worker deployment is a scaling decision, not a concurrency
-guarantee. As soon as you add a second worker, all unprotected handlers
-become vulnerable. Design for concurrency from the start -- it costs
-nothing when running single-worker (the patterns are just good
-architecture), but saves production incidents when you scale.
+Single-worker deployment is a scaling decision, not a concurrency guarantee. As
+soon as you add a second worker, all unprotected handlers become vulnerable.
+Design for concurrency from the start. It costs nothing when running
+single-worker (the patterns are just good architecture), but saves production
+incidents when you scale.
 
 ### Splitting causally dependent logic across handlers
 
@@ -422,15 +422,15 @@ Don't rely on event ordering being preserved across handler boundaries.
 | External duplicate commands | Command idempotency store | [Command Idempotency](command-idempotency.md) |
 | Classifying async failures | Error classification | [Classify Async Processing Errors](classify-async-processing-errors.md) |
 
-The most common concurrency bug -- two handlers racing on the same
-aggregate -- is a structural problem with a structural solution. Before
-reaching for infrastructure (locks, partitioned streams, framework-level
-deduplication), look at the handler topology. The simplest fix is usually
-to combine related handlers or introduce a Process Manager.
+The most common concurrency bug (two handlers racing on the same aggregate) is
+a structural problem with a structural solution. Before reaching for
+infrastructure (locks, partitioned streams, framework-level deduplication),
+look at the handler topology. The simplest fix is usually to combine related
+handlers or introduce a Process Manager.
 
-For the specific case the primitives above do not cover -- a single
-high-throughput handler that must serialize by an entity key without
-collapsing every key onto one worker -- Protean offers
-[`sequential_by`](../reference/server/sequential-by.md) (per-key sequential
-processing, [ADR-0028](../adr/0028-partition-per-key-sequential-processing.md)).
-Reach for it only after the structural options above do not fit.
+For the specific case the primitives above do not cover. A single
+high-throughput handler that must serialize by an entity key without collapsing
+every key onto one worker, Protean offers
+[`sequential_by`](../reference/server/sequential-by.md) (per-key sequential processing,
+[ADR-0028](../adr/0028-partition-per-key-sequential-processing.md)). Reach for
+it only after the structural options above do not fit.

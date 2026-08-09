@@ -10,11 +10,11 @@ Protean's cache adapters store
 [Projection](../../../guides/consume-state/projections.md) instances keyed by
 their identifier. The `BaseCache` interface provides:
 
-- **Add/Get/Remove** -- Store and retrieve projections by key
-- **Pattern matching** -- Retrieve or remove projections by key pattern
-- **TTL management** -- Set time-to-live on cached entries
-- **Health checks** -- Verify cache connectivity
-- **Bulk operations** -- Flush all entries
+- **Add/Get/Remove**: Store and retrieve projections by key
+- **Pattern matching**: Retrieve or remove projections by key pattern
+- **TTL management**: Set time-to-live on cached entries
+- **Health checks**: Verify cache connectivity
+- **Bulk operations**: Flush all entries
 
 ## Available Caches
 
@@ -57,7 +57,7 @@ TTL = 300  # Default TTL in seconds
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | `"memory"` | Cache provider (`memory` or `redis`) |
-| `URI` | -- | Redis connection URI (required for Redis) |
+| `URI` | —  | Redis connection URI (required for Redis) |
 | `TTL` | `300` | Default time-to-live in seconds. See below. |
 
 #### What counts as a TTL
@@ -124,7 +124,7 @@ All cache adapters implement these methods:
 
 | Method | Description |
 |--------|-------------|
-| `ping()` | Health check -- returns `True` if cache is accessible |
+| `ping()` | Health check, returns `True` if cache is accessible |
 | `get_connection()` | Return the underlying cache connection |
 | `add(projection, ttl=None)` | Store a projection with optional TTL override |
 | `get(key)` | Retrieve a projection by key |
@@ -146,18 +146,18 @@ order_summary:::ord-123
 user_profile:::usr-456
 ```
 
-## Best Practices
+## Configuring a cache
 
-1. **Always define a default cache** -- Even if it is just the memory cache
-   for development.
-2. **Set appropriate TTLs** -- Balance freshness against cache hit rate.
+1. **A default cache is required**, even if it is only the memory cache for
+   development.
+2. **Set appropriate TTLs**: Balance freshness against cache hit rate.
    Projections that change frequently need shorter TTLs.
-3. **Use Redis in production** -- The memory cache is not suitable for
+3. **Use Redis in production**: The memory cache is not suitable for
    multi-process deployments or when data must survive restarts.
-4. **Monitor cache health** -- Use `cache.ping()` in your health check
+4. **Monitor cache health**: Use `cache.ping()` in your health check
    endpoints.
 
-## Next Steps
+## Related pages
 
 - Learn about [Redis cache](./redis.md) for production use
 - Understand [projections](../../../guides/consume-state/projections.md)

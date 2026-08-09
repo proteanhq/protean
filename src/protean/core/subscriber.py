@@ -54,6 +54,7 @@ class BaseSubscriber(Element, OptionsMixin):
         recover from errors, log additional information, or perform cleanup operations.
 
         When an exception occurs in a subscriber's __call__ method:
+
         1. The exception is caught in Engine.handle_broker_message
         2. Details are logged with traceback information
         3. This handle_error method is called with the exception and original message

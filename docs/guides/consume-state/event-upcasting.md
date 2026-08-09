@@ -3,10 +3,10 @@
 ## The Problem
 
 In an event-sourced system, the event store is the source of truth. Events are
-immutable facts stored forever. But the domain model evolves: fields get renamed,
-new required fields are added, semantics change. When the system replays old
-events to reconstruct an aggregate, those events must match the current event
-class definition -- or deserialization fails.
+immutable facts stored forever. But the domain model evolves: fields get
+renamed, new required fields are added, semantics change. When the system
+replays old events to reconstruct an aggregate, those events must match the
+current event class definition, or deserialization fails.
 
 Without upcasting, developers face two unsatisfying choices:
 
@@ -91,7 +91,7 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 - Must return the transformed `dict`.
 - Operates on raw data **before** the typed event object is constructed, so
   field types are their serialized form (strings, numbers, lists, dicts).
-- Should be **fast and side-effect-free** -- no database queries, no I/O.
+- Should be **fast and side-effect-free**, no database queries, no I/O.
   Upcasting runs on every deserialization.
 - May mutate the input dict in place or return a new dict.
 
@@ -358,27 +358,27 @@ ever stored).
 
 ### Do
 
-- **One upcaster per version step.** Keep transformations small and focused.
+- **One upcaster per version step**: Keep transformations small and focused.
   v1→v2 does one thing, v2→v3 does another.
-- **Keep upcasters pure.** No I/O, no database queries, no external API calls.
+- **Keep upcasters pure**: No I/O, no database queries, no external API calls.
   Upcasting runs on every deserialization and must be fast.
-- **Test upcasters independently.** They are simple dict→dict functions and
+- **Test upcasters independently**: They are simple dict→dict functions and
   easy to unit test.
-- **Place upcasters near the event they transform.** In the same module or a
+- **Place upcasters near the event they transform**: In the same module or a
   dedicated `upcasters.py` module within the same domain concept.
 - **Bump `__version__`** on the event class whenever you register a new upcaster
   targeting it.
 
 ### Don't
 
-- **Don't skip versions in the chain.** If the current version is v3, you need
+- **Don't skip versions in the chain**: If the current version is v3, you need
   both v1→v2 and v2→v3 upcasters. A direct v1→v3 upcaster is valid only if
   there was no v2 in production.
-- **Don't modify the stored event.** Upcasting transforms data in memory during
+- **Don't modify the stored event**: Upcasting transforms data in memory during
   deserialization. The event store is never modified.
-- **Don't use upcasting for semantic changes.** If the *meaning* of an event
+- **Don't use upcasting for semantic changes**: If the *meaning* of an event
   changes (not just its structure), create a new event type instead.
-- **Don't perform expensive operations.** Upcasting happens synchronously during
+- **Don't perform expensive operations**: Upcasting happens synchronously during
   every read. A slow upcaster degrades aggregate loading and subscription
   processing.
 
@@ -388,7 +388,7 @@ ever stored).
 
 | Situation | Approach |
 |-----------|----------|
-| Add optional field with default | No upcaster needed -- just add `default=` |
+| Add optional field with default | No upcaster needed, add `default=` |
 | Add required field with computable default | Upcaster |
 | Rename a field | Upcaster |
 | Change field type (e.g. string→int) | Upcaster |
@@ -402,15 +402,15 @@ ever stored).
 
 ## Limitations
 
-- **No event type renaming.** If you rename an event class (e.g. `OrderCreated`
+- **No event type renaming**: If you rename an event class (e.g. `OrderCreated`
   → `OrderPlaced`), the type strings differ and upcasting can't bridge them.
   Use the "new event type" strategy instead.
 
-- **No multi-event transformations.** An upcaster transforms one event at a
+- **No multi-event transformations**: An upcaster transforms one event at a
   time. Splitting one event into two or merging two events into one is not
   supported. Use compensating events or the copy-transform migration pattern.
 
-- **No eager/batch migration.** Upcasting is lazy (on-read). If you need to
+- **No eager/batch migration**: Upcasting is lazy (on-read). If you need to
   rewrite the event store in a new format, use the copy-transform pattern
   documented in the [Event Versioning](../../patterns/event-versioning-and-evolution.md)
   pattern.
@@ -418,9 +418,9 @@ ever stored).
 ---
 
 !!! tip "See also"
-    **Patterns:** [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) — Strategies for evolving event schemas over time.
+    **Patterns:** [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md): Strategies for evolving event schemas over time.
 
     **Related guides:**
 
-    - [Evolving Events Over Time](../evolving-events.md) — The broader event-evolution workflow: upcasting sits alongside `renamed_from` field renames, event `deprecated`/`superseded_by`, and opt-in lenient deserialization.
-    - [Temporal Queries](../change-state/temporal-queries.md) — Load aggregate state at a specific version or point in time.
+    - [Evolving Events Over Time](../evolving-events.md): The broader event-evolution workflow: upcasting sits alongside `renamed_from` field renames, event `deprecated`/`superseded_by`, and opt-in lenient deserialization.
+    - [Temporal Queries](../change-state/temporal-queries.md): Load aggregate state at a specific version or point in time.

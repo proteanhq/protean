@@ -1,7 +1,7 @@
 # Intermediate Representation (IR)
 
-The Protean IR captures the **topology** of a domain model — what elements
-exist, what shape they have, and how they connect — in a portable JSON format.
+The Protean IR captures the **topology** of a domain model (what elements
+exist, what shape they have, and how they connect) in a portable JSON format.
 It is the machine-readable representation of everything a `Domain` knows after
 `domain.init()` completes.
 
@@ -14,7 +14,7 @@ The IR answers three kinds of questions:
 - **Infrastructure**: What repositories persist which aggregates? What database
   models map them?
 
-The IR never captures **logic** — what happens inside method bodies, how
+The IR never captures **logic**, what happens inside method bodies, how
 invariants are evaluated, or what transformations handlers perform.
 
 ---
@@ -22,15 +22,14 @@ invariants are evaluated, or what transformations handlers perform.
 ## Philosophy & Principles
 
 **Topology, not logic.**
-The IR captures *what* and *how connected*, never *what happens inside*.
-When the IR says an aggregate has a post-invariant named
-`order_must_have_items`, it records the fact that this guard exists and when it
-runs — not what it checks.
+The IR captures *what* and *how connected*, never *what happens inside*. When
+the IR says an aggregate has a post-invariant named `order_must_have_items`, it
+records the fact that this guard exists and when it runs, not what it checks.
 
 **Declare, don't detect.**
 When the IR needs information not naturally introspectable (like whether an
 event is published), the solution is explicit developer declaration via `Meta`
-options — never static analysis of Python source.
+options, never static analysis of Python source.
 
 **Aggregate-centric, flow-aware.**
 The primary organization mirrors DDD's aggregate cluster concept. Cross-cutting
@@ -43,8 +42,8 @@ non-negotiable for git diffing, compatibility checking, and staleness detection.
 
 **One document, one bounded context.**
 A single IR document represents one `Domain` instance = one bounded context.
-Multiple aggregates within one bounded context is normal DDD — `Order` and
-`Payment` aggregates in the same domain are clusters within one BC.
+Multiple aggregates within one bounded context is normal DDD, `Order` and `Payment`
+aggregates in the same domain are clusters within one BC.
 
 **Lossless within scope.**
 Every piece of structural and behavioral metadata available on the composite
@@ -88,11 +87,11 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 2. **MAY add new keys**, top-level sections, or element type values in minor
    versions.
 3. **MUST include `ir_version`** in every document.
-4. **MUST bump the schema version on any structural change.** Any change to the
+4. **MUST bump the schema version on any structural change**: Any change to the
    JSON Schema (a new key, section, or element type) bumps the IR schema minor
    version. The `ir_version` a document carries is the version it was built
    against.
-5. **MUST keep the published schema byte-identical to the runtime schema.** The
+5. **MUST keep the published schema byte-identical to the runtime schema**: The
    runtime schema at `src/protean/ir/schema/vX/schema.json` is authoritative;
    `IRBuilder` emits against it and examples validate against it. The published
    copy at `docs/assets/ir/vX/schema.json` MUST be a byte-for-byte copy. A test
@@ -139,11 +138,11 @@ clear it.
 |---------|---------|---------|
 | `domain` | Bounded context identity and global config | `Domain.__init__()` and `Config2` |
 | `clusters` | Aggregate clusters: elements within each aggregate boundary | `_assign_aggregate_clusters()` output |
-| `projections` | Read side (CQRS): projections, projectors, queries | Cross-aggregate — not tied to one cluster |
+| `projections` | Read side (CQRS): projections, projectors, queries | Cross-aggregate, not tied to one cluster |
 | `flows` | Cross-aggregate coordination: domain services, PMs, subscribers | Elements spanning 2+ aggregates |
 | `contracts` | Published language: events available to other BCs | Derived from `published` annotations |
 | `elements` | Flat index by element type for O(1) lookup | Derived from all sections |
-| `diagnostics` | Builder warnings and errors | Informational — IR is valid regardless |
+| `diagnostics` | Builder warnings and errors | Informational, IR is valid regardless |
 
 ### Top-Level Metadata
 
@@ -248,7 +247,7 @@ Every element carries a consistent set of base attributes:
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `fqn` | string | yes | Fully qualified name — the stable identifier |
+| `fqn` | string | yes | Fully qualified name, the stable identifier |
 | `name` | string | yes | Short class name |
 | `module` | string | yes | Python module path |
 | `element_type` | string | yes | `DomainObjects` enum value |
@@ -306,7 +305,7 @@ Value objects carry `part_of` (may be `null` for standalone VOs), `fields`, and
 
 Commands carry `__type__` (message routing string:
 `{Domain}.{ClassName}.{version}`), `__version__`, `part_of`, and `fields`.
-Commands are immutable data — no invariants, no identity field. Commands are
+Commands are immutable data, no invariants, no identity field. Commands are
 always internal to the bounded context.
 
 ### Event
@@ -345,10 +344,10 @@ attributes plus `part_of`. Database models additionally carry `database` and
 Fields use a uniform schema with `kind` as the discriminator. Three design
 rules govern field representation:
 
-1. **Flat structure.** All attributes are top-level keys. No nesting.
-2. **Sparse representation.** Only non-default, meaningful attributes are
+1. **Flat structure**: All attributes are top-level keys. No nesting.
+2. **Sparse representation**: Only non-default, meaningful attributes are
    present. A field without `max_length` does not include `"max_length": null`.
-3. **Extensible.** Future field attributes can be added in minor versions.
+3. **Extensible**: Future field attributes can be added in minor versions.
 
 ### Field Kinds
 
@@ -403,7 +402,7 @@ All possible keys (no single field has all of them):
 
 Data fields use Protean type names: `String`, `Text`, `Integer`, `Float`,
 `Boolean`, `Date`, `DateTime`, `Identifier`, `Auto`, `List`, `Dict`.
-Association fields omit `type` — the `target` FQN provides type information.
+Association fields omit `type`, the `target` FQN provides type information.
 
 ---
 
@@ -449,7 +448,7 @@ Present on command handlers, event handlers, projectors, and process managers:
 | `config` | dict | Handler-specific overrides. Empty `{}` = no overrides |
 
 The subscription block is always fully present. Unlike sparse field attributes,
-`null` here means "use framework defaults" — a semantically meaningful value.
+`null` here means "use framework defaults", a semantically meaningful value.
 
 ### Process Manager Handler Map
 
@@ -478,7 +477,7 @@ Process managers extend the handler format with lifecycle metadata:
 ### Command→Event Causality
 
 The IR does not capture per-command event causality. Events are raised within
-aggregate methods, and handler logic is conditional — a static declaration
+aggregate methods, and handler logic is conditional. A static declaration
 cannot capture this. Consumers can reconstruct the flow graph by combining
 command→handler, handler→aggregate, aggregate→events, and event→handler
 mappings.
@@ -509,8 +508,8 @@ order_by, limit), `identity_field`, and `fields`.
 **Projectors** specify `projector_for` (FQN), `aggregates` (sorted list of
 aggregate FQNs), `stream_categories`, `subscription`, and `handlers`.
 
-**Queries** carry `__type__` but **not** `__version__` — queries are local
-read-side operations, not cross-context messages. Format:
+**Queries** carry `__type__` but **not** `__version__`, because queries are
+local read-side operations, not cross-context messages. Format:
 `{Domain}.{ClassName}`.
 
 **Query handlers** have standard handler maps keyed by query `__type__`.
@@ -538,8 +537,7 @@ Process managers are stateful, event-driven coordinators. They include:
 ### Subscribers
 
 Subscribers consume messages from external brokers. They carry `broker` and
-`stream` — minimal metadata reflecting the framework's simple
-`__call__(payload: dict)` entry point.
+`stream`, minimal metadata reflecting the framework's simple `__call__(payload: dict)` entry point.
 
 ---
 
@@ -562,7 +560,7 @@ The `contracts` section summarizes the bounded context's published events:
 
 - Events are sorted by `__type__`
 - Only events can be published; commands are always internal
-- The section is derived — it contains no information not in the clusters
+- The section is derived. It contains no information not in the clusters
 - It may be omitted when the domain has no published events
 
 ---
@@ -585,7 +583,7 @@ A flat lookup table mapping element types to sorted FQN lists:
 - Keys are `DomainObjects` enum values (uppercase)
 - Empty lists are included for types with no instances
 - Spans all sections (clusters, projections, flows)
-- Derived, not canonical — sections are the source of truth
+- Derived, not canonical. Sections are the source of truth
 
 ---
 
@@ -632,8 +630,8 @@ method names alphabetically, contracts by `__type__`.
 
 ### Excluded from Determinism
 
-- `generated_at`: always differs
-- `checksum`: derived from content (excluded from its own computation)
+- `generated_at`: Always differs
+- `checksum`: Derived from content (excluded from its own computation)
 
 ---
 
@@ -681,7 +679,7 @@ metadata.
 | `message` | string | Human-readable description |
 
 Diagnostics are included in checksum computation (same domain = same
-diagnostics). They do not affect IR validity — an IR with error-level
+diagnostics). They do not affect IR validity. An IR with error-level
 diagnostics is still a valid document.
 
 ---
@@ -725,7 +723,7 @@ Python's `json.dumps()` is the reference serializer. `0.0` serializes as
 ### Value Objects Across Aggregates
 
 A VO declared `part_of=Order` appears in the Order cluster, even if Payment
-also references it. The Payment field references the VO by FQN — cross-cluster
+also references it. The Payment field references the VO by FQN. Cross-cluster
 references are valid. Standalone VOs (`part_of=None`) appear only in the
 elements index.
 

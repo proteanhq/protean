@@ -13,17 +13,17 @@ versioned according to the Order domain's release schedule.
 
 If your Fulfillment domain consumes this event directly:
 
-- **Language coupling.** Your code uses the Order domain's terminology.
+- **Language coupling**: Your code uses the Order domain's terminology.
   If the Order domain renames `items` to `line_items`, your handler breaks.
 
-- **Schema coupling.** Your domain depends on the exact structure of the
+- **Schema coupling**: Your domain depends on the exact structure of the
   external event. Field additions, removals, or type changes propagate into
   your domain.
 
-- **Release coupling.** When the Order domain deploys a new event version,
-  your domain must update simultaneously -- or fail.
+- **Release coupling**: When the Order domain deploys a new event version,
+  your domain must update simultaneously, or fail.
 
-- **Conceptual leaking.** The Order domain's `OrderPlaced` event carries data
+- **Conceptual leaking**: The Order domain's `OrderPlaced` event carries data
   shaped for the Order context. Your Fulfillment domain needs a subset of that
   data, differently structured. Processing the raw external event forces
   Fulfillment to think in Order domain terms.
@@ -54,7 +54,7 @@ external event's structure. Everything downstream works with your domain's
 own commands and events.
 
 !!!note "Co-located domains have a second option"
-    This pattern applies to **distributed domains** — separate services
+    This pattern applies to **distributed domains**, separate services
     communicating through a broker, or external systems you don't control.
 
     When multiple domains live in the **same repository and share the same
@@ -63,7 +63,7 @@ own commands and events.
     dict parsing. This is especially useful for process managers coordinating
     cross-domain workflows.
 
-    See [Multi-Domain Applications — Cross-domain
+    See [Multi-Domain Applications, Cross-domain
     communication](../guides/multi-domain-applications.md#cross-domain-communication)
     for guidance on choosing between the two approaches.
 
@@ -100,7 +100,8 @@ class OrderEventsSubscriber:
 ```
 
 The subscriber:
-1. Receives a raw `dict` payload from the broker — **not** a typed domain object
+
+1. Receives a raw `dict` payload from the broker, **not** a typed domain object
 2. Inspects the payload to determine what kind of message it is
 3. Extracts the data it needs
 4. Constructs an internal `CreateShipment` command in the Fulfillment domain's language
@@ -108,7 +109,7 @@ The subscriber:
 
 !!!note
     Subscribers deliberately receive raw `dict` payloads rather than typed
-    domain objects. This is the anti-corruption boundary — your domain does
+    domain objects. This is the anti-corruption boundary. Your domain does
     **not** import or depend on the external domain's event classes. The raw
     dict is the firewall between external and internal models.
 
@@ -355,8 +356,8 @@ Domains](sharing-event-classes-across-domains.md) for alternatives.
     package**, creating a code dependency. It is distinct from
     `register_external_event()`, where you define your own event class in
     your domain and register it with the external event's type string.
-    With `register_external_event`, there is no import dependency —
-    the shared contract is the type string, not the class.
+    With `register_external_event`, there is no import dependency. The shared
+    contract is the type string, not the class.
 
 ### Processing External Events Without Translation
 
@@ -406,22 +407,22 @@ of the external data.
 | Error handling | Scattered | Centralized in subscriber |
 | Testability | External dependency in tests | Mock external, test internal |
 
-The principle: **subscribers are anti-corruption layers. They receive external
-events as raw dicts, translate them into your domain's language, and dispatch
-internal commands or events. Nothing downstream knows or cares that the
-stimulus came from outside.**
+Subscribers are anti-corruption layers. They receive external events as raw
+dicts, translate them into your domain's language, and dispatch internal
+commands or events. Nothing downstream knows or cares that the stimulus came
+from outside.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Subscribers](../concepts/building-blocks/subscribers.md) — Anti-corruption layer at the domain boundary.
+    - [Subscribers](../concepts/building-blocks/subscribers.md): Anti-corruption layer at the domain boundary.
 
     **Guides:**
 
-    - [Subscribers](../guides/consume-state/subscribers.md) — Subscriber definition, broker configuration, and error handling.
+    - [Subscribers](../guides/consume-state/subscribers.md): Subscriber definition, broker configuration, and error handling.
 
     **Patterns:**
 
-    - [Publishing Events to External Brokers](publishing-events-to-external-brokers.md) — The producer side: delivering published events via the outbox.
+    - [Publishing Events to External Brokers](publishing-events-to-external-brokers.md): The producer side: delivering published events via the outbox.

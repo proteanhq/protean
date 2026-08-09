@@ -16,8 +16,8 @@ dependencies in `[project].dependencies`:
 
 - `fastapi`, `uvicorn`, `jinja2`: the HTTP/ASGI/observatory stack, used only by
   `protean observatory` and `protean.integrations.fastapi`.
-- `ipython`: the interactive shell, used only by `protean shell`.
-- `copier`: project scaffolding, used only by `protean new`.
+- `ipython`: The interactive shell, used only by `protean shell`.
+- `copier`: Project scaffolding, used only by `protean new`.
 
 None of these are imported by `import protean`. The imports were already lazy,
 gated behind a CLI subcommand or an opt-in integration module. So the cost was
@@ -137,7 +137,7 @@ document the change in the 0.18 migration guide. The actionable error plus the
 
 ## Alternatives Considered
 
-- **One coarse `cli` extra covering shell + scaffold.** Fewer names to document,
+- **One coarse `cli` extra covering shell + scaffold**: Fewer names to document,
   but it couples unrelated concerns: a user who only wants a REPL would install
   the scaffolder. Rejected in favor of precise extras plus the `cli`/`all`
   bundles.
@@ -160,6 +160,6 @@ document the change in the 0.18 migration guide. The actionable error plus the
   Unit-of-Work stacks is a real refactor with behavioral risk; folding it into a
   packaging change would put an unrelated correctness risk in the same PR.
   Deferred to its own issue.
-- **A staged Tier-1 deprecation (warn in 0.18, move in 0.19).** Rejected: with the
+- **A staged Tier-1 deprecation (warn in 0.18, move in 0.19)**: Rejected: with the
   imports already lazy there is no natural code path to warn on, and the fix is a
   one-word extra. The runway would add a release cycle without protecting anyone.

@@ -12,11 +12,11 @@ scalable way.
 
 The Domain Model is not accessible by the external world.
 
-One of the foundational principles in DDD is that the domain model —
-representing the core business logic and rules of your application — is
+One of the foundational principles in DDD is that the domain model
+(representing the core business logic and rules of your application) is
 protected from direct access by external systems or layers. This encapsulation
-ensures that the domain model remains pure, focused on business logic, and
-free from concerns about external interactions.
+ensures that the domain model remains pure, focused on business logic, and free
+from concerns about external interactions.
 
 The domain model should only be interacted with via specific interfaces
 designed to handle business operations, ensuring that all interactions with the
@@ -73,8 +73,8 @@ overall complexity of the application layer.
 In systems that implement CQRS and Event Sourcing architecture patterns, the
 separation between command (write) and query (read) models is a key principle.
 When a user interacts with the system, the API captures their intent as a
-command — an explicit request to perform a specific operation — and submits it
-to the domain.
+command (an explicit request to perform a specific operation) and submits it to
+the domain.
 
 By capturing intent as commands, the system can ensure that each operation is
 processed consistently, with a clear audit trail of how the system's state
@@ -110,7 +110,7 @@ then invokes methods on the up-to-date aggregate.
 Aggregates encapsulate business logic and ensure that all state transitions are
 valid. When an aggregate receives input through a command, it evaluates the
 request against its internal rules and invariants. If all conditions are met,
-the aggregate mutates — changing its state accordingly.
+the aggregate mutates, changing its state accordingly.
 
 In addition to mutating, aggregates can also raise events that represent
 significant changes in the system. These events can be used to trigger other

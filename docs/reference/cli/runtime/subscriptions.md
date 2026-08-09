@@ -76,8 +76,8 @@ the appropriate backend for each:
 
 | Status | Meaning |
 |--------|---------|
-| `ok` | Caught up -- lag is 0 and nothing pending |
-| `lagging` | Behind -- lag > 0 or pending > 0 |
+| `ok` | Caught up, lag is 0 and nothing pending |
+| `lagging` | Behind, lag > 0 or pending > 0 |
 | `unknown` | Unable to query backend infrastructure |
 
 ## How it works
@@ -96,9 +96,9 @@ infrastructure directly:
 
 ## See also
 
-- [Observability](../../server/observability.md) -- Observatory dashboard
+- [Observability](../../server/observability.md): Observatory dashboard
   and REST API (includes `/api/subscriptions` endpoint)
-- [Subscription Types](../../server/subscription-types.md) -- How
+- [Subscription Types](../../server/subscription-types.md): How
   StreamSubscription and EventStoreSubscription work
-- [Run the Server](../../../guides/server/index.md) -- Starting and monitoring
+- [Run the Server](../../../guides/server/index.md): Starting and monitoring
   the engine

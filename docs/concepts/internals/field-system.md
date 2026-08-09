@@ -1,13 +1,12 @@
 # Field system
 
 Protean's field system lets you define domain model attributes using a
-domain-friendly vocabulary — `String(max_length=100)`, `Float(min_value=0)`,
-`HasMany("Product")` — while Pydantic v2 handles validation, serialization,
-and JSON Schema generation underneath.
+domain-friendly vocabulary (`String(max_length=100)`, `Float(min_value=0)`, `HasMany("Product")`) while Pydantic v2 handles
+validation, serialization, and JSON Schema generation underneath.
 
-This page explains the internal architecture that makes this work: the
-`FieldSpec` abstraction, the translation from Protean vocabulary to Pydantic,
-and the reasoning behind supporting three field definition styles.
+Three pieces make that work: the `FieldSpec` abstraction, the translation
+from Protean's vocabulary into Pydantic's, and the reasoning behind supporting
+three field definition styles.
 
 ---
 
@@ -17,14 +16,14 @@ Every Protean field function (`String`, `Integer`, `Float`, `Boolean`, `Date`,
 `DateTime`, `Text`, `Identifier`, `List`, `Dict`) returns a `FieldSpec`
 instance. A FieldSpec is a plain Python object that carries four things:
 
-1. **The base Python type** — `str`, `int`, `float`, `bool`, `datetime.date`,
+1. **The base Python type**: `str`, `int`, `float`, `bool`, `datetime.date`,
    `datetime.datetime`, `list[T]`, etc.
-2. **Constraints in Protean's vocabulary** — `max_length`, `min_length`,
+2. **Constraints in Protean's vocabulary**: `max_length`, `min_length`,
    `max_value`, `min_value`.
-3. **Protean-specific metadata** — `identifier`, `unique`, `referenced_as`,
-   `field_kind` — concepts that have no Pydantic equivalent.
-4. **Behavioral flags** — `required`, `default`, `choices` — that affect how
-   the type and field are resolved.
+3. **Protean-specific metadata**: `identifier`, `unique`, `referenced_as`,
+   `field_kind`. Concepts that have no Pydantic equivalent.
+4. **Behavioral flags**: `required`, `default`, `choices`, which affect how the
+   type and field are resolved.
 
 FieldSpec has three resolution methods:
 
@@ -79,11 +78,11 @@ class Product(BaseEntity):
     status: Annotated[Literal["active", "discontinued"], Field(default="active")]
 ```
 
-Pydantic has no awareness that FieldSpec ever existed. This is by design —
-FieldSpec is a compile-time translation layer, not a runtime abstraction.
-After resolution, Protean domain elements ARE Pydantic models with full
-access to validation, serialization, JSON Schema generation, and the broader
-Pydantic ecosystem.
+Pydantic has no awareness that FieldSpec ever existed. This is by design,
+FieldSpec is a compile-time translation layer, not a runtime abstraction. After
+resolution, Protean domain elements ARE Pydantic models with full access to
+validation, serialization, JSON Schema generation, and the broader Pydantic
+ecosystem.
 
 ---
 
@@ -108,11 +107,11 @@ This is the recommended style. Fields are declared as type annotations:
 name: String(max_length=50)
 ```
 
-This reads as "name IS a String" — a declaration of what the attribute is,
-which aligns with how domain modelers think about structure. It is also
-where Python is heading as a language: PEP 526 (variable annotations),
-PEP 593 (`Annotated`), and PEP 649 (deferred evaluation) all invest in
-annotations as the mechanism for declarative metadata.
+This reads as "name IS a String", a declaration of what the attribute is, which
+aligns with how domain modelers think about structure. It is also where Python
+is heading as a language: PEP 526 (variable annotations), PEP 593 (`Annotated`), and
+PEP 649 (deferred evaluation) all invest in annotations as the mechanism for
+declarative metadata.
 
 From an implementation perspective, annotation style works *with* Pydantic
 rather than against it. Pydantic discovers fields through `__annotations__`,
@@ -132,11 +131,10 @@ This style is familiar from Django models and earlier versions of Protean.
 It reads as "name equals a String with max_length 50." The semantics are
 identical to annotation style.
 
-Assignment style requires more metaclass work — the metaclass must find the
+Assignment style requires more metaclass work. The metaclass must find the
 FieldSpec in the class namespace, generate a synthetic annotation, inject it
 into `__annotations__`, and remove the original FieldSpec before Pydantic's
-metaclass runs. This is additional machinery, but it produces the same
-result.
+metaclass runs. This is additional machinery, but it produces the same result.
 
 ### Raw Pydantic style
 
@@ -157,13 +155,13 @@ annotation that is not a FieldSpec is left untouched by the metaclass.
 A framework could enforce a single style. Protean chose to support all three
 because:
 
-1. **Backward compatibility.** Assignment style is the convention from
+1. **Backward compatibility**: Assignment style is the convention from
    Protean's earlier field system and from Django. Requiring migration to a
    new syntax would impose unnecessary churn on existing codebases.
-2. **Ecosystem access.** Raw Pydantic support means there is always an escape
+2. **Ecosystem access**: Raw Pydantic support means there is always an escape
    hatch. Advanced users are never blocked by limits in Protean's field
    vocabulary.
-3. **Zero cost.** All three styles resolve to the same Pydantic internals.
+3. **Zero cost**: All three styles resolve to the same Pydantic internals.
    There is no runtime performance difference. The metaclass handles normalization
    once at class creation time.
 
@@ -175,14 +173,14 @@ Pydantic are available when they make sense.
 ## Protean-specific metadata
 
 Pydantic has no concept of `unique`, `identifier`, or `referenced_as`. These
-are Protean concerns — `unique` informs database schema generation,
-`identifier` marks the identity field for repository operations,
-`referenced_as` controls persistence column naming.
+are Protean concerns, `unique` informs database schema generation, `identifier` marks the
+identity field for repository operations, `referenced_as` controls persistence column
+naming.
 
-These values are stored in Pydantic's `json_schema_extra` parameter — a
-dictionary that Pydantic attaches to the field's JSON Schema output but
-otherwise ignores for validation. This is the standard extension point for
-framework-specific metadata.
+These values are stored in Pydantic's `json_schema_extra` parameter, a dictionary that Pydantic
+attaches to the field's JSON Schema output but otherwise ignores for
+validation. This is the standard extension point for framework-specific
+metadata.
 
 Protean's adapter layers (database adapters, serializers, relationship
 resolvers) read this metadata from the model's schema. New Protean concepts
@@ -197,7 +195,7 @@ user-facing syntax.
 Because domain elements are standard Pydantic models after FieldSpec
 resolution, they benefit from Pydantic's core machinery:
 
-- **Validation** using Pydantic's Rust core — type coercion, constraint
+- **Validation** using Pydantic's Rust core, type coercion, constraint
   checking, nested model validation.
 - **Serialization** via `to_dict()`, which handles domain-specific concerns
   (skipping Reference fields, serializing nested ValueObject/Reference data
@@ -206,13 +204,13 @@ resolution, they benefit from Pydantic's core machinery:
 - **JSON Schema generation** via `model_json_schema()`. Every constraint
   declared through FieldSpec maps to the appropriate JSON Schema keyword
   (`max_length` becomes `maxLength`, `choices` becomes `enum`, etc.).
-- **Nested ValueObject validation.** Because ValueObject classes are Pydantic
+- **Nested ValueObject validation**: Because ValueObject classes are Pydantic
   models, embedding them in an Aggregate or Entity produces proper nested
   validation and nested JSON Schema with `$ref` and `$defs`.
 
 !!! warning "Do not use Pydantic's `model_dump()` on domain elements"
     While `model_dump()` is inherited from Pydantic, it does not handle
-    domain-specific serialization correctly — it includes Reference fields,
+    domain-specific serialization correctly. It includes Reference fields,
     omits shadow fields, and returns raw `datetime` objects. Always use
     `to_dict()` instead.
 
@@ -222,10 +220,10 @@ resolution, they benefit from Pydantic's core machinery:
 
 ### `required=True` with an explicit `default`
 
-If the user writes `String(required=True, default="hello")`, the field has
-a default value and is effectively optional from Pydantic's perspective.
-Protean honors the default and logs a warning about the contradiction. The
-safe behavior is to give the default precedence — the field can always be
+If the user writes `String(required=True, default="hello")`, the field has a
+default value and is effectively optional from Pydantic's perspective. Protean
+honors the default and logs a warning about the contradiction. The safe
+behavior is to give the default precedence. The field can always be
 constructed.
 
 ### `choices` alongside `max_length`
@@ -261,9 +259,9 @@ max of 255 characters and a default of None.
 
 `Text()` sets `field_kind="text"` in `json_schema_extra`. Both resolve to
 `str` at the Python/Pydantic level. The distinction exists for database
-adapters — VARCHAR vs TEXT/CLOB. Encoding it as metadata rather than a
-different Python type keeps the Pydantic model simple while giving adapters
-the information they need.
+adapters, VARCHAR vs TEXT/CLOB. Encoding it as metadata rather than a different
+Python type keeps the Pydantic model simple while giving adapters the
+information they need.
 
 ### Conflict between annotation and assignment
 
@@ -275,9 +273,8 @@ of truth for field discovery.
 
 Annotation-style field definitions are incompatible with PEP 563 deferred
 evaluation. When `from __future__ import annotations` is active, Python
-stringifies all annotations at definition time — `String(max_length=50)`
-becomes the string `"String(max_length=50)"`. The metaclass never sees the
-FieldSpec instance, so resolution cannot happen.
+stringifies all annotations at definition time, `String(max_length=50)` becomes the string `"String(max_length=50)"`. The
+metaclass never sees the FieldSpec instance, so resolution cannot happen.
 
 This is a fundamental limitation of placing callable objects in annotation
 positions under deferred evaluation. PEP 649 (deferred evaluation of
@@ -292,11 +289,11 @@ unaffected by annotation stringification.
 ### IDE type checkers and `FieldSpec`
 
 Because annotation-style fields place a `FieldSpec` instance (a function call
-like `String(max_length=100)`) in the annotation position, static type
-checkers that validate annotation forms may flag them. Pyright and Pylance,
-for example, report `reportInvalidTypeForm` errors since a FieldSpec is not
-a type in the traditional sense — it is a compile-time descriptor that the
-metaclass resolves before Pydantic ever sees the class.
+like `String(max_length=100)`) in the annotation position, static type checkers
+that validate annotation forms may flag them. Pyright and Pylance, for example,
+report `reportInvalidTypeForm` errors since a FieldSpec is not a type in the
+traditional sense. It is a compile-time descriptor that the metaclass resolves
+before Pydantic ever sees the class.
 
 A `pyrightconfig.json` at the project root suppresses this:
 

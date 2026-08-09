@@ -1,8 +1,8 @@
 # Multi-Domain Applications
 
-This guide covers structuring applications with multiple bounded contexts,
-each represented by a separate Protean `Domain` instance. For the conceptual
-foundation, see [Bounded Contexts](../concepts/foundations/bounded-contexts.md).
+A large system usually has more than one bounded context, and in Protean each
+one is a separate `Domain` instance. Here is how to structure an application
+that way. For the conceptual foundation, see [Bounded Contexts](../concepts/foundations/bounded-contexts.md).
 
 ---
 
@@ -176,9 +176,8 @@ relationship** between the bounded contexts.
 
 !!!tip
     This is not an either-or choice at the project level. A single application
-    can use both paths — `register_external_event` for tightly coordinated
-    domains in the same repo, and subscribers for external systems you don't
-    control.
+    can use both paths, `register_external_event` for tightly coordinated domains in the same repo,
+    and subscribers for external systems you don't control.
 
 ### Co-located domains: Registered external events
 
@@ -250,10 +249,10 @@ class OrderFulfillmentPM:
 
 **Why this works for co-located domains:**
 
-- You control both sides of the schema — changes are visible in one
-  codebase and can be coordinated in a single pull request.
+- You control both sides of the schema. Changes are visible in one codebase
+  and can be coordinated in a single pull request.
 - Typed events give you IDE support, static analysis, and deserialization
-  validation — no parsing raw dicts.
+  validation, no parsing raw dicts.
 - The PM subscribes to external streams directly, keeping the coordination
   logic concise and traceable.
 
@@ -281,10 +280,10 @@ class CustomerSyncHandler:
 
 ### Distributed domains: Subscribers as anti-corruption layers
 
-When domains run as independent services with separate brokers — or when
-you consume events from external systems you don't control — use
-subscribers. Subscribers receive raw `dict` payloads and translate them
-into your domain's language, acting as an anti-corruption layer:
+When domains run as independent services with separate brokers (or when you
+consume events from external systems you don't control) use subscribers.
+Subscribers receive raw `dict` payloads and translate them into your domain's
+language, acting as an anti-corruption layer:
 
 ```python
 @fulfillment_domain.subscriber(stream="identity_customer_events")
@@ -306,22 +305,22 @@ class CustomerEventSubscriber:
 
 **Why this works for distributed domains:**
 
-- **Schema isolation.** Your domain doesn't depend on the external
+- **Schema isolation**: Your domain doesn't depend on the external
   domain's event classes. If the upstream renames a field, only the
   subscriber changes.
-- **Translation at the boundary.** External field names, types, and
+- **Translation at the boundary**: External field names, types, and
   concepts are mapped to your domain's language before entering the
   domain.
-- **Independent evolution.** The upstream can deploy schema changes
+- **Independent evolution**: The upstream can deploy schema changes
   without coordinating with you. The subscriber absorbs the difference.
 
 Key principles:
 
-- **Subscribers receive `dict`, not typed events** -- your domain doesn't
+- **Subscribers receive `dict`, not typed events**: Your domain doesn't
   import the external domain's classes
-- **Translate at the boundary** -- map external field names, types, and
+- **Translate at the boundary**: Map external field names, types, and
   concepts to your domain's language
-- **Everything downstream uses internal types** -- only the subscriber knows
+- **Everything downstream uses internal types**: Only the subscriber knows
   about the external schema
 
 See [Consuming Events from Other Domains](../patterns/consuming-events-from-other-domains.md)
@@ -341,8 +340,8 @@ class Customer(BaseAggregate):
 ```
 
 Fact events publish a full snapshot with every change, making downstream
-consumers simpler -- they replace their local copy wholesale instead of
-applying incremental updates.
+consumers simpler. They replace their local copy wholesale instead of applying
+incremental updates.
 
 See [Fact Events as Integration Contracts](../patterns/fact-events-as-integration-contracts.md).
 
@@ -371,9 +370,9 @@ class Recipient(BaseAggregate):
     delivery_address = Text()
 ```
 
-The `customer_id` in `Recipient` is a correlation ID -- it links back to
-the authoritative `Customer` in the identity context without creating a
-code dependency.
+The `customer_id` in `Recipient` is a correlation ID. It links back to the
+authoritative `Customer` in the identity context without creating a code
+dependency.
 
 See [Connecting Concepts Across Bounded Contexts](../patterns/connect-concepts-across-domains.md).
 
@@ -489,21 +488,21 @@ def test_product_endpoint_uses_catalogue_domain(client):
 
 ## Design guidelines
 
-1. **Start with one domain.** Split only when you observe genuine language
+1. **Start with one domain**: Split only when you observe genuine language
    divergence or team boundaries. Premature splitting adds complexity
    without benefit.
 
-2. **Each domain owns its data.** Domains should not share databases. If two
+2. **Each domain owns its data**: Domains should not share databases. If two
    domains need the same data, one is the authority and the other holds a
    local copy synchronized through events.
 
-3. **Communicate through events, not imports.** Never import an aggregate
+3. **Communicate through events, not imports**: Never import an aggregate
    from another domain's package. Use subscribers or cross-stream event
    handlers to react to changes.
 
-4. **Translate at boundaries.** Use the anti-corruption layer pattern
+4. **Translate at boundaries**: Use the anti-corruption layer pattern
    (subscribers) to translate external concepts into your domain's language.
 
-5. **Deploy independently when possible.** Each domain should be deployable
+5. **Deploy independently when possible**: Each domain should be deployable
    on its own schedule. Shared deployment couples teams and slows everyone
    down.

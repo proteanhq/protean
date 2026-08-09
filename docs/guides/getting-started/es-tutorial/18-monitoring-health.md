@@ -1,8 +1,8 @@
 # Chapter 18: Monitoring Subscription Health
 
-After the DLQ incident, the team realizes they need **proactive
-monitoring**. They should know when a handler is falling behind or
-accumulating failures — not discover it from a customer complaint.
+After the DLQ incident, the team realizes they need **proactive monitoring**.
+They should know when a handler is falling behind or accumulating failures, not
+discover it from a customer complaint.
 
 ## Checking Subscription Status
 
@@ -25,12 +25,12 @@ $ protean subscriptions status --domain=fidelis
 
 Key metrics:
 
-- **Lag** — how many messages the handler has not yet processed. High
+- **Lag**: How many messages the handler has not yet processed. High
   lag means the handler is falling behind.
-- **Pending** — messages currently being processed (claimed but not
+- **Pending**: Messages currently being processed (claimed but not
   acknowledged).
-- **DLQ** — number of messages in the dead-letter queue.
-- **Status** — `ok`, `lagging`, or `unknown`.
+- **DLQ**: Number of messages in the dead-letter queue.
+- **Status**: `ok`, `lagging`, or `unknown`.
 
 For machine-readable output:
 
@@ -40,8 +40,8 @@ $ protean subscriptions status --domain=fidelis --json
 
 ## The Observatory
 
-For real-time monitoring, launch the **Observatory** — Protean's
-built-in observability dashboard:
+For real-time monitoring, launch the **Observatory**, Protean's built-in
+observability dashboard:
 
 ```shell
 $ protean observatory --domain=fidelis --port=9000
@@ -50,14 +50,14 @@ Observatory running at http://0.0.0.0:9000
 
 The Observatory provides:
 
-- **Live message traces** — a real-time stream of `handler.started`,
+- **Live message traces**: A real-time stream of `handler.started`,
   `handler.completed`, `handler.failed`, `message.acked`,
   `message.dlq` events via Server-Sent Events.
-- **Subscription status** — the same data as the CLI, auto-refreshing
+- **Subscription status**: The same data as the CLI, auto-refreshing
   every 5 seconds.
-- **DLQ management** — inspect, replay, and purge directly from the
+- **DLQ management**: Inspect, replay, and purge directly from the
   web interface.
-- **Stream health** — queue depths per stream.
+- **Stream health**: Queue depths per stream.
 
 ### Observatory API Endpoints
 
@@ -93,21 +93,21 @@ protean_subscription_status{domain="fidelis",handler="AccountCommandHandler",str
 These metrics can be scraped by Grafana, Datadog, or any Prometheus-
 compatible monitoring tool. Set alerts on:
 
-- `protean_subscription_lag > 100` — handler falling behind
-- `protean_subscription_dlq_depth > 0` — failed messages accumulating
+- `protean_subscription_lag > 100`: Handler falling behind
+- `protean_subscription_dlq_depth > 0`: Failed messages accumulating
 
 ## Trace Events
 
 The engine emits structured trace events for every message processed:
 
-- `handler.started` — handler began processing a message
-- `handler.completed` — handler finished successfully
-- `handler.failed` — handler threw an exception
-- `message.acked` — message acknowledged (removed from pending)
-- `message.nacked` — message negatively acknowledged (will retry)
-- `message.dlq` — message moved to dead-letter queue
-- `outbox.published` — outbox processor published a message to broker
-- `outbox.failed` — outbox processor failed to publish
+- `handler.started`: Handler began processing a message
+- `handler.completed`: Handler finished successfully
+- `handler.failed`: Handler threw an exception
+- `message.acked`: Message acknowledged (removed from pending)
+- `message.nacked`: Message negatively acknowledged (will retry)
+- `message.dlq`: Message moved to dead-letter queue
+- `outbox.published`: Outbox processor published a message to broker
+- `outbox.failed`: Outbox processor failed to publish
 
 These events flow to the Observatory via Redis Pub/Sub in real-time.
 When nobody is listening, the emitter short-circuits with zero overhead.
@@ -119,10 +119,10 @@ When nobody is listening, the emitter short-circuits with zero overhead.
 - **Prometheus metrics** for production alerting.
 - Understanding of **trace events** emitted by the engine.
 
-With monitoring in place, we can detect problems early. In the next
-chapter, a bank acquisition triggers a massive migration — and we
-learn how to handle it without disrupting production.
+With monitoring in place, we can detect problems early. In the next chapter, a
+bank acquisition triggers a massive migration, and we learn how to handle it
+without disrupting production.
 
 ## Next
 
-[Chapter 19: The Great Migration — Priority Lanes →](19-priority-lanes.md)
+[Chapter 19: The Great Migration, Run on Priority Lanes →](19-priority-lanes.md)

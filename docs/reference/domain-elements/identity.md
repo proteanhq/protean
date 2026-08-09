@@ -37,9 +37,9 @@ in distributed systems.
 
 The following strategies are supported for identity generation:
 
-- **uuid** - Identity is a uuid4 identifier. This is the default and preferred
+- **uuid**: Identity is a uuid4 identifier. This is the default and preferred
 strategy.
-- **function** - A function is invoked to generate identity values, supplied
+- **function**: A function is invoked to generate identity values, supplied
 as [`identity_function`](./domain-constructor.md#identity_function) when constructing
 the domain object.
 
@@ -48,11 +48,11 @@ the domain object.
 The type of the generated identity value. Supported identity types are
 `integer`, `string`, and `uuid`. Default is `string`.
 
-- **`string`** - Everything that is castable to a string value
+- **`string`**: Everything that is castable to a string value
 is accepted. So UUIDs, integers, and string values like `user-234232234`
 are allowed.
 
-- **`integer`** - anything that is castable to an integer
+- **`integer`**: Anything that is castable to an integer
 is accepted. Strings like `1` are allowed. So are UUIDs because they can be
 represented as integer values.
 
@@ -63,7 +63,7 @@ In [2]: uuid.uuid4().int
 Out[2]: 154702789254628181204690697941965130883
 ```
 
-- **`uuid`** - Identity is a UUID rendered as a string in Python (ADR-0021), so
+- **`uuid`**: Identity is a UUID rendered as a string in Python (ADR-0021), so
 it stays JSON-serializable across event and command payloads and API responses.
 Adapters that support a native UUID column still store it as one: PostgreSQL has a
 built-in `UUID` data type (a 128-bit value, typically shown as a 36-character

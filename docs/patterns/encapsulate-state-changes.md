@@ -25,34 +25,34 @@ priority notification when shipped." Another `if` in the handler. Then:
 conditions, more logic, spread across the handler.
 
 The aggregate has become a data bag. The handler has become the brain. This is
-the **anemic domain model** -- the most pervasive anti-pattern in DDD.
+the **anemic domain model**, the most pervasive anti-pattern in DDD.
 
 The problems are structural:
 
-- **Business rules scatter across handlers.** The rules about shipping live in
+- **Business rules scatter across handlers**: The rules about shipping live in
   the command handler, the event handler that processes returns, the application
   service that handles admin overrides, and the batch job that auto-ships
   after payment confirmation. Each location has its own version of the rules.
 
-- **Invariants can't protect the aggregate.** Protean's `@invariant.post`
+- **Invariants can't protect the aggregate**: Protean's `@invariant.post`
   decorator runs after methods are called on the aggregate. But if the handler
   sets fields directly, the aggregate's methods are never called, and
   invariants become the only defense. Invariants catch violations after the
-  fact -- they can't encode the business process itself.
+  fact. They can't encode the business process itself.
 
-- **The ubiquitous language disappears.** The business says "ship an order."
-  The code says `order.status = "shipped"`. The verb -- the business intent --
-  is lost. When reading the code, you see mechanical field assignments, not
+- **The ubiquitous language disappears**: The business says "ship an order."
+  The code says `order.status = "shipped"`. The verb (the business intent) is
+  lost. When reading the code, you see mechanical field assignments, not
   business operations.
 
-- **Events are an afterthought.** Domain events should be raised as part of
+- **Events are an afterthought**: Domain events should be raised as part of
   the business operation. When the handler sets fields and then manually raises
   an event, the event is disconnected from the state change it represents.
   Forgetting to raise the event becomes a likely bug.
 
-- **Testing requires infrastructure.** To test the business rules of shipping,
+- **Testing requires infrastructure**: To test the business rules of shipping,
   you must set up the handler, the repository, the command, and the UoW. The
-  business logic can't be tested by simply calling a method on the aggregate.
+  business logic can't be tested by calling a method on the aggregate.
 
 The root cause: **the aggregate exposes its state for direct manipulation
 instead of expressing behavior through methods**.
@@ -63,8 +63,7 @@ instead of expressing behavior through methods**.
 
 Encapsulate every state change in a **named method** on the aggregate that
 expresses business intent. The method validates preconditions, performs the
-state change, enforces invariants, and raises domain events -- all in one
-place.
+state change, enforces invariants, and raises domain events, all in one place.
 
 ```
 Anti-pattern (handler sets fields):
@@ -177,7 +176,8 @@ class OrderCommandHandler(BaseCommandHandler):
 ```
 
 Problems with this approach:
-- The handler validates, mutates, and raises events -- three responsibilities
+
+- The handler validates, mutates, and raises events, three responsibilities
 - The shipping rules are duplicated if another handler also ships orders
 - Testing requires constructing commands and running through the handler
 - The aggregate has no behavior; it's a data structure
@@ -277,8 +277,8 @@ class OrderCommandHandler(BaseCommandHandler):
         repo.add(order)
 ```
 
-Now the handler is three lines: load, call, save. All business logic --
-precondition validation, state mutation, and event raising -- is in the
+Now the handler is three lines: load, call, save. All business logic
+(precondition validation, state mutation, and event raising) is in the
 aggregate where it belongs.
 
 ---
@@ -431,9 +431,9 @@ def restructure_order(self, new_items: list, new_total: float) -> None:
     # Invariants checked here, after all changes are applied
 ```
 
-This is still an encapsulated method on the aggregate -- the handler doesn't
-need to know about `atomic_change`. It calls `order.restructure_order(...)`,
-and the aggregate handles the complexity internally.
+This is still an encapsulated method on the aggregate. The handler doesn't need
+to know about `atomic_change`. It calls `order.restructure_order(...)`, and the
+aggregate handles the complexity internally.
 
 ---
 
@@ -548,7 +548,8 @@ class Order:
 
 ## Testing Benefits
 
-Encapsulated methods make domain logic directly testable without infrastructure:
+Encapsulated methods make domain logic directly testable without
+infrastructure:
 
 ```python
 class TestOrderShipping:
@@ -599,11 +600,10 @@ call the method, assert the result. This is fast, focused, and comprehensive.
 
 ### Simple CRUD Without Business Rules
 
-If an aggregate is genuinely a data container with no business rules -- no
-state machine, no preconditions, no events -- direct field assignment is
-acceptable. But this is rare in a DDD system. If most of your aggregates
-look like data bags, consider whether DDD is the right approach for your
-domain.
+If an aggregate is genuinely a data container with no business rules (no state
+machine, no preconditions, no events) direct field assignment is acceptable.
+But this is rare in a DDD system. If most of your aggregates look like data
+bags, consider whether DDD is the right approach for your domain.
 
 ### Bulk Data Loading
 
@@ -654,18 +654,18 @@ def update_shipping_address(self, new_address: ShippingAddress) -> None:
 | Duplication risk | High (multiple handlers) | None (single method) |
 | Code readability | Mechanical field updates | Business-intent method calls |
 
-The principle: **aggregates express behavior through named methods. Handlers
-orchestrate. The aggregate is the authority on its own state transitions.**
+Aggregates express behavior through named methods. Handlers orchestrate. The
+aggregate is the authority on its own state transitions.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../concepts/building-blocks/aggregates.md) — Black-box design and invariant enforcement.
+    - [Aggregates](../concepts/building-blocks/aggregates.md): Black-box design and invariant enforcement.
 
     **Guides:**
 
-    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md) — Changing aggregate state safely.
-    - [Invariants](../guides/domain-behavior/invariants.md) — Enforcing business rules with pre and post invariants.
-    - [Raising Events](../guides/domain-behavior/raising-events.md) — Broadcasting state changes as domain events.
+    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md): Changing aggregate state safely.
+    - [Invariants](../guides/domain-behavior/invariants.md): Enforcing business rules with pre and post invariants.
+    - [Raising Events](../guides/domain-behavior/raising-events.md): Broadcasting state changes as domain events.

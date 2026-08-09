@@ -47,7 +47,7 @@ relationships, as described in the [Associations](#associations) section below.
 ## Configuration
 
 Similar to an aggregate, an entity's behavior can be customized with by passing
-additional options to its decorator, or with a `Meta` class as we saw earlier.
+additional options to its decorator, or with a `Meta` class.
 
 Available options are:
 
@@ -60,8 +60,8 @@ instantiated and needs to be subclassed.
 
 If `True` (the default), Protean automatically adds an identifier field
 (acting as primary key) to the entity. Set to `False` to suppress automatic
-identity generation — useful when the entity defines its own explicit
-identifier field.
+identity generation, useful when the entity defines its own explicit identifier
+field.
 
 ### `schema_name`
 
@@ -77,9 +77,9 @@ and associate it with the entity, just like in an aggregate.
 
 ### `provider`
 
-Inherited from the parent aggregate. Entities are always persisted in the
-same persistence store as their aggregate — you cannot configure a separate
-provider for an entity.
+Inherited from the parent aggregate. Entities are always persisted in the same
+persistence store as their aggregate. You cannot configure a separate provider
+for an entity.
 
 ### `limit`
 
@@ -120,17 +120,16 @@ state determines what happens when the aggregate is persisted:
 | **Changed** | `_state.is_changed` | Modified since last persistence. Will be updated on save. |
 | **Destroyed** | `_state.is_destroyed` | Marked for deletion. Will be removed on save. |
 
-State transitions happen automatically — you don't need to manage them
-directly. Creating an entity marks it as *new*; modifying an attribute marks
-it as *changed*; removing it from a collection marks it as *destroyed*;
-persisting the aggregate marks surviving entities as *persisted*.
+State transitions happen automatically. You don't need to manage them directly.
+Creating an entity marks it as *new*; modifying an attribute marks it as
+*changed*; removing it from a collection marks it as *destroyed*; persisting
+the aggregate marks surviving entities as *persisted*.
 
 ## Raising Events from Entities
 
 Entities can raise domain events using the `raise_()` method, just like
-aggregates. However, the event is always registered on the **aggregate
-root**, not on the entity itself — the root is the owner of the event
-stream.
+aggregates. However, the event is always registered on the **aggregate root**,
+not on the entity itself. The root is the owner of the event stream.
 
 ```python
 @domain.entity(part_of=Order)
@@ -152,8 +151,8 @@ with the entity. Access the owning aggregate via `self._owner`.
 
 ## Invariants
 
-Entities support the same invariant mechanism as aggregates — use
-`@invariant.post` to enforce rules that must always hold:
+Entities support the same invariant mechanism as aggregates, use `@invariant.post` to enforce
+rules that must always hold:
 
 ```python
 @domain.entity(part_of=Order)
@@ -170,9 +169,9 @@ class OrderItem:
 ```
 
 Entity invariants are checked whenever entity state changes. They work
-alongside aggregate-level invariants — both must pass for the aggregate
-cluster to be in a valid state. See the
-[Invariants](../domain-behavior/invariants.md) guide for details.
+alongside aggregate-level invariants. Both must pass for the aggregate cluster
+to be in a valid state. See the [Invariants](../domain-behavior/invariants.md)
+guide for details.
 
 ## The `defaults()` Hook
 
@@ -204,7 +203,7 @@ type gets its own table with a foreign key back to the aggregate. In
 document databases (Elasticsearch provider), entities are typically stored
 as nested documents within the aggregate's document.
 
-You never persist an entity directly — always persist through the aggregate's
+You never persist an entity directly, always persist through the aggregate's
 repository:
 
 ```python
@@ -228,10 +227,10 @@ class PlaceOrderHandler:
         # ...
 ```
 
-`from_value_object()` calls `vo.to_dict()` and constructs an entity
-instance. Identity fields with `None` values are stripped so that
-auto-generated defaults kick in — this means each converted entity
-gets a fresh identity rather than failing validation.
+`from_value_object()` calls `vo.to_dict()` and constructs an entity instance.
+Identity fields with `None` values are stripped so that auto-generated defaults
+kick in. This means each converted entity gets a fresh identity rather than
+failing validation.
 
 ## Associations
 
@@ -285,7 +284,7 @@ For comprehensive relationship documentation, see [Expressing Relationships](./r
 
 | Exception | When it occurs |
 |---|---|
-| `IncorrectUsageError` | Entity defined without `part_of` — every entity must be associated with an aggregate. |
+| `IncorrectUsageError` | Entity defined without `part_of`; every entity must be associated with an aggregate. |
 | `ValidationError` | Field validation fails during construction (e.g. missing `required` field). Contains a `messages` dict. |
 | `ValidationError` | An `@invariant.post` check on the entity raises a validation error. |
 | `IncorrectUsageError` | Trying to instantiate an abstract entity directly. |
@@ -294,17 +293,17 @@ For comprehensive relationship documentation, see [Expressing Relationships](./r
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Entities](../../concepts/building-blocks/entities.md) — What entities are and how they relate to aggregates.
+    **Concept overview:** [Entities](../../concepts/building-blocks/entities.md): What entities are and how they relate to aggregates.
 
-    **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md) — When to use an entity vs. an aggregate vs. a value object.
+    **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md): When to use an entity vs. an aggregate vs. a value object.
 
     **Related guides:**
 
-    - [Invariants](../domain-behavior/invariants.md) — Enforcing business rules on entities and aggregates.
-    - [Raising Events](../domain-behavior/raising-events.md) — How entities raise events through their aggregate root.
-    - [Expressing Relationships](./relationships.md) — Full relationship and association documentation.
+    - [Invariants](../domain-behavior/invariants.md): Enforcing business rules on entities and aggregates.
+    - [Raising Events](../domain-behavior/raising-events.md): How entities raise events through their aggregate root.
+    - [Expressing Relationships](./relationships.md): Full relationship and association documentation.
 
     **Patterns:**
 
-    - [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Drawing the right boundaries between aggregates and entities.
-    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Named methods for controlled mutation.
+    - [Design Small Aggregates](../../patterns/design-small-aggregates.md): Drawing the right boundaries between aggregates and entities.
+    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md): Named methods for controlled mutation.

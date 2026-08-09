@@ -10,22 +10,22 @@ Protean needs to generate JSON Schemas for all data-carrying domain elements
 (aggregates, entities, value objects, commands, events, projections).  Two
 implementation strategies were considered:
 
-1. **Pydantic-first** — call `model_json_schema()` on each domain element's
+1. **Pydantic-first**: Call `model_json_schema()` on each domain element's
    underlying Pydantic model and post-process the output.
-2. **IR-first** — build JSON Schema from the IR field metadata that the
+2. **IR-first**: Build JSON Schema from the IR field metadata that the
    `IRBuilder` already extracts.
 
 The Pydantic-first approach has a fundamental limitation: Pydantic marks
 association descriptors (`ValueObject`, `HasOne`, `HasMany`, `Reference`) as
-`ignored_types`, so `model_json_schema()` omits them entirely.  These
-associations are the most important structural information in a domain model —
-they encode aggregate cluster topology, entity ownership, and value object
+`ignored_types`, so `model_json_schema()` omits them entirely. These
+associations are the most important structural information in a domain model.
+They encode aggregate cluster topology, entity ownership, and value object
 embedding.
 
 Additionally, the CLI needs to support two input modes:
 
-- `--domain=<path>` — load a live domain, build IR, generate schemas
-- `--ir=<path>` — load a previously serialized IR JSON file, generate schemas
+- `--domain=<path>`: Load a live domain, build IR, generate schemas
+- `--ir=<path>`: Load a previously serialized IR JSON file, generate schemas
 
 The Pydantic-first approach only works with live domain objects.  The IR-first
 approach works identically for both input modes because it operates on the same
@@ -55,10 +55,10 @@ mode.
 
 **Positive:**
 
-- Complete domain topology — associations (VO, HasOne, HasMany, Reference) are
+- Complete domain topology. Associations (VO, HasOne, HasMany, Reference) are
   fully represented in the schema output.
 - Single code path for both `--domain` and `--ir` CLI modes.
-- Pure functions with no side effects — easy to test and compose.
+- Pure functions with no side effects, easy to test and compose.
 - No dependency on Pydantic internals or `model_json_schema()` behavior.
 - IR provides a stable, versioned contract that insulates the generator from
   changes in field implementation details.
@@ -69,17 +69,16 @@ mode.
 - Any mapping bugs require manual correction rather than relying on Pydantic's
   built-in JSON Schema support.
 - Pydantic-specific features (custom validators, computed fields) are not
-  automatically reflected in the generated schema — they must be explicitly
+  automatically reflected in the generated schema. They must be explicitly
   represented in the IR first.
 
 ## Alternatives Considered
 
-**Pydantic's `model_json_schema()`** — rejected because it excludes association
-descriptors (`ignored_types`), only works with live Pydantic models (not
-serialized IR), and would require reimplementing descriptor semantics to patch
-the output.
+**Pydantic's `model_json_schema()`**, rejected because it excludes association descriptors (`ignored_types`),
+only works with live Pydantic models (not serialized IR), and would require
+reimplementing descriptor semantics to patch the output.
 
 **Hybrid approach** (use Pydantic for standard fields, custom logic for
-associations) — rejected because it introduces two code paths and makes it
-harder to ensure consistency.  The IR already contains all the information
+associations), rejected because it introduces two code paths and makes it
+harder to ensure consistency. The IR already contains all the information
 needed, so a single IR-based approach is simpler and more maintainable.

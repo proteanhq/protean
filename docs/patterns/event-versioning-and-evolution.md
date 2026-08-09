@@ -33,18 +33,18 @@ domain model evolves continuously**.
 
 This tension produces specific failure modes:
 
-- **Deserialization failures.** Old events lack new required fields. The
+- **Deserialization failures**: Old events lack new required fields. The
   deserializer raises an error, halting event replay or subscription processing.
 
-- **Consumer breakage.** A projector expects `event.discount_code` but
+- **Consumer breakage**: A projector expects `event.discount_code` but
   encounters an old event without it. The projector crashes or produces
   incorrect projections.
 
-- **Silent data corruption.** An old event has a field with different semantics
+- **Silent data corruption**: An old event has a field with different semantics
   than the current definition. The consumer processes it with current-version
   logic, producing subtly wrong results.
 
-- **Deployment coupling.** If all consumers must be updated simultaneously when
+- **Deployment coupling**: If all consumers must be updated simultaneously when
   an event schema changes, you lose the ability to deploy services independently.
 
 ---
@@ -57,12 +57,12 @@ strategies to bridge old and new schemas.
 
 The golden rules:
 
-1. **New fields get defaults.** Always.
-2. **Old fields are never removed.** They can be deprecated but must remain
+1. **New fields get defaults**: Always.
+2. **Old fields are never removed**: They can be deprecated but must remain
    deserializable.
-3. **Semantics never change.** A field's meaning is permanent. If the meaning
+3. **Semantics never change**: A field's meaning is permanent. If the meaning
    changes, create a new field or a new event type.
-4. **Breaking changes create new event types.** If none of the above work, the
+4. **Breaking changes create new event types**: If none of the above work, the
    old event type is retired and a new one takes its place.
 
 ---
@@ -122,7 +122,7 @@ class OrderGiftWrapped(BaseEvent):
 ```
 
 New event types don't affect existing consumers. Consumers that don't handle
-`OrderGiftWrapped` simply ignore it.
+`OrderGiftWrapped` ignore it.
 
 ### Widening Field Types
 
@@ -268,11 +268,11 @@ class OrderPlaced(BaseEvent):
 The old class stays registered so historical events keep deserializing, but
 two things now flag its continued use:
 
-- **Raising it warns.** If code still calls `raise_(OrderPlaced(...))`, Protean
+- **Raising it warns**: If code still calls `raise_(OrderPlaced(...))`, Protean
   emits a `ProteanDeprecationWarning` naming the successor. The warning fires
   **once per event type**, not once per instance, so a hot path is nudged
   without flooding the logs.
-- **`protean check` reports it.** The `DEPRECATED_ELEMENT` diagnostic names the
+- **`protean check` reports it**: The `DEPRECATED_ELEMENT` diagnostic names the
   successor (`superseded by \`OrderPlacedV2\``), and `protean ir diff` treats
   removing it before its `removal` version as a premature (breaking) removal.
 
@@ -283,7 +283,7 @@ bounded context is fine.
 ### Strategy 2: Upcasting on Read
 
 Transform old events to the new schema when they're read from the event store,
-before they reach the handler. This keeps handlers simple -- they only see the
+before they reach the handler. This keeps handlers simple. They only see the
 latest schema.
 
 Protean provides built-in upcasting via the `@domain.upcaster` decorator. Each
@@ -325,10 +325,10 @@ class UpcastOrderPlacedV2ToV3(BaseUpcaster):
         return data
 ```
 
-Upcasting happens transparently during deserialization -- between reading the
-raw message from the event store and constructing the typed event object. All
-handlers (`@apply`, `@handle`, projectors) always receive the current schema,
-regardless of which version was originally stored.
+Upcasting happens transparently during deserialization, between reading the raw
+message from the event store and constructing the typed event object. All
+handlers (`@apply`, `@handle`, projectors) always receive the current schema, regardless
+of which version was originally stored.
 
 **When to use:** Field renames, type changes, or calculated new fields where
 a reasonable transformation exists. Useful when you don't want handlers to
@@ -374,14 +374,15 @@ logging, monitoring). Not suitable for consumers that need precise data
 
 ### Lenient Deserialization (read-path escape hatch)
 
-When you must read genuinely legacy payloads that still carry fields the current
-event no longer declares, opt into **lenient deserialization**. Set
+When you must read genuinely legacy payloads that still carry fields the
+current event no longer declares, opt into **lenient deserialization**. Set
 `lenient_deserialization = true` in `domain.toml` (or override per event with
-`@domain.event(lenient=True)`); the deserializer then drops unknown fields —
-recording their names in the message metadata — instead of raising
+`@domain.event(lenient=True)`); the deserializer then drops unknown fields
+(recording their names in the message metadata) instead of raising
 `DeserializationError`. It is **opt-in**: the default is strict, so a typo or
-genuine schema drift still fails loudly. Reach for lenience only on the read path
-for legacy data; for *structural* evolution, an upcaster is the precise tool.
+genuine schema drift still fails loudly. Reach for lenience only on the read
+path for legacy data; for *structural* evolution, an upcaster is the precise
+tool.
 
 **When to use:** Reading old payloads that carry since-removed fields, where no
 upcaster exists. Not a substitute for upcasting when a value needs transforming.
@@ -439,7 +440,7 @@ When creating new event versions, use clear naming:
 | Namespace | `v2.OrderPlaced` | When many events change together |
 
 The suffix approach (`V2`, `V3`) is the most common because it's simple and
-unambiguous. Avoid descriptive names for minor changes -- they become unwieldy
+unambiguous. Avoid descriptive names for minor changes. They become unwieldy
 (`OrderPlacedWithCurrencyAndDiscount`).
 
 ---
@@ -633,7 +634,7 @@ defaults on new fields for existing event types.
 
 | Change Type | Safe? | Strategy |
 |-------------|-------|----------|
-| Add optional field with default | Yes | Just add it |
+| Add optional field with default | Yes | add it |
 | Add new event type | Yes | Add handler methods |
 | Add more choices to a field | Yes | Consumers handle unknowns |
 | Rename a field | No | New event type or upcasting |
@@ -658,26 +659,26 @@ defaults on new fields for existing event types.
 | Large migrations | Copy-transform or dual-write transition |
 | Stored events | Never modified, only appended to |
 
-The principle: **events are permanent contracts. Evolve them the way you
-evolve APIs -- additive changes are safe, breaking changes require versioning.
-New fields get defaults. Old fields are never removed. Semantics never change.
-When in doubt, create a new event type.**
+Events are permanent contracts. Evolve them the way you evolve APIs. Additive
+changes are safe, breaking changes require versioning. New fields get defaults.
+Old fields are never removed. Semantics never change. When in doubt, create a
+new event type.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../concepts/building-blocks/events.md) — Event fundamentals, versioning, and immutability.
+    - [Events](../concepts/building-blocks/events.md): Event fundamentals, versioning, and immutability.
 
     **Guides:**
 
-    - [Evolving Events Over Time](../guides/evolving-events.md) — The how-to companion: the end-to-end evolution workflow walked with one running example.
-    - [Event Upcasting](../guides/consume-state/event-upcasting.md) — The upcaster mechanism in depth.
-    - [Events](../guides/domain-definition/events.md) — Event structure, metadata, and versioning reference.
+    - [Evolving Events Over Time](../guides/evolving-events.md): The how-to companion: the end-to-end evolution workflow walked with one running example.
+    - [Event Upcasting](../guides/consume-state/event-upcasting.md): The upcaster mechanism in depth.
+    - [Events](../guides/domain-definition/events.md): Event structure, metadata, and versioning reference.
 
     **Tooling:**
 
-    - [`protean events catalog`](../reference/cli/data/events.md) — list every event with its version, deprecation/supersession, and upcaster chain.
-    - [`protean schema generate --format`](../reference/cli/schema.md) — emit JSON Schema, Avro, or Protobuf contracts.
-    - [`protean ir diff`](../reference/cli/ir.md) — Avro-style `BACKWARD`/`FORWARD`/`FULL`/`NONE` compatibility verdict for a change.
+    - [`protean events catalog`](../reference/cli/data/events.md): List every event with its version, deprecation/supersession, and upcaster chain.
+    - [`protean schema generate --format`](../reference/cli/schema.md): Emit JSON Schema, Avro, or Protobuf contracts.
+    - [`protean ir diff`](../reference/cli/ir.md): Avro-style `BACKWARD`/`FORWARD`/`FULL`/`NONE` compatibility verdict for a change.

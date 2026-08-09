@@ -69,13 +69,12 @@ found.
 
 **3. Message consumption.** StreamSubscription consumers read from the
 broker stream, just as they would for any other message. They have no
-awareness of the outbox — it's an implementation detail of the
-publisher side.
+awareness of the outbox, it's an implementation detail of the publisher side.
 
 The guarantee that holds this together: step 1 is transactional with
 the aggregate save. Steps 2 and 3 are eventually consistent but never
-lossy — a row that's written in the outbox is published exactly once
-(with at-least-once semantics from the consumer's perspective).
+lossy, a row that's written in the outbox is published exactly once (with
+at-least-once semantics from the consumer's perspective).
 
 One outbox processor runs per database provider. A domain with one
 database has one processor; a domain with a `default` database and an
@@ -88,30 +87,30 @@ investigating abandoned messages.
 
 ### The event store is the durable anchor
 
-Step 1 hides one more ordering detail. A unit of work makes two durable
-writes to two independent datastores — the event store and the relational
-database — and no transaction spans both. Protean appends events to the
+Step 1 hides one more ordering detail. A unit of work makes two durable writes
+to two independent datastores (the event store and the relational database) and
+no transaction spans both. Protean appends events to the
 **event store first**, and only then commits the relational transaction that
 carries aggregate state and the outbox rows. The event store, the source of
 truth for event-sourced replay, is the durable anchor.
 
 This ordering trades an unrecoverable failure for a recoverable one. If the
 process dies between the two writes, the events are durable in the store while
-their outbox rows never committed — the events exist but would never publish.
+their outbox rows never committed. The events exist but would never publish.
 That gap is closed by **reconciliation**, which re-derives the missing outbox
-rows from the event store, and runs both automatically on server startup and
-on demand via `protean outbox reconcile`. The full rationale — and why this was
-chosen over two-phase commit — is in
+rows from the event store, and runs both automatically on server startup and on
+demand via `protean outbox reconcile`. The full rationale (and why this was
+chosen over two-phase commit) is in
 [ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md); the
-operational walkthrough is in
-[Recover from a crash](../../guides/server/outbox.md#recover-from-a-crash-reconciliation).
+operational walkthrough is in [Recover from a
+crash](../../guides/server/outbox.md#recover-from-a-crash-reconciliation).
 
 ## External Dispatch for Published Events
 
-Events marked with `published=True` can be delivered to external brokers —
-other bounded contexts, partner systems, or analytics pipelines. When
-`external_brokers` is configured, the Unit of Work creates additional outbox
-rows for each external broker, alongside the internal row:
+Events marked with `published=True` can be delivered to external brokers, other bounded
+contexts, partner systems, or analytics pipelines. When `external_brokers` is configured, the
+Unit of Work creates additional outbox rows for each external broker, alongside
+the internal row:
 
 ```mermaid
 sequenceDiagram
@@ -137,7 +136,7 @@ sequenceDiagram
     EOP->>EBR: 4b. Publish (stripped metadata)
 ```
 
-Each row is processed independently — if the external broker is down, the
+Each row is processed independently. If the external broker is down, the
 internal row publishes normally while the external row retries on its own
 schedule.
 
@@ -209,8 +208,8 @@ For tuning retry attempts, backoff, and jitter, see the
 `PUBLISHED` and `ABANDONED` rows are purged on a schedule so the outbox
 table doesn't grow unbounded. Published rows are kept long enough to
 serve as an audit trail; abandoned rows are kept long enough to
-investigate. The retention windows are separately configurable — see
-[Outbox Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
+investigate. The retention windows are separately configurable, see [Outbox
+Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
 
 ## Multi-Worker Support
 
@@ -222,7 +221,7 @@ database level to prevent duplicate publishing.
 
 The processor uses an atomic `UPDATE...WHERE` to claim messages. Under READ
 COMMITTED isolation (PostgreSQL, MSSQL), concurrent updates on the same row
-block until the first transaction commits, then re-evaluate the WHERE clause --
+block until the first transaction commits, then re-evaluate the WHERE clause,
 so only one worker succeeds:
 
 ```python
@@ -282,7 +281,7 @@ persistently is worth investigating:
 | Pending count | Rows waiting to be processed | Worker throughput below publish rate; broker slow or unreachable |
 | Failed count | Rows that failed at least once | Transient broker errors; downstream schema drift |
 | Retry rate | Fraction of attempts that retry | Persistent broker issue; publish-side bug |
-| Abandoned count | Rows that exhausted retries | Chronic failure — needs investigation before cleanup removes the evidence |
+| Abandoned count | Rows that exhausted retries | Chronic failure, needs investigation before cleanup removes the evidence |
 
 Runtime visibility is available via Observatory's `/api/outbox`
 endpoint and via direct queries on the outbox repository. See
@@ -290,7 +289,7 @@ endpoint and via direct queries on the outbox repository. See
 
 ## Related
 
-- [Using the Outbox](../../guides/server/outbox.md) — Enable the outbox, create the table, configure retries and cleanup, investigate abandoned messages.
-- [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md) — Routing events to partner systems.
-- [Subscription Types](../../reference/server/subscription-types.md) — How StreamSubscription consumes outbox-published messages.
-- [Server Configuration](../../reference/server/configuration.md) — Full configuration reference.
+- [Using the Outbox](../../guides/server/outbox.md): Enable the outbox, create the table, configure retries and cleanup, investigate abandoned messages.
+- [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md): Routing events to partner systems.
+- [Subscription Types](../../reference/server/subscription-types.md): How StreamSubscription consumes outbox-published messages.
+- [Server Configuration](../../reference/server/configuration.md): Full configuration reference.

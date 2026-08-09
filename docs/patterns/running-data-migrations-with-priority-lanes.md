@@ -5,13 +5,13 @@
 Every growing system eventually needs to backfill data: adding a new field to
 existing records, enriching records from an external source, or recalculating
 derived values after a business rule change. In a CQRS system with asynchronous
-event processing, these migrations are not simple database updates — each record
+event processing, these migrations are not simple database updates. Each record
 change produces domain events that flow through the same pipeline as production
 traffic.
 
 Consider this scenario: your e-commerce platform has been running for months.
 You need to backfill a `loyalty_tier` field onto 500,000 existing customer
-records. The migration script loads each customer, sets the tier, and saves —
+records. The migration script loads each customer, sets the tier, and saves,
 producing 500,000 `CustomerUpdated` events.
 
 Those events flood the same Redis Stream that handles real-time customer
@@ -31,7 +31,7 @@ Without priority lanes:
 ```
 
 You could pause the migration, wait for production to catch up, and resume in
-small batches — but this is manual, error-prone, and slow. You could run the
+small batches, but this is manual, error-prone, and slow. You could run the
 migration at 3 AM, but that only works if your traffic has a quiet window.
 
 The root issue is that **migration events and production events are treated
@@ -45,8 +45,8 @@ Route migration events to a separate backfill lane that the Engine processes
 only when production work is idle. This way, migrations run continuously at
 full speed without ever delaying a production event.
 
-The principle is simple: **tag migration commands with a low priority, and let
-the infrastructure route them accordingly.**
+Tag migration commands with a low priority, and let the infrastructure route
+them accordingly.
 
 ```
 With priority lanes:
@@ -234,7 +234,7 @@ python migrate_loyalty_tiers.py
    (primary). Only when the primary stream is empty does it fall back to
    `customer:backfill`. Production events are always processed first.
 
-4. **No handler changes needed.** The `CustomerProjector` processes events
+4. **No handler changes needed**: The `CustomerProjector` processes events
    identically regardless of which lane they arrived on.
 
 ### Monitoring During the Migration
@@ -276,8 +276,7 @@ any migration that changes domain state should go through `domain.process()`.
 Taking the system offline to run a migration avoids the priority lane problem
 but creates a different one: downtime. For systems that need to stay available,
 priority lanes let you run migrations during normal operation. The added
-complexity is minimal — a single `with processing_priority(Priority.LOW):`
-wrapper.
+complexity is minimal, a single `with processing_priority(Priority.LOW):` wrapper.
 
 ### Parallelizing migration scripts without coordination
 
@@ -291,16 +290,16 @@ subset.
 
 ## When Not to Use
 
-- **Small datasets.** If the migration processes fewer events than the Engine
-  can handle in a few seconds, priority lanes add no value. Just run the script
+- **Small datasets**: If the migration processes fewer events than the Engine
+  can handle in a few seconds, priority lanes add no value. run the script
   and let the events flow through the normal pipeline.
 
-- **Schema-only migrations.** If you are adding a column, changing an index, or
+- **Schema-only migrations**: If you are adding a column, changing an index, or
   altering table structure without changing domain state, use database migration
   tools directly. Priority lanes are for domain-level data changes that produce
   events.
 
-- **Migrations requiring strict ordering with production.** If migration events
+- **Migrations requiring strict ordering with production**: If migration events
   must be interleaved with production events in a specific order, priority lanes
   will break that ordering. The two-lane system intentionally allows production
   events to jump ahead of migration events.
@@ -321,11 +320,11 @@ subset.
 ---
 
 !!! tip "Related reading"
-    **Guide:** [Using Priority Lanes](../guides/server/using-priority-lanes.md) -- How to enable and configure priority lanes.
+    **Guide:** [Using Priority Lanes](../guides/server/using-priority-lanes.md): How to enable and configure priority lanes.
 
-    **Concept:** [Priority Lanes](../concepts/async-processing/priority-lanes.md) -- How priority lanes work, configuration options, and ordering guarantees.
+    **Concept:** [Priority Lanes](../concepts/async-processing/priority-lanes.md): How priority lanes work, configuration options, and ordering guarantees.
 
     **Related patterns:**
 
-    - [Event Versioning and Evolution](event-versioning-and-evolution.md) -- If migration events produce events with an outdated schema, upcasters can transform them.
-    - [One Aggregate Per Transaction](one-aggregate-per-transaction.md) -- Each migration command modifies one aggregate per transaction, consistent with this pattern.
+    - [Event Versioning and Evolution](event-versioning-and-evolution.md): If migration events produce events with an outdated schema, upcasters can transform them.
+    - [One Aggregate Per Transaction](one-aggregate-per-transaction.md): Each migration command modifies one aggregate per transaction, consistent with this pattern.

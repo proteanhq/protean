@@ -2,8 +2,8 @@
 
 ## The Problem
 
-An e-commerce system has three aggregates — Order, Payment, and Shipping —
-each enforcing its own invariants and persisting independently. When a customer
+An e-commerce system has three aggregates (Order, Payment, and Shipping) each
+enforcing its own invariants and persisting independently. When a customer
 places an order, the system must:
 
 1. Accept the order
@@ -31,23 +31,23 @@ class OrderWorkflow:
 
 This breaks down quickly:
 
-- **No state tracking.** The handler has no memory. If payment is confirmed
+- **No state tracking**: The handler has no memory. If payment is confirmed
   but shipping fails, there is no record of what step the process is on.
   Debugging requires reconstructing the sequence from scattered event logs.
 
-- **No correlation.** Each handler processes events in isolation. If two
+- **No correlation**: Each handler processes events in isolation. If two
   orders are in progress simultaneously, there is no built-in mechanism to
   ensure `PaymentConfirmed` is matched to the correct `OrderPlaced`.
 
-- **No lifecycle.** There is no concept of "this process is done." The
+- **No lifecycle**: There is no concept of "this process is done." The
   handler will process events for a completed order the same way it processes
   events for an active one.
 
-- **No compensation.** When a step fails mid-process, there is no structured
+- **No compensation**: When a step fails mid-process, there is no structured
   way to undo previous steps. Compensation logic gets scattered across
   multiple handlers with no central coordination point.
 
-- **No idempotency.** If `PaymentConfirmed` is delivered twice (e.g., server
+- **No idempotency**: If `PaymentConfirmed` is delivered twice (e.g., server
   crash before subscription position is persisted), `CreateShipment` is
   issued twice. Two shipments are created for one order.
 
@@ -59,10 +59,10 @@ A **Process Manager** is a stateful, event-driven coordinator that:
 
 1. **Reacts to events** from multiple aggregate streams
 2. **Correlates events** to the correct running instance via a shared identity
-3. **Maintains its own state** — tracking which steps have completed and what
+3. **Maintains its own state**: Tracking which steps have completed and what
    data has been collected
 4. **Issues commands** to drive other aggregates forward
-5. **Manages its own lifecycle** — starting when an initiating event arrives
+5. **Manages its own lifecycle**: Starting when an initiating event arrives
    and completing when the process reaches a terminal state
 
 The process manager does not contain business logic. It is a coordinator:
@@ -72,22 +72,22 @@ delegates the *how* to the appropriate aggregate via commands.
 This is a well-established pattern in DDD and event-driven architectures,
 documented by Vaughn Vernon, Greg Young, and the NServiceBus / MassTransit
 communities. The key insight is that a multi-step process needs its own
-first-class identity and state, separate from the aggregates it coordinates.
+its own identity and state, separate from the aggregates it coordinates.
 
 ---
 
 ## How Protean Supports It
 
-Protean provides a first-class `@domain.process_manager` element with:
+Protean provides a `@domain.process_manager` element with:
 
 - **Declarative correlation** via the `correlate` parameter on `@handle`
 - **Automatic lifecycle** via `start=True`, `end=True`, and
   `mark_as_complete()`
-- **Event-sourced persistence** — state is captured as transition events in
+- **Event-sourced persistence**: State is captured as transition events in
   the PM's own stream
-- **Multi-stream subscriptions** — one PM listens to events from multiple
+- **Multi-stream subscriptions**: One PM listens to events from multiple
   aggregate streams
-- **Command issuance** — handlers call `current_domain.process()` to drive
+- **Command issuance**: Handlers call `current_domain.process()` to drive
   other aggregates
 
 ---
@@ -96,9 +96,9 @@ Protean provides a first-class `@domain.process_manager` element with:
 
 ### The Aggregates
 
-Four aggregates participate in order fulfillment — `Order`, `Payment`,
-`Inventory`, and `Shipping`. Each publishes events that the PM reacts to,
-and each accepts commands that the PM issues:
+Four aggregates participate in order fulfillment, `Order`, `Payment`, `Inventory`, and `Shipping`. Each
+publishes events that the PM reacts to, and each accepts commands that the PM
+issues:
 
 ```python
 from protean.fields import Auto, Float, Identifier, String
@@ -412,7 +412,7 @@ States:     new ──► awaiting_inventory ──► awaiting_payment ──�
 
 If `PaymentFailed` arrives instead of `PaymentConfirmed`:
 
-1. The PM finds `status == "awaiting_payment"` — the guard passes.
+1. The PM finds `status == "awaiting_payment"`, the guard passes.
 2. The PM issues `ReleaseInventory` (compensating the earlier reservation)
    and `CancelOrder`.
 3. `end=True` auto-completes the PM. The shipping step never happens.
@@ -426,7 +426,7 @@ returns immediately. No duplicate shipment.
 
 **Compensation.** `ShipmentRejected` arrives after payment was confirmed
 and inventory was reserved. The PM issues `RefundPayment`,
-`ReleaseInventory`, and `CancelOrder` — unwinding every forward step.
+`ReleaseInventory`, and `CancelOrder`, unwinding every forward step.
 
 **Out-of-order events.** `PaymentConfirmed` arrives before the PM exists.
 Protean cannot load a PM instance for that `order_id` and skips the event.
@@ -439,7 +439,7 @@ based on how far the process progressed.
 
 **Terminal state protection.** Once `mark_as_complete()` is called,
 Protean sets `_is_complete = True`. The framework checks this flag before
-dispatching subsequent events — late events are silently skipped.
+dispatching subsequent events. Late events are silently skipped.
 
 ---
 
@@ -448,8 +448,8 @@ dispatching subsequent events — late events are silently skipped.
 ### 1. Design as a state machine
 
 Each handler checks the PM's current status before acting. This makes every
-handler idempotent — processing the same event twice produces the same
-result because the PM has already transitioned past the relevant state.
+handler idempotent, processing the same event twice produces the same result
+because the PM has already transitioned past the relevant state.
 
 ```
 States:     new -> awaiting_payment -> awaiting_shipment -> completed
@@ -467,13 +467,13 @@ the event was delivered twice), the handler is a no-op.
 Events from different aggregate streams have no guaranteed ordering.
 `PaymentConfirmed` can arrive before `OrderPlaced`. Two strategies:
 
-- **Ignore and rely on redelivery.** If the PM does not exist when
+- **Ignore and rely on redelivery**: If the PM does not exist when
   `PaymentConfirmed` arrives (because `OrderPlaced` has not created it
   yet), the event is skipped. Protean's subscription will redeliver
   unacknowledged events. Design the PM so that when `OrderPlaced` finally
   creates the instance, subsequent events are reprocessed correctly.
 
-- **Design correlation to make ordering irrelevant.** Structure each
+- **Design correlation to make ordering irrelevant**: Structure each
   handler to set state based on what it knows, not on what it assumes
   happened before. If `PaymentConfirmed` arrives first, record the payment
   details. When `OrderPlaced` arrives, check whether payment is already
@@ -503,7 +503,7 @@ expected event never arrives, the PM waits forever.
 
 The solution is an **external timer**: a scheduled job or a separate
 aggregate that publishes timeout events. The PM subscribes to these timeout
-events and handles them like any other event — checking state and issuing
+events and handles them like any other event, checking state and issuing
 compensation if the process has stalled.
 
 ### 5. Keep PM fields minimal
@@ -533,9 +533,9 @@ def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
     current_domain.process(CreateShipment(order_id=self.order_id))
 ```
 
-If delivered twice, `CreateShipment` is issued twice — a duplicate
-shipment. **Fix:** guard every handler with a status check so the second
-delivery is a no-op.
+If delivered twice, `CreateShipment` is issued twice, a duplicate shipment.
+**Fix:** guard every handler with a status check so the second delivery is a
+no-op.
 
 ### Business logic in the process manager
 
@@ -602,7 +602,7 @@ for its failure event that compensates and transitions to a terminal state.
 
 | Concern | Without PM | With PM |
 |---------|-----------|---------|
-| State tracking | None — reconstruct from logs | Built-in, event-sourced |
+| State tracking | None, reconstruct from logs | Built-in, event-sourced |
 | Correlation | Manual, error-prone | Declarative `correlate` parameter |
 | Lifecycle | No concept of "done" | `start`, `end`, `mark_as_complete()` |
 | Compensation | Scattered across handlers | Centralized in PM handlers |
@@ -626,14 +626,14 @@ for its failure event that compensates and transitions to a terminal state.
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Process Managers](../concepts/building-blocks/process-managers.md) — Why process managers exist, when to use them vs. event handlers, and how the event chain works.
+    - [Process Managers](../concepts/building-blocks/process-managers.md): Why process managers exist, when to use them vs. event handlers, and how the event chain works.
 
     **Guides:**
 
-    - [Process Managers](../guides/consume-state/process-managers.md) — Defining and configuring PMs.
-    - [Message Tracing](../guides/domain-behavior/message-tracing.md) — Correlation and causation IDs for end-to-end traceability, with programmatic causation chain traversal.
+    - [Process Managers](../guides/consume-state/process-managers.md): Defining and configuring PMs.
+    - [Message Tracing](../guides/domain-behavior/message-tracing.md): Correlation and causation IDs for end-to-end traceability, with programmatic causation chain traversal.
 
     **Related patterns:**
 
-    - [Idempotent Event Handlers](idempotent-event-handlers.md) — Safe replay applies to PM handlers too.
-    - [One Aggregate Per Transaction](one-aggregate-per-transaction.md) — PMs coordinate across aggregate boundaries.
+    - [Idempotent Event Handlers](idempotent-event-handlers.md): Safe replay applies to PM handlers too.
+    - [One Aggregate Per Transaction](one-aggregate-per-transaction.md): PMs coordinate across aggregate boundaries.

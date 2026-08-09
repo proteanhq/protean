@@ -1,8 +1,8 @@
-# Chapter 16: Following the Trail — Message Tracing
+# Chapter 16: Following the Trail with Message Tracing
 
-An auditor asks: "Show me every system action triggered by deposit
-DEP-9921." This deposit was over $10,000 — it triggered a compliance
-alert, which generated an investigation, which led to an account hold.
+An auditor asks: "Show me every system action triggered by deposit DEP-9921."
+This deposit was over $10,000. It triggered a compliance alert, which generated
+an investigation, which led to an account hold.
 
 To answer this, we need to trace the complete **causal chain** from the
 original command through every downstream event and reaction.
@@ -11,11 +11,11 @@ original command through every downstream event and reaction.
 
 Every message in Protean carries two tracing identifiers:
 
-- **Correlation ID** — shared by all messages in a causal chain. If
+- **Correlation ID**: Shared by all messages in a causal chain. If
   you set it on the initial command, every event raised by that command,
   every command issued by event handlers reacting to those events, and
   so on, all share the same correlation ID.
-- **Causation ID** — points to the message that directly caused this
+- **Causation ID**: Points to the message that directly caused this
   one, creating a parent-child relationship.
 
 ```
@@ -104,19 +104,19 @@ with domain.domain_context():
 
 The `CausationNode` tree structure contains:
 
-- `message_id` — the message's unique identifier
-- `message_type` — the event or command type string
-- `stream` — the stream the message was written to
-- `timestamp` — when it was created
-- `children` — list of `CausationNode` children
+- `message_id`: The message's unique identifier
+- `message_type`: The event or command type string
+- `stream`: The stream the message was written to
+- `timestamp`: When it was created
+- `children`: List of `CausationNode` children
 
 ## Automatic Propagation
 
 Correlation IDs propagate automatically through the system:
 
 1. You set `correlation_id` on `domain.process()`
-2. The command handler runs — events raised by the aggregate inherit
-   the correlation ID
+2. The command handler runs, events raised by the aggregate inherit the
+   correlation ID
 3. Event handlers receive events with the correlation ID
 4. When a handler issues a new command via `domain.process()`, the
    correlation ID is forwarded automatically
@@ -134,9 +134,9 @@ You never need to manually pass correlation IDs between handlers.
   and `build_causation_tree()`.
 - **Automatic propagation** through handlers and commands.
 
-Message tracing is essential for debugging, auditing, and understanding
-the behavior of event-driven systems. Next, we face a production
-incident — a handler bug that fills the dead-letter queue.
+Message tracing is essential for debugging, auditing, and understanding the
+behavior of event-driven systems. Next, we face a production incident, a
+handler bug that fills the dead-letter queue.
 
 ## Full Source
 
@@ -146,4 +146,4 @@ incident — a handler bug that fills the dead-letter queue.
 
 ## Next
 
-[Chapter 17: When Things Go Wrong — Dead Letter Queues →](17-dead-letter-queues.md)
+[Chapter 17: Handling Failures with Dead Letter Queues →](17-dead-letter-queues.md)

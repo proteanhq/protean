@@ -1,8 +1,8 @@
 # Server Hardening Reference
 
-Every option, default, and metric shipped by the Server Hardening epic
-— pool tuning, health probes, DLQ policy, subscription profiles,
-OpenTelemetry metrics, shutdown, and optimistic locking. For the
+Every option, default, and metric for server hardening: pool tuning, health
+probes, DLQ policy, subscription profiles, OpenTelemetry metrics, shutdown,
+and optimistic locking. For the
 operational walkthrough that ties these together, see the
 [Server Hardening guide](../../guides/server/hardening.md). For the
 `--reload` development flag, see [Run the Server](../../guides/server/index.md#hot-reload-in-development).
@@ -53,10 +53,9 @@ max_connections = 20
 
 ### LOW_POOL_SIZE warning
 
-`Domain.check()` emits a `LOW_POOL_SIZE` warning for any SQLAlchemy
-database with `pool_size < 5` unless `PROTEAN_ENV` is `development` or
-`testing`. Memory providers are skipped. The warning is advisory — it
-does not block startup.
+`Domain.check()` emits a `LOW_POOL_SIZE` warning for any SQLAlchemy database
+with `pool_size < 5` unless `PROTEAN_ENV` is `development` or `testing`. Memory
+providers are skipped. The warning is advisory. It does not block startup.
 
 Sample output from `protean check` when `pool_size = 2` on a
 PostgreSQL provider:
@@ -95,7 +94,7 @@ enforce `--strict` will fail. Raise `pool_size` or set `PROTEAN_ENV` to
 | `GET /livez` | Liveness (alias for `/healthz`) | Same as `/healthz` |
 | `GET /readyz` | Readiness | `200` when all checks pass, `503` otherwise |
 
-Sample responses — liveness while the engine is running:
+Sample responses. Liveness while the engine is running:
 
 ```bash
 $ curl -i http://localhost:8080/livez
@@ -161,15 +160,15 @@ Two things worth knowing before you build on this:
   `total` is the engine's own tally of live subscription objects; `details`
   comes from walking the domain registry. One `sequential_by` process manager,
   for example, is a single engine subscription but one row per stream category.
-- **`lag: null` does not always mean trouble.** It means the value could not be
+- **`lag: null` does not always mean trouble**: It means the value could not be
   determined: the backend was unreachable, *or* the consumer group does not
   exist yet because nothing has been consumed. A freshly deployed subscription
   reports `lag: null, status: "unknown"` against a perfectly healthy Redis.
-- **An unreadable lag is reported as `null`, never as zero.** If the backend
+- **An unreadable lag is reported as `null`, never as zero**: If the backend
   cannot be reached, or the lag cannot be computed, the row says
   `lag: null, status: "unknown"` rather than guessing. A `status: "ok"` row means
   the collector read the subscription and found it caught up.
-- **A partitioned category reports summed lag.** A `sequential_by` subscription
+- **A partitioned category reports summed lag**: A `sequential_by` subscription
   consumes `{category}:{key}` partition streams, so its row aggregates lag and
   pending counts across every live partition, and `current_position` reports how
   many there are. One halted partition therefore shows up in the total. Lag per
@@ -197,16 +196,15 @@ Three states tell you the data is not current:
 
 - `"collection_pending": true` with empty `details`: the first refresh has not
   landed yet (normal for a second or two after startup).
-- `"collection_error": true`: the last refresh raised. The previous block is
+- `"collection_error": true`: The last refresh raised. The previous block is
   not served in its place, so you are not shown stale numbers as if they were
   fresh.
 - `"stale": true` with `"age_seconds"`: refreshes have stopped landing for
   several intervals, which usually means a wedged backend. The last good data
   is still shown, with its age, so you can judge it.
 
-Readiness when one component is unreachable — the status flips to
-`"degraded"` and the HTTP code to `503`, which K8s treats as
-"not ready":
+Readiness when one component is unreachable, the status flips to `"degraded"` and the
+HTTP code to `503`, which K8s treats as "not ready":
 
 ```bash
 $ curl -i http://localhost:8080/readyz
@@ -226,9 +224,8 @@ Content-Type: application/json
 }
 ```
 
-Readiness after `SIGTERM` arrives — the engine reports
-`"unavailable"` immediately so the load balancer drains traffic before
-in-flight handlers are affected:
+Readiness after `SIGTERM` arrives, the engine reports `"unavailable"` immediately so the load
+balancer drains traffic before in-flight handlers are affected:
 
 ```bash
 $ curl -i http://localhost:8080/readyz
@@ -255,12 +252,11 @@ create_health_router(
 )
 ```
 
-Mounts `GET /healthz`, `GET /livez`, and `GET /readyz`. The `/readyz`
-check runs the same provider, broker, event-store, and cache inspection
-as the engine server. The `/healthz` and `/livez` bodies differ — the
-FastAPI router returns `{"status": "ok", "checks": {"application":
-"running"}}`, since there is no event-loop task inside the request
-cycle to probe.
+Mounts `GET /healthz`, `GET /livez`, and `GET /readyz`. The `/readyz` check
+runs the same provider, broker, event-store, and cache inspection as the engine
+server. The `/healthz` and `/livez` bodies differ. The FastAPI router returns
+`{"status": "ok", "checks": {"application": "running"}}`, since there is no
+event-loop task inside the request cycle to probe.
 
 ## Dead-letter queue policy
 
@@ -298,11 +294,11 @@ no-op `dlq_trim()`.
 
 ## Subscription profiles
 
-Five profiles — `PRODUCTION`, `FAST`, `BATCH`, `DEBUG`, `PROJECTION` —
-resolve at engine startup to concrete `SubscriptionConfig` values. For
-the full per-profile value dictionaries (`messages_per_tick`,
-`blocking_timeout_ms`, `max_retries`, `enable_dlq`, etc.), see
-[Subscription Configuration → Profile Defaults](./configuration.md#profile-defaults).
+Five profiles (`PRODUCTION`, `FAST`, `BATCH`, `DEBUG`, `PROJECTION`) resolve at
+engine startup to concrete `SubscriptionConfig` values. For the full
+per-profile value dictionaries (`messages_per_tick`, `blocking_timeout_ms`,
+`max_retries`, `enable_dlq`, etc.), see [Subscription Configuration → Profile
+Defaults](./configuration.md#profile-defaults).
 
 `SubscriptionConfig` fields resolvable at every precedence level:
 
@@ -327,11 +323,10 @@ precedence hierarchy.
 
 ## Circuit breaker
 
-Every `StreamSubscription` carries an in-memory circuit breaker that
-protects a struggling downstream from being hammered. It counts
-consecutive handler-outcome failures — a message routed to the DLQ still
-counts as one failure — and is separate from `poll()`'s own backoff for
-broker read errors.
+Every `StreamSubscription` carries an in-memory circuit breaker that protects a
+struggling downstream from being hammered. It counts consecutive
+handler-outcome failures (a message routed to the DLQ still counts as one
+failure) and is separate from `poll()`'s own backoff for broker read errors.
 
 | Key | Default | Purpose |
 |-----|---------|---------|
@@ -346,17 +341,17 @@ circuit_breaker_reset_seconds = 60
 
 State machine:
 
-- **CLOSED** — normal operation. Each failure increments the counter;
+- **CLOSED**: Normal operation. Each failure increments the counter;
   the first success resets it to zero. When the counter reaches
   `circuit_breaker_threshold`, the breaker moves to OPEN.
-- **OPEN** — reads are paused. Pending messages stay in the stream/PEL
+- **OPEN**: Reads are paused. Pending messages stay in the stream/PEL
   for redelivery; the breaker never acks an unprocessed message, so
   nothing is dropped or reordered. On the next poll turn after
   `circuit_breaker_reset_seconds` has elapsed, the breaker moves to
   HALF_OPEN. The move is lazy (driven by the poll loop, not a timer), so
   if the poll loop is in its own error backoff it can happen slightly
   later than the exact window.
-- **HALF_OPEN** — a single probe message is read. A successful probe
+- **HALF_OPEN**: A single probe message is read. A successful probe
   closes the breaker; a failing probe re-opens it and restarts the reset
   timer.
 
@@ -438,7 +433,7 @@ Elasticsearch providers return an empty dict.
    and DLQ maintenance task to stop.
 3. Wait up to **10 seconds** for in-flight handler tasks to complete;
    cancel any that remain.
-4. Call `Domain.close()` — closes event store, brokers, caches, and
+4. Call `Domain.close()`, which closes the event store, brokers, caches, and
    providers in reverse initialisation order.
 5. Remove signal handlers and stop the event loop.
 

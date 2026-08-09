@@ -6,8 +6,8 @@ orders cannot be empty, and shipped orders cannot be modified.
 ## Post-Invariants: Validating State
 
 Let's add a rule: every order must have at least one item. A
-**post-invariant** is checked *after every state change* — on creation
-and on every subsequent mutation:
+**post-invariant** is checked *after every state change*, on creation and on
+every subsequent mutation:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch04.py:aggregate"
@@ -21,9 +21,8 @@ or modified. If the items list is empty, it rejects the change:
 ValidationError: {'_entity': ['An order must contain at least one item']}
 ```
 
-Notice that the invariant runs automatically — we don't call it
-ourselves. Protean guarantees that the aggregate is always in a valid
-state.
+Notice that the invariant runs automatically. We don't call it ourselves.
+Protean guarantees that the aggregate is always in a valid state.
 
 ## Pre-Invariants: Guarding Transitions
 
@@ -105,8 +104,8 @@ Caught: {'_entity': ['Cannot modify an order that has been shipped']}
 All checks passed!
 ```
 
-Notice how every rule is enforced automatically — the aggregate never
-enters an invalid state.
+Notice how every rule is enforced automatically, the aggregate never enters an
+invalid state.
 
 ## What We Built
 
@@ -121,17 +120,17 @@ We now have a rich domain model with aggregates, entities, value objects,
 and business rules.
 
 !!! success "DDD Milestone"
-    You have built a complete **DDD domain model** — aggregates, entities,
-    value objects, and invariants. These concepts are the foundation for
-    every Protean application, regardless of architecture.
+    You have built a complete **DDD domain model**, aggregates, entities, value
+    objects, and invariants. These concepts are the foundation for every
+    Protean application, regardless of architecture.
 
     If you are following the **pure DDD** approach, your next step is
     [Application Services](../../change-state/application-services.md) to
     wire use cases. See the [DDD Pathway](../../pathways/ddd.md) for the
     full reading order.
 
-    The remaining chapters add **CQRS patterns** — Commands, Projections,
-    and separated read/write models — on top of this foundation.
+    The remaining chapters add **CQRS patterns** (Commands, Projections, and
+    separated read/write models) on top of this foundation.
 
 ## Full Source
 

@@ -28,6 +28,7 @@ NNNN-short-kebab-title.md
 ```
 
 Examples:
+
 - `0001-monotonic-integer-event-versioning.md`
 - `0003-one-ir-document-per-bounded-context.md`
 
@@ -38,10 +39,10 @@ but a meta-document that captures the principles governing all Protean architect
 
 Each ADR has one of the following statuses:
 
-- **Proposed** — Under discussion, not yet committed to.
-- **Accepted** — The decision has been made and is in effect.
-- **Deprecated** — The decision is no longer relevant (technology changed, feature removed).
-- **Superseded by ADR-XXXX** — Replaced by a newer decision.
+- **Proposed**: Under discussion, not yet committed to.
+- **Accepted**: The decision has been made and is in effect.
+- **Deprecated**: The decision is no longer relevant (technology changed, feature removed).
+- **Superseded by ADR-XXXX**: Replaced by a newer decision.
 
 Status changes are recorded by editing the ADR's Status field. The original ADR is never deleted;
 it remains as historical context.

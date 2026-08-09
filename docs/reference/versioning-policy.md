@@ -151,11 +151,11 @@ all.
 
 Two things worth knowing:
 
-- **Documented guarantees are part of the API.** Weakening a guarantee in
+- **Documented guarantees are part of the API**: Weakening a guarantee in
   [Consistency & delivery guarantees](guarantees.md) is a breaking change even
   when no signature changes. A method that quietly stops being idempotent has
   broken the contract as surely as one that was renamed.
-- **Internal names are not covered.** Reaching into `protean.core.*` internals
+- **Internal names are not covered**: Reaching into `protean.core.*` internals
   or underscore-prefixed attributes may break in any release, including a patch.
 
 ---
@@ -184,7 +184,7 @@ behind a flag.
 
 ## Related reading
 
-- [Stable surface](stable-surface.md): what is covered by the contract, tier by tier.
-- [Consistency & delivery guarantees](guarantees.md): the behavioral contract per port and adapter.
-- [Migration guides](migration/index.md): version-specific upgrade steps.
-- [`protean check`](cli/check.md): find deprecated usage in your domain.
+- [Stable surface](stable-surface.md): What is covered by the contract, tier by tier.
+- [Consistency & delivery guarantees](guarantees.md): The behavioral contract per port and adapter.
+- [Migration guides](migration/index.md): Version-specific upgrade steps.
+- [`protean check`](cli/check.md): Find deprecated usage in your domain.

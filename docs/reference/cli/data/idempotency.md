@@ -70,5 +70,5 @@ full resolution logic.
 
 ## See also
 
-- [Projectors: Opting into built-in deduplication](../../../guides/consume-state/projectors.md#opting-into-built-in-deduplication) — enabling `idempotent=True`.
-- [ADR-0017](../../../adr/0017-consume-side-idempotency-for-projectors.md) — the consume-side idempotency design and its boundaries.
+- [Projectors: Opting into built-in deduplication](../../../guides/consume-state/projectors.md#opting-into-built-in-deduplication): Enabling `idempotent=True`.
+- [ADR-0017](../../../adr/0017-consume-side-idempotency-for-projectors.md): The consume-side idempotency design and its boundaries.

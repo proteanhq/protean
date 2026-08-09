@@ -91,8 +91,8 @@ class Order:
 | `ddl` | `str` | Verbatim `CREATE INDEX …` statement. |
 | `name` | <code>str &#124; None</code> | Optional name, for reporting. |
 
-`RawIndex` is the return type of `from_sql`. You never construct it directly —
-always go through `Index.from_sql`.
+`RawIndex` is the return type of `from_sql`. You never construct it directly, always go
+through `Index.from_sql`.
 
 ---
 
@@ -101,7 +101,7 @@ always go through `Index.from_sql`.
 The portable subset (composite, descending, unique, naming) is honored
 everywhere indexes apply. The opt-in features (`where`, `include`) are honored
 only where the dialect supports them, and otherwise degrade to a full index
-with a logged warning — declarations never fail because of an unsupported
+with a logged warning, declarations never fail because of an unsupported
 opt-in.
 
 | Feature | PostgreSQL | SQLite | SQL Server | Memory | Elasticsearch |
@@ -125,7 +125,7 @@ opt-in.
   `Index.from_sql` where applicable.
 - **Non-SQL backends** (memory, Elasticsearch, and cache stores such as Redis
   for cache-backed projections) **silently ignore** non-unique index
-  declarations — no warning is emitted (memory being the exception that enforces
+  declarations. No warning is emitted (memory being the exception that enforces
   `unique`). Declarations stay valid (field references are still checked at
   `Domain.init()`) and take effect if the element is later persisted to a SQL
   backend. Warnings are emitted **only** by SQL providers, and only for an
@@ -160,7 +160,7 @@ resolution), raising `IncorrectUsageError` on:
 
 ## Related
 
-- [Element Decorators](element-decorators.md) — the `indexes=` option in context.
-- [Declaring Indexes](../../guides/domain-definition/indexes.md) — the how-to guide.
-- [Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md) — when and what to index.
-- [ADR-0014](../../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md) — design rationale.
+- [Element Decorators](element-decorators.md): The `indexes=` option in context.
+- [Declaring Indexes](../../guides/domain-definition/indexes.md): The how-to guide.
+- [Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md): When and what to index.
+- [ADR-0014](../../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md): Design rationale.

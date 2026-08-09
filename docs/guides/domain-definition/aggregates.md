@@ -107,11 +107,10 @@ class Order:
         self.status = "PENDING"
 ```
 
-This ensures the creation event's `@apply` handler is the single source
-of truth for setting initial state — the same handler runs during both
-live creation and event replay. See the
-[Event Sourcing pathway](../pathways/event-sourcing.md)
-for a complete walkthrough.
+This ensures the creation event's `@apply` handler is the single source of
+truth for setting initial state. The same handler runs during both live
+creation and event replay. See the [Event Sourcing
+pathway](../pathways/event-sourcing.md) for a complete walkthrough.
 
 ## Inheritance
 
@@ -153,9 +152,9 @@ class:
 ## Configuration
 
 An aggregate's behavior can be customized by passing options to its decorator.
-Here are the most commonly used options — see
-[element decorators](../../reference/domain-elements/element-decorators.md)
-for the complete reference.
+Here are the most commonly used options, see [element
+decorators](../../reference/domain-elements/element-decorators.md) for the
+complete reference.
 
 ### `abstract`
 
@@ -231,9 +230,9 @@ class AuditLog:
 ### `indexes`
 
 Declares the indexes the persistence layer should create for the aggregate.
-Pass a list of [`Index`](../../reference/domain-elements/indexes.md) objects —
-one per query path beyond primary-key lookup (a uniqueness invariant, a
-composite filter-plus-sort, a correlation lookup):
+Pass a list of [`Index`](../../reference/domain-elements/indexes.md) objects, one
+per query path beyond primary-key lookup (a uniqueness invariant, a composite
+filter-plus-sort, a correlation lookup):
 
 ```python
 from protean import Index, Q
@@ -385,21 +384,21 @@ The `Reference` field (`comment.post`) provides access to the full parent object
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md) — What aggregates are, their core properties, and why they matter.
+    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md): What aggregates are, their core properties, and why they matter.
 
-    **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md) — When to use an aggregate vs. an entity vs. a value object.
+    **Decision guidance:** [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md): When to use an aggregate vs. an entity vs. a value object.
 
     **Related guides:**
 
-    - [Expressing Relationships](./relationships.md) — Full relationship and association documentation.
-    - [Invariants](../domain-behavior/invariants.md) — Enforcing business rules and state guards.
-    - [Raising Events](../domain-behavior/raising-events.md) — Publishing domain events from aggregates.
-    - [Repositories](../change-state/repositories.md) — Persisting and retrieving aggregates.
+    - [Expressing Relationships](./relationships.md): Full relationship and association documentation.
+    - [Invariants](../domain-behavior/invariants.md): Enforcing business rules and state guards.
+    - [Raising Events](../domain-behavior/raising-events.md): Publishing domain events from aggregates.
+    - [Repositories](../change-state/repositories.md): Persisting and retrieving aggregates.
 
     **Patterns:**
 
-    - [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Why smaller aggregates lead to better systems.
-    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation.
-    - [Factory Methods for Aggregate Creation](../../patterns/factory-methods-for-aggregate-creation.md) — Encapsulating complex construction logic.
-    - [Model Aggregate Lifecycle as a State Machine](../../patterns/aggregate-state-machines.md) — Explicit states and guarded transitions.
-    - [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md) — Keeping transaction boundaries clean.
+    - [Design Small Aggregates](../../patterns/design-small-aggregates.md): Why smaller aggregates lead to better systems.
+    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md): Protecting aggregate internals with controlled mutation.
+    - [Factory Methods for Aggregate Creation](../../patterns/factory-methods-for-aggregate-creation.md): Encapsulating complex construction logic.
+    - [Model Aggregate Lifecycle as a State Machine](../../patterns/aggregate-state-machines.md): Explicit states and guarded transitions.
+    - [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md): Keeping transaction boundaries clean.

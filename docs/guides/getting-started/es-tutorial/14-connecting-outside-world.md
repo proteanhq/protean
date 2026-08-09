@@ -1,8 +1,8 @@
 # Chapter 14: Connecting to the Outside World
 
-Fidelis integrates with "PayFlow," an external payment gateway that
-sends webhook notifications when payments are processed. These external
-messages are raw JSON payloads — not typed domain events.
+Fidelis integrates with "PayFlow," an external payment gateway that sends
+webhook notifications when payments are processed. These external messages are
+raw JSON payloads, not typed domain events.
 
 In this chapter we will build a **subscriber** that acts as an
 anti-corruption layer, and add **enrichers** to attach cross-cutting
@@ -47,8 +47,8 @@ subscription's retry/DLQ mechanism.
 ## Message Enrichment
 
 Event and command enrichers add metadata that does not belong in the
-event payload itself — infrastructure concerns like tenant IDs, request
-IDs, and user context:
+event payload itself, infrastructure concerns like tenant IDs, request IDs, and
+user context:
 
 ```python
 --8<-- "guides/getting-started/es-tutorial/ch14.py:event_enricher"
@@ -66,8 +66,8 @@ Key concepts:
 - Enrichment data appears in **`metadata.extensions`**, not in the event
   fields. This keeps domain events clean.
 - Multiple enrichers execute in **FIFO order**, with results merged.
-- Enrichers run automatically — no code changes needed in aggregates
-  or handlers.
+- Enrichers run automatically, no code changes needed in aggregates or
+  handlers.
 
 ## When to Use Enrichers
 
@@ -103,11 +103,11 @@ def on_deposit(self, event: DepositMade):
 - The **anti-corruption layer** pattern for external integrations.
 - **`metadata.extensions`** for cross-cutting metadata.
 
-Part III is complete. We have evolved the system with schema changes
+That completes Part III. We have evolved the system with schema changes
 (upcasting), performance optimization (snapshots), historical queries
-(temporal), and external integration (subscribers and enrichers). In
-Part IV, we tackle production operations — the daily reality of running
-an event-sourced system.
+(temporal), and external integration (subscribers and enrichers). In Part IV,
+we tackle production operations, the daily reality of running an event-sourced
+system.
 
 ## Full Source
 

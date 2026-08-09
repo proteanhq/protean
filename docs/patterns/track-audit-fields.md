@@ -6,8 +6,9 @@
 
 Almost every persisted aggregate wants four cross-cutting fields:
 
-- `created_at` / `updated_at` — when the row was first written and last changed.
-- `created_by` / `updated_by` — which user made those changes.
+- `created_at` / `updated_at`. When the row was first written and last
+  changed.
+- `created_by` / `updated_by`, which user made those changes.
 
 These have nothing to do with the aggregate's business rules, but if you leave
 them to each aggregate you end up re-implementing the same thing everywhere:
@@ -17,7 +18,7 @@ trail is quietly wrong.
 
 The two halves of the problem are different in nature. Timestamps are a pure
 function of *when* the save happens. Audit users are a function of *who* is
-acting — context the aggregate should not have to know about. Protean solves
+acting. Context the aggregate should not have to know about. Protean solves
 each with the mechanism that fits it.
 
 ## The Pattern
@@ -25,8 +26,7 @@ each with the mechanism that fits it.
 Put the cross-cutting fields on an **abstract base aggregate** and inherit it.
 Let the framework fill them in on save:
 
-- Timestamps are **declarative** — `auto_now_add` / `auto_now` flags on the
-  `DateTime` fields.
+- Timestamps are **declarative**, `auto_now_add` / `auto_now` flags on the `DateTime` fields.
 - Audit users come from a **pre-persist enricher** that reads the acting user
   from the domain context and stamps them just before the save.
 
@@ -124,17 +124,18 @@ final = domain.repository_for(Article).get(article_id)
 
 ## Where it applies
 
-The stamping and the enricher run on the `repository.add()` → save path -- the
-same place Protean manages aggregate versions -- and, because they persist
-through the same path, on `update()` and `QuerySet.update()` as well. Two notes:
+The stamping and the enricher run on the `repository.add()` → save path (the
+same place Protean manages aggregate versions) and, because they persist
+through the same path, on `update()` and `QuerySet.update()` as well. Two
+notes:
 
-- **Bulk / raw updates.** `QuerySet.update(...)` updates each matched row
+- **Bulk / raw updates**: `QuerySet.update(...)` updates each matched row
   individually, so it stamps and enriches like a save. When you need a raw write
   that must *not* touch audit fields (e.g. a data backfill), pass
-  `apply_hooks=False` to `save()` / `update()` / `QuerySet.update()` -- it
-  skips the stamping and enrichers (optimistic-concurrency version management
-  still applies). See [ADR-0022](../adr/0022-pre-persist-aggregate-enricher.md).
-- **Event-sourced aggregates.** These persist as a stream of events, not rows in
+  `apply_hooks=False` to `save()` / `update()` / `QuerySet.update()`. It skips
+  the stamping and enrichers (optimistic-concurrency version management still
+  applies). See [ADR-0022](../adr/0022-pre-persist-aggregate-enricher.md).
+- **Event-sourced aggregates**: These persist as a stream of events, not rows in
   a table, so there are no columns to stamp. Record who and when *in the events*
   themselves (see [Message Enrichment](../guides/domain-behavior/message-enrichment.md)
   for event-level metadata). This recipe is for state-based (DDD/CQRS) aggregates.
@@ -149,22 +150,24 @@ single place to audit. `auto_now` removes the need entirely.
 
 ### Overloading the enricher with business logic
 
-The pre-persist enricher is powerful — it *can* mutate any field or raise an
+The pre-persist enricher is powerful, it *can* mutate any field or raise an
 exception. Keep it to cross-cutting lifecycle/audit metadata. Business state
-changes belong in the aggregate's own named methods, where they can raise events
-and be tested in isolation. The enricher is a bookkeeping hook, not an escape
-hatch.
+changes belong in the aggregate's own named methods, where they can raise
+events and be tested in isolation. The enricher is a bookkeeping hook, not an
+escape hatch.
 
 ### Modeling the acting user inside the domain
 
 The framework supplies the *hook* and the *stamping mechanism*, not a user
 model. `created_by`/`updated_by` are whatever your application puts on the
-context — a user id, a username, a service name. Keep the identity concern in
+context: a user id, a username, a service name. Keep the identity concern in
 your application layer.
 
 ---
 
 !!! tip "See also"
-    - [Simple Fields — Auto-populated timestamps](../reference/fields/simple-fields.md#auto-populated-timestamps) — the `auto_now`/`auto_now_add` reference
-    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md#aggregate-pre-persist-enrichers) — the aggregate enricher alongside event/command enrichers
-    - [Multi-Tenancy](multi-tenancy.md) — the same context-propagation approach applied to tenant isolation
+    - [Simple Fields, Auto-populated
+      timestamps](../reference/fields/simple-fields.md#auto-populated-timestamps):
+      The `auto_now`/`auto_now_add` reference
+    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md#aggregate-pre-persist-enrichers): The aggregate enricher alongside event/command enrichers
+    - [Multi-Tenancy](multi-tenancy.md): The same context-propagation approach applied to tenant isolation

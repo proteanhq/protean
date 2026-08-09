@@ -17,9 +17,8 @@ This catches runtime coupling one level deeper than `INFRA_IMPORT_IN_DOMAIN`,
 which reads only module-level imports. It reads method bodies through the
 [behavioral analysis substrate](../behavioral-analysis.md). An adapter reached
 through `import protean` attribute
-access — `protean.adapters.broker.inline.InlineBroker(...)` — is a real call-site
-coupling that the module-level import rule's name-prefix check does not see,
-because the module imports only `protean`.
+access (`protean.adapters.broker.inline.InlineBroker(...)`) is a real call-site coupling that the module-level import rule's
+name-prefix check does not see, because the module imports only `protean`.
 
 ## Opt-in
 
@@ -35,33 +34,34 @@ It parses method bodies, which is heavier than the module-import scan
 [ADR-0019](../../../adr/0019-check-engine-determinism-boundary-and-behavioral-substrate.md).
 It uses a dedicated
 flag rather than reusing `check_infra_imports`, so each rule is switchable on its
-own — turning on the call-site rule never changes what the import rule does.
+own, turning on the call-site rule never changes what the import rule does.
 
 ## Scope and limits
 
-The rule walks **every non-internal registered domain element** — aggregates,
+The rule walks **every non-internal registered domain element**, aggregates,
 entities, value objects, repositories, handlers, domain services, process
-managers, subscribers — in fqn order, and reads the methods **defined in each
-element's own class body**. It is deliberately **conservative**: it flags a call
-only when the callee **statically resolves** under `protean.adapters`. A call
-whose callee cannot be resolved is **skipped, never guessed at**, keeping the
-rule on the deterministic side of ADR-0019.
+managers, subscribers, in fqn order, and reads the methods **defined in each
+element's own class body**. It is deliberately **conservative**: it flags a
+call only when the callee **statically resolves** under `protean.adapters`. A call whose
+callee cannot be resolved is **skipped, never guessed at**, keeping the rule on
+the deterministic side of ADR-0019.
 
-Because it reads only an element's own top-level methods, it does **not** see an
-adapter call that sits in a method inherited from a non-registered base or mixin,
-in a class-attribute default, at module level, or nested inside another `def`,
-`lambda`, or class within a method — those are conservative, by-design misses,
-not violations the rule certifies absent. In particular, it does not flag:
+Because it reads only an element's own top-level methods, it does **not** see
+an adapter call that sits in a method inherited from a non-registered base or
+mixin, in a class-attribute default, at module level, or nested inside another
+`def`, `lambda`, or class within a method. Those are conservative, by-design
+misses, not violations the rule certifies absent. In particular, it does not
+flag:
 
-- **A class that is not a registered domain element.** Only registered elements
+- **A class that is not a registered domain element**: Only registered elements
   are visited, so a plain helper class calling an adapter is out of scope.
-- **A function-local import.** `from protean.adapters... import X` inside a
+- **A function-local import**: `from protean.adapters... import X` inside a
   method binds a name the module symbol table does not carry, so the call does
   not resolve.
-- **A fetched or injected receiver.** An adapter held in a local variable
+- **A fetched or injected receiver**: An adapter held in a local variable
   (`broker = self.brokers["default"]; broker.publish(...)`) or reached through
   `current_domain.providers[...]` has an unresolvable receiver root.
-- **A self-rooted call.** `self._dao.filter(...)` resolves to no FQN, so
+- **A self-rooted call**: `self._dao.filter(...)` resolves to no FQN, so
   legitimate repository/DAO use is never flagged.
 
 ## Why it matters
@@ -74,7 +74,7 @@ through the domain's provider configuration, so infrastructure can be swapped
 
 ## Example
 
-Flagged — a domain method constructs a concrete broker adapter:
+Flagged, a domain method constructs a concrete broker adapter:
 
 ```python
 import protean
@@ -92,7 +92,7 @@ class Order:
         return protean.adapters.broker.inline.InlineBroker("default", None, {})
 ```
 
-Compliant — the domain names no adapter; a self-rooted repository call resolves
+Compliant, the domain names no adapter; a self-rooted repository call resolves
 to no FQN and is not flagged:
 
 ```python

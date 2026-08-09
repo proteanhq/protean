@@ -127,11 +127,11 @@ class BaseDatabaseModel(Element, OptionsMixin):
     def to_records(cls, items: list[Any], fields: list[str]) -> list[Record]:
         """Build read-only ``Record`` objects from storage records for ``fields``.
 
-        Unlike :meth:`to_entity`, this does **not** materialize domain
+        Unlike [`to_entity`][protean.core.database_model.BaseDatabaseModel.to_entity], this does **not** materialize domain
         entities: it reads only the selected attributes and returns inert
-        :class:`~protean.core.queryset.Record` objects, skipping all validation
+        [`Record`][protean.core.queryset.Record] objects, skipping all validation
         and invariants. It is the field-selection counterpart used by
-        :meth:`QuerySet.only`.
+        [`QuerySet.only`][protean.core.queryset.QuerySet.only].
 
         Field metadata is resolved once up front and reused across every
         record, so the per-row work is just value reads.

@@ -30,9 +30,9 @@ Consider the flow:
 ```
 
 Between steps 4 and 5, the original request context (and its tenant identity)
-no longer exists. The event handler needs to know which tenant the order belongs
-to, but the event payload should not carry infrastructure concerns like tenant
-IDs -- that would pollute the domain model.
+no longer exists. The event handler needs to know which tenant the order
+belongs to, but the event payload should not carry infrastructure concerns like
+tenant IDs. That would pollute the domain model.
 
 The core tension: **tenant context is a cross-cutting infrastructure concern
 that must survive the boundary between synchronous request handling and
@@ -49,8 +49,8 @@ There are three classic approaches to multi-tenant data isolation:
 **Row-level isolation** is the natural fit for Protean today. It works with
 every adapter (memory, SQLAlchemy, Elasticsearch), requires no infrastructure
 changes, and scales to thousands of tenants. The `tenant_id` is a regular field
-on your aggregates, and Protean's existing primitives -- `g`, enrichers,
-`metadata.extensions` -- handle context propagation end-to-end.
+on your aggregates, and Protean's existing primitives (`g`, enrichers, `metadata.extensions`)
+handle context propagation end-to-end.
 
 Schema-per-tenant and database-per-tenant are covered [later in this
 document](#beyond-row-level-schema-per-tenant) as future directions.
@@ -59,13 +59,14 @@ document](#beyond-row-level-schema-per-tenant) as future directions.
 
 ## The Pattern
 
-Row-level multi-tenancy in Protean uses four existing primitives wired together:
+Row-level multi-tenancy in Protean uses four existing primitives wired
+together:
 
 1. **`g` (global context)** stores the tenant ID for the duration of a request.
 2. **Enrichers** automatically inject `g.tenant_id` into every event and
    command's `metadata.extensions`.
 3. **The server** propagates `metadata.extensions` back into `g` when processing
-   async messages -- restoring the tenant context that was lost between request
+   async messages. Restoring the tenant context that was lost between request
    and handler.
 4. **Aggregates** carry `tenant_id` as a regular domain field for query
    filtering and data integrity.
@@ -96,8 +97,8 @@ Request Phase                        Async Processing Phase
 ```
 
 The result: tenant context flows transparently from the original HTTP request,
-through the event store, to every async handler -- without any handler needing
-to extract it manually.
+through the event store, to every async handler, without any handler needing to
+extract it manually.
 
 ---
 
@@ -105,7 +106,7 @@ to extract it manually.
 
 ### Step 1: Set Tenant Context in Middleware
 
-Every request arrives with a tenant identifier -- from an auth token, a request
+Every request arrives with a tenant identifier, from an auth token, a request
 header, a subdomain, or an API key. Extract it early and store it in `g`:
 
 ```python
@@ -159,7 +160,7 @@ def enrich_command_with_tenant(command):
 ```
 
 Now every event raised by any aggregate automatically carries `tenant_id` in
-its metadata -- without the aggregate knowing about tenants.
+its metadata, without the aggregate knowing about tenants.
 
 ### Step 3: Model Tenant ID on Aggregates
 
@@ -186,13 +187,13 @@ class Order:
 
 Notice: `place()` does not mention tenants. The enricher handles
 `metadata.extensions`. The aggregate's `tenant_id` field is for storage and
-query filtering -- set once when the aggregate is created, never touched by
+query filtering, set once when the aggregate is created, never touched by
 business methods.
 
 ### Step 4: Filter Queries by Tenant
 
 Every repository query should include the tenant filter. This is the
-developer's responsibility -- Protean does not auto-inject query filters:
+developer's responsibility. Protean does not auto-inject query filters:
 
 ```python
 # In a command handler or application service
@@ -209,7 +210,7 @@ orders = repo.find(tenant_id=g.tenant_id, status="placed")
 !!! warning "No automatic query scoping"
     Protean does not automatically add `tenant_id` filters to queries. Every
     repository call must explicitly include the tenant filter. This is a
-    conscious design choice -- automatic scoping hides behavior and makes
+    conscious design choice. Automatic scoping hides behavior and makes
     debugging harder. The developer is responsible for correct filtering.
 
     If you want a convenience wrapper, create a base class or helper:
@@ -298,8 +299,8 @@ Here is the complete lifecycle for a multi-tenant order placement:
 ## Testing
 
 Because enrichers read from `g`, tests that need tenant context must set it up.
-Tests that only care about business logic can ignore tenants -- enrichers
-produce `None` values, which is harmless:
+Tests that only care about business logic can ignore tenants, enrichers produce
+`None` values, which is harmless:
 
 ```python
 class TestOrderPlacement:
@@ -421,7 +422,7 @@ calling aggregate methods. The aggregate trusts that it was loaded correctly.
 
 In schema-per-tenant isolation, all tenants share the same PostgreSQL database
 but each tenant's tables live in a separate schema. This provides stronger
-isolation than row-level -- a misconfigured query cannot accidentally read
+isolation than row-level. A misconfigured query cannot accidentally read
 another tenant's data because the schemas are physically separate.
 
 ### How It Works
@@ -447,7 +448,7 @@ schema = "public"  # Currently static
 ```
 
 This sets the `MetaData(schema=...)` on the SQLAlchemy engine. But the schema
-is fixed at provider initialization time -- it cannot change per request.
+is fixed at provider initialization time. It cannot change per request.
 
 ### What Would Need to Change
 
@@ -460,7 +461,7 @@ To support schema-per-tenant, Protean would need:
 2. **A tenant resolver** that maps `g.tenant_id` to a schema name (or creates
    the schema on first access for new tenants).
 
-3. **Schema lifecycle management** -- creating schemas for new tenants,
+3. **Schema lifecycle management**: Creating schemas for new tenants,
    running migrations per schema, and cleaning up deprovisioned tenants.
 
 ### Conceptual Configuration
@@ -516,10 +517,10 @@ support this strategy, Protean would need:
    routes `get_session()` calls to tenant-specific provider instances.
 
 2. **Lazy provider creation** with connection pooling per tenant. Creating a
-   SQLAlchemy engine per tenant is expensive -- the proxy would cache and manage
+   SQLAlchemy engine per tenant is expensive. The proxy would cache and manage
    the lifecycle of these engines.
 
-3. **A tenant database resolver** -- a callable that maps `g.tenant_id` to a
+3. **A tenant database resolver**: A callable that maps `g.tenant_id` to a
    connection URI. This is always application-specific.
 
 ### Conceptual Configuration
@@ -577,21 +578,21 @@ demand it.
 | Domain model purity | Business payload clean; tenant in extensions |
 | Testing | Set `g.tenant_id` in test; enrichers produce `None` without it |
 
-The principle: **tenant identity is a cross-cutting concern that travels in
-`metadata.extensions`, not in event payloads. Enrichers inject it
-automatically from ambient context. The server restores it during async
-processing. The domain model carries `tenant_id` as a field for data
-integrity, but domain logic never reaches into `g` itself.**
+Tenant identity is a cross-cutting concern that travels in
+`metadata.extensions`, not in event payloads. Enrichers inject it automatically
+from ambient context. The server restores it during async processing. The
+domain model carries `tenant_id` as a field for data integrity, but domain
+logic never reaches into `g` itself.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Message Enrichment](message-enrichment.md) -- The enricher mechanism that powers tenant context propagation.
-    - [Message Tracing](message-tracing.md) -- Correlation and causation IDs for end-to-end traceability.
+    - [Message Enrichment](message-enrichment.md): The enricher mechanism that powers tenant context propagation.
+    - [Message Tracing](message-tracing.md): Correlation and causation IDs for end-to-end traceability.
 
     **Guides:**
 
-    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md) -- Setting up enrichers step by step.
-    - [Raising Events](../guides/domain-behavior/raising-events.md) -- How events are raised and enriched.
+    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md): Setting up enrichers step by step.
+    - [Raising Events](../guides/domain-behavior/raising-events.md): How events are raised and enriched.

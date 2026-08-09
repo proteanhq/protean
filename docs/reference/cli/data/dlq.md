@@ -3,8 +3,8 @@
 The `protean dlq` command group provides tools for managing dead letter
 queues (DLQs). When messages fail processing after exhausting retries,
 they are moved to DLQ streams. These commands let you list, inspect,
-replay, and purge those failed messages — both from the terminal and
-via the [Observatory dashboard](../runtime/observatory.md).
+replay, and purge those failed messages, both from the terminal and via the
+[Observatory dashboard](../runtime/observatory.md).
 
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
@@ -93,7 +93,7 @@ protean dlq replay "1708768400000-0" --domain=my_domain
 ## `protean dlq replay-all`
 
 Replays all DLQ messages for a given subscription back to the original
-stream. This is a bulk operation — use with caution.
+stream. This is a bulk operation, use with caution.
 
 ```bash
 # Interactive (prompts for confirmation)
@@ -137,10 +137,10 @@ protean dlq purge --subscription=order --yes --domain=my_domain
 In addition to the CLI, the [Observatory dashboard](../runtime/observatory.md)
 provides a **DLQ tab** for visual management:
 
-- **List** — View all DLQ messages with subscription filter
-- **Inspect** — Click any message to view its full payload
-- **Replay** — Replay individual messages or all messages for a subscription
-- **Purge** — Clear all DLQ messages for a subscription
+- **List**: View all DLQ messages with subscription filter
+- **Inspect**: Click any message to view its full payload
+- **Replay**: Replay individual messages or all messages for a subscription
+- **Purge**: Clear all DLQ messages for a subscription
 
 The DLQ tab auto-refreshes every 5 seconds alongside other dashboard panels.
 

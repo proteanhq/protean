@@ -2,9 +2,9 @@
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Protean is a compliant [CloudEvents v1.0](https://cloudevents.io/) producer
-and consumer. When events need to cross bounded context boundaries -- external
-APIs, Kafka topics, webhooks, or other Protean domains -- `to_cloudevent()` and
+Protean is a compliant [CloudEvents v1.0](https://cloudevents.io/) producer and
+consumer. When events need to cross bounded context boundaries (external APIs,
+Kafka topics, webhooks, or other Protean domains) `to_cloudevent()` and
 `from_cloudevent()` translate between Protean's internal metadata and the
 CloudEvents standard without modifying your domain model.
 
@@ -51,8 +51,8 @@ The resulting dict is a valid CloudEvents v1.0 JSON object:
 }
 ```
 
-Every CloudEvents attribute is **derived** from existing Protean metadata --
-nothing is stored redundantly.
+Every CloudEvents attribute is **derived** from existing Protean metadata.
+Nothing is stored redundantly.
 
 ## Attribute Mapping
 
@@ -62,7 +62,7 @@ nothing is stored redundantly.
 |---|---|---|
 | `specversion` | Literal `"1.0"` | Always CloudEvents v1.0 |
 | `id` | `metadata.headers.id` | Protean's composite message ID |
-| `type` | `metadata.headers.type` | Protean format `Domain.Event.v1` -- valid per spec |
+| `type` | `metadata.headers.type` | Protean format `Domain.Event.v1`, valid per spec |
 | `source` | `source_uri` config or domain name | See [Configuring source](#configuring-source) |
 
 ### Optional attributes
@@ -94,7 +94,7 @@ User-supplied extensions from [message enrichers](../domain-behavior/message-enr
 ## Configuring source
 
 The CloudEvents `source` attribute identifies the context in which the event
-occurred -- in DDD terms, the bounded context. Protean derives it automatically,
+occurred, in DDD terms, the bounded context. Protean derives it automatically,
 but you can configure an explicit URI:
 
 ```toml title="domain.toml"
@@ -204,18 +204,18 @@ reference but not mapped to a dedicated internal field.
 `from_cloudevent()` validates the incoming CloudEvent:
 
 - **Required attributes** (`specversion`, `id`, `type`, `source`) must be
-  present -- raises `ValueError` if missing.
-- **Spec version** must be `"1.0"` -- raises `ValueError` otherwise.
+  present, raises `ValueError` if missing.
+- **Spec version** must be `"1.0"`. Anything else raises `ValueError`.
 - **Checksum** is computed from `data` if not provided via `proteanchecksum`.
 
 ---
 
 !!! note "Related"
-    - [Message Tracing](../domain-behavior/message-tracing.md) -- How `correlation_id` and
+    - [Message Tracing](../domain-behavior/message-tracing.md): How `correlation_id` and
       `causation_id` flow through causal chains.
-    - [Message Enrichment](../domain-behavior/message-enrichment.md) -- How to attach custom
+    - [Message Enrichment](../domain-behavior/message-enrichment.md): How to attach custom
       metadata to events and commands.
-    - [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md)
-      -- The subscriber / anti-corruption layer pattern.
-    - [CloudEvents as a Boundary Contract](../../patterns/cloudevents-interoperability.md)
-      -- When and why to use CloudEvents at system boundaries.
+    - [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md):
+      The subscriber / anti-corruption layer pattern.
+    - [CloudEvents as a Boundary Contract](../../patterns/cloudevents-interoperability.md):
+      When and why to use CloudEvents at system boundaries.

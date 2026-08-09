@@ -201,7 +201,7 @@ Your application code remains unchanged when switching brokers, as long as you:
 2. Handle broker-specific errors appropriately
 3. Test with the production broker before deployment
 
-## Next Steps
+## Related pages
 
 - Learn about [Redis broker](./redis.md) for production use
 - Understand [broker capabilities](./index.md#broker-capabilities) in detail

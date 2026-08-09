@@ -95,9 +95,9 @@ capabilities are executed; the rest are automatically skipped.
 | `native_array` | NATIVE_ARRAY |
 
 !!!note
-    The `transactional` marker uses OR logic -- it matches providers with
-    either real transactions or simulated transactions. The
-    `atomic_transactions` marker requires real database-level ACID transactions.
+    The `transactional` marker uses OR logic. It matches providers with either
+    real transactions or simulated transactions. The `atomic_transactions`
+    marker requires real database-level ACID transactions.
 
 ## Pytest Plugin
 
@@ -121,9 +121,9 @@ The plugin registers these pytest CLI options:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--db` | `MEMORY` | Built-in provider key (`MEMORY`, `POSTGRESQL`, `SQLITE`, `ELASTICSEARCH`, `MSSQL`) |
-| `--db-provider` | -- | Provider name for custom/external adapters (e.g. `dynamodb`) |
-| `--db-uri` | -- | Database connection URI for custom adapters |
-| `--db-extra` | -- | JSON string of extra provider config (e.g. `'{"pool_size": 5}'`) |
+| `--db-provider` | —  | Provider name for custom/external adapters (e.g. `dynamodb`) |
+| `--db-uri` | —  | Database connection URI for custom adapters |
+| `--db-extra` | —  | JSON string of extra provider config (e.g. `'{"pool_size": 5}'`) |
 
 ### Fixtures
 
@@ -261,7 +261,7 @@ protean test test-adapter --provider=your-provider-name --uri="your://connection
 Review which capabilities pass and which fail. Fix failures in your adapter
 implementation and re-run until all declared capabilities pass.
 
-## Next Steps
+## Related pages
 
 - Learn about [database capabilities](../adapters/database/index.md#database-capabilities)
 - Build a [custom database adapter](../adapters/database/custom-databases.md)

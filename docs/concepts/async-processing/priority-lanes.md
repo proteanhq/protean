@@ -10,7 +10,7 @@ picture.
 
 Consider this scenario: your e-commerce platform has been running for months.
 You need to backfill a new `loyalty_tier` field onto 500,000 existing customer
-records. The migration script loads each customer, sets the tier, and saves --
+records. The migration script loads each customer, sets the tier, and saves,
 producing 500,000 `CustomerUpdated` events.
 
 Those events flood the same stream that handles real-time customer
@@ -31,7 +31,7 @@ Without priority lanes:
 ```
 
 You could pause the migration, wait for production to catch up, and resume in
-small batches -- but this is manual, error-prone, and slow. You could run the
+small batches, but this is manual, error-prone, and slow. You could run the
 migration at 3 AM, but that only works if your traffic has a quiet window.
 
 Priority lanes solve this by routing production and migration events to
@@ -45,10 +45,6 @@ Priority lanes split a single Redis Stream into two: a **primary lane** for
 production traffic, and a **backfill lane** for low-priority work like
 migrations and bulk imports. The Engine always drains the primary lane first.
 Backfill events are only processed when there is no production work pending.
-
-Think of it like a highway with an HOV lane. Regular traffic (backfill) flows
-normally, but high-priority vehicles (production events) always get through
-first. When the HOV lane is empty, regular traffic moves freely.
 
 The split happens at two points in the pipeline:
 
@@ -76,15 +72,15 @@ Migration   ──► Outbox(priority=-50) ──► "customer:backfill"  ──
 
 This design has several important properties:
 
-- **Zero configuration on handlers.** Event handlers and projectors do not need
+- **Zero configuration on handlers**: Event handlers and projectors do not need
   to know about priority lanes. They process events the same way regardless of
   which lane the event arrived on.
 
-- **No message loss.** Both lanes use the same consumer group and acknowledgment
+- **No message loss**: Both lanes use the same consumer group and acknowledgment
   mechanism. Failed messages are retried and eventually moved to a dead letter
   queue, just like standard processing.
 
-- **Responsive re-checking.** The backfill blocking read is capped at 1 second.
+- **Responsive re-checking**: The backfill blocking read is capped at 1 second.
   If a production event arrives while the Engine is waiting on backfill, it will
   be picked up within 1 second.
 
@@ -97,7 +93,7 @@ Protean provides a `Priority` enum with five levels. The numeric values are
 
 | Level | Value | Use Case |
 |-------|------:|----------|
-| `BULK` | -100 | Mass data imports, re-indexing, full re-projections. Lowest priority -- processed only when nothing else is pending. |
+| `BULK` | -100 | Mass data imports, re-indexing, full re-projections. Lowest priority, processed only when nothing else is pending. |
 | `LOW` | -50 | Data migrations, background backfills, non-urgent batch jobs. Routed to the backfill lane. |
 | `NORMAL` | 0 | All production traffic. The default for every command unless explicitly overridden. |
 | `HIGH` | 50 | Time-sensitive operations like payment processing. Processed via the primary lane with higher outbox priority ordering. |
@@ -191,9 +187,9 @@ The resolved priority is stored in two places:
 
 1. **Command metadata** (`DomainMeta.priority`): Embedded in the command when
    it is written to the event store. This ensures the priority survives across
-   process boundaries — when the Engine picks up a command asynchronously, it
-   reads the priority from the metadata and reconstructs the
-   `processing_priority()` context before running the handler.
+   process boundaries, when the Engine picks up a command asynchronously, it
+   reads the priority from the metadata and reconstructs the `processing_priority()` context before
+   running the handler.
 
 2. **Outbox records** (`Outbox.priority`): Written by `UoW.commit()` when
    events are persisted to the outbox table. The OutboxProcessor reads this
@@ -325,22 +321,22 @@ starve production traffic:
 
 Priority lanes are not appropriate in every situation:
 
-- **Events requiring strict global ordering.** If your domain requires that
+- **Events requiring strict global ordering**: If your domain requires that
   event A is always processed before event B regardless of their priority,
   do not use priority lanes. The two-lane system intentionally allows primary
   events to "jump ahead" of backfill events.
 
-- **Event-sourced aggregate reconstruction.** Priority lanes only affect the
+- **Event-sourced aggregate reconstruction**: Priority lanes only affect the
   outbox-to-broker pipeline (stream subscriptions). Event-sourced aggregates
   that reconstruct state from the event store are not affected by priority
   lanes, since they read directly from the event store, not from Redis Streams.
 
-- **Low-volume systems.** If your system processes a small number of events and
+- **Low-volume systems**: If your system processes a small number of events and
   migrations complete in seconds, priority lanes add unnecessary complexity.
   The feature is designed for systems where batch operations produce enough
   events to create visible latency in production processing.
 
-- **Single-stream idempotency assumptions.** If your event handlers rely on
+- **Single-stream idempotency assumptions**: If your event handlers rely on
   processing all events for a stream category in a single FIFO order (for
   example, to detect duplicates by position or to use Redis stream message IDs
   for ordering), splitting into two streams will break that assumption. Message
@@ -348,15 +344,15 @@ Priority lanes are not appropriate in every situation:
 
 ---
 
-## Next Steps
+## Where to go next
 
-- [Using Priority Lanes](../../guides/server/using-priority-lanes.md) --
+- [Using Priority Lanes](../../guides/server/using-priority-lanes.md):
   How to enable and configure priority lanes.
-- [Running Data Migrations with Priority Lanes](../../patterns/running-data-migrations-with-priority-lanes.md) --
+- [Running Data Migrations with Priority Lanes](../../patterns/running-data-migrations-with-priority-lanes.md):
   Pattern for running data migrations without blocking production.
-- [Outbox Pattern](./outbox.md) -- How the outbox ensures reliable
+- [Outbox Pattern](./outbox.md): How the outbox ensures reliable
   message delivery.
-- [Subscription Types](../../reference/server/subscription-types.md) -- How `StreamSubscription`
+- [Subscription Types](../../reference/server/subscription-types.md): How `StreamSubscription`
   consumes messages from Redis Streams.
-- [Configuration](../../reference/server/configuration.md) -- Full configuration reference for
+- [Configuration](../../reference/server/configuration.md): Full configuration reference for
   subscriptions and the server.

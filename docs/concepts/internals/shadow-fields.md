@@ -1,7 +1,7 @@
 # Shadow fields
 
 When a domain element contains a `ValueObject` or `Reference` field, Protean
-creates *shadow fields* — internal attributes that store the flattened data
+creates *shadow fields*, internal attributes that store the flattened data
 needed for database persistence. Shadow fields bridge the gap between the
 domain model (where you work with rich objects) and the database layer (where
 data is stored in flat columns).
@@ -35,7 +35,7 @@ class Customer:
 
 ### Reference fields
 
-Each `Reference` produces one shadow field — the foreign key:
+Each `Reference` produces one shadow field, the foreign key:
 
 ```python
 @domain.entity(part_of="Order")
@@ -99,8 +99,8 @@ the shadow fields become `addr_street` and `addr_city`.
 
 ## Where shadow fields live
 
-Shadow fields are stored in the Python instance's `__dict__` — **not** as
-Pydantic model fields. This means:
+Shadow fields are stored in the Python instance's `__dict__`, **not** as Pydantic
+model fields. This means:
 
 - `model_fields` does not include them.
 - `model_dump()` does not serialize them (use `to_dict()` instead).
@@ -226,7 +226,7 @@ shadow values.
 | Method | Shadow fields in output? | What appears instead |
 |---|---|---|
 | `to_dict()` | No | VO serialized as nested dict: `{"billing_address": {"street": "...", ...}}` |
-| `model_dump()` | No | Only Pydantic model fields (avoid — use `to_dict()`) |
+| `model_dump()` | No | Only Pydantic model fields (avoid, use `to_dict()`) |
 | Direct access | Yes | `customer.billing_address_street` returns the value |
 | Database | Yes | Stored as individual columns |
 

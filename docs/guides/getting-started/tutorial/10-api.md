@@ -1,9 +1,8 @@
 # Chapter 10: Exposing the Domain Through an API
 
-Our domain logic works and the project is organized — but nobody can use
-the bookstore yet. In this chapter we will build a FastAPI web layer
-that translates HTTP requests into domain commands and projection
-queries.
+Our domain logic works and the project is organized, but nobody can use the
+bookstore yet. In this chapter we will build a FastAPI web layer that
+translates HTTP requests into domain commands and projection queries.
 
 !!! note "Thin Endpoints"
     API endpoints are **thin adapters** at the boundary of the domain.
@@ -30,7 +29,7 @@ domain context. `register_exception_handlers()` maps domain exceptions
 (like `ObjectNotFoundError`, `ValidationError`) to standard HTTP error
 responses (404, 400, etc.).
 
-## Write Endpoints — Commands
+## Write Endpoints: Commands
 
 Each write endpoint translates an HTTP request into a command and
 dispatches it:
@@ -46,10 +45,10 @@ The pattern is always the same:
 3. Call `domain.process(command)`.
 4. Return the result.
 
-## Read Endpoints — Querying Projections
+## Read Endpoints: Querying Projections
 
-Read endpoints query projections using `domain.view_for()`, which
-returns a `ReadView` — the read-side entry point for projections:
+Read endpoints query projections using `domain.view_for()`, which returns a
+`ReadView`. The read-side entry point for projections:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch10.py:read_endpoints"
@@ -104,7 +103,7 @@ documentation that FastAPI generates automatically.
 - A running **web server** that exposes the bookstore over HTTP.
 
 In the next chapter, we will add tests for everything we have built so
-far — domain logic, command flows, and API endpoints.
+far, domain logic, command flows, and API endpoints.
 
 ## Full Source
 

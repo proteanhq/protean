@@ -87,6 +87,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
 
     Configuration Priority (highest to lowest):
+
         1. Handler Meta subscription_config
         2. Handler Meta subscription_profile
         3. Handler Meta subscription_type

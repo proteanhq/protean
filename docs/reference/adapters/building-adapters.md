@@ -69,7 +69,7 @@ the full reference.
 
 ## Getting Help
 
-- [GitHub Discussions](https://github.com/proteanhq/protean/discussions) --
+- [GitHub Discussions](https://github.com/proteanhq/protean/discussions):
   Ask questions and share your adapter with the community.
-- [Existing adapters](https://github.com/proteanhq/protean/tree/main/src/protean/adapters) --
+- [Existing adapters](https://github.com/proteanhq/protean/tree/main/src/protean/adapters):
   Study the built-in implementations for reference.

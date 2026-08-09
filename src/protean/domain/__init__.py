@@ -6,7 +6,7 @@ Architecture
 
 The ``Domain`` class is the **composition root** of a Protean application.
 Every domain element (aggregates, entities, commands, events, handlers, etc.)
-is registered with — and orchestrated by — a single ``Domain`` instance.
+is registered with, and orchestrated by, a single ``Domain`` instance.
 
 **Composition over Inheritance**
 
@@ -18,21 +18,21 @@ This keeps each class focused on a single responsibility (SRP) while
 
 Current composed helpers:
 
-* ``CommandProcessor``     — enriches, deduplicates, and dispatches commands
+* ``CommandProcessor``: Enriches, deduplicates, and dispatches commands
   to their handlers.  (``command_processor.py``)
-* ``HandlerConfigurator``  — wires ``@handle`` / ``@read`` decorated methods
+* ``HandlerConfigurator``: Wires ``@handle`` / ``@read`` decorated methods
   into handler maps for command handlers, event handlers, projectors,
   process managers, and query handlers.  (``handler_setup.py``)
-* ``InfrastructureManager`` — manages database and outbox lifecycle (setup,
+* ``InfrastructureManager``: Manages database and outbox lifecycle (setup,
   truncate, drop).  (``infrastructure.py``)
-* ``QueryProcessor``      — dispatches queries to their registered handlers.
+* ``QueryProcessor``: Dispatches queries to their registered handlers.
   (``query_processor.py``)
-* ``ElementResolver``     — resolves string-based references between domain
+* ``ElementResolver``: Resolves string-based references between domain
   elements and assigns aggregate clusters.  (``resolver.py``)
-* ``TypeManager``         — assigns type strings to events/commands, manages
+* ``TypeManager``: Assigns type strings to events/commands, manages
   upcaster chains, fact events, and external event registration.
   (``type_manager.py``)
-* ``DomainValidator``     — validates domain configuration, checks for
+* ``DomainValidator``: Validates domain configuration, checks for
   unresolved references, and warns about missing handlers.
   (``validation.py``)
 
@@ -44,9 +44,9 @@ to work without modification.
 
 Supporting classes (in the same package):
 
-* ``_DomainRegistry``   — element catalog keyed by type and FQN (``registry.py``)
-* ``Config2``           — TOML-based configuration with env-var substitution (``config.py``)
-* ``DomainContext``     — thread-local context binding (``context.py``)
+* ``_DomainRegistry``: Element catalog keyed by type and FQN (``registry.py``)
+* ``Config2``: TOML-based configuration with env-var substitution (``config.py``)
+* ``DomainContext``: Thread-local context binding (``context.py``)
 """
 
 import importlib.util
@@ -544,7 +544,9 @@ class Domain:
         """Return the CamelCase name of the domain.
 
         The CamelCase name is the name of the domain with the first letter capitalized.
+
         Examples:
+
         - `my_domain` -> `MyDomain`
         - `my_domain_1` -> `MyDomain1`
         - `my_domain_1_0` -> `MyDomain10`
@@ -561,7 +563,9 @@ class Domain:
         """Return the normalized name of the domain.
 
         The normalized name is the underscored version of the domain name.
+
         Examples:
+
         - `MyDomain` -> `my_domain`
         - `My Domain` -> `my_domain`
         - `My-Domain` -> `my_domain`
@@ -573,15 +577,15 @@ class Domain:
     def _prepare(self, traverse: bool = True, validate: bool = True) -> None:
         """Resolve references, wire handlers, and optionally validate.
 
-        This is the shared preparation sequence used by both :meth:`init`
-        (which validates fail-fast and initializes adapters) and :meth:`check`
+        This is the shared preparation sequence used by both [`init`][protean.domain.Domain.init]
+        (which validates fail-fast and initializes adapters) and `check`
         (which skips fail-fast validation and uses ``validate_all()`` instead).
 
         Args:
             traverse: Whether to auto-discover domain elements from files.
             validate: Whether to run fail-fast validation at the end.
                 Set to ``False`` when the caller will run ``validate_all()``
-                separately (e.g. :meth:`check`).
+                separately (e.g. `check`).
         """
         if traverse is True:
             self._traverse()
@@ -687,8 +691,8 @@ class Domain:
         Guardrails:
 
         - **Escape hatch:** If ``PROTEAN_NO_AUTO_LOGGING=1`` is set, skip entirely.
-        - **Idempotency:** If the root logger already has handlers, skip —
-          the user has already configured logging.
+        - **Idempotency:** If the root logger already has handlers, skip.
+          The user has already configured logging.
         - **Non-fatal:** Any exception is caught and reported to stderr so that
           ``Domain.init()`` never fails due to logging misconfiguration.
         """
@@ -718,8 +722,8 @@ class Domain:
     def check(self, traverse: bool = True) -> dict[str, Any]:
         """Validate the domain and return a structured diagnostic report.
 
-        Unlike :meth:`init`, this method does **not** initialize adapters —
-        it only resolves references, wires handlers, and runs every validation
+        Unlike [`init`][protean.domain.Domain.init], this method does **not** initialize adapters.
+        It only resolves references, wires handlers, and runs every validation
         check (collecting all issues instead of failing on the first one).
 
         If no fatal errors are found, the IR is also built so that IR-level
@@ -2033,7 +2037,7 @@ class Domain:
     def register_event_enricher(self, fn: Callable[..., Any]) -> None:
         """Register a callable that enriches every event's metadata.
 
-        The enricher is called during :meth:`~protean.core.aggregate.raise_`
+        The enricher is called during `raise_`
         with ``(event, aggregate)`` and must return a ``dict[str, Any]``
         whose entries are merged into ``metadata.extensions``.
 
@@ -2057,7 +2061,7 @@ class Domain:
 
     @property
     def event_enricher(self) -> Callable[..., Any]:
-        """Decorator form of :meth:`register_event_enricher`.
+        """Decorator form of `register_event_enricher`.
 
         Example::
 
@@ -2075,7 +2079,7 @@ class Domain:
     def register_command_enricher(self, fn: Callable[..., Any]) -> None:
         """Register a callable that enriches every command's metadata.
 
-        The enricher is called during :meth:`process` with ``(command,)``
+        The enricher is called during `process` with ``(command,)``
         and must return a ``dict[str, Any]`` whose entries are merged into
         ``metadata.extensions``.
 
@@ -2099,7 +2103,7 @@ class Domain:
 
     @property
     def command_enricher(self) -> Callable[..., Any]:
-        """Decorator form of :meth:`register_command_enricher`.
+        """Decorator form of `register_command_enricher`.
 
         Example::
 
@@ -2118,8 +2122,8 @@ class Domain:
         """Register a callable that stamps cross-cutting fields on an aggregate
         just before it is persisted.
 
-        Unlike event/command enrichers — which return a ``dict`` merged into
-        ``metadata.extensions`` — an aggregate enricher receives the aggregate
+        Unlike event/command enrichers (which return a ``dict`` merged into
+        ``metadata.extensions``), an aggregate enricher receives the aggregate
         and **mutates it in place** (its return value is ignored).  It runs on
         the ``Repository.add`` -> ``DAO.save`` path, on both the create and the
         update, inside an active domain context, so it can read the acting user
@@ -2134,7 +2138,7 @@ class Domain:
 
         This hook is for cross-cutting **lifecycle/audit** metadata only.  It is
         not a general mutation escape hatch: do not use it to enforce invariants
-        or raise events — that belongs in the aggregate's own methods.
+        or raise events. That belongs in the aggregate's own methods.
 
         Args:
             fn: A callable with signature ``(aggregate) -> None``.
@@ -2154,7 +2158,7 @@ class Domain:
 
     @property
     def aggregate_enricher(self) -> Callable[..., Any]:
-        """Decorator form of :meth:`register_aggregate_enricher`.
+        """Decorator form of `register_aggregate_enricher`.
 
         Example::
 
@@ -2315,11 +2319,11 @@ class Domain:
     ###########################
 
     def view_for(self, projection_cls: type) -> "ReadView":
-        """Return a read-only :class:`ReadView` for querying a projection.
+        """Return a read-only `ReadView` for querying a projection.
 
         The returned ``ReadView`` exposes ``get()``, ``query``
         (``ReadOnlyQuerySet``), ``find_by()``, ``count()``, and
-        ``exists()`` — but no mutation methods.
+        ``exists()``, but no mutation methods.
 
         Works with both database-backed and cache-backed projections.
 
@@ -2527,7 +2531,7 @@ class Domain:
             correlation_id: The correlation ID to trace.
 
         Returns:
-            Ordered list of :class:`~protean.port.event_store.CausationNode`
+            Ordered list of [`CausationNode`][protean.port.event_store.CausationNode]
             objects.  Empty list if no messages are found.
 
         Example::
@@ -2666,11 +2670,11 @@ class Domain:
     def configure_logging(self, **kwargs: Any) -> None:
         """Set up structured logging with automatic correlation context injection.
 
-        Calls :func:`protean.utils.logging.configure_logging` with the given
+        Calls `protean.utils.logging.configure_logging` with the given
         keyword arguments **and** inserts a
-        :class:`~protean.integrations.logging.ProteanCorrelationFilter` on the
+        `ProteanCorrelationFilter` on the
         root logger and a
-        :func:`~protean.integrations.logging.protean_correlation_processor`
+        `protean_correlation_processor`
         into the structlog pipeline so that every log record automatically
         includes ``correlation_id`` and ``causation_id`` from the active
         domain context.
@@ -2686,7 +2690,7 @@ class Domain:
         the main configuration by setting individual logger levels.
 
         Args:
-            **kwargs: Forwarded to :func:`protean.utils.logging.configure_logging`
+            **kwargs: Forwarded to `protean.utils.logging.configure_logging`
                 (``level``, ``format``, ``log_dir``, etc.). Explicit values
                 override anything in ``domain.toml``.
 

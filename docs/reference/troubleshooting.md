@@ -70,7 +70,7 @@ class Order(BaseAggregate):
         self.raise_(OrderPlaced(order_id=self.id))  # Required
 ```
 
-Simply creating an event object does nothing -- it must be raised.
+Creating an event object does nothing. It must be raised.
 
 **Check 2: Is the handler wired to the right aggregate?**
 

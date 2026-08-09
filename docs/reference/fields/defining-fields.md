@@ -15,14 +15,14 @@ Fields are declared as type annotations using Protean's field functions:
 --8<-- "guides/domain-definition/fields/defining-fields/001.py:full"
 ```
 
-This is the recommended style. It reads as a declaration — "description IS
-a String" — which aligns naturally with domain modeling, where you are stating
+This is the recommended style. It reads as a declaration ("description IS a
+String") which aligns naturally with domain modeling, where you are stating
 what something **is**, not assigning it a value.
 
 The annotation style also aligns with how modern Python libraries declare
 structured data (dataclasses, Pydantic, attrs). Tools that process annotations
-— documentation generators, schema exporters, and IDE inspectors — can
-discover fields declared this way.
+(documentation generators, schema exporters, and IDE inspectors) can discover
+fields declared this way.
 
 ## Assignment style
 
@@ -34,12 +34,12 @@ Fields are assigned as class variables, using the same field functions:
 
 This style is familiar if you have used Django models or earlier versions of
 Protean. It reads as "name equals a String with max_length 100." The semantics
-are identical to annotation style — both produce the same runtime behavior,
+are identical to annotation style. Both produce the same runtime behavior,
 validation, and persistence.
 
 ## Raw Pydantic style
 
-Protean domain elements are Pydantic models under the hood, so you can use
+Protean domain elements are Pydantic models internally, so you can use
 standard Python type annotations and Pydantic's `Field()` directly:
 
 ```python hl_lines="6-7"
@@ -47,8 +47,8 @@ standard Python type annotations and Pydantic's `Field()` directly:
 ```
 
 This is useful as an escape hatch when you need full control over Pydantic's
-configuration — for example, custom `default_factory` callables, complex
-`Annotated` metadata, or plain Python types with no constraints.
+configuration, for example, custom `default_factory` callables, complex `Annotated` metadata, or
+plain Python types with no constraints.
 
 Any annotation that is not a Protean `FieldSpec` is passed through to
 Pydantic untouched.
@@ -71,7 +71,7 @@ is purely about readability and preference.
 
 | Style | Best for | Example |
 |---|---|---|
-| **Annotation** | Most fields — clean, declarative, and modern | `name: String(max_length=100)` |
+| **Annotation** | Most fields, clean, declarative, and modern | `name: String(max_length=100)` |
 | **Assignment** | Teams familiar with Django-style models | `name = String(max_length=100)` |
 | **Raw Pydantic** | Advanced cases needing direct Pydantic control | `metadata: Annotated[dict, Field(...)]` |
 

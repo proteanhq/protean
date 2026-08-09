@@ -1,8 +1,8 @@
 # Chapter 8: Connecting a Real Database
 
 In this chapter we will switch Bookshelf from in-memory storage to
-PostgreSQL — with only a configuration change. Our domain code stays
-exactly the same.
+PostgreSQL, with only a configuration change. Our domain code stays exactly the
+same.
 
 ## Creating the Configuration File
 
@@ -42,9 +42,8 @@ Run the same code we have been running throughout the tutorial:
 $ python bookshelf.py
 ```
 
-The output should look the same as before — but now the data is stored
-in PostgreSQL. Protean creates the necessary tables automatically on
-first run.
+The output should look the same as before, but now the data is stored in
+PostgreSQL. Protean creates the necessary tables automatically on first run.
 
 ## Managing the Database Schema
 
@@ -88,10 +87,10 @@ class Book:
 ```
 
 `protean database setup` creates these indexes alongside the table. The same
-declaration works unchanged on every SQL backend — and on the in-memory
-provider you used in earlier chapters, where it is simply ignored. See
-[Declaring Indexes](../../domain-definition/indexes.md) for composite,
-descending, and partial indexes.
+declaration works unchanged on every SQL backend, and on the in-memory provider
+you used in earlier chapters, where it is ignored. See [Declaring
+Indexes](../../domain-definition/indexes.md) for composite, descending, and
+partial indexes.
 
 ## Verifying Persistence
 
@@ -122,9 +121,9 @@ docker exec -it bookshelf-db psql -U postgres -d bookshelf -c "SELECT title FROM
 
 - A **`domain.toml`** configuration file that switches the database
   from memory to PostgreSQL.
-- **Zero code changes** — the same domain logic runs against any
+- **Zero code changes**: The same domain logic runs against any
   database adapter.
-- **`protean database setup/drop/truncate`** — CLI commands for schema
+- **`protean database setup/drop/truncate`**: CLI commands for schema
   management.
 
 Our domain logic is now decoupled from storage. In the next chapter,

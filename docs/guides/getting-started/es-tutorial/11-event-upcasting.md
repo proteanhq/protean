@@ -1,18 +1,16 @@
-# Chapter 11: When Requirements Change — Event Upcasting
+# Chapter 11: Upcasting Events When Requirements Change
 
 Six months after launch, new anti-money-laundering regulations require
-that every deposit record its **source type** — whether the funds came
-from cash, wire transfer, ACH, or check. The `DepositMade` event needs a
-new `source_type` field.
+that every deposit record its **source type**, whether the funds came from
+cash, wire transfer, ACH, or check. The `DepositMade` event needs a new `source_type` field.
 
 But the event store contains hundreds of thousands of historical
 `DepositMade` events that lack this field. Rewriting history is not an
-option — that defeats the purpose of Event Sourcing.
+option, that defeats the purpose of Event Sourcing.
 
-The answer is **upcasting**: transparently transforming old event
-payloads into the current schema during deserialization. The old events
-are never rewritten — they are upgraded on the fly whenever they are
-read.
+The answer is **upcasting**: transparently transforming old event payloads into
+the current schema during deserialization. The old events are never rewritten.
+They are upgraded on the fly whenever they are read.
 
 ## Versioning the Event
 
@@ -33,9 +31,9 @@ schema. Historical events stored as `"v1"` will need transformation.
 
 The upcaster is a simple class:
 
-- **`event_type=DepositMade`** — which event this upcaster handles.
-- **`from_version=1`, `to_version=2`** — the version transition.
-- **`upcast(self, data: dict) -> dict`** — transforms the old payload.
+- **`event_type=DepositMade`**: Which event this upcaster handles.
+- **`from_version=1`, `to_version=2`**: The version transition.
+- **`upcast(self, data: dict) -> dict`**: Transforms the old payload.
   Here, we add `source_type = "unknown"` since we cannot determine the
   source for historical deposits.
 
@@ -83,12 +81,12 @@ passes through both upcasters before reaching the handler.
 
 During `domain.init()`, Protean validates upcaster chains:
 
-- **No duplicate registrations** — two upcasters for the same
+- **No duplicate registrations**: Two upcasters for the same
   `from_version → to_version` transition
-- **No cycles** — v1 → v2 → v1 would loop forever
-- **Convergent chains** — all paths must reach the same terminal version
+- **No cycles**: V1 → v2 → v1 would loop forever
+- **Convergent chains**: All paths must reach the same terminal version
   (the current `__version__`)
-- **No gaps** — v1 → v3 without a v2 intermediate is invalid if v2
+- **No gaps**: V1 → v3 without a v2 intermediate is invalid if v2
   exists
 
 If any validation fails, `domain.init()` raises an error immediately.
@@ -108,7 +106,7 @@ If any validation fails, `domain.init()` raises an error immediately.
 - An **upcaster** with `@domain.upcaster()` that transforms old payloads.
 - **Upcaster chains** that automatically compose (v1 → v2 → v3).
 - **Startup validation** that catches broken chains at init time.
-- **Lazy migration** — events are never rewritten, only transformed at
+- **Lazy migration**: Events are never rewritten, only transformed at
   read time.
 
 This is the event-sourcing answer to database migrations. No downtime,

@@ -6,7 +6,7 @@ provider for production deployments.
 
 ## Overview
 
-PostgreSQL is a production-grade relational provider that supports the full
+PostgreSQL is a relational provider that supports the full
 range of database capabilities, including native JSON and array columns. It
 provides real ACID transactions, connection pooling, and schema management.
 
@@ -16,7 +16,7 @@ provides real ACID transactions, connection pooling, and schema management.
 pip install "protean[postgresql]"
 ```
 
-This installs `psycopg2-binary`, a pre-compiled binary that works out of the box
+This installs `psycopg2-binary`, a pre-compiled binary that needs no build step
 with no system dependencies.
 
 For production deployments, you may prefer `psycopg2` (compiled from source
@@ -27,10 +27,10 @@ against your system's `libpq`). To use it, install it explicitly in place of
 pip install psycopg2
 ```
 
-Both packages provide the same `psycopg2` Python module — only one should be
-installed at a time. See the
-[psycopg2 installation guide](https://www.psycopg.org/docs/install.html) for
-system prerequisites when building from source.
+Both packages provide the same `psycopg2` Python module. Only one should be
+installed at a time. See the [psycopg2 installation
+guide](https://www.psycopg.org/docs/install.html) for system prerequisites when
+building from source.
 
 ## Configuration
 
@@ -65,17 +65,17 @@ postgresql://user:pass@db.example.com/myapp?sslmode=require
 
 The PostgreSQL provider supports the following capabilities:
 
-- :white_check_mark: **CRUD** -- Create, Read, Update, Delete single records
-- :white_check_mark: **FILTER** -- Query/filter records with lookup criteria
-- :white_check_mark: **BULK_OPERATIONS** -- `update_all()`, `delete_all()`
-- :white_check_mark: **ORDERING** -- Server-side `ORDER BY` support
-- :white_check_mark: **TRANSACTIONS** -- Real commit/rollback ACID atomicity
-- :white_check_mark: **OPTIMISTIC_LOCKING** -- Version-based concurrency control
-- :white_check_mark: **RAW_QUERIES** -- Execute raw SQL queries
-- :white_check_mark: **SCHEMA_MANAGEMENT** -- Create/drop tables and indices
-- :white_check_mark: **CONNECTION_POOLING** -- SQLAlchemy connection pool management
-- :white_check_mark: **NATIVE_JSON** -- PostgreSQL `JSONB` column type
-- :white_check_mark: **NATIVE_ARRAY** -- PostgreSQL `ARRAY` column type
+- :white_check_mark: **CRUD**: Create, Read, Update, Delete single records
+- :white_check_mark: **FILTER**: Query/filter records with lookup criteria
+- :white_check_mark: **BULK_OPERATIONS**: `update_all()`, `delete_all()`
+- :white_check_mark: **ORDERING**: Server-side `ORDER BY` support
+- :white_check_mark: **TRANSACTIONS**: Real commit/rollback ACID atomicity
+- :white_check_mark: **OPTIMISTIC_LOCKING**: Version-based concurrency control
+- :white_check_mark: **RAW_QUERIES**: Execute raw SQL queries
+- :white_check_mark: **SCHEMA_MANAGEMENT**: Create/drop tables and indices
+- :white_check_mark: **CONNECTION_POOLING**: SQLAlchemy connection pool management
+- :white_check_mark: **NATIVE_JSON**: PostgreSQL `JSONB` column type
+- :white_check_mark: **NATIVE_ARRAY**: PostgreSQL `ARRAY` column type
 
 PostgreSQL is the only built-in provider that supports **all 12 capability
 flags** (excluding `SIMULATED_TRANSACTIONS`, which is specific to the Memory
@@ -151,13 +151,13 @@ logger's ``ProteanCorrelationFilter``.
 
 ## Limitations
 
-- **Requires Running Server** -- PostgreSQL must be installed and running as a
+- **Requires Running Server**: PostgreSQL must be installed and running as a
   separate service. Use `make up` to start Protean's Docker-based development
   services.
-- **Connection Overhead** -- Each connection consumes server resources. Tune
+- **Connection Overhead**: Each connection consumes server resources. Tune
   `pool_size` and `max_overflow` for your workload.
 
-## Next Steps
+## Related pages
 
 - Learn about [database capabilities](./index.md#database-capabilities) in
   detail

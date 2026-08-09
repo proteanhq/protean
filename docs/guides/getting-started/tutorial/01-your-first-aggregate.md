@@ -2,7 +2,7 @@
 
 In this chapter we will create the foundation of our online bookstore,
 **Bookshelf**. By the end, we will have a working `Book` aggregate that
-we can create, persist, and retrieve — all running in-memory with zero
+we can create, persist, and retrieve, all running in-memory with zero
 infrastructure setup.
 
 Over the course of this tutorial we will build a complete bookstore that
@@ -19,7 +19,7 @@ pip install protean
 ```
 
 Now create a file called `bookshelf.py`. Every Protean application begins
-with a **Domain** — the central registry for all your business logic:
+with a **Domain**, the central registry for all your business logic:
 
 ```python
 from protean import Domain
@@ -33,10 +33,9 @@ any infrastructure.
 
 ## Defining the Book Aggregate
 
-An aggregate is a cluster of related objects treated as a single unit —
-the core building block of a Protean domain
-(see [Aggregates](../../../concepts/building-blocks/aggregates.md)
-for more).
+An aggregate is a cluster of related objects treated as a single unit, the core
+building block of a Protean domain (see
+[Aggregates](../../../concepts/building-blocks/aggregates.md) for more).
 
 Let's define a `Book`:
 
@@ -51,7 +50,7 @@ Notice that:
   the many field types Protean provides.
 - `required=True` means the field must be present when creating a `Book`.
   `max_length` constrains the string length.
-- Every aggregate automatically gets an `id` field — a unique identifier
+- Every aggregate automatically gets an `id` field, a unique identifier
   generated for you.
 
 ## Creating a Book
@@ -76,11 +75,10 @@ if __name__ == "__main__":
 
 Two important steps happen here:
 
-1. **`domain.init()`** initializes the domain — resolving references,
-   validating the model, and setting up adapters. The `traverse=False`
-   flag tells Protean we have registered all elements ourselves (in a
-   larger project with multiple files, you would omit this flag and let
-   Protean auto-discover elements).
+1. **`domain.init()`** initializes the domain, resolving references, validating the model,
+   and setting up adapters. The `traverse=False` flag tells Protean we have registered all
+   elements ourselves (in a larger project with multiple files, you would omit
+   this flag and let Protean auto-discover elements).
 
 2. **`domain.domain_context()`** activates the domain for the current
    block. Inside this context, Protean knows which domain is active and
@@ -107,8 +105,8 @@ persisted yet. To save and retrieve books, use a **repository**:
 ```
 
 - **`domain.repository_for(Book)`** returns a repository bound to the
-  `Book` aggregate. You don't need to define one — Protean provides a
-  default repository backed by the in-memory adapter.
+  `Book` aggregate. You don't need to define one, Protean provides a default
+  repository backed by the in-memory adapter.
 - **`repo.add(book)`** persists the book. In the default in-memory
   adapter, this stores the object in a dictionary. With a real database,
   this would insert a row.
@@ -121,10 +119,9 @@ Retrieved: The Great Gatsby ($12.99)
 All checks passed!
 ```
 
-Everything runs in-memory right now. When we are ready for a real
-database, we will swap in a different adapter through configuration
-— domain code stays exactly the same. We will do this in
-[Chapter 8](08-persistence.md).
+Everything runs in-memory right now. When we are ready for a real database, we
+will swap in a different adapter through configuration. Domain code stays
+exactly the same. We will do this in [Chapter 8](08-persistence.md).
 
 ## Exploring in the Shell
 
@@ -135,7 +132,7 @@ $ protean shell --domain bookshelf
 ```
 
 Inside the shell, the domain is already initialized and activated. You
-can create books, persist them, and query — all interactively:
+can create books, persist them, and query, all interactively:
 
 ```python
 >>> book = Book(title="1984", author="George Orwell", price=9.99)
@@ -150,7 +147,7 @@ The shell is a great way to experiment as you build out the domain.
 
 ## What We Built
 
-- A **Domain** — the container for our business logic.
+- A **Domain**, the container for our business logic.
 - A **Book aggregate** with fields that describe its data.
 - **Created** a Book instance, which got an auto-generated ID.
 - **Persisted** it through a repository and **retrieved** it back.

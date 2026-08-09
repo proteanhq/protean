@@ -1,8 +1,8 @@
 # `protean ir`
 
-The `protean ir` command group inspects a domain's Intermediate
-Representation (IR) -- the machine-readable JSON document that captures
-domain topology after initialization.
+The `protean ir` command group inspects a domain's Intermediate Representation
+(IR), the machine-readable JSON document that captures domain topology after
+initialization.
 
 All commands accept a `--domain` option to specify the domain module path.
 
@@ -131,9 +131,9 @@ protean ir diff --left baseline.json --right current.json
 | 2 | Non-breaking changes only |
 
 **Avro compatibility verdict.** Alongside the breaking/safe classification, the
-diff reports an Avro-style verdict — `BACKWARD`, `FORWARD`, `FULL`, or `NONE` —
-matching the rules a schema registry applies to the Avro that
-`protean schema generate --format avro` emits:
+diff reports an Avro-style verdict (`BACKWARD`, `FORWARD`, `FULL`, or `NONE`)
+matching the rules a schema registry applies to the Avro that `protean schema
+generate --format avro` emits:
 
 | Verdict | Meaning |
 |---------|---------|
@@ -149,18 +149,18 @@ field is not `FORWARD`; a type change is `NONE`. A declared rename is `BACKWARD`
 optional or carried a static default. Visibility flips are payload-neutral for
 the verdict (they stay breaking).
 
-One rule is **Protean-specific**: an upcaster that covers the version bump makes
-an otherwise-incompatible change `BACKWARD`, because Protean rewrites old
-payloads to the new shape at read time. A plain schema registry has no knowledge
-of upcasters and would still report the underlying change (e.g. `NONE` for a
-type change) — so this clause reflects what *Protean* can decode, not what a
-registry alone would conclude.
+One rule is **Protean-specific**: an upcaster that covers the version bump
+makes an otherwise-incompatible change `BACKWARD`, because Protean rewrites old
+payloads to the new shape at read time. A plain schema registry has no
+knowledge of upcasters and would still report the underlying change (e.g.
+`NONE` for a type change), so this clause reflects what *Protean* can decode,
+not what a registry alone would conclude.
 
 The top-level verdict is the domain-wide intersection (the conservative worst
 case). In `--format json`, the `compatibility` block also carries
 `avro_verdicts` (a per-element breakdown, since Avro compatibility is
 per-subject) and the full classified report. The verdict covers the classified
-schema changes; it is informational — the exit code is still governed by
+schema changes; it is informational. The exit code is still governed by
 `[compatibility] strictness` and the breaking-change classification.
 
 Respects `.protean/config.toml` settings. See

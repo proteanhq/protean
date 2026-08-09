@@ -5,7 +5,7 @@ events that share a partition key are never processed at the same time, and
 their committed effects land in publish order. Events with different keys still
 run in parallel. This is the escape hatch for the one case the built-in
 concurrency primitives (optimistic concurrency, process managers, idempotent
-handlers) do not cover — a single high-throughput handler that must serialize by
+handlers) do not cover. A single high-throughput handler that must serialize by
 an entity key without funnelling every key onto one worker.
 
 The full design and its guarantees are in
@@ -21,12 +21,12 @@ most concurrency problems have a simpler structural fix.
     described under [How the consumer enforces ordering](#how-the-consumer-enforces-ordering)
     owns and serially drains each partition across engine instances.
 
-    Commands do not currently go through the outbox at all — a command handler
-    dispatches synchronously and never produces an outbox row, so it has no
-    `stream_category` and nothing to partition. Declaring `sequential_by` on a
-    **command handler** is accepted and checked at registration (field
-    existence, one key per category), but that check is inert today: it has no
-    runtime effect until command publishing exists.
+    Commands do not currently go through the outbox at all, a command handler
+    dispatches synchronously and never produces an outbox row, so it has no `stream_category`
+    and nothing to partition. Declaring `sequential_by` on a **command handler** is
+    accepted and checked at registration (field existence, one key per
+    category), but that check is inert today: it has no runtime effect until
+    command publishing exists.
 
     The **inline** broker does not advertise `STREAM_PARTITIONING`. There
     `sequential_by` is an accepted no-op (inline already processes messages in
@@ -38,7 +38,7 @@ most concurrency problems have a simpler structural fix.
 
 On an **event handler** or **command handler**, `sequential_by` is the name of a
 direct field on the event or command payload. Only the event-handler case has a
-runtime effect today — see the warning above.
+runtime effect today, see the warning above.
 
 ```python
 @domain.event_handler(part_of=Order, sequential_by="client_id")
@@ -70,14 +70,14 @@ Nested paths and computed keys are out of scope: the key is a single named field
 `domain.init()` fails loud if any of these do not hold, turning a class of
 runtime surprises into a startup error:
 
-- **Field existence.** Every event or command type the handler handles must
+- **Field existence**: Every event or command type the handler handles must
   declare the named field. For a process manager, every handled event must carry
   the field its `correlate` spec resolves for that event.
-- **One key per category.** A partition key is a property of the stream
+- **One key per category**: A partition key is a property of the stream
   *category*, not of one handler. Two handlers on the same category that ask for
-  different keys are rejected — all handlers on a category must agree on one key
+  different keys are rejected. All handlers on a category must agree on one key
   or not partition it at all.
-- **Broker capability.** The target broker must advertise the
+- **Broker capability**: The target broker must advertise the
   `STREAM_PARTITIONING` capability. The inline broker is the accepted exception
   (it is a no-op there); any other broker without the capability is rejected.
 
@@ -125,28 +125,28 @@ affinity, so two events for the same key could still run at the same time on two
 instances. The ordering guarantee is enforced by **partition ownership**, not by
 a per-message lock.
 
-For each partition the engine sees in the [discovery index](#discovery-and-cold-partitions),
-one instance takes an **ownership lease** and becomes the sole consumer of that
-partition's stream. The lease carries a **fencing token** — a generation number
-that increases every time ownership changes hands — and every read and ack is
-guarded by an atomic "do I still hold the lease at this generation?" check. This
-gives four properties:
+For each partition the engine sees in the [discovery
+index](#discovery-and-cold-partitions), one instance takes an **ownership
+lease** and becomes the sole consumer of that partition's stream. The lease
+carries a **fencing token** (a generation number that increases every time
+ownership changes hands) and every read and ack is guarded by an atomic "do I
+still hold the lease at this generation?" check. This gives four properties:
 
-- **Single active consumer per partition.** Only the lease owner reads a
+- **Single active consumer per partition**: Only the lease owner reads a
   partition, so two different same-key events are never processed at once and
   their committed effects land in publish order. Different keys are owned
   independently and drain in parallel.
-- **Crash failover with no loss.** If the owner dies, its lease expires, another
+- **Crash failover with no loss**: If the owner dies, its lease expires, another
   instance takes over at a new generation and reclaims the dead owner's unacked
   entries (`XAUTOCLAIM`), then resumes in order. Delivery stays
   at-least-once: the single in-flight event may be re-run on failover, so
   handlers still lean on optimistic concurrency and idempotency for exactly-once
   *effect*.
-- **Stall safety (the fence).** If an owner stalls past its lease and another
-  instance takes over, the stale owner's fenced read and ack are rejected — it
+- **Stall safety (the fence)**: If an owner stalls past its lease and another
+  instance takes over, the stale owner's fenced read and ack are rejected. It
   can neither advance the partition nor ack out from under the new owner, so
   committed order stays intact.
-- **Halt on poison.** A message that a partition cannot process (after its
+- **Halt on poison**: A message that a partition cannot process (after its
   retries) halts that partition: it stays as the pending head and the partition
   stops advancing, rather than being auto-moved to a DLQ (which would apply a
   later same-key event before it and reorder the key). The halt is scoped to one
@@ -156,19 +156,18 @@ gives four properties:
 
 ### Discovery and cold partitions
 
-The consumer discovers live partitions by reading a maintained index — a Redis
-set `{stream_category}:__partitions__` the publisher writes on each publish — not
-by scanning the keyspace. New partitions are picked up on the next discovery
-cycle with no restart. A partition that has fully drained and been idle for
-`reap_idle_ms` is retired by its owner (its index entry and empty stream are
-pruned), so the index stays bounded; a publish that re-creates the partition is
-simply re-discovered.
+The consumer discovers live partitions by reading a maintained index, a Redis
+set `{stream_category}:__partitions__` the publisher writes on each publish, not by scanning the keyspace. New
+partitions are picked up on the next discovery cycle with no restart. A
+partition that has fully drained and been idle for `reap_idle_ms` is retired by its owner
+(its index entry and empty stream are pruned), so the index stays bounded; a
+publish that re-creates the partition is re-discovered.
 
 Process managers own by **correlation value** rather than by a single stream: one
 instance leases a correlation value and is the sole processor of every subscribed
 category's partition for that value, so no two events for the same process-manager
 instance are ever handled at once. Cross-category order for one instance is not
-promised (the events live on different streams) — only that they never overlap.
+promised (the events live on different streams), only that they never overlap.
 
 ### Priority lanes
 

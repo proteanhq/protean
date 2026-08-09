@@ -44,16 +44,16 @@ confirmed against the working tree, and this is a greenfield feature (no
 only a dormant `STREAM_PARTITIONING` capability flag and the priority-lane suffix
 machinery are in place).
 
-1. **A Redis consumer group load-balances by message, not by key.** Every engine
+1. **A Redis consumer group load-balances by message, not by key**: Every engine
    instance running a handler shares one consumer group (the group name is the
    handler's FQN); only the consumer name is per-process. Redis hands different
    messages to different consumers with no key affinity, so two events for the
    same key can land on two instances and run at the same time. A shared group
    cannot serialize a key. This is the crux the consumer design must solve.
-2. **The broker has no `XCLAIM`/`XAUTOCLAIM`.** `NACK` only leaves a message
+2. **The broker has no `XCLAIM`/`XAUTOCLAIM`**: `NACK` only leaves a message
    pending for redelivery to the same consumer name. Reclaiming another
    consumer's in-flight (pending) entries after a crash is not possible today.
-3. **`process_batch` does not halt on failure.** On a failed message it NACKs (or
+3. **`process_batch` does not halt on failure**: On a failed message it NACKs (or
    moves to DLQ after retries) and continues to the next message in the batch.
    Under partition-per-key, the next message in a batch can be a later event for
    the same key, so continuing past a failure reorders that key under
@@ -66,12 +66,12 @@ machinery are in place).
    `{category}:{key}` collides with the reserved suffixes when the key is `dlq` or
    the configured backfill suffix, and trips the group-cache reverse-parse whenever
    the key (or the `{category}:{key}` shape) contains a colon.
-5. **Stream discovery does not scan the keyspace.** The broker discovers streams by
+5. **Stream discovery does not scan the keyspace**: The broker discovers streams by
    walking the domain registry and deliberately avoids `SCAN`/`KEYS` for that. (The
    Redis cache adapter does use `SCAN` for its own key lookups; the point here is
    scoped to stream and broker discovery.) Partition keys are data-driven and not in
    the registry, so registry-walking cannot enumerate them.
-6. **Routing has one choke point.** The outbox processor maps a message to its
+6. **Routing has one choke point**: The outbox processor maps a message to its
    physical stream in one place, immediately before `broker.publish`, where the
    backfill suffix is already applied. Partition routing and key validation slot
    in there.
@@ -214,7 +214,7 @@ rather than inventing it.
 
 **The mechanism.**
 
-- **Lease with a generation.** A partition is owned by one engine instance at a
+- **Lease with a generation**: A partition is owned by one engine instance at a
   time via a lease key, `{stream}:__lease__`, holding `{owner_id}:{generation}`,
   set with `NX PX <ttl>` and renewed by a heartbeat. Acquire and renew go through
   a compare-and-set script (a Lua script, so the check and the write are atomic):
@@ -222,7 +222,7 @@ rather than inventing it.
   expiry increments the generation. Only the current owner runs a consumer for
   that partition's stream, so under normal operation there is exactly one reader
   applying that key's events strictly in order.
-- **The generation is the fence.** The owner's consumer name in the group encodes
+- **The generation is the fence**: The owner's consumer name in the group encodes
   its generation (`{owner_id}:{generation}`), and every read and ack for the
   partition is guarded by an atomic "do I still hold the lease at this generation"
   check (again a Lua script pairing the lease check with the `XREADGROUP`/`XACK`).
@@ -230,7 +230,7 @@ rather than inventing it.
   read the next message and cannot ack, so it cannot advance the partition or
   commit out from under the new owner. This is the classic fencing token: it
   rejects the stale owner's *actions on the stream*.
-- **What the fence does and does not stop.** The fence guarantees the new owner is
+- **What the fence does and does not stop**: The fence guarantees the new owner is
   the only instance that *advances* the partition, so two *different* same-key
   events are never processed concurrently and committed order is preserved. It
   does **not** un-run a handler body that a stalled owner already entered before
@@ -240,12 +240,12 @@ rather than inventing it.
   the single-in-flight-event, at-least-once duplication ADR-0009 already assigns
   to OCC and idempotent handler patterns; the stale owner never reaches the *next*
   event, so it cannot reorder the key.
-- **Crash reclaim.** On owner death the lease expires and another instance claims
+- **Crash reclaim**: On owner death the lease expires and another instance claims
   the partition at a new generation and reclaims the dead owner's pending (unacked)
   entries so none are lost or skipped. Reclaiming another consumer's pending
   entries requires `XCLAIM`/`XAUTOCLAIM`, which the broker does not have today;
   adding it to the broker is part of #831's implementation of this design.
-- **Horizontal scaling.** Partitions distribute across instances, so more instances
+- **Horizontal scaling**: Partitions distribute across instances, so more instances
   spread ownership of more partitions rather than piling onto one stream.
 
 This is the model Kafka (partition assignment with a generation/epoch) and Axon
@@ -332,53 +332,53 @@ guarantees above. With two engine instances running one handler declared
 `sequential_by="client_id"`, and interleaved events published for at least two
 keys (`client-A`, `client-B`):
 
-- **Strict per-key order.** For each key, the handler applies that key's events in
+- **Strict per-key order**: For each key, the handler applies that key's events in
   published order. Assert the observed per-key sequence equals the published
   per-key sequence.
-- **No concurrent entry for different same-key events.** Two different events for
+- **No concurrent entry for different same-key events**: Two different events for
   the same key never overlap in the handler. The in-progress marker must be
   **cross-instance** (recorded in Redis or the store with the instance id, not in
   process memory, or a two-instance test cannot see the overlap it exists to
   catch). Assert the marker is never held by two instances for the same key at
   once.
-- **Cross-key parallelism preserved.** `client-A` and `client-B` can be in their
+- **Cross-key parallelism preserved**: `client-A` and `client-B` can be in their
   handlers at the same time. Assert their processing windows overlap, so the
   feature serializes per key without serializing everything.
-- **Halt on poison is partition-scoped.** A poison event at `client-A`'s head stops
+- **Halt on poison is partition-scoped**: A poison event at `client-A`'s head stops
   `client-A` from advancing past it (no later `client-A` event is applied) and does
   not auto-move it to a DLQ, while `client-B` keeps flowing to completion.
-- **Crash failover: no loss, order preserved.** Kill the instance that owns a
+- **Crash failover: no loss, order preserved**: Kill the instance that owns a
   partition mid-stream. Assert another instance claims the partition, reclaims the
   dead owner's pending entries (`XCLAIM`), and resumes in strict order with no
   event lost or skipped. Apply may be at-least-once across the crash (an event
   processed but not acked before the crash is re-run), so assert order and
   no-loss, and assert final state is correct under OCC rather than asserting a
   literal single handler call per event.
-- **Stall failover: the fence holds.** This is the assertion the fence exists for,
+- **Stall failover: the fence holds**: This is the assertion the fence exists for,
   and a kill cannot exercise it. Stall the owner past its lease (freeze its
   heartbeat) so a second instance takes the partition, then let the first resume.
   Assert the resumed stale owner cannot advance the partition or ack (its
   lease-checked read/ack is rejected), so it never reaches `client-A`'s next event
   and committed order stays intact.
-- **Registration validation fails loud.** A handler declaring
+- **Registration validation fails loud**: A handler declaring
   `sequential_by="client_id"` for an event type that has no `client_id` field
   fails at registration, not at publish.
-- **Capability gating fails loud.** Registering a `sequential_by` handler against a
+- **Capability gating fails loud**: Registering a `sequential_by` handler against a
   broker that does not advertise `STREAM_PARTITIONING` raises at registration; the
   same handler under the single-threaded inline broker is accepted and behaves as a
   no-op (messages already run in submission order).
-- **One partition key per category.** Two handlers on the same category declaring
+- **One partition key per category**: Two handlers on the same category declaring
   different `sequential_by` keys fail at registration. A handler that partitions a
   category by a field different from a `sequential_by` PM's correlation field on the
   same category also fails at registration.
-- **Process manager serializes per instance.** With a PM correlated by `order_id`
+- **Process manager serializes per instance**: With a PM correlated by `order_id`
   across the `order` and `payment` categories, and interleaved order and payment
   events published for two correlation values, assert no two events for the same
   correlation value are ever in the PM handler at once (cross-instance marker), and
   that different correlation values progress in parallel. Order and payment events
   for one instance need not apply in a strict cross-category order, only never
   concurrently.
-- **Unsafe key values fail loud at record creation.** Raising an event whose key
+- **Unsafe key values fail loud at record creation**: Raising an event whose key
   value is null, empty, colon-bearing, a reserved lane/DLQ token, or the
   `__partitions__` sentinel fails the caller's operation in its UoW and never
   creates an outbox record.
@@ -479,13 +479,13 @@ collapsing every key onto a single worker.
 
 ## Alternatives Considered
 
-- **Per-message distributed lock.** Simpler and stateless on failover, but its
+- **Per-message distributed lock**: Simpler and stateless on failover, but its
   correctness depends on the handler finishing before the lock expires. When it
   does not, a second instance takes the lock and runs the *next* same-key event
   while the first is still on the previous one, so two different same-key events
   run concurrently and their committed effects can land out of order, silently.
   Rejected as the enforcement mechanism for a feature whose whole point is ordering.
-- **Single-instance-only, defer distribution.** Ship a guarantee that holds only
+- **Single-instance-only, defer distribution**: Ship a guarantee that holds only
   when one engine instance runs the partitioned subscription, and document the
   limit. Rejected: the guarantee fails the moment the system scales, which the
   issue explicitly called out as a thing to state and solve, not assume.
@@ -493,12 +493,12 @@ collapsing every key onto a single worker.
   partition set and removes discovery, but replaces readable per-key streams with
   hashed partition indices and reintroduces rebalancing across a fixed set.
   Rejected in favour of the epic's readable dynamic-stream model.
-- **Discovery by keyspace scan.** The consumer runs `SCAN MATCH {category}:*` each
+- **Discovery by keyspace scan**: The consumer runs `SCAN MATCH {category}:*` each
   cycle. Simple and needs no publisher bookkeeping, but it is only eventually
   consistent, returns reserved streams to filter out, and is the exact
   keyspace-scan pattern the broker's stream discovery avoids. Rejected in favour of
   the maintained index.
-- **Structural name escape (`{category}:__p__:{key}`).** Collision-proof for any
+- **Structural name escape (`{category}:__p__:{key}`)**: Collision-proof for any
   key, but it still needs colon rejection to stay unambiguous, so it does not
   remove key validation, and it deepens every partition name by a segment for no
   gain the reject rule does not already provide. Rejected in favour of the more

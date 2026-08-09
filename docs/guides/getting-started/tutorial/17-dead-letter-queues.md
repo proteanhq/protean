@@ -1,10 +1,9 @@
-# Chapter 17: When Things Go Wrong — Dead Letter Queues
+# Chapter 17: Handling Failures with Dead Letter Queues
 
-A deployment introduced a bug in the `BookReportProjector` — it crashes
-on books without an ISBN (the field is optional). The server retries the
-message three times, then moves it to the **dead-letter queue** (DLQ).
-Meanwhile, new books are being added but the marketing dashboard is not
-updating.
+A deployment introduced a bug in the `BookReportProjector`. It crashes on books
+without an ISBN (the field is optional). The server retries the message three
+times, then moves it to the **dead-letter queue** (DLQ). Meanwhile, new books
+are being added but the marketing dashboard is not updating.
 
 ## How the DLQ Works
 
@@ -13,8 +12,8 @@ When a handler fails to process a message:
 1. The message is retried (up to `max_retries` times, with exponential
    backoff).
 2. After all retries are exhausted, the message is moved to the DLQ.
-3. The handler continues processing subsequent messages — one failure
-   does not block the stream.
+3. The handler continues processing subsequent messages. One failure does not
+   block the stream.
 
 ## Discovering the Problem
 
@@ -53,7 +52,7 @@ Now we can see the issue: the projector assumes `isbn` is always present.
 
 ## The Fix-and-Replay Cycle
 
-1. **Fix the bug** — handle the `None` case in the projector:
+1. **Fix the bug**: Handle the `None` case in the projector:
 
 ```python
 @on(BookFactEvent)
@@ -104,10 +103,10 @@ retry_delay_seconds = 1
 enable_dlq = true
 ```
 
-- **`max_retries`** — how many times to retry before moving to DLQ.
-- **`retry_delay_seconds`** — base delay between retries (exponential
+- **`max_retries`**: How many times to retry before moving to DLQ.
+- **`retry_delay_seconds`**: Base delay between retries (exponential
   backoff is applied).
-- **`enable_dlq`** — set to `false` to disable DLQ (failed messages
+- **`enable_dlq`**: Set to `false` to disable DLQ (failed messages
   are dropped instead).
 
 ## What We Built

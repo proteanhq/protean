@@ -1,9 +1,9 @@
-"""FieldSpec — domain-native field declaration carrier.
+"""FieldSpec: the domain-native field declaration carrier.
 
 A FieldSpec is a plain data object that carries type information and constraints.
 It is consumed during class creation and translated into Pydantic-compatible
 ``Annotated[type, Field(...)]`` annotations.  After the metaclass runs, only
-Pydantic's native machinery remains — FieldSpec itself is not stored on the class.
+Pydantic's native machinery remains; FieldSpec itself is not stored on the class.
 """
 
 import contextlib
@@ -57,8 +57,8 @@ class FieldSpec:
 
     A FieldSpec records the user's intent (``String(max_length=50)``) and
     translates it into a Pydantic ``Annotated[type, Field(...)]`` during
-    class creation.  It is **not** a descriptor — it has no ``__get__`` or
-    ``__set__`` — and is discarded after the class is built.
+    class creation.  It is **not** a descriptor (it has no ``__get__`` or
+    ``__set__``) and is discarded after the class is built.
     """
 
     # Auto()-specific metadata, set on the instance by the ``Auto`` factory
@@ -603,7 +603,7 @@ def _make_sanitize_validator(
     ``bleach.clean`` both lengthens (``&`` -> ``&amp;``) and shortens (stripping
     HTML comments / disallowed attributes) a string. The core ``min_length`` /
     ``max_length`` constraints run first, on the *raw* input, but the value that
-    gets stored is the sanitized one — so a within-bounds input can be stored
+    gets stored is the sanitized one, so a within-bounds input can be stored
     out of bounds, and re-validating that stored value on a serialization
     round-trip or event-sourced replay then fails. Re-checking the bounds here,
     against the sanitized (stored) form, keeps the field self-consistent: the

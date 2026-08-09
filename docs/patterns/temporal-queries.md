@@ -3,10 +3,10 @@
 ## The Problem
 
 Event-sourced systems store the complete history of every aggregate as an
-ordered sequence of events. This history is one of the key selling points
-of event sourcing -- in theory, you can answer questions like "what was
-this account's balance when the fraudulent transaction occurred?" or "what
-did this customer's profile look like when we approved the loan?"
+ordered sequence of events. This history is one of the key selling points of
+event sourcing. In theory, you can answer questions like "what was this
+account's balance when the fraudulent transaction occurred?" or "what did this
+customer's profile look like when we approved the loan?"
 
 In practice, teams rarely operationalize this capability. When an incident
 investigation, compliance audit, or customer support case requires
@@ -33,42 +33,42 @@ def investigate_account_state(account_id: str, target_version: int):
 
 This approach has several problems:
 
-- **Bypasses the domain model.** The reconstruction logic does not use the
+- **Bypasses the domain model**: The reconstruction logic does not use the
   aggregate's `@apply` handlers, so it misses computed fields, derived
   state, and business rules.
 
-- **Duplicates reconstruction logic.** Every investigation requires writing
+- **Duplicates reconstruction logic**: Every investigation requires writing
   new replay code that is subtly different and never tested.
 
-- **Produces mutable objects.** Nothing prevents accidentally persisting
+- **Produces mutable objects**: Nothing prevents accidentally persisting
   changes to a historical snapshot, corrupting the event stream.
 
-- **Cannot be exposed safely.** Customer support and compliance teams need
+- **Cannot be exposed safely**: Customer support and compliance teams need
   self-service access, but ad-hoc scripts require engineering time.
 
 The underlying problem: **the event store contains complete history, but
-the application has no first-class API for querying it.**
+the application has no API for querying it.**
 
 ---
 
 ## The Pattern
 
 Use the event-sourced repository's `at_version` and `as_of` parameters as
-**first-class query operations**. These are not debugging utilities -- they
-are production-grade API parameters that reconstruct aggregate state at a
+**ordinary query operations**. These are not debugging utilities; they
+are API parameters that reconstruct aggregate state at a
 specific point in history.
 
 Two temporal dimensions are supported:
 
 - **`at_version=N`** reconstructs the aggregate after the Nth event
   (0-indexed). Version 0 is the state after the first event. This is
-  useful when you know the exact event position -- for example, "show me
-  the account state before the suspicious transaction at version 47."
+  useful when you know the exact event position, for example, "show me the
+  account state before the suspicious transaction at version 47."
 
 - **`as_of=datetime`** reconstructs the aggregate as of a point in time.
   Only events written on or before the timestamp are applied. This is
-  useful for calendar-based queries -- for example, "show me the account
-  state as of the end-of-quarter reporting date."
+  useful for calendar-based queries, for example, "show me the account state as
+  of the end-of-quarter reporting date."
 
 The returned aggregate is **read-only**. Protean marks it with
 `_is_temporal=True`, and any attempt to call `raise_()` on it raises
@@ -78,15 +78,15 @@ without risk of accidental mutation.
 
 Key behaviors:
 
-1. **Identity map bypass.** Temporal queries always bypass the Unit of
+1. **Identity map bypass**: Temporal queries always bypass the Unit of
    Work's identity map. Loading the same aggregate at version 5 and
    version 10 in the same transaction returns two distinct objects.
 
-2. **Snapshot awareness.** `at_version` leverages existing snapshots when
+2. **Snapshot awareness**: `at_version` uses existing snapshots when
    the snapshot version is at or below the requested version. `as_of`
    skips snapshots entirely and replays from position 0.
 
-3. **Mutual exclusivity.** You cannot specify both `at_version` and
+3. **Mutual exclusivity**: You cannot specify both `at_version` and
    `as_of` in the same call. They represent different dimensions of
    history and combining them would be ambiguous.
 
@@ -398,7 +398,7 @@ reporting tools without defensive wrappers.
 
 !!! warning "Read-only at the domain level, not the Python level"
     The `_is_temporal` flag prevents `raise_()` from accepting new events.
-    It does **not** make the Python object immutable -- you can still set
+    It does **not** make the Python object immutable. You can still set
     attributes. However, those changes will never be persisted because no
     events are raised.
 
@@ -520,7 +520,7 @@ def restore_transaction_limit(account_id: str, version: int) -> None:
 | Time-based reconstruction | `repo.get(id, as_of=datetime)` | State as of a specific timestamp |
 | Read-only guarantee | `_is_temporal=True` | `raise_()` raises `IncorrectUsageError` |
 | Identity map bypass | Automatic | Temporal queries never return cached objects |
-| Snapshot awareness | `at_version` only | Leverages snapshots when version <= requested |
+| Snapshot awareness | `at_version` only | Uses snapshots when version <= requested |
 | Mutual exclusivity | Enforced | Cannot combine `at_version` and `as_of` |
 
 | Use case | Recommended parameter | Example |
@@ -533,7 +533,7 @@ def restore_transaction_limit(account_id: str, version: int) -> None:
 
 | Principle | Practice |
 |-----------|----------|
-| Temporal queries are first-class operations | Use repository parameters, not custom replay |
+| Temporal queries are ordinary operations | Use repository parameters, not custom replay |
 | Historical aggregates are read-only | Never persist or mutate temporal objects |
 | Model reversals as new events | Load old state for reference, apply changes to current |
 | Expose temporal queries to consumers | Build API endpoints for audit, support, compliance |
@@ -544,9 +544,9 @@ def restore_transaction_limit(account_id: str, version: int) -> None:
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Event Sourcing](../concepts/architecture/event-sourcing.md) -- Deriving state from event replay.
+    - [Event Sourcing](../concepts/architecture/event-sourcing.md): Deriving state from event replay.
 
     **Guides:**
 
-    - [Temporal Queries](../guides/change-state/temporal-queries.md) -- How to use at_version and as_of.
-    - [`protean events`](../reference/cli/data/events.md) -- Inspect event streams and aggregate history.
+    - [Temporal Queries](../guides/change-state/temporal-queries.md): How to use at_version and as_of.
+    - [`protean events`](../reference/cli/data/events.md): Inspect event streams and aggregate history.

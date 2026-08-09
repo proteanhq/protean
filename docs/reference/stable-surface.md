@@ -9,7 +9,7 @@ This page says what that promise applies to.
 The surface is defined here rather than implied by what happens to be
 importable. How precisely depends on the area:
 
-- **The Python import surface is enumerated name by name.** Every export of
+- **The Python import surface is enumerated name by name**: Every export of
   `protean`, `protean.fields`, and `protean.exceptions` appears in the
   [export index](#export-index) with its tier, and a test keeps that table in
   step with the shipped `__all__`. For these three modules, a name absent from
@@ -56,21 +56,21 @@ supported, and `protean check` will not warn you before they move.
 
 ## What is Stable
 
-- **Top-level `protean` exports.** Everything in `protean.__all__`, listed in
+- **Top-level `protean` exports**: Everything in `protean.__all__`, listed in
   the index below.
-- **The element decorators and their options.** `@domain.aggregate`,
+- **The element decorators and their options**: `@domain.aggregate`,
   `@domain.entity`, `@domain.event`, `@domain.command`, and the rest, together
   with the documented options each accepts.
-- **`protean.fields`.** The field factories, the association fields, and the
+- **`protean.fields`**: The field factories, the association fields, and the
   `validators` module. Not every name in `protean.fields.__all__` is Stable:
   see the index.
-- **`protean.exceptions`.** Every exception and warning class.
-- **`protean.testing`.** The public testing DSL.
+- **`protean.exceptions`**: Every exception and warning class.
+- **`protean.testing`**: The public testing DSL.
 - **`protean.integrations.*` public names**, including the FastAPI helpers and
   the pytest plugin's documented fixtures and options.
-- **Documented `domain.toml` keys.** A key that appears in the
+- **Documented `domain.toml` keys**: A key that appears in the
   [configuration reference](configuration/index.md).
-- **Documented CLI commands and their exit codes.** Scripts may depend on the
+- **Documented CLI commands and their exit codes**: Scripts may depend on the
   exit code of `protean check` and friends.
 - **The IR schema**, versioned independently by its own `ir_version`. The
   schema evolves under that version, not under Protean's.
@@ -89,7 +89,7 @@ supported, and `protean check` will not warn you before they move.
   `sequential_by`, plus the `LeaseLostError` they raise. Enumerated in
   [Broker partitioning](adapters/broker/partitioning.md). It lives outside the
   three modules the export index covers, so the index test does not police it.
-- **Observatory HTTP and JSON endpoints.** Useful for tooling, but the
+- **Observatory HTTP and JSON endpoints**: Useful for tooling, but the
   dashboard's payloads are shaped for the dashboard.
 - **`protean.server` internals reached by operations tooling**, such as the
   health server's response bodies.
@@ -103,7 +103,7 @@ supported, and `protean check` will not warn you before they move.
 - **`Domain` plumbing accessors**: `registry`, `factory_for`,
   `fetch_element_cls_from_registry`, and the observability accessors. These
   exist for the framework's own wiring.
-- **Direct `FieldSpec` instantiation.** `FieldSpec` is the declaration carrier
+- **Direct `FieldSpec` instantiation**: `FieldSpec` is the declaration carrier
   the decorators build for you.
 - **`ValueObjectList`**, an internal helper for value-object collections.
 
@@ -235,6 +235,6 @@ or `protean.integrations.*`; see their own reference pages for those.
 
 ## Related reading
 
-- [Versioning policy](versioning-policy.md): what the tiers promise, and how to enforce it in CI.
-- [Consistency & delivery guarantees](guarantees.md): the behavioural contract, which is itself part of the Stable surface.
-- [Configuration](configuration/index.md): the documented `domain.toml` keys.
+- [Versioning policy](versioning-policy.md): What the tiers promise, and how to enforce it in CI.
+- [Consistency & delivery guarantees](guarantees.md): The behavioural contract, which is itself part of the Stable surface.
+- [Configuration](configuration/index.md): The documented `domain.toml` keys.

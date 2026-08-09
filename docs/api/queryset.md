@@ -47,9 +47,8 @@ for usage.
 The query-criteria primitive. A `Q` object wraps one or more field lookups so
 they can be combined into boolean expressions and passed to `filter()` and
 `exclude()`. Combine `Q` objects with `&` (AND), `|` (OR), and `~` (NOT) to
-express conditions that keyword arguments alone cannot — for example
-`filter(Q(status="active") | Q(status="pending"))`. `Q` is a top-level export:
-`from protean import Q`.
+express conditions that keyword arguments alone cannot, for example `filter(Q(status="active") | Q(status="pending"))`. `Q` is
+a top-level export: `from protean import Q`.
 
 ::: protean.utils.query.Q
     options:

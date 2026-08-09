@@ -1,146 +1,135 @@
 # Start Here
 
-A guided reading order through Protean's documentation. Follow the sections
-below from top to bottom, or jump to the topic you need.
+A reading order through Protean's documentation. Work down the sections, or jump
+to the topic you need.
 
 ## Is Protean right for you?
 
-Protean is built for ambitious systems, and it is honest about the ones it is
-not for. Before you invest, the
-[Applicability Charter](./reference/applicability.md) states plainly what
-Protean is a good fit for, and the shapes of systems it is not, with the reason
-in each case.
+The [Applicability Charter](./reference/applicability.md) states what Protean is
+a good fit for, and the shapes of systems it is not, with the reason in each
+case. It is worth reading before you invest much time.
 
 ## Installation
 
-Get Protean up and running. The
-[Installation guide](./guides/getting-started/installation.md) walks you
-through setting up Python, creating a virtual environment, and installing
-Protean.
+The [Installation guide](./guides/getting-started/installation.md) covers setting
+up Python, creating a virtual environment, and installing Protean.
 
 ## Hello, Protean!
 
-New to Protean? Start with
-[Hello, Protean!](./guides/getting-started/hello.md) — define an aggregate,
-save it, and load it back in under 20 lines. This is the fastest way to see
-what Protean feels like.
+[Hello, Protean!](./guides/getting-started/hello.md) defines an aggregate, saves
+it, and loads it back in under 20 lines. It is the fastest way to see what
+Protean feels like.
 
 ## Quickstart
 
-Want to go further? The
-[Quickstart](./guides/getting-started/quickstart.md) builds a working domain
-in 5 minutes — an aggregate, a command, an event, and handlers — all running
-in-memory with zero infrastructure.
+The [Quickstart](./guides/getting-started/quickstart.md) builds a working domain
+in 5 minutes: an aggregate, a command, an event, and handlers, all running in
+memory with no infrastructure.
 
 ## Tutorial
 
-For a guided, end-to-end learning experience, work through
-[Building Bookshelf](./guides/getting-started/tutorial/index.md) — a 10-part
-tutorial that takes you from your first aggregate to a fully tested
-application with a real database. It covers:
+[Building Bookshelf](./guides/getting-started/tutorial/index.md) is a 22-chapter
+tutorial that takes you from your first aggregate to a tested application running
+against a real database. It covers:
 
-- **Part I** — Aggregates, fields, value objects, entities, and business rules
-- **Part II** — Commands, domain events, and event handlers
-- **Part III** — Projections and real database persistence
-- **Part IV** — Testing strategies and next steps
+- **Part I**: Aggregates, fields, value objects, entities, and business rules.
+- **Part II**: Commands, domain events, event handlers, projections, persistence,
+  project structure, an API, and testing.
+- **Part III**: The async server, domain services, subscribers, and fact events.
+- **Part IV**: Message tracing, dead letter queues, health monitoring, and
+  priority lanes.
+- **Part V**: Process managers, advanced query patterns, and how the pieces fit
+  together.
 
-## Event Sourcing Tutorial
+## Event Sourcing tutorial
 
-If you're interested in Event Sourcing, work through
-[Building Fidelis](./guides/getting-started/es-tutorial/index.md) — a
-22-chapter deep dive that builds a banking ledger with immutable audit trails,
-projections, and production tooling. It assumes familiarity with the Bookshelf
-tutorial above.
+[Building Fidelis](./guides/getting-started/es-tutorial/index.md) is a 22-chapter
+tutorial that builds a banking ledger with immutable audit trails, projections,
+and production tooling. It assumes you have worked through Bookshelf.
 
-## Upgrading from 0.14?
+## Upgrading
 
-If you're migrating an existing project, the
-[Migration Guide](./reference/migration/v0-15.md) covers required
-changes, behavioral differences, and what's new.
+If you are migrating an existing project, the
+[migration guides](./reference/migration/index.md) cover the required changes,
+behavioural differences, and what is new in each version.
 
 ## Core concepts
 
-Get to know the driving principles and core ideas that shape this framework
-in [Philosophy](./concepts/philosophy/index.md). A key principle is the
-[always-valid guarantee](./concepts/philosophy/always-valid.md) -- domain
-objects are continuously validated and can never exist in an invalid state. In
-[Domain Elements](./concepts/building-blocks/index.md), explore key DDD
-elements like Aggregates, Repositories, Events, and more to understand the
-core structures of Protean.
+[Philosophy](./concepts/philosophy/index.md) covers the principles and ideas that
+shape the framework. One of them is the
+[always-valid guarantee](./concepts/philosophy/always-valid.md): domain objects
+are validated continuously and can never exist in an invalid state. In
+[Domain Elements](./concepts/building-blocks/index.md) you will find the DDD
+elements Protean is built from, including aggregates, repositories, and events.
 
-For a broader overview of what makes Protean different, see
+For a broader picture of what makes Protean different, see
 [Why Protean?](./why-protean.md).
 
 ## Building with Protean
 
-Everything you need to know to build ambitious systems with Protean is in
-the [Guides](./guides/index.md) section.
+Everything you need to build with Protean is in the
+[Guides](./guides/index.md) section.
 
-Protean supports three architectural approaches — **DDD**, **CQRS**, and
-**Event Sourcing** — each building on the one before it. Start with DDD
-and evolve later. See [Choose a Path](./guides/pathways/index.md) to
-compare the options.
+Protean supports three architectural approaches, **DDD**, **CQRS**, and **Event
+Sourcing**, each building on the one before it. Start with DDD and evolve later.
+[Choose a Path](./guides/pathways/index.md) compares the options.
 
-Within the guides, you'll find everything from crafting rich
-[domain models](./guides/compose-a-domain/index.md) to adding
-[behavior and business rules](./guides/domain-behavior/index.md), wiring up
-[commands and handlers](./guides/change-state/index.md), and reacting to
-state changes with [event handlers and projections](./guides/consume-state/index.md).
+The guides run from building rich
+[domain models](./guides/compose-a-domain/index.md), through adding
+[behaviour and business rules](./guides/domain-behavior/index.md), wiring up
+[commands and handlers](./guides/change-state/index.md), and reacting to state
+changes with [event handlers and projections](./guides/consume-state/index.md).
 
 ## Finding your way around
 
-If you know what you want to do but aren't sure where to look, start here:
+If you know what you want to do but not where to look:
 
-- **[How Do I...?](./how-do-i.md)** — A task-oriented index. Look up what
-  you're trying to accomplish and jump straight to the right guide.
-- **[Contents](./contents.md)** — A flat, searchable listing of every page in
-  the documentation.
+- **[How Do I...?](./how-do-i.md)**: A task-oriented index. Look up what you are
+  trying to accomplish and go straight to the right guide.
+- **[Contents](./contents.md)**: A flat, searchable listing of every page in the
+  documentation.
 
 ## Configuration and infrastructure
 
-Protean uses a simple configuration file (`domain.toml`) to wire in databases,
-brokers, caches, and other infrastructure without changing domain code. See
-[Configuration](./reference/configuration/index.md) for details.
+Protean uses a configuration file (`domain.toml`) to wire in databases, brokers,
+caches, and other infrastructure without changing domain code. See
+[Configuration](./reference/configuration/index.md).
 
-For infrastructure adapters — PostgreSQL, Elasticsearch, Redis, MessageDB, and
-more — see [Adapters](./reference/adapters/index.md).
+For the infrastructure adapters themselves, including PostgreSQL, Elasticsearch,
+Redis, and MessageDB, see [Adapters](./reference/adapters/index.md).
 
 ## Async processing
 
-The Protean [Server](./concepts/async-processing/index.md) is an async engine that
-processes events, commands, and external messages in the background. It
+The Protean [Server](./concepts/async-processing/index.md) is an async engine
+that processes events, commands, and external messages in the background. It
 supports the [outbox pattern](./concepts/async-processing/outbox.md) for reliable
-delivery and includes built-in [observability](./reference/server/observability.md).
+delivery and comes with
+[observability](./reference/server/observability.md) built in.
 
 ## CLI
 
-The `protean` command-line tool helps you scaffold projects, run the server,
-manage databases, and more. See [CLI](./reference/cli/index.md) for the full
-list of commands.
+The `protean` command-line tool scaffolds projects, runs the server, and manages
+databases. See [CLI](./reference/cli/index.md) for the full list of commands.
 
 ## Testing
 
-Protean provides pytest fixtures and a layered testing strategy — from fast
-in-memory [domain model tests](./guides/testing/domain-model-tests.md) to
-full [integration tests](./guides/testing/integration-tests.md) with real
+Protean provides pytest fixtures and a layered testing strategy, from fast
+in-memory [domain model tests](./guides/testing/domain-model-tests.md) to full
+[integration tests](./guides/testing/integration-tests.md) against real
 infrastructure. See [Testing](./guides/testing/index.md).
 
-## Patterns and best practices
+## Patterns
 
-Looking for architectural guidance? The
-[Patterns](./patterns/index.md) section covers recurring design patterns —
-aggregate sizing, idempotent handlers, validation layering, event versioning,
-and more.
+The [Patterns](./patterns/index.md) section covers recurring designs and their
+trade-offs, including aggregate sizing, idempotent handlers, validation layering,
+and event versioning.
 
 ## Glossary
 
-Stuck on a term? There is a comprehensive [Glossary](glossary.md) to help you
-find clear definitions for all the concepts and jargon you'll encounter as you
-navigate Protean.
+The [Glossary](glossary.md) defines the concepts and terms you will meet across
+these pages.
 
 ## Community
 
-You're not alone on this journey. Join our
-[Community](./community/index.md) to connect with fellow Protean users, share
-experiences, and get your questions answered. Together, we can make Protean
-even better!
+The [Community](./community/index.md) page covers where to ask questions, how to
+report a problem, and how to contribute.

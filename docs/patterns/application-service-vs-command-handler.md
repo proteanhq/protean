@@ -4,8 +4,8 @@
 
 Protean provides two mechanisms for coordinating state changes: **application
 services** and **command handlers**. Both load aggregates, call domain methods,
-and persist results. From the outside, they look interchangeable -- and that
-is exactly why teams misuse them.
+and persist results. From the outside, they look interchangeable, and that is
+exactly why teams misuse them.
 
 A developer building a user registration endpoint reaches for a command handler
 because "commands sound right for changing state":
@@ -33,8 +33,8 @@ class UserCommandHandler(BaseCommandHandler):
 ```
 
 The handler works, but the API endpoint needs the newly created user with its
-generated ID. `domain.process()` is fire-and-forget by default -- it stores
-the command and returns `None`. The developer forces synchronous execution:
+generated ID. `domain.process()` is fire-and-forget by default. It stores the
+command and returns `None`. The developer forces synchronous execution:
 
 ```python
 @app.post("/users")
@@ -55,7 +55,7 @@ def create_user(payload: CreateUserRequest):
 ```
 
 The code processes the command synchronously and then immediately queries for
-the result -- two round-trips where one should suffice. The `asynchronous=False`
+the result. Two round-trips where one should suffice. The `asynchronous=False`
 flag fights the command handler's natural purpose.
 
 Meanwhile, another developer on the same team uses an application service for
@@ -75,31 +75,31 @@ class OrderService(BaseApplicationService):
 ```
 
 This works in development. But in production, payment confirmations should be
-processed asynchronously -- the webhook needs to return `200 OK` immediately.
-The application service cannot be invoked via `domain.process()`, so the
-developer adds a queue, a worker, and a polling loop. Infrastructure that
-Protean's command handler system already provides.
+processed asynchronously. The webhook needs to return `200 OK` immediately. The
+application service cannot be invoked via `domain.process()`, so the developer
+adds a queue, a worker, and a polling loop. Infrastructure that Protean's
+command handler system already provides.
 
 Both developers chose the wrong tool:
 
-- **The registration endpoint** needs a synchronous return value -- an
+- **The registration endpoint** needs a synchronous return value. An
   application service would have been simpler and more direct.
 
-- **The payment webhook** needs asynchronous, reliable processing -- a command
-  handler with `domain.process()` would have provided that out of the box.
+- **The payment webhook** needs asynchronous, reliable processing. A command
+  handler with `domain.process()` would have provided that already.
 
 The confusion has deeper consequences:
 
-- **Inconsistent invocation patterns.** Some operations are triggered by
+- **Inconsistent invocation patterns**: Some operations are triggered by
   direct method calls, others by `domain.process()`. The team cannot predict
   which pattern a given operation uses without reading the code.
 
-- **Forced synchrony or forced asynchrony.** Using `asynchronous=False` on
+- **Forced synchrony or forced asynchrony**: Using `asynchronous=False` on
   every `domain.process()` call defeats the purpose of command handlers. Using
   application services for operations that should be fire-and-forget requires
   building custom async infrastructure.
 
-- **Duplicate coordination layers.** Some teams define both an application
+- **Duplicate coordination layers**: Some teams define both an application
   service and a command handler for the same operation "just in case," leading
   to two code paths that must be kept in sync.
 
@@ -161,8 +161,8 @@ event-driven with background processing, lean toward command handlers.
 
 ### Application Service: User Registration
 
-The API endpoint needs to return the newly created user with its ID -- a
-direct, synchronous operation.
+The API endpoint needs to return the newly created user with its ID: a direct,
+synchronous operation.
 
 ```python
 # --- Domain elements ---
@@ -249,7 +249,7 @@ and events are published when the method returns.
 ### Command Handler: Order Payment Processing
 
 Payment confirmations arrive from an external webhook. The webhook must return
-`200 OK` immediately -- a fire-and-forget operation.
+`200 OK` immediately, a fire-and-forget operation.
 
 ```python
 # --- Domain elements ---
@@ -351,7 +351,7 @@ never waits for the order update.
 | Update user profile | Yes (return updated profile) | No | No | Application service |
 | Send welcome email after registration | No | Yes | Yes (UserRegistered event) | Event handler (not a command handler) |
 | Cancel expired orders (scheduled job) | No | Yes | No | Command handler |
-| Look up order details for display | Yes (return order) | No | No | Neither -- use repository directly or query handler |
+| Look up order details for display | Yes (return order) | No | No | Neither, use repository directly or query handler |
 
 ### Synchronous Command Processing
 
@@ -377,9 +377,9 @@ result = domain.process(
 mode = "sync"
 ```
 
-Use per-call overrides sparingly -- in tests or development only. If you find
-yourself setting `asynchronous=False` on every `domain.process()` call, you
-probably want an application service instead.
+Use per-call overrides sparingly, in tests or development only. If you find
+yourself setting `asynchronous=False` on every `domain.process()` call, you probably want an application
+service instead.
 
 ---
 
@@ -585,7 +585,7 @@ for all API-triggered operations. If a specific operation must be async
 | **Processing config** | Not applicable | `command_processing` in `domain.toml` |
 | **Priority lanes** | Not applicable | Supported via `priority` param |
 
-**The principle: if the caller needs the answer now, use an application
+**If the caller needs the answer now, use an application
 service. If the caller can walk away and let the system handle it, use a
 command handler. Never both for the same operation.**
 
@@ -594,15 +594,15 @@ command handler. Never both for the same operation.**
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md) -- Business logic belongs in aggregates, not coordinators.
-    - [Encapsulate State Changes](encapsulate-state-changes.md) -- Named methods for every state transition.
+    - [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md): Business logic belongs in aggregates, not coordinators.
+    - [Encapsulate State Changes](encapsulate-state-changes.md): Named methods for every state transition.
 
     **Concepts:**
 
-    - [Application Services](../concepts/building-blocks/application-services.md) -- Synchronous use case coordination.
-    - [Command Handlers](../concepts/building-blocks/command-handlers.md) -- Async command processing.
+    - [Application Services](../concepts/building-blocks/application-services.md): Synchronous use case coordination.
+    - [Command Handlers](../concepts/building-blocks/command-handlers.md): Async command processing.
 
     **Guides:**
 
-    - [Application Services](../guides/change-state/application-services.md) -- Defining application services.
-    - [Command Handlers](../guides/change-state/command-handlers.md) -- Defining command handlers.
+    - [Application Services](../guides/change-state/application-services.md): Defining application services.
+    - [Command Handlers](../guides/change-state/command-handlers.md): Defining command handlers.

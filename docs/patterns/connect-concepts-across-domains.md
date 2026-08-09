@@ -4,16 +4,16 @@
 
 In a non-trivial system, the same real-world concept inevitably appears in
 multiple bounded contexts. A "Customer" exists in Sales, Billing, Shipping, and
-Support -- but each context cares about different attributes, enforces different
+Support, but each context cares about different attributes, enforces different
 rules, and evolves at its own pace.
 
 This creates a tension:
 
-- **The contexts need to know about each other's state.** When Sales registers a
+- **The contexts need to know about each other's state**: When Sales registers a
   new customer, Billing needs to create an account. When Billing suspends an
   account, Support needs to know. When Shipping updates an address, Sales may want
   to reflect it.
-- **The contexts must not be coupled.** If Billing directly queries the Sales
+- **The contexts must not be coupled**: If Billing directly queries the Sales
   database for customer information, it becomes dependent on Sales' schema,
   availability, and deployment schedule. Changes in Sales break Billing. The
   bounded contexts lose their independence.
@@ -202,7 +202,7 @@ class Customer:
 
 With `fact_events=True`, Protean automatically generates a fact event containing
 the full aggregate state whenever the aggregate changes. Consuming contexts
-simply overwrite their local representation with the latest snapshot.
+overwrite their local representation with the latest snapshot.
 
 **When to use which:**
 
@@ -230,7 +230,7 @@ the contexts.
 
     **Distributed domains:** Use subscribers as anti-corruption layers.
 
-    See [Multi-Domain Applications — Cross-domain
+    See [Multi-Domain Applications, Cross-domain
     communication](../guides/multi-domain-applications.md#cross-domain-communication)
     for the full decision framework.
 
@@ -347,10 +347,10 @@ class CustomerEventSubscriber:
         repo.add(recipient)
 ```
 
-The subscriber is the **anti-corruption layer**. It prevents the Sales context's
-schema from leaking into the Shipping domain. If Sales changes how it structures
-customer events, only the subscriber needs to change -- the `Recipient` aggregate
-and the rest of the Shipping domain remain untouched.
+The subscriber is the **anti-corruption layer**. It prevents the Sales
+context's schema from leaking into the Shipping domain. If Sales changes how it
+structures customer events, only the subscriber needs to change, the `Recipient`
+aggregate and the rest of the Shipping domain remain untouched.
 
 ### Cross-Context Projections
 
@@ -393,16 +393,16 @@ class CustomerDashboardProjector:
 ```
 
 Projections are ideal for query scenarios that span multiple aggregates. They
-are read-optimized, denormalized, and eventually consistent -- exactly what you
+are read-optimized, denormalized, and eventually consistent, exactly what you
 need for cross-context views.
 
 ---
 
 ## The Correlation ID
 
-The shared identifier -- the correlation ID -- is the linchpin of this pattern.
-Every context stores it on its local model and uses it to connect incoming events
-to the right local entity.
+The shared identifier, the correlation ID, is what holds this pattern together.
+Every context stores it on its local model and uses it to connect incoming
+events to the right local entity.
 
 ### Design Guidelines
 
@@ -431,7 +431,7 @@ class CustomerEmailUpdated:
 ```
 
 **Index it for efficient lookup.** Consuming contexts will frequently query by
-the correlation ID. Ensure the field is indexed in whatever persistence layer
+the correlation ID. Make sure the field is indexed in whatever persistence layer
 backs the local model.
 
 ### Multiple Correlation IDs
@@ -497,7 +497,7 @@ to what it needs and ignores the rest.
 
 ### Use Read Models Where Appropriate
 
-Sometimes a consuming context doesn't need a full aggregate -- it only needs a
+Sometimes a consuming context doesn't need a full aggregate. It only needs a
 read-only reference for display or validation. Use projections for these
 scenarios:
 
@@ -558,10 +558,11 @@ Sharing a class couples their evolution paths.
 
 ### Treating Events as Remote Procedure Calls
 
-Events are facts, not requests. A publishing context should not expect or depend
-on a consuming context's reaction. The publisher raises `CustomerRegistered` and
-moves on. Whether Billing creates an account, Support creates a contact, or no
-one reacts at all -- the publisher doesn't know and doesn't care.
+Events are facts, not requests. A publishing context should not expect or
+depend on a consuming context's reaction. The publisher raises
+`CustomerRegistered` and moves on. Whether Billing creates an account, Support
+creates a contact, or no one reacts at all. The publisher doesn't know and
+doesn't care.
 
 If you need a guaranteed response from another context, use a command-based
 integration (e.g., an API call or a command sent through a broker), not events.
@@ -591,10 +592,10 @@ ensuring they stay synchronized on the real-world concepts they all model.
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../concepts/building-blocks/events.md) — Events as the communication mechanism between domains.
-    - [Subscribers](../concepts/building-blocks/subscribers.md) — Consuming messages from external bounded contexts.
+    - [Events](../concepts/building-blocks/events.md): Events as the communication mechanism between domains.
+    - [Subscribers](../concepts/building-blocks/subscribers.md): Consuming messages from external bounded contexts.
 
     **Guides:**
 
-    - [Subscribers](../guides/consume-state/subscribers.md) — Defining subscribers for external message consumption.
-    - [Events](../guides/domain-definition/events.md) — Event definition and structure.
+    - [Subscribers](../guides/consume-state/subscribers.md): Defining subscribers for external message consumption.
+    - [Events](../guides/domain-definition/events.md): Event definition and structure.

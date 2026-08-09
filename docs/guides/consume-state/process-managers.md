@@ -3,10 +3,10 @@
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Some business processes span multiple aggregates and take multiple steps to
-complete — an order fulfillment flow that moves through payment, inventory
-reservation, and shipping, for example. Event handlers work for simple
-one-step reactions, but when you need to track where you are in a multi-step
-workflow and decide what to do next, you need a process manager.
+complete, an order fulfillment flow that moves through payment, inventory
+reservation, and shipping, for example. Event handlers work for simple one-step
+reactions, but when you need to track where you are in a multi-step workflow
+and decide what to do next, you need a process manager.
 
 Process managers coordinate multi-step business processes that span multiple
 aggregates. They react to domain events from different streams, maintain their
@@ -50,7 +50,7 @@ shipping):
 ```
 
 Each arrow crosses an aggregate boundary through the event store. The PM never
-calls aggregate methods directly — it issues commands, and the aggregates'
+calls aggregate methods directly. It issues commands, and the aggregates'
 command handlers decide how to execute them.
 
 ## Why `stream_categories` Must Match the Aggregates You Command
@@ -86,7 +86,7 @@ lifecycle management and event correlation.
 --8<-- "guides/consume-state/process-managers/001.py:full"
 ```
 
-1. `start=True` marks this handler as the entry point — it creates a new PM
+1. `start=True` marks this handler as the entry point. It creates a new PM
    instance when the event arrives.
 
 2. `correlate="order_id"` extracts `event.order_id` to identify which PM
@@ -107,7 +107,7 @@ Process managers drive other aggregates forward by issuing commands:
 
 1. The handler issues `RequestPayment` to the `Payment` aggregate. This
    command is processed by `Payment`'s command handler, which will raise
-   either `PaymentConfirmed` or `PaymentFailed` — and the PM will see that
+   either `PaymentConfirmed` or `PaymentFailed`. And the PM will see that
    response event because it subscribes to the `ecommerce::payment` stream.
 
 2. On payment failure, the handler issues `CancelOrder` to compensate,
@@ -118,7 +118,7 @@ Unit of Work.
 
 ## Process Manager Workflow
 
-Under the hood, this is what happens each time an event is delivered to a PM:
+This is what happens each time an event is delivered to a PM:
 
 ```mermaid
 sequenceDiagram
@@ -153,7 +153,7 @@ declare a `correlate` parameter.
 
 ### String Correlation
 
-The simplest form — the PM field name matches the event field name:
+The simplest form, the PM field name matches the event field name:
 
 ```python
 @handle(OrderPlaced, start=True, correlate="order_id")
@@ -188,8 +188,7 @@ skipped.
 
 There are two ways to mark a PM as complete:
 
-**Using `end=True`** — the PM is automatically marked complete after the handler
-runs:
+**Using `end=True`**. The PM is automatically marked complete after the handler runs:
 
 ```python
 @handle(PaymentFailed, correlate="order_id", end=True)
@@ -197,8 +196,7 @@ def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
 ```
 
-**Using `mark_as_complete()`** — call explicitly within a handler for
-conditional completion:
+**Using `mark_as_complete()`**, call explicitly within a handler for conditional completion:
 
 ```python
 @handle(ShipmentDelivered, correlate="order_id")
@@ -217,9 +215,9 @@ are silently skipped. No new transition is persisted and no handler runs.
 ### Stream Sources
 
 - **`stream_categories`**: List of stream categories the PM subscribes to.
-  Include every aggregate stream that the PM needs to see events from —
-  both the stream that triggers the workflow and the streams of aggregates
-  the PM issues commands to.
+  Include every aggregate stream that the PM needs to see events from, both the
+  stream that triggers the workflow and the streams of aggregates the PM issues
+  commands to.
 
     ```python
     @domain.process_manager(
@@ -229,8 +227,8 @@ are silently skipped. No new transition is persisted and no handler runs.
         ...
     ```
 
-- **`aggregates`**: Alternative to `stream_categories` — specify aggregates
-  and Protean infers the stream categories from their stream configurations.
+- **`aggregates`**: Alternative to `stream_categories`, specify aggregates and Protean infers the
+  stream categories from their stream configurations.
 
     ```python
     @domain.process_manager(aggregates=[Order, Payment, Shipping])
@@ -253,7 +251,7 @@ See [Server → Configuration](../../reference/server/configuration.md) for deta
 ## Handling Events from Other Domains
 
 Process managers often coordinate workflows that span multiple bounded
-contexts — for example, an order fulfillment PM that reacts to events from
+contexts, for example, an order fulfillment PM that reacts to events from
 Billing and Inventory domains in addition to its own Order domain.
 
 When multiple domains are **co-located in the same repository** and share
@@ -319,7 +317,7 @@ class OrderFulfillmentPM:
 When domains are **distributed as independent services**, use subscribers
 instead. The subscriber acts as an anti-corruption layer, translating raw
 broker payloads into internal commands or events that your PM can react to.
-See [Multi-Domain Applications — Cross-domain
+See [Multi-Domain Applications, Cross-domain
 communication](../../guides/multi-domain-applications.md#cross-domain-communication)
 for guidance on choosing between the two approaches.
 
@@ -355,10 +353,10 @@ PM's state when loading.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Process Managers](../../concepts/building-blocks/process-managers.md) — Why process managers exist, when to use them vs. event handlers, and how the event chain works.
+    **Concept overview:** [Process Managers](../../concepts/building-blocks/process-managers.md): Why process managers exist, when to use them vs. event handlers, and how the event chain works.
 
     **Patterns:**
 
-    - [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Building resilient process managers with idempotency, compensation, and timeout handling.
+    - [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md): Building resilient process managers with idempotency, compensation, and timeout handling.
 
-    **Related guide:** [Message Tracing](../domain-behavior/message-tracing.md) — Correlation and causation IDs that thread through process manager workflows, plus the programmatic causation chain API.
+    **Related guide:** [Message Tracing](../domain-behavior/message-tracing.md): Correlation and causation IDs that thread through process manager workflows, plus the programmatic causation chain API.

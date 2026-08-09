@@ -163,11 +163,11 @@ How the trim behaves depends on the consumer topology:
 - **More than one consumer group** (for example a projector plus an event
   handler): Protean trims by `MINID` at the slowest group's last-delivered
   position, so nothing a slow group has not yet read is ever removed.
-  `retention_maxlen` is ignored here — consumer progress bounds the stream. Note
-  the flip side: a group parked at `0-0` (a dead consumer, or a handler you
-  removed without deleting its group) holds the floor down, so the stream keeps
-  growing until you delete that group. Retention is progress-bounded, not
-  size-bounded, whenever multiple groups exist.
+  `retention_maxlen` is ignored here, consumer progress bounds the stream. Note the flip side:
+  a group parked at `0-0` (a dead consumer, or a handler you removed without
+  deleting its group) holds the floor down, so the stream keeps growing until
+  you delete that group. Retention is progress-bounded, not size-bounded,
+  whenever multiple groups exist.
 - **At most one consumer group:** Protean caps the stream at `retention_maxlen`
   with a plain `MAXLEN` trim. This is a fixed-size cap, not a progress-safe one:
   if the single handler falls more than `retention_maxlen` behind (catch-up on a
@@ -396,9 +396,9 @@ curl http://localhost:9000/api/subscriptions
 See [`protean subscriptions`](../cli/runtime/subscriptions.md) for full CLI
 documentation and [Observability](observability.md) for the Observatory API.
 
-## Next Steps
+## Related pages
 
-- [Configuration](configuration.md) - Learn about configuration profiles and
+- [Configuration](configuration.md): Learn about configuration profiles and
   the priority hierarchy
-- [Outbox Pattern](../../concepts/async-processing/outbox.md) - Understand how StreamSubscription uses the
+- [Outbox Pattern](../../concepts/async-processing/outbox.md): Understand how StreamSubscription uses the
   transactional outbox

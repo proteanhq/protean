@@ -63,25 +63,25 @@ This handler is 40 lines of business logic. It validates, calculates, mutates,
 decides, and raises events. The `Order` aggregate is a passive data container
 that the handler manipulates.
 
-This is the **anemic domain model** -- an anti-pattern where domain objects
-carry data but no behavior, and business logic lives in service layers
-(handlers, application services, utility functions).
+This is the **anemic domain model**. An anti-pattern where domain objects carry
+data but no behavior, and business logic lives in service layers (handlers,
+application services, utility functions).
 
 The consequences:
 
-- **Logic duplication.** Another handler that processes admin overrides
+- **Logic duplication**: Another handler that processes admin overrides
   reimplements the refund calculation. A batch job that auto-refunds expired
   subscriptions has its own version. Each diverges slightly over time.
 
-- **Untestable business logic.** To test refund eligibility, you need to
+- **Untestable business logic**: To test refund eligibility, you need to
   construct a command, set up a repository, create a handler instance, and run
   it within a UoW. The business rule is buried inside infrastructure.
 
-- **Hidden dependencies.** The handler knows about refund windows, partial
+- **Hidden dependencies**: The handler knows about refund windows, partial
   refunds, shipment interception, and warehouse notifications. These are
   domain concerns scattered across infrastructure code.
 
-- **Aggregate bypass.** Since the aggregate has no methods, nothing prevents
+- **Aggregate bypass**: Since the aggregate has no methods, nothing prevents
   other code from setting `order.status = "refund_requested"` without
   checking eligibility or raising events.
 
@@ -92,8 +92,8 @@ orchestrate; the domain model should think.
 
 ## The Pattern
 
-Keep handlers **thin** -- they load, delegate, and save. Move all business
-logic into **aggregates** and **domain services**.
+Keep handlers **thin**. They load, delegate, and save. Move all business logic
+into **aggregates** and **domain services**.
 
 ```
 Thin handler:
@@ -319,8 +319,8 @@ class Account:
         self.last_withdrawal_date = today
 ```
 
-All withdrawal logic -- status check, daily limits, balance check, total
-tracking -- is in the aggregate. The handler is:
+All withdrawal logic (status check, daily limits, balance check, total
+tracking) is in the aggregate. The handler is:
 
 ```python
 @handle(WithdrawMoney)
@@ -423,9 +423,9 @@ ask whether the extra logic belongs in the domain model:
 
 | Handler Line | Belongs In Handler? | Move To |
 |-------------|--------------------|----|
-| `repo.get(id)` | Yes | -- |
-| `aggregate.method(data)` | Yes | -- |
-| `repo.add(aggregate)` | Yes | -- |
+| `repo.get(id)` | Yes | —  |
+| `aggregate.method(data)` | Yes | —  |
+| `repo.add(aggregate)` | Yes | —  |
 | `if aggregate.status != "active"` | No | Aggregate method (precondition) |
 | `amount = command.total * 0.9` | No | Aggregate method (calculation) |
 | `aggregate.raise_(Event(...))` | No | Aggregate method (event raising) |
@@ -438,24 +438,24 @@ The handler is the **coordinator**, not the **decision-maker**.
 
 ## Signs Your Handler Is Too Thick
 
-1. **If-else business logic.** Conditional branching based on aggregate state
+1. **If-else business logic**: Conditional branching based on aggregate state
    should be inside the aggregate.
 
-2. **Calculations.** Computing amounts, percentages, dates, or derived values
+2. **Calculations**: Computing amounts, percentages, dates, or derived values
    belongs in the aggregate or a domain service.
 
-3. **Multiple aggregate method calls.** If the handler calls several methods
+3. **Multiple aggregate method calls**: If the handler calls several methods
    in sequence on the same aggregate, those methods should be composed into a
    single higher-level method on the aggregate.
 
-4. **Event raising.** Events should be raised inside aggregate methods, not
+4. **Event raising**: Events should be raised inside aggregate methods, not
    in the handler.
 
-5. **Domain knowledge.** If the handler "knows" business rules (refund windows,
+5. **Domain knowledge**: If the handler "knows" business rules (refund windows,
    discount calculations, eligibility criteria), that knowledge belongs in the
    domain model.
 
-6. **More than 10 lines of non-infrastructure code.** A handler that's longer
+6. **More than 10 lines of non-infrastructure code**: A handler that's longer
    than load-call-save is a code smell.
 
 ---
@@ -630,8 +630,8 @@ def transfer(self, command: TransferMoney):
     account_repo.add(source)
 ```
 
-Loading a second aggregate for a domain service is fine -- the handler is
-still just orchestrating.
+Loading a second aggregate for a domain service is fine. The handler is still
+just orchestrating.
 
 ### Creating New Aggregates
 
@@ -683,20 +683,20 @@ Authorization checks are the handler's responsibility (see
 | Code organization | Logic by handler | Logic by domain concept |
 | Readability | Must read handler to understand rules | Method names express intent |
 
-The principle: **handlers orchestrate. Aggregates think. Load, call, save.
-If your handler knows business rules, the rules are in the wrong place.**
+Handlers orchestrate. Aggregates think. Load, call, save. If your handler knows
+business rules, the rules are in the wrong place.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Command Handlers](../concepts/building-blocks/command-handlers.md) — Command handler responsibilities.
-    - [Application Services](../concepts/building-blocks/application-services.md) — Orchestrating use cases.
-    - [Domain Services](../concepts/building-blocks/domain-services.md) — Cross-aggregate business logic.
+    - [Command Handlers](../concepts/building-blocks/command-handlers.md): Command handler responsibilities.
+    - [Application Services](../concepts/building-blocks/application-services.md): Orchestrating use cases.
+    - [Domain Services](../concepts/building-blocks/domain-services.md): Cross-aggregate business logic.
 
     **Guides:**
 
-    - [Command Handlers](../guides/change-state/command-handlers.md) — Defining and implementing command handlers.
-    - [Application Services](../guides/change-state/application-services.md) — The @use_case decorator and service workflow.
-    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md) — Pushing state changes into aggregates.
+    - [Command Handlers](../guides/change-state/command-handlers.md): Defining and implementing command handlers.
+    - [Application Services](../guides/change-state/application-services.md): The @use_case decorator and service workflow.
+    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md): Pushing state changes into aggregates.

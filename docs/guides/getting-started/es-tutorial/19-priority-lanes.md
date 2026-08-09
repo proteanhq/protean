@@ -1,10 +1,10 @@
-# Chapter 19: The Great Migration — Priority Lanes
+# Chapter 19: The Great Migration, Run on Priority Lanes
 
 Fidelis acquires another bank and must migrate 2 million historical
 accounts. Running all 2 million `OpenAccount` commands through the
-normal pipeline would starve real-time production traffic — deposits and
-withdrawals from existing customers would queue behind millions of
-migration events.
+normal pipeline would starve real-time production traffic, deposits and
+withdrawals from existing customers would queue behind millions of migration
+events.
 
 **Priority lanes** solve this by separating production traffic from bulk
 operations.
@@ -34,8 +34,8 @@ backfill_suffix = "backfill"
 
 With this configuration, Protean creates **two streams** per category:
 
-- **Primary**: `fidelis::account` — production traffic
-- **Backfill**: `fidelis::account:backfill` — bulk/migration traffic
+- **Primary**: `fidelis::account`, production traffic
+- **Backfill**: `fidelis::account:backfill`, bulk/migration traffic
 
 The `StreamSubscription` always drains the primary stream first. Backfill
 events are processed only when the primary is empty.
@@ -83,7 +83,7 @@ through the primary stream at full speed.
 
 ## Nested Priorities
 
-Contexts nest — the innermost wins:
+Contexts nest. The innermost wins:
 
 ```python
 with processing_priority(Priority.BULK):
@@ -148,7 +148,7 @@ touched when production is idle.
 - **Nested priority contexts** for mixed workloads.
 - Production traffic isolation during large migrations.
 
-Part IV is complete. We have a production-grade platform with fact
+That completes Part IV. The platform now has fact
 events, message tracing, DLQ management, monitoring, and priority lanes.
 In Part V, we achieve mastery over the complete system.
 

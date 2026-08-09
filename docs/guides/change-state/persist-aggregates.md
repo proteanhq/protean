@@ -2,8 +2,9 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-This guide covers how to persist aggregates through repositories -- from basic
-save operations and transactions to event publishing and updates.
+Repositories are how aggregates reach the database. Here is how to save one,
+what a transaction does around it, how events are published on the way out,
+and how updates differ from inserts.
 
 Aggregates are saved into the configured database using `add` method of the
 repository.
@@ -131,10 +132,10 @@ Out[7]:
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md) — The role of repositories in DDD and how Protean implements the pattern.
+    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md): The role of repositories in DDD and how Protean implements the pattern.
 
     **Related guides:**
 
-    - [Repositories](./repositories.md) — Define custom repositories with domain-named query methods.
-    - [Retrieve Aggregates](./retrieve-aggregates.md) — Query, filter, sort, and paginate aggregates.
-    - [Unit of Work](./unit-of-work.md) — Transactional consistency when persisting multiple changes.
+    - [Repositories](./repositories.md): Define custom repositories with domain-named query methods.
+    - [Retrieve Aggregates](./retrieve-aggregates.md): Query, filter, sort, and paginate aggregates.
+    - [Unit of Work](./unit-of-work.md): Transactional consistency when persisting multiple changes.

@@ -222,7 +222,7 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
 
 ### Best Practices
 
-1. Make error handlers robust and avoid complex logic that might fail.
+1. Keep error handlers simple, and avoid logic that might itself fail.
 2. Use error handlers for logging, notification, and simple recovery.
 3. Do not throw exceptions from error handlers unless absolutely necessary.
 4. Consider implementing retry logic or dead-letter patterns for persistent
@@ -267,8 +267,8 @@ class PaymentWebhookSubscriber:
 
 The Protean Engine sets `g.message_in_context` during subscriber processing,
 using the same mechanism as event and command handlers. This gives subscribers
-access to the broker message ID and stream name — useful for idempotency
-checks, audit logging, and debugging:
+access to the broker message ID and stream name, useful for idempotency checks,
+audit logging, and debugging:
 
 ```python
 from protean.utils.globals import g
@@ -311,7 +311,7 @@ the full trace chain back to the original external message. The
 stitching the causal chain across service boundaries.
 
 The context is automatically set before `__call__` is invoked and cleaned up
-afterward — even if the subscriber raises an exception.
+afterward, even if the subscriber raises an exception.
 
 For a complete guide on how correlation and causation IDs flow across service
 boundaries, see
@@ -336,7 +336,7 @@ systems that publish messages to a broker.
 ## Complete Example
 
 Below is a comprehensive example showing two subscribers processing webhooks
-from different external systems -- a payment gateway and a shipping provider:
+from different external systems, a payment gateway and a shipping provider:
 
 ```python hl_lines="24-48 51-63"
 --8<-- "guides/consume-state/004.py:full"
@@ -359,9 +359,9 @@ from different external systems -- a payment gateway and a shipping provider:
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Subscribers](../../concepts/building-blocks/subscribers.md) — Anti-corruption layer for external message consumption.
+    **Concept overview:** [Subscribers](../../concepts/building-blocks/subscribers.md): Anti-corruption layer for external message consumption.
 
     **Patterns:**
 
-    - [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md) — Patterns for integrating with external bounded contexts.
-    - [Connecting Concepts Across Domains](../../patterns/connect-concepts-across-domains.md) — Bridging domain boundaries with shared concepts.
+    - [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md): Patterns for integrating with external bounded contexts.
+    - [Connecting Concepts Across Domains](../../patterns/connect-concepts-across-domains.md): Bridging domain boundaries with shared concepts.

@@ -1,10 +1,9 @@
-# Chapter 14: Connecting to the Outside World — Subscribers
+# Chapter 14: Connecting to the Outside World with Subscribers
 
-Bookshelf has partnered with a book distributor — **BookSupply** — that
-sends webhook notifications when new books become available or when
-stock is replenished. These messages arrive on a Redis stream from an
-external system. We need to consume them and translate them into our
-domain language.
+Bookshelf has partnered with a book distributor (**BookSupply**) that sends
+webhook notifications when new books become available or when stock is
+replenished. These messages arrive on a Redis stream from an external system.
+We need to consume them and translate them into our domain language.
 
 ## Subscribers vs. Event Handlers
 
@@ -16,8 +15,8 @@ domain language.
 | **Registration** | `part_of=Aggregate` | `stream="stream_name"` |
 
 Event handlers trust the data because it comes from our own aggregates.
-Subscribers do **not** trust the data — they validate, translate, and
-map it into domain operations.
+Subscribers do **not** trust the data. They validate, translate, and map it
+into domain operations.
 
 ## Defining the Subscriber
 
@@ -63,9 +62,9 @@ External System           Protean
      │                  └────────────┘
 ```
 
-The subscriber acts as an **anti-corruption layer** (ACL) — it prevents
-external data formats from leaking into the domain. If BookSupply
-changes their payload format, only the subscriber needs to change.
+The subscriber acts as an **anti-corruption layer** (ACL). It prevents external
+data formats from leaking into the domain. If BookSupply changes their payload
+format, only the subscriber needs to change.
 
 ## Testing the Subscriber
 

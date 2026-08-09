@@ -81,12 +81,12 @@ retention_maxlen = 100_000
 on how many consumer groups read the stream, because the priority is never
 deleting an event somebody still needs:
 
-- **Two or more consumer groups.** The stream is trimmed to the slowest group's
+- **Two or more consumer groups**: The stream is trimmed to the slowest group's
   read position, and **`retention_maxlen` is ignored**. Consumer progress bounds
   the stream, not your number. A stream with several handlers on it therefore
   grows as large as the slowest one lets it, and the fix for an oversized stream
   is to find the handler that is behind, not to lower this setting.
-- **One consumer group, or none.** The stream is capped at `retention_maxlen`.
+- **One consumer group, or none**: The stream is capped at `retention_maxlen`.
   This one is a hard size ceiling, and it is *not* progress-safe: if the single
   reader falls more than `retention_maxlen` behind, the oldest **unread**
   entries are dropped. That happens during an initial catch-up on a pre-existing
@@ -118,9 +118,9 @@ circuit_breaker_reset_seconds = 30  # how long it waits before probing again
 
 What you will observe when it trips:
 
-1. **Open.** Reads stop. Messages stay in the stream and the pending list, so
+1. **Open**: Reads stop. Messages stay in the stream and the pending list, so
    nothing is lost, and they are redelivered later.
-2. **Half-open.** After the reset window, one probe message is allowed through.
+2. **Half-open**: After the reset window, one probe message is allowed through.
 3. **Closed** if the probe succeeds, or back to open if it fails, restarting the
    timer.
 
@@ -149,7 +149,7 @@ Events for `order_id=A` are serialised against each other; events for
   the option, its constraints, and how partitions are discovered.
 - [Designing for concurrent event processing](../../patterns/designing-for-concurrent-event-processing.md):
   when to reach for this instead of a process manager, and the trade-offs.
-- [ADR-0028](../../adr/0028-partition-per-key-sequential-processing.md): why
+- [ADR-0028](../../adr/0028-partition-per-key-sequential-processing.md): Why
   partition-per-key rather than a fixed partition count, superseding the
   deferral recorded in [ADR-0009](../../adr/0009-concurrent-event-processing-strategy.md).
 
@@ -200,15 +200,15 @@ staleness fields and the cases it does not yet cover.
 
 If a subscription is not keeping up, work in this order:
 
-1. **Look before tuning.** `protean subscriptions status` tells you whether the
+1. **Look before tuning**: `protean subscriptions status` tells you whether the
    problem is lag (not reading fast enough), pending (reading but not
    acknowledging), or DLQ depth (failing outright). They need different fixes.
 2. **Raise `messages_per_tick`** if lag is high and the handler is healthy. This
    is the single most effective knob, and `batch` exists to set it for you.
-3. **Check the handler itself.** A slow handler is far more often the cause than
+3. **Check the handler itself**: A slow handler is far more often the cause than
    a small batch size. Tuning around a handler that makes a network call per
    event will not save you.
-4. **Only then reach for a custom profile.** If you are overriding more than two
+4. **Only then reach for a custom profile**: If you are overriding more than two
    or three settings on one handler, that is the signal.
 
 !!! warning "Two settings that are not performance knobs"
@@ -220,7 +220,7 @@ If a subscription is not keeping up, work in this order:
 
 ## Related reading
 
-- [Server configuration reference](../../reference/server/configuration.md): every option, its default, and the resolution order.
-- [Subscription types](../../reference/server/subscription-types.md): stream versus event-store consumption.
-- [Hardening](hardening.md): health probes, graceful shutdown, and operational limits.
-- [Monitoring](monitoring.md): the metrics to alert on.
+- [Server configuration reference](../../reference/server/configuration.md): Every option, its default, and the resolution order.
+- [Subscription types](../../reference/server/subscription-types.md): Stream versus event-store consumption.
+- [Hardening](hardening.md): Health probes, graceful shutdown, and operational limits.
+- [Monitoring](monitoring.md): The metrics to alert on.

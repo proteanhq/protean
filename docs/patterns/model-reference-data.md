@@ -22,27 +22,27 @@ class MasterData:
 
 One table, every lookup. It feels economical. Then it rots:
 
-- **Type safety evaporates.** A `Currency` row and an `OrderStatus` row are the
+- **Type safety evaporates**: A `Currency` row and an `OrderStatus` row are the
   same Python type. Nothing stops a handler from assigning a country code where
   a currency was expected. The compiler can't help; only runtime data can tell
   them apart.
 
-- **Invariants degrade into deferred lookups.** "An order's status must be one
+- **Invariants degrade into deferred lookups**: "An order's status must be one
   of the valid statuses" can no longer be a domain rule. It becomes a query
   against `MasterData WHERE category='ORDER_STATUS'`, executed at runtime, far
   from the aggregate that depends on it.
 
-- **Every consumer reinvents the lookup.** There is no `Currency` concept to
+- **Every consumer reinvents the lookup**: There is no `Currency` concept to
   import. So every module that needs currencies writes its own
   `filter(category="CURRENCY")`, its own caching, its own "is this code valid?"
   check. The logic is copy-pasted and drifts.
 
-- **The schema becomes a lowest common denominator.** A currency needs a
+- **The schema becomes a lowest common denominator**: A currency needs a
   `symbol`. A country needs an ISO-3 code and a dialing prefix. A tax code needs
   a rate. None of these fit the shared columns, so they all get stuffed into the
   `extra` grab-bag, where they sit untyped, unvalidated, and unsearchable.
 
-- **The surrogate key leaks everywhere.** Because the table has its own
+- **The surrogate key leaks everywhere**: Because the table has its own
   `master_id`, foreign keys point at that opaque integer instead of the natural
   `code`. Now reading raw data requires a join just to discover that row `4471`
   means `"USD"`.
@@ -59,7 +59,7 @@ concept.**
 
 ## The Pattern
 
-Model each *kind* of reference data as its own first-class domain type. A
+Model each *kind* of reference data as its own domain type. A
 shared physical table, if you truly need one, is an adapter detail, decided
 last, expressed in the model layer, invisible to the domain.
 
@@ -85,12 +85,12 @@ Closed & static (known at design time)        Open & dynamic (admin-managed)
   No persistence                                Persisted, queryable, evolvable
 ```
 
-- **Closed and static.** The values are part of the model's vocabulary and
+- **Closed and static**: The values are part of the model's vocabulary and
   rarely change. Encode them in the type system: a `String(choices=[...])`
   constraint for a bare code, or an **enumeration value object** when the value
   carries a label or behavior.
 
-- **Open and dynamic.** Operators add and retire values at runtime. The kind
+- **Open and dynamic**: Operators add and retire values at runtime. The kind
   earns its own **aggregate**, with the natural `code` as its identity. A
   repository loads it; a cache-backed projection or a catalog service makes it
   available across the application.
@@ -417,22 +417,22 @@ its own, and a missing currency is obvious instead of a dangling integer.
 
 ## When Not to Use / Trade-offs
 
-- **Trivial flags don't need a type.** A two- or three-value set with no label
+- **Trivial flags don't need a type**: A two- or three-value set with no label
   and no behavior (`"draft" | "active" | "archived"`) is well served by a bare
   `String(choices=[...])`. Promoting it to a value object adds ceremony without
   benefit.
 
-- **Static vs. dynamic is a judgement call that can change.** A set that starts
+- **Static vs. dynamic is a judgement call that can change**: A set that starts
   closed (shipping carriers, say) may later need runtime administration. Starting
   with an enumeration value object and migrating to an aggregate is a deliberate
   refactor; model for what you know now, not a hypothetical future.
 
-- **The cache is a freshness trade-off.** A cache-backed catalog is fast but
+- **The cache is a freshness trade-off**: A cache-backed catalog is fast but
   eventually consistent: a newly added currency appears once the projector runs.
   For data that must be immediately consistent on the write path, validate
   against the aggregate repository, not the cached projection.
 
-- **The shared-table escape hatch carries ongoing cost.** Discriminator scoping,
+- **The shared-table escape hatch carries ongoing cost**: Discriminator scoping,
   migrations, and query filtering become your responsibility. Accept it only
   when a table-per-concept is truly off the table.
 
@@ -448,10 +448,10 @@ its own, and a missing currency is obvious instead of a dangling integer.
 | Read everywhere, written rarely | Cache-backed projection | Cache/provider | Refreshed by projector |
 | Legacy shared table required | Aggregates + custom models on one `schema_name` | Shared table (adapter) | Aggregate invariant |
 
-The principle: **one physical table is not one domain concept. Model each kind
-of reference data as its own type: an enumeration value object when it is
-closed and static, or an aggregate keyed by its natural code when it is editable.
-Treat any shared storage table as an adapter detail, never a domain model.**
+One physical table is not one domain concept. Model each kind of reference data
+as its own type: an enumeration value object when it is closed and static, or
+an aggregate keyed by its natural code when it is editable. Treat any shared
+storage table as an adapter detail, never a domain model.
 
 ---
 

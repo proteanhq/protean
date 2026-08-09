@@ -28,13 +28,13 @@ repositories.
 
 Beyond `get`, every repository exposes convenience methods for querying:
 
-- **`.query`** -- returns a QuerySet for building filtered, sorted, paginated
+- **`.query`**: Returns a QuerySet for building filtered, sorted, paginated
   queries.
-- **`.find_by(**kwargs)`** -- finds a single aggregate matching the given
+- **`.find_by(**kwargs)`**: finds a single aggregate matching the given
   field values.
-- **`.find(criteria)`** -- finds all aggregates matching a `Q` criteria
+- **`.find(criteria)`**: Finds all aggregates matching a `Q` criteria
   expression. Returns a `ResultSet`.
-- **`.exists(criteria)`** -- checks if any aggregate matches a `Q` criteria
+- **`.exists(criteria)`**: Checks if any aggregate matches a `Q` criteria
   expression. Returns `True` or `False` without loading objects.
 
 These are available both on the repository instance returned by
@@ -152,10 +152,10 @@ repository's `.query` property:
 queryset = repository.query
 ```
 
-QuerySets are **lazy** -- they don't access the database until you actually
-need the data. This allows you to chain multiple operations efficiently
-without hitting the database repeatedly. Each method returns a new QuerySet
-clone, leaving the original unchanged.
+QuerySets are **lazy**. They don't access the database until you actually need
+the data. This allows you to chain multiple operations efficiently without
+hitting the database repeatedly. Each method returns a new QuerySet clone,
+leaving the original unchanged.
 
 ### `filter` and `exclude`
 
@@ -180,9 +180,8 @@ Out[2]: ['John Doe', 'Jane Doe', 'Baby Doe', 'Boy Doe', 'Girl Doe']
 
 ### Chaining operations
 
-One of the most powerful features of QuerySets is the ability to chain
-operations. Each chained call returns a new QuerySet -- the original is never
-modified:
+QuerySets can chain operations. Each chained call returns a new QuerySet. The
+original is never modified:
 
 ```shell
 In [1]: adults_in_ca = repository.query.filter(age__gte=18).filter(country="CA").order_by("name").all().items
@@ -218,20 +217,20 @@ Queries use lookup suffixes appended to field names with double underscores
 (`__`) to express comparison operators. When no suffix is used, `exact` match
 is assumed.
 
-- **`exact`** -- match exact value (default when no suffix is used)
-- **`iexact`** -- case-insensitive exact match
-- **`contains`** -- substring containment (case-sensitive)
-- **`icontains`** -- substring containment (case-insensitive)
-- **`startswith`** -- starts with a given prefix
-- **`endswith`** -- ends with a given suffix
-- **`gt`** -- greater than
-- **`gte`** -- greater than or equal to
-- **`lt`** -- less than
-- **`lte`** -- less than or equal to
-- **`in`** -- value is in a given list
-- **`isnull`** -- field is null (`True`) or not null (`False`)
-- **`any`** -- a list field contains any of the given values
-- **`overlap`** -- a list field shares any element with the given list
+- **`exact`**: Match exact value (default when no suffix is used)
+- **`iexact`**: Case-insensitive exact match
+- **`contains`**: Substring containment (case-sensitive)
+- **`icontains`**: Substring containment (case-insensitive)
+- **`startswith`**: Starts with a given prefix
+- **`endswith`**: Ends with a given suffix
+- **`gt`**: Greater than
+- **`gte`**: Greater than or equal to
+- **`lt`**: Less than
+- **`lte`**: Less than or equal to
+- **`in`**: Value is in a given list
+- **`isnull`**: Field is null (`True`) or not null (`False`)
+- **`any`**: A list field contains any of the given values
+- **`overlap`**: A list field shares any element with the given list
 
 ```shell
 In [1]: repository.query.filter(name__contains="Doe").all().total
@@ -357,10 +356,10 @@ people = repository.query.filter(
 
 ## Composable query functions
 
-When the same filter criteria appears in multiple places -- a command handler,
-an event handler, a projector, a scheduled job -- you can extract it into a
-plain Python function that returns a `Q` object. This gives you named,
-reusable, composable query criteria without any framework overhead:
+When the same filter criteria appears in multiple places (a command handler, an
+event handler, a projector, a scheduled job) you can extract it into a plain
+Python function that returns a `Q` object. This gives you named, reusable,
+composable query criteria without any framework overhead:
 
 ```python
 from protean.utils.query import Q
@@ -433,18 +432,17 @@ class OrderRepository:
         return self.exists(overdue_orders() & in_region(region))
 ```
 
-This pattern gives you most of the formal
-[Specification Pattern](https://martinfowler.com/apsupp/spec.pdf)'s value --
-named, composable, testable query criteria -- with zero framework complexity.
-The Q functions are regular Python: easy to write, easy to test, and easy to
-understand.
+This pattern gives you most of the formal [Specification
+Pattern](https://martinfowler.com/apsupp/spec.pdf)'s value (named, composable,
+testable query criteria) with zero framework complexity. The Q functions are
+regular Python: easy to write, easy to test, and easy to understand.
 
 ### Structuring as specifications
 
 When you need both database queries *and* in-memory evaluation of the same
-business rule -- for example, querying overdue orders from the database and
-also checking whether a single order is overdue inside an event handler --
-you can structure your query criteria as specification classes:
+business rule, for example, querying overdue orders from the database and also
+checking whether a single order is overdue inside an event handler. You can
+structure your query criteria as specification classes:
 
 ```python
 from abc import ABC, abstractmethod
@@ -639,10 +637,10 @@ result.has_prev    # True if this is not the first page
 
 ## Evaluating a QuerySet
 
-A QuerySet is lazy -- it does not hit the database until it is **evaluated**.
+A QuerySet is lazy. It does not hit the database until it is **evaluated**.
 Evaluation is triggered when you:
 
-- Call **`.all()`** -- returns a ResultSet
+- Call **`.all()`**, returns a ResultSet
 - **Iterate**: `for person in queryset: ...`
 - Check **length**: `len(queryset)`
 - Check **truthiness**: `bool(queryset)` or `if queryset: ...`
@@ -659,15 +657,15 @@ a fresh database query.
 These properties are available on the QuerySet itself and trigger evaluation
 on first access:
 
-- **`total`** -- total count of matching records (int)
-- **`items`** -- list of result entity objects
-- **`first`** -- first result, or `None` if empty
-- **`last`** -- last result, or `None` if empty
-- **`has_next`** -- `True` if more pages exist
-- **`has_prev`** -- `True` if previous pages exist
-- **`page`** -- current page number (1-indexed, int)
-- **`page_size`** -- items per page, or `None` when unlimited (alias for `limit`)
-- **`total_pages`** -- total number of pages (0 when no results)
+- **`total`**: Total count of matching records (int)
+- **`items`**: List of result entity objects
+- **`first`**: First result, or `None` if empty
+- **`last`**: Last result, or `None` if empty
+- **`has_next`**: `True` if more pages exist
+- **`has_prev`**: `True` if previous pages exist
+- **`page`**: Current page number (1-indexed, int)
+- **`page_size`**: Items per page, or `None` when unlimited (alias for `limit`)
+- **`total_pages`**: Total number of pages (0 when no results)
 
 ```shell
 In [1]: query = repository.query.filter(country="CA").order_by("age")
@@ -765,7 +763,7 @@ QuerySets provide methods for updating and deleting multiple records at once.
 
 ### `update`
 
-Updates each matching object individually -- loads every entity and triggers
+Updates each matching object individually: it loads every entity and triggers
 callbacks and validations:
 
 ```python
@@ -776,7 +774,7 @@ Returns the number of objects matched.
 
 ### `delete`
 
-Deletes each matching object individually -- loads every entity first:
+Deletes each matching object individually: it loads every entity first:
 
 ```python
 count = repository.query.filter(country="XX").delete()
@@ -791,24 +789,24 @@ DAO-specific data structures from leaking into the domain layer.
 
 ### Attributes
 
-- **`offset`** -- the current offset (zero-indexed)
-- **`limit`** -- the number of items requested
-- **`total`** -- total number of items matching the query (across all pages)
-- **`items`** -- list of result entity objects in the current page
+- **`offset`**: The current offset (zero-indexed)
+- **`limit`**: The number of items requested
+- **`total`**: Total number of items matching the query (across all pages)
+- **`items`**: List of result entity objects in the current page
 
 ### Properties
 
-- **`first`** -- first item, or `None` if empty
-- **`last`** -- last item, or `None` if empty
-- **`has_next`** -- `True` if more pages exist beyond the current one
-- **`has_prev`** -- `True` if this is not the first page
-- **`page`** -- current page number (1-indexed)
-- **`page_size`** -- number of items per page (alias for `limit`; `None` when unlimited)
-- **`total_pages`** -- total number of pages (0 when no results)
+- **`first`**: First item, or `None` if empty
+- **`last`**: Last item, or `None` if empty
+- **`has_next`**: `True` if more pages exist beyond the current one
+- **`has_prev`**: `True` if this is not the first page
+- **`page`**: Current page number (1-indexed)
+- **`page_size`**: Number of items per page (alias for `limit`; `None` when unlimited)
+- **`total_pages`**: Total number of pages (0 when no results)
 
 ### Methods
 
-- **`to_dict()`** -- returns the result as a dictionary with `offset`,
+- **`to_dict()`**: Returns the result as a dictionary with `offset`,
   `limit`, `total`, `page`, `page_size`, `total_pages`, `has_next`,
   `has_prev`, and `items` keys.
 
@@ -843,7 +841,7 @@ API, use `raw()`:
 results = repository.query.raw('{"name": "John Doe", "age__gte": 18}')
 ```
 
-The query format is database-specific -- a JSON string for the memory adapter,
+The query format is database-specific: a JSON string for the memory adapter,
 SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
 `limit`) are ignored for raw queries.
 
@@ -855,7 +853,7 @@ SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
 ## Query performance
 
 A query that filters or sorts on the same fields repeatedly needs a database
-index to stay fast as the table grows — without one, the database falls back to
+index to stay fast as the table grows, without one, the database falls back to
 a full scan. Declare the indexes a query path needs on the aggregate itself:
 
 ```python
@@ -875,10 +873,10 @@ for choosing what to index.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md) — The role of repositories in DDD and how Protean implements the pattern.
+    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md): The role of repositories in DDD and how Protean implements the pattern.
 
     **Related guides:**
 
-    - [Repositories](./repositories.md) — Define custom repositories with domain-named query methods.
-    - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.
-    - [Declaring Indexes](../domain-definition/indexes.md) — Index the fields your queries filter and sort on.
+    - [Repositories](./repositories.md): Define custom repositories with domain-named query methods.
+    - [Persist Aggregates](./persist-aggregates.md): Save and update aggregates through repositories.
+    - [Declaring Indexes](../domain-definition/indexes.md): Index the fields your queries filter and sort on.

@@ -110,4 +110,4 @@ is changed for you.
 
 -------------------
 
-That's it! You can now get a sneak peek into Protean with a quick tutorial.
+That is all you need. The tutorial is a good next step.

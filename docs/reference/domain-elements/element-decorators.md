@@ -133,7 +133,7 @@ with imperative verbs (`PlaceOrder`, `RegisterUser`).
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Target aggregate class |
-| `version` | `1` | Schema version (positive integer). Also settable via a `__version__` class attribute — see [Events](#domainevent) |
+| `version` | `1` | Schema version (positive integer). Also settable via a `__version__` class attribute, see [Events](#domainevent) |
 | `lenient` | `None` | Overrides the domain's `lenient_deserialization` for this class. `True` drops unknown fields when reading an old message instead of raising; `None` follows the domain setting |
 
 !!! warning "Deprecated: `published` on commands"
@@ -172,25 +172,25 @@ class OrderShipped:
     order_id = String()
 ```
 
-The two forms are equivalent — both drive the `vN` suffix of the event's type
-string (`Order.OrderPlaced.v2`). Declaring the version **both** ways on the same
-class raises an `IncorrectUsageError`. The same option is available on
-`@domain.command`.
+The two forms are equivalent, both drive the `vN` suffix of the event's type
+string (`Order.OrderPlaced.v2`). Declaring the version **both** ways on the same class raises an
+`IncorrectUsageError`. The same option is available on `@domain.command`.
 
 Guide: [Events](../../guides/domain-definition/events.md) ·
 Reference: [Compatibility](../compatibility/index.md)
 
 ### `Domain.query`
 
-An immutable read intent targeting a projection — the read-side counterpart
-of commands.
+An immutable read intent targeting a projection. The read-side counterpart of
+commands.
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | **`part_of`** | — | **Required.** Associated projection class |
 
-Guide: [Projections — Query](../../guides/consume-state/projections.md#querying-projections)
+Guide: [Projections,
+Query](../../guides/consume-state/projections.md#querying-projections)
 
 ---
 
@@ -274,8 +274,7 @@ Guide: [Application Services](../../guides/change-state/application-services.md)
 ### `Domain.projection`
 
 A denormalized, query-optimized read model used on the read side of CQRS.
-Projections support only simple field types — no associations or value
-objects.
+Projections support only simple field types, no associations or value objects.
 
 | Option | Default | Description |
 |--------|---------|-------------|

@@ -17,17 +17,18 @@ core application logic.
 Each provider declares its [capabilities](./database/index.md#database-capabilities),
 enabling capability-gated methods and automatic test selection.
 
-Current Implementations:
+Current implementations:
 
-- [Memory](./database/memory.md) - Default in-memory provider (no external dependencies)
-- [SQLite](./database/sqlite.md) - File-based relational provider
-- [PostgreSQL](./database/postgresql.md) - Production-grade relational provider
-- [Elasticsearch](./database/elasticsearch.md) - Document store for search and analytics
+- [Memory](./database/memory.md): The default in-memory provider, with no external dependencies.
+- [SQLite](./database/sqlite.md): A file-based relational provider.
+- [PostgreSQL](./database/postgresql.md): A full-capability relational provider.
+- [MSSQL](./database/mssql.md): Microsoft SQL Server, over SQLAlchemy and pyodbc.
+- [Elasticsearch](./database/elasticsearch.md): A document store for search and analytics.
 
 Learn more:
 
-- [Database Capabilities](./database/index.md#database-capabilities) - Understanding what each provider can do
-- [Custom Database Adapters](./database/custom-databases.md) - Create your own database adapters
+- [Database capabilities](./database/index.md#database-capabilities): What each provider can do.
+- [Custom database adapters](./database/custom-databases.md): Writing your own.
 
 ## Broker
 
@@ -43,14 +44,14 @@ ecosystem via messages, facilitating asynchronous processing and decoupling.
 
 Current Implementations:
 
-- [Inline](./broker/inline.md) - In-memory broker for development and testing
-- [Redis Streams](./broker/redis.md) - Durable message streaming with consumer groups
-- [Redis PubSub](./broker/redis-pubsub.md) - Simple queuing with Redis Lists
+- [Inline](./broker/inline.md): In-memory broker for development and testing
+- [Redis Streams](./broker/redis.md): Durable message streaming with consumer groups
+- [Redis PubSub](./broker/redis-pubsub.md): Simple queuing with Redis Lists
 
 Learn more:
 
-- [Broker Capabilities](./broker/index.md#broker-capabilities) - Understanding what each broker can do
-- [Custom Brokers](./broker/custom-brokers.md) - Create your own broker adapters
+- [Broker Capabilities](./broker/index.md#broker-capabilities): Understanding what each broker can do
+- [Custom Brokers](./broker/custom-brokers.md): Create your own broker adapters
 
 ## Cache
 
@@ -62,7 +63,7 @@ database access.
 Current Implementations:
 
 - Memory - Default in-memory cache (no external dependencies)
-- [Redis](./cache/redis.md) - Persistent distributed cache with TTL support
+- [Redis](./cache/redis.md): Persistent distributed cache with TTL support
 
 ## Event Store
 
@@ -76,7 +77,7 @@ event replay and temporal queries.
 Current Implementations:
 
 - Memory - Default in-memory event store (no external dependencies)
-- [Message DB](./eventstore/message-db.md) - PostgreSQL-based production event store
+- [Message DB](./eventstore/message-db.md): PostgreSQL-based production event store
 
 ---
 

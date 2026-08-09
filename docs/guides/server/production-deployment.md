@@ -1,12 +1,11 @@
 # Production Deployment
 
-This guide covers deploying the Protean server in production — process
-management, containerization, scaling strategies, and health checks.
+Deploying the Protean server in production comes down to four things:
+process management, containerization, how you scale, and health checks.
 
 For basic server usage, see [Run the Server](./index.md). For the full
-production checklist — pool sizing, DLQ maintenance, subscription
-profiles, OTEL metrics, and graceful shutdown — see
-[Harden the Server](./hardening.md).
+production checklist, pool sizing, DLQ maintenance, subscription profiles, OTEL
+metrics, and graceful shutdown, see [Harden the Server](./hardening.md).
 
 ## Process Management
 
@@ -120,11 +119,10 @@ spec:
             cpu: "500m"
 ```
 
-The `preStop` hook gives the service mesh or load balancer a moment to
-drain connections before the engine starts shutting down. For the full
-probe reference — response bodies, status codes, and how to move the
-port — see
-[Server Hardening reference](../../reference/server/hardening.md#health-checks).
+The `preStop` hook gives the service mesh or load balancer a moment to drain
+connections before the engine starts shutting down. For the full probe
+reference (response bodies, status codes, and how to move the port) see [Server
+Hardening reference](../../reference/server/hardening.md#health-checks).
 
 !!! warning "`replicas: 3` is only safe for stream/broker-backed domains"
 
@@ -148,8 +146,8 @@ app = FastAPI()
 app.include_router(create_health_router(domain))
 ```
 
-Point the probes at the same ports your API already exposes — no
-separate health server is needed.
+Point the probes at the same ports your API already exposes, no separate health
+server is needed.
 
 ## Scaling Considerations
 

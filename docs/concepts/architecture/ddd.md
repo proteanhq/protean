@@ -20,7 +20,7 @@ In this pattern, you use only the tactical elements that are part of core DDD.
 
 1. **Request**: Application receives a client request at the API layer
 2. **DTO (Data Transfer Object)**: The API converts the request data into a DTO, encapsulating the necessary information to pass to the Application Service, and invokes a specific *use case*.
-3. **Application Service**: Application Service asks for the aggregate instance from the Repository.
+3. **Application Service**: The Application Service asks for the aggregate instance from the Repository.
 4. **Repository**: The repository hydrates an aggregate from the Persistence Store.
 5. **Aggregate**: The Application Service invokes the correct behavior on the Aggregate along with request data.
 6. **Output**: The Aggregate processes the data, and if successful, an event is generated as a result of a state change or a business operation.

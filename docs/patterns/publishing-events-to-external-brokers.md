@@ -2,9 +2,9 @@
 
 ## The Problem
 
-Your bounded context raises domain events that drive internal reactions —
-event handlers sync state across aggregates, projectors update read models,
-and process managers coordinate workflows. All of these flow through a single
+Your bounded context raises domain events that drive internal reactions, event
+handlers sync state across aggregates, projectors update read models, and
+process managers coordinate workflows. All of these flow through a single
 internal broker (typically Redis Streams via the outbox pattern).
 
 But some events are part of your **public contract**. Other bounded contexts,
@@ -42,18 +42,18 @@ class ExternalRelayHandler(BaseEventHandler):
 
 This has several problems:
 
-1. **Coupled to broker internals.** The handler bypasses Protean's outbox,
+1. **Coupled to broker internals**: The handler bypasses Protean's outbox,
    losing transactional guarantees. If the relay handler succeeds but the
    internal side fails (or vice versa), you get split-brain.
 
-2. **No independent retry.** A transient failure on the external broker
+2. **No independent retry**: A transient failure on the external broker
    fails the handler, which blocks internal processing.
 
-3. **Metadata leaks.** The event's internal metadata (`expected_version`,
-   `priority`, `asynchronous`) is irrelevant — and potentially confusing — to
+3. **Metadata leaks**: The event's internal metadata (`expected_version`,
+   `priority`, `asynchronous`) is irrelevant (and potentially confusing) to
    external consumers.
 
-4. **Every published event needs a handler.** As the public surface grows,
+4. **Every published event needs a handler**: As the public surface grows,
    you accumulate boilerplate relay handlers.
 
 ---
@@ -61,10 +61,10 @@ This has several problems:
 ## The Pattern
 
 **Fork at the outbox.** When a `published=True` event is persisted, create
-one outbox row per target broker — one for internal dispatch and one for each
-configured external broker. Each row is processed independently by its own
-`OutboxProcessor`, with independent retry, independent status tracking, and an
-external-specific message envelope that strips internal metadata.
+one outbox row per target broker, one for internal dispatch and one for each
+configured external broker. Each row is processed independently by its own `OutboxProcessor`,
+with independent retry, independent status tracking, and an external-specific
+message envelope that strips internal metadata.
 
 The producing bounded context's responsibility ends at broker push. It does
 not track whether external consumers have read the message. The external broker
@@ -72,20 +72,20 @@ handles delivery semantics from that point.
 
 ### Core Principles
 
-1. **Transactional atomicity.** Internal and external outbox rows are written
+1. **Transactional atomicity**: Internal and external outbox rows are written
    in the same database transaction as the aggregate mutation. No event is
    ever partially published.
 
-2. **Independent failure isolation.** External broker downtime does not block
+2. **Independent failure isolation**: External broker downtime does not block
    internal event processing. Each outbox row advances through the lifecycle
    independently.
 
-3. **Clean external envelope.** External consumers receive only the fields
+3. **Clean external envelope**: External consumers receive only the fields
    they need: headers for deduplication, domain context for routing, and
    user-provided extensions. Internal routing fields (`expected_version`,
    `asynchronous`, `priority`) are stripped.
 
-4. **Zero-change backward compatibility.** The feature activates only when
+4. **Zero-change backward compatibility**: The feature activates only when
    `external_brokers` is explicitly configured. Existing deployments are
    unaffected.
 
@@ -230,9 +230,9 @@ external_brokers = ["fulfillment_broker", "analytics_broker"]
 
 With this configuration, `OrderShipped` creates three outbox rows:
 
-1. `target_broker = "default"` — internal event handlers, projectors
-2. `target_broker = "fulfillment_broker"` — fulfillment bounded context
-3. `target_broker = "analytics_broker"` — analytics pipeline
+1. `target_broker = "default"`: Internal event handlers, projectors
+2. `target_broker = "fulfillment_broker"`: Fulfillment bounded context
+3. `target_broker = "analytics_broker"`: Analytics pipeline
 
 ### Step 3: Start the server
 
@@ -318,22 +318,22 @@ consumers need in the event `data` and `extensions`.
 
 ## When to Use
 
-- **Cross-bounded-context communication.** Other domains need to react to your
+- **Cross-bounded-context communication**: Other domains need to react to your
   events.
-- **Partner integrations.** External systems consume events from your message
+- **Partner integrations**: External systems consume events from your message
   broker.
-- **Event-driven data pipelines.** Analytics, reporting, or data lake ingestion
+- **Event-driven data pipelines**: Analytics, reporting, or data lake ingestion
   from your event stream.
-- **Gradual migration.** You're splitting a monolith and need to publish events
+- **Gradual migration**: You're splitting a monolith and need to publish events
   from the first extracted service.
 
 ## When Not to Use
 
-- **Single bounded context.** If all consumers are internal event handlers
+- **Single bounded context**: If all consumers are internal event handlers
   within the same domain, external dispatch adds unnecessary overhead.
-- **Synchronous API responses.** If the consumer needs a synchronous response,
+- **Synchronous API responses**: If the consumer needs a synchronous response,
   use an API call, not event dispatch.
-- **Shared database.** If two services share a database (not recommended in
+- **Shared database**: If two services share a database (not recommended in
   DDD, but sometimes pragmatic), you don't need broker-based event dispatch.
 
 ---
@@ -366,15 +366,15 @@ consumers need in the event `data` and `extensions`.
 
 !!! tip "Related reading"
 
-    - [Outbox Pattern](../concepts/async-processing/outbox.md) -- How the
+    - [Outbox Pattern](../concepts/async-processing/outbox.md): How the
       transactional outbox works
-    - [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md)
-      -- Using fact events instead of delta events for external consumers
-    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md)
-      -- The consumer side: subscribers as anti-corruption layers
-    - [CloudEvents as a Boundary Contract](cloudevents-interoperability.md) --
+    - [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md):
+      Using fact events instead of delta events for external consumers
+    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md):
+      The consumer side: subscribers as anti-corruption layers
+    - [CloudEvents as a Boundary Contract](cloudevents-interoperability.md):
       Standardized envelope format for interoperability
-    - [Idempotent Event Handlers](idempotent-event-handlers.md) -- Why external
+    - [Idempotent Event Handlers](idempotent-event-handlers.md): Why external
       consumers must handle duplicates
-    - [External Dispatch Guide](../guides/server/external-event-dispatch.md) --
+    - [External Dispatch Guide](../guides/server/external-event-dispatch.md):
       Step-by-step setup instructions

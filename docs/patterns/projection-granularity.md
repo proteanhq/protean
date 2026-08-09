@@ -44,15 +44,15 @@ without any benefit.
 
 The symptoms:
 
-- **API handlers still need joins.** The order list endpoint needs customer
-  names, so it joins the order projection with a customer projection -- the same
+- **API handlers still need joins**: The order list endpoint needs customer
+  names, so it joins the order projection with a customer projection. The same
   join the write side would have needed.
 
-- **Projectors are trivial copy machines.** Every projector just copies fields
+- **Projectors are trivial copy machines**: Every projector just copies fields
   from the event to the projection. No transformation, no denormalization, no
   value added.
 
-- **No read-side optimization.** Queries against the projection are no faster
+- **No read-side optimization**: Queries against the projection are no faster
   than queries against the aggregate's table, because the data shape is
   identical.
 
@@ -93,18 +93,18 @@ class OrderForShipping:    # For the shipping dashboard
 Now you have three projections and three projectors all maintaining overlapping
 data from the same events. The consequences:
 
-- **Maintenance explosion.** Every new event field must be propagated to every
+- **Maintenance explosion**: Every new event field must be propagated to every
   projection that needs it. Adding a `discount_amount` to `OrderPlaced` means
   updating four projectors.
 
-- **Rebuild cost.** Rebuilding projections means replaying events through all
+- **Rebuild cost**: Rebuilding projections means replaying events through all
   four projectors. With millions of orders, this takes four times as long.
 
-- **Staleness windows.** Each projection updates independently. During high
+- **Staleness windows**: Each projection updates independently. During high
   load, the list view might show "shipped" while the detail view still shows
   "placed" because its projector is lagging.
 
-- **Schema proliferation.** The database accumulates tables that are 80%
+- **Schema proliferation**: The database accumulates tables that are 80%
   identical, wasting storage and complicating migrations.
 
 The root cause of both extremes: **projections were designed around domain
@@ -115,8 +115,8 @@ rather than around what consumers actually need**.
 
 ## The Pattern
 
-Design each projection around a **consumer need** -- a UI view, an API resource,
-or a query pattern -- not around a domain entity or an endpoint.
+Design each projection around a **consumer need** (a UI view, an API resource,
+or a query pattern) not around a domain entity or an endpoint.
 
 ```
 Wrong mental model:
@@ -135,8 +135,8 @@ Right mental model:
 For every screen, API resource, or query pattern, ask these questions:
 
 1. **What data does the consumer need?** List the fields. If they span multiple
-   aggregates, the projection should combine them -- that is the whole point of
-   a read model.
+   aggregates, the projection should combine them. That is the whole point of a
+   read model.
 
 2. **How is the data accessed?** By primary key lookup? By filtered search with
    sorting? By key-value cache hit? This determines whether the projection is
@@ -360,9 +360,9 @@ class OrderHistory:
     cancellation_reason: String()
 ```
 
-The projector follows the same pattern as Example 1 -- listening to `order` and
-`customer` stream categories, handling each event type to create or update the
-projection. The key difference is in how consumers query it:
+The projector follows the same pattern as Example 1, listening to `order` and `customer`
+stream categories, handling each event type to create or update the projection.
+The key difference is in how consumers query it:
 
 ```python
 view = domain.view_for(OrderHistory)
@@ -392,7 +392,7 @@ right choice when the consumer needs to search, sort, or paginate.
 ### Example 4: Shared projection serving two similar API endpoints
 
 The order list page and the order detail page need almost the same data. The
-detail page just needs a few extra fields (tracking number, cancellation reason).
+detail page needs a few extra fields (tracking number, cancellation reason).
 Instead of two projections, use one with optional fields:
 
 ```python
@@ -453,7 +453,7 @@ This approach works because:
 - **One projector** maintains one projection. Adding a field means updating one
   projector, not two.
 - **One rebuild** replays events once, not twice.
-- **Consistent staleness.** Both views are always at the same version of the
+- **Consistent staleness**: Both views are always at the same version of the
   data.
 - **The API layer owns field selection**, which is its responsibility anyway.
   The projection owns the data shape; the API owns the response shape.
@@ -462,7 +462,7 @@ This approach works because:
     When two consumers share 80% or more of their fields, prefer one projection
     with optional fields. When they share less than 50%, they probably represent
     genuinely different read patterns and deserve separate projections. The 50-80%
-    range is a judgment call -- lean toward fewer projections unless the optional
+    range is a judgment call, lean toward fewer projections unless the optional
     fields are expensive to maintain.
 
 ---
@@ -493,9 +493,9 @@ product = repo.get(product_id)
 ```
 
 Create a projection only when the read model's shape differs from the write
-model -- because it combines multiple aggregates, precomputes derived data,
-or optimizes for a specific query pattern that the aggregate's table does
-not support well.
+model, because it combines multiple aggregates, precomputes derived data, or
+optimizes for a specific query pattern that the aggregate's table does not
+support well.
 
 ---
 
@@ -584,8 +584,9 @@ class OrderSummaryProjector:
 ```
 
 If the projector loads aggregates to get data, the events are too thin. Fix the
-events first -- they should carry enough context for the projector to work
-independently. See [Design Events for Consumers](design-events-for-consumers.md).
+events first. They should carry enough context for the projector to work
+independently. See [Design Events for
+Consumers](design-events-for-consumers.md).
 
 ### The orphaned projection
 
@@ -610,26 +611,26 @@ your projections periodically: if nothing calls `view_for()` or
 | Field selection | Consumer must filter | Perfect fit | API layer selects fields |
 | Staleness | N/A (same as write) | Multiple windows | One window per projection |
 
-The principle: **design projections around consumer needs, not domain entities.
-Combine data from multiple aggregates into the shape the consumer requires. Use
-cache-backed projections for volatile key-value lookups and database-backed
-projections for complex queries. When two consumers need similar data, prefer
-one projection with optional fields over two separate ones.**
+Design projections around consumer needs, not domain entities. Combine data
+from multiple aggregates into the shape the consumer requires. Use cache-backed
+projections for volatile key-value lookups and database-backed projections for
+complex queries. When two consumers need similar data, prefer one projection
+with optional fields over two separate ones.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Design Events for Consumers](design-events-for-consumers.md) -- Events carry enough context for projectors to act independently.
-    - [Design Small Aggregates](design-small-aggregates.md) -- Small aggregates affect projection design.
+    - [Design Events for Consumers](design-events-for-consumers.md): Events carry enough context for projectors to act independently.
+    - [Design Small Aggregates](design-small-aggregates.md): Small aggregates affect projection design.
 
     **Concepts:**
 
-    - [Projections](../concepts/building-blocks/projections.md) -- What projections are and how they fit in CQRS.
-    - [Projectors](../concepts/building-blocks/projectors.md) -- How projectors maintain projections.
+    - [Projections](../concepts/building-blocks/projections.md): What projections are and how they fit in CQRS.
+    - [Projectors](../concepts/building-blocks/projectors.md): How projectors maintain projections.
 
     **Guides:**
 
-    - [Projections](../guides/consume-state/projections.md) -- Defining and configuring projections.
-    - [Projectors](../guides/consume-state/projectors.md) -- Defining projectors and handling events.
+    - [Projections](../guides/consume-state/projections.md): Defining and configuring projections.
+    - [Projectors](../guides/consume-state/projectors.md): Defining projectors and handling events.

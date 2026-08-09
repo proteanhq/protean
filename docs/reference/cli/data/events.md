@@ -3,7 +3,7 @@
 The `protean events` command group provides tools for inspecting the event
 store. These commands help you read events from streams, view statistics
 across aggregates, search for specific event types, and display the full
-event history of an aggregate instance -- all without writing custom scripts.
+event history of an aggregate instance, all without writing custom scripts.
 
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
@@ -251,11 +251,12 @@ causation chain API.
 
 ## `protean events catalog`
 
-Lists every concrete event in the domain with its **evolution status**: version,
-deprecation and supersession markers, upcaster chain, and the consumers (event
-handlers, projectors, and process managers) that subscribe to it. Unlike the
-other `events` commands, `catalog` is sourced from the domain **IR** (the
-contract), not the event store — so it works from a live domain (`--domain`)
+Lists every concrete event in the domain with its **evolution status**:
+version, deprecation and supersession markers, upcaster chain, and the
+consumers (event handlers, projectors, and process managers) that subscribe to
+it. Unlike the other `events` commands, `catalog` is sourced from the domain
+**IR** (the contract), not the event store, so it works from a live domain
+(`--domain`)
 **or** a serialized IR file (`--ir`), and does not need a running event store.
 
 The catalog covers events that belong to an aggregate cluster (every event you
@@ -302,11 +303,10 @@ With `--json`, each entry additionally includes the event's `fqn`, owning
 `aggregate`, `published`/`is_fact_event` flags, and full `fields`, so the output
 is a complete contract dump suitable for tooling.
 
-Together with `protean schema generate --format all` — which emits the matching
-versioned `.protean/schemas/` tree in JSON, Avro, and Protobuf — the catalog
-forms a **local schema-registry on-ramp**: exactly what an external registry
-(Confluent, Apicurio) would publish, without integrating the service. See
-[`protean schema`](../schema.md).
+Together with `protean schema generate --format all` (which emits the matching versioned `.protean/schemas/` tree in JSON, Avro,
+and Protobuf) the catalog forms a **local schema-registry on-ramp**: exactly
+what an external registry (Confluent, Apicurio) would publish, without
+integrating the service. See [`protean schema`](../schema.md).
 
 ## Error Handling
 

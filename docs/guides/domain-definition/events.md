@@ -148,6 +148,7 @@ The server continually polls the event store for new events that have the `async
 ### Relationship with Command Processing
 
 Protean offers similar configuration options for commands through:
+
 - The `command_processing` domain configuration setting
 - The ability to specify the `asynchronous` parameter when processing commands
 
@@ -205,7 +206,7 @@ Sample metadata from an event:
 The unique identifier of the event. The event ID is a structured string, of the
 format `<domain-name>::<aggregate-name>-<aggregate-id>-<sequence_id>`.
 
-The `id` value is simply an extension of the event's stream combined with the
+The `id` value is an extension of the event's stream combined with the
 `sequence_id`. Read the section on `sequence_id` to understand possible values.
 
 #### `type`
@@ -280,9 +281,9 @@ Every command and event spawned from a single business operation shares the same
 `correlation_id`. It answers: *"Which business operation does this message
 belong to?"*
 
-The `correlation_id` is typically generated at the earliest entry point --
-often the API gateway or frontend -- and passed into `domain.process()`. If no
-external ID is provided, Protean auto-generates one (UUID4 hex, 32 characters).
+The `correlation_id` is typically generated at the earliest entry point (often
+the API gateway or frontend) and passed into `domain.process()`. If no external
+ID is provided, Protean auto-generates one (UUID4 hex, 32 characters).
 
 ```python
 # Pass an external correlation ID
@@ -363,8 +364,8 @@ class UserActivated:
     activated_at: DateTime(required=True)
 ```
 
-Equivalently, pass `version=` to the decorator — keeping the version alongside
-the other options rather than inside the class body:
+Equivalently, pass `version=` to the decorator, keeping the version alongside the
+other options rather than inside the class body:
 
 ```python hl_lines="1"
 @domain.event(part_of=User, version=2)
@@ -434,8 +435,8 @@ class OrderPlacedNotification:
 
 When `order.place()` is called, the `OrderPlaced` event is raised and
 collected in `order._events`. Once the aggregate is persisted (via
-repository or Unit of Work), the event is dispatched to registered handlers
-— either synchronously or asynchronously depending on domain configuration.
+repository or Unit of Work), the event is dispatched to registered handlers, either synchronously or
+asynchronously depending on domain configuration.
 
 See [Raising Events](../domain-behavior/raising-events.md) for details on
 dispatching and the event-sourcing variant, and
@@ -493,28 +494,28 @@ IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified
 | Exception | When it occurs |
 |---|---|
 | `ValidationError` | Event construction fails because a required field is missing or a field value is invalid. |
-| `IncorrectUsageError` | Attempting to modify an event attribute after creation — events are immutable. |
-| `IncorrectUsageError` | Non-abstract event defined without `part_of` — every concrete event must be associated with an aggregate. |
+| `IncorrectUsageError` | Attempting to modify an event attribute after creation; events are immutable. |
+| `IncorrectUsageError` | Non-abstract event defined without `part_of`; every concrete event must be associated with an aggregate. |
 | `ConfigurationError` | Event raised on an aggregate it is not associated with (`part_of` mismatch). |
 
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Events](../../concepts/building-blocks/events.md) — Domain events and their role in system communication.
+    **Concept overview:** [Events](../../concepts/building-blocks/events.md): Domain events and their role in system communication.
 
     **Next steps:**
 
-    - [Raising Events](../domain-behavior/raising-events.md) — How to raise events from aggregates and entities, dispatch them, and use event sourcing patterns.
-    - [Event Handlers](../consume-state/event-handlers.md) — Consuming events and performing side effects.
+    - [Raising Events](../domain-behavior/raising-events.md): How to raise events from aggregates and entities, dispatch them, and use event sourcing patterns.
+    - [Event Handlers](../consume-state/event-handlers.md): Consuming events and performing side effects.
 
     **Guides:**
 
-    - [Message Tracing](../domain-behavior/message-tracing.md) — Track the full causal chain of commands and events with correlation and causation IDs.
-    - [Event Upcasting](../consume-state/event-upcasting.md) — Transforming old event payloads to current schemas.
+    - [Message Tracing](../domain-behavior/message-tracing.md): Track the full causal chain of commands and events with correlation and causation IDs.
+    - [Event Upcasting](../consume-state/event-upcasting.md): Transforming old event payloads to current schemas.
 
     **Patterns:**
 
-    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.
-    - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md) — Using fact events for cross-context communication.
-    - [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) — Managing event schema changes over time.
-    - [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) — Design considerations for correlation and causation tracking.
+    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md): Structuring events so consumers can process them reliably.
+    - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md): Using fact events for cross-context communication.
+    - [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md): Managing event schema changes over time.
+    - [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md): Design considerations for correlation and causation tracking.

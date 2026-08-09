@@ -2,13 +2,19 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-The reactive layer responds to state changes that have already happened. It propagates changes across aggregates, maintains read-optimized views, coordinates multi-step processes, and bridges to external systems — all without coupling back to the code that produced the original change.
+The reactive layer responds to state changes that have already happened. It
+propagates changes across aggregates, maintains read-optimized views,
+coordinates multi-step processes, and bridges to external systems, all without
+coupling back to the code that produced the original change.
 
 ## Core Concepts
 
 ### Event Handlers
 
-Event handlers consume domain events and orchestrate side effects — syncing state across aggregates, sending notifications, or triggering downstream processes. They follow a fire-and-forget pattern and operate within their own transaction boundaries.
+Event handlers consume domain events and orchestrate side effects, syncing
+state across aggregates, sending notifications, or triggering downstream
+processes. They follow a fire-and-forget pattern and operate within their own
+transaction boundaries.
 
 [Learn more about event handlers →](./event-handlers.md)
 
@@ -44,7 +50,10 @@ Subscribers consume messages from external message brokers and other systems out
 
 ### CloudEvents Interoperability <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-When events need to cross system boundaries — external APIs, Kafka topics, webhooks, or other Protean domains — CloudEvents serialization translates between Protean's internal metadata and the standard format. Protean is a compliant CloudEvents v1.0 producer and consumer.
+When events need to cross system boundaries (external APIs, Kafka topics,
+webhooks, or other Protean domains) CloudEvents serialization translates
+between Protean's internal metadata and the standard format. Protean is a
+compliant CloudEvents v1.0 producer and consumer.
 
 [Learn more about CloudEvents interoperability →](./cloudevents.md)
 
@@ -55,5 +64,5 @@ When event schemas evolve, upcasters transform old event versions to match the c
 [Learn more about event upcasting →](./event-upcasting.md)
 
 !!! tip "See also"
-    [Stream Categories](../../concepts/async-processing/stream-categories.md)
-    — How messages are organized and routed through named streams.
+    [Stream Categories](../../concepts/async-processing/stream-categories.md):
+    how messages are organized and routed through named streams.

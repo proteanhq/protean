@@ -6,10 +6,11 @@
 
 ## Context
 
-Protean's `Domain` class is the composition root — it holds all registered elements,
-resolves references, assigns aggregate clusters, and wires handlers. A natural question
-arises: what is the scope of a single Internal Representation (IR) document? Does it
-represent a module, an aggregate, a bounded context, or an entire system?
+Protean's `Domain` class is the composition root. It holds all registered
+elements, resolves references, assigns aggregate clusters, and wires handlers.
+A natural question arises: what is the scope of a single Internal
+Representation (IR) document? Does it represent a module, an aggregate, a
+bounded context, or an entire system?
 
 In DDD, a bounded context is the boundary within which a particular domain model applies.
 Within a bounded context, terms have precise meanings and models are internally consistent.
@@ -25,10 +26,11 @@ boundaries. The IR needs a clear scope that matches how Protean actually works.
 We will produce one IR document per `Domain` instance, and one `Domain` instance represents
 one bounded context. The equation is: **one Domain = one BC = one IR document.**
 
-Multiple aggregates within one `Domain` are clusters within a single bounded context —
-`Order` and `Payment` aggregates in the same domain are not separate BCs. This is normal
-DDD. The IR captures their relationships (shared events, cross-aggregate handlers) because
-they exist within the same consistency boundary.
+Multiple aggregates within one `Domain` are clusters within a single bounded
+context, `Order` and `Payment` aggregates in the same domain are not separate BCs. This
+is normal DDD. The IR captures their relationships (shared events,
+cross-aggregate handlers) because they exist within the same consistency
+boundary.
 
 Multi-bounded-context visualization (context maps, inter-BC event flows) requires aggregating
 multiple IR documents from separate `Domain` instances. Each IR captures one deployment
@@ -41,10 +43,10 @@ The IR is self-contained. Every FQN reference within the document resolves to an
 within the same document. There are no dangling cross-document references to manage, no
 import mechanism, no dependency resolution between IR files.
 
-Tooling that needs a system-wide view (architecture diagrams spanning multiple services,
-cross-BC event flow visualization) must aggregate multiple IR documents. This is a deliberate
-separation — each IR is a complete, valid unit. Aggregation is a tool concern, not a schema
-concern.
+Tooling that needs a system-wide view (architecture diagrams spanning multiple
+services, cross-BC event flow visualization) must aggregate multiple IR
+documents. This is a deliberate separation. Each IR is a complete, valid unit.
+Aggregation is a tool concern, not a schema concern.
 
 The known limitation is that the IR cannot represent sub-context boundaries within a single
 `Domain`. If a developer packs two logically distinct bounded contexts into one `Domain`

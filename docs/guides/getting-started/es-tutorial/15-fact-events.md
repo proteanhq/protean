@@ -1,9 +1,9 @@
 # Chapter 15: Fact Events and the Reporting Pipeline
 
-The finance team needs a flat reporting database showing the current
-state of every account for regulatory filings. They do not want to
-process individual deposits and withdrawals — they want a single event
-per state change that contains the **complete, current account state**.
+The finance team needs a flat reporting database showing the current state of
+every account for regulatory filings. They do not want to process individual
+deposits and withdrawals. They want a single event per state change that
+contains the **complete, current account state**.
 
 This is what **fact events** provide.
 
@@ -35,9 +35,8 @@ class Account:
 ```
 
 Now every time the aggregate is persisted via `repo.add()`, Protean
-auto-generates a fact event containing the full aggregate state. You
-do not raise fact events manually — they are a byproduct of
-persistence.
+auto-generates a fact event containing the full aggregate state. You do not
+raise fact events manually. They are a byproduct of persistence.
 
 ## The Reporting Projector
 
@@ -54,9 +53,9 @@ delta events, because every fact event is a complete state snapshot:
 
 Notice:
 
-- The projector subscribes to `stream_categories=["fidelis::account-fact"]`
-  — the fact event stream, not the regular event stream.
-- The handler simply overwrites the projection with the latest state.
+- The projector subscribes to `stream_categories=["fidelis::account-fact"]`,
+  the fact event stream rather than the regular event stream.
+- The handler overwrites the projection with the latest state.
   No need to apply deltas.
 
 ## When to Use Fact Events
@@ -70,8 +69,8 @@ Notice:
 
 Do **not** use fact events for:
 
-- **Aggregate replay** — that uses delta events.
-- **Event handlers that react to specific changes** — "a large deposit
+- **Aggregate replay**: That uses delta events.
+- **Event handlers that react to specific changes**: "a large deposit
   was made" requires `DepositMade`, not a fact event.
 
 ## What We Built
@@ -93,4 +92,4 @@ events triggered by a suspicious deposit.
 
 ## Next
 
-[Chapter 16: Following the Trail — Message Tracing →](16-message-tracing.md)
+[Chapter 16: Following the Trail with Message Tracing →](16-message-tracing.md)

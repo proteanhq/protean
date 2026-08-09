@@ -1,7 +1,7 @@
 # Behavioral analysis
 
 `protean check` reasons about a domain in two ways. Most rules read the
-**Intermediate Representation** (IR) — the structural model of aggregates,
+**Intermediate Representation** (IR), the structural model of aggregates,
 fields, handlers and flows. A smaller set of rules needs to know what a method
 *body* does: which fields it filters on, what it raises, how a name flows from
 one statement to the next. Those questions are answered by the **behavioral
@@ -25,8 +25,8 @@ raising, so one unreadable module never aborts a diagnostics pass.
 | `SourceProvider` | Parse a module to an `ast.Module`, once, cached. |
 | `ElementIndex` | Which classes and methods exist, and each method's role. |
 | `SymbolResolver` | What fully-qualified name does a name or attribute chain resolve to? |
-| `FactCatalog` | What does one method body do — its calls, attribute reads/writes, and constructions? |
-| `DataflowAnalyzer` | How do names and blocks flow inside one body — def-use, ordering, `with`/loop coverage? |
+| `FactCatalog` | What does one method body do; its calls, attribute reads/writes, and constructions? |
+| `DataflowAnalyzer` | How do names and blocks flow inside one body, def-use, ordering, `with`/loop coverage? |
 
 ## The view
 
@@ -37,14 +37,14 @@ read-only façade that a rule asks instead of wiring the layers together itself.
 
 The view groups the substrate into three query families:
 
-- **elements → methods** — `element_class_entry(cls)`, `element_methods(cls)`.
-- **per-method facts** — `element_facts(cls)` (name → `MethodFacts`),
+- **elements → methods**: `element_class_entry(cls)`, `element_methods(cls)`.
+- **per-method facts**: `element_facts(cls)` (name → `MethodFacts`),
   `method_facts(module, node)`.
-- **dataflow** — `method_flow(module, node)` → `MethodFlow`.
+- **dataflow**: `method_flow(module, node)` → `MethodFlow`.
 
 A single view is built once per `IRBuilder` and shares that build's one
 `SourceProvider` and `ElementIndex`, so a module a rule already read is not
-parsed again for its facts or its dataflow — one parse per run.
+parsed again for its facts or its dataflow. One parse per run.
 
 ## A rule reading the view
 

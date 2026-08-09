@@ -7,19 +7,19 @@
 
 ## The Problem
 
-Production Protean applications use real infrastructure -- PostgreSQL for
+Production Protean applications use real infrastructure, PostgreSQL for
 persistence, Redis for message brokering, Message DB for event sourcing. Tests
 that run against these services provide high confidence but come with costs:
 
-- **Docker required.** Every developer needs PostgreSQL, Redis, and Message DB
+- **Docker required**: Every developer needs PostgreSQL, Redis, and Message DB
   running locally. CI jobs need service containers. A fresh contributor cannot
   run the test suite without first starting infrastructure.
 
-- **Slow setup.** Schema creation, service health checks, and network round trips
+- **Slow setup**: Schema creation, service health checks, and network round trips
   add seconds to every test run. A suite that takes 20 seconds with in-memory
   adapters takes 60+ seconds against real databases.
 
-- **Flaky failures.** Network timeouts, port conflicts, and stale containers
+- **Flaky failures**: Network timeouts, port conflicts, and stale containers
   cause test failures unrelated to business logic. Developers learn to distrust
   test results.
 
@@ -80,10 +80,10 @@ Protean's default configuration uses in-memory adapters for everything:
 "caches": {"default": {"provider": "memory"}},
 ```
 
-These adapters implement the full provider interface -- create, read, update,
-delete, filtering, sorting, stream reads, consumer groups, and data reset.
-They are not stubs; they are complete implementations that happen to store
-data in Python dictionaries and lists instead of external services.
+These adapters implement the full provider interface, create, read, update,
+delete, filtering, sorting, stream reads, consumer groups, and data reset. They
+are not stubs; they are complete implementations that happen to store data in
+Python dictionaries and lists instead of external services.
 
 ### 2. Environment Overlays in `domain.toml`
 
@@ -256,16 +256,16 @@ per-domain switching logic is needed.
 Protean's memory adapters are complete implementations, not mocks. The
 following all work identically in memory and real mode:
 
-- **Aggregate persistence** -- create, read, update, delete via repositories
-- **Query filtering** -- exact match, contains, gt/lt, in, and other lookups
-- **Sorting and pagination** -- order by any field, limit/offset
-- **Event sourcing** -- append events, replay from stream, snapshots
-- **Event store reads** -- stream filtering, category queries, position tracking
-- **Command processing** -- synchronous `domain.process()` with UoW commit
-- **Event handling** -- handlers fire during UoW commit (sync mode)
-- **Projections** -- projectors update read models from domain events
-- **Outbox pattern** -- events written to outbox table in same transaction
-- **Data reset** -- `_data_reset()` clears all state between tests
+- **Aggregate persistence**: Create, read, update, delete via repositories
+- **Query filtering**: Exact match, contains, gt/lt, in, and other lookups
+- **Sorting and pagination**: Order by any field, limit/offset
+- **Event sourcing**: Append events, replay from stream, snapshots
+- **Event store reads**: Stream filtering, category queries, position tracking
+- **Command processing**: Synchronous `domain.process()` with UoW commit
+- **Event handling**: Handlers fire during UoW commit (sync mode)
+- **Projections**: Projectors update read models from domain events
+- **Outbox pattern**: Events written to outbox table in same transaction
+- **Data reset**: `_data_reset()` clears all state between tests
 
 ---
 
@@ -273,16 +273,16 @@ following all work identically in memory and real mode:
 
 In rare cases, tests may behave differently between modes:
 
-- **Database-specific SQL** -- if a test relies on PostgreSQL-specific features
+- **Database-specific SQL**: If a test relies on PostgreSQL-specific features
   (JSON operators, full-text search, advisory locks), the memory provider won't
   support it. These are infrastructure concerns, not domain logic, and should be
   isolated to integration tests.
 
-- **Concurrent access** -- the memory provider uses thread-local locks, not
+- **Concurrent access**: The memory provider uses thread-local locks, not
   database-level isolation. Tests that verify concurrent write behavior may
   need real adapters.
 
-- **Message ordering** -- the inline broker provides FIFO ordering within a
+- **Message ordering**: The inline broker provides FIFO ordering within a
   single process. Redis Streams provide ordering across distributed consumers.
   If your tests verify multi-consumer ordering, use real adapters.
 
@@ -314,13 +314,13 @@ concerns have leaked into the domain model.
 !!! tip "Related reading"
     **Guides:**
 
-    - [Testing Guide](../guides/testing/index.md) -- Overview of Protean's testing strategy.
-    - [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md) -- `DomainFixture` and `conftest.py` recipes that work with both modes.
-    - [Integration Tests](../guides/testing/integration-tests.md) -- Writing tests that exercise real infrastructure.
+    - [Testing Guide](../guides/testing/index.md): Overview of Protean's testing strategy.
+    - [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md): `DomainFixture` and `conftest.py` recipes that work with both modes.
+    - [Integration Tests](../guides/testing/integration-tests.md): Writing tests that exercise real infrastructure.
 
     **Related patterns:**
 
-    - [Setting Up and Tearing Down Databases](setting-up-and-tearing-down-database-for-tests.md) -- Schema and data lifecycle management for real-adapter tests.
-    - [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md) -- Test aggregates and domain services without infrastructure.
+    - [Setting Up and Tearing Down Databases](setting-up-and-tearing-down-database-for-tests.md): Schema and data lifecycle management for real-adapter tests.
+    - [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md): Test aggregates and domain services without infrastructure.
 
-    **Reference:** [Configuration](../reference/configuration/index.md) -- Full reference for `domain.toml` environment overlays.
+    **Reference:** [Configuration](../reference/configuration/index.md): Full reference for `domain.toml` environment overlays.

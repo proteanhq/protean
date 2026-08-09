@@ -204,7 +204,7 @@ Out[2]:
 !!!note
     Some database implementations (like Postgresql) can store dicts as JSON
     by default. You can force it to store the pickled value as a Python object
-    by specifying pickled=True. Databases that don’t support lists simply store
+    by specifying pickled=True. Databases that don’t support lists store
     the field as a python object.
 
 ### Dict of Value Objects

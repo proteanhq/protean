@@ -90,7 +90,7 @@ def Dict(  # pyright: ignore[reportRedeclaration]
     """A dict/JSON field.
 
     ``value_type`` types the dict's values; keys are always ``str``:
-    - ``None``: ``Dict()`` → ``dict | list`` (untyped JSON — unchanged behavior)
+    - ``None``: ``Dict()`` → ``dict | list`` (untyped JSON, unchanged behavior)
     - A ``ValueObject`` descriptor: ``Dict(value_type=ValueObject(Addr))`` →
       ``dict[str, Addr]``, a ``code → value object`` map that reconstructs and
       validates each value.

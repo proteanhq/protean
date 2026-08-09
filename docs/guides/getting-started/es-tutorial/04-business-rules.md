@@ -1,11 +1,11 @@
 # Chapter 4: Business Rules That Never Break
 
 A tester discovers a problem: withdraw $200 from an account with $100
-and the withdrawal succeeds — because the validation in `withdraw()`
-checks the balance *before* the `@apply` handler runs. What if the
-validation and the state mutation disagree?
+and the withdrawal succeeds, because the validation in `withdraw()` checks the balance
+*before* the `@apply` handler runs. What if the validation and the state mutation
+disagree?
 
-In this chapter we will add **invariants** — rules that are checked
+In this chapter we will add **invariants**. Rules that are checked
 *after* every state mutation, guaranteeing the aggregate is **always
 valid** regardless of how it got there.
 
@@ -39,7 +39,7 @@ Here is how they work:
 
 2. **`balance_must_not_be_negative`** ensures no operation can leave
    the account with a negative balance. We no longer need the manual
-   check in `withdraw()` — the invariant handles it.
+   check in `withdraw()`, the invariant handles it.
 
 3. **`closed_account_must_have_zero_balance`** ensures an account
    cannot be closed while funds remain. This rule would be difficult to
@@ -86,12 +86,11 @@ Balance: $0.00
 All checks passed!
 ```
 
-The overdraft attempt was caught by `balance_must_not_be_negative` —
-the `@apply` handler reduced the balance to -$100, the invariant
-detected the violation, and Protean rolled back the event.
+The overdraft attempt was caught by `balance_must_not_be_negative`, the `@apply` handler reduced the balance to
+-$100, the invariant detected the violation, and Protean rolled back the event.
 
-The close attempt was caught by `closed_account_must_have_zero_balance`
-— the `@apply` handler set `status = "CLOSED"`, but the invariant
+The close attempt was caught by `closed_account_must_have_zero_balance`:
+The `@apply` handler set `status = "CLOSED"`, but the invariant
 saw the balance was still $100 and rejected the transition.
 
 ## Why Invariants Are Better
@@ -108,16 +107,16 @@ Invariants have important advantages over method-level checks:
 
 !!! tip "Always Valid"
     Post-invariants guarantee that the aggregate is in a valid state
-    after every single event. This is the "always valid" principle —
-    there is no window where the aggregate exists in an invalid state.
+    after every single event. This is the "always valid" principle. There is no
+    window where the aggregate exists in an invalid state.
 
 ## What We Built
 
 - **Post-invariants** with `@invariant.post` that validate state after
   every `@apply` handler.
-- **`balance_must_not_be_negative`** — prevents overdrafts at the
+- **`balance_must_not_be_negative`**: Prevents overdrafts at the
   aggregate level.
-- **`closed_account_must_have_zero_balance`** — enforces a
+- **`closed_account_must_have_zero_balance`**: Enforces a
   multi-field business rule.
 - An **AccountClosed** event and `close()` method.
 - Confidence that business rules are **always enforced**, regardless

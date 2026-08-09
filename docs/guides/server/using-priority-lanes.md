@@ -1,12 +1,12 @@
 # Using Priority Lanes
 
-This guide shows how to enable priority lanes and route specific workloads
-through the backfill lane so they do not interfere with production event
+Here is how to enable priority lanes and route particular workloads through
+the backfill lane, so they do not interfere with production event
 processing.
 
-For the conceptual overview — how priority lanes work, ordering guarantees, and
-when to use them — see
-[Priority Lanes](../../concepts/async-processing/priority-lanes.md).
+For the conceptual overview (how priority lanes work, ordering guarantees, and
+when to use them) see [Priority
+Lanes](../../concepts/async-processing/priority-lanes.md).
 
 ---
 
@@ -141,7 +141,7 @@ Batch events should have a negative priority value (e.g., `-50` for
 redis-cli XINFO GROUPS customer:backfill
 ```
 
-If no groups are listed, restart the Engine — it creates the backfill consumer
+If no groups are listed, restart the Engine. It creates the backfill consumer
 group during initialization.
 
 ### Deserialization errors on the backfill stream
@@ -159,13 +159,13 @@ current schema.
 
 ---
 
-## Next Steps
+## Where to go next
 
-- [Priority Lanes](../../concepts/async-processing/priority-lanes.md) — How
+- [Priority Lanes](../../concepts/async-processing/priority-lanes.md): How
   priority lanes work, configuration options, and ordering guarantees.
-- [Running Data Migrations with Priority Lanes](../../patterns/running-data-migrations-with-priority-lanes.md) —
+- [Running Data Migrations with Priority Lanes](../../patterns/running-data-migrations-with-priority-lanes.md):
   A complete worked example of migrating data without blocking production.
-- [Outbox Pattern](../../concepts/async-processing/outbox.md) — How the outbox
+- [Outbox Pattern](../../concepts/async-processing/outbox.md): How the outbox
   ensures reliable message delivery.
-- [Observability](../../reference/server/observability.md) — The Observatory
+- [Observability](../../reference/server/observability.md): The Observatory
   dashboard for monitoring message flow.

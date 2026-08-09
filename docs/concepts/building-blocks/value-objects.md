@@ -2,13 +2,12 @@
 
 ## Why Value Objects?
 
-Representing domain concepts as raw primitives — a `str` for an email
-address, a `float` for a monetary amount, two `float`s for GPS
-coordinates — is one of the most common sources of bugs in domain code.
-Validation logic gets duplicated everywhere the value is used, invalid
-states slip through because there's no single place that enforces the
-rules, and the code loses expressiveness ("What does this `str` parameter
-actually represent?").
+Representing domain concepts as raw primitives, a `str` for an email address, a
+`float` for a monetary amount, two `float`s for GPS coordinates, is one of the most
+common sources of bugs in domain code. Validation logic gets duplicated
+everywhere the value is used, invalid states slip through because there's no
+single place that enforces the rules, and the code loses expressiveness ("What
+does this `str` parameter actually represent?").
 
 Value objects solve this by wrapping related attributes and their
 validation rules into a single, immutable, self-validating concept.
@@ -61,7 +60,7 @@ independent identity and are always part of entities or aggregates.
 
 ### Value Objects support functional updates. { data-toc-label="Functional Updates" }
 Since value objects are immutable, they provide a `replace()` method to create
-a new instance with selected fields changed — the functional equivalent of
+a new instance with selected fields changed, the functional equivalent of
 mutation. Invariants are re-validated on the new instance.
 
 ### Value Objects can project entity structure. { data-toc-label="Entity Projections" }
@@ -80,12 +79,12 @@ and defined solely by their attributes.
 
 For practical details on defining and using value objects in Protean, see the guide:
 
-- [Value Objects](../../guides/domain-definition/value-objects.md) — Defining value objects, embedding them in aggregates, invariants, and equality semantics.
+- [Value Objects](../../guides/domain-definition/value-objects.md): Defining value objects, embedding them in aggregates, invariants, and equality semantics.
 
 Not sure whether your concept should be a value object, entity, or aggregate?
 
-- [Choosing Element Types](./choosing-element-types.md) — Decision guide with checklists and flowcharts.
+- [Choosing Element Types](./choosing-element-types.md): Decision guide with checklists and flowcharts.
 
 For design guidance:
 
-- [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md) — When and why to wrap raw types in domain-specific value objects.
+- [Replace Primitives with Value Objects](../../patterns/replace-primitives-with-value-objects.md): When and why to wrap raw types in domain-specific value objects.

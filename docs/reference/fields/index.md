@@ -3,17 +3,17 @@
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-Fields define the structure and behavior of data within domain elements —
+Fields define the structure and behavior of data within domain elements,
 Aggregates, Entities, Value Objects, Commands, and Events. They encapsulate
-data properties, enforce validation, manage defaults, and express
-relationships between domain concepts.
+data properties, enforce validation, manage defaults, and express relationships
+between domain concepts.
 
 Protean provides a set of field functions (`String`, `Integer`, `Float`,
 `Decimal`, `HasMany`, etc.) that let you declare fields using domain-friendly
 vocabulary.
-Under the hood, Protean uses Pydantic v2 as its validation and serialization
+Protean uses Pydantic v2 as its validation and serialization
 engine, so domain elements benefit from Rust-core validation performance,
-JSON Schema generation, and native serialization — without requiring you to
+JSON Schema generation, and native serialization, without requiring you to
 learn Pydantic's API.
 
 ## Defining fields
@@ -34,7 +34,7 @@ Read more in [Defining fields](./defining-fields.md).
 ## Field arguments
 
 Protean fields come with various options to model real-world scenarios effectively.
-These include `required`, `default`, `choices`, and `unique`, among others, which allow for a highly customizable and robust
+These include `required`, `default`, `choices`, and `unique`, among others, which let you describe a field precisely and
 domain model definition.
 
 Read more in [Arguments](./arguments.md) section.
@@ -59,7 +59,7 @@ states with optional transition enforcement. See
 lists and dictionaries. These fields support complex structures and provide
 options such as `content_type` for `List` fields to ensure type consistency
 within the collection. Protean optimizes storage and retrieval operations for
-these fields by leveraging database-specific features when available.
+these fields by using database-specific features when available.
 
 ### Association fields
 

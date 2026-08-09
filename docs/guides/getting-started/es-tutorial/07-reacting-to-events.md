@@ -4,8 +4,8 @@ The compliance team mandates that every deposit over $10,000 triggers a
 suspicious-activity alert. The marketing team wants a welcome email when
 a new account opens. These are **side effects** that do not belong in
 the aggregate or the projector. In this chapter we will create **event
-handlers** — decoupled listeners that react to events and trigger
-external actions.
+handlers**, decoupled listeners that react to events and trigger external
+actions.
 
 ## Event Handlers vs. Projectors
 
@@ -83,23 +83,22 @@ def on_large_deposit(self, event: DepositMade):
         )
 ```
 
-This is how **cross-aggregate coordination** works without coupling —
-the Account aggregate knows nothing about the Compliance aggregate. The
-event handler bridges them.
+This is how **cross-aggregate coordination** works without coupling, the
+Account aggregate knows nothing about the Compliance aggregate. The event
+handler bridges them.
 
 ## What We Built
 
-- **ComplianceAlertHandler** — reacts to large deposits.
-- **NotificationHandler** — sends welcome messages and withdrawal alerts.
+- **ComplianceAlertHandler**: Reacts to large deposits.
+- **NotificationHandler**: Sends welcome messages and withdrawal alerts.
 - Event handlers that are **stateless** and **decoupled** from the
   aggregate.
 - The pattern for **issuing commands from handlers** for cross-aggregate
   coordination.
 
-Our system now reacts to events. But everything still runs synchronously
-— a slow compliance check blocks the deposit response. In the next
-chapter, we will switch to asynchronous processing with Redis and the
-Protean server.
+Our system now reacts to events. But everything still runs synchronously, a
+slow compliance check blocks the deposit response. In the next chapter, we will
+switch to asynchronous processing with Redis and the Protean server.
 
 ## Full Source
 
@@ -109,4 +108,4 @@ Protean server.
 
 ## Next
 
-[Chapter 8: Going Async — The Server →](08-going-async.md)
+[Chapter 8: Going Async with the Server →](08-going-async.md)

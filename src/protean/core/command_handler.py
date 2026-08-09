@@ -74,6 +74,7 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         explicitly set. It is always derived from the aggregate specified in part_of.
 
     Configuration Priority (highest to lowest):
+
         1. Handler Meta subscription_config
         2. Handler Meta subscription_profile
         3. Handler Meta subscription_type

@@ -45,8 +45,8 @@ class BaseRepository(Element, OptionsMixin):
     with persistence at the transaction boundary, which is at an Aggregate's level.
 
     **Design note: no delete/remove method.**
-    Repositories intentionally do not support hard deletion. Domain state changes — cancellation,
-    deactivation, archival — should be modeled as explicit state transitions via commands and events,
+    Repositories intentionally do not support hard deletion. Domain state changes (cancellation,
+    deactivation, archival) should be modeled as explicit state transitions via commands and events,
     not as record erasure. Hard deletion is available at the infrastructure level (``_dao.delete()``)
     for projection rebuilds, test teardown, and compliance requirements (e.g. GDPR right to erasure).
     """
@@ -110,13 +110,13 @@ class BaseRepository(Element, OptionsMixin):
 
             Application code should use the public query helpers instead:
 
-            - ``self.query`` – a :class:`QuerySet` for filtered, sorted,
+            - ``self.query``: A [`QuerySet`][protean.core.queryset.QuerySet] for filtered, sorted,
               paginated queries.
-            - ``self.find_by(**kwargs)`` – find a single aggregate by field
+            - ``self.find_by(**kwargs)``: Find a single aggregate by field
               values.
-            - ``self.find(criteria)`` – find aggregates matching a ``Q``
+            - ``self.find(criteria)``: Find aggregates matching a ``Q``
               expression.
-            - ``self.exists(criteria)`` – check if any aggregate matches.
+            - ``self.exists(criteria)``: Check if any aggregate matches.
 
             Direct ``_dao`` access is intentionally available as an escape
             hatch for infrastructure-level operations (hard deletion, test
@@ -130,7 +130,7 @@ class BaseRepository(Element, OptionsMixin):
     def _delete_in_batches(self, criteria: Q, batch_size: int) -> int:
         """Delete all rows matching ``criteria`` in bounded batches of ``batch_size``.
 
-        Loops :meth:`BaseDAO._delete_top` until a batch deletes fewer than
+        Loops `BaseDAO._delete_top` until a batch deletes fewer than
         ``batch_size`` rows (the matched set is drained), returning the total
         deleted. When called outside a Unit of Work each batch commits before
         the next begins, so a large backlog is cleared without one long-held
@@ -184,7 +184,7 @@ class BaseRepository(Element, OptionsMixin):
     def find(self, criteria: Q) -> "ResultSet":
         """Find all aggregates matching a Q criteria expression.
 
-        Returns a :class:`~protean.core.queryset.ResultSet` containing
+        Returns a `ResultSet` containing
         the matching aggregates. Accepts composable ``Q`` objects, making
         it easy to build reusable, domain-named query functions::
 
@@ -342,9 +342,9 @@ class BaseRepository(Element, OptionsMixin):
         """Return ``True`` if a descendant entity has been directly changed.
 
         The aggregate root is the optimistic-concurrency boundary, so a change
-        confined to a child — at any depth — with no change to a root field must
+        confined to a child (at any depth) with no change to a root field must
         still re-save the root to advance its ``_version``. This mirrors the
-        direct-update detection in :meth:`_sync_children`: a child whose own
+        direct-update detection in `_sync_children`: a child whose own
         attribute was edited carries ``state_.is_changed``, and the recursion
         walks nested children the same way ``_sync_children`` does. Structural
         ``add_``/``remove_`` changes to a collection are excluded for two distinct

@@ -169,7 +169,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         By default, reconstitutes the aggregate to its current (latest) state.
         When ``at_version`` or ``as_of`` is provided, reconstitutes a historical
-        snapshot of the aggregate — a *temporal query*.
+        snapshot of the aggregate: a *temporal query*.
 
         Args:
             part_of: The EventSourced Aggregate's class.
@@ -347,7 +347,7 @@ class BaseEventStore(metaclass=ABCMeta):
         MessageDB (PostgreSQL) returns timezone-naive timestamps stored as UTC,
         while the memory adapter stores ``datetime.now(UTC)`` which is
         timezone-aware.  When they differ, strip tzinfo from both sides so the
-        comparison proceeds — all event store timestamps are treated as UTC.
+        comparison proceeds. All event store timestamps are treated as UTC.
         """
         event_aware = event_time.tzinfo is not None
         cutoff_aware = cutoff.tzinfo is not None
@@ -366,7 +366,7 @@ class BaseEventStore(metaclass=ABCMeta):
     ) -> BaseAggregate | None:
         """Load an aggregate as of a specific timestamp.
 
-        Snapshots are skipped entirely — events are read from position 0 and
+        Snapshots are skipped entirely: events are read from position 0 and
         filtered by their write timestamp.  Only events with
         ``time <= as_of`` are applied.
         """
@@ -451,7 +451,7 @@ class BaseEventStore(metaclass=ABCMeta):
         Fact streams are named ``{category}-fact-{identifier}``, so their parsed
         identifier segment starts with ``fact-``. They hold ``...FactEvent``
         records, not an aggregate instance's events. This is only consulted for
-        aggregates with ``fact_events=True`` (see :meth:`create_snapshots`), so
+        aggregates with ``fact_events=True`` (see [`create_snapshots`][protean.port.event_store.BaseEventStore.create_snapshots]), so
         an ordinary instance whose identifier starts with ``fact-`` is unaffected
         unless its own aggregate also emits fact events.
         """
@@ -559,7 +559,7 @@ class BaseEventStore(metaclass=ABCMeta):
         """Load all raw messages sharing a correlation_id from the event store.
 
         Reads ``$all`` and filters by ``correlation_id``.
-        This is a debugging/inspection utility — not optimized for high-throughput.
+        This is a debugging/inspection utility, not optimized for high-throughput.
         """
         all_messages = self._read("$all", no_of_messages=1_000_000)
         return [
@@ -571,7 +571,7 @@ class BaseEventStore(metaclass=ABCMeta):
     ) -> tuple[str, list[dict[str, Any]]]:
         """Resolve a message identifier and load its full correlation group.
 
-        When ``message_id`` is a :class:`Message`, the correlation ID is read
+        When ``message_id`` is a `Message`, the correlation ID is read
         directly from metadata (no scan required).  When it is a ``str``, a
         single pass over ``$all`` finds the message and its correlation group.
 
@@ -629,10 +629,10 @@ class BaseEventStore(metaclass=ABCMeta):
 
         Args:
             message_id: A Protean message ID string (``headers.id``) or
-                a :class:`Message` object.
+                a `Message` object.
 
         Returns:
-            List of :class:`Message` objects in causal order (root first,
+            List of `Message` objects in causal order (root first,
             target last).
 
         Raises:
@@ -675,12 +675,12 @@ class BaseEventStore(metaclass=ABCMeta):
 
         Args:
             message_id: A Protean message ID string (``headers.id``) or
-                a :class:`Message` object.
+                a `Message` object.
             recursive: If ``True`` (default), return the full subtree of
                 effects.  If ``False``, return only direct children.
 
         Returns:
-            List of :class:`Message` objects caused by the given message,
+            List of `Message` objects caused by the given message,
             in chronological order.  The given message itself is NOT included.
 
         Raises:
@@ -726,7 +726,7 @@ class BaseEventStore(metaclass=ABCMeta):
             correlation_id: The correlation ID to trace.
 
         Returns:
-            Root :class:`CausationNode` with children, or ``None`` if no
+            Root [`CausationNode`][protean.port.event_store.CausationNode] with children, or ``None`` if no
             messages found.
         """
         group = self._load_correlation_group(correlation_id)
@@ -814,7 +814,7 @@ class BaseEventStore(metaclass=ABCMeta):
     def stream_head_position(self, stream_category: str) -> int:
         """Return the global_position of the newest message in a category stream.
 
-        Public wrapper around :meth:`_stream_head_position`.
+        Public wrapper around `_stream_head_position`.
 
         Args:
             stream_category: The stream category to check.

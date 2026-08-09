@@ -8,8 +8,8 @@ that the version in the database matches what was loaded. If another
 transaction modified the aggregate in the meantime, the commit raises
 `ExpectedVersionError`.
 
-Most teams treat this error as infrastructure noise -- a generic "something
-went wrong, try again" situation:
+Most teams treat this error as infrastructure noise, a generic "something went
+wrong, try again" situation:
 
 ```python
 from protean.exceptions import ExpectedVersionError
@@ -40,21 +40,21 @@ except ExpectedVersionError:
     return {"error": "Conflict. Please try again."}, 409
 ```
 
-This is correct mechanically -- the version check prevented data corruption.
-But it is lazy architecturally. The user sees "try again" with no explanation
-of what happened, what they lost, or whether trying again will even work.
+This is correct mechanically, the version check prevented data corruption. But
+it is lazy architecturally. The user sees "try again" with no explanation of
+what happened, what they lost, or whether trying again will even work.
 
 Worse, the same generic handler is used whether the conflict is:
 
-- Two users changing display settings at the same time (harmless -- either
-  value is fine)
-- Two users booking the same concert seat (critical -- one of them must be
-  told the seat is taken)
-- Two users adding items to a shared shopping cart (mergeable -- both
-  additions can coexist)
+- Two users changing display settings at the same time (harmless; either value
+  is fine)
+- Two users booking the same concert seat (critical; one of them must be told
+  the seat is taken)
+- Two users adding items to a shared shopping cart (mergeable; both additions
+  can coexist)
 
 These are fundamentally different situations that deserve fundamentally
-different responses. A version conflict is not a failure -- it is a
+different responses. A version conflict is not a failure. It is a
 **signal** that tells you something meaningful about how your domain is
 being used under contention.
 
@@ -94,18 +94,17 @@ makes sense, and either apply it or reject it with a clear explanation.
 **Examples:** adding items to a shared cart, appending tags to a document,
 collaborative editing of independent fields.
 
-For **event-sourced aggregates**, version conflicts carry even more weight.
-The event store uses `_version` to prevent contradictory event sequences from
-being appended. An `ExpectedVersionError` from the event store is the system
-working correctly -- it prevents an impossible history from being recorded.
-Silencing it with a blind retry can introduce logical contradictions in the
-event stream.
+For **event-sourced aggregates**, version conflicts carry even more weight. The
+event store uses `_version` to prevent contradictory event sequences from being
+appended. An `ExpectedVersionError` from the event store is the system working
+correctly. It prevents an impossible history from being recorded. Silencing it
+with a blind retry can introduce logical contradictions in the event stream.
 
 ---
 
 ## Applying the Pattern
 
-### Category 1: Last writer wins -- retry loop
+### Category 1: Last writer wins (retry loop)
 
 When concurrent changes are harmless and either outcome is acceptable, catch
 the version conflict, reload the aggregate with the latest version, reapply
@@ -140,8 +139,8 @@ class UserPreferences(BaseAggregate):
 
 The application service implements a retry loop. If a version conflict
 occurs, the operation is safe to retry because each change is independent
-and idempotent -- setting the theme to "dark" produces the same result
-regardless of how many times it runs.
+and idempotent, setting the theme to "dark" produces the same result regardless
+of how many times it runs.
 
 ```python
 MAX_RETRIES = 3
@@ -167,12 +166,12 @@ class PreferencesService(BaseApplicationService):
 
 !!! note "Why not retry everything?"
     A retry loop is appropriate here because `update_theme` is a **set-based
-    operation** -- the result depends only on the input, not on the previous
+    operation**. The result depends only on the input, not on the previous
     state. For additive operations (incrementing a counter, appending to a
-    list), blind retries can produce incorrect results. Always verify that
-    the operation is safe to repeat before adding a retry loop.
+    list), blind retries can produce incorrect results. Always verify that the
+    operation is safe to repeat before adding a retry loop.
 
-### Category 2: Conflict means a real problem -- business exception
+### Category 2: Conflict means a real problem (business exception)
 
 When a version conflict means the operation is no longer valid, catch the
 error and translate it into a domain-specific exception. The caller gets a
@@ -208,9 +207,9 @@ class SeatReservation(BaseAggregate):
 ```
 
 The command handler translates the version conflict into a business-level
-exception. If two customers try to reserve the same seat simultaneously,
-one succeeds and the other learns that the seat is taken -- not that a
-vague "conflict" occurred.
+exception. If two customers try to reserve the same seat simultaneously, one
+succeeds and the other learns that the seat is taken, not that a vague
+"conflict" occurred.
 
 ```python
 class SeatAlreadyTaken(Exception):
@@ -267,7 +266,7 @@ async def reserve_seat(event_id: str, seat_number: str, customer_id: str):
     seat if the precondition logic has a gap. The conflict *is* the answer:
     someone else got there first.
 
-### Category 3: Merge if possible -- conditional retry
+### Category 3: Merge if possible (conditional retry)
 
 When the operation might still be valid despite the conflict, reload the
 aggregate, check whether the specific change is still applicable, and
@@ -355,13 +354,13 @@ reason instead of blindly retried.
 
 ## Framework auto-retry and when it is not enough
 
-Protean automatically retries `ExpectedVersionError` at the `@handle`
-wrapper level. When a handler raises a version conflict, the framework
-catches it, waits with exponential backoff, and re-executes the handler
-in a **fresh `UnitOfWork`** -- so the aggregate is re-read at the latest
-version. This happens transparently, before the error reaches the
-subscription retry pipeline. By default, the framework retries up to 3
-times with 50 ms initial backoff (350 ms worst case).
+Protean automatically retries `ExpectedVersionError` at the `@handle` wrapper
+level. When a handler raises a version conflict, the framework catches it,
+waits with exponential backoff, and re-executes the handler in a **fresh
+`UnitOfWork`**, so the aggregate is re-read at the latest version. This happens
+transparently, before the error reaches the subscription retry pipeline. By
+default, the framework retries up to 3 times with 50 ms initial backoff (350 ms
+worst case).
 
 !!! warning "The retry budget scales with contention, not with load"
     Under optimistic concurrency, only **one** writer can commit per version
@@ -373,7 +372,7 @@ times with 50 ms initial backoff (350 ms worst case).
 
     So the default of 3 is tuned for ordinary contention (a handful of writers
     touching the same aggregate at once). It is deliberately *not* enough for a
-    **hot aggregate** (a flash-sale SKU, a shared counter, one very popular
+    **hot aggregate** (a flash-sale SKU, a shared counter, one popular
     account) where many writers converge on a single item. There, some writers
     will exhaust the 3 retries and surface `ExpectedVersionError` even though the
     operation would eventually have succeeded. Exponential backoff spreads
@@ -388,11 +387,11 @@ times with 50 ms initial backoff (350 ms worst case).
     is genuinely expected and unavoidable. Bounded retries are a feature: they
     fail fast instead of livelocking under sustained contention.
 
-This auto-retry is the right behavior for **category 1** (last writer
-wins) conflicts. The handler re-reads the aggregate and reapplies the
-change -- which is safe because either value is acceptable. In many
-cases, you do not need to write manual retry loops for category 1
-scenarios because the framework handles it.
+This auto-retry is the right behavior for **category 1** (last writer wins)
+conflicts. The handler re-reads the aggregate and reapplies the change. Which
+is safe because either value is acceptable. In many cases, you do not need to
+write manual retry loops for category 1 scenarios because the framework handles
+it.
 
 However, auto-retry alone is **not sufficient** for categories 2 and 3:
 
@@ -402,8 +401,7 @@ However, auto-retry alone is **not sufficient** for categories 2 and 3:
   framework's auto-retry will re-execute the handler, but the handler
   itself must recognize that the operation is no longer valid and raise
   accordingly. If the handler does not catch the error, the framework
-  retries blindly -- which is exactly what category 2 conflicts should
-  avoid.
+  retries blindly, which is exactly what category 2 conflicts should avoid.
 
 - **Category 3** (merge if possible): The handler must reload the
   aggregate and re-evaluate preconditions. The framework's fresh
@@ -431,13 +429,12 @@ To disable auto-retry entirely, set `enabled = false` in
 
 ## Atomicity guarantee across adapters
 
-The pattern above assumes that `ExpectedVersionError` is raised
-reliably whenever two writers race on the same aggregate. That
-guarantee is only as strong as the adapter behind the repository. Since
-the 5.1 hardening work, every first-party adapter checks the expected
-version **in the same atomic operation as the write** — there is no
-window in which two writers can both observe the same version and both
-commit.
+The pattern above assumes that `ExpectedVersionError` is raised reliably
+whenever two writers race on the same aggregate. That guarantee is only as
+strong as the adapter behind the repository. Since the 5.1 hardening work,
+every first-party adapter checks the expected version **in the same atomic
+operation as the write**. There is no window in which two writers can both
+observe the same version and both commit.
 
 | Adapter | Mechanism |
 |---------|-----------|
@@ -516,11 +513,10 @@ on the reloaded aggregate.
 
 !!! note "How this differs from framework auto-retry"
     Protean's built-in auto-retry at the `@handle` level **also** retries
-    blindly -- which is correct for category 1 conflicts (the vast
-    majority). For categories 2 and 3, your handler must catch
-    `ExpectedVersionError` inside the handler method and apply the
-    appropriate strategy. When you catch it inside the handler, the
-    framework's retry does not trigger.
+    blindly, which is correct for category 1 conflicts (the vast majority). For
+    categories 2 and 3, your handler must catch `ExpectedVersionError` inside
+    the handler method and apply the appropriate strategy. When you catch it
+    inside the handler, the framework's retry does not trigger.
 
 ### Ignoring version conflicts entirely
 
@@ -564,11 +560,11 @@ class Order(BaseAggregate):
     notes: Text()                    # Changes independently
 ```
 
-Every field shares the same `_version`. Any change to any field increments
-the version and conflicts with any concurrent change to any other field.
-The solution is to design smaller aggregates -- see
-[Design Small Aggregates](design-small-aggregates.md) -- so that each
-aggregate's version protects only the data that genuinely must be consistent.
+Every field shares the same `_version`. Any change to any field increments the
+version and conflicts with any concurrent change to any other field. The
+solution is to design smaller aggregates, see [Design Small
+Aggregates](design-small-aggregates.md), so that each aggregate's version
+protects only the data that genuinely must be consistent.
 
 ---
 
@@ -593,12 +589,12 @@ aggregate's version protects only the data that genuinely must be consistent.
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Design Small Aggregates](design-small-aggregates.md) -- Smaller aggregates mean fewer version conflicts.
-    - [One Aggregate Per Transaction](one-aggregate-per-transaction.md) -- Single aggregate per handler reduces contention.
-    - [Command Idempotency](command-idempotency.md) -- Idempotency keys prevent duplicate operations.
+    - [Design Small Aggregates](design-small-aggregates.md): Smaller aggregates mean fewer version conflicts.
+    - [One Aggregate Per Transaction](one-aggregate-per-transaction.md): Single aggregate per handler reduces contention.
+    - [Command Idempotency](command-idempotency.md): Idempotency keys prevent duplicate operations.
 
     **Guides:**
 
-    - [Unit of Work](../guides/change-state/unit-of-work.md) -- Transaction management and version tracking.
-    - [Persist Aggregates](../guides/change-state/persist-aggregates.md) -- Repository persistence patterns.
-    - [Error Handling](../guides/server/error-handling.md#version-conflict-auto-retry) -- Framework auto-retry configuration for version conflicts.
+    - [Unit of Work](../guides/change-state/unit-of-work.md): Transaction management and version tracking.
+    - [Persist Aggregates](../guides/change-state/persist-aggregates.md): Repository persistence patterns.
+    - [Error Handling](../guides/server/error-handling.md#version-conflict-auto-retry): Framework auto-retry configuration for version conflicts.

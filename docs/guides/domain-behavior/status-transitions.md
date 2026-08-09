@@ -32,8 +32,8 @@ class Order:
 ```
 
 Without a `transitions` argument, `Status` behaves like
-`String(choices=OrderStatus)` — it constrains the field to valid Enum values
-but does not enforce transition rules.
+`String(choices=OrderStatus)`. It constrains the field to valid Enum values but
+does not enforce transition rules.
 
 ## Adding transitions
 
@@ -50,9 +50,9 @@ class Order:
     })
 ```
 
-States **not appearing as keys** in the dict are terminal — no outgoing
-transitions are allowed. In the example above, `DELIVERED` and `CANCELLED`
-are terminal states.
+States **not appearing as keys** in the dict are terminal, no outgoing
+transitions are allowed. In the example above, `DELIVERED` and `CANCELLED` are
+terminal states.
 
 ## How enforcement works
 
@@ -81,10 +81,10 @@ ValidationError: {'status': ["Invalid status transition from 'DELIVERED'. 'DELIV
 
 ### Same-value assignment (self-transitions)
 
-By default, assigning a status to its current value is **rejected** — it is
+By default, assigning a status to its current value is **rejected**. It is
 treated as a transition and must appear in the transition map like any other.
-This catches re-entry bugs (calling `approve()` on an already-approved item)
-at the framework level instead of requiring manual guards.
+This catches re-entry bugs (calling `approve()` on an already-approved item) at
+the framework level instead of requiring manual guards.
 
 ```python
 order = Order()           # status = "DRAFT"
@@ -119,11 +119,11 @@ Now `order.status = "CANCELLED"` succeeds when the order is already cancelled.
 !!! note "Three categories of same-value behavior"
     When designing your transition map, classify each state:
 
-    1. **Re-entry is a business error** (most common) — don't list the state
-       in its own targets. `approve()` on a published review fails.
-    2. **Idempotent by design** — list the state in its own targets.
+    1. **Re-entry is a business error** (most common), don't list the state in
+       its own targets. `approve()` on a published review fails.
+    2. **Idempotent by design**: List the state in its own targets.
        `cancel()` on a cancelled order succeeds as a no-op.
-    3. **Terminal state** — omit it from the map entirely. No transitions
+    3. **Terminal state**: Omit it from the map entirely. No transitions
        (including self-transitions) are allowed.
 
 ### Initialization
@@ -184,7 +184,7 @@ class Order:
 ```
 
 **Event replay** (`from_events()`) does **not** validate transitions.
-Replayed events are historical facts — the framework trusts them.
+Replayed events are historical facts, the framework trusts them.
 
 ## Programmatic checking
 
@@ -232,36 +232,36 @@ class Order:
 
 ## Best practices
 
-1. **Design the Enum first.** The Enum defines all possible states. Name
-   values clearly — they appear in error messages and database records.
+1. **Design the Enum first**: The Enum defines all possible states. Name
+   values clearly. They appear in error messages and database records.
 
-2. **Keep transition maps in the aggregate.** The transition map is business
+2. **Keep transition maps in the aggregate**: The transition map is business
    logic. It belongs where the business rules live.
 
-3. **Use terminal states intentionally.** Terminal states are states with no
+3. **Use terminal states intentionally**: Terminal states are states with no
    outgoing transitions (absent from the map's keys). Design them as
    deliberate end-of-lifecycle markers.
 
-4. **Think about idempotency for every state.** For each state, decide
+4. **Think about idempotency for every state**: For each state, decide
    whether re-entry is an error or a deliberate no-op. If a `cancel()`
    operation should be safe to call twice (e.g., for race conditions), add
    the state to its own target list: `CANCELLED: [CANCELLED]`.
 
-5. **Combine with invariants.** `Status` handles *which* transitions are
-   legal. Use `@invariant.pre` for *under what conditions* — for example,
-   "can only confirm an order if payment has been received."
+5. **Combine with invariants**: `Status` handles *which* transitions are
+   legal. Use `@invariant.pre` for *under what conditions*, for example, "can only confirm
+   an order if payment has been received."
 
-6. **Status on Value Objects is not allowed.** Value Objects are immutable
+6. **Status on Value Objects is not allowed**: Value Objects are immutable
    and cannot transition. `Status` with `transitions` on a Value Object
    raises `IncorrectUsageError` at class creation time.
 
 ---
 
 !!! tip "See also"
-    **Reference:** [Status field](../../reference/fields/simple-fields.md#status) — Field options and argument details.
+    **Reference:** [Status field](../../reference/fields/simple-fields.md#status): Field options and argument details.
 
     **Related guides:**
 
-    - [Invariants](invariants.md) — Business rules that complement transition enforcement.
-    - [Aggregate Mutation](aggregate-mutation.md) — The `__setattr__` mechanism that triggers validation.
-    - [Raising Events](raising-events.md) — How `raise_()` and `@apply` interact with `atomic_change`.
+    - [Invariants](invariants.md): Business rules that complement transition enforcement.
+    - [Aggregate Mutation](aggregate-mutation.md): The `__setattr__` mechanism that triggers validation.
+    - [Raising Events](raising-events.md): How `raise_()` and `@apply` interact with `atomic_change`.

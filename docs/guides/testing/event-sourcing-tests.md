@@ -3,9 +3,9 @@
 <span class="pathway-tag pathway-tag-es">ES</span>
 
 Protean provides a fluent test DSL for event-sourced aggregates through the
-`protean.testing` module. It lets you write integration tests that exercise
-the full command processing pipeline — command handler, aggregate method,
-repository, unit of work, and event store — in three words:
+`protean.testing` module. It lets you write integration tests that exercise the
+full command processing pipeline (command handler, aggregate method,
+repository, unit of work, and event store) in three words:
 
 ```python
 from protean.testing import given
@@ -16,8 +16,8 @@ order = given(Order, order_created, order_confirmed).process(initiate_payment)
 *"Given an Order after order_created and order_confirmed, process
 initiate_payment."*
 
-Every `.process()` call runs through the real pipeline -- command handler,
-aggregate loading, event store writes -- with no mocks. For testing
+Every `.process()` call runs through the real pipeline (command handler,
+aggregate loading, event store writes) with no mocks. For testing
 non-event-sourced aggregates, see [Application Tests](./application-tests.md).
 
 ## The Three Words
@@ -55,7 +55,7 @@ order = given(Order, order_created, order_confirmed).process(initiate_payment)
 ## Multi-Command Chaining
 
 Call `.process()` multiple times to build up aggregate state through the real
-pipeline — no hand-crafted event fixtures needed:
+pipeline, no hand-crafted event fixtures needed:
 
 ```python
 order = (
@@ -97,8 +97,8 @@ assert order.all_events.types == [OrderCreated, OrderConfirmed]
 
 | Pattern | Use when |
 |---------|----------|
-| `given(Order, e1, e2).process(cmd)` | You need precise control over history — specific event field values, edge-case states, or states that can't easily be reached through commands. |
-| `given(Order).process(cmd1).process(cmd2)` | You're testing a lifecycle or user journey. The setup steps aren't the focus — the final command is. |
+| `given(Order, e1, e2).process(cmd)` | You need precise control over history, specific event field values, edge-case states, or states that can't easily be reached through commands. |
+| `given(Order).process(cmd1).process(cmd2)` | You're testing a lifecycle or user journey. The setup steps aren't the focus; the final command is. |
 | `Order.from_events([e1, e2])` | Unit testing aggregate logic directly, without the command pipeline. |
 
 Both patterns coexist. Event-based `given()` gives surgical precision.
@@ -128,8 +128,8 @@ assert order.rejection is None # the exception object, or None
 
 ### Rejection Messages
 
-For cleaner error assertions, use `.rejection_messages` — a flat list of
-error strings extracted from the exception:
+For cleaner error assertions, use `.rejection_messages`, a flat list of error strings extracted
+from the exception:
 
 ```python
 assert order.rejected
@@ -390,11 +390,10 @@ def initiate_payment(order_id):
 
 ### Why Integration Tests, Not Unit Tests
 
-`.process(command)` calls `domain.process()` — the same entry point as
-production code. Nothing is mocked. This gives you confidence that the
-full pipeline works correctly: command handler routing, aggregate loading
-from the event store, business method execution, event raising, and
-persistence.
+`.process(command)` calls `domain.process()`. The same entry point as
+production code. Nothing is mocked. This gives you confidence that the full
+pipeline works correctly: command handler routing, aggregate loading from the
+event store, business method execution, event raising, and persistence.
 
 ### Why `__getattr__` Proxy
 
@@ -421,9 +420,9 @@ aggregate internals change, chained tests survive untouched.
 ### Location at `protean.testing`
 
 Following the convention of `django.test`, `flask.testing`, and
-`unittest.mock` — a top-level testing module for test utilities. Separate
-from the pytest plugin in `protean.integrations.pytest`, which handles
-fixture lifecycle (`DomainFixture`), not domain-level test DSL.
+`unittest.mock`, a top-level testing module for test utilities. Separate from
+the pytest plugin in `protean.integrations.pytest`, which handles fixture
+lifecycle (`DomainFixture`), not domain-level test DSL.
 
 ## API Reference
 
@@ -453,7 +452,7 @@ Start an event-sourcing test sentence.
 | `EventCls in log` | Check if an event of this type exists. |
 | `log[EventCls]` | First event of type (raises `KeyError` if missing). |
 | `log[index]` | Event by position. |
-| `log.get(EventCls)` | Safe access — returns `None` if not found. |
+| `log.get(EventCls)` | Safe access, returns `None` if not found. |
 | `log.of_type(EventCls)` | All events of the given type. |
 | `log.types` | Ordered list of event classes. |
 | `log.first` | First event, or `None` if empty. |

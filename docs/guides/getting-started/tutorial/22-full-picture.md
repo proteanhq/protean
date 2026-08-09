@@ -156,31 +156,31 @@ Store events as the source of truth instead of snapshots. The
 comprehensive 22-chapter guide that builds a banking platform, covering
 temporal queries, snapshots, event upcasting, and more.
 
-### Deep Dives
+### Going further
 
-- **[Guides](../../compose-a-domain/index.md)** — detailed coverage of
+- **[Guides](../../compose-a-domain/index.md)**: Detailed coverage of
   each domain element
-- **[Architecture](../../../concepts/architecture/ddd.md)** — DDD, CQRS,
+- **[Architecture](../../../concepts/architecture/ddd.md)**: DDD, CQRS,
   and Event Sourcing theory
-- **[Adapters](../../../reference/adapters/index.md)** — database, broker,
+- **[Adapters](../../../reference/adapters/index.md)**: Database, broker,
   cache, and event store adapters
-- **[Patterns](../../../patterns/index.md)** — aggregate sizing,
+- **[Patterns](../../../patterns/index.md)**: Aggregate sizing,
   idempotent handlers, validation layering
-- **[CLI Reference](../../../reference/cli/index.md)** — all command-line
+- **[CLI Reference](../../../reference/cli/index.md)**: All command-line
   tools
 
 ### Application Services (The DDD Alternative)
 
-This tutorial used **Commands and Command Handlers** (the CQRS approach).
-In the **pure DDD** approach, **Application Services** fill the same
-role — they receive requests directly and coordinate the domain logic,
-without the explicit command objects. See
-[Application Services](../../change-state/application-services.md) and the
-[DDD Pathway](../../pathways/ddd.md) for that reading order.
+This tutorial used **Commands and Command Handlers** (the CQRS approach). In
+the **pure DDD** approach, **Application Services** fill the same role. They
+receive requests directly and coordinate the domain logic, without the explicit
+command objects. See [Application
+Services](../../change-state/application-services.md) and the [DDD
+Pathway](../../pathways/ddd.md) for that reading order.
 
 ---
 
-Congratulations! You have built and operated a complete production CQRS
+You have built and operated a complete production CQRS
 system with Protean. The bookstore handles real traffic asynchronously,
 validates business rules across aggregates, integrates with external
 systems, and has full operational tooling for monitoring, debugging,

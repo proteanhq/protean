@@ -2,7 +2,7 @@
 
 The finance team changes their regulatory reporting requirements. The
 `AccountReport` projection needs new fields and different aggregation
-logic. Rather than writing a complex data migration, we simply
+logic. Rather than writing a complex data migration, we
 **rebuild the projection from scratch**: truncate the existing data,
 replay all events through the updated projector, and the new projection
 materializes automatically.
@@ -30,10 +30,10 @@ with domain.domain_context():
 
 The `RebuildResult` contains:
 
-- `projection_name` — which projection was rebuilt
-- `events_dispatched` — number of events processed
-- `events_skipped` — events whose type could not be resolved
-- `errors` — any exceptions during processing
+- `projection_name`: Which projection was rebuilt
+- `events_dispatched`: Number of events processed
+- `events_skipped`: Events whose type could not be resolved
+- `errors`: Any exceptions during processing
 
 ## Rebuilding via CLI
 
@@ -82,8 +82,7 @@ rebuild.
 !!! warning "Stop the server first"
     Stop `protean server` before rebuilding projections to avoid
     conflicts with concurrent event processing. After the rebuild,
-    restart the server — it will resume from the current stream
-    position.
+    restart the server. It will resume from the current stream position.
 
 ## Idempotent Rebuilds
 

@@ -3,7 +3,7 @@
 !!! info "Builds on DDD"
     This approach adds Commands, Command Handlers, and Projections on top of
     the [DDD foundation](./ddd.md). If you haven't read the DDD pathway yet,
-    start there — CQRS extends those concepts.
+    start there, CQRS extends those concepts.
 
 ## Overview
 
@@ -149,13 +149,13 @@ DDD project; the second group addresses concerns specific to CQRS:
 Consider moving to [Event Sourcing](./event-sourcing.md) when an aggregate
 meets **two or more** of these criteria:
 
-- **Strong auditability required** — regulatory compliance or financial
+- **Strong auditability required**: Regulatory compliance or financial
   transactions requiring complete traceability
-- **Temporal analysis needed** — historical reporting or state
+- **Temporal analysis needed**: Historical reporting or state
   reconstruction at any point in time
-- **Complex state transitions** — multi-step workflows with intricate
+- **Complex state transitions**: Multi-step workflows with intricate
   business rules
-- **Event-driven integration** — other bounded contexts consume your events
+- **Event-driven integration**: Other bounded contexts consume your events
   as their primary data source
 
 !!! note

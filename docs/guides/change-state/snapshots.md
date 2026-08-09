@@ -18,9 +18,9 @@ events since the last snapshot.
 3. After loading, if the number of new events exceeds the **snapshot
    threshold**, a fresh snapshot is automatically created
 
-Snapshots are an optimization -- they are never the source of truth.
-The event stream is authoritative. You can delete all snapshots and
-rebuild them at any time.
+Snapshots are an optimization. They are never the source of truth. The event
+stream is authoritative. You can delete all snapshots and rebuild them at any
+time.
 
 ---
 
@@ -102,9 +102,9 @@ cron job:
 ---
 
 !!! tip "See also"
-    - [Snapshot CLI Reference](../../reference/cli/data/snapshot.md)
-      -- Full CLI command documentation.
-    - [Event Store Setup](./event-store-setup.md)
-      -- Configuring the event store provider.
-    - [Temporal Queries](./temporal-queries.md)
-      -- Time-travel queries for event-sourced aggregates.
+    - [Snapshot CLI Reference](../../reference/cli/data/snapshot.md):
+      Full CLI command documentation.
+    - [Event Store Setup](./event-store-setup.md):
+      Configuring the event store provider.
+    - [Temporal Queries](./temporal-queries.md):
+      Time-travel queries for event-sourced aggregates.

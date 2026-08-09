@@ -1,8 +1,8 @@
 # Concepts
 
-The concepts section helps you understand *why* Protean works the way it
-does. It covers foundational concepts, architectural patterns, design
-decisions, and the internal machinery.
+Why Protean works the way it does: the foundational ideas, the architectural
+patterns it supports, the design decisions behind them, and the internal
+machinery underneath.
 
 For factual lookup of specific options, see
 [Reference](../reference/index.md).
@@ -76,7 +76,7 @@ For step-by-step instructions, see [Guides](../guides/index.md).
 
     ---
 
-    Deep dives into the field system, shadow fields, query system, and
+    The field system, shadow fields, query system, and
     event sourcing mechanics.
 
     [:material-arrow-right-box: Internals](internals/index.md)

@@ -274,7 +274,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
     def replace(self, **kwargs: Any) -> Self:
         """Return a new value object with specified fields replaced.
 
-        Similar to ``dataclasses.replace()`` — copies all current field values,
+        Similar to ``dataclasses.replace()``: copies all current field values,
         overlays the provided *kwargs*, and constructs a new instance of the
         same class.  Invariants are re-validated on the new instance.
 

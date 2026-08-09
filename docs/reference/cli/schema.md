@@ -45,21 +45,22 @@ protean schema generate --domain=my_app.domain --output=build
 Either `--domain` or `--ir` is required; they are mutually exclusive.
 
 **Formats.** `--format avro` emits Avro `{name}.v{version}.avsc` records (null-first
-unions for optionals, so optional fields default to `null`; `uuid`/`date`/`timestamp-millis`
-logical types; nested value objects become named records referenced by fullname).
-`--format protobuf` emits proto3 `{name}.v{version}.proto` messages with
-`optional`/`repeated` labels, `google.protobuf.Timestamp` for dates, and
-field numbers assigned deterministically in sorted field-name order — so
-re-generating an *unchanged* schema is byte-identical. Adding a field
-renumbers alphabetically-later fields, so these numbers are for emission, not
-wire-compatible evolution. Both are compiler backends for schema *emission*;
-runtime binary encode/decode is out of scope, and field-level constraints
-(choices/enums, min/max) are not carried into either format.
+unions for optionals, so optional fields default to `null`;
+`uuid`/`date`/`timestamp-millis` logical types; nested value objects become
+named records referenced by fullname). `--format protobuf` emits proto3
+`{name}.v{version}.proto` messages with `optional`/`repeated` labels,
+`google.protobuf.Timestamp` for dates, and field numbers assigned
+deterministically in sorted field-name order, so re-generating an *unchanged*
+schema is byte-identical. Adding a field renumbers alphabetically-later fields,
+so these numbers are for emission, not wire-compatible evolution. Both are
+compiler backends for schema *emission*; runtime binary encode/decode is out of
+scope, and field-level constraints (choices/enums, min/max) are not carried
+into either format.
 
-`--format all` emits every format into one `schemas/` tree in a single pass —
-JSON, Avro, and Protobuf files coexist per element (distinct extensions) rather
-than one clobbering the next. Together with [`protean events catalog`](data/events.md),
-this is the local schema-registry on-ramp.
+`--format all` emits every format into one `schemas/` tree in a single pass, JSON, Avro, and
+Protobuf files coexist per element (distinct extensions) rather than one
+clobbering the next. Together with [`protean events catalog`](data/events.md), this is the local
+schema-registry on-ramp.
 
 **Output structure**
 
@@ -149,7 +150,7 @@ Use the full FQN to disambiguate.
 ## `protean schema render`
 
 Renders the index declarations on a domain's aggregates and entities to
-per-dialect `CREATE INDEX` DDL files. It never executes DDL — it writes `.sql`
+per-dialect `CREATE INDEX` DDL files. It never executes DDL. It writes `.sql`
 artifacts for review or for application through your own migration tooling.
 
 ```bash

@@ -12,13 +12,12 @@
 ### The optional dependency problem
 
 OpenTelemetry is an optional dependency in Protean (`pip install
-protean[telemetry]`). Instrumentation code -- span creation, metric
-recording, context propagation -- is woven into core modules like
-`CommandProcessor`, `UnitOfWork`, `Repository`, `Engine`, and
-`OutboxProcessor`. Without a clear boundary, every instrumented file
-would need its own `try: import opentelemetry ... except ImportError`
-guard and conditional logic, scattering OTEL awareness across dozens
-of files.
+protean[telemetry]`). Instrumentation code (span creation, metric recording,
+context propagation) is woven into core modules like `CommandProcessor`,
+`UnitOfWork`, `Repository`, `Engine`, and `OutboxProcessor`. Without a clear
+boundary, every instrumented file would need its own `try: import
+opentelemetry... except ImportError` guard and conditional logic, scattering
+OTEL awareness across dozens of files.
 
 During the Epic 6.1 implementation (8 PRs over multiple weeks), code
 review caught at least four instances where contributors directly
@@ -44,13 +43,13 @@ HTTP POST /orders
               -> ...
 ```
 
-Each arrow may cross a process boundary (via event store or broker).
-For a distributed trace to survive this journey, the trace context must
-be explicitly carried in message metadata and extracted/injected at each
-boundary. Protean already had a `TraceParent` value object in
-`MessageHeaders` using W3C format -- but it was not connected to OTEL's
-context propagation. The challenge was bridging these two systems
-bidirectionally without coupling core domain code to OTEL imports.
+Each arrow may cross a process boundary (via event store or broker). For a
+distributed trace to survive this journey, the trace context must be explicitly
+carried in message metadata and extracted/injected at each boundary. Protean
+already had a `TraceParent` value object in `MessageHeaders` using W3C format,
+but it was not connected to OTEL's context propagation. The challenge was
+bridging these two systems bidirectionally without coupling core domain code to
+OTEL imports.
 
 ## Decision
 
@@ -78,14 +77,13 @@ The gateway exposes a fixed public API:
 | `create_observation(gauge, value, attrs)` | Observable gauge callback helper |
 | `instrument_fastapi_app(app, domain)` | FastAPI auto-instrumentation |
 
-When OTEL packages are not installed or telemetry is disabled, every
-function returns a lightweight no-op: `_NoOpTracer`, `_NoOpSpan`,
-`_NoOpMeter`, `_NoOpCounter`, `_NoOpHistogram`, `_NoOpObservableGauge`.
-These implement the minimal interface that instrumentation code depends
-on (e.g., `start_as_current_span()` returns a context manager yielding
-`_NoOpSpan`). Instrumentation code calls `tracer.start_as_current_span()`
-unconditionally and gets either a real span or a no-op -- no conditional
-guards anywhere.
+When OTEL packages are not installed or telemetry is disabled, every function
+returns a lightweight no-op: `_NoOpTracer`, `_NoOpSpan`, `_NoOpMeter`,
+`_NoOpCounter`, `_NoOpHistogram`, `_NoOpObservableGauge`. These implement the
+minimal interface that instrumentation code depends on (e.g.,
+`start_as_current_span()` returns a context manager yielding `_NoOpSpan`).
+Instrumentation code calls `tracer.start_as_current_span()` unconditionally and
+gets either a real span or a no-op, no conditional guards anywhere.
 
 ### Part 2: Span conventions
 
@@ -118,32 +116,30 @@ three cooperative injection/extraction points:
 
 **Injection (outgoing messages):**
 
-1. **Command enrichment** (`CommandProcessor.enrich()`) -- calls
-   `inject_traceparent_from_context()` to capture the current OTEL span
-   context as a `TraceParent` value object in the command's
+1. **Command enrichment** (`CommandProcessor.enrich()`) calls
+   `inject_traceparent_from_context()` to capture the current OTEL span context
+   as a `TraceParent` value object in the command's
    `MessageHeaders.traceparent`.
 
-2. **Event raising** (`BaseAggregate.raise_()`) -- preserves an existing
-   `traceparent` from the event's metadata if present (e.g., when the
-   event was constructed with explicit headers). Falls back to
-   `inject_traceparent_from_context()` to capture the current span
-   context. This ensures events raised during synchronous command handler
-   execution inherit the handler's span context.
+2. **Event raising** (`BaseAggregate.raise_()`) preserves an existing
+   `traceparent` from the event's metadata if present (e.g., when the event was
+   constructed with explicit headers). Otherwise it falls back to
+   `inject_traceparent_from_context()` to capture the current span context. This
+   ensures events raised during synchronous command handler execution inherit
+   the handler's span context.
 
 **Extraction (incoming messages):**
 
 3. **Command processing** (`CommandProcessor.process()`) and **engine
-   message handling** (`Engine.handle_message()`) -- call
-   `extract_context_from_traceparent()` to convert the incoming
-   `TraceParent` value object back to an OTEL `Context`, passed as the
-   `context=` parameter to `start_as_current_span()`. This makes the
-   new span a child of the incoming trace.
+   message handling** (`Engine.handle_message()`), call `extract_context_from_traceparent()` to convert the incoming `TraceParent` value object
+   back to an OTEL `Context`, passed as the `context=` parameter to `start_as_current_span()`. This makes the new
+   span a child of the incoming trace.
 
-The bridge uses OTEL's standard `propagate.inject()` and
-`propagate.extract()` with W3C `traceparent` format, matching the format
-that Protean's `TraceParent` value object already uses. When OTEL is not
-installed, both helpers return `None` and the traceparent fields are
-simply not populated -- no trace, no overhead, no errors.
+The bridge uses OTEL's standard `propagate.inject()` and `propagate.extract()`
+with W3C `traceparent` format, matching the format that Protean's `TraceParent`
+value object already uses. When OTEL is not installed, both helpers return
+`None` and the traceparent fields are simply not populated, no trace, no
+overhead, no errors.
 
 A supporting fix was required: `BaseCommand._build_metadata()` previously
 discarded headers that contained only a `traceparent` (it required `type`
@@ -187,7 +183,7 @@ exposition is preserved unchanged.
 - Zero overhead when telemetry is disabled: no-ops are trivial objects
   with empty methods; OTEL packages are never imported.
 - The `/metrics` endpoint works identically whether OTEL is installed
-  or not -- no behavioral change for existing Observatory users.
+  or not, no behavioral change for existing Observatory users.
 
 **Negative:**
 
@@ -203,8 +199,8 @@ exposition is preserved unchanged.
   traceparent bridging, the trace will break at that boundary.
 - The async command path records `status="ok"` and duration at
   enqueue time, even though execution happens later and may fail.
-  This is a known trade-off -- the metric reflects "accepted for
-  processing", not "completed successfully".
+  This is a known trade-off: the metric reflects "accepted for processing", not
+  "completed successfully".
 
 ## Alternatives Considered
 
@@ -231,17 +227,17 @@ because OTEL is the industry convergence point. Jaeger and Zipkin both
 accept OTLP. Choosing OTEL avoids vendor lock-in and gives users
 freedom to pick their backend.
 
-## Update — Log↔Trace Correlation (Epic 6.6, sub-issue #917)
+## Update: Log↔Trace Correlation (Epic 6.6, sub-issue #917)
 
 Epic 6.6 (Logging Overhaul) extended this story with automatic log↔trace
 correlation. When `telemetry.enabled=True`, `Domain.configure_logging()`
 installs a stdlib `OTelTraceContextFilter` on the root logger and appends a
-`protean_otel_processor` to the structlog pipeline. Both read the active
-span via `opentelemetry.trace.get_current_span()` and inject `trace_id`
-(32-char hex), `span_id` (16-char hex), and `trace_flags` (`int`) into
-every log record. Outside a valid span, or when the `opentelemetry` extra
-is not installed, the fields default to empty strings / `0` — no lazy
-import fires when telemetry is disabled.
+`protean_otel_processor` to the structlog pipeline. Both read the active span
+via `opentelemetry.trace.get_current_span()` and inject `trace_id` (32-char
+hex), `span_id` (16-char hex), and `trace_flags` (`int`) into every log record.
+Outside a valid span, or when the `opentelemetry` extra is not installed, the
+fields default to empty strings / `0`, no lazy import fires when telemetry is
+disabled.
 
 Epic 6.6 also closed a gap in the Epic 6.5 correlation extraction: the
 existing `ProteanCorrelationFilter` and `protean_correlation_processor`
@@ -262,5 +258,5 @@ to jump between log aggregators and APM tools without code changes.
 - [OpenTelemetry Python SDK](https://opentelemetry-python.readthedocs.io/)
 - [W3C Trace Context specification](https://www.w3.org/TR/trace-context/)
 - Epic 6.1: OpenTelemetry Integration (#742)
-- Epic 6.6: Logging Overhaul (#912) — log↔trace correlation (#917)
+- Epic 6.6: Logging Overhaul (#912), log↔trace correlation (#917)
 - ADR-0007: Domain-Scoped OpenTelemetry Providers (companion decision)

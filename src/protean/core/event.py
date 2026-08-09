@@ -63,7 +63,7 @@ class BaseEvent(BaseMessageType):
 
         Accepts keyword arguments matching the declared fields. Optionally,
         a ``dict`` can be passed as a positional argument to serve as a
-        template — keyword arguments take precedence over template values.
+        template. Keyword arguments take precedence over template values.
 
         Events are typically created by calling ``self.raise_()`` inside an
         aggregate method rather than being instantiated directly.

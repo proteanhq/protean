@@ -2,20 +2,20 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Application tests validate the **orchestration layer** — commands, command
-handlers, event handlers, and application services. They naturally follow a
-BDD structure: *Given* a domain state, *When* a command is processed, *Then*
-verify the outcomes.
+Application tests validate the **orchestration layer**, commands, command
+handlers, event handlers, and application services. They naturally follow a BDD
+structure: *Given* a domain state, *When* a command is processed, *Then* verify
+the outcomes.
 
 We recommend **[pytest-bdd](https://pytest-bdd.readthedocs.io/)** for writing
 these tests. It uses Gherkin feature files to express scenarios in plain
-language and maps each step to a Python function, integrating seamlessly with
+language and maps each step to a Python function, integrating with
 pytest fixtures.
 
-Application tests exercise the full processing pipeline -- from command
-dispatch through handler execution to persistence -- using synchronous
-processing and in-memory adapters so that assertions are deterministic and
-no infrastructure is required.
+Application tests exercise the full processing pipeline (from command dispatch
+through handler execution to persistence) using synchronous processing and
+in-memory adapters so that assertions are deterministic and no infrastructure
+is required.
 
 ## Installing pytest-bdd
 
@@ -68,8 +68,8 @@ definitions. Shared steps (like creating common entities) live in
 
 ## Writing Feature Files
 
-Feature files describe application behavior in Gherkin — a structured,
-readable format that maps directly to your domain language.
+Feature files describe application behavior in Gherkin. A structured, readable
+format that maps directly to your domain language.
 
 ### A Command Processing Scenario
 
@@ -157,8 +157,8 @@ Step definitions are Python functions decorated with `@given`, `@when`, or
 
 ### Binding Scenarios
 
-Use `scenarios()` to bind all scenarios in a feature file to a test module.
-It automatically creates a test function for each scenario — you only need to
+Use `scenarios()` to bind all scenarios in a feature file to a test module. It
+automatically creates a test function for each scenario. You only need to
 provide the step definitions:
 
 ```python
@@ -555,16 +555,16 @@ pytest tests/bdd/ -m "happy_path and not validation"
 
 ## Tips for Good Feature Files
 
-- **Name features after domain concepts** — "User Registration", not
+- **Name features after domain concepts**: "User Registration", not
   "Test UserCommandHandler".
-- **Write from the user's perspective** — describe *what* happens, not
+- **Write from the user's perspective**: Describe *what* happens, not
   *how* it's implemented.
-- **Keep Background sections short** — only shared `Given` steps belong there.
-- **Use concrete examples** — `"john@example.com"` reads better than abstract
+- **Keep Background sections short**: Only shared `Given` steps belong there.
+- **Use concrete examples**: `"john@example.com"` reads better than abstract
   placeholders in non-outline scenarios.
-- **One scenario, one behavior** — test a single outcome per scenario. Use
+- **One scenario, one behavior**: Test a single outcome per scenario. Use
   separate scenarios for the happy path and each error case.
-- **Reuse steps** — write steps general enough to appear in multiple
+- **Reuse steps**: Write steps general enough to appear in multiple
   scenarios. Put them in `conftest.py`.
 
 !!!note

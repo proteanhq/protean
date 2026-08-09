@@ -2,20 +2,19 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-This section covers how to model your business concepts as domain elements
-in Protean -- aggregates, entities, value objects, events, and the
-relationships between them.
+Here is how to model your business concepts as domain elements: aggregates,
+entities, value objects, events, and the relationships between them.
 
 For the conceptual foundations behind these patterns, see
 [Building Blocks](../../concepts/building-blocks/index.md).
 
-## What's in This Section
+## Guides in this section
 
 ### [Aggregates](./aggregates.md)
 
-Define your root entities -- the coarse-grained building blocks that
-encapsulate business logic, enforce invariants, and define transaction
-boundaries. Start here when modeling a new domain concept.
+Define your root entities, the coarse-grained building blocks that encapsulate
+business logic, enforce invariants, and define transaction boundaries. Start
+here when modeling a new domain concept.
 
 ### [Entities](./entities.md)
 
@@ -36,14 +35,14 @@ validation, and wire up relationships.
 
 ### [Declaring Indexes](./indexes.md)
 
-Declare the indexes your aggregates and entities need for fast queries —
-composite, unique, partial, and covering indexes — and render the DDL for
+Declare the indexes your aggregates and entities need for fast queries
+(composite, unique, partial, and covering indexes) and render the DDL for
 review or migration tooling.
 
 ### [Identity](./identity.md)
 
-Configure how aggregate and entity identifiers are generated — UUIDs,
-integers, user-supplied keys, or a custom function you write yourself.
+Configure how aggregate and entity identifiers are generated, UUIDs, integers,
+user-supplied keys, or a custom function you write yourself.
 
 ### [Relationships](./relationships.md)
 
@@ -52,15 +51,15 @@ Express one-to-one, one-to-many, and cross-aggregate references.
 
 ### [Events](./events.md)
 
-Define domain events -- immutable records of state changes that enable
-decoupled communication between different parts of your system. Events
-can be processed synchronously or asynchronously.
+Define domain events, immutable records of state changes that enable decoupled
+communication between different parts of your system. Events can be processed
+synchronously or asynchronously.
 
 ## Related
 
-- [Fields Reference](../../reference/fields/index.md) -- All field types,
+- [Fields Reference](../../reference/fields/index.md): All field types,
   arguments, and definition styles.
-- [Identity Reference](../../reference/domain-elements/identity.md) -- Full
+- [Identity Reference](../../reference/domain-elements/identity.md): Full
   configuration surface for identity strategies and types.
-- [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md)
-  -- Guidance on when to use an aggregate vs. entity vs. value object.
+- [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md):
+  Guidance on when to use an aggregate vs. entity vs. value object.

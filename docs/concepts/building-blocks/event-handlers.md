@@ -1,7 +1,7 @@
 # Event Handlers
 
 Event handlers react to [domain events](./events.md) by orchestrating side
-effects — syncing state across [aggregates](./aggregates.md), sending
+effects, syncing state across [aggregates](./aggregates.md), sending
 notifications, triggering downstream processes, or any other work that should
 happen *after* a state change has occurred.
 
@@ -21,7 +21,7 @@ anchors the handler within a specific aggregate's boundary.
 ### Event handlers process events asynchronously. { data-toc-label="Asynchronous" }
 
 Event handlers are designed for asynchronous processing. The aggregate that
-raised the event does not wait for the handler to finish — it commits its own
+raised the event does not wait for the handler to finish. It commits its own
 transaction and moves on. The handler picks up the event later, typically
 through the server engine's subscription mechanism.
 
@@ -41,8 +41,8 @@ logic focused and independently testable.
 
 While an event handler is associated with one aggregate, it can subscribe to
 events from *other* aggregates by specifying a source stream or stream
-category. This is the primary mechanism for eventual consistency — one
-aggregate reacts to changes in another without direct coupling.
+category. This is the primary mechanism for eventual consistency, one aggregate
+reacts to changes in another without direct coupling.
 
 ### Event handlers run within a Unit of Work. { data-toc-label="Transactions" }
 
@@ -80,7 +80,7 @@ or publishing messages to downstream systems.
 
 ### Keep handlers idempotent. { data-toc-label="Idempotency" }
 
-Events may be delivered more than once — during retries, resubscriptions, or
+Events may be delivered more than once, during retries, resubscriptions, or
 infrastructure recovery. A well-designed handler produces the same outcome
 whether it processes an event once or multiple times.
 
@@ -103,9 +103,9 @@ its own event.
 
 For practical details on defining and using event handlers in Protean, see the guide:
 
-- [Event Handlers](../../guides/consume-state/event-handlers.md) — Defining handlers, configuration options, error handling, and subscription setup.
+- [Event Handlers](../../guides/consume-state/event-handlers.md): Defining handlers, configuration options, error handling, and subscription setup.
 
 For design guidance:
 
-- [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring handlers produce correct results even when events are delivered more than once.
-- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping handlers thin by delegating to domain logic.
+- [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md): Ensuring handlers produce correct results even when events are delivered more than once.
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by delegating to domain logic.

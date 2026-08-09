@@ -4,19 +4,19 @@
 
 Domain model tests are **unit tests** that validate your aggregates, entities,
 value objects, invariants, and domain services. They are the foundation of your
-test suite — fast, isolated, and focused on business rules.
+test suite, fast, isolated, and focused on business rules.
 
 These tests require no infrastructure and run entirely in-memory, making them
 the fastest tests in your suite. Every business rule you encode in your domain
 model should have a corresponding test.
 
 !!!note "Don't Test What Protean Guarantees"
-    Protean already guarantees that fields work correctly — `required=True`
-    raises validation errors, `max_length` is enforced, `default` values are
-    applied, value objects are immutable and compared by value, and events are
-    dispatched in order. You do not need to write tests for these behaviors.
-    Focus your tests on logic **you** wrote: custom methods, state transitions,
-    invariants, and domain rules.
+    Protean already guarantees that fields work correctly, `required=True` raises
+    validation errors, `max_length` is enforced, `default` values are applied, value objects
+    are immutable and compared by value, and events are dispatched in order.
+    You do not need to write tests for these behaviors. Focus your tests on
+    logic **you** wrote: custom methods, state transitions, invariants, and
+    domain rules.
 
 ## Test Setup
 
@@ -68,7 +68,7 @@ correctly transition state and raise events.
 ### State Transitions
 
 Test that aggregate methods correctly mutate state. These are methods **you**
-wrote — your business logic:
+wrote, your business logic:
 
 ```python
 from myapp.models import Book
@@ -134,7 +134,7 @@ def test_cancel_item_recalculates_order_total():
 
 ## Testing Value Objects
 
-Protean guarantees that value objects are immutable and compared by value — you
+Protean guarantees that value objects are immutable and compared by value. You
 do not need to test these properties. Instead, test any **custom logic** you
 define on your value objects:
 
@@ -163,10 +163,10 @@ def test_money_rejects_different_currencies():
 
 ## Testing Invariants
 
-Invariants are **your** business rules — they represent domain constraints
-that you define. Protean guarantees that invariants are *enforced* (triggered
-on initialization and mutation), but you should test that **your invariant
-logic is correct** and catches the violations you intend.
+Invariants are **your** business rules. They represent domain constraints that
+you define. Protean guarantees that invariants are *enforced* (triggered on
+initialization and mutation), but you should test that **your invariant logic
+is correct** and catches the violations you intend.
 
 ### Testing That Invalid State Is Rejected
 
@@ -188,8 +188,8 @@ def test_order_total_must_match_items():
 
 ### Testing That Valid State Is Accepted
 
-Don't just test the negative case — verify that correctly constructed
-aggregates pass your invariant:
+Don't just test the negative case, verify that correctly constructed aggregates
+pass your invariant:
 
 ```python
 def test_order_with_matching_total_is_valid():
@@ -207,7 +207,7 @@ def test_order_with_matching_total_is_valid():
 ### Pre-Invariants
 
 Pre-invariants validate state *before* a mutation occurs. They are useful for
-guard conditions — test that your guard logic correctly rejects invalid
+guard conditions, test that your guard logic correctly rejects invalid
 operations:
 
 ```python

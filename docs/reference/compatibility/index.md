@@ -1,8 +1,8 @@
 # Compatibility Reference
 
-Reference documentation for Protean's IR compatibility checking system --
-the rules that classify changes as safe or breaking, the three-tier
-taxonomy, and the deprecation lifecycle.
+Reference documentation for Protean's IR compatibility checking system, the
+rules that classify changes as safe or breaking, the three-tier taxonomy, and
+the deprecation lifecycle.
 
 For the how-to guide on setting up compatibility checks, pre-commit hooks,
 and CI integration, see
@@ -37,21 +37,21 @@ objects, commands, events, database models, and projections.
 
 The checker understands two evolution mechanisms:
 
-- **Deprecation grace.** A field marked `deprecated` and removed at or past its
+- **Deprecation grace**: A field marked `deprecated` and removed at or past its
   `removal` version is an *expected removal* (safe), not a breaking one. This
   applies to every persisted element, including internal and event-sourced
   events (not only published event contracts). It compares against the release
   version; the `protean ir diff` CLI does not yet supply one, so this downgrade
   applies when the diff is run with an explicit current version.
-- **Upcaster mitigation.** When an event's `__version__` bumps and a registered
+- **Upcaster mitigation**: When an event's `__version__` bumps and a registered
   [upcaster](../../patterns/event-versioning-and-evolution.md) chain covers the
   old→new version path, the schema-transformation changes that make up that
-  bump — field removals, type changes, required-field additions, and the
-  `__type__` version-string change — are downgraded from breaking to safe, each
-  citing the mitigating upcaster. An orthogonal change riding along with the
-  bump (for example a public→internal visibility flip) stays breaking, and a
-  version bump with an upcaster *gap* (a prior version with no path to the new
-  one) stays breaking.
+  bump, field removals, type changes, required-field additions, and the `__type__`
+  version-string change, are downgraded from breaking to safe, each citing the
+  mitigating upcaster. An orthogonal change riding along with the bump (for
+  example a public→internal visibility flip) stays breaking, and a version bump
+  with an upcaster *gap* (a prior version with no path to the new one) stays
+  breaking.
 
 ---
 
@@ -149,8 +149,7 @@ documentation-only and never resolved to a link.
 
 ## `.protean/config.toml` reference
 
-All settings are optional -- sensible defaults apply when the file is
-absent.
+All settings are optional, sensible defaults apply when the file is absent.
 
 ```toml
 [compatibility]
@@ -190,9 +189,9 @@ ordering = "ordering.domain"
 
 ### `[domains]`
 
-Maps logical domain names to their module paths. When present, pre-commit
-hooks iterate over all configured domains automatically -- no `--domain`
-argument needed. Each domain's IR is stored under `.protean/<name>/ir.json`.
+Maps logical domain names to their module paths. When present, pre-commit hooks
+iterate over all configured domains automatically, no `--domain` argument
+needed. Each domain's IR is stored under `.protean/<name>/ir.json`.
 
 | Key | Type | Description |
 |-----|------|-------------|

@@ -12,10 +12,10 @@ tension, these principles provide the framework for reasoning.
 
 ## 1. Topology, not logic
 
-The framework captures *what exists* and *how things connect* — never *what happens inside*.
-Structural metadata (field names, handler targets, aggregate clusters) is the framework's
-concern. Implementation logic (handler bodies, invariant checks, factory methods) belongs
-to the developer.
+The framework captures *what exists* and *how things connect*, never *what
+happens inside*. Structural metadata (field names, handler targets, aggregate
+clusters) is the framework's concern. Implementation logic (handler bodies,
+invariant checks, factory methods) belongs to the developer.
 
 **Example:** When `domain.init()` runs, the framework discovers that `OrderCommandHandler`
 handles `PlaceOrder` and that `Order` raises `OrderPlaced`. It does not inspect what the
@@ -25,10 +25,10 @@ logic itself is opaque to the framework.
 
 ## 2. Declare, don't detect
 
-When the framework needs information that isn't naturally introspectable from Python's type
-system or class structure, the answer is explicit developer declaration via decorator options
-or `Meta` attributes — never static analysis of source code, never inference from naming
-conventions.
+When the framework needs information that isn't naturally introspectable from
+Python's type system or class structure, the answer is explicit developer
+declaration via decorator options or `Meta` attributes, never static analysis
+of source code, never inference from naming conventions.
 
 **Example:** Whether an event crosses bounded context boundaries is not something the framework
 can infer. Rather than scanning handler bodies for external API calls, we added the `published`
@@ -49,15 +49,16 @@ override them with an explicit `@domain.repository(part_of=Order)` declaration.
 
 ## 4. Compute freely, materialize deliberately, validate automatically
 
-In-memory computation is cheap and should be unconstrained. Persisting state (materializing)
-is a deliberate act with consequences — it crosses a boundary. Validation happens automatically
-at every state transition, not at manual checkpoints.
+In-memory computation is cheap and should be unconstrained. Persisting state
+(materializing) is a deliberate act with consequences. It crosses a boundary.
+Validation happens automatically at every state transition, not at manual
+checkpoints.
 
 **Example:** Aggregate invariants (`@invariant.pre`, `@invariant.post`) run on every mutation
-automatically. The developer never calls `validate()` — the framework guarantees that if an
-aggregate instance exists in memory, it satisfies all its invariants. But persisting that
-aggregate requires an explicit repository call within a Unit of Work, making the materialization
-boundary visible.
+automatically. The developer never calls `validate()`. The framework guarantees
+that if an aggregate instance exists in memory, it satisfies all its
+invariants. But persisting that aggregate requires an explicit repository call
+within a Unit of Work, making the materialization boundary visible.
 
 ## 5. DSL expressiveness must survive infrastructure migration
 
@@ -67,23 +68,26 @@ Elasticsearch, or from Redis Streams to an inline broker, should not require cha
 model declarations.
 
 **Example:** The `FieldSpec` architecture translates `String(max_length=100)` into
-Pydantic-compatible annotations during class creation. The FieldSpec carries enough metadata
-for any adapter to map the field to its native storage type — `Text` maps to a `TEXT` column
-in SQL and a `text` field in Elasticsearch — but the developer never writes adapter-specific
-declarations. The domain model is infrastructure-agnostic by construction.
+Pydantic-compatible annotations during class creation. The FieldSpec carries
+enough metadata for any adapter to map the field to its native storage type
+(`Text` maps to a `TEXT` column in SQL and a `text` field in Elasticsearch) but
+the developer never writes adapter-specific declarations. The domain model is
+infrastructure-agnostic by construction.
 
 ## 6. Aggregate-centric, flow-aware
 
-The primary organizational unit is the aggregate cluster — an aggregate and everything that
-belongs to it (entities, value objects, commands, events, handlers, repositories). Cross-cutting
-concerns (domain services, process managers, subscribers) are not forced into clusters but get
-explicit treatment where their multi-aggregate nature is first-class.
+The primary organizational unit is the aggregate cluster, an aggregate and
+everything that belongs to it (entities, value objects, commands, events,
+handlers, repositories). Cross-cutting concerns (domain services, process
+managers, subscribers) are not forced into clusters but get explicit treatment
+where their multi-aggregate nature is first-class.
 
 **Example:** During `domain.init()`, `ElementResolver.assign_aggregate_clusters()` groups
-entities, commands, and events under their root aggregate by traversing `part_of` chains.
-But process managers and domain services stand apart — they coordinate across aggregate
-boundaries and belong to no single cluster. This mirrors DDD's distinction between aggregate
-internals and cross-aggregate coordination.
+entities, commands, and events under their root aggregate by traversing
+`part_of` chains. But process managers and domain services stand apart. They
+coordinate across aggregate boundaries and belong to no single cluster. This
+mirrors DDD's distinction between aggregate internals and cross-aggregate
+coordination.
 
 ## 7. Screaming architecture
 
@@ -92,7 +96,8 @@ not technical categories. A developer opening the codebase should immediately se
 not the framework plumbing.
 
 **Example:** Protean applications organize code by domain concept (`ordering/`, `inventory/`,
-`shipping/`), not by technical layer (`models/`, `handlers/`, `repositories/`). Within each
-domain module, the aggregate, its commands, events, and handlers live together. The test
-directory mirrors the source structure — `tests/aggregate/`, `tests/event/`, `tests/server/`
-— so navigation between source and test is immediate.
+`shipping/`), not by technical layer (`models/`, `handlers/`, `repositories/`).
+Within each domain module, the aggregate, its commands, events, and handlers
+live together. The test directory mirrors the source structure
+(`tests/aggregate/`, `tests/event/`, `tests/server/`) so navigation between
+source and test is immediate.

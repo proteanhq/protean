@@ -3,10 +3,10 @@
 ## The Problem
 
 Unit testing individual domain elements is straightforward. You construct an
-aggregate, call a method, assert the resulting state. The
-[Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md)
-pattern covers this well. But real event-driven systems are not made of isolated
-pieces -- they are made of *chains*:
+aggregate, call a method, assert the resulting state. The [Testing Domain Logic
+in Isolation](testing-domain-logic-in-isolation.md) pattern covers this well.
+But real event-driven systems are not made of isolated pieces. They are made of
+*chains*:
 
 ```
 PlaceOrder (command)
@@ -75,8 +75,7 @@ that projections update.
 
 Set `event_processing = "sync"` in the domain configuration. With sync
 processing, event handlers and projectors fire **inline** during the Unit of
-Work commit -- in the same thread, in the same process, with no async
-machinery.
+Work commit, in the same thread, in the same process, with no async machinery.
 
 ```
 domain.process(command)
@@ -128,16 +127,16 @@ Level 3 for tests that **cannot** be verified with sync processing.
 
 | Concern | Level 1 | Level 2 | Level 3 |
 |---------|---------|---------|---------|
-| Business logic correctness | Yes | -- | -- |
-| Event payloads and structure | Yes | -- | -- |
-| Command-to-handler wiring | -- | Yes | -- |
-| Event-to-handler routing | -- | Yes | -- |
-| Projection updates | -- | Yes | -- |
-| Multi-step event chains | -- | Yes | Yes |
-| Subscription configuration | -- | -- | Yes |
-| Priority lane routing | -- | -- | Yes |
-| Error handling paths | -- | -- | Yes |
-| Outbox processing | -- | -- | Yes |
+| Business logic correctness | Yes | —  | —  |
+| Event payloads and structure | Yes | —  | —  |
+| Command-to-handler wiring | —  | Yes | —  |
+| Event-to-handler routing | —  | Yes | —  |
+| Projection updates | —  | Yes | —  |
+| Multi-step event chains | —  | Yes | Yes |
+| Subscription configuration | —  | —  | Yes |
+| Priority lane routing | —  | —  | Yes |
+| Error handling paths | —  | —  | Yes |
+| Outbox processing | —  | —  | Yes |
 
 Level 2 covers most integration needs. It runs at unit-test speed because
 there is no event loop, no network, and no async coordination. Reserve Level 3
@@ -605,23 +604,23 @@ mode (Level 3) after dispatching the command.
 | **Test count** | Many (majority) | Some (key flows) | Few (infra-specific) |
 | **Typical assertion** | `order.status`, `order._events` | `domain.view_for(P).get(id)` | `domain.view_for(P).get(id)` after `engine.run()` |
 
-The principle: **most event-driven flow testing belongs at Level 2. Set
-`event_processing = "sync"`, call `domain.process()`, and assert on projection
-state immediately. The sync pipeline exercises the same handlers and projectors
-as production -- without async complexity. Reserve Level 3 for subscription
-configuration, priority lanes, and error handling paths.**
+Most event-driven flow testing belongs at Level 2. Set `event_processing =
+"sync"`, call `domain.process()`, and assert on projection state immediately.
+The sync pipeline exercises the same handlers and projectors as production,
+without async complexity. Reserve Level 3 for subscription configuration,
+priority lanes, and error handling paths.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md) -- Level 1: unit testing domain elements.
-    - [Idempotent Event Handlers](idempotent-event-handlers.md) -- Handlers safe for replay and re-testing.
-    - [Dual-Mode Testing](dual-mode-testing.md) -- Run tests against in-memory and real adapters.
+    - [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md): Level 1: unit testing domain elements.
+    - [Idempotent Event Handlers](idempotent-event-handlers.md): Handlers safe for replay and re-testing.
+    - [Dual-Mode Testing](dual-mode-testing.md): Run tests against in-memory and real adapters.
 
     **Guides:**
 
-    - [Application Tests](../guides/testing/application-tests.md) -- Testing command handlers and services.
-    - [Integration Tests](../guides/testing/integration-tests.md) -- Full integration testing.
-    - [Event Sourcing Tests](../guides/testing/event-sourcing-tests.md) -- Fluent test DSL for ES aggregates.
+    - [Application Tests](../guides/testing/application-tests.md): Testing command handlers and services.
+    - [Integration Tests](../guides/testing/integration-tests.md): Full integration testing.
+    - [Event Sourcing Tests](../guides/testing/event-sourcing-tests.md): Fluent test DSL for ES aggregates.

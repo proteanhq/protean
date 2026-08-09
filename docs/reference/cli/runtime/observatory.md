@@ -1,6 +1,6 @@
 # `protean observatory`
 
-The `observatory` command runs the Protean Observatory — a dedicated
+The `observatory` command runs the Protean Observatory, a dedicated
 observability dashboard for real-time monitoring of the Protean event pipeline.
 It runs on its own port (default 9000), separate from your application API
 server.

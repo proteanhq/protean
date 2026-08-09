@@ -247,17 +247,16 @@ For unrecoverable errors:
 ### Dead Letter Queue Management
 
 Messages that exhaust all retries in a `StreamSubscription` are moved to a
-**Dead Letter Queue (DLQ)** — a separate stream named `{stream_category}:dlq`.
-When [priority lanes](./priority-lanes.md) are enabled, backfill failures go to
-`{stream_category}:backfill:dlq`.
+**Dead Letter Queue (DLQ)**, a separate stream named `{stream_category}:dlq`. When [priority
+lanes](./priority-lanes.md) are enabled, backfill failures go to `{stream_category}:backfill:dlq`.
 
 DLQ messages retain the original payload along with metadata about why they
 failed, how many retries were attempted, and which consumer group was processing
 them. Protean provides two interfaces for inspecting and acting on DLQ
 messages:
 
-**CLI** — The [`protean dlq`](../../reference/cli/data/dlq.md) commands let you
-list, inspect, replay, and purge DLQ messages from the terminal:
+**CLI**, The [`protean dlq`](../../reference/cli/data/dlq.md) commands let you list,
+inspect, replay, and purge DLQ messages from the terminal:
 
 ```bash
 # See all failed messages
@@ -276,14 +275,15 @@ protean dlq replay-all --subscription=order --domain=my_app
 protean dlq purge --subscription=order --domain=my_app
 ```
 
-**Observatory** — The [Observatory dashboard](../../reference/server/observability.md)
-includes a DLQ tab that provides the same capabilities through a web interface,
-plus REST API endpoints at `/api/dlq/*` for programmatic access.
+**Observatory**, The [Observatory
+dashboard](../../reference/server/observability.md) includes a DLQ tab that
+provides the same capabilities through a web interface, plus REST API endpoints
+at `/api/dlq/*` for programmatic access.
 
 
-## Next Steps
+## Where to go next
 
-- [Subscription Types](../../reference/server/subscription-types.md) - Deep dive into StreamSubscription
+- [Subscription Types](../../reference/server/subscription-types.md): StreamSubscription in detail
   vs EventStoreSubscription
-- [Configuration](../../reference/server/configuration.md) - Configure subscriptions with profiles and
+- [Configuration](../../reference/server/configuration.md): Configure subscriptions with profiles and
   options

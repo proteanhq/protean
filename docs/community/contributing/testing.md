@@ -2,7 +2,7 @@
 
 Protean places a high emphasis on testing to ensure the framework's stability, correctness, and reliability. The project follows test-driven development practices, and all new features or bug fixes should be accompanied by appropriate tests.
 
-Protean uses `pytest` as the testing tool, because it allows for simple unit tests as well as complex functional testing. Protean leverages `pytest` fixtures to manage test setup and teardown, ensuring tests are isolated and repeatable. The use of `pytest` also enables easy integration with other tools and plugins, such as coverage reporting and parallel test execution.
+Protean uses `pytest` as the testing tool, because it allows for simple unit tests as well as complex functional testing. Protean uses `pytest` fixtures to manage test setup and teardown, ensuring tests are isolated and repeatable. The use of `pytest` also enables easy integration with other tools and plugins, such as coverage reporting and parallel test execution.
 
 ## `protean test` Command and Options
 
@@ -20,7 +20,11 @@ Categories:
 
 - `CORE`: Runs core tests without external dependencies (default)
 - `EVENTSTORE`: Runs tests for all configured event store adapters
-- `DATABASE`: Runs tests for all configured database adapters. Tests are capability-gated — each provider only runs tests matching its declared capabilities (e.g., `basic_storage`, `transactional`, `raw_queries`, `native_json`). See [Adapter Conformance Testing](../../reference/testing/conformance.md) for details.
+- `DATABASE`: Runs tests for all configured database adapters. Tests are
+  capability-gated. Each provider only runs tests matching its declared
+  capabilities (e.g., `basic_storage`, `transactional`, `raw_queries`,
+  `native_json`). See [Adapter Conformance
+  Testing](../../reference/testing/conformance.md) for details.
 - `FULL`: Runs the complete test suite for all adapters
 - `COVERAGE`: Runs the complete test suite with all adapters and generates coverage report
 
@@ -30,7 +34,7 @@ Example:
 protean test -c DATABASE
 ```
 
-> **Note**: Ensure that the underlying database services are running within Docker before executing tests in the `DATABASE`, `EVENTSTORE`, or `FULL` categories. Use the `make up` command to start the necessary services.
+> **Note**: Make sure that the underlying database services are running within Docker before executing tests in the `DATABASE`, `EVENTSTORE`, or `FULL` categories. Use the `make up` command to start the necessary services.
 
 This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
 
@@ -330,7 +334,7 @@ For asynchronous tests, this fixture:
 
 ### `db_config`
 
-The `protean test` command leverages fixtures to target different adapters. The below fixtures are present in `tests/conftest.py`:
+The `protean test` command uses fixtures to target different adapters. The below fixtures are present in `tests/conftest.py`:
 
 The `db_config` fixture is used by `protean test` command and configures database adapters based on command-line options:
 

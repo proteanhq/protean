@@ -5,9 +5,8 @@ and associations, giving our bookstore the ability to take orders.
 
 ## The Order Aggregate
 
-A bookstore doesn't just sell books — it takes orders. An order contains
-multiple items, has a shipping address, and tracks its status. Let's model
-it:
+A bookstore doesn't just sell books. It takes orders. An order contains
+multiple items, has a shipping address, and tracks its status. Let's model it:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch03.py:imports"
@@ -22,22 +21,22 @@ Notice that:
 - `shipping_address` uses the `Address` value object we created in the
   previous chapter.
 - `status` uses a Python `Enum` with a default of `PENDING`.
-- `items` is a `HasMany` association — it holds a collection of
-  `OrderItem` entities.
+- `items` is a `HasMany` association. It holds a collection of `OrderItem`
+  entities.
 
 ## Child Entities
 
-Each order item is an **entity** — an object with its own identity that
-belongs to the Order aggregate. Unlike value objects, entities can be
-individually tracked:
+Each order item is an **entity**. An object with its own identity that belongs
+to the Order aggregate. Unlike value objects, entities can be individually
+tracked:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch03.py:order_item_entity"
 ```
 
-The `part_of=Order` parameter tells Protean this entity belongs to the
-Order aggregate. It cannot exist independently — it is always accessed
-through its parent.
+The `part_of=Order` parameter tells Protean this entity belongs to the Order
+aggregate. It cannot exist independently. It is always accessed through its
+parent.
 
 ## Creating an Order
 
@@ -61,9 +60,9 @@ Items (2):
     Item ID: e5f6g7h8-...
 ```
 
-Notice that each `OrderItem` has its own unique ID — that is what makes
-it an entity rather than a value object. The entire cluster (Order +
-OrderItems + Address) is persisted as a single unit.
+Notice that each `OrderItem` has its own unique ID. That is what makes it an
+entity rather than a value object. The entire cluster (Order + OrderItems +
+Address) is persisted as a single unit.
 
 ## Adding Items After Creation
 
@@ -85,7 +84,7 @@ All checks passed!
 ## What We Built
 
 - An **Order aggregate** with status tracking and a shipping address.
-- **OrderItem entities** — child objects with their own identity, linked
+- **OrderItem entities**: Child objects with their own identity, linked
   to the parent Order via `HasMany`.
 - An **aggregate cluster**: Order + OrderItems + Address persisted as
   one unit.

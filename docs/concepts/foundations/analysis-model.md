@@ -6,7 +6,7 @@ concepts and behaviors of the domain without getting bogged down in
 technological details.
 
 Incorporating the Analysis Model provides a structured approach to
-understanding and modeling the domain, ensuring that all stakeholders have a
+understanding and modeling the domain, so that everyone involved has a
 common language and a shared understanding of the system being built.
 
 ## Ubiquitous Language in Action
@@ -33,18 +33,26 @@ technologies or platforms without altering the core domain understanding.
 can be a foundation for building multiple applications within the same domain,
 even when using different technical stacks.
 * **Clear Communication:**  The technology-agnostic nature of the model fosters
-clear communication between stakeholders. Domain experts can focus on discussing
+clear communication across the team. Domain experts can focus on discussing
 business functionalities, while developers can translate those functionalities
 into code, bridging the gap between business needs and technological
 implementation without getting lost in technology-specific jargon.
 
 ## Analysis Model vs. Code Model
 
-The analysis model is a conceptual artifact -- diagrams, documents, and conversations that capture the team's understanding of the domain. The code model is the working software that implements that understanding in classes, methods, and tests.
+The analysis model is a conceptual artifact, diagrams, documents, and
+conversations that capture the team's understanding of the domain. The code
+model is the working software that implements that understanding in classes,
+methods, and tests.
 
 In practice, these two models tend to drift apart. The analysis model is created at the start of a project and then left behind as the code evolves under the pressure of deadlines, new requirements, and technical constraints. Over time, the code model develops its own vocabulary and structure that no longer matches what the domain experts described. The gap becomes a source of bugs, miscommunication, and costly rework.
 
-DDD's central goal is to keep these two models aligned. The code should be a direct expression of the analysis model. When the analysis model changes -- because the team learns something new about the domain -- the code is refactored to match. When the code reveals that the analysis model was wrong or incomplete, the analysis model is updated. Neither model is disposable; they evolve together.
+DDD's central goal is to keep these two models aligned. The code should be a
+direct expression of the analysis model. When the analysis model changes
+(because the team learns something new about the domain) the code is refactored
+to match. When the code reveals that the analysis model was wrong or
+incomplete, the analysis model is updated. Neither model is disposable; they
+evolve together.
 
 ## How Protean Keeps Them Aligned
 
@@ -52,7 +60,11 @@ Protean's decorator-driven design makes domain elements explicit in code. An agg
 
 In-memory adapters enable immediate validation of domain logic without infrastructure dependencies. The analysis model can be expressed as working code and tested against real scenarios the same day it is discussed. This tight feedback loop catches misunderstandings early, before they are buried under layers of infrastructure.
 
-When the analysis model evolves -- a concept is renamed, split, or restructured -- the code is refactored to match. Because domain elements are explicitly declared, the refactoring is mechanical: rename the class, update the decorator, adjust the references. The cost of keeping the models aligned stays low throughout the life of the project.
+When the analysis model evolves (a concept is renamed, split, or restructured)
+the code is refactored to match. Because domain elements are explicitly
+declared, the refactoring is mechanical: rename the class, update the
+decorator, adjust the references. The cost of keeping the models aligned stays
+low throughout the life of the project.
 
 ## 100% Testable
 

@@ -1,12 +1,12 @@
 # Logging
 
 Protean ships with structured logging that configures itself. Call
-`domain.init()` and every log line — from framework internals, your handler
-code, and the SQLAlchemy adapter — flows through the same `structlog`
-pipeline as JSON in production and colored console output in development.
+`domain.init()` and every log line (from framework internals, your handler
+code, and the SQLAlchemy adapter) flows through the same `structlog` pipeline
+as JSON in production and colored console output in development.
 
-This guide covers the tasks operators and application developers perform most
-often. For the full schema of every framework event and every config key, see
+The tasks operators and application developers do most often are below. For
+the full schema of every framework event and every config key, see
 the [Logging reference](../../reference/logging.md). For the design rationale
 behind the wide event pattern, see
 [Logging concepts](../../concepts/observability/logging.md).
@@ -39,9 +39,9 @@ logger.info("order_placed", order_id="ord-123", total=99.95)
 
 Keyword arguments become structured fields in JSON output and colored
 key-value pairs in console output. Prefer keyword arguments over
-f-strings so values remain queryable downstream — see
-[why structured logs?](../../concepts/observability/logging.md#why-structured-logs)
-for the rationale.
+f-strings so values remain queryable downstream, see [why structured
+logs?](../../concepts/observability/logging.md#why-structured-logs) for the
+rationale.
 
 ### What a wide event looks like
 
@@ -147,10 +147,10 @@ configures its own logging on startup).
 
 ## Override programmatically
 
-When `domain.toml` is not the right shape — tests, one-off scripts, embedded
-domains — call `Domain.configure_logging()` directly. Explicit keyword
-arguments override `domain.toml` but still read `PROTEAN_LOG_LEVEL` as an
-override for `level` unless `level=` is passed:
+When `domain.toml` is not the right shape (tests, one-off scripts, embedded
+domains) call `Domain.configure_logging()` directly. Explicit keyword arguments
+override `domain.toml` but still read `PROTEAN_LOG_LEVEL` as an override for
+`level` unless `level=` is passed:
 
 ```python
 domain.configure_logging(level="DEBUG", format="json")
@@ -226,11 +226,10 @@ finally:
 
 ## Control wide event volume with tail sampling
 
-By default Protean emits one wide event per handled message. At scale —
-millions of messages per day — this can become expensive to store and
-query. **Tail sampling** keeps every error and slow request (the events
-that actually help you debug) and samples the happy path at a configurable
-rate.
+By default Protean emits one wide event per handled message. At scale (millions
+of messages per day) this can become expensive to store and query. **Tail
+sampling** keeps every error and slow request (the events that actually help
+you debug) and samples the happy path at a configurable rate.
 
 Enable it declaratively:
 
@@ -348,20 +347,20 @@ structlog writes to stdlib handlers.
 
 ## See also
 
-- **[Logging reference](../../reference/logging.md)** — every config key, every
+- **[Logging reference](../../reference/logging.md)**: Every config key, every
   framework logger, every event schema. Includes the `@log_method_call`
   decorator for handler-method entry/exit tracing at DEBUG.
-- **[Logging concepts](../../concepts/observability/logging.md)** — wide events,
+- **[Logging concepts](../../concepts/observability/logging.md)**: Wide events,
   query-oriented field design, backend selection, what Protean deliberately
   does not do.
-- **[Correlation and Causation IDs](../observability/correlation-and-causation.md)** —
+- **[Correlation and Causation IDs](../observability/correlation-and-causation.md)**:
   how `correlation_id` propagates through commands, events, HTTP headers, OTel
   spans, and log records.
-- **[OpenTelemetry Integration](./opentelemetry.md)** — distributed tracing
+- **[OpenTelemetry Integration](./opentelemetry.md)**: Distributed tracing
   and how `trace_id` / `span_id` reach log records.
-- **[FastAPI HTTP wide events](../fastapi/http-wide-events.md)** — one wide
+- **[FastAPI HTTP wide events](../fastapi/http-wide-events.md)**: One wide
   event per HTTP request, correlated with the domain-layer access log.
-- **[Production Deployment](./production-deployment.md)** — container
+- **[Production Deployment](./production-deployment.md)**: Container
   deployment, supervisor configuration, multi-worker mode (see also the
   [multi-worker logging](../../reference/logging.md#multi-worker-logging)
   reference for the `QueueHandler` / `QueueListener` hygiene pattern).

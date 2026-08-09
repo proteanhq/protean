@@ -752,13 +752,13 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         Called from ``_run_invariants`` right before raising a
         ``ValidationError``. Skipped when ``return_errors=True`` because
-        callers in that mode are aggregating (e.g., associated entities) — the
+        callers in that mode are aggregating (e.g., associated entities) and the
         outer raise site emits for the root aggregate.
 
         Gated on an active handler context (``g.message_in_context``) so
         invariant checks performed outside command/event/query/projector
-        handling — fixtures, unit tests against raw aggregates, library code
-        that catches and retries — never reach the ``protean.security``
+        handling (fixtures, unit tests against raw aggregates, library code
+        that catches and retries) never reach the ``protean.security``
         channel. The intent is "boundary-crossing only": a failed invariant
         is a security signal only when it surfaces during message handling.
 

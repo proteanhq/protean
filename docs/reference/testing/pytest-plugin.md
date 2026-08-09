@@ -1,7 +1,7 @@
 # Pytest Plugin
 
-Auto-registered via the `pytest11` entry point — installed alongside
-Protean. No `conftest.py` registration required.
+Auto-registered via the `pytest11` entry point, installed alongside Protean. No `conftest.py`
+registration required.
 
 For task-oriented workflow guidance see
 [Dual-Mode Testing](../../guides/testing/index.md#dual-mode-testing) for
@@ -23,8 +23,8 @@ without configuration:
 
 | Marker | Intent |
 |---|---|
-| `domain` | Pure domain logic tests — no database |
-| `application` | Command/event handler tests — uses database |
+| `domain` | Pure domain logic tests, no database |
+| `application` | Command/event handler tests, uses database |
 | `integration` | Cross-aggregate tests with real adapters |
 | `slow` | Tests taking more than a second or two |
 | `bdd` | Behavior-driven scenarios |
@@ -49,8 +49,8 @@ should add `@pytest.mark.no_test_domain` so the session fixture is
 skipped for that test.
 
 User application tests should construct their domain lifecycle with
-`DomainFixture` instead — see
-[Fixtures and Patterns](../../guides/testing/fixtures-and-patterns.md).
+`DomainFixture` instead, see [Fixtures and
+Patterns](../../guides/testing/fixtures-and-patterns.md).
 
 ## Query-shape assertions
 

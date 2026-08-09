@@ -10,12 +10,12 @@ Epic #941 (outbox query-path remediation) added a set of query and
 persistence-path primitives that hot-path consumers depend on:
 
 - `QuerySet.count()` / `BaseDAO._count`: count without materializing entities.
-- `QuerySet.only()`: project a subset of persisted fields into read-only
+- `QuerySet.only()`: Project a subset of persisted fields into read-only
   `Record` objects.
 - `isnull`, `lt`, `lte` lookups.
-- `F`: compare two columns of the same row inside a lookup.
-- `BaseDAO._delete_top`: bounded delete for batched cleanups.
-- `BaseDAO._claim`: atomic find-and-claim for concurrent consumers (ADR-0013).
+- `F`: Compare two columns of the same row inside a lookup.
+- `BaseDAO._delete_top`: Bounded delete for batched cleanups.
+- `BaseDAO._claim`: Atomic find-and-claim for concurrent consumers (ADR-0013).
 
 Each primitive shipped with tests against one or two adapters (in-memory plus a
 SQL backend, or an adapter-specific file). That left two gaps. First, adapter

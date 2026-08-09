@@ -1,12 +1,12 @@
 # FastAPI Integration
 
-Protean provides first-class integration utilities for
+Protean provides integration utilities for
 [FastAPI](https://fastapi.tiangolo.com/) applications. These live in the
 `protean.integrations.fastapi` package and cover two concerns:
 
-1. **Domain context middleware** -- Automatically push the correct Protean
+1. **Domain context middleware**: Automatically push the correct Protean
    domain context per HTTP request.
-2. **Exception handlers** -- Map Protean domain exceptions to standard HTTP
+2. **Exception handlers**: Map Protean domain exceptions to standard HTTP
    error responses.
 
 ---
@@ -43,7 +43,7 @@ With this configuration:
 - Requests to `/customers/...` run inside `identity_domain.domain_context()`
 - Requests to `/products/...` run inside `catalogue_domain.domain_context()`
 - Requests that don't match any prefix (e.g. `/health`) pass through without
-  a domain context -- suitable for health checks, docs, and static assets.
+  a domain context, suitable for health checks, docs, and static assets.
 
 ### Longest-prefix matching
 
@@ -105,8 +105,8 @@ app.add_middleware(
 The middleware automatically extracts `X-Correlation-ID` (falling back to
 `X-Request-ID`) from incoming request headers and makes it available as the
 default correlation ID for command processing. The response always includes an
-`X-Correlation-ID` header reflecting the ID that was used -- from the request
-header, an explicit `domain.process()` parameter, or an auto-generated UUID.
+`X-Correlation-ID` header reflecting the ID that was used, from the request header, an
+explicit `domain.process()` parameter, or an auto-generated UUID.
 
 This means no manual header extraction is needed in your endpoints:
 
@@ -125,11 +125,10 @@ logging, and OTEL spans, see
 ### HTTP wide event logging
 
 `DomainContextMiddleware` also emits one **wide event per HTTP request**
-on the `protean.access.http` logger — request envelope, commands
-dispatched during the request, `request_id`, and `correlation_id` shared
-with any domain-layer wide events. See the dedicated
-[HTTP wide events guide](./http-wide-events.md) for configuration,
-enrichment, and tail sampling.
+on the `protean.access.http` logger, request envelope, commands dispatched during the request,
+`request_id`, and `correlation_id` shared with any domain-layer wide events. See the dedicated [HTTP
+wide events guide](./http-wide-events.md) for configuration, enrichment, and
+tail sampling.
 
 ---
 
@@ -256,8 +255,8 @@ register_exception_handlers(app)
 
 | Concern | Where | Why |
 |---------|-------|-----|
-| `domain.init()` | Startup (lifespan) | Traverses elements, resolves references, connects adapters -- once per process |
-| `domain.setup_database()` | Startup (lifespan) | Creates tables and outbox -- once per deployment |
+| `domain.init()` | Startup (lifespan) | Traverses elements, resolves references, connects adapters, once per process |
+| `domain.setup_database()` | Startup (lifespan) | Creates tables and outbox, once per deployment |
 | Domain context push/pop | Middleware | Each request needs its own context for thread-local state |
 | Exception mapping | App setup | Registered once at import time |
 
@@ -323,9 +322,9 @@ need database setup, graceful shutdown, or multiple domains.
 ## Other web frameworks
 
 Protean's FastAPI integration provides middleware and exception handlers
-as conveniences, but the core mechanism -- `domain.domain_context()` -- works
-with any Python web framework. For Flask, Django, or other WSGI/ASGI
-frameworks, manually push the domain context in your request middleware:
+as conveniences, but the core mechanism (`domain.domain_context()`) works with any Python web
+framework. For Flask, Django, or other WSGI/ASGI frameworks, manually push the
+domain context in your request middleware:
 
 ```python
 # Flask example
@@ -353,10 +352,10 @@ on domain context management.
 
 ## Next steps
 
-- [Endpoint Tests](./testing-endpoints.md) -- Test your FastAPI endpoints
+- [Endpoint Tests](./testing-endpoints.md): Test your FastAPI endpoints
   with full domain context
-- [Compose a Domain](../compose-a-domain/index.md) -- How the `Domain`
+- [Compose a Domain](../compose-a-domain/index.md): How the `Domain`
   object and domain contexts work
-- [Commands](../change-state/commands.md) -- Define commands for state changes
-- [Configuration](../../reference/configuration/index.md) -- Configure databases,
+- [Commands](../change-state/commands.md): Define commands for state changes
+- [Configuration](../../reference/configuration/index.md): Configure databases,
   brokers, and other adapters

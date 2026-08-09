@@ -4,7 +4,7 @@ Protean can run multiple Engine worker processes from a single CLI invocation
 using the `--workers` flag. The **Supervisor** spawns N independent processes,
 each running its own Engine with a dedicated event loop and domain
 initialization. Workers coordinate implicitly through Redis consumer groups and
-database-level locking -- no IPC or shared memory is needed.
+database-level locking, no IPC or shared memory is needed.
 
 ## When to Use Multiple Workers
 
@@ -224,11 +224,11 @@ spec:
             memory: "512Mi"
 ```
 
-## Next Steps
+## Related pages
 
-- [Running the Server](../../guides/server/index.md) -- CLI options, single-worker mode, and
+- [Running the Server](../../guides/server/index.md): CLI options, single-worker mode, and
   general deployment guidance
-- [Outbox Pattern](../../concepts/async-processing/outbox.md) -- How the outbox ensures reliable delivery in
+- [Outbox Pattern](../../concepts/async-processing/outbox.md): How the outbox ensures reliable delivery in
   multi-worker deployments
-- [Engine Architecture](../../concepts/async-processing/engine.md) -- How each worker's Engine processes
+- [Engine Architecture](../../concepts/async-processing/engine.md): How each worker's Engine processes
   messages

@@ -2,17 +2,18 @@
 
 What if your domain objects could never be invalid?
 
-Most frameworks treat validation as something you do _to_ an object -- call
-`validate()`, check `is_valid()`, hope someone remembered to run it before
-saving. Between those explicit checks, the object can exist in any state:
-missing fields, broken business rules, impossible combinations. The longer
-it stays invalid, the further the corruption spreads.
+Most frameworks treat validation as something you do _to_ an object, call `validate()`,
+check `is_valid()`, hope someone remembered to run it before saving. Between those
+explicit checks, the object can exist in any state: missing fields, broken
+business rules, impossible combinations. The longer it stays invalid, the
+further the corruption spreads.
 
 Protean takes a different approach. **Domain objects are always valid, or they
-don't exist.** Every field assignment, every method call, every state transition
-is automatically checked against constraints and business rules. If a change
-would violate any rule, it's rejected immediately -- the object stays in its
-previous valid state, and a `ValidationError` tells you exactly what went wrong.
+don't exist.** Every field assignment, every method call, every state
+transition is automatically checked against constraints and business rules. If
+a change would violate any rule, it's rejected immediately. The object stays in
+its previous valid state, and a `ValidationError` tells you exactly what went
+wrong.
 
 This isn't opt-in. It's the default. You don't write validation middleware,
 call `clean()` methods, or wire up check pipelines. You declare rules, and
@@ -87,7 +88,7 @@ item = OrderItem(product_name="Widget", quantity=0, unit_price=10.0)
 item.unit_price = -5.0  # ValidationError: min_value is 0.01
 ```
 
-Field constraints are **declarative** -- visible right in the field definition,
+Field constraints are **declarative**, visible right in the field definition,
 enforced automatically, never forgotten.
 
 **What belongs here:** Type checks, required-ness, string length limits,
@@ -101,9 +102,9 @@ cross-field validation.
 ## Layer 2: Value object invariants
 
 Some concepts deserve their own validation. An email address isn't just a
-string -- it has structure. A monetary amount isn't just a float -- it has a
-currency and rules about sign. When a concept has internal rules, wrap it in
-a **value object** with invariants.
+string. It has structure. A monetary amount isn't just a float. It has a
+currency and rules about sign. When a concept has internal rules, wrap it in a
+**value object** with invariants.
 
 ```python
 from protean import Domain, invariant
@@ -146,8 +147,8 @@ class Order:
 ```
 
 The `Money` value object validates itself at construction. If someone tries to
-create `Money(amount=-5, currency="XYZ")`, the invariants fire immediately --
-before the value ever reaches the aggregate.
+create `Money(amount=-5, currency="XYZ")`, the invariants fire immediately, before the value ever reaches the
+aggregate.
 
 ```python
 # Invalid at construction → ValidationError
@@ -159,7 +160,7 @@ order.total = Money(amount=50, currency="FAKE")  # ValidationError
 ```
 
 Value object invariants are **context-free**. An `Email` is either valid or
-not, regardless of which aggregate uses it. This eliminates duplication -- the
+not, regardless of which aggregate uses it. This eliminates duplication. The
 format rule lives in one place and is reused everywhere.
 
 **What belongs here:** Format patterns (email, phone, SKU), internal
@@ -175,7 +176,7 @@ money).
 
 Business rules that span multiple fields or entities within the aggregate.
 These are the rules that define what makes an Order _valid_ as a business
-concept -- not just that its fields have the right types, but that it's
+concept, not just that its fields have the right types, but that it's
 internally consistent.
 
 ```python
@@ -264,7 +265,7 @@ context-dependent rules.
 
 Some rules depend on context: who is making the request, what time it is,
 what state other aggregates are in. These rules live in command handlers,
-application services, or domain services -- outside the aggregate.
+application services, or domain services, outside the aggregate.
 
 ```python
 from datetime import datetime, timezone
@@ -317,23 +318,23 @@ class OrderCommandHandler:
 cross-aggregate constraints, external state checks.
 
 **What doesn't:** Field validation, value format rules, single-aggregate
-business rules -- those belong in lower layers where they protect _every_
-code path, not just the handler.
+business rules. Those belong in lower layers where they protect _every_ code
+path, not just the handler.
 
 ---
 
-## How it works under the hood
+## How it works
 
-The always-valid guarantee isn't magic -- it's automatic interception.
+The always-valid guarantee isn't magic, it's automatic interception.
 
 When you write `order.status = "confirmed"`, Protean's `__setattr__`
 implementation does more than set a field:
 
-1. **Pre-invariants** (`@invariant.pre`) run on the aggregate root -- guards
+1. **Pre-invariants** (`@invariant.pre`) run on the aggregate root: the guards
    that must hold _before_ the change is allowed.
-2. **Field validation** runs -- type checking, constraints, custom validators.
+2. **Field validation** runs: type checking, constraints, custom validators.
 3. **The field is set.**
-4. **Post-invariants** (`@invariant.post`) run on the aggregate root -- rules
+4. **Post-invariants** (`@invariant.post`) run on the aggregate root: the rules
    that must hold _after_ the change.
 
 If any step fails, the change is rolled back. The aggregate stays in its
@@ -363,21 +364,21 @@ order.status = "confirmed"
 
 The always-valid guarantee changes how you write and think about domain code:
 
-- **No `validate()` calls.** You never need to remember to validate before
-  saving. The aggregate simply cannot accept invalid state.
+- **No `validate()` calls**: You never need to remember to validate before
+  saving. The aggregate cannot accept invalid state.
 
-- **Named methods are safe.** A method like `order.place()` can modify multiple
+- **Named methods are safe**: A method like `order.place()` can modify multiple
   fields. Invariants catch any inconsistency on each assignment, or you use
   `atomic_change` for coordinated mutations.
 
-- **Handlers can't corrupt state.** Even if a command handler sets fields
+- **Handlers can't corrupt state**: Even if a command handler sets fields
   directly rather than using named methods, invariants still fire.
 
-- **Tests are simpler.** Test business rules by directly setting fields and
+- **Tests are simpler**: Test business rules by directly setting fields and
   asserting that `ValidationError` is raised. No need to go through the full
   handler stack.
 
-- **Invalid data is caught at the boundary.** Field constraints on commands
+- **Invalid data is caught at the boundary**: Field constraints on commands
   catch bad data before handlers even run. Value object invariants catch format
   errors at construction. Aggregate invariants catch business rule violations
   immediately. Each layer pushes validation as early as possible.
@@ -386,11 +387,11 @@ The always-valid guarantee changes how you write and think about domain code:
 
 ## Further reading
 
-- [Validation Layering](../../patterns/validation-layering.md) -- Detailed
+- [Validation Layering](../../patterns/validation-layering.md): Detailed
   pattern guide with anti-patterns and decision table for which layer to use.
-- [Invariants (concept)](../foundations/invariants.md) -- Why invariants are
+- [Invariants (concept)](../foundations/invariants.md): Why invariants are
   fundamental to DDD and how they define aggregate boundaries.
-- [Validations (guide)](../../guides/domain-behavior/validations.md) -- How-to
+- [Validations (guide)](../../guides/domain-behavior/validations.md): How-to
   for field constraints and custom validators.
-- [Invariants (guide)](../../guides/domain-behavior/invariants.md) -- How-to
+- [Invariants (guide)](../../guides/domain-behavior/invariants.md): How-to
   for implementing pre/post invariants and using `atomic_change`.

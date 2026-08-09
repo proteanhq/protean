@@ -5,7 +5,7 @@
 The `Domain` class in Protean acts as a composition root. It manages external
 dependencies and injects them into objects during application startup.
 
-Your domain should be composed at the start of the application lifecycle — once,
+Your domain should be composed at the start of the application lifecycle, once,
 before any request or task is handled. This means:
 
 1. **Instantiate** the `Domain` and register elements (via decorators or
@@ -101,12 +101,12 @@ processing loop. See [Running the Server](../server/index.md) for details.
 
 ## Key principles
 
-- **Compose once, early.** Call `domain.init()` at startup, not per-request.
+- **Compose once, early**: Call `domain.init()` at startup, not per-request.
   Initialization activates database connections, validates element
   registration, and is not designed to be called repeatedly.
-- **Context per request.** Each request or task should run inside its own
+- **Context per request**: Each request or task should run inside its own
   domain context (`domain.domain_context()`). The context makes
   `current_domain` available and manages the Unit of Work lifecycle.
-- **Let the framework manage it.** Prefer framework-provided integration
+- **Let the framework manage it**: Prefer framework-provided integration
   (FastAPI middleware, Flask hooks) over manual context management. This
   ensures contexts are properly cleaned up even when exceptions occur.

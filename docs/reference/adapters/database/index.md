@@ -50,15 +50,27 @@ Python's built-in `sqlite3` module.
 
 [SQLite provider reference](./sqlite.md)
 
+### MSSQL
+
+The `mssql` provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
+[pyodbc](https://github.com/mkleehammer/pyodbc) to communicate with Microsoft
+SQL Server.
+
+- **Use cases**: Production environments on SQL Server
+- **Capabilities**: Full relational set, including JSON and array columns
+- **Requires**: `pyodbc` and a Microsoft ODBC driver installed on the machine
+
+[MSSQL provider reference](./mssql.md)
+
 ### Elasticsearch
 
-The `elasticsearch` provider uses
-[elasticsearch-dsl](https://elasticsearch-dsl-py.readthedocs.io/) for document
-store operations.
+The `elasticsearch` provider uses the
+[DSL bundled with the Elasticsearch client](https://elasticsearch-py.readthedocs.io/en/stable/dsl.html)
+for document store operations.
 
 - **Use cases**: Search and analytics workloads, document-oriented storage
 - **Capabilities**: Basic storage, schema management, optimistic locking
-- **Requires**: `elasticsearch` and `elasticsearch-dsl`
+- **Requires**: `elasticsearch` (8.18 or newer, which ships `elasticsearch.dsl`)
 
 [Elasticsearch provider reference](./elasticsearch.md)
 
@@ -85,7 +97,7 @@ database_uri = "postgresql://postgres:postgres@localhost:5432/reports"
 Each database configuration must specify:
 
 - `provider`: The provider adapter to use (`memory`, `postgresql`, `sqlite`,
-  `elasticsearch`, or a third-party provider name)
+  `mssql`, `elasticsearch`, or a third-party provider name)
 - Additional provider-specific options (like `database_uri` for non-memory
   providers)
 
@@ -97,14 +109,14 @@ Each database configuration must specify:
 
 Providers declare their capabilities through a flag-based system. Unlike broker
 capabilities (which are hierarchical tiers), database capabilities are
-**orthogonal** -- providers pick and choose which capabilities they support, and
+**orthogonal**, providers pick and choose which capabilities they support, and
 individual flags can be combined freely.
 
 ### Capability Flags
 
 Capabilities are organized into five tiers:
 
-**Tier 1: Universal Foundation** -- Every provider supports these.
+**Tier 1: Universal Foundation**, Every provider supports these.
 
 | Flag | Description |
 |------|-------------|
@@ -189,20 +201,20 @@ if provider.has_any_capability(
 
 ### Provider Capability Matrix
 
-|  | Memory | SQLite | PostgreSQL | Elasticsearch |
-|--|:------:|:------:|:----------:|:-------------:|
-| CRUD | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| FILTER | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| BULK_OPERATIONS | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| ORDERING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| TRANSACTIONS | | :white_check_mark: | :white_check_mark: | |
-| SIMULATED_TRANSACTIONS | :white_check_mark: | | | |
-| OPTIMISTIC_LOCKING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| RAW_QUERIES | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
-| SCHEMA_MANAGEMENT | | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| CONNECTION_POOLING | | :white_check_mark: | :white_check_mark: | |
-| NATIVE_JSON | | | :white_check_mark: | |
-| NATIVE_ARRAY | | | :white_check_mark: | |
+|  | Memory | SQLite | PostgreSQL | MSSQL | Elasticsearch |
+|— |:------:|:------:|:----------:|:-----:|:-------------:|
+| CRUD | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| FILTER | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| BULK_OPERATIONS | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| ORDERING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| TRANSACTIONS |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| SIMULATED_TRANSACTIONS | :white_check_mark: |  |  |  |  |
+| OPTIMISTIC_LOCKING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| RAW_QUERIES | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| SCHEMA_MANAGEMENT |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| CONNECTION_POOLING |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| NATIVE_JSON |  |  | :white_check_mark: | :white_check_mark: |  |
+| NATIVE_ARRAY |  |  | :white_check_mark: | :white_check_mark: |  |
 
 ## Provider Registry
 
@@ -255,7 +267,7 @@ guide.
 
 Every provider must register a minimum set of **12 standard lookups** that
 power Protean's filtering API. These are validated when a provider is first
-loaded -- missing lookups produce a warning, and filters using them will raise
+loaded, missing lookups produce a warning, and filters using them will raise
 `NotImplementedError`.
 
 | Lookup | Example |
@@ -280,16 +292,16 @@ it.
 
 Providers may register additional lookups beyond this required set.
 
-## Best Practices
+## Choosing and configuring a provider
 
-1. **Always define a default database** -- Even if it is just the memory
-   provider for development.
+1. **A default database is required**, even if it is only the memory provider
+   for development.
 
-2. **Start with in-memory, switch later** -- Develop and test with the memory
+2. **Start with in-memory, switch later**: Develop and test with the memory
    provider, then switch to a production database by changing configuration
    only.
 
-3. **Check capabilities before using advanced features** -- Not all providers
+3. **Check capabilities before using advanced features**: Not all providers
    support raw queries, native JSON, or native array columns.
 
 4. **Use appropriate providers for different concerns**:
@@ -298,18 +310,18 @@ Providers may register additional lookups beyond this required set.
     - PostgreSQL for production
     - Elasticsearch for search-heavy read models
 
-5. **Let Protean auto-generate database models** -- Only supply a custom
+5. **Let Protean auto-generate database models**: Only supply a custom
    `@domain.model` when you need to customize column types, indices, or other
    database-specific details.
 
-6. **Monitor provider health** -- Use `provider.is_alive()` to verify
+6. **Monitor provider health**: Use `provider.is_alive()` to verify
    connectivity during health checks.
 
 ## Indexes
 
 Aggregates and entities declare the indexes their query paths need with the
 `indexes=` option (see [Indexes](../../domain-elements/indexes.md)). The
-portable subset — composite, descending, unique, and named indexes — is honored
+portable subset (composite, descending, unique, and named indexes) is honored
 by every SQL provider; opt-in features degrade gracefully where a dialect
 cannot support them:
 
@@ -322,10 +334,10 @@ cannot support them:
 ⚠️ = falls back to a full index with a logged warning. The memory provider
 validates declarations but does not enforce them.
 
-## Next Steps
+## Related pages
 
 - Configure a specific provider: [Memory](./memory.md),
-  [SQLite](./sqlite.md), [PostgreSQL](./postgresql.md),
+  [SQLite](./sqlite.md), [PostgreSQL](./postgresql.md), [MSSQL](./mssql.md),
   [Elasticsearch](./elasticsearch.md)
 - [Build a custom database adapter](./custom-databases.md) for other
   technologies

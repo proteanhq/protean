@@ -2,31 +2,31 @@
 
 ## The Problem
 
-In many systems, identity is an afterthought -- a database-generated auto-increment
-integer assigned at the moment of persistence. The aggregate doesn't know its own
-identity until it has been saved, and callers don't learn the identity until the
-save completes.
+In many systems, identity is an afterthought, a database-generated
+auto-increment integer assigned at the moment of persistence. The aggregate
+doesn't know its own identity until it has been saved, and callers don't learn
+the identity until the save completes.
 
 This creates a cascade of problems:
 
-- **Commands cannot reference the aggregate they intend to create.** A `PlaceOrder`
+- **Commands cannot reference the aggregate they intend to create**: A `PlaceOrder`
   command cannot carry the `order_id` because the ID doesn't exist yet. The handler
   must create the aggregate, persist it, extract the generated ID, and return it.
   The caller is left waiting.
-- **API responses are coupled to the database round-trip.** The client submits a
+- **API responses are coupled to the database round-trip**: The client submits a
   POST request but cannot know the resource URL until the server persists the
   record and returns the generated ID. This blocks optimistic UI patterns and
   forces synchronous, tightly-coupled request flows.
-- **Idempotent creation is impossible without the identity.** If the client retries
+- **Idempotent creation is impossible without the identity**: If the client retries
   a create request (network timeout, user double-click), the system has no way to
   detect the duplicate. Each retry generates a new auto-increment ID, producing
   duplicate records. The check-then-act pattern (`does this order already exist?`)
   requires knowing the identity upfront.
-- **Events raised during creation cannot carry a stable identity.** An
+- **Events raised during creation cannot carry a stable identity**: An
   `OrderPlaced` event should contain the `order_id`, but if identity is
-  database-assigned, the event is raised before the ID is known -- or the event
+  database-assigned, the event is raised before the ID is known. Or the event
   must be patched after persistence, complicating the flow.
-- **Distributed systems require central coordination.** Auto-increment IDs depend
+- **Distributed systems require central coordination**: Auto-increment IDs depend
   on a single database sequence. In a distributed architecture with multiple
   nodes, services, or event-sourced aggregates, this becomes a bottleneck or a
   single point of failure.
@@ -38,8 +38,8 @@ to the persistence layer**.
 
 ## The Pattern
 
-Generate the aggregate's identity **at the point of creation** -- or even earlier,
-at the system boundary where the intent originates.
+Generate the aggregate's identity **at the point of creation**, or even
+earlier, at the system boundary where the intent originates.
 
 ```
 Traditional flow:
@@ -56,9 +56,9 @@ Early identity flow:
 ```
 
 The key insight from Domain-Driven Design is that **identity is intrinsic to an
-entity, not a side effect of storage**. An entity is defined by its identity. It
-should have that identity from the moment it comes into existence -- not from the
-moment it is persisted.
+entity, not a side effect of storage**. An entity is defined by its identity.
+It should have that identity from the moment it comes into existence, not from
+the moment it is persisted.
 
 ---
 
@@ -71,10 +71,10 @@ defining characteristic: **identity**. Two `Order` instances with the same
 attributes but different identities are different orders. Two with different
 attributes but the same identity are the same order at different points in time.
 
-If identity is foundational, it should be present from birth. An aggregate without
-an identity is incomplete -- it cannot participate in domain operations, cannot be
-referenced by commands or events, and cannot enforce invariants that depend on
-knowing "which one" it is.
+If identity is foundational, it should be present from birth. An aggregate
+without an identity is incomplete. It cannot participate in domain operations,
+cannot be referenced by commands or events, and cannot enforce invariants that
+depend on knowing "which one" it is.
 
 ### Aggregates Are Consistency Boundaries
 
@@ -89,8 +89,8 @@ generation closes this gap entirely.
 ### Commands Carry Intent and Context
 
 A well-designed command carries everything the handler needs, including the
-identity of the aggregate being acted upon. For creation commands, this means the
-caller -- not the handler, and not the database -- decides the identity:
+identity of the aggregate being acted upon. For creation commands, this means
+the caller (not the handler, and not the database) decides the identity:
 
 ```python
 # The command carries the identity of the aggregate it will create.
@@ -108,9 +108,10 @@ call it makes, and every response it returns.
 
 ### Events Record Facts with Stable References
 
-Domain events are immutable facts. Once raised, they become part of the system's
-history. Every downstream consumer -- event handlers, projectors, sagas -- relies
-on the identities embedded in these events to correlate, route, and process.
+Domain events are immutable facts. Once raised, they become part of the
+system's history. Every downstream consumer (event handlers, projectors, sagas)
+relies on the identities embedded in these events to correlate, route, and
+process.
 
 When identity is generated early, events carry stable, meaningful references from
 the start:
@@ -136,7 +137,7 @@ infrastructure like databases.
 ### Automatic Identity Generation at Construction
 
 When you create an aggregate or entity instance, Protean generates its identity
-immediately -- at construction time, not at persistence time:
+immediately, at construction time, not at persistence time:
 
 ```python
 @domain.aggregate
@@ -170,8 +171,8 @@ print(order.id)  # Auto-generated UUID
 
 ### Caller-Supplied Identities
 
-When the caller already has an identity -- because it was generated at the client,
-at the API layer, or carried in a command -- it can be supplied directly:
+When the caller already has an identity. Because it was generated at the
+client, at the API layer, or carried in a command. It can be supplied directly:
 
 ```python
 # The caller provides the identity explicitly
@@ -200,7 +201,7 @@ identity_type = "string"      # "string" (default), "integer", or "uuid"
 ```
 
 UUIDs are the default and recommended strategy because they can be generated
-anywhere -- in the client, in the API layer, in the command handler -- without
+anywhere (in the client, in the API layer, in the command handler) without
 coordination. This is precisely what makes early identity generation possible.
 
 **Per-field override** for aggregates with special requirements:
@@ -225,8 +226,9 @@ class Measurement:
 
 ### The Identifier Field on Commands
 
-Commands use the `Identifier` field to carry aggregate identities. Unlike `Auto`,
-`Identifier` does not auto-generate values -- the caller must supply them:
+Commands use the `Identifier` field to carry aggregate identities. Unlike
+`Auto`, `Identifier` does not auto-generate values. The caller must supply
+them:
 
 ```python
 @domain.command(part_of=Order)
@@ -308,7 +310,7 @@ without server coordination.
 
 ### First Creation vs. Subsequent Commands
 
-Early identity generation applies specifically to the **creation** command -- the
+Early identity generation applies specifically to the **creation** command, the
 first command that brings an aggregate into existence. After creation, every
 subsequent command naturally carries the identity because you need to know
 *which* aggregate to act on:
@@ -411,8 +413,8 @@ Early identity generation is the default recommendation, but there are situation
 where it may not apply:
 
 - **Natural identities from the domain**: When the domain itself provides a
-  unique identifier -- ISBN for books, email for user accounts, SSN for tax
-  records -- you don't need to generate a synthetic identity. Use the
+  unique identifier (ISBN for books, email for user accounts, SSN for tax
+  records) you don't need to generate a synthetic identity. Use the
   `identifier=True` flag on the natural key field:
 
   ```python
@@ -423,7 +425,7 @@ where it may not apply:
   ```
 
   The creation command carries this natural identity (`isbn`) from the caller
-  naturally, so the pattern's benefits still apply -- just without the UUID
+  naturally, so the pattern's benefits still apply, just without the UUID
   generation step.
 
 - **Auto-increment requirements from external systems**: Some integrations
@@ -468,9 +470,9 @@ it. The entire flow is simpler, more resilient, and naturally idempotent.
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../concepts/building-blocks/aggregates.md) — Aggregate identity and versioning.
+    - [Aggregates](../concepts/building-blocks/aggregates.md): Aggregate identity and versioning.
 
     **Guides:**
 
-    - [Identity](../reference/domain-elements/identity.md) — Identity strategies, types, and configuration.
-    - [Fields](../reference/fields/index.md) — The Auto and Identifier field types.
+    - [Identity](../reference/domain-elements/identity.md): Identity strategies, types, and configuration.
+    - [Fields](../reference/fields/index.md): The Auto and Identifier field types.

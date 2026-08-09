@@ -4,8 +4,9 @@
 
 Event sourcing preserves the complete history of every aggregate as a sequence
 of domain events. Temporal queries let you reconstitute an aggregate at any
-historical point -- answering "what was the state of this order yesterday?" or
-"what did the account look like at version 5?" without any extra infrastructure.
+historical point, answering "what was the state of this order yesterday?" or
+"what did the account look like at version 5?" without any extra
+infrastructure.
 
 ## By version
 
@@ -42,9 +43,9 @@ order_then = repo.get("order-123", as_of=cutoff)
 ```
 
 !!! note
-    The `as_of` parameter uses the event's **write timestamp** -- the moment
-    the event was persisted to the event store, not any business-level
-    timestamp embedded in the event payload.
+    The `as_of` parameter uses the event's **write timestamp**. The moment the
+    event was persisted to the event store, not any business-level timestamp
+    embedded in the event payload.
 
 ## Read-only aggregates
 
@@ -84,7 +85,7 @@ periodic intervals (see
 
 Temporal queries handle snapshots correctly:
 
-- **`at_version`** leverages existing snapshots when the snapshot version is
+- **`at_version`** uses existing snapshots when the snapshot version is
   at or before the requested version. If the snapshot is newer than the
   requested version, it is skipped and events are replayed from the beginning.
 - **`as_of`** always skips snapshots and replays from the first event, because
@@ -121,5 +122,5 @@ with UnitOfWork():
 !!! tip "See also"
     **Related guides:**
 
-    - [Event Upcasting](../consume-state/event-upcasting.md) — Transform historical event schemas during replay.
-    - [Retrieve Aggregates](./retrieve-aggregates.md) — Standard aggregate querying with QuerySets.
+    - [Event Upcasting](../consume-state/event-upcasting.md): Transform historical event schemas during replay.
+    - [Retrieve Aggregates](./retrieve-aggregates.md): Standard aggregate querying with QuerySets.

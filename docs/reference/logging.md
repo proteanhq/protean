@@ -39,7 +39,7 @@ redact = ["password", "token", "secret", "api_key", "authorization", "cookie", "
 | `slow_handler_threshold_ms` | float | `500` | Duration in ms above which a handler emits a `protean.perf.slow_handler` WARNING and the wide event is tagged `status="slow"`. Set to `0` to disable slow-handler tagging. |
 | `slow_query_threshold_ms` | float | `100` | Duration in ms above which a SQLAlchemy query emits a `protean.adapters.repository.sqlalchemy.slow_query` WARNING. |
 | `slow_query_truncate_chars` | int | `500` | Max SQL statement length in the slow-query log event. Trailing characters are replaced with `...`. `0` disables truncation. |
-| `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults — never replaces them. |
+| `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults, never replaces them. |
 | `per_logger` | table | `{}` | Map of logger name → level. Applied after the global setup so individual loggers can be tuned. |
 
 !!! note "Console logs go to stderr"
@@ -74,14 +74,14 @@ critical_streams = ["Payment*", "Auth*"]
 
 Rules apply in this order; first match wins:
 
-1. `always_keep_errors` — kept with `sampling_rule="error"`.
-2. `always_keep_slow` — kept with `sampling_rule="slow"`.
-3. `critical_streams` glob match — kept with `sampling_rule="critical_stream"`.
-4. Random sampling at `default_rate` — kept with `sampling_rule="random"`.
+1. `always_keep_errors`: Kept with `sampling_rule="error"`.
+2. `always_keep_slow`: Kept with `sampling_rule="slow"`.
+3. `critical_streams` glob match, kept with `sampling_rule="critical_stream"`.
+4. Random sampling at `default_rate`, kept with `sampling_rule="random"`.
 5. Otherwise dropped.
 
 Every kept event carries three sampling-metadata fields so aggregators can
-compute accurate throughput — `actual_count = sampled_count / sampling_rate`:
+compute accurate throughput, `actual_count = sampled_count / sampling_rate`:
 
 | Field | Type | Values |
 |-------|------|--------|
@@ -228,7 +228,7 @@ Merges `domain.toml [logging]` with explicit kwargs, calls
 - `OTelTraceContextFilter` + `protean_otel_processor` when
   `telemetry.enabled = true`
 
-Idempotent — calling it again replaces handlers and de-duplicates filters.
+Idempotent, calling it again replaces handlers and de-duplicates filters.
 
 ### `get_logger`
 
@@ -252,8 +252,8 @@ unbind_event_context("plan")
 ```
 
 Adds or removes business-specific fields on the **current wide event**.
-Uses `structlog.contextvars`, which is async-safe and thread-local — each
-coroutine or thread sees its own bindings.
+Uses `structlog.contextvars`, which is async-safe and thread-local, each coroutine or thread sees
+its own bindings.
 
 The `access_log_handler` context manager snapshots outer bindings at
 handler entry, clears them for a clean handler scope, and restores them
@@ -318,8 +318,7 @@ same `ProcessorFormatter` pipeline as `get_logger()` calls, so JSON output
 and console output share a single rendering pass.
 
 Field types in each subsection describe the values emitted via the `extra`
-dict. Every record also carries `correlation_id`, `causation_id`, and —
-when `telemetry.enabled = true` — `trace_id`, `span_id`, `trace_flags`.
+dict. Every record also carries `correlation_id`, `causation_id`, and (when `telemetry.enabled = true`) `trace_id`, `span_id`, `trace_flags`.
 
 ### `protean.access`
 
@@ -434,12 +433,12 @@ Emitted on responses with status `< 500`.
 
 #### `access.http_failed`
 
-Emitted on responses with status `>= 500` and on unhandled endpoint
-exceptions. Same fields as `access.http_completed`, plus `error_type` and
-`error_message` when an exception was raised (and `exc_info` carrying the
-traceback). The middleware always echoes `X-Request-ID` on the response —
-including on synthesised 500s — so operators can pivot from an HTTP
-failure back into the log aggregator.
+Emitted on responses with status `>= 500` and on unhandled endpoint exceptions.
+Same fields as `access.http_completed`, plus `error_type` and `error_message`
+when an exception was raised (and `exc_info` carrying the traceback). The
+middleware always echoes `X-Request-ID` on the response (including on
+synthesised 500s) so operators can pivot from an HTTP failure back into the log
+aggregator.
 
 ---
 
@@ -458,10 +457,9 @@ Same field set as the wide event.
 ### `protean.security`
 
 Level: WARNING. A dedicated channel for invariant, validation, and
-authorization failures that cross a domain boundary. Route this logger
-to a SIEM or alerting pipeline without sampling or format changes
-interfering — it is deliberately narrow so operators can trust that every
-entry merits attention.
+authorization failures that cross a domain boundary. Route this logger to a
+SIEM or alerting pipeline without sampling or format changes interfering. It is
+deliberately narrow so operators can trust that every entry merits attention.
 
 #### `log_security_event`
 
@@ -563,9 +561,9 @@ Per-message handler timing and completion flow through the dedicated
 
 ### `protean.server.outbox_processor`
 
-Outbox lifecycle and batch publishing. Per-message publish outcomes are
-emitted as trace events via the engine emitter, not as log records — they
-do not appear on this logger.
+Outbox lifecycle and batch publishing. Per-message publish outcomes are emitted
+as trace events via the engine emitter, not as log records. They do not appear
+on this logger.
 
 | Event | Level | Fields |
 |-------|-------|--------|
@@ -665,8 +663,8 @@ logger whenever a query's duration exceeds `slow_query_threshold_ms`.
 #### `repository.sqlalchemy.query`
 
 Emitted on the sibling `protean.adapters.repository.sqlalchemy.query`
-logger at DEBUG for every query. Off by default — enable by setting its
-level to `DEBUG` in `[logging.per_logger]`.
+logger at DEBUG for every query. Off by default, enable by setting its level to
+`DEBUG` in `[logging.per_logger]`.
 
 Same field set as `slow_query`, minus `threshold_ms`.
 
@@ -692,9 +690,9 @@ Every log record receives:
 | `span_id` | `str` | 16-char hex; `""` when no active span. |
 | `trace_flags` | `int` | `0` or `1`; `0` when no active span. |
 
-The helpers are lazy — when `opentelemetry` is not installed they return
-`("", "", 0)` and cache that decision, so telemetry-disabled deployments
-pay no per-record cost.
+The helpers are lazy. When `opentelemetry` is not installed they return `("",
+"", 0)` and cache that decision, so telemetry-disabled deployments pay no
+per-record cost.
 
 ---
 
@@ -727,8 +725,8 @@ password, token, secret, api_key, authorization, cookie, session, csrf
 ```
 
 These defaults are always applied. The `[logging].redact` list is
-**unioned** with them — operators cannot disable a core protection by
-supplying their own list.
+**unioned** with them. Operators cannot disable a core protection by supplying
+their own list.
 
 ### Extending the list
 
@@ -759,9 +757,9 @@ for why redaction runs as a pipeline stage rather than at call sites.
 and a `logging.handlers.QueueListener` on the supervisor that drains the
 queue and forwards records to the supervisor's configured handlers.
 
-The listener is stopped in a `finally` block on shutdown so buffered
-records are flushed before the supervisor exits. Single-worker mode is
-unchanged — no queue overhead.
+The listener is stopped in a `finally` block on shutdown so buffered records
+are flushed before the supervisor exits. Single-worker mode is unchanged, no
+queue overhead.
 
 See [`protean.server.supervisor`](server/supervisor.md) for supervisor
 configuration, and the

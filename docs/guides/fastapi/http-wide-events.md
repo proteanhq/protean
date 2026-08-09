@@ -3,12 +3,13 @@
 !!! abstract "What is a wide event?"
     A **wide event** is one rich, structured log line per unit of work
     (a handled message, an HTTP request) carrying every field an operator
-    might want to query on — rather than a stream of thin events you
-    later have to join by correlation ID. The pattern comes from Jamie
-    Brandon's [*Logging Sucks, So Use Wide Events*](https://loggingsucks.com)
-    and Stripe's [canonical log lines](https://brandur.org/canonical-log-lines).
-    See the [logging concept page](../../concepts/observability/logging.md#the-wide-event-pattern)
-    for the full rationale.
+    might want to query on, rather than a stream of thin events you later have
+    to join by correlation ID. The pattern comes from Jamie Brandon's [*Logging
+    Sucks, So Use Wide Events*](https://loggingsucks.com) and Stripe's
+    [canonical log lines](https://brandur.org/canonical-log-lines). See the
+    [logging concept
+    page](../../concepts/observability/logging.md#the-wide-event-pattern) for
+    the full rationale.
 
 `DomainContextMiddleware` emits one **wide event per HTTP request** on
 the `protean.access.http` logger. The event carries the request envelope
@@ -17,14 +18,15 @@ request, a `request_id`, and a `correlation_id` that links the HTTP layer
 to the domain-layer [`protean.access`](../server/logging.md) events
 produced by the handler mixin.
 
-This guide covers wiring, configuration, and enrichment. For the full
+Here is how to wire it up, configure it, and enrich what it records. For the
+full
 field schema see the [logging reference](../../reference/logging.md#proteanaccesshttp);
 for the design rationale behind the two-layer split see the
 [logging concepts page](../../concepts/observability/logging.md#two-layers-of-wide-events).
 
 ---
 
-## What you get out of the box
+## What you get by default
 
 As soon as you install `DomainContextMiddleware`, every HTTP request
 produces a wide event like this (production JSON renderer):
@@ -50,9 +52,9 @@ produces a wide event like this (production JSON renderer):
 }
 ```
 
-Level ladders match severity — INFO for 2xx/3xx, WARNING for 4xx, ERROR
-for 5xx or unhandled exceptions. A 5xx event carries `error_type` and
-`error_message` plus the inlined traceback under `exception`.
+Level ladders match severity, INFO for 2xx/3xx, WARNING for 4xx, ERROR for 5xx
+or unhandled exceptions. A 5xx event carries `error_type` and `error_message` plus the inlined
+traceback under `exception`.
 
 ---
 
@@ -155,19 +157,19 @@ does the `access.handler_completed` event emitted by `PlaceOrderHandler`.
 ### Framework fields are protected
 
 Keys that collide with framework-reserved HTTP fields (`http_method`,
-`http_status`, `request_id`, etc.) or stdlib `LogRecord` attributes are
-dropped before emission — application code cannot accidentally (or
-intentionally) overwrite `http_status=200` with a value of its own. See
-the [concept page](../../concepts/observability/logging.md#how-protean-builds-wide-events-automatically)
+`http_status`, `request_id`, etc.) or stdlib `LogRecord` attributes are dropped
+before emission. Application code cannot accidentally (or intentionally)
+overwrite `http_status=200` with a value of its own. See the [concept
+page](../../concepts/observability/logging.md#how-protean-builds-wide-events-automatically)
 for why.
 
 ---
 
 ## Correlate HTTP and domain events
 
-Every HTTP response echoes `X-Request-ID` back to the caller — even on
-synthesised 500s. Copy that value into your log aggregator to pull the
-full thread for a single request:
+Every HTTP response echoes `X-Request-ID` back to the caller, even on synthesised 500s.
+Copy that value into your log aggregator to pull the full thread for a single
+request:
 
 ```logql
 {logger=~"protean.access.*"}
@@ -180,10 +182,10 @@ If your incoming client already sends `X-Request-ID`, the middleware
 reuses it (truncated to 200 characters for safety); otherwise it
 generates a hex UUID.
 
-For multi-service setups, pass through `X-Correlation-ID` as well — the
-middleware extracts it first, falling back to `X-Request-ID`. See
-[Correlation and Causation IDs](../observability/correlation-and-causation.md)
-for the full propagation story.
+For multi-service setups, pass through `X-Correlation-ID` as well: the
+middleware extracts it first, falling back to `X-Request-ID`. See [Correlation
+and Causation IDs](../observability/correlation-and-causation.md) for the full
+propagation story.
 
 ---
 
@@ -215,15 +217,15 @@ any error or performance signal.
 
 ## See also
 
-- **[Logging guide](../server/logging.md)** — configuring the framework
+- **[Logging guide](../server/logging.md)**: Configuring the framework
   logger, `bind_event_context()` on domain handlers.
-- **[Logging reference](../../reference/logging.md#proteanaccesshttp)** —
+- **[Logging reference](../../reference/logging.md#proteanaccesshttp)**:
   full field schema for `access.http_completed` and `access.http_failed`.
-- **[Logging concepts](../../concepts/observability/logging.md#two-layers-of-wide-events)** —
+- **[Logging concepts](../../concepts/observability/logging.md#two-layers-of-wide-events)**:
   why the HTTP and domain layers are separate loggers.
-- **[Correlation and Causation IDs](../observability/correlation-and-causation.md)** —
+- **[Correlation and Causation IDs](../observability/correlation-and-causation.md)**:
   how `correlation_id` propagates across HTTP headers, commands, events,
   and log records.
-- **[ADR-0010: Logging overhaul and wide event architecture](../../adr/0010-logging-overhaul-and-wide-event-architecture.md)** —
+- **[ADR-0010: Logging overhaul and wide event architecture](../../adr/0010-logging-overhaul-and-wide-event-architecture.md)**:
   design rationale for the two-layer split and the `bind_event_context`
   dual-write.

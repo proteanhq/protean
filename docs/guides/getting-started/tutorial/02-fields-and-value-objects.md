@@ -23,12 +23,12 @@ bookstore needs more. Let's add several new fields:
 
 We have added:
 
-- **`Text`** for `description` — long-form text, unlike `String` which has a
+- **`Text`** for `description`. Long-form text, unlike `String` which has a
   `max_length` cap.
-- **`Date`** for `publication_date` — a date without time.
-- **`Integer`** for `page_count` — whole numbers.
-- **`Boolean`** for `in_print` — true/false with a default of `True`.
-- **`List`** for `tags` — a list of strings.
+- **`Date`** for `publication_date`, a date without time.
+- **`Integer`** for `page_count`, whole numbers.
+- **`Boolean`** for `in_print`, true/false with a default of `True`.
+- **`List`** for `tags`, a list of strings.
 - **`choices=Genre`** on the `genre` field restricts values to a Python `Enum`.
 
 For the complete list of field types and options, see the
@@ -44,7 +44,7 @@ Attempting to create a book with an invalid genre raises a `ValidationError`:
 ValidationError: {'genre': ["Value 'ROMANCE' is not a valid choice. ..."]}
 ```
 
-Notice that Protean catches invalid values at the domain boundary — invalid
+Notice that Protean catches invalid values at the domain boundary, invalid
 aggregates never enter your domain.
 
 ## From Float to Money
@@ -83,8 +83,8 @@ field. The price now carries both pieces of information together.
 
 ## Value Equality
 
-Two value objects with the same attributes are considered equal — identity
-does not matter, only the values:
+Two value objects with the same attributes are considered equal. Identity does
+not matter, only the values:
 
 ```python
 price1 = Money(amount=12.99, currency="USD")
@@ -131,8 +131,8 @@ Retrieved: The Great Gatsby, $12.99 USD
 All checks passed!
 ```
 
-Notice that the `Money` value object persisted and retrieved correctly —
-the repository handles it transparently.
+Notice that the `Money` value object persisted and retrieved correctly, the
+repository handles it transparently.
 
 ## What We Built
 

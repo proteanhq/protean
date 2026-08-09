@@ -3,14 +3,14 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 [Field-level validations](validations.md) catch type errors, missing values,
-and range violations — but they cannot express rules that span multiple fields
+and range violations, but they cannot express rules that span multiple fields
 or depend on the aggregate's overall state. For example, "an order's total must
 equal the sum of its items" or "a shipment can only be dispatched if the order
 is confirmed" are business rules that no single field constraint can enforce.
 
 Invariants fill this gap. They are business rules or constraints that must
 **always** be true within a domain concept. Protean treats invariants as
-first-class citizens, making them explicit and visible with the `@invariant`
+explicit and visible in the model, with the `@invariant`
 decorator. You can define invariants on Aggregates, Entities, Value Objects,
 and [Domain Services](domain-services.md).
 
@@ -22,7 +22,7 @@ your domain always valid, see
 
 Invariants are defined using the `@invariant` decorator with either a `.pre`
 or `.post` qualifier. You must always use `@invariant.pre` or
-`@invariant.post` — plain `@invariant` without a qualifier is not valid.
+`@invariant.post`, plain `@invariant` without a qualifier is not valid.
 
 ```python hl_lines="9-10 14-15"
 --8<-- "guides/domain-behavior/001.py:17:41"
@@ -44,7 +44,7 @@ collected with other invariant violations.
 
 ## `pre` and `post` Invariants
 
-The `@invariant` decorator has two flavors — **`pre`** and **`post`**.
+The `@invariant` decorator has two flavors, **`pre`** and **`post`**.
 
 **`post` invariants** are triggered after elements are constructed or updated.
 They ensure that the aggregate is in a valid state after the change.
@@ -91,13 +91,11 @@ class Account:
 
 When `withdraw()` is called, the flow is:
 
-1. **Pre-invariants** fire — `account_must_be_active_to_transact` checks
-   the current state. If the account is frozen, `ValidationError` is raised
-   and the assignment `self.balance -= amount` never happens.
+1. **Pre-invariants** fire, `account_must_be_active_to_transact` checks the current state. If the account is
+   frozen, `ValidationError` is raised and the assignment `self.balance -= amount` never happens.
 2. The attribute assignment `self.balance -= amount` executes.
-3. **Post-invariants** fire — `balance_must_not_be_negative` checks the
-   resulting state. If the balance went negative, `ValidationError` is raised
-   and the assignment is rolled back.
+3. **Post-invariants** fire, `balance_must_not_be_negative` checks the resulting state. If the balance
+   went negative, `ValidationError` is raised and the assignment is rolled back.
 
 !!!note
     `pre` invariants are not applicable when aggregates and entities are being
@@ -106,12 +104,12 @@ When `withdraw()` is called, the flow is:
 
 !!!note
     `pre` invariant checks are not applicable to `ValueObject` elements because
-    they are immutable — they cannot be changed once initialized.
+    they are immutable. They cannot be changed once initialized.
 
 ## When Invariants Run
 
 Invariant validations are triggered throughout the lifecycle of domain objects.
-The aggregate is the root of the triggering mechanism — validations are
+The aggregate is the root of the triggering mechanism. Validations are
 conducted recursively, starting with the aggregate and trickling down into
 enclosed entities.
 
@@ -204,10 +202,10 @@ from protean import atomic_change
 
 Within the `atomic_change` context manager, the cycle works as follows:
 
-1. **Pre-invariants fire on entry** — the current state is validated.
-2. **Invariant checks are suspended** during the block — individual
-   assignments do not trigger pre/post checks.
-3. **Post-invariants fire on exit** — the final state is validated.
+1. **Pre-invariants fire on entry**: The current state is validated.
+2. **Invariant checks are suspended** during the block. Individual assignments
+   do not trigger pre/post checks.
+3. **Post-invariants fire on exit**: The final state is validated.
 
 ```shell hl_lines="14"
 In [1]: from protean import atomic_change
@@ -241,8 +239,8 @@ ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
 
 `atomic_change` is also used internally by `raise_()` in event-sourced
-aggregates to wrap `@apply` handlers — see
-[Raising Events](raising-events.md#es-raise-apply) for details.
+aggregates to wrap `@apply` handlers, see [Raising
+Events](raising-events.md#es-raise-apply) for details.
 
 !!!note
     `atomic_change` can only be applied when updating or changing an already
@@ -273,15 +271,15 @@ and reported together.
 ---
 
 !!! tip "See also"
-    **Deep dive:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md) — The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
+    **Background:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md): The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
 
-    **Concept overview:** [Invariants](../../concepts/foundations/invariants.md) — Why invariants are fundamental to DDD and how they keep your domain always valid.
+    **Concept overview:** [Invariants](../../concepts/foundations/invariants.md): Why invariants are fundamental to DDD and how they keep your domain always valid.
 
     **Related guides:**
 
-    - [Validations](validations.md) — Field-level constraints (Layer 1).
-    - [Status Transitions](status-transitions.md) — Enforcing state machine rules with the `Status` field.
-    - [Aggregate Mutation](aggregate-mutation.md) — The `__setattr__` mechanism that triggers invariants.
-    - [Domain Services](domain-services.md) — Cross-aggregate invariants in domain services.
+    - [Validations](validations.md): Field-level constraints (Layer 1).
+    - [Status Transitions](status-transitions.md): Enforcing state machine rules with the `Status` field.
+    - [Aggregate Mutation](aggregate-mutation.md): The `__setattr__` mechanism that triggers invariants.
+    - [Domain Services](domain-services.md): Cross-aggregate invariants in domain services.
 
-    **Patterns:** [Validation Layering](../../patterns/validation-layering.md) — Choosing the right layer for each kind of validation rule.
+    **Patterns:** [Validation Layering](../../patterns/validation-layering.md): Choosing the right layer for each kind of validation rule.

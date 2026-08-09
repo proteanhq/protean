@@ -293,7 +293,7 @@ class BaseAggregate(BaseEntity):
     def _warn_if_deprecated(event_cls: type[BaseEvent]) -> None:
         """Emit a raise-time deprecation warning for a deprecated event.
 
-        Routes through :func:`protean._deprecation.warn_deprecated`. Fires at
+        Routes through `protean._deprecation.warn_deprecated`. Fires at
         most once per event type per domain (tracked on the domain, which is
         fresh per run) to avoid log spam when the event is raised many times.
         Names the ``superseded_by`` replacement when one is declared.
@@ -331,7 +331,7 @@ class BaseAggregate(BaseEntity):
         during the live path without double-incrementing ``_version``.
 
         Every event raised by an ES aggregate MUST have a corresponding
-        ``@apply`` handler — there is no silent fallback.
+        ``@apply`` handler. There is no silent fallback.
         """
         event_name = fqn(event.__class__)
 
@@ -453,7 +453,7 @@ class BaseAggregate(BaseEntity):
         ``raise_()``.
 
         This avoids the need to pass every required field to the constructor
-        just to satisfy Pydantic validation — only identity is needed::
+        just to satisfy Pydantic validation. Only identity is needed::
 
             order = Order._create_new()
             order.raise_(OrderCreated(order_id=str(order.id), ...))
@@ -479,7 +479,7 @@ class BaseAggregate(BaseEntity):
         ``@apply`` handler must set ALL fields including identity.
 
         Raises:
-            IncorrectUsageError: If ``events`` is empty — an aggregate cannot
+            IncorrectUsageError: If ``events`` is empty. An aggregate cannot
                 be reconstructed without at least one event.
         """
         if not events:
@@ -706,7 +706,7 @@ class atomic_change:
     """Context manager to temporarily disable invariant checks on aggregate.
 
     Also captures status field snapshots on entry and validates the
-    overall start-to-end transition on exit — so batched mutations
+    overall start-to-end transition on exit, so batched mutations
     (and ``@apply`` handlers in ES aggregates) are validated as a single
     logical transition.
     """

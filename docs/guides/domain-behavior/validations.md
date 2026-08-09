@@ -2,7 +2,7 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-A core DDD principle is that domain objects should be **always valid** — it
+A core DDD principle is that domain objects should be **always valid**. It
 should be impossible to construct or mutate an aggregate, entity, or value
 object into a state that violates its rules. Protean enforces this guarantee
 starting at the field level: every field declaration carries constraints that
@@ -14,15 +14,15 @@ a different category of invalid state:
 
 | Layer | What it validates | Where it lives |
 |-------|-------------------|----------------|
-| **1 — Field constraints** | Type, format, range, required | Field declarations (this guide) |
-| **2 — Value object invariants** | Concept-level rules (e.g. email format) | [`@invariant.post` on VOs](invariants.md) |
-| **3 — Aggregate invariants** | Business rules, cross-field consistency | [`@invariant` on aggregates](invariants.md) |
-| **4 — Handler/service guards** | Authorization, cross-aggregate checks | [Command handlers](../change-state/command-handlers.md), [domain services](domain-services.md) |
+| **1, Field constraints** | Type, format, range, required | Field declarations (this guide) |
+| **2, Value object invariants** | Concept-level rules (e.g. email format) | [`@invariant.post` on VOs](invariants.md) |
+| **3, Aggregate invariants** | Business rules, cross-field consistency | [`@invariant` on aggregates](invariants.md) |
+| **4, Handler/service guards** | Authorization, cross-aggregate checks | [Command handlers](../change-state/command-handlers.md), [domain services](domain-services.md) |
 
 Each layer trusts the layers below it and adds what they don't cover. This
-guide focuses on Layer 1 — field constraints, built-in validators, and custom
-validators. For the complete picture, see the
-[Validation Layering](../../patterns/validation-layering.md) pattern.
+guide focuses on Layer 1, field constraints, built-in validators, and custom
+validators. For the complete picture, see the [Validation
+Layering](../../patterns/validation-layering.md) pattern.
 
 ## Field Restrictions
 
@@ -124,11 +124,9 @@ ERROR: Error during initialization:
 ValidationError: {'name': ['value has less than 3 characters'], 'age': ['value is greater than 120']}
 ```
 
-Under the hood, these parameters create built-in validator instances from
-`protean.fields.validators` — `MinLengthValidator`, `MaxLengthValidator`,
-`MinValueValidator`, `MaxValueValidator`, and `RegexValidator`. You rarely need
-to use them directly, but they are available if you need to compose validators
-programmatically.
+These parameters create built-in validator instances from
+`protean.fields.validators`, `MinLengthValidator`, `MaxLengthValidator`, `MinValueValidator`, `MaxValueValidator`, and `RegexValidator`. You rarely need to use them directly, but
+they are available if you need to compose validators programmatically.
 
 A full list of in-built validators is available in the
 [Fields](../../reference/fields/index.md) section under each field.
@@ -181,8 +179,8 @@ automatically:
    After field validation passes, any `@invariant.post` methods run.
 2. **On attribute assignment**: Every `self.field = value` goes through
    `__setattr__`, which triggers field validation. If the value doesn't match
-   the field's type or constraints, a `ValidationError` is raised immediately
-   — the assignment never takes effect.
+   the field's type or constraints, a `ValidationError` is raised immediately.
+   The assignment never takes effect.
 
 This means an aggregate can never hold an invalid field value, even
 momentarily. The "always valid" guarantee is enforced at the Python runtime
@@ -191,13 +189,13 @@ level, not just at persistence time.
 ---
 
 !!! tip "See also"
-    **Deep dive:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md) — The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
+    **Background:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md): The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
 
-    **Concept overview:** [Invariants](../../concepts/foundations/invariants.md) — The foundational concept of keeping domain objects always valid.
+    **Concept overview:** [Invariants](../../concepts/foundations/invariants.md): The foundational concept of keeping domain objects always valid.
 
     **Related guides:**
 
-    - [Invariants](invariants.md) — Business rules that enforce cross-field consistency (Layers 2-3).
-    - [Aggregate Mutation](aggregate-mutation.md) — How state changes trigger validation.
+    - [Invariants](invariants.md): Business rules that enforce cross-field consistency (Layers 2-3).
+    - [Aggregate Mutation](aggregate-mutation.md): How state changes trigger validation.
 
-    **Patterns:** [Validation Layering](../../patterns/validation-layering.md) — Choosing the right validation layer for each kind of rule.
+    **Patterns:** [Validation Layering](../../patterns/validation-layering.md): Choosing the right validation layer for each kind of rule.

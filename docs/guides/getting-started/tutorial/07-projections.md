@@ -1,20 +1,19 @@
 # Chapter 7: Projections and Projectors
 
-In this chapter we will create a `BookCatalog` projection — a
-read-optimized view that stays in sync with our Book aggregate through
-events.
+In this chapter we will create a `BookCatalog` projection. A read-optimized
+view that stays in sync with our Book aggregate through events.
 
 !!! note "CQRS Concept"
-    Projections are a **CQRS-specific** pattern — they separate your read
-    model from your write model. In the pure DDD approach, you query
-    aggregates directly through repositories. Projections become valuable
-    when your read and write needs diverge.
+    Projections are a **CQRS-specific** pattern. They separate your read model
+    from your write model. In the pure DDD approach, you query aggregates
+    directly through repositories. Projections become valuable when your read
+    and write needs diverge.
 
 ## Why Projections?
 
-Our aggregates enforce business rules, but for listing books in a catalog
-we want flat, fast data — no nested value objects, no business logic.
-Projections give us that.
+Our aggregates enforce business rules, but for listing books in a catalog we
+want flat, fast data, no nested value objects, no business logic. Projections
+give us that.
 
 ## Defining a Projection
 
@@ -24,10 +23,10 @@ A projection is a flat data structure optimized for queries:
 --8<-- "guides/getting-started/tutorial/ch07.py:projection"
 ```
 
-Notice that the projection has only simple fields — `String`, `Float`,
-`Identifier`. No associations or references. (ValueObject fields are also
-allowed in projections when you need to group related attributes.) The
-`identifier=True` on `book_id` marks it as the primary key.
+Notice that the projection has only simple fields, `String`, `Float`, `Identifier`. No
+associations or references. (ValueObject fields are also allowed in projections
+when you need to group related attributes.) The `identifier=True` on `book_id` marks it as the
+primary key.
 
 ## Building a Projector
 
@@ -48,8 +47,8 @@ entry.
 
 ## Querying the Projection
 
-Projections are queried using `domain.view_for()`, which returns a
-`ReadView` — the CQRS read-side API:
+Projections are queried using `domain.view_for()`, which returns a `ReadView`.
+The CQRS read-side API:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch07.py:usage"
@@ -59,8 +58,8 @@ Projections are queried using `domain.view_for()`, which returns a
 read-only methods: `get()` for a single record, `query` for a
 `ReadOnlyQuerySet` (filtering, sorting, pagination), `find_by()` for
 criteria-based lookup, `count()`, and `exists()`. All mutation
-operations are blocked — this enforces the CQRS principle: projections
-are read-only.
+operations are blocked. This enforces the CQRS principle: projections are
+read-only.
 
 Run it:
 
@@ -80,16 +79,16 @@ Updated: The Great Gatsby — $15.99
 All checks passed!
 ```
 
-Notice that we never updated the projection directly — the projector
-reacted to events and kept it in sync automatically. The catalog always
-reflects the latest state of the Book aggregate.
+Notice that we never updated the projection directly, the projector reacted to
+events and kept it in sync automatically. The catalog always reflects the
+latest state of the Book aggregate.
 
 ## What We Built
 
-- A **`BookCatalog` projection** — flat, query-optimized data.
-- A **`BookCatalogProjector`** — listens to Book events and maintains
-  the projection.
-- **`domain.view_for()`** — the read-only view API for projections
+- A **`BookCatalog` projection**: flat, query-optimized data.
+- A **`BookCatalogProjector`**: listens to Book events and maintains the
+  projection.
+- **`domain.view_for()`**: The read-only view API for projections
   (with `get()`, `query`, `find_by()`, `count()`, `exists()`).
 - Automatic sync: adding or updating a book immediately updates the
   catalog.

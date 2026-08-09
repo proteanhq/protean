@@ -2,12 +2,12 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-In DDD, aggregates are not passive data containers — they are the guardians of
-business rules. If external code could freely set fields on an aggregate
-(the "anemic domain model" anti-pattern), invariants would be bypassed and the
+In DDD, aggregates are not passive data containers. They are the guardians of
+business rules. If external code could freely set fields on an aggregate (the
+"anemic domain model" anti-pattern), invariants would be bypassed and the
 aggregate could silently drift into an invalid state. Instead, state changes
-happen through **methods on the aggregate** that encapsulate the business logic,
-enforce invariants, and raise events.
+happen through **methods on the aggregate** that encapsulate the business
+logic, enforce invariants, and raise events.
 
 ## Typical Workflow
 
@@ -80,15 +80,15 @@ InsufficientFundsException: Balance cannot be below overdraft limit
 Every field assignment on an aggregate or entity (`self.x = value`) is
 intercepted by `__setattr__`, which runs a full validation cycle:
 
-1. **Pre-invariants fire** — `@invariant.pre` methods check whether the
+1. **Pre-invariants fire**: `@invariant.pre` methods check whether the
    current state allows the proposed change.
-2. **Protean validates the assignment** — the field's type, constraints
+2. **Protean validates the assignment**: The field's type, constraints
    (`required`, `max_length`, `choices`, etc.) are enforced. If validation
    fails, a `ValidationError` is raised and the assignment never takes
    effect.
-3. **Post-invariants fire** — `@invariant.post` methods verify the aggregate
+3. **Post-invariants fire**: `@invariant.post` methods verify the aggregate
    remains in a valid state after the change.
-4. **The entity is marked as changed** — Protean's internal `_EntityState`
+4. **The entity is marked as changed**: Protean's internal `_EntityState`
    tracks the mutation so the Unit of Work knows to persist it.
 
 This means that **every individual assignment** triggers the full invariant
@@ -107,7 +107,7 @@ with atomic_change(order):
 
 Within `atomic_change`, pre-invariants fire on entry, individual assignment
 checks are suspended, and post-invariants fire on exit. See
-[Invariants — Atomic Changes](invariants.md#atomic-changes) for details.
+[Invariants, Atomic Changes](invariants.md#atomic-changes) for details.
 
 ### Identifier Immutability
 
@@ -124,7 +124,7 @@ InvalidOperationError: Identifiers cannot be changed once set
 ### Child Entity Mutations
 
 When a child entity's attribute is changed, the **root aggregate's** invariants
-fire — not just the entity's own. This ensures cross-entity business rules are
+fire, not just the entity's own. This ensures cross-entity business rules are
 always enforced, even when mutations happen deep in the aggregate cluster.
 
 ## Event-Sourced Aggregates
@@ -152,9 +152,9 @@ class Order:
 This ensures the **same code path** runs whether the aggregate is
 processing a live command or being reconstructed from stored events.
 
-The `raise_()` method wraps the `@apply` call inside `atomic_change()`,
-so invariants are checked before and after the state change — the
-"always valid" guarantee is preserved.
+The `raise_()` method wraps the `@apply` call inside `atomic_change()`, so
+invariants are checked before and after the state change, the "always valid"
+guarantee is preserved.
 
 See [Raising Events](raising-events.md#es-raise-apply) for full
 details on the `raise_()` + `@apply` integration.
@@ -162,16 +162,16 @@ details on the `raise_()` + `@apply` integration.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md) — Aggregate consistency, invariants, and state management.
+    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md): Aggregate consistency, invariants, and state management.
 
     **Related guides:**
 
-    - [Invariants](invariants.md) — Business rules that enforce aggregate consistency.
-    - [Raising Events](raising-events.md) — Recording and propagating state changes as domain events.
-    - [Validations](validations.md) — Field-level constraints enforced during mutation.
+    - [Invariants](invariants.md): Business rules that enforce aggregate consistency.
+    - [Raising Events](raising-events.md): Recording and propagating state changes as domain events.
+    - [Validations](validations.md): Field-level constraints enforced during mutation.
 
     **Patterns:**
 
-    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation methods.
-    - [Aggregate State Machines](../../patterns/aggregate-state-machines.md) — Modeling aggregate lifecycle transitions.
-    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping business logic in the aggregate, not the handler.
+    - [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md): Protecting aggregate internals with controlled mutation methods.
+    - [Aggregate State Machines](../../patterns/aggregate-state-machines.md): Modeling aggregate lifecycle transitions.
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping business logic in the aggregate, not the handler.

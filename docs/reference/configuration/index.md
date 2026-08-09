@@ -173,7 +173,7 @@ Default: `async`
 !!! note
     The `protean new` scaffold writes an explicit `command_processing = "sync"`
     override into the generated `domain.toml` (see the sample above), which is
-    why new projects behave synchronously out of the box. The framework
+    why new projects behave synchronously by default. The framework
     default, absent any override, is `async`.
 
 ### `command_default_timeout`
@@ -185,8 +185,8 @@ elapses before a handler runs, the command is rejected (sync) or skipped
 without retry (async). See
 [Deadlines and Timeouts](../../guides/change-state/commands.md#deadlines-and-timeouts).
 
-`None` disables the default — commands never expire unless a deadline is
-requested explicitly or via a handler's `timeout` option.
+`None` disables the default: commands never expire unless a deadline is
+requested explicitly or through a handler's `timeout` option.
 
 Default: `None`
 
@@ -201,7 +201,7 @@ Default: `async`
 !!! note
     The `protean new` scaffold writes an explicit `event_processing = "sync"`
     override into the generated `domain.toml` (see the sample above), which is
-    why new projects behave synchronously out of the box. The framework
+    why new projects behave synchronously by default. The framework
     default, absent any override, is `async`.
 
 ### `message_processing`
@@ -231,8 +231,8 @@ field was removed, without an upcaster.
 
 The dropped-field record is read-time observability on the deserialized
 message: it is not written back to the event store and, being `_`-prefixed, is
-not emitted as a CloudEvents extension. Dropping only removes unknown fields —
-a payload still missing a required field raises as usual.
+not emitted as a CloudEvents extension. Dropping only removes unknown fields, a
+payload still missing a required field raises as usual.
 
 The default is strict: an unknown field raises, so a typo or genuine schema
 drift is not silently swallowed. A per-event `lenient` meta option
@@ -498,8 +498,8 @@ Read more in [Server → Configuration](../server/configuration.md) section.
 
 The `[server.dlq]` section configures a periodic maintenance task that
 trims old DLQ entries and alerts when DLQ streams grow deep. It is
-**disabled by default** — set `enabled = true` to activate it. Requires
-a broker that implements the DLQ contract (currently Redis Streams).
+**disabled by default**, set `enabled = true` to activate it. Requires a broker that
+implements the DLQ contract (currently Redis Streams).
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -517,8 +517,8 @@ Per-subscription overrides are available on each handler's
 | `dlq_retention_hours` | int \| None | inherit | Override `retention_hours` for this subscription's DLQ stream only. |
 | `dlq_alert_threshold` | int \| None | inherit | Override `alert_threshold` for this subscription's DLQ stream only. |
 
-For the operational workflow — discover, inspect, replay, purge — see
-[Dead Letter Queues](../../guides/server/dead-letter-queues.md).
+For the operational workflow (discover, inspect, replay, purge) see [Dead
+Letter Queues](../../guides/server/dead-letter-queues.md).
 
 #### Health Checks
 
@@ -743,7 +743,7 @@ for why ownership is leased and fenced.
 ## Custom Attributes
 
 Custom attributes can be defined in toml under the `[custom]` section (or
-`[tool.protean.custom]` if you are leveraging the `pyproject.toml` file).
+`[tool.protean.custom]` if you are using the `pyproject.toml` file).
 
 Custom attributes are also made available as domain attributes.
 
@@ -767,7 +767,7 @@ Out[3]: 'bar'
 
 ## Multiple Environments
 
-Most applications need more than one configuration. At the very least, there
+Most applications need more than one configuration. At minimum, there
 should be separate configurations for production and for local development.
 The `toml` configuration file can hold configurations for different
 environments.
@@ -799,10 +799,10 @@ specific settings above for databases - an `sqlite` db configuration for
 
 ### Testing Overlays
 
-A common use of environment overlays is **dual-mode testing** -- running the
-same test suite against in-memory adapters for speed and real infrastructure
-for confidence. Define a `[test]` overlay (the default for `pytest`) and a
-`[memory]` overlay, then switch from the command line:
+A common use of environment overlays is **dual-mode testing**, running the same
+test suite against in-memory adapters for speed and real infrastructure for
+confidence. Define a `[test]` overlay (the default for `pytest`) and a `[memory]` overlay, then
+switch from the command line:
 
 ```toml
 # Base configuration (development)

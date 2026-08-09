@@ -3,25 +3,25 @@
 ## The Problem
 
 Your order service raises an `OrderPlaced` event. An external fulfillment
-system needs to consume it. The event carries Protean-specific metadata --
-stream names, sequence IDs, causal chain identifiers, checksums -- structured
-for DDD and event sourcing, not for generic consumers.
+system needs to consume it. The event carries Protean-specific metadata (stream
+names, sequence IDs, causal chain identifiers, checksums) structured for DDD
+and event sourcing, not for generic consumers.
 
 If you expose the internal metadata format directly:
 
-- **Structural coupling.** External consumers depend on Protean's `metadata.headers`,
+- **Structural coupling**: External consumers depend on Protean's `metadata.headers`,
   `metadata.domain`, and `metadata.envelope` nesting. A refactor of your internal
   metadata breaks every consumer.
 
-- **Vocabulary coupling.** Consumers must understand Protean-specific concepts
-  like `stream_category`, `fqn`, and `expected_version` -- none of which are
+- **Vocabulary coupling**: Consumers must understand Protean-specific concepts
+  like `stream_category`, `fqn`, and `expected_version`. None of which are
   meaningful outside the bounded context.
 
-- **No standard tooling.** Generic event routers, schema registries, and
+- **No standard tooling**: Generic event routers, schema registries, and
   observability tools don't recognize Protean's format. You lose the ecosystem
   of CloudEvents-compatible middleware.
 
-- **Bidirectional friction.** Consuming events *from* external systems requires
+- **Bidirectional friction**: Consuming events *from* external systems requires
   ad-hoc parsing of whatever format they chose.
 
 The root cause: **internal event metadata is optimized for the domain, not for
@@ -52,7 +52,7 @@ External System                Boundary                     Your Domain
 ```
 
 This mirrors the subscriber / ACL pattern that Protean already uses for
-consuming external events -- except instead of translating external events
+consuming external events, except instead of translating external events
 *inward*, we also translate internal events *outward*.
 
 ---
@@ -218,7 +218,7 @@ CloudEvents at the boundary; use Protean's native format internally.
   is simpler and carries more information.
 
 - **Internal event handlers** that only consume events from the same domain.
-  They receive typed domain objects directly -- no serialization needed.
+  They receive typed domain objects directly, no serialization needed.
 
 - **Performance-critical internal paths** where the serialization overhead
   of `to_cloudevent()` is unnecessary. CloudEvents is for boundary crossing,
@@ -234,19 +234,19 @@ CloudEvents at the boundary; use Protean's native format internally.
 | **How** | `to_cloudevent()` to produce, `from_cloudevent()` to consume |
 | **Configure** | `source_uri` in `domain.toml` for stable source identification |
 | **Extensions** | `protean`-prefixed for DDD metadata; user extensions from enrichers |
-| **Internal format** | Unchanged -- CloudEvents is a serialization concern |
+| **Internal format** | Unchanged, CloudEvents is a serialization concern |
 | **Round-trip** | Data, type, correlation/causation, checksum all preserved |
 
 ---
 
 !!! note "Related"
-    - [CloudEvents Interoperability Guide](../guides/consume-state/cloudevents.md) --
+    - [CloudEvents Interoperability Guide](../guides/consume-state/cloudevents.md):
       Step-by-step instructions for producing and consuming CloudEvents.
-    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md) --
+    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md):
       The subscriber / ACL pattern for external event consumption.
-    - [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md) --
+    - [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md):
       Using fact events for cross-context state snapshots.
-    - [Message Tracing](message-tracing.md) -- How correlation and causation IDs
+    - [Message Tracing](message-tracing.md): How correlation and causation IDs
       flow through causal chains.
-    - [Message Enrichment](message-enrichment.md) -- Attaching custom metadata
+    - [Message Enrichment](message-enrichment.md): Attaching custom metadata
       to events and commands.

@@ -2,99 +2,90 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Protean provides several mechanisms to define validation rules, enforce
-business invariants, mutate aggregate state safely, and communicate state
-changes through domain events. This section covers each of these
-capabilities.
+Once your domain elements exist, the next job is giving them rules: what
+counts as valid data, which business conditions must always hold, how state is
+allowed to change, and what the rest of the system hears about it afterwards.
 
 For the conceptual foundation, see
 [Building Blocks](../../concepts/building-blocks/index.md).
 
-## What's in This Section
+## Guides in this section
 
 ### Validations
 
-Validations ensure that data meets basic requirements before it can be processed. In Protean, validations can be applied at multiple levels:
-
-- **Field-level restrictions** - Define type constraints, required fields, uniqueness
-- **Built-in validators** - Leverage pre-defined validators for common validation patterns
-- **Custom validators** - Create domain-specific validation logic
+Validations check that data meets basic requirements before it is processed.
+You can constrain a field's type, mark it required, or make it unique. For
+common patterns there are built-in validators, and for domain-specific rules
+you can write your own.
 
 [Learn more about validations →](validations.md)
 
 ### Invariants
 
-Invariants are business rules that must always hold true within your domain model. They preserve the consistency and integrity of your domain objects:
-
-- **Always valid** - Invariants are conditions that must hold true at all times
-- **Domain-driven** - Invariants stem from business rules and policies
-- **Immediate validation** - Triggered automatically during initialization and state changes
+An invariant is a business rule that must hold true at all times, and it is
+what keeps your domain objects consistent. Invariants come from business rules
+and policies rather than from the code, and Protean checks them automatically
+during initialization and on every state change.
 
 [Learn more about invariants →](invariants.md)
 
 ### Status Transitions
 
-Most aggregates are state machines. The `Status` field makes lifecycle rules explicit and automatically enforced:
-
-- **Declarative transitions** - Define allowed state-to-state moves in the field declaration
-- **Automatic enforcement** - Illegal transitions raise `ValidationError`
-- **Terminal states** - States with no outgoing transitions are implicit
-- **Programmatic checking** - `can_transition_to()` checks without raising
+Most aggregates are state machines. The `Status` field lets you declare which
+state-to-state moves are allowed, right in the field declaration, and Protean
+raises `ValidationError` on any move you did not allow. A state with no
+outgoing transitions is terminal, and `can_transition_to()` lets you check a
+move without raising.
 
 [Learn more about status transitions →](status-transitions.md)
 
 ### Aggregate Mutation
 
-Aggregates encapsulate the state and behavior of your domain. Mutating their state is how you implement business operations:
-
-- **State change methods** - Well-defined methods for modifying aggregate state
-- **Invariant enforcement** - All state changes are validated against defined invariants
-- **Explicit behavior** - Business operations are expressed as meaningful methods
+Aggregates hold the state and behaviour of your domain, and mutating that
+state is how you implement a business operation. Write each operation as a
+named method that says what it does, and Protean validates the result against
+the aggregate's invariants.
 
 [Learn more about aggregate mutation →](aggregate-mutation.md)
 
 ### Raising Events
 
-Domain events record significant state changes and enable communication between different parts of your system:
-
-- **Delta events** - Generated when aggregates mutate to record state changes
-- **Entity events** - Any entity in an aggregate cluster can raise events
-- **Event dispatching** - Events are automatically dispatched or can be manually published
+Domain events record state changes worth telling the rest of the system about.
+An aggregate raises a delta event when it mutates, any entity in the cluster
+can raise one too, and Protean dispatches them for you or lets you publish
+them by hand.
 
 [Learn more about raising events →](raising-events.md)
 
 ### Message Tracing & Enrichment
 
-Protean automatically tracks causal chains across commands and events, and
-lets you attach custom metadata to every message:
-
-- **Correlation & causation IDs** - Automatically propagated through command → event chains
-- **Causation chain API** - Walk up to the root command, down to all effects, or build a full causation tree programmatically
-- **Message enrichment hooks** - Register callables that add custom metadata (user context, tenant ID, audit data) to every event and command
-- **Extensions metadata** - A user-space `metadata.extensions` dict persisted in the event store
+Protean tracks causal chains across commands and events, propagating
+correlation and causation IDs through each command-to-event chain. You can
+walk up to the root command, down to all its effects, or build the full
+causation tree in code. Enrichment hooks let you attach your own metadata,
+such as user context, tenant ID, or audit data, to every message, and it is
+persisted in a `metadata.extensions` dict in the event store.
 
 [Learn more about message tracing →](message-tracing.md) &nbsp;|&nbsp; [Learn more about message enrichment →](message-enrichment.md)
 
 ### Domain Services
 
-Domain services encapsulate business logic that doesn't naturally fit within any single aggregate:
-
-- **Stateless operations** - Pure functions that operate on multiple aggregates
-- **Complex workflows** - Coordinate operations that span multiple aggregates
-- **Business rules** - Enforce constraints that involve multiple objects
+Some business logic does not belong to any single aggregate. A domain service
+holds that logic: stateless operations across several aggregates, workflows
+that span them, and rules that involve more than one object.
 
 [Learn more about domain services →](domain-services.md)
 
 ### Error Handling
 
-Raise, propagate, and handle domain exceptions -- from aggregate
-invariants through command handlers to HTTP responses.
+Raise, propagate, and handle domain exceptions, from aggregate invariants
+through command handlers to HTTP responses.
 
 [Learn more about error handling →](error-handling.md)
 
 !!! tip "See also"
     For design guidance and trade-offs, see the
-    [Patterns & Recipes](../../patterns/index.md) section -- particularly
+    [Patterns & Recipes](../../patterns/index.md) section, particularly
     [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md),
-    [Validation Layering](../../patterns/validation-layering.md), and
-    [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md).
+    [Validation Layering](../../patterns/validation-layering.md), and [Thin
+    Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md).

@@ -1,4 +1,4 @@
-# Chapter 12: Going Async — The Server
+# Chapter 12: Going Async with the Server
 
 Processing everything synchronously was fine for development. But a
 customer placing an order should not wait while the system updates the
@@ -19,8 +19,8 @@ projectors reliably. Protean uses the **outbox pattern**:
 3. **StreamSubscriptions** consume from Redis Streams and dispatch to
    handlers.
 
-This guarantees **at-least-once delivery** — events are never lost, even
-if Redis is temporarily unavailable.
+This guarantees **at-least-once delivery**. Events are never lost, even if
+Redis is temporarily unavailable.
 
 ## Configuration
 
@@ -57,14 +57,14 @@ enable_dlq = true
 
 Key settings:
 
-- **`brokers.default.provider = "redis"`** — use Redis as the message
+- **`brokers.default.provider = "redis"`**: Use Redis as the message
   broker.
-- **`event_processing = "async"`** — events flow through the broker
+- **`event_processing = "async"`**: Events flow through the broker
   instead of being processed inline.
-- **`enable_outbox = true`** — reliable delivery via the outbox pattern.
-- **`default_subscription_type = "stream"`** — use `StreamSubscription`
+- **`enable_outbox = true`**: Reliable delivery via the outbox pattern.
+- **`default_subscription_type = "stream"`**: Use `StreamSubscription`
   (Redis Streams with consumer groups) for all handlers.
-- **`enable_dlq = true`** — failed messages go to a dead-letter queue
+- **`enable_dlq = true`**: Failed messages go to a dead-letter queue
   instead of being lost.
 
 ## Starting Docker Services
@@ -163,7 +163,7 @@ $ curl http://localhost:8000/catalog
 ```
 
 The book appears in the catalog after the server processes the event
-and the projector updates the projection — all asynchronously.
+and the projector updates the projection, all asynchronously.
 
 !!! tip "Testing with Sync Processing"
     For tests, override processing to sync mode in your `conftest.py`
@@ -184,4 +184,4 @@ a domain service to validate inventory before confirming orders.
 
 ## Next
 
-[Chapter 13: Check Before You Ship →](13-domain-services.md)
+[Chapter 13: Checking Before You Ship with Domain Services →](13-domain-services.md)

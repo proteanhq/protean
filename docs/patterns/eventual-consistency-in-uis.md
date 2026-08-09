@@ -107,8 +107,8 @@ multiple entities. The write side returns one aggregate; the list needs many.
 
 The write endpoint returns the aggregate's `_version` alongside the entity
 data. The frontend passes this version to the read endpoint, which polls the
-projection until its version matches or exceeds the expected version -- or
-until a timeout.
+projection until its version matches or exceeds the expected version, or until
+a timeout.
 
 **Best for:** critical transitions where the UI must show the confirmed
 read-side state (e.g., payment confirmation page, shipping status).
@@ -319,17 +319,17 @@ async def get_order(order_id: str):
     return summary.to_dict()
 ```
 
-The frontend uses the POST response data for the initial detail page render
-and switches to the projection-backed GET endpoint for subsequent loads. This
-strategy is particularly effective because `@use_case` methods naturally
-return the aggregate -- the API layer simply passes it through.
+The frontend uses the POST response data for the initial detail page render and
+switches to the projection-backed GET endpoint for subsequent loads. This
+strategy is particularly effective because `@use_case` methods naturally return
+the aggregate, the API layer passes it through.
 
 !!! warning "Write-side reads are not free"
     Reading from the aggregate's repository means querying the write database.
     This is fine for the immediate post-write response (you just wrote to that
     database). But do not use write-side reads as a general replacement for
-    projections. The write model is not optimized for read queries -- it may
-    lack the indexes, denormalization, or shaping that projections provide.
+    projections. The write model is not optimized for read queries. It may lack
+    the indexes, denormalization, or shaping that projections provide.
 
 ---
 
@@ -396,8 +396,8 @@ async def get_order(order_id: str, min_version: int | None = None):
 The frontend extracts `_version` from the POST response, then polls the GET
 endpoint with `?min_version=N`. On each poll:
 
-- **HTTP 200** means the projection has caught up -- use the response body.
-- **HTTP 202** means "not ready yet" -- wait with exponential backoff and retry.
+- **HTTP 200** means the projection has caught up, use the response body.
+- **HTTP 202** means "not ready yet", wait with exponential backoff and retry.
 - After a maximum number of attempts, fall back to the write-side data or
   show a "processing" indicator.
 
@@ -493,11 +493,11 @@ async def create_order(data: OrderData):
 
 Problems:
 
-- **Unpredictable.** One second is enough under light load, not enough under
+- **Unpredictable**: One second is enough under light load, not enough under
   heavy load, and wasteful when the projector finishes in 50ms.
-- **Blocks the worker.** An async API worker sitting in `time.sleep()` is not
+- **Blocks the worker**: An async API worker sitting in `time.sleep()` is not
   serving other requests.
-- **No feedback.** If the projector fails, the sleep completes and the
+- **No feedback**: If the projector fails, the sleep completes and the
   subsequent `view.get()` raises `ObjectNotFoundError` with no explanation.
 
 Use optimistic UI or version polling instead. Both provide deterministic
@@ -513,10 +513,10 @@ default = "sync"
 
 This eliminates the consistency gap but introduces worse problems:
 
-- **Write latency includes all handlers.** The user waits for every projector
+- **Write latency includes all handlers**: The user waits for every projector
   and event handler to complete before seeing a response.
-- **Handler failures cascade.** A bug in a projector causes the write to fail.
-- **No backpressure isolation.** A slow analytics handler degrades the order
+- **Handler failures cascade**: A bug in a projector causes the write to fail.
+- **No backpressure isolation**: A slow analytics handler degrades the order
   placement endpoint.
 
 ### Ignoring the gap entirely
@@ -569,32 +569,33 @@ couples read and write schemas together.
 | **Multiple users see same data** | No (local only) | No (caller only) | Yes (projection is shared) |
 | **Best for** | Most common case | Post-write redirects | Critical confirmations |
 
-The strategies are not mutually exclusive. A typical application uses all three:
+The strategies are not mutually exclusive. A typical application uses all
+three:
 
 - **Optimistic UI** for most interactions (add to cart, update profile)
 - **Return write-side result** for post-write detail pages (order confirmation)
 - **Version polling** for critical state transitions (payment confirmation,
   shipping status)
 
-The principle: **eventual consistency is a feature, not a bug. The gap between
-write and read is by design -- it enables independent scaling, failure isolation,
-and read-side optimization. Bridge the gap in the UI layer with explicit
-strategies rather than hiding it with sleeps, forcing synchronous processing,
-or pretending it does not exist.**
+Eventual consistency is a feature, not a bug. The gap between write and read is
+by design. It enables independent scaling, failure isolation, and read-side
+optimization. Bridge the gap in the UI layer with explicit strategies rather
+than hiding it with sleeps, forcing synchronous processing, or pretending it
+does not exist.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Design Projection Granularity](projection-granularity.md) -- Design projections around consumer needs.
-    - [Treat Projection Rebuilds as a Deployment Strategy](projection-rebuilds-as-deployment.md) -- Projection lifecycle management.
+    - [Design Projection Granularity](projection-granularity.md): Design projections around consumer needs.
+    - [Treat Projection Rebuilds as a Deployment Strategy](projection-rebuilds-as-deployment.md): Projection lifecycle management.
 
     **Concepts:**
 
-    - [CQRS](../concepts/architecture/cqrs.md) -- Separating read and write responsibilities.
+    - [CQRS](../concepts/architecture/cqrs.md): Separating read and write responsibilities.
 
     **Guides:**
 
-    - [Application Services](../guides/change-state/application-services.md) -- Synchronous use cases returning results.
-    - [Projections](../guides/consume-state/projections.md) -- Read-optimized views.
+    - [Application Services](../guides/change-state/application-services.md): Synchronous use cases returning results.
+    - [Projections](../guides/consume-state/projections.md): Read-optimized views.

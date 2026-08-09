@@ -4,7 +4,7 @@ The Redis Stream broker uses Redis Streams to provide durable, ordered message s
 
 ## Overview
 
-Redis Streams, introduced in Redis 5.0, provide a log-like data structure perfect for message streaming. The Redis broker leverages these features to offer:
+Redis Streams, introduced in Redis 5.0, provide a log-like data structure perfect for message streaming. The Redis broker uses these features to offer:
 
 - **Persistent message storage** with configurable retention
 - **Consumer groups** for distributed processing
@@ -61,15 +61,16 @@ The Redis Stream broker provides the following capabilities:
 - ✅ **DEAD_LETTER_QUEUE** - Failed messages routed to DLQ streams for inspection and replay
 
 This includes:
+
 - **Publish/subscribe** messaging
 - **Consumer groups** for distributed processing
 - **Message acknowledgment** (ACK/NACK) for reliable delivery
 - **At-least-once delivery** guarantees
 - **Message ordering** preservation within streams
-- **Dead letter queue management** — list, inspect, replay, and purge failed messages via
+- **Dead letter queue management**: List, inspect, replay, and purge failed messages via
   [`protean dlq`](../../cli/data/dlq.md) CLI or the
   [Observatory dashboard](../../server/observability.md)
-- **Stream retention (XTRIM)** — when a subscription sets
+- **Stream retention (XTRIM)**: When a subscription sets
   [`retention_maxlen`](../../server/subscription-types.md#stream-retention), the
   broker trims the stream after each batch. It uses `XTRIM MINID` at the slowest
   consumer group's position when several groups read the stream (so no unread
@@ -81,6 +82,7 @@ This includes:
   full caveats.
 
 Not supported:
+
 - ❌ **Stream partitioning** - Not a native feature
 
 ## Monitoring and Debugging
@@ -134,7 +136,7 @@ class InstrumentedRedisBroker(RedisBroker):
             raise
 ```
 
-## Next Steps
+## Related pages
 
 - Explore [Redis PubSub broker](./redis-pubsub.md) for simpler use cases
 - Learn about [broker capabilities](./index.md#broker-capabilities) in detail

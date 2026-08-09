@@ -1,9 +1,9 @@
 # Building Blocks
 
-Building blocks are the tactical patterns of Domain-Driven Design — the
-concrete elements you use to model, enforce, and evolve business logic in
-code. Protean provides a decorator-driven element for each pattern, so you
-can focus on domain semantics rather than infrastructure plumbing.
+Building blocks are the tactical patterns of Domain-Driven Design: the concrete
+elements you use to model, enforce, and evolve business logic in code. Protean
+provides a decorator-driven element for each pattern, so you can focus on
+domain semantics rather than infrastructure plumbing.
 
 The elements are organized into four layers, each with a distinct
 responsibility.
@@ -77,8 +77,8 @@ graph TB
 ## Domain Model
 
 The domain model is the heart of the system. It captures the essential
-complexity of the business in code — the concepts, rules, and relationships
-that give the software its reason to exist.
+complexity of the business in code: the concepts, rules, and relationships that
+give the software its reason to exist.
 
 | Element | Purpose |
 |---------|---------|
@@ -103,7 +103,7 @@ logic itself.
 
 The reactive layer responds to things that have already happened. It
 propagates state changes, maintains read models, and bridges to external
-systems — all without coupling back to the code that produced the original
+systems, all without coupling back to the code that produced the original
 change.
 
 | Element | Purpose |

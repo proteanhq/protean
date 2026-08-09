@@ -1,8 +1,8 @@
 # Run the Server
 
-This guide covers how to start, configure, and operate Protean's async
-processing server — the background process that runs event handlers, command
-handlers, and projectors.
+Protean's async processing server is the background process that runs event
+handlers, command handlers, and projectors. Here is how to start it,
+configure it, and operate it.
 
 For the conceptual architecture behind the server, see
 [Async Processing](../../concepts/async-processing/index.md).
@@ -133,12 +133,10 @@ protean server --domain=my_domain --reload
 ```
 
 An outer process watches the working directory with
-[`watchfiles`](https://watchfiles.helpmanual.io/) — using
-`watchfiles.PythonFilter` (which skips `.pyc`, `__pycache__`, `.venv`,
-and `node_modules`), plus an extra exclusion for the `.protean/`
-cache directory — and replaces the inner Engine worker when sources
-change. `--reload` requires the `dev` extra (`pip install
-"protean[dev]"`) and is incompatible with `--workers > 1`.
+[`watchfiles`](https://watchfiles.helpmanual.io/), using `watchfiles.PythonFilter` (which skips `.pyc`, `__pycache__`, `.venv`,
+and `node_modules`), plus an extra exclusion for the `.protean/` cache directory, and replaces the
+inner Engine worker when sources change. `--reload` requires the `dev` extra (`pip install "protean[dev]"`) and
+is incompatible with `--workers > 1`.
 
 !!! warning "Never enable `--reload` in production"
     Hot reload spawns a second Python process and restarts
@@ -212,19 +210,19 @@ During graceful shutdown:
 | 0 | Normal shutdown (signal or test mode completion) |
 | 1 | Error during processing |
 
-## Next Steps
+## Where to go next
 
-- [Error Handling](./error-handling.md) — Retry logic, dead letter queues, and recovery mechanisms
-- [Dead Letter Queues](./dead-letter-queues.md) — Discover, inspect, replay, and purge failed messages
-- [Using the Outbox](./outbox.md) — Reliably publish domain events via the outbox pattern
-- [Production Deployment](./production-deployment.md) — Process management, Docker, Kubernetes, scaling, and health checks
-- [Harden the Server](./hardening.md) — Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, and emit OTEL metrics
+- [Error Handling](./error-handling.md): Retry logic, dead letter queues, and recovery mechanisms
+- [Dead Letter Queues](./dead-letter-queues.md): Discover, inspect, replay, and purge failed messages
+- [Using the Outbox](./outbox.md): Reliably publish domain events via the outbox pattern
+- [Production Deployment](./production-deployment.md): Process management, Docker, Kubernetes, scaling, and health checks
+- [Harden the Server](./hardening.md): Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, and emit OTEL metrics
 - [Tuning Subscriptions](./tuning-subscriptions.md): Pick a profile, cap stream growth, use the circuit breaker, order events per entity, and check consumer lag
-- [Logging](./logging.md) — Configure structured logging, enrich wide events with business context, disable auto-configuration
-- [Monitoring](./monitoring.md) — Observatory dashboard, Prometheus metrics, and subscription lag tracking
-- [Multi-Worker Mode](../../reference/server/supervisor.md) — Run multiple Engine processes for higher throughput
-- [Engine Architecture](../../concepts/async-processing/engine.md) — Understand engine internals
-- [Configuration](../../reference/server/configuration.md) — Full configuration reference
-- [Subscription Types](../../reference/server/subscription-types.md) — Choose the right subscription
-- [Using Priority Lanes](using-priority-lanes.md) — Route background workloads through the backfill lane
-- [External Event Dispatch](external-event-dispatch.md) — Deliver published events to external brokers
+- [Logging](./logging.md): Configure structured logging, enrich wide events with business context, disable auto-configuration
+- [Monitoring](./monitoring.md): Observatory dashboard, Prometheus metrics, and subscription lag tracking
+- [Multi-Worker Mode](../../reference/server/supervisor.md): Run multiple Engine processes for higher throughput
+- [Engine Architecture](../../concepts/async-processing/engine.md): Understand engine internals
+- [Configuration](../../reference/server/configuration.md): Full configuration reference
+- [Subscription Types](../../reference/server/subscription-types.md): Choose the right subscription
+- [Using Priority Lanes](using-priority-lanes.md): Route background workloads through the backfill lane
+- [External Event Dispatch](external-event-dispatch.md): Deliver published events to external brokers

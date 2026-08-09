@@ -1,13 +1,13 @@
 # Chapter 9: Transferring Funds
 
 The product team wants account-to-account transfers. This is not a
-single-aggregate operation — it involves debiting one account and
-crediting another. If the debit succeeds but the credit fails, we
-have inconsistent state.
+single-aggregate operation. It involves debiting one account and crediting
+another. If the debit succeeds but the credit fails, we have inconsistent
+state.
 
-In this chapter we will introduce a **process manager** — a stateful
-coordinator that orchestrates multi-step workflows across aggregates
-using events and commands.
+In this chapter we will introduce a **process manager**, a stateful coordinator
+that orchestrates multi-step workflows across aggregates using events and
+commands.
 
 ## Why Not a Single Transaction?
 
@@ -47,16 +47,16 @@ the Transfer and Account streams and coordinates the flow:
 
 Key concepts:
 
-- **`@handle(TransferInitiated, start=True, correlate="transfer_id")`**
-  — `start=True` means "create a new PM instance when this event
+- **`@handle(TransferInitiated, start=True, correlate="transfer_id")`**:
+  `start=True` means "create a new PM instance when this event
   arrives." The `correlate` parameter maps the event to the PM
   instance.
 - **`correlate="transfer_id"`** on subsequent events routes them to
   the correct PM instance based on the transfer ID.
 - Each handler can issue commands via `current_domain.process()` to
   trigger work in other aggregates.
-- **`mark_as_complete()`** ends the process — no further events will
-  be processed for this instance.
+- **`mark_as_complete()`** ends the process. No further events will be
+  processed for this instance.
 
 ## The Flow
 

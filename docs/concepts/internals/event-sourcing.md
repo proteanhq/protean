@@ -1,8 +1,10 @@
 # Event Sourcing Internals
 
-This page documents the internal mechanics of event-sourced aggregates in
-Protean — how `raise_()` triggers `@apply` handlers, how aggregates are
-reconstructed from events, and how version tracking works.
+An event-sourced aggregate keeps no stored state of its own. It records what
+happened, and derives its state by replaying those events. Three mechanisms
+make that work: `raise_()` triggers the `@apply` handlers, reconstruction
+replays a stream to rebuild an instance, and version tracking keeps the
+aggregate and its stream in step.
 
 ## The Single Source of Truth
 
@@ -24,9 +26,9 @@ steps in order:
 
 1. **Validate** the event is associated with this aggregate
 2. **Increment** `_version` (for non-fact events)
-3. **Build metadata** — identity, stream name, sequence ID, headers, checksum
+3. **Build metadata**: Identity, stream name, sequence ID, headers, checksum
 4. **Append** the enriched event to `_events`
-5. **Invoke `@apply` handler** — wrapped in `atomic_change()` so invariants
+5. **Invoke `@apply` handler**: Wrapped in `atomic_change()` so invariants
    are checked before and after the handler runs
 
 Step 5 is the key difference from non-ES aggregates, where `raise_()` only
@@ -40,8 +42,8 @@ if self.meta_.is_event_sourced:
             self._apply_handler(event_with_metadata)
 ```
 
-Fact events are excluded because they are auto-generated snapshots that
-don't carry domain semantics — they don't have `@apply` handlers.
+Fact events are excluded because they are auto-generated snapshots that don't
+carry domain semantics. They don't have `@apply` handlers.
 
 ## `_apply_handler()` vs `_apply()`
 
@@ -80,8 +82,8 @@ Pydantic validation**. Uses `__new__` to skip `__init__` entirely:
 1. Creates instance via `cls.__new__(cls)`
 2. Initializes Pydantic internals (`__dict__`, `__pydantic_extra__`, etc.)
 3. Sets private attributes with defaults (`_version=-1`, `_events=[]`, etc.)
-4. **Suppresses invariant checks** (`_disable_invariant_checks=True`) —
-   intermediate states during replay may violate invariants that will be
+4. **Suppresses invariant checks** (`_disable_invariant_checks=True`).
+   Intermediate states during replay may violate invariants that will be
    satisfied once all events are applied
 5. Initializes all model fields to `None`
 6. Initializes ValueObject and Reference shadow fields to `None`
@@ -96,8 +98,7 @@ Used by factory methods to create a new ES aggregate with identity:
 
 1. Calls `_create_for_reconstitution()` to get a blank aggregate
 2. **Enables invariant checks** (`_disable_invariant_checks=False`)
-3. Sets identity — from `identity_kwargs` if provided, otherwise
-   auto-generates via `_generate_identity()`
+3. Sets identity, from `identity_kwargs` if provided, otherwise auto-generates via `_generate_identity()`
 
 All state beyond identity is populated by the creation event's `@apply`
 handler when the factory calls `raise_()`:
@@ -131,8 +132,8 @@ def from_events(cls, events):
     return aggregate
 ```
 
-The first event's `@apply` handler must set **all** fields including
-identity — there is no special treatment of the first event.
+The first event's `@apply` handler must set **all** fields including identity.
+There is no special treatment of the first event.
 
 ## Version Tracking
 
@@ -238,10 +239,10 @@ Because all state changes are stored as events, event-sourced aggregates can
 be reconstituted at any historical point. The repository's `get()` method
 accepts two optional keyword arguments for this purpose:
 
-- **`at_version=N`** -- Replay events up to version `N` (0-indexed). Snapshots
-  are leveraged when the snapshot version is at or before the requested version;
+- **`at_version=N`**: Replay events up to version `N` (0-indexed). Snapshots
+  are used when the snapshot version is at or before the requested version;
   otherwise events are replayed from the beginning.
-- **`as_of=datetime`** -- Replay only events whose write timestamp is on or
+- **`as_of=datetime`**: Replay only events whose write timestamp is on or
   before the given datetime. Snapshots are skipped entirely for timestamp-based
   queries since a snapshot's creation time does not correspond to a specific
   aggregate state timestamp.
@@ -319,12 +320,12 @@ all historical events through the projector handlers.
 
 The rebuild performs three steps:
 
-1. **Discover projectors** -- `domain.projectors_for(projection_cls)` finds all
+1. **Discover projectors**: `domain.projectors_for(projection_cls)` finds all
    projectors that target the given projection.
-2. **Truncate projection data** -- All existing data is cleared. Database-backed
+2. **Truncate projection data**: All existing data is cleared. Database-backed
    projections use `_dao._delete_all()`; cache-backed projections use
    `remove_by_key_pattern()` with the projection's key prefix.
-3. **Replay events** -- For each projector, events are read from all stream
+3. **Replay events**: For each projector, events are read from all stream
    categories and merged by `global_position` to maintain cross-aggregate
    ordering. Each event is dispatched through `_handle()`, which converts the
    stored `Message` to a domain object (applying upcasters), looks up the `@on`
@@ -334,7 +335,7 @@ The rebuild performs three steps:
 
 When a projector listens to multiple stream categories (e.g., both `user` and
 `transaction`), events must be processed in the order they were originally
-stored -- not grouped by category. The rebuild reads all events from each
+stored, not grouped by category. The rebuild reads all events from each
 category, then sorts the combined list by `global_position` before dispatching.
 This ensures that a `Registered` event from the `user` category is processed
 before a subsequent `Transacted` event from the `transaction` category.
@@ -348,7 +349,7 @@ before a subsequent `Transacted` event from the `transaction` category.
   object (deprecated types without upcaster chains) raise `ConfigurationError`,
   which is caught, logged as a warning, and counted as `events_skipped`.
 - **Handler exceptions**: Other exceptions during handler execution are caught,
-  logged, and skipped -- the rebuild continues with the remaining events.
+  logged, and skipped, the rebuild continues with the remaining events.
 
 ### Programmatic API
 

@@ -2,9 +2,9 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-This guide shows how to structure your `domain.toml` for multiple
-environments, switch between in-memory and real adapters, and use
-environment variables for secrets.
+Here is how to structure `domain.toml` for more than one environment, switch
+between in-memory and real adapters, and keep secrets in environment
+variables.
 
 ---
 
@@ -242,9 +242,9 @@ For deployment patterns, see
 ---
 
 !!! tip "See also"
-    - [Configuration Reference](../../reference/configuration/index.md)
-      -- Full list of all configuration parameters.
-    - [Adapters Reference](../../reference/adapters/index.md)
-      -- Provider-specific options and capabilities.
-    - [Server Configuration](../../reference/server/configuration.md)
-      -- Subscription profiles and handler settings.
+    - [Configuration Reference](../../reference/configuration/index.md):
+      Full list of all configuration parameters.
+    - [Adapters Reference](../../reference/adapters/index.md):
+      Provider-specific options and capabilities.
+    - [Server Configuration](../../reference/server/configuration.md):
+      Subscription profiles and handler settings.

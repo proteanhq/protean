@@ -1,8 +1,8 @@
 # Error Handling
 
-This guide covers how Protean handles message processing failures across
-all subscription types, including retry logic, dead letter queues (DLQ),
-and recovery mechanisms.
+Message processing fails for all sorts of reasons, and Protean handles those
+failures the same way across every subscription type. Here is the retry
+logic, the dead letter queue, and how to recover.
 
 For monitoring failed messages in production, see
 [Monitoring](./monitoring.md). For the DLQ CLI commands, see
@@ -70,8 +70,8 @@ when `default_subscription_type = "event_store"` (the default).
 4. On success, the position is marked as resolved. After exhausting
    `max_retries`, it is marked as exhausted and logged.
 
-This approach leverages the event store's inherent durability — events
-are immutable and always available for replay.
+This approach uses the event store's inherent durability. Events are immutable
+and always available for replay.
 
 ```toml
 [server.event_store_subscription]
@@ -102,10 +102,9 @@ enable_dlq = true
 
 ### OutboxProcessor
 
-Handles **outgoing** messages (domain &rarr; broker). Uses exponential
-backoff with jitter. Failed messages stay in the outbox table with a
-retry status — no DLQ is needed because the outbox table itself is
-durable.
+Handles **outgoing** messages (domain &rarr; broker). Uses exponential backoff
+with jitter. Failed messages stay in the outbox table with a retry status, no
+DLQ is needed because the outbox table itself is durable.
 
 ---
 
@@ -193,10 +192,10 @@ creating subscriptions programmatically.
 
 ## Version conflict auto-retry
 
-`ExpectedVersionError` is the most common transient failure in
-event-sourced and version-tracked systems. It occurs when two handlers
-concurrently modify the same aggregate — the second writer's version
-check fails because the first writer already advanced the version.
+`ExpectedVersionError` is the most common transient failure in event-sourced
+and version-tracked systems. It occurs when two handlers concurrently modify
+the same aggregate. The second writer's version check fails because the first
+writer already advanced the version.
 
 Protean handles this **automatically at the `@handle` wrapper level**.
 When a handler raises `ExpectedVersionError`, the framework:
@@ -208,9 +207,8 @@ When a handler raises `ExpectedVersionError`, the framework:
 4. After exhausting fast retries (default 3), propagates the error to the
    subscription for normal retry/DLQ handling.
 
-This is transparent — the subscription never sees transient version
-conflicts. Only persistent conflicts (extremely rare) surface as
-failures.
+This is transparent, the subscription never sees transient version conflicts.
+Only persistent conflicts (extremely rare) surface as failures.
 
 ### Why this works
 
@@ -257,8 +255,8 @@ subscription retry/DLQ pipeline, like any other exception.
 
 Auto-retry works well for idempotent operations where either outcome is
 acceptable (e.g., updating user preferences). But not all version
-conflicts are equal — some mean a real business problem (e.g., two
-customers booking the same seat), and others require merge logic.
+conflicts are equal. Some mean a real business problem (e.g., two customers
+booking the same seat), and others require merge logic.
 
 If your handler needs to distinguish between conflict types, catch
 `ExpectedVersionError` **inside** the handler method and handle it
@@ -292,9 +290,9 @@ class OrderEventHandler:
         logger.error(f"OrderEventHandler failed: {exc}")
 ```
 
-The `handle_error()` callback receives the exception and the original
-message. If `handle_error()` itself raises, the exception is caught and
-logged — the engine continues processing.
+The `handle_error()` callback receives the exception and the original message.
+If `handle_error()` itself raises, the exception is caught and logged, the
+engine continues processing.
 
 ---
 
@@ -360,8 +358,8 @@ protean dlq purge --domain=my_domain --subscription=orders
 
 ## Next steps
 
-- [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md) — Classify version conflicts by business meaning
-- [Monitoring](./monitoring.md) — Observatory dashboard and metrics
-- [Logging](./logging.md) — Structured logging configuration
-- [Production Deployment](./production-deployment.md) — Process management and scaling
-- [Using Priority Lanes](./using-priority-lanes.md) — Route background workloads
+- [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md): Classify version conflicts by business meaning
+- [Monitoring](./monitoring.md): Observatory dashboard and metrics
+- [Logging](./logging.md): Structured logging configuration
+- [Production Deployment](./production-deployment.md): Process management and scaling
+- [Using Priority Lanes](./using-priority-lanes.md): Route background workloads

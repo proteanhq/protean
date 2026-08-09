@@ -95,7 +95,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     Version migration guides.
 
-    [:material-arrow-right-box: Migrating to 0.15](migration/v0-15.md)
+    [:material-arrow-right-box: Migration guides](migration/index.md)
 
 -   **:material-api: Python API Reference**
 
@@ -119,8 +119,8 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     ---
 
-    Per-port, per-adapter ordering, delivery, consistency, and isolation — the
-    contract conformance tests cite.
+    Per-port, per-adapter ordering, delivery, consistency, and isolation. This
+    is the contract the conformance tests check against.
 
     [:material-arrow-right-box: Guarantees](guarantees.md)
 

@@ -2,10 +2,10 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Protean has four infrastructure ports — **Database**, **Broker**,
-**Event Store**, **Cache** — each with a pluggable adapter. Picking
-the right adapter for each port is the main infrastructure decision you
-make when moving from prototype to production.
+Protean has four infrastructure ports (**Database**, **Broker**, **Event
+Store**, **Cache**) each with a pluggable adapter. Picking the right adapter
+for each port is the main infrastructure decision you make when moving from
+prototype to production.
 
 This guide is decision-oriented: for each port, what's the default,
 what are your options, and which one should you use for which workload.
@@ -16,11 +16,10 @@ capability matrix of each adapter, see the
 
 ## Start in memory, switch later
 
-Protean's **memory adapters are complete implementations**, not stubs.
-Every port has one, every memory adapter satisfies the full port
-contract, and your domain code cannot tell the difference between
-in-memory and production runtimes. That's deliberate — the right
-workflow is:
+Protean's **memory adapters are complete implementations**, not stubs. Every
+port has one, every memory adapter satisfies the full port contract, and your
+domain code cannot tell the difference between in-memory and production
+runtimes. That's deliberate. The right workflow is:
 
 1. Build your domain against memory adapters (no Docker, no setup).
 2. Write your test suite against memory adapters (fast feedback).
@@ -74,9 +73,9 @@ for the exhaustive per-feature breakdown.
 
 ## Broker
 
-The broker carries messages between publishers and subscribers —
-typically domain events flowing through the outbox to consumers, or
-external integration messages consumed by subscribers.
+The broker carries messages between publishers and subscribers, typically
+domain events flowing through the outbox to consumers, or external integration
+messages consumed by subscribers.
 
 | Provider | Best for | Trade-offs |
 |---|---|---|
@@ -94,25 +93,26 @@ URI = "${REDIS_URL}"
 ```
 
 The [outbox pattern](../server/outbox.md) is the supported way to
-publish domain events to brokers — StreamSubscription reads from the
-outbox via the broker, which is why Redis Streams (with DLQ support)
-is the standard choice.
+publish domain events to brokers, StreamSubscription reads from the outbox via
+the broker, which is why Redis Streams (with DLQ support) is the standard
+choice.
 
 !!! note "Brokers vs. event stores"
     Protean uses an **event store** (not a broker) for intra-domain
     event distribution when event sourcing is enabled. The broker is
-    primarily for **integration** — publishing to partner systems,
-    fan-out to downstream services, consuming external webhooks. See
-    [Subscription Types](../../reference/server/subscription-types.md)
-    for how the two fit together.
+    primarily for **integration**, publishing to partner systems, fan-out to
+    downstream services, consuming external webhooks. See [Subscription
+    Types](../../reference/server/subscription-types.md) for how the two fit
+    together.
 
 ---
 
 ## Event Store
 
 The event store durably records domain events in append-only streams.
-It's only needed when you're using [event sourcing](../pathways/event-sourcing.md) —
-CQRS-only and pure DDD applications don't require one.
+It's only needed when you're using [event
+sourcing](../pathways/event-sourcing.md), CQRS-only and pure DDD applications
+don't require one.
 
 | Provider | Best for | Trade-offs |
 |---|---|---|
@@ -129,16 +129,16 @@ database_uri = "postgresql://message_store@localhost:5433/message_store"
 ```
 
 If you're not event-sourcing any aggregates, leave the event store on
-`memory` — Protean still uses it internally for event-handler delivery
-in sync mode, but no persistence is needed.
+`memory`, Protean still uses it internally for event-handler delivery in sync mode,
+but no persistence is needed.
 
 ---
 
 ## Cache
 
-The cache speeds up projection reads. It's optional — projections work
-fine without a cache — and is most valuable for cache-backed
-projections that avoid a database round-trip entirely.
+The cache speeds up projection reads. It's optional (projections work fine
+without a cache) and is most valuable for cache-backed projections that avoid a
+database round-trip entirely.
 
 | Provider | Best for | Trade-offs |
 |---|---|---|
@@ -152,8 +152,8 @@ URI = "${REDIS_URL}"
 TTL = 300
 ```
 
-The same Redis instance can host the broker (on DB 0) and cache (on DB
-2) in small deployments; isolate them when traffic grows.
+The same Redis instance can host the broker (on DB 0) and cache
+(on DB 2) in small deployments; isolate them when traffic grows.
 
 ---
 
@@ -177,9 +177,9 @@ integration consumers) + Redis cache.
 (named `search` database for read models) + Redis Streams +
 Redis cache.
 
-For the TOML that wires these together — including environment variable
-substitution and overlays — see
-[Configure for Production: Adapter selection](./production-configuration.md#adapter-selection).
+For the TOML that wires these together (including environment variable
+substitution and overlays) see [Configure for Production: Adapter
+selection](./production-configuration.md#adapter-selection).
 
 ---
 
@@ -213,17 +213,17 @@ happening:
 - **You skipped `protean db setup`** after switching. Memory adapters
   don't need schema setup; relational ones do.
 
-Add `pytest` in dual-mode to your CI to catch this drift continuously —
-see [Dual-Mode Testing](../../patterns/dual-mode-testing.md).
+Add `pytest` in dual-mode to your CI to catch this drift continuously, see
+[Dual-Mode Testing](../../patterns/dual-mode-testing.md).
 
 ---
 
 ## See also
 
-- [Configure for Production](./production-configuration.md) — TOML patterns, environment overlays, secrets.
-- [Adapters Reference](../../reference/adapters/index.md) — Complete capability matrices and provider-specific options.
-- [Ports & Adapters](../../concepts/ports-and-adapters/index.md) — Why Protean is structured this way.
-- [Dual-Mode Testing](../../patterns/dual-mode-testing.md) — Running the same suite against memory and real adapters.
-- [Using the Outbox](../server/outbox.md) — Reliable event publishing over the broker port.
-- [Event Store Setup](../change-state/event-store-setup.md) — Detailed event store configuration and operations.
-- [Custom Adapters](../../reference/adapters/building-adapters.md) — Writing your own for ports the built-in adapters don't cover.
+- [Configure for Production](./production-configuration.md): TOML patterns, environment overlays, secrets.
+- [Adapters Reference](../../reference/adapters/index.md): Complete capability matrices and provider-specific options.
+- [Ports & Adapters](../../concepts/ports-and-adapters/index.md): Why Protean is structured this way.
+- [Dual-Mode Testing](../../patterns/dual-mode-testing.md): Running the same suite against memory and real adapters.
+- [Using the Outbox](../server/outbox.md): Reliable event publishing over the broker port.
+- [Event Store Setup](../change-state/event-store-setup.md): Detailed event store configuration and operations.
+- [Custom Adapters](../../reference/adapters/building-adapters.md): Writing your own for ports the built-in adapters don't cover.

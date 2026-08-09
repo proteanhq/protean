@@ -106,7 +106,7 @@ def Date(**kwargs: Any) -> FieldSpec:  # pyright: ignore[reportRedeclaration]
     """A date field (``datetime.date``).
 
     Supports the ``auto_now`` / ``auto_now_add`` save-time stamps (see
-    :func:`DateTime`).
+    [`DateTime`][protean.fields.simple.DateTime]).
     """
     return FieldSpec(datetime.date, **kwargs)
 

@@ -54,18 +54,18 @@ sqlite:///test.db                     # File in current directory
 
 The SQLite provider supports the following capabilities:
 
-- :white_check_mark: **CRUD** -- Create, Read, Update, Delete single records
-- :white_check_mark: **FILTER** -- Query/filter records with lookup criteria
-- :white_check_mark: **BULK_OPERATIONS** -- `update_all()`, `delete_all()`
-- :white_check_mark: **ORDERING** -- Server-side `ORDER BY` support
-- :white_check_mark: **TRANSACTIONS** -- Real commit/rollback atomicity
-- :white_check_mark: **OPTIMISTIC_LOCKING** -- Version-based concurrency control
-- :white_check_mark: **RAW_QUERIES** -- Execute raw SQL queries
-- :white_check_mark: **SCHEMA_MANAGEMENT** -- Create/drop tables
-- :white_check_mark: **CONNECTION_POOLING** -- SQLAlchemy connection pool management
-- :x: **SIMULATED_TRANSACTIONS** -- Uses real transactions instead
-- :x: **NATIVE_JSON** -- No native JSON column type (stored as text)
-- :x: **NATIVE_ARRAY** -- No native array column type (stored as text)
+- :white_check_mark: **CRUD**: Create, Read, Update, Delete single records
+- :white_check_mark: **FILTER**: Query/filter records with lookup criteria
+- :white_check_mark: **BULK_OPERATIONS**: `update_all()`, `delete_all()`
+- :white_check_mark: **ORDERING**: Server-side `ORDER BY` support
+- :white_check_mark: **TRANSACTIONS**: Real commit/rollback atomicity
+- :white_check_mark: **OPTIMISTIC_LOCKING**: Version-based concurrency control
+- :white_check_mark: **RAW_QUERIES**: Execute raw SQL queries
+- :white_check_mark: **SCHEMA_MANAGEMENT**: Create/drop tables
+- :white_check_mark: **CONNECTION_POOLING**: SQLAlchemy connection pool management
+- :x: **SIMULATED_TRANSACTIONS**: Uses real transactions instead
+- :x: **NATIVE_JSON**: No native JSON column type (stored as text)
+- :x: **NATIVE_ARRAY**: No native array column type (stored as text)
 
 ## Indexes
 
@@ -113,16 +113,16 @@ threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
 
 ## Limitations
 
-- **Single-Writer Concurrency** -- SQLite supports only one writer at a time.
+- **Single-Writer Concurrency**: SQLite supports only one writer at a time.
   Concurrent writes from multiple processes will block or fail.
-- **No Native JSON/Array** -- Complex fields (JSON, arrays) are stored as
+- **No Native JSON/Array**: Complex fields (JSON, arrays) are stored as
   serialized text. Queries cannot filter on nested JSON properties.
-- **Not Suitable for Multi-Process Production** -- SQLite is designed for
+- **Not Suitable for Multi-Process Production**: SQLite is designed for
   single-process use. Use PostgreSQL for production deployments.
-- **File Locking** -- The database file must be on a local filesystem. Network
+- **File Locking**: The database file must be on a local filesystem. Network
   filesystems (NFS, SMB) are not reliable with SQLite.
 
-## Next Steps
+## Related pages
 
 - Learn about [PostgreSQL](./postgresql.md) for production environments
 - Understand [database capabilities](./index.md#database-capabilities) in

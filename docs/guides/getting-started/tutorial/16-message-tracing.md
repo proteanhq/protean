@@ -1,4 +1,4 @@
-# Chapter 16: Following the Trail — Message Tracing
+# Chapter 16: Following the Trail with Message Tracing
 
 A customer reports that their order was confirmed but inventory was
 never updated. The support team needs to trace what happened: did the
@@ -9,10 +9,10 @@ chain break?
 
 Every message in Protean carries two tracing identifiers:
 
-- **Correlation ID** — shared by all messages in the same causal chain.
+- **Correlation ID**: Shared by all messages in the same causal chain.
   When you dispatch a command with a correlation ID, every event and
   handler invocation in the chain inherits it.
-- **Causation ID** — points to the immediate parent message. If Event B
+- **Causation ID**: Points to the immediate parent message. If Event B
   was caused by Command A, then B's causation ID is A's message ID.
 
 Together, they form a tree:
@@ -91,8 +91,8 @@ Armed with the order's correlation ID, the support team can:
 - A debugging workflow for tracing production issues.
 
 In the next chapter, we will handle the case where a handler fails
-entirely — dead-letter queue management.
+entirely, dead-letter queue management.
 
 ## Next
 
-[Chapter 17: When Things Go Wrong — Dead Letter Queues →](17-dead-letter-queues.md)
+[Chapter 17: Handling Failures with Dead Letter Queues →](17-dead-letter-queues.md)

@@ -2,7 +2,7 @@
 
 Build your first domain with Protean in 5 minutes. You will model a simple
 blog post system that creates posts via commands, publishes them, and reacts
-to events — all running in-memory with no infrastructure required.
+to events, all running in-memory with no infrastructure required.
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ to events — all running in-memory with no infrastructure required.
 
 ## Create a Domain
 
-Every Protean application starts with a `Domain` — the container for all your
+Every Protean application starts with a `Domain`, the container for all your
 business logic.
 
 Create a file called `blog.py` and add:
@@ -23,12 +23,12 @@ domain = Domain()
 ```
 
 That's it. Protean provides in-memory adapters for databases, brokers, and
-event stores out of the box, so you can focus on your domain logic without
+event stores built in, so you can focus on your domain logic without
 setting up any infrastructure.
 
 ## Define an Aggregate
 
-Aggregates are the core building blocks — they hold state and enforce business
+Aggregates are the core building blocks. They hold state and enforce business
 rules.
 
 Let's model a `Post`:
@@ -45,7 +45,7 @@ A few things to note:
   raise events when state changes.
 - **Invariants** enforce business rules that span multiple fields.
   Here, the `@invariant.post` decorator checks after every state change
-  that a published post has a substantial body — something that field-level
+  that a published post has a substantial body. Something that field-level
   validation alone cannot express.
 
 ## Define an Event
@@ -58,7 +58,7 @@ are raised from within aggregates:
 ```
 
 The `part_of` option connects the event to its aggregate. Events are immutable
-records — they capture facts about state changes.
+records. They capture facts about state changes.
 
 ## Define a Command and Handler
 
@@ -75,8 +75,8 @@ each handler method in a transaction.
 
 ## React to Events
 
-Event handlers process events after they occur — for side effects like
-sending notifications, syncing other aggregates, or logging:
+Event handlers process events after they occur, for side effects like sending
+notifications, syncing other aggregates, or logging:
 
 ```python
 --8<-- "guides/getting-started/quickstart.py:event_handler"
@@ -88,8 +88,8 @@ production, they run asynchronously via the
 
 ## Put It All Together
 
-Initialize the domain and run the full cycle — create a post via a command,
-then publish it:
+Initialize the domain and run the full cycle, create a post via a command, then
+publish it:
 
 ```python
 --8<-- "guides/getting-started/quickstart.py:usage"
@@ -136,7 +136,7 @@ sequenceDiagram
 4. When you persist the updated post, the event is delivered to the
    `PostEventHandler`.
 
-All of this runs in-memory — no database, no message broker, no event store.
+All of this runs in-memory, no database, no message broker, no event store.
 When you're ready for production, swap in real adapters with
 [configuration](../../reference/configuration/index.md).
 
@@ -148,15 +148,15 @@ Here is the complete example in a single file:
 --8<-- "guides/getting-started/quickstart.py:full"
 ```
 
-## Next Steps
+## Where to go next
 
-- [Set Up the Domain](../compose-a-domain/index.md) — learn about domain
+- [Set Up the Domain](../compose-a-domain/index.md): Learn about domain
   registration, initialization, and activation in depth.
-- [Define Domain Elements](../domain-definition/index.md) — explore aggregates,
+- [Define Domain Elements](../domain-definition/index.md): Explore aggregates,
   entities, value objects, and fields.
-- [Add Rules and Behavior](../domain-behavior/index.md) — add validations, invariants,
+- [Add Rules and Behavior](../domain-behavior/index.md): Add validations, invariants,
   and domain services.
-- [Configuration](../../reference/configuration/index.md) — connect real databases,
+- [Configuration](../../reference/configuration/index.md): Connect real databases,
   brokers, and event stores.
 
 <!-- test -->

@@ -19,9 +19,9 @@ and transfers into one unified view?
 --8<-- "guides/getting-started/es-tutorial/ch22.py:activity_feed_projector"
 ```
 
-The key difference is **`aggregates=[Account, Transfer]`** — this
-projector subscribes to events from both aggregates, combining them
-into a single projection.
+The key difference is **`aggregates=[Account, Transfer]`**: this projector
+subscribes to events from both aggregates and combines them into a single
+projection.
 
 ## The Complete Production Configuration
 
@@ -182,17 +182,17 @@ This configuration uses:
 
 ## Continue Learning
 
-- **[Guides](../../compose-a-domain/index.md)** — deep dives into each
+- **[Guides](../../compose-a-domain/index.md)**: Each concept in detail
   concept
-- **[Architecture](../../../concepts/architecture/event-sourcing.md)** —
+- **[Architecture](../../../concepts/architecture/event-sourcing.md)**:
   event sourcing theory and internals
-- **[Patterns](../../../patterns/index.md)** — aggregate design,
+- **[Patterns](../../../patterns/index.md)**: Aggregate design,
   idempotent handlers, event versioning
-- **[Adapters](../../../reference/adapters/index.md)** — database,
+- **[Adapters](../../../reference/adapters/index.md)**: Database,
   broker, cache, and event store adapters
-- **[CLI Reference](../../../reference/cli/index.md)** — all
+- **[CLI Reference](../../../reference/cli/index.md)**: All
   command-line tools
-- **[Testing](../../testing/event-sourcing-tests.md)** — advanced
+- **[Testing](../../testing/event-sourcing-tests.md)**: Advanced
   testing patterns for event-sourced systems
 
 ## Full Source

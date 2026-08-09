@@ -3,7 +3,7 @@
 Domain services encapsulate domain logic that doesn't naturally fit within an
 [aggregate](./aggregates.md), [entity](./entities.md) or
 [value object](./value-objects.md). Specifically, they model business
-operations that require **two or more aggregates** as input — operations where
+operations that require **two or more aggregates** as input, operations where
 the logic genuinely spans aggregate boundaries.
 
 ## The Problem
@@ -16,7 +16,7 @@ inventory. Where does this logic live?
 - **In the command handler?** Then business rules (like "sufficient stock must
   be available") leak into the application layer, bypassing the domain model.
 - **In a domain service?** The service receives both aggregates, validates
-  cross-aggregate invariants, and mutates both — keeping the business logic in
+  cross-aggregate invariants, and mutates both, keeping the business logic in
   the domain layer where it belongs.
 
 Domain services solve the specific problem of **cross-aggregate business logic
@@ -55,10 +55,10 @@ business functionality. These interfaces describe the operations that the
 service provides, making the service's role and capabilities clear.
 
 ### Domain Services are invoked by application-layer elements. { data-toc-label="Invoked by Handlers" }
-Services in the application layer — [command handlers](./command-handlers.md),
-[application services](./application-services.md), or
-[event handlers](./event-handlers.md) — invoke domain services to perform
-domain operations. The handler is responsible for loading aggregates from
+Services in the application layer, [command handlers](./command-handlers.md),
+[application services](./application-services.md), or [event
+handlers](./event-handlers.md), invoke domain services to perform domain
+operations. The handler is responsible for loading aggregates from
 repositories, passing them to the domain service, and persisting the result.
 
 ## When NOT to Use Domain Services
@@ -66,13 +66,13 @@ repositories, passing them to the domain service, and persisting the result.
 Domain services are a specialized tool for cross-aggregate logic. Do not use
 them when:
 
-- **The logic involves only one aggregate.** If the business rule can be
+- **The logic involves only one aggregate**: If the business rule can be
   expressed as an invariant or method on a single aggregate, it belongs there.
   Domain services require `part_of` to list at least two aggregates.
-- **You need orchestration without business rules.** If you're just loading an
-  aggregate, calling a method, and saving — that's what command handlers and
+- **You need orchestration without business rules**: If you're just loading an
+  aggregate, calling a method, and saving, that's what command handlers and
   application services are for.
-- **You want a reusable utility function.** Domain services model business
+- **You want a reusable utility function**: Domain services model business
   operations from the ubiquitous language, not technical utilities.
 
 ---
@@ -81,9 +81,9 @@ them when:
 
 For practical details on defining and using domain services in Protean, see the guide:
 
-- [Domain Services](../../guides/domain-behavior/domain-services.md) — Defining domain services, three implementation flavors, invariants, and a full example.
+- [Domain Services](../../guides/domain-behavior/domain-services.md): Defining domain services, three implementation flavors, invariants, and a full example.
 
 For design guidance:
 
-- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Balancing logic between domain services, aggregates, and handlers.
-- [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — Choosing the right orchestration layer.
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Balancing logic between domain services, aggregates, and handlers.
+- [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md): Choosing the right orchestration layer.

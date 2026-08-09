@@ -3,8 +3,8 @@
 In event-driven architectures, a single user action often triggers a cascade of
 commands and events across multiple aggregates and services. Without tracing,
 debugging a production issue means manually piecing together log entries,
-database records, and event store messages. Two simple metadata fields --
-`correlation_id` and `causation_id` -- solve this by threading through every
+database records, and event store messages. Two simple metadata fields
+(`correlation_id` and `causation_id`) solve this by threading through every
 message in the chain.
 
 ## The Problem
@@ -17,7 +17,7 @@ fails, you need to answer:
 2. **What was the immediate trigger?** (causation)
 3. **What other effects did that request produce?** (chain traversal)
 
-Without explicit tracing, the only clue is `origin_stream` -- a single string
+Without explicit tracing, the only clue is `origin_stream`, a single string
 recording where a command came from. That tells you the source aggregate but
 not the full chain.
 
@@ -50,9 +50,9 @@ PlaceOrder [corr=X, cause=None]              <-- root command
 
 ### Where to Generate correlation_id
 
-The `correlation_id` should be generated as early as possible -- ideally by the
-caller (API gateway, frontend, CLI). This lets you trace a request from the
-moment it enters the system:
+The `correlation_id` should be generated as early as possible, ideally by the caller (API
+gateway, frontend, CLI). This lets you trace a request from the moment it
+enters the system:
 
 ```python
 # In your FastAPI endpoint
@@ -69,14 +69,14 @@ async def place_order(request: PlaceOrderRequest):
 ```
 
 If no external `correlation_id` is provided, Protean generates one
-automatically when `domain.process()` is called. This means every message
-chain always has a `correlation_id` -- you never have to check for `None`.
+automatically when `domain.process()` is called. This means every message chain
+always has a `correlation_id`. You never have to check for `None`.
 
 ### Format: Flexible Strings, Not UUIDs
 
 The `correlation_id` is a flexible string, not strictly a UUID. It can be:
 
-- A UUID4 hex (`a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6`) -- Protean's default
+- A UUID4 hex (`a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6`), Protean's default
 - A request ID from an API gateway (`req-abc-123-def`)
 - A trace ID from an external tracing system (`00-4bf92f3577b34da6a3ce929d0e0e4736-...`)
 
@@ -100,9 +100,9 @@ domain-level `correlation_id` and `causation_id` serve a different purpose:
 | **Format** | Flexible strings | W3C 32-hex / 16-hex |
 | **Required** | Always present | Optional integration |
 
-The `correlation_id` bridges both layers -- it identifies the same operation.
-But `causation_id` cannot live in `TraceParent.parent_id` because Protean's
-message IDs are human-readable strings, not 16-hex-char span IDs.
+The `correlation_id` bridges both layers. It identifies the same operation. But
+`causation_id` cannot live in `TraceParent.parent_id` because Protean's message
+IDs are human-readable strings, not 16-hex-char span IDs.
 
 ## Protean's Implementation
 
@@ -113,11 +113,11 @@ Protean implements this pattern automatically. No opt-in required.
 Trace context flows through all message construction paths via
 `g.message_in_context`:
 
-1. **`domain.process(command)`** -- Generates or accepts `correlation_id`,
+1. **`domain.process(command)`**: Generates or accepts `correlation_id`,
    sets `causation_id = None` (root command)
-2. **Command handler raises events** -- Events inherit `correlation_id` from
+2. **Command handler raises events**: Events inherit `correlation_id` from
    the command, `causation_id` = command's `headers.id`
-3. **Event handler dispatches commands** -- New commands inherit
+3. **Event handler dispatches commands**: New commands inherit
    `correlation_id` from the event, `causation_id` = event's `headers.id`
 
 This works in both sync and async processing modes.
@@ -157,9 +157,9 @@ root = store.build_causation_tree("a1b2c3d4...")
 
 These methods answer the three debugging questions directly:
 
-1. **"Which user request caused this?"** — `trace_causation()` walks up to the root
-2. **"What was the immediate trigger?"** — check `causation_id` on the message
-3. **"What other effects did that request produce?"** — `trace_effects()` walks down
+1. **"Which user request caused this?"**: `trace_causation()` walks up to the root
+2. **"What was the immediate trigger?"**: Check `causation_id` on the message
+3. **"What other effects did that request produce?"**: `trace_effects()` walks down
 
 ### CLI Inspection
 
@@ -256,7 +256,7 @@ assert result2.events[0]._metadata.domain.correlation_id == corr_id
 - **`correlation_id`** groups all messages from one business operation.
   Generate early, propagate everywhere.
 - **`causation_id`** links each message to its direct parent, forming a tree.
-- Protean handles propagation automatically -- you only need to supply an
+- Protean handles propagation automatically. You only need to supply an
   external `correlation_id` at the entry point if you have one.
 - Use `trace_causation()`, `trace_effects()`, and `build_causation_tree()` to
   traverse chains programmatically.
@@ -267,15 +267,15 @@ assert result2.events[0]._metadata.domain.correlation_id == corr_id
 ---
 
 !!! tip "Related reading"
-    **Complete guide:** [Correlation and Causation IDs](../guides/observability/correlation-and-causation.md) -- End-to-end guide covering HTTP headers, OTEL spans, Observatory traces, structured logging, and cross-service propagation.
+    **Complete guide:** [Correlation and Causation IDs](../guides/observability/correlation-and-causation.md): End-to-end guide covering HTTP headers, OTEL spans, Observatory traces, structured logging, and cross-service propagation.
 
-    **Guide:** [Message Tracing](../guides/domain-behavior/message-tracing.md) -- How-to guide with code examples for setting up tracing.
+    **Guide:** [Message Tracing](../guides/domain-behavior/message-tracing.md): How-to guide with code examples for setting up tracing.
 
-    **Reference:** [`protean events trace`](../reference/cli/data/events.md) -- CLI command for following causal chains.
+    **Reference:** [`protean events trace`](../reference/cli/data/events.md): CLI command for following causal chains.
 
-    **Internals:** [Causation Chain Traversal](../concepts/internals/event-sourcing.md#causation-chain-traversal) -- Algorithm details for `trace_causation`, `trace_effects`, and `build_causation_tree`.
+    **Internals:** [Causation Chain Traversal](../concepts/internals/event-sourcing.md#causation-chain-traversal): Algorithm details for `trace_causation`, `trace_effects`, and `build_causation_tree`.
 
     **Related patterns:**
 
-    - [Coordinating Long-Running Processes](coordinating-long-running-processes.md) -- Process managers use correlation to track multi-step workflows.
-    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md) -- Subscribers as anti-corruption layers, where correlation IDs bridge services.
+    - [Coordinating Long-Running Processes](coordinating-long-running-processes.md): Process managers use correlation to track multi-step workflows.
+    - [Consuming Events from Other Domains](consuming-events-from-other-domains.md): Subscribers as anti-corruption layers, where correlation IDs bridge services.

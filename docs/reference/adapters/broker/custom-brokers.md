@@ -328,7 +328,7 @@ def test_end_to_end():
     assert len(messages) == 1
 ```
 
-## Best Practices
+## Guidance for adapter authors
 
 1. **Handle Connection Failures**: Implement reconnection logic in `_ensure_connection()`
 2. **Declare Accurate Capabilities**: Only declare capabilities you actually implement
@@ -370,7 +370,7 @@ def _publish(self, stream: str, message: dict) -> str:
             time.sleep(2 ** attempt)  # Exponential backoff
 ```
 
-## Next Steps
+## Related pages
 
 - Review [existing broker implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/broker) for examples
 - Understand [broker capabilities](./index.md#broker-capabilities) in detail

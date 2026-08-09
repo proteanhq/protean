@@ -19,10 +19,10 @@ tooling, and tests.
 - **Async processing** with the Protean server and Redis
 - **Domain services** for cross-aggregate business logic
 - **External integrations** via subscribers
-- **Production operations** — monitoring, tracing, dead-letter queues,
+- **Production operations**: Monitoring, tracing, dead-letter queues,
   and bulk imports
 
-## How the Tutorial Is Organized
+## The five parts
 
 The tutorial is divided into five parts. Each chapter builds on the
 previous one, growing the Bookshelf application step by step.
@@ -45,20 +45,20 @@ previous one, growing the Bookshelf application step by step.
     regardless of your chosen architecture, then introduces **CQRS patterns**
     (Chapters 5–7) with Commands, Command Handlers, and Projections. If
     you're using the pure **DDD** approach with Application Services instead,
-    the domain modeling chapters (1–4) still apply directly — see the
-    [DDD Pathway](../../pathways/ddd.md) for that reading order.
+    the domain modeling chapters (1–4) still apply directly, see the [DDD
+    Pathway](../../pathways/ddd.md) for that reading order.
 
 ## Prerequisites
 
 - **Python 3.11+**
-- **Protean installed** — see [Installation](../installation.md)
-- **Familiarity with [Hello, Protean!](../hello.md)** — the tutorial
+- **Protean installed**: See [Installation](../installation.md)
+- **Familiarity with [Hello, Protean!](../hello.md)**: The tutorial
   assumes you've seen a basic Protean domain (the
   [Quickstart](../quickstart.md) is also recommended)
-- **Docker** (from Chapter 8 onward) — for PostgreSQL, Redis, and other
+- **Docker** (from Chapter 8 onward), for PostgreSQL, Redis, and other
   services
 
-## Ready?
+## Start here
 
 Start with **[Chapter 1: Your First Aggregate](01-your-first-aggregate.md)**
 and build your bookstore from the ground up.

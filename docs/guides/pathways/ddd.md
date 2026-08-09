@@ -13,7 +13,7 @@ Repositories handle persistence, and domain events propagate side effects
 to event handlers.
 
 This approach follows the patterns from Eric Evans' *Domain-Driven Design*
-(the "Blue Book"). There are no commands or command handlers — application
+(the "Blue Book"). There are no commands or command handlers, application
 services receive requests directly and coordinate the domain logic.
 
 ## Request Flow

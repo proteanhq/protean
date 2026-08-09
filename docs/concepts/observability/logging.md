@@ -1,9 +1,8 @@
 # Logging
 
-This page explains *why* Protean's logging works the way it does. For
-task-oriented instructions see the
-[Logging guide](../../guides/server/logging.md); for a factual enumeration
-of config keys, framework loggers, and event schemas see the
+Why Protean's logging works the way it does. For task-oriented instructions
+see the [Logging guide](../../guides/server/logging.md); for the config keys,
+framework loggers, and event schemas, see the
 [Logging reference](../../reference/logging.md).
 
 ---
@@ -23,7 +22,7 @@ When a customer reports a missing refund, you open Loki or Elasticsearch
 and search. You don't know whether people wrote `"Refunded"` or
 `"Refund issued"` or `"Processing refund"`; you don't know whether the
 amount comes before or after the order id; you don't know whether the
-reason is free text or a code. Every query is an archaeology dig.
+reason is free text or a code. Answering any question means reading the text.
 
 Structured logs invert that:
 
@@ -36,19 +35,19 @@ logger.info("payment_refunded", order_id="ord-123", amount=19.99, reason="custom
 `avg(amount) by reason` is a viable aggregation. `count by hour` draws a
 time series. Strings are opaque; fields are data.
 
-Protean commits to this pattern throughout — every hot-path event emitted
-by the framework uses a stable name and structured fields, and the
-`get_logger()` API encourages application code to do the same.
+Protean commits to this pattern throughout, every hot-path event emitted by the
+framework uses a stable name and structured fields, and the `get_logger()` API encourages
+application code to do the same.
 
 ---
 
 ## The wide event pattern
 
-Structured logs alone still leave an observability gap: when something
-goes wrong inside a handler, you typically have a dozen scattered log
-lines — "started processing", "loaded aggregate", "validated input",
-"raised event", "saved aggregate", "committed UoW" — and you have to
-reconstruct the full story by filtering on `correlation_id`.
+Structured logs alone still leave an observability gap: when something goes
+wrong inside a handler, you typically have a dozen scattered log lines,
+"started processing", "loaded aggregate", "validated input", "raised event",
+"saved aggregate", "committed UoW", and you have to reconstruct the full story
+by filtering on `correlation_id`.
 
 The **wide event pattern** replaces that stream of thin events with one
 **rich event per unit of work**. The term itself was popularised by
@@ -72,9 +71,9 @@ That one log line answers:
 ### Designing fields for queryability
 
 The practical insight: **choose log fields by asking "what questions will
-operators ask at 3 AM?"** not "what is my code doing right now." That
-reframes debugging from archaeology — grep for strings until a pattern
-emerges — to analytics — run an aggregation on a queryable schema.
+operators ask at 3 AM?"** not "what is my code doing right now." That reframes
+debugging from grepping for strings until a pattern emerges, to
+analytics, run an aggregation on a queryable schema.
 
 Examples of queries wide events enable when the right fields are bound:
 
@@ -88,7 +87,7 @@ Examples of queries wide events enable when the right fields are bound:
   flows worth inspecting.)"
 
 If your wide event can answer those questions, you've picked the right
-fields. If it can't, you're still doing archaeology.
+fields. If it can't, you are still reading log lines by hand.
 
 ---
 
@@ -110,13 +109,13 @@ flowchart LR
     F -->|development / test| H[ConsoleRenderer]
 ```
 
-The shared processor chain applies correlation injection, OpenTelemetry
-trace context (when telemetry is enabled), caller-supplied processors,
-tail sampling, and redaction — in that order — before the renderer
-produces the final output. This means a stdlib call like
-`logger.error("db.query_failed", extra={"stmt": stmt})` and a structlog
-call like `get_logger(__name__).error("db.query_failed", stmt=stmt)` emit
-identical JSON in production.
+The shared processor chain applies correlation injection, OpenTelemetry trace
+context (when telemetry is enabled), caller-supplied processors, tail sampling,
+and redaction (in that order) before the renderer produces the final output.
+This means a stdlib call like `logger.error("db.query_failed", extra={"stmt":
+stmt})` and a structlog call like
+`get_logger(__name__).error("db.query_failed", stmt=stmt)` emit identical JSON
+in production.
 
 See [ADR-0010 §1](../../adr/0010-logging-overhaul-and-wide-event-architecture.md)
 for why this bridge is preferred over mass-migrating every internal
@@ -131,14 +130,13 @@ No other Python framework can auto-populate domain fields like
 models those concepts at the framework layer. Protean builds the wide
 event from two sources:
 
-- **A framework layer**, always present with no code required — handler
-  identity, duration, aggregate, events raised, repository operations,
-  UoW outcome, correlation, and (when telemetry is enabled) trace
-  context. See the [reference](../../reference/logging.md#proteanaccess)
-  for the exhaustive field list.
+- **A framework layer**, always present with no code required, handler
+  identity, duration, aggregate, events raised, repository operations, UoW
+  outcome, correlation, and (when telemetry is enabled) trace context. See the
+  [reference](../../reference/logging.md#proteanaccess) for the exhaustive
+  field list.
 - **An application layer**, whatever the handler binds via
-  `bind_event_context()` — user tier, order total, feature flags, tenant
-  plan.
+  `bind_event_context()`, user tier, order total, feature flags, tenant plan.
 
 The two layers merge into a single event emitted when the handler
 returns. The framework keeps ownership of its fields: application keys
@@ -152,19 +150,19 @@ caller happened to bind.
 
 When choosing what to `bind_event_context()`, favour fields that:
 
-- **Are queryable dimensions, not free text.** Prefer `user_tier="premium"` to
+- **Are queryable dimensions, not free text**: Prefer `user_tier="premium"` to
   `note="premium user doing checkout"`.
-- **Are stable.** If a value changes shape every deployment, it's a poor
+- **Are stable**: If a value changes shape every deployment, it's a poor
   aggregation key.
 - **Are low enough cardinality to group by, high enough to be useful.**
   `tenant_id` is great; `uuid_of_every_request` is not (unless your backend
-  handles it — see below).
+  handles it, see below).
 - **Name the business concept the operator will ask about.**
   `coupon_applied=True` beats `flags.coupon=1` because the former reads
   cleanly in a filter.
 
-Leave out fields that only matter inside the handler itself — those
-belong in DEBUG-level thin events, not the wide event.
+Leave out fields that only matter inside the handler itself. Those belong in
+DEBUG-level thin events, not the wide event.
 
 ---
 
@@ -172,13 +170,13 @@ belong in DEBUG-level thin events, not the wide event.
 
 Wide events produce data that legacy log backends struggle with. A single
 event carries a request id, a user id, an aggregate id, a correlation id,
-possibly a tenant id — every one of them high-cardinality by design,
-because they're exactly what an operator filters by.
+possibly a tenant id, every one of them high-cardinality by design, because
+they're exactly what an operator filters by.
 
 Syslog-era stores built for low-cardinality tagging don't index these
 well; queries over them fall back to full scans. Modern columnar log
-stores — Loki with structured metadata, ClickHouse, BigQuery, CloudWatch
-Logs Insights, Datadog Log Analytics — handle high cardinality natively.
+stores, Loki with structured metadata, ClickHouse, BigQuery, CloudWatch Logs
+Insights, Datadog Log Analytics, handle high cardinality natively.
 
 Protean does not recommend a specific vendor. The heuristic is: if your
 logging aggregator makes `filter user_id=X` or `top by aggregate_id`
@@ -203,8 +201,8 @@ that first before trimming fields out of the wide event.
 The gap Protean closes is the domain-aware one: aggregate, events raised,
 UoW outcome. No other Python framework can populate those automatically
 because no other framework models them. The commodity features
-(structured logs, dictConfig, correlation filter) are also on by default —
-where Django and FastAPI leave them to the operator.
+(structured logs, dictConfig, correlation filter) are also on by default, where
+Django and FastAPI leave them to the operator.
 
 ---
 
@@ -217,9 +215,9 @@ from highest to lowest:
    `configure_logging()`. Callers always win.
 2. **Environment variables** (`PROTEAN_LOG_LEVEL`, `PROTEAN_ENV`). Useful
    for container orchestration.
-3. **`domain.toml [logging]` section.** The declarative surface operators
+3. **`domain.toml [logging]` section**: The declarative surface operators
    tune during deployment.
-4. **Environment-based defaults.** `PROTEAN_ENV=production` picks INFO +
+4. **Environment-based defaults**: `PROTEAN_ENV=production` picks INFO +
    JSON; `development` picks DEBUG + console; `test` picks WARNING +
    console.
 
@@ -239,12 +237,11 @@ first, then fall back to `g.correlation_id`. The fallback is the
 documented extension point for HTTP middleware, CLI commands, and
 background jobs that tag context before any domain message exists.
 
-Both are safe no-ops outside a domain context: they return `""` for both
-fields so formatters referencing `%(correlation_id)s` never raise
-`KeyError`. That no-op semantics is the reason Protean can attach the
-filter to the root logger unconditionally — it costs one attribute set
-per record and changes nothing about the output shape when context is
-absent.
+Both are safe no-ops outside a domain context: they return `""` for both fields
+so formatters referencing `%(correlation_id)s` never raise `KeyError`. That
+no-op semantics is the reason Protean can attach the filter to the root logger
+unconditionally. It costs one attribute set per record and changes nothing
+about the output shape when context is absent.
 
 For the full correlation story across HTTP, events, subscribers, and
 OTel spans, see
@@ -254,11 +251,11 @@ OTel spans, see
 
 ## How trace context reaches logs
 
-OpenTelemetry trace context (`trace_id`, `span_id`, `trace_flags`) is
-injected by `OTelTraceContextFilter` and `protean_otel_processor`. Both
-are installed only when `telemetry.enabled = true` — when telemetry is
-disabled, the structlog chain has one fewer processor and the root
-logger has one fewer filter, so the hot path pays zero cost.
+OpenTelemetry trace context (`trace_id`, `span_id`, `trace_flags`) is injected
+by `OTelTraceContextFilter` and `protean_otel_processor`. Both are installed
+only when `telemetry.enabled = true`. When telemetry is disabled, the structlog
+chain has one fewer processor and the root logger has one fewer filter, so the
+hot path pays zero cost.
 
 The processor lazily resolves OpenTelemetry symbols on first access and
 caches the result. If `opentelemetry` is not installed (the `telemetry`
@@ -278,21 +275,20 @@ for the OTel architecture this layer builds on.
 
 ## Why redaction is processor-based
 
-Call-site redaction — "be careful what you log!" — never survives contact
-with the real world. Someone, somewhere, forgets. A stacktrace inlines a
-request body. A new feature logs more than its predecessor. A
-well-meaning debug line ships to production.
+Call-site redaction, "be careful what you log!", never survives contact with
+the real world. Someone, somewhere, forgets. A stacktrace inlines a request
+body. A new feature logs more than its predecessor. A well-meaning debug line
+ships to production.
 
 The only pattern that survives is **redaction as a pipeline stage**: any
-mention of a sensitive key name in any log event is masked before
-rendering, regardless of where in the pipeline the value was introduced.
-Protean's redaction processor runs **last** in the structlog pipeline —
-after every caller-supplied processor — so operator-supplied processors
-cannot smuggle sensitive values past it, whether intentionally or by
-accident.
+mention of a sensitive key name in any log event is masked before rendering,
+regardless of where in the pipeline the value was introduced. Protean's
+redaction processor runs **last** in the structlog pipeline (after every
+caller-supplied processor) so operator-supplied processors cannot smuggle
+sensitive values past it, whether intentionally or by accident.
 
 The redact list is **unioned** with the built-in defaults, not replaced.
-Operators can only widen the list — never narrow it. You cannot turn off
+Operators can only widen the list, never narrow it. You cannot turn off
 `password` masking by supplying your own list.
 
 Redaction is a hygiene filter, not a security boundary: don't store
@@ -303,10 +299,10 @@ tokens belong in a vault, not a best-effort log filter.
 
 ## Multi-worker hygiene
 
-stdout writes from separate processes are not atomic beyond `PIPE_BUF`
-bytes — typically 4096 on Linux, 512 on BSD. A structured JSON log
-record easily exceeds either. Without coordination, concurrent worker
-output interleaves mid-record, and the resulting lines are unparseable.
+stdout writes from separate processes are not atomic beyond `PIPE_BUF` bytes,
+typically 4096 on Linux, 512 on BSD. A structured JSON log record easily
+exceeds either. Without coordination, concurrent worker output interleaves
+mid-record, and the resulting lines are unparseable.
 
 `protean server --workers N` (with `N > 1`) solves this the way Python's
 stdlib recommends: each worker installs a `QueueHandler` as its sole
@@ -315,9 +311,9 @@ queue and forwards records to the supervisor's real handlers. Records
 cross the process boundary through a `multiprocessing.Queue`, which
 preserves record integrity.
 
-The listener is stopped in a `finally` block on shutdown so buffered
-records are flushed before the supervisor exits. Single-worker mode is
-unchanged — no queue overhead.
+The listener is stopped in a `finally` block on shutdown so buffered records
+are flushed before the supervisor exits. Single-worker mode is unchanged, no
+queue overhead.
 
 ---
 
@@ -328,8 +324,8 @@ loggers so operators can route and sample them independently:
 
 | Logger | Answers | Emitted from |
 |--------|---------|-------------|
-| `protean.access` | *"What did my handler do?"* — aggregate, events raised, repo operations, UoW outcome. | Every command / event / query / projector handler dispatch. |
-| `protean.access.http` | *"What happened at the HTTP boundary?"* — method, path, status, duration, commands dispatched. | FastAPI requests routed through `DomainContextMiddleware`. |
+| `protean.access` | *"What did my handler do?"*, aggregate, events raised, repo operations, UoW outcome. | Every command / event / query / projector handler dispatch. |
+| `protean.access.http` | *"What happened at the HTTP boundary?"*, method, path, status, duration, commands dispatched. | FastAPI requests routed through `DomainContextMiddleware`. |
 
 A single HTTP request that dispatches three commands produces **one**
 `access.http_completed` event and **three** `access.handler_completed`
@@ -353,10 +349,10 @@ rejected. Operational concerns differ:
   layer while keeping every domain handler makes more sense as two
   independent dials.
 
-Because `protean.access.http` is nested under `protean.access` in the
-Python logger hierarchy, filters attached to the parent (like the tail
-sampling filter) naturally apply to both — the split doesn't cost
-operators a second place to configure sampling.
+Because `protean.access.http` is nested under `protean.access` in the Python
+logger hierarchy, filters attached to the parent (like the tail sampling
+filter) naturally apply to both. The split doesn't cost operators a second
+place to configure sampling.
 
 See the [HTTP wide events guide](../../guides/fastapi/http-wide-events.md)
 for the full field schema of `access.http_completed`, and the
@@ -374,36 +370,36 @@ request finishes). The mirror is necessary because Starlette runs
 endpoint functions in a child asyncio task whose contextvars copy is
 not observable from the middleware's parent task.
 
-Application code does not need to know this — one call, both layers. It
-is documented here so operators debugging field drift between the two
-layers know where to look.
+Application code does not need to know this. One call, both layers. It is
+documented here so operators debugging field drift between the two layers know
+where to look.
 
 ---
 
 ## Tail sampling: keep what matters at scale
 
 Wide events are rich and expensive. At volume, storing one per message
-can outgrow your log backend's budget. But the naive fix — **head
-sampling** (decide at request entry whether to log it) — loses exactly
-the events you most want at exactly the wrong moment: a 2 % head sample
-drops 98 % of your production errors.
+can outgrow your log backend's budget. But the naive fix, **head sampling**
+(decide at request entry whether to log it), loses exactly the events you most
+want at exactly the wrong moment: a 2 % head sample drops 98 % of your
+production errors.
 
 Protean uses **tail sampling**: the keep/drop decision happens after the
 unit of work completes, when `status`, `duration_ms`, and `message_type`
 are known. Operators specify rules:
 
-1. **Always keep errors** — `status="failed"` or level >= `ERROR`.
-2. **Always keep slow requests** — `status="slow"`.
-3. **Always keep critical message types** — glob match on `message_type`,
+1. **Always keep errors**: `status="failed"` or level >= `ERROR`.
+2. **Always keep slow requests**: `status="slow"`.
+3. **Always keep critical message types**: Glob match on `message_type`,
    for when a whole family of operations (Payment\*, Auth\*) must be
    kept regardless of outcome.
 4. **Random sample the rest** at `default_rate`.
 
-Rules run in order, first match wins. Every surviving event carries
-three metadata fields — `sampling_decision`, `sampling_rule`,
-`sampling_rate` — so downstream aggregators can compute accurate
-throughput (`actual_count = sampled_count / sampling_rate`). Without
-those fields, sampled logs silently lie about volume.
+Rules run in order, first match wins. Every surviving event carries three
+metadata fields (`sampling_decision`, `sampling_rule`, `sampling_rate`) so
+downstream aggregators can compute accurate throughput (`actual_count =
+sampled_count / sampling_rate`). Without those fields, sampled logs silently
+lie about volume.
 
 The safety defaults (`always_keep_errors=true`, `always_keep_slow=true`)
 are non-negotiable in the sense that a careless `default_rate=0.001`
@@ -421,19 +417,18 @@ for the config schema.
 Some capabilities that adjacent frameworks ship with are out of scope for
 Protean's logging:
 
-- **Email-on-error handlers.** Django's `AdminEmailHandler` is historical
+- **Email-on-error handlers**: Django's `AdminEmailHandler` is historical
   baggage; paging belongs in an alerting layer (PagerDuty, Opsgenie,
   Alertmanager) reading from the log backend, not a handler buried in
   the logging library.
-- **An Observatory log viewer.** Logs belong in log aggregators. The
-  Observatory's value is live traces and event timelines — fighting
-  Loki, Elasticsearch, and Datadog on their home turf is a losing
-  strategy.
-- **PII heuristics.** Automatic PII detection is a research problem; the
+- **An Observatory log viewer**: Logs belong in log aggregators. The
+  Observatory's value is live traces and event timelines, fighting Loki,
+  Elasticsearch, and Datadog on their home turf is a losing strategy.
+- **PII heuristics**: Automatic PII detection is a research problem; the
   current state of the art is too flaky to enable by default without
   false positives that mask real signal. Operators explicitly list the
   keys they care about via `[logging].redact`.
-- **Audit log persistence.** Domain events already capture the
+- **Audit log persistence**: Domain events already capture the
   append-only history of what happened. The logging layer is for
   debugging and observability, not business audit trails.
 

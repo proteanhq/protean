@@ -23,12 +23,11 @@ each port.
 
 ## In-Memory Adapters
 
-Every port ships with a **complete in-memory implementation** that is active
-by default. These are not stubs or mocks -- they implement the full provider
-interface (CRUD, filtering, sorting, stream reads, consumer groups, data
-reset) using Python data structures instead of external services. This means
-you can develop and test your entire domain model without any infrastructure
-running.
+Every port ships with a **complete in-memory implementation** that is active by
+default. These are not stubs or mocks. They implement the full provider
+interface (CRUD, filtering, sorting, stream reads, consumer groups, data reset)
+using Python data structures instead of external services. This means you can
+develop and test your entire domain model without any infrastructure running.
 
 Because memory adapters and real adapters share the same interface, you can
 run the **same test suite** in both modes: in-memory for fast development
@@ -52,7 +51,7 @@ classes for each of these components with its own implementation.
 !!!note
     An exception to this rule is the `Session` class. It may be preferable to
     use the `Session` structures provided by the database technology as-is. For
-    example, `PostgreSQL` adapter that is powered by `SQLAlchemy` simply uses
+    example, `PostgreSQL` adapter that is powered by `SQLAlchemy` uses
     (and returns) the [sqlalchemy.orm.Session](https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session)
     object provided by `SQLAlchemy`.
 
@@ -153,14 +152,14 @@ lookups for efficient or technology-specific queries.
 
 ## Capabilities
 
-Both database providers and brokers declare their **capabilities** — a set of
+Both database providers and brokers declare their **capabilities**, a set of
 flags indicating which features the adapter supports. This enables:
 
-- **Capability-gated methods** — Methods like `raw()` automatically check
+- **Capability-gated methods**: Methods like `raw()` automatically check
   whether the provider supports them, raising `NotSupportedError` if not.
-- **Automatic test selection** — Protean's conformance test suite runs only
+- **Automatic test selection**: Protean's conformance test suite runs only
   the tests relevant to each provider's capabilities.
-- **Informed technology decisions** — Compare adapters at a glance using
+- **Informed technology decisions**: Compare adapters at a glance using
   capability matrices.
 
 Database capabilities are orthogonal (providers pick and choose), while broker
@@ -179,11 +178,10 @@ register in the same way, making them automatically available after
 `pip install`.
 
 This replaces the earlier hardcoded provider dictionary and enables a true
-plugin ecosystem — external packages can add new database or broker adapters
-without modifying Protean source code. See
-[Building Custom Database Adapters](../../reference/adapters/database/custom-databases.md)
-and [Building Custom Brokers](../../reference/adapters/broker/custom-brokers.md)
-for guides.
+plugin ecosystem. External packages can add new database or broker adapters
+without modifying Protean source code. See [Building Custom Database
+Adapters](../../reference/adapters/database/custom-databases.md) and [Building
+Custom Brokers](../../reference/adapters/broker/custom-brokers.md) for guides.
 
 ## Initialization
 
@@ -203,8 +201,8 @@ initialization procedure immediately halts and exits with an error message:
 ---
 
 !!! tip "See also"
-    - [Adapter Configuration Reference](../../reference/adapters/index.md) -- Available adapters and their configuration options.
-    - [Configuration Reference](../../reference/configuration/index.md) -- How to configure adapters in `domain.toml`.
-    - [Building Custom Database Adapters](../../reference/adapters/database/custom-databases.md) -- Step-by-step guide for third-party database adapters.
-    - [Building Custom Brokers](../../reference/adapters/broker/custom-brokers.md) -- Step-by-step guide for third-party broker adapters.
-    - [Adapter Conformance Testing](../../reference/testing/conformance.md) -- Validate that adapters correctly implement their declared capabilities.
+    - [Adapter Configuration Reference](../../reference/adapters/index.md): Available adapters and their configuration options.
+    - [Configuration Reference](../../reference/configuration/index.md): How to configure adapters in `domain.toml`.
+    - [Building Custom Database Adapters](../../reference/adapters/database/custom-databases.md): Step-by-step guide for third-party database adapters.
+    - [Building Custom Brokers](../../reference/adapters/broker/custom-brokers.md): Step-by-step guide for third-party broker adapters.
+    - [Adapter Conformance Testing](../../reference/testing/conformance.md): Validate that adapters correctly implement their declared capabilities.

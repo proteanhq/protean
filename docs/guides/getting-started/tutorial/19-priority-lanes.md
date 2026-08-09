@@ -1,14 +1,13 @@
-# Chapter 19: The Great Catalog Import — Priority Lanes
+# Chapter 19: The Great Catalog Import, Run on Priority Lanes
 
-Bookshelf has acquired the catalog of **Vintage Press** — 50,000 books
-that need to be imported. Running 50,000 `AddBook` commands through the
-normal pipeline would flood the Redis streams and starve real-time
-orders and browsing. We need a way to run the import without
-affecting production traffic.
+Bookshelf has acquired the catalog of **Vintage Press**, 50,000 books that need
+to be imported. Running 50,000 `AddBook` commands through the normal pipeline would
+flood the Redis streams and starve real-time orders and browsing. We need a way
+to run the import without affecting production traffic.
 
 ## Priority Lanes
 
-Protean supports **priority lanes** — two separate processing streams:
+Protean supports **priority lanes**, two separate processing streams:
 
 | Lane | Purpose | Priority Levels |
 |------|---------|-----------------|
@@ -78,8 +77,8 @@ BookCatalogProjector      bookshelf::book           0              28,109
 ...
 ```
 
-The primary lane stays at zero lag — production traffic is unaffected.
-The backfill lane processes the import at its own pace.
+The primary lane stays at zero lag. Production traffic is unaffected. The
+backfill lane processes the import at its own pace.
 
 ## Priority Levels
 
@@ -99,7 +98,7 @@ The backfill lane processes the import at its own pace.
 - Understanding of how the server prioritizes primary over backfill
   lanes.
 
-Part IV is complete! The bookstore now has full production operations:
+That completes Part IV. The bookstore now has full production operations:
 message tracing, dead-letter queue management, monitoring, and bulk
 import support. In the next chapter, we will tackle advanced patterns
 starting with process managers.
@@ -112,4 +111,4 @@ starting with process managers.
 
 ## Next
 
-[Chapter 20: Orchestrating Multi-Step Workflows →](20-process-managers.md)
+[Chapter 20: Orchestrating Multi-Step Workflows with Process Managers →](20-process-managers.md)

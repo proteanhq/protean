@@ -8,7 +8,7 @@ declare those indexes in the domain layer, next to the aggregate, with the
 `indexes=` option. The framework creates them on every database adapter that
 can support them.
 
-This guide shows how to declare indexes. For the full `Index` option reference
+Here is how to declare indexes. For the full `Index` option reference
 see [Indexes](../../reference/domain-elements/indexes.md); for guidance on
 *which* indexes to add, see
 [Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md).
@@ -40,7 +40,7 @@ plain lookup index. That is the whole surface for the common case.
 
 ## Composite and descending indexes
 
-List several fields to build a composite index. The order matters — it should
+List several fields to build a composite index. The order matters. It should
 match how you filter and sort. Use `desc=` for the fields that are read in
 descending order:
 
@@ -53,8 +53,8 @@ class Job:
     priority = Integer(default=0)
 ```
 
-This backs a query that filters on `status` and returns the highest
-`priority` first — a single index serves both the filter and the sort.
+This backs a query that filters on `status` and returns the highest `priority`
+first, a single index serves both the filter and the sort.
 
 ---
 
@@ -132,8 +132,8 @@ projections (for example a Redis-backed projection) silently ignore them.
 
 ## Reuse index declarations
 
-`Index` is a plain object, so you can define indexes once and reference them —
-handy for a shared convention or to keep a long decorator readable:
+`Index` is a plain object, so you can define indexes once and reference them, handy
+for a shared convention or to keep a long decorator readable:
 
 ```python
 ACTIVE_TASKS = Index(
@@ -212,6 +212,6 @@ changing the domain.
 
 ## See also
 
-- [Indexes reference](../../reference/domain-elements/indexes.md) — every `Index` option.
-- [Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md) — choosing what to index.
-- [Retrieve Aggregates](../change-state/retrieve-aggregates.md) — the queries indexes accelerate.
+- [Indexes reference](../../reference/domain-elements/indexes.md): Every `Index` option.
+- [Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md): Choosing what to index.
+- [Retrieve Aggregates](../change-state/retrieve-aggregates.md): The queries indexes accelerate.

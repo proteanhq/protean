@@ -602,7 +602,7 @@ class UnitOfWork:
         Non-partitioned categories (not in *partition_keys*) return ``None`` and
         are untouched. For a partitioned category the key field is read off the
         event payload, coerced to a string, and validated (ADR-0028 decision 3).
-        An invalid value raises :class:`ValidationError`, failing the caller's
+        An invalid value raises `ValidationError`, failing the caller's
         operation in its own transaction so no outbox row is ever created for it.
 
         Args:

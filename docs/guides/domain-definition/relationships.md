@@ -5,9 +5,9 @@
 !!!note "Relationships live inside aggregate boundaries"
     In DDD, associations (`HasOne`, `HasMany`, `Reference`) only connect
     objects *within the same aggregate cluster*. Aggregates never hold
-    direct object references to other aggregates — they reference each
-    other by identity. This rule keeps transaction boundaries clean and
-    prevents hidden coupling between independently consistent clusters.
+    direct object references to other aggregates. They reference each other by
+    identity. This rule keeps transaction boundaries clean and prevents hidden
+    coupling between independently consistent clusters.
 
     See [Cross-Aggregate References](#cross-aggregate-references) for the
     identity-based pattern.
@@ -55,9 +55,8 @@ class Comment:
 ### Value Object Embedding
 
 Value objects are embedded using the `ValueObject` field type, not
-`HasOne`/`HasMany`. Unlike entity associations, value objects are stored
-inline with the parent — they don't have their own identity or separate
-table.
+`HasOne`/`HasMany`. Unlike entity associations, value objects are stored inline
+with the parent. They don't have their own identity or separate table.
 
 ```python
 @domain.value_object
@@ -180,8 +179,7 @@ post.remove_comments(bob_comment)
 ```
 
 !!!note
-    `HasOne` fields do not generate helper methods — assign directly
-    (e.g. `blog.settings = BlogSettings(...)`).
+    `HasOne` fields do not generate helper methods, assign directly (e.g. `blog.settings = BlogSettings(...)`).
 
 ## Bidirectional Navigation
 
@@ -213,9 +211,9 @@ This also works during aggregate initialization for nested structures.
 ## Association Constraints
 
 All association fields (`HasOne`, `HasMany`, `Reference`) are implicitly
-optional — Protean sets `required=False` on them internally. There is
-currently no way to make an association required at the field level; enforce
-mandatory children through aggregate invariants instead:
+optional, Protean sets `required=False` on them internally. There is currently no way to
+make an association required at the field level; enforce mandatory children
+through aggregate invariants instead:
 
 ```python
 @domain.aggregate
@@ -230,9 +228,9 @@ class Order:
 
 ## Cross-Aggregate References
 
-Aggregates are independent consistency boundaries. They should **never**
-hold direct object references (`HasOne`, `HasMany`, `Reference`) to other
-aggregates — doing so would create hidden transactional coupling.
+Aggregates are independent consistency boundaries. They should **never** hold
+direct object references (`HasOne`, `HasMany`, `Reference`) to other
+aggregates. Doing so would create hidden transactional coupling.
 
 Instead, reference another aggregate by storing its identity as a simple
 `Identifier` or `String` field:
@@ -264,8 +262,8 @@ deployable. For keeping aggregates in sync after state changes, use
 
 When an aggregate is persisted, all enclosed entities (connected via
 `HasOne`/`HasMany`) are persisted together as part of the same transaction.
-When an aggregate is deleted, its enclosed entities are deleted with it —
-they cannot exist independently.
+When an aggregate is deleted, its enclosed entities are deleted with it. They
+cannot exist independently.
 
 Removing an entity from a `HasMany` collection (via `remove_<field>`) marks
 it for deletion during the next persistence operation.
@@ -273,9 +271,9 @@ it for deletion during the next persistence operation.
 ## Loading Behavior
 
 Entity associations within an aggregate are loaded **eagerly**. When you
-retrieve an aggregate from a repository, all its enclosed entities are
-loaded in the same operation. There is no lazy loading — the entire
-aggregate graph is materialized at once.
+retrieve an aggregate from a repository, all its enclosed entities are loaded
+in the same operation. There is no lazy loading. The entire aggregate graph is
+materialized at once.
 
 This is by design: an aggregate is a consistency boundary, and partial
 loading would make it impossible to enforce invariants that span the root
@@ -290,25 +288,25 @@ loaded from a database:
 - Entity collections (`HasMany`, `HasOne`) start empty after event replay
   begins and are populated only by `@apply` handlers that process the
   relevant events.
-- There are no database-level foreign keys or joins — the aggregate's
-  entire state (including its entities) is rebuilt from its event stream.
+- There are no database-level foreign keys or joins, the aggregate's entire
+   state (including its entities) is rebuilt from its event stream.
 - Cross-aggregate references by identity work the same way as in standard
   aggregates.
 
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md) — How aggregates define consistency boundaries that contain entities and value objects.
+    **Concept overview:** [Aggregates](../../concepts/building-blocks/aggregates.md): How aggregates define consistency boundaries that contain entities and value objects.
 
     **Related guides:**
 
-    - [Entities](./entities.md) — Define entities with identity within an aggregate.
-    - [Value Objects](./value-objects.md) — Embed immutable descriptive objects in aggregates.
+    - [Entities](./entities.md): Define entities with identity within an aggregate.
+    - [Value Objects](./value-objects.md): Embed immutable descriptive objects in aggregates.
 
     **Reference:**
 
-    - [Association Fields](../../reference/fields/association-fields.md) — Full API reference for `HasOne`, `HasMany`, `Reference`, and `ValueObject` fields.
+    - [Association Fields](../../reference/fields/association-fields.md): Full API reference for `HasOne`, `HasMany`, `Reference`, and `ValueObject` fields.
 
     **Patterns:**
 
-    - [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Why smaller aggregates lead to better systems.
+    - [Design Small Aggregates](../../patterns/design-small-aggregates.md): Why smaller aggregates lead to better systems.

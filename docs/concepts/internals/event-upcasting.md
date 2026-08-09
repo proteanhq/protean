@@ -1,9 +1,9 @@
 # Event Upcasting Internals
 
-This page documents the internal architecture and implementation details of
-Protean's event upcasting system. It covers the data structures, algorithms,
-and integration points that make upcasting work transparently during
-deserialization.
+Upcasting turns an old event into its current shape as it is read, so a
+stream written months ago still deserializes into today's classes. The data
+structures, algorithms, and integration points that make that happen during
+deserialization are below.
 
 For usage-level documentation, see the [Event Upcasting guide](../../guides/consume-state/event-upcasting.md).
 
@@ -11,9 +11,9 @@ For usage-level documentation, see the [Event Upcasting guide](../../guides/cons
 
 Upcasting sits between two existing systems:
 
-1. **The event store** — stores raw event dicts with a versioned type string
+1. **The event store**: Stores raw event dicts with a versioned type string
    (e.g. `"MyDomain.OrderPlaced.v1"`)
-2. **`Message.to_domain_object()`** — deserializes a raw message into a typed
+2. **`Message.to_domain_object()`**: Deserializes a raw message into a typed
    domain event object
 
 Upcasting intercepts the deserialization path when the stored type string
@@ -163,8 +163,8 @@ The method:
 
 1. Iterates `domain._upcasters`
 2. Computes `event_base_type` from the event class:
-   `"{domain.camel_case_name}.{event_class.__name__}"` — this matches the
-   prefix of type strings (e.g. `"MyDomain.OrderPlaced"`)
+   `"{domain.camel_case_name}.{event_class.__name__}"`. This matches the prefix
+   of type strings (e.g. `"MyDomain.OrderPlaced"`)
 3. Registers each edge in `UpcasterChain`
 4. Calls `build_chains(events_and_commands)` to validate and pre-compute
 
@@ -185,8 +185,8 @@ Duplicates (two upcasters with the same `from_version`) raise
 **2. Find terminal version**
 
 The terminal version is any version that appears as a `to_version` but never
-as a `from_version`. This must be exactly one version — if zero or multiple
-terminal versions exist, the chain is invalid.
+as a `from_version`. This must be exactly one version, if zero or multiple terminal
+versions exist, the chain is invalid.
 
 ```python
 terminal_versions = all_to_versions - all_from_versions
@@ -229,7 +229,7 @@ self._chains[(event_base_type, start_version)] = chain
 self._version_map[f"{event_base_type}.{start_version}"] = current_cls
 ```
 
-After building, `_edges` is cleared — it is no longer needed.
+After building, `_edges` is cleared. It is no longer needed.
 
 ### Validation Errors
 
@@ -239,7 +239,7 @@ at runtime during deserialization. The following errors are caught:
 | Error | Cause | Example |
 |-------|-------|---------|
 | Duplicate upcaster | Two upcasters with same `(event_type, from_version)` | Two classes both claiming `1→2` |
-| Non-convergent chain | Multiple terminal versions | `1→2` and `3→4` — terminals are `2` and `4` |
+| Non-convergent chain | Multiple terminal versions | `1→2` and `3→4`, terminals are `2` and `4` |
 | Cycle | Version graph contains a loop | `1→2` and `2→1` |
 | Gap | Chain doesn't reach terminal | `1→2` registered but `2→3` missing, terminal is `3` |
 | Missing event class | Terminal version not in `_events_and_commands` | Chain ends at `99` but event `__version__` is `2` |
@@ -317,7 +317,7 @@ version which accurately reflects what was originally written to the store.
 
 The `_metadata` parameter in `BaseEvent.__init__` uses this metadata to set
 internal tracking fields. The metadata is preserved for audit and debugging
-purposes — it tells you which version was actually stored.
+purposes. It tells you which version was actually stored.
 
 ## All Deserialization Paths
 
@@ -385,19 +385,19 @@ store.
 
 ### Event Store Adapters
 
-Upcasting is **adapter-agnostic**. It operates on the `Message` layer, which
-is common to all event store adapters (Memory, MessageDB, etc.). Event store
-adapters read raw messages and return `Message` objects — upcasting happens
-when `to_domain_object()` is called on those messages.
+Upcasting is **adapter-agnostic**. It operates on the `Message` layer, which is
+common to all event store adapters (Memory, MessageDB, etc.). Event store
+adapters read raw messages and return `Message` objects. Upcasting happens when
+`to_domain_object()` is called on those messages.
 
 ### Snapshots
 
 Snapshot-based aggregate loading (`part_of(**snapshot_data)`) bypasses
 `Message.to_domain_object()` and constructs the aggregate directly. If a
 snapshot was taken with an old schema, the aggregate constructor handles it
-(or fails). Upcasting does **not** apply to snapshots — if an old snapshot
-fails to load, the system falls back to full event replay, where upcasting
-does apply.
+(or fails). Upcasting does **not** apply to snapshots, if an old snapshot fails
+to load, the system falls back to full event replay, where upcasting does
+apply.
 
 ### `domain.init()` Ordering
 
@@ -418,15 +418,13 @@ versions have matching entries in `_events_and_commands`.
 
 The upcasting system is tested at four levels:
 
-1. **Unit: Registration** (`tests/upcaster/test_upcaster_registration.py`) —
-   `upcaster_factory` validation, meta options, error cases
-2. **Unit: Chain building** (`tests/upcaster/test_upcaster_chain.py`) —
-   `UpcasterChain` construction, validation errors, chain resolution
-3. **Integration: Deserialization** (`tests/upcaster/test_upcaster_deserialization.py`) —
-   `Message.to_domain_object()` with old-version messages, round-trip through
-   event store
-4. **Integration: Event sourcing** (`tests/upcaster/test_upcaster_event_sourcing.py`) —
-   Full aggregate reconstruction with mixed-version events, repository access
+1. **Unit: Registration** (`tests/upcaster/test_upcaster_registration.py`), `upcaster_factory` validation, meta options, error cases
+2. **Unit: Chain building** (`tests/upcaster/test_upcaster_chain.py`), `UpcasterChain` construction, validation errors, chain
+   resolution
+3. **Integration: Deserialization** (`tests/upcaster/test_upcaster_deserialization.py`), `Message.to_domain_object()` with old-version messages,
+   round-trip through event store
+4. **Integration: Event sourcing** (`tests/upcaster/test_upcaster_event_sourcing.py`), Full aggregate reconstruction with
+   mixed-version events, repository access
 
 Tests write raw events directly to the event store (bypassing normal event
 creation) to simulate historical events with old schemas. This accurately

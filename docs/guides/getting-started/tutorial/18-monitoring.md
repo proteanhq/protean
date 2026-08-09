@@ -21,11 +21,11 @@ BookReportProjector           bookshelf::book-fact      0      0        3
 
 Key metrics:
 
-- **Lag** — messages waiting to be processed. High lag means the handler
+- **Lag**: Messages waiting to be processed. High lag means the handler
   is falling behind.
-- **Pending** — messages currently being processed (acknowledged but not
+- **Pending**: Messages currently being processed (acknowledged but not
   yet completed).
-- **DLQ** — messages that failed all retries.
+- **DLQ**: Messages that failed all retries.
 
 ## The Observatory Dashboard
 
@@ -39,11 +39,11 @@ Monitoring domains: bookshelf
 
 Open `http://localhost:9000` in your browser to see:
 
-- **Subscription status** — lag, pending, and DLQ counts for every
+- **Subscription status**: Lag, pending, and DLQ counts for every
   handler.
-- **Processing rates** — messages processed per second.
-- **Error rates** — recent failures and their handlers.
-- **Live trace stream** — server-sent events showing message processing
+- **Processing rates**: Messages processed per second.
+- **Error rates**: Recent failures and their handlers.
+- **Live trace stream**: Server-sent events showing message processing
   in real time.
 
 The Observatory can monitor multiple domains simultaneously:
@@ -100,4 +100,4 @@ priority lanes to avoid starving production traffic.
 
 ## Next
 
-[Chapter 19: The Great Catalog Import — Priority Lanes →](19-priority-lanes.md)
+[Chapter 19: The Great Catalog Import, Run on Priority Lanes →](19-priority-lanes.md)

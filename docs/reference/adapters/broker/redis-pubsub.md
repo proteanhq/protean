@@ -419,6 +419,7 @@ MAXLEN = 10000  # Keep last 10k messages
 ```
 
 Key differences to handle:
+
 1. Add consumer group parameter to subscribers
 2. Implement message acknowledgment
 3. Handle message IDs returned from publish
@@ -445,17 +446,19 @@ class BrokerCompatibilityLayer:
         self.migration_mode = False
 ```
 
-## Best Practices
+## Working with Redis PubSub
 
 ### 1. Use for Simple Queuing
 
 Redis PubSub broker is suitable for:
+
 - Simple message distribution
 - Development and testing
 - Scenarios where ack/nack isn't needed
 - Basic consumer group functionality
 
 Not suitable for:
+
 - Critical business events requiring acknowledgment
 - Complex message routing
 - Scenarios requiring message replay
@@ -525,7 +528,7 @@ def ensure_subscribers(broker, stream: str, min_subscribers: int = 1):
 | Performance | High | High | Very High |
 | Use Case | Simple Queuing | Event Streaming | Development |
 
-## Next Steps
+## Related pages
 
 - Learn about [Redis Streams broker](./redis.md) for reliable messaging
 - Understand [broker capabilities](./index.md#broker-capabilities) in detail

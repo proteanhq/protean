@@ -3,7 +3,7 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Some business operations naturally span two or more aggregates. For example,
-placing an order requires confirming the order *and* reserving inventory — two
+placing an order requires confirming the order *and* reserving inventory. Two
 aggregates that must be validated together. If you put this logic in the
 `Order` aggregate, it needs to know about `Inventory`; if you put it in the
 command handler, business rules leak into the application layer. Domain
@@ -26,7 +26,7 @@ For background on when and why to use domain services, see
 A Domain Service is defined with the `Domain.domain_service` decorator, and
 associated with at least two aggregates with the `part_of` option. The
 `part_of` option is **required** and must be a list of **two or more**
-aggregates — a domain service that operates on a single aggregate should be
+aggregates, a domain service that operates on a single aggregate should be
 logic on the aggregate itself.
 
 The service methods in a Domain Service can be structured in three flavors:
@@ -34,7 +34,7 @@ The service methods in a Domain Service can be structured in three flavors:
 ### 1. Class with class methods
 
 If you don't have any invariants to be managed by the Domain Service, each
-method in the Domain Service can simply be a class method, that receives all
+method in the Domain Service can be a class method, that receives all
 the input necessary for performing the business function.
 
 ```python hl_lines="1-2"
@@ -71,7 +71,7 @@ service.place_order()
 
 ### 3. Callable class
 
-If you have a single business function, you can simply model it as a callable
+If you have a single business function, you can model it as a callable
 class:
 
 ```python hl_lines="1-2 9"
@@ -94,7 +94,7 @@ service()
 The decision between instance methods and a callable class boils down to:
 
 1. **How many business functions does the Domain Service have?** If only one,
-   a callable class is more elegant.
+   a callable class is the simpler shape.
 2. **Do you have `pre` invariants that only apply to specific methods?** Then
    construct each method as a separate callable class. If invariants apply to
    all methods, a class with instance methods is preferable.
@@ -103,12 +103,12 @@ As your domain model matures, review regularly and decide on the best
 way to model the Domain Service.
 
 !!!note
-    Invariants only wrap public methods and `__call__` — they skip dunder
-    methods (other than `__call__`) and private methods (prefixed with `_`).
-    If you encounter a `RecursionError: maximum recursion depth exceeded`,
-    it is likely that a public method is calling another public method on the
-    same instance. Extract the shared logic into a private method (prefixed
-    with `_`) to break the cycle.
+    Invariants only wrap public methods and `__call__`. They skip dunder
+    methods (other than `__call__`) and private methods (prefixed with `_`). If
+    you encounter a `RecursionError: maximum recursion depth exceeded`, it is
+    likely that a public method is calling another public method on the same
+    instance. Extract the shared logic into a private method (prefixed with
+    `_`) to break the cycle.
 
 ## Domain Service vs Application Service vs Command Handler
 
@@ -116,7 +116,7 @@ These three constructs coordinate behavior, but at different levels:
 
 | Aspect | Domain Service | Application Service | Command Handler |
 |--------|---------------|-------------------|-----------------|
-| **Contains business logic** | Yes — cross-aggregate rules | No — orchestration only | No — orchestration only |
+| **Contains business logic** | Yes, cross-aggregate rules | No, orchestration only | No, orchestration only |
 | **Operates on** | 2+ aggregates | 1 aggregate | 1 aggregate |
 | **Has invariants** | Yes (`@invariant.pre`/`.post`) | No | No |
 | **Invoked by** | Command handlers, app services | External callers (API, CLI) | `domain.process(command)` |
@@ -213,17 +213,17 @@ cross-aggregate invariants before any mutation occurs.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Domain Services](../../concepts/building-blocks/domain-services.md) — When and why to use domain services for cross-aggregate business logic.
+    **Concept overview:** [Domain Services](../../concepts/building-blocks/domain-services.md): When and why to use domain services for cross-aggregate business logic.
 
     **Related guides:**
 
-    - [Invariants](invariants.md) — Business rules enforced on aggregates, entities, and domain services.
-    - [Aggregate Mutation](aggregate-mutation.md) — How state changes work inside aggregates.
-    - [Command Handlers](../change-state/command-handlers.md) — Orchestrating state changes from commands.
-    - [Application Services](../change-state/application-services.md) — Coordinating use cases.
+    - [Invariants](invariants.md): Business rules enforced on aggregates, entities, and domain services.
+    - [Aggregate Mutation](aggregate-mutation.md): How state changes work inside aggregates.
+    - [Command Handlers](../change-state/command-handlers.md): Orchestrating state changes from commands.
+    - [Application Services](../change-state/application-services.md): Coordinating use cases.
 
     **Patterns:**
 
-    - [One Aggregate per Transaction](../../patterns/one-aggregate-per-transaction.md) — Why domain services persist only one aggregate.
-    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping business logic in the domain, not handlers.
-    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — Choosing the right orchestration layer.
+    - [One Aggregate per Transaction](../../patterns/one-aggregate-per-transaction.md): Why domain services persist only one aggregate.
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping business logic in the domain, not handlers.
+    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md): Choosing the right orchestration layer.

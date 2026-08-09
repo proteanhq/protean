@@ -25,32 +25,32 @@ class User:
 ```
 
 Two validations, both on the aggregate's invariants, but they serve different
-purposes. The email format check is a universal truth about email addresses --
-it applies regardless of context. The admin-company-email rule is a business
-policy that could change, applies only to admins, and depends on the aggregate's
-role field.
+purposes. The email format check is a universal truth about email addresses. It
+applies regardless of context. The admin-company-email rule is a business
+policy that could change, applies only to admins, and depends on the
+aggregate's role field.
 
 Mixing these creates problems:
 
-- **Wrong error granularity.** A user entering `"bad-email"` gets a format
+- **Wrong error granularity**: A user entering `"bad-email"` gets a format
   error at the aggregate level, after the command is already processed. The
   error could have been caught earlier, at the field or value object level,
   with a clearer message.
 
-- **Duplicated validation.** If `Email` is used in multiple aggregates
+- **Duplicated validation**: If `Email` is used in multiple aggregates
   (`User`, `Contact`, `Newsletter`), the format check is duplicated in each.
   If the format rule changes (e.g., accepting `+` in local parts), every
   aggregate must be updated.
 
-- **Authorization mixed with domain rules.** "Only admins can cancel orders"
+- **Authorization mixed with domain rules**: "Only admins can cancel orders"
   is an authorization check, not a domain invariant. Putting it in the
   aggregate mixes infrastructure concerns with domain logic.
 
-- **Validation at the wrong time.** A command with clearly invalid data
+- **Validation at the wrong time**: A command with clearly invalid data
   (missing required fields, wrong types) travels through the system, gets
-  deserialized, processed by a handler, applied to an aggregate -- all before
-  the aggregate's invariant catches the error. The error surface is broad and
-  the feedback is delayed.
+  deserialized, processed by a handler, applied to an aggregate, all before the
+  aggregate's invariant catches the error. The error surface is broad and the
+  feedback is delayed.
 
 The root cause: **all validation is treated the same, regardless of its nature,
 urgency, or scope**.
@@ -110,9 +110,9 @@ class Product:
 
 **What this should NOT catch:**
 
-- Business rules ("price must be higher than cost") -- that's Layer 3
-- Cross-field validation ("if status is active, stock must be > 0") -- Layer 3
-- Format patterns specific to domain concepts ("SKU must match XX-NNNN") --
+- Business rules ("price must be higher than cost"), that's Layer 3
+- Cross-field validation ("if status is active, stock must be > 0"), Layer 3
+- Format patterns specific to domain concepts ("SKU must match XX-NNNN"),
   Layer 2
 
 Field constraints are the first defense. They're declarative, visible in the
@@ -122,7 +122,7 @@ field definition, and enforced automatically by Protean.
 
 ## Layer 2: Value Object Invariants
 
-**What it validates:** Rules intrinsic to a domain concept -- format patterns,
+**What it validates:** Rules intrinsic to a domain concept, format patterns,
 internal consistency, and constraints that define what makes a concept valid.
 
 **Where it lives:** Invariants on value objects.
@@ -191,8 +191,8 @@ class DateRange:
 **What this should NOT catch:**
 
 - Business rules about how the value is used in context ("Money amount must
-  not exceed the account's credit limit") -- that's Layer 3
-- Whether the current user is allowed to set this value -- that's Layer 4
+  not exceed the account's credit limit"), that's Layer 3
+- Whether the current user is allowed to set this value, that's Layer 4
 
 Value object invariants are **context-free**. An `Email` is either valid or
 not, regardless of which aggregate it's in or who is setting it.
@@ -201,7 +201,7 @@ not, regardless of which aggregate it's in or who is setting it.
 
 ## Layer 3: Aggregate Invariants
 
-**What it validates:** Business rules that depend on the aggregate's state --
+**What it validates:** Business rules that depend on the aggregate's state,
 cross-field consistency, state machine rules, and domain-specific constraints.
 
 **Where it lives:** Invariants on aggregates and entities.
@@ -265,8 +265,8 @@ class Order:
 - Whether the user is authorized to place this order (that's Layer 4)
 
 Aggregate invariants are the heart of domain validation. They express the
-**business rules** -- the things that make an order valid, an account
-consistent, or a reservation enforceable.
+**business rules**, the things that make an order valid, an account consistent,
+or a reservation enforceable.
 
 ---
 
@@ -530,7 +530,7 @@ class PlaceOrder(BaseCommand):
 ```
 
 If `total` is negative or `customer_id` is missing, the error is caught at
-command construction -- before the handler even runs. This is the earliest
+command construction, before the handler even runs. This is the earliest
 possible feedback.
 
 Commands should validate data structure and presence, not business rules.
@@ -548,21 +548,21 @@ is a handler concern.
 | 3 - Aggregate | Business rules | Aggregate invariants | After methods/mutations | Discount < total, must have items |
 | 4 - Handler | Context, auth, cross-aggregate | Handlers/services | Before aggregate method call | Authorization, time-based rules |
 
-The principle: **each validation layer has a specific scope. Field constraints
-catch data errors. Value objects enforce concept rules. Aggregate invariants
-guard business rules. Handlers check contextual and cross-aggregate conditions.
-Each layer trusts the layers below it and adds what they don't cover.**
+Each validation layer has a specific scope. Field constraints catch data
+errors. Value objects enforce concept rules. Aggregate invariants guard
+business rules. Handlers check contextual and cross-aggregate conditions. Each
+layer trusts the layers below it and adds what they don't cover.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../concepts/building-blocks/aggregates.md) — Aggregate invariants and consistency.
-    - [Value Objects](../concepts/building-blocks/value-objects.md) — Value-level validation through invariants.
+    - [Aggregates](../concepts/building-blocks/aggregates.md): Aggregate invariants and consistency.
+    - [Value Objects](../concepts/building-blocks/value-objects.md): Value-level validation through invariants.
 
     **Guides:**
 
-    - [Validations](../guides/domain-behavior/validations.md) — Field restrictions, built-in validations, and custom validators.
-    - [Invariants](../guides/domain-behavior/invariants.md) — Pre and post invariants for business rules.
-    - [Value Objects](../guides/domain-definition/value-objects.md) — Embedding validation within value objects.
+    - [Validations](../guides/domain-behavior/validations.md): Field restrictions, built-in validations, and custom validators.
+    - [Invariants](../guides/domain-behavior/invariants.md): Pre and post invariants for business rules.
+    - [Value Objects](../guides/domain-definition/value-objects.md): Embedding validation within value objects.

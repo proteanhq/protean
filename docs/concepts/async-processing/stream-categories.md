@@ -23,9 +23,9 @@ Messages in Protean are organized in streams with a hierarchical naming structur
 
 For example:
 
-- `ecommerce::order-123` - All messages for Order with ID 123
-- `ecommerce::user-456` - All messages for User with ID 456
-- `inventory::product-789` - All messages for Product with ID 789
+- `ecommerce::order-123`: All messages for Order with ID 123
+- `ecommerce::user-456`: All messages for User with ID 456
+- `inventory::product-789`: All messages for Product with ID 789
 
 This structure ensures that:
 
@@ -137,7 +137,7 @@ This allows multiple aggregates to publish to shared stream categories for speci
 
 ### Cross-Aggregate Subscriptions
 
-A powerful pattern is having handlers that are part of one aggregate but subscribe to another aggregate's stream category. This enables reactive, cross-aggregate coordination:
+One useful pattern is having handlers that are part of one aggregate but subscribe to another aggregate's stream category. This enables reactive, cross-aggregate coordination:
 
 ```python
 @domain.event_handler(part_of=Inventory, stream_category="order")

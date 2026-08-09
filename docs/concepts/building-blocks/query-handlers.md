@@ -1,21 +1,20 @@
 # Query Handlers
 
 Query handlers are the read-side counterpart of command handlers. They process
-queries -- named, validated read intents -- and return results from projections.
+queries (named, validated read intents) and return results from projections.
 
 Where command handlers mutate state through aggregates, query handlers read
 state from projections. This separation is fundamental to CQRS: writes flow
 through `domain.process(command)`, reads flow through
 `domain.dispatch(query)`.
 
-**Why not query projections directly?** You can -- and for simple lookups,
-`domain.view_for(Projection).get(id)` is perfectly fine. But as read
-patterns grow in complexity (filtered searches with pagination, access
-control checks, response shaping), that logic needs a home. Scattering it
-across API controllers mixes infrastructure with domain concerns. Query
-handlers give structured reads the same organized treatment that command
-handlers give writes: named intents with validated inputs, routed through
-the domain to a dedicated handler.
+**Why not query projections directly?** You can, and for simple lookups, `domain.view_for(Projection).get(id)` is
+perfectly fine. But as read patterns grow in complexity (filtered searches with
+pagination, access control checks, response shaping), that logic needs a home.
+Scattering it across API controllers mixes infrastructure with domain concerns.
+Query handlers give structured reads the same organized treatment that command
+handlers give writes: named intents with validated inputs, routed through the
+domain to a dedicated handler.
 
 ## Facts
 
@@ -77,7 +76,7 @@ accidental mutations.
 
 ### Validate through query fields. { data-toc-label="Query Validation" }
 
-Leverage query field constraints (`required`, `min_value`, `max_value`,
+Use query field constraints (`required`, `min_value`, `max_value`,
 `choices`) for input validation. The query object validates its fields
 before reaching the handler.
 
@@ -88,11 +87,11 @@ before reaching the handler.
 For practical details on defining and using query handlers in Protean, see
 the guide:
 
-- [Query Handlers](../../guides/consume-state/query-handlers.md) -- Defining
+- [Query Handlers](../../guides/consume-state/query-handlers.md): Defining
   handlers, using `@read`, dispatching queries.
 
 For related concepts:
 
-- [Projections](./projections.md) -- The read models that query handlers
+- [Projections](./projections.md): The read models that query handlers
   operate on.
-- [Command Handlers](./command-handlers.md) -- The write-side counterpart.
+- [Command Handlers](./command-handlers.md): The write-side counterpart.

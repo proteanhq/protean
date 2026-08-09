@@ -2,16 +2,16 @@
 
 ## Why Aggregates?
 
-In most systems, domain objects don't exist in isolation — an `Order` has
+In most systems, domain objects don't exist in isolation. An `Order` has
 `LineItems`, a `Customer` has `Addresses`, a `Project` has `Tasks`. Without
-clear boundaries, any piece of code can reach in and modify any related
-object, leading to inconsistent state, broken invariants, and tangled
-dependencies. When two concurrent requests modify the same cluster of
-objects, there's no natural place to detect the conflict.
+clear boundaries, any piece of code can reach in and modify any related object,
+leading to inconsistent state, broken invariants, and tangled dependencies.
+When two concurrent requests modify the same cluster of objects, there's no
+natural place to detect the conflict.
 
 Aggregates solve this by drawing an explicit boundary around a cluster of
 related objects. All changes within that boundary go through a single root
-entity — the **aggregate root** — which enforces business rules, guards
+entity (the **aggregate root**) which enforces business rules, guards
 consistency, and acts as the unit of persistence and concurrency control.
 Outside code never reaches past the root to modify internal objects directly.
 
@@ -37,12 +37,13 @@ first persisted, and increases by one on each subsequent save.
 Aggregates are persisted with optimistic concurrency. If the expected version
 of the aggregate does not match the version in the database, the framework
 raises `ExpectedVersionError`. In async handlers (`@handle`), this error is
-automatically retried with exponential backoff -- each retry creates a fresh
-Unit of Work that re-reads the aggregate at the latest version. See
-[Version conflict auto-retry](../../guides/server/error-handling.md#version-conflict-auto-retry)
-for configuration details and
-[Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md)
-for handling different conflict categories.
+automatically retried with exponential backoff, each retry creates a fresh Unit
+of Work that re-reads the aggregate at the latest version. See [Version
+conflict
+auto-retry](../../guides/server/error-handling.md#version-conflict-auto-retry)
+for configuration details and [Optimistic Concurrency as a Design
+Tool](../../patterns/optimistic-concurrency-as-design-tool.md) for handling
+different conflict categories.
 
 ### Aggregates enclose business invariants. { data-toc-label="Invariants" }
 
@@ -60,13 +61,12 @@ aggregate cluster, individual [entities](./entities.md), or
 ### Aggregates declare their own indexes. { data-toc-label="Indexes" }
 
 An aggregate knows how it will be queried, so it declares the indexes those
-query paths need with the `indexes=` option — uniqueness on identifiers,
-composite ordering for hot paths, partial indexes for active subsets. Keeping
-the declaration on the aggregate (rather than in a hand-maintained migration)
-means the query shape and its index live in one place. See
-[Declaring Indexes](../../guides/domain-definition/indexes.md) and the
-[Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md)
-pattern.
+query paths need with the `indexes=` option, uniqueness on identifiers, composite
+ordering for hot paths, partial indexes for active subsets. Keeping the
+declaration on the aggregate (rather than in a hand-maintained migration) means
+the query shape and its index live in one place. See [Declaring
+Indexes](../../guides/domain-definition/indexes.md) and the [Index Aggregates
+for Query Paths](../../patterns/index-aggregates-for-query-paths.md) pattern.
 
 ## Object Graphs
 
@@ -105,12 +105,12 @@ aggregate cluster are kept together in the same persistence store.
 ### Aggregates have configurable entity limits. { data-toc-label="Limits" }
 
 The object graph under an aggregate is loaded eagerly. By default, queries
-return up to **100** associated entities per collection (configurable via
-the `limit` option on the aggregate or entity decorator). If you expect
-a collection to routinely exceed this limit, rethink your aggregate boundary
-— one approach is to split the aggregate into multiple aggregates, or to
-promote the underlying entity to an aggregate by itself. You can also set
-`limit=None` to remove the cap entirely.
+return up to **100** associated entities per collection (configurable via the
+`limit` option on the aggregate or entity decorator). If you expect a
+collection to routinely exceed this limit, rethink your aggregate boundary. One
+approach is to split the aggregate into multiple aggregates, or to promote the
+underlying entity to an aggregate by itself. You can also set `limit=None` to
+remove the cap entirely.
 
 ---
 
@@ -118,17 +118,17 @@ promote the underlying entity to an aggregate by itself. You can also set
 
 For practical details on defining and using aggregates in Protean, see the guide:
 
-- [Aggregates](../../guides/domain-definition/aggregates.md) — Defining aggregates, fields, initialization, configuration options, and associations.
+- [Aggregates](../../guides/domain-definition/aggregates.md): Defining aggregates, fields, initialization, configuration options, and associations.
 
 Not sure whether your concept should be an aggregate, entity, or value object?
 
-- [Choosing Element Types](./choosing-element-types.md) — Decision guide with checklists and flowcharts.
+- [Choosing Element Types](./choosing-element-types.md): Decision guide with checklists and flowcharts.
 
 For design guidance:
 
-- [Design Small Aggregates](../../patterns/design-small-aggregates.md) — Why smaller aggregates lead to better systems.
-- [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md) — Protecting aggregate internals with controlled mutation.
-- [Factory Methods for Aggregate Creation](../../patterns/factory-methods-for-aggregate-creation.md) — Encapsulating complex construction logic.
-- [Model Aggregate Lifecycle as a State Machine](../../patterns/aggregate-state-machines.md) — Explicit states and guarded transitions.
-- [Organize by Domain Concept](../../patterns/organize-by-domain-concept.md) — Structuring code around domain concepts rather than technical layers.
-- [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md) — Keeping transaction boundaries clean.
+- [Design Small Aggregates](../../patterns/design-small-aggregates.md): Why smaller aggregates lead to better systems.
+- [Encapsulate State Changes](../../patterns/encapsulate-state-changes.md): Protecting aggregate internals with controlled mutation.
+- [Factory Methods for Aggregate Creation](../../patterns/factory-methods-for-aggregate-creation.md): Encapsulating complex construction logic.
+- [Model Aggregate Lifecycle as a State Machine](../../patterns/aggregate-state-machines.md): Explicit states and guarded transitions.
+- [Organize by Domain Concept](../../patterns/organize-by-domain-concept.md): Structuring code around domain concepts rather than technical layers.
+- [One Aggregate Per Transaction](../../patterns/one-aggregate-per-transaction.md): Keeping transaction boundaries clean.

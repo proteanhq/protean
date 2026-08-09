@@ -2,7 +2,7 @@
 
 The `protean snapshot` command group manages snapshots for event-sourced
 aggregates. Snapshots capture aggregate state at a point in time to optimize
-hydration performance -- instead of replaying the entire event history, the
+hydration performance, instead of replaying the entire event history, the
 aggregate is loaded from the latest snapshot and only subsequent events are
 replayed.
 

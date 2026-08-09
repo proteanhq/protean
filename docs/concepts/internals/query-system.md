@@ -1,9 +1,9 @@
 # Query system
 
 Protean's query system provides a database-agnostic way to filter, sort, and
-paginate aggregates. This page explains the internal architecture -- the
-layered design, how Q objects form expression trees, how lookups are resolved
-by database providers, and how QuerySets achieve lazy evaluation.
+paginate aggregates. This page explains the internal architecture, the layered
+design, how Q objects form expression trees, how lookups are resolved by
+database providers, and how QuerySets achieve lazy evaluation.
 
 For practical usage, see the
 [Retrieving Aggregates](../../guides/change-state/retrieve-aggregates.md) guide.
@@ -52,9 +52,9 @@ and `self.find_by` (which delegate to the internal `_dao`) to build queries.
 
 **Key source files:**
 
-- `src/protean/core/repository.py` -- `BaseRepository` with `add()`, `get()`,
+- `src/protean/core/repository.py`: `BaseRepository` with `add()`, `get()`,
   `_dao` property, and `_sync_children()` for cascading child entities.
-- `src/protean/port/dao.py` -- `BaseDAO` with lifecycle methods (`get`,
+- `src/protean/port/dao.py`: `BaseDAO` with lifecycle methods (`get`,
   `find_by`, `exists`, `create`, `save`, `update`, `delete`) and abstract
   methods for concrete implementations (`_filter`, `_count`, `_create`,
   `_update`, `_delete`, `_raw`).
@@ -135,10 +135,10 @@ database.
 
 A Q object extends `Node`, which holds:
 
-- **`children`** -- a list of leaf tuples `(field_name, value)` or nested
+- **`children`**: A list of leaf tuples `(field_name, value)` or nested
   `Node`/`Q` instances.
-- **`connector`** -- `"AND"` or `"OR"`, determining how children are combined.
-- **`negated`** -- a boolean flag that inverts the match.
+- **`connector`**: `"AND"` or `"OR"`, determining how children are combined.
+- **`negated`**: A boolean flag that inverts the match.
 
 ```python
 Q(name="John", age=3)
@@ -185,9 +185,9 @@ Negation wraps the node and flips the `negated` flag:
 
 ### Squashing
 
-The `Node.add()` method applies **squashing** -- when combining two nodes with
-the same connector, it flattens the children into one level instead of nesting.
-This keeps the tree shallow for simple AND/AND or OR/OR combinations:
+The `Node.add()` method applies **squashing**, when combining two nodes with the same
+connector, it flattens the children into one level instead of nesting. This
+keeps the tree shallow for simple AND/AND or OR/OR combinations:
 
 ```python
 Q(a=1) & Q(b=2) & Q(c=3)
@@ -316,10 +316,10 @@ are backend-specific and are not part of the portable contract.
 
 **Key source files:**
 
-- `src/protean/port/dao.py` -- `BaseLookup` base class.
-- `src/protean/utils/query.py` -- `RegisterLookupMixin`.
-- `src/protean/adapters/repository/memory/` -- Memory lookup implementations.
-- `src/protean/adapters/repository/sqlalchemy/` -- SQLAlchemy lookup
+- `src/protean/port/dao.py`: `BaseLookup` base class.
+- `src/protean/utils/query.py`: `RegisterLookupMixin`.
+- `src/protean/adapters/repository/memory/`: Memory lookup implementations.
+- `src/protean/adapters/repository/sqlalchemy/`: SQLAlchemy lookup
   implementations.
 
 ---
@@ -361,13 +361,13 @@ index or the database resorts to a full scan.
 Protean keeps that knowledge in the domain layer: an aggregate declares the
 indexes its query paths need with the `indexes=` decorator option, alongside
 its fields and invariants. This mirrors the ports-and-adapters split the query
-system already follows — the portable `Q`/QuerySet API on one side, the
+system already follows: the portable `Q`/QuerySet API on one side, the
 adapter-specific SQL on the other. Portable index declarations (composite,
 descending, unique) live on the aggregate and are honored by every SQL adapter;
 storage-specific tuning (GIN, BRIN, expression indexes) drops to
 `Index.from_sql` on the model. A partial index whose `where=` predicate is a
-`Q` object reuses the very same expression tree described above, compiled to the
-dialect's partial-index clause.
+`Q` object reuses the same expression tree, compiled to the dialect's
+partial-index clause.
 
 See [Indexes](../../reference/domain-elements/indexes.md) for the API and
 [ADR-0014](../../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md)
@@ -379,22 +379,21 @@ for the rationale.
 
 QuerySets use a **lazy evaluation** strategy:
 
-1. **Building phase** -- `filter()`, `exclude()`, `limit()`, `offset()`,
+1. **Building phase**: `filter()`, `exclude()`, `limit()`, `offset()`,
    `order_by()` all clone the QuerySet and modify the clone's internal state.
    No database call occurs.
 
-2. **Evaluation trigger** -- the database is queried only when you actually
+2. **Evaluation trigger**: The database is queried only when you actually
    need data. Triggers include:
-    - `.all()` -- explicit evaluation
-    - `__iter__` -- `for item in queryset`
-    - `__len__` -- `len(queryset)`
-    - `__bool__` -- `bool(queryset)` or `if queryset:`
-    - `__getitem__` -- `queryset[0]` or `queryset[1:5]`
-    - `__contains__` -- `item in queryset`
-    - Property access -- `.total`, `.items`, `.first`, `.last`, `.has_next`,
-      `.has_prev`
+    - `.all()`: Explicit evaluation
+    - `__iter__`: `for item in queryset`
+    - `__len__`: `len(queryset)`
+    - `__bool__`: `bool(queryset)` or `if queryset:`
+    - `__getitem__`: `queryset[0]` or `queryset[1:5]`
+    - `__contains__`: `item in queryset`
+    - Property access, `.total`, `.items`, `.first`, `.last`, `.has_next`, `.has_prev`
 
-3. **Caching** -- after evaluation, results are stored in `_result_cache`.
+3. **Caching**: After evaluation, results are stored in `_result_cache`.
    Subsequent property access returns cached data without re-querying. Call
    `.all()` to force a fresh query (it sets `_result_cache = None` before
    querying).
@@ -444,9 +443,8 @@ on projections.
 **Read methods work identically:** `filter()`, `exclude()`, `order_by()`,
 `limit()`, `offset()`, `all()`, `raw()`, and all properties.
 
-The clone-on-write pattern preserves the type — chaining `.filter()` on a
-`ReadOnlyQuerySet` returns another `ReadOnlyQuerySet`, because `_clone()`
-uses `self.__class__()`.
+The clone-on-write pattern preserves the type, chaining `.filter()` on a `ReadOnlyQuerySet` returns
+another `ReadOnlyQuerySet`, because `_clone()` uses `self.__class__()`.
 
 ```python
 # domain.view_for().query returns a ReadOnlyQuerySet
@@ -478,9 +476,9 @@ conn = domain.connection_for(OrderSummary)
 # Redis client, etc., depending on the projection's backing store
 ```
 
-This is the escape hatch — it bypasses Protean's query abstraction entirely
-and hands you the technology-specific client. The method automatically routes
-to the correct provider or cache based on the projection's meta options
+This is the escape hatch. It bypasses Protean's query abstraction entirely and
+hands you the technology-specific client. The method automatically routes to
+the correct provider or cache based on the projection's meta options
 (`provider` or `cache`).
 
 **Key source file:** `src/protean/domain/__init__.py`

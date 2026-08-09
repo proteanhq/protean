@@ -10,19 +10,17 @@ The outbox is the framework default for reliable message delivery, so it sits on
 the hot path of every Protean deployment that publishes events. The
 `OutboxProcessor` historically pulled work in two steps per poll:
 
-1. `find_unprocessed(limit=N)` — a `SELECT` returning up to `N` eligible rows.
-2. For each row, `claim_for_processing(row, worker_id)` — an
-   `UPDATE … WHERE id = :id AND status IN (pending, failed)` that marks the row
-   `processing` and locks it.
+1. `find_unprocessed(limit=N)`: A `SELECT` returning up to `N` eligible rows.
+2. For each row, `claim_for_processing(row, worker_id)`, an `UPDATE … WHERE id = :id AND status IN (pending, failed)` that marks the row `processing` and locks it.
 
 This has two problems on a contended table:
 
-- **A TOCTOU window.** Between the `SELECT` and the per-row `UPDATE`, another
+- **A TOCTOU window**: Between the `SELECT` and the per-row `UPDATE`, another
   worker can claim the same row. The guarded `UPDATE` *detects* the loss (the
-  `WHERE` no longer matches, rowcount is `0`) but does not *prevent* it — the
+  `WHERE` no longer matches, rowcount is `0`) but does not *prevent* it. The
   loser has already paid for a wasted round trip and produces "already claimed"
   log noise.
-- **`1 + N` round trips per batch.** One `SELECT` plus `N` `UPDATE`s. At high
+- **`1 + N` round trips per batch**: One `SELECT` plus `N` `UPDATE`s. At high
   throughput the per-row latency dominates the poll cost.
 
 The same shape recurs for any high-throughput consumer that pulls a bounded
@@ -44,17 +42,17 @@ portable default may briefly block on a contended row before its guard rejects
 the claim.
 
 **Portable default (`BaseDAO`).** Reads candidates via the entity query API,
-then issues a guarded `UPDATE … WHERE id = :id AND <criteria>` per row. The
+then issues a guarded `UPDATE … WHERE id =:id AND <criteria>` per row. The
 re-asserted criteria make a row another worker already claimed fail to match.
-This is `1 + N` round trips — identical in cost to the old flow — and is the
-correctness floor, not the performance target. It prevents double-claim on every
-backend, but the *failure mode* of a lost race differs: relational backends
-(PostgreSQL, MySQL, SQL Server) re-evaluate the guard under the row lock and
-return zero rows (graceful skip); SQLite serializes writers (a contended write
-may raise `SQLITE_BUSY`); Elasticsearch relies on document versioning, so the
-second writer hits a version conflict and the call raises rather than skipping.
-Elasticsearch is therefore not recommended as a concurrently-consumed claim
-store.
+This is `1 + N` round trips (identical in cost to the old flow) and is the
+correctness floor, not the performance target. It prevents double-claim on
+every backend, but the *failure mode* of a lost race differs: relational
+backends (PostgreSQL, MySQL, SQL Server) re-evaluate the guard under the row
+lock and return zero rows (graceful skip); SQLite serializes writers (a
+contended write may raise `SQLITE_BUSY`); Elasticsearch relies on document
+versioning, so the second writer hits a version conflict and the call raises
+rather than skipping. Elasticsearch is therefore not recommended as a
+concurrently-consumed claim store.
 
 **SQLAlchemy fast path (PostgreSQL only).** A single statement:
 
@@ -69,9 +67,8 @@ RETURNING *
 
 The inner `FOR UPDATE SKIP LOCKED` locks eligible rows and steps over rows other
 workers hold; the enclosing `UPDATE` claims exactly those rows; `RETURNING`
-hands them back — one round trip, no TOCTOU window. `RETURNING` does not
-preserve the inner `ORDER BY`, so the returned batch is re-sorted in Python to
-honour `order_by`.
+hands them back, one round trip, no TOCTOU window. `RETURNING` does not preserve the
+inner `ORDER BY`, so the returned batch is re-sorted in Python to honour `order_by`.
 
 **Memory adapter.** Holds the provider's reentrant lock (`threading.RLock`)
 across the whole read-and-claim section and delegates to the portable default.
@@ -92,19 +89,18 @@ sole fast-path dialect. A dedicated MySQL or MSSQL fast path can be added later
 **Transaction boundary.** `_claim` commits the claim through the
 DAO's standalone-commit path, so the lock and state change are durable the
 moment it returns. It must therefore be called **outside** an active Unit of
-Work — inside a UoW the write would not commit until the UoW does, so other
+Work, inside a UoW the write would not commit until the UoW does, so other
 workers would not see the claim and the lock-then-return guarantee would not
-hold. `OutboxProcessor.get_next_batch_of_messages` calls it with no surrounding
-UoW, which is correct.
+hold. `OutboxProcessor.get_next_batch_of_messages` calls it with no surrounding UoW, which is correct.
 
 `OutboxRepository.claim_batch(worker_id, limit, target_broker=None)` is the new
-public entry point, built on `_claim`, and `OutboxProcessor` uses it.
-The claim now happens once when the batch is fetched, not per message during
-processing. `OutboxRepository` is framework-internal plumbing (not part of the
-public `protean.*` surface user code builds on), so no deprecation cycle
-applies: `claim_for_processing` — the racy per-message claim that
-`claim_batch` supersedes — is removed outright, while `find_unprocessed` is
-kept as a read-only inspection query alongside its siblings (`find_failed`,
+public entry point, built on `_claim`, and `OutboxProcessor` uses it. The claim
+now happens once when the batch is fetched, not per message during processing.
+`OutboxRepository` is framework-internal plumbing (not part of the public
+`protean.*` surface user code builds on), so no deprecation cycle applies:
+`claim_for_processing` (the racy per-message claim that `claim_batch`
+supersedes) is removed outright, while `find_unprocessed` is kept as a
+read-only inspection query alongside its siblings (`find_failed`,
 `find_abandoned`, `find_published`, `find_processing`).
 
 This complements, rather than replaces, the optimistic-concurrency work from
@@ -113,23 +109,23 @@ epic 5.1 (`BaseDAO._validate_and_update_version`): version checking guards
 *queue-style claims* against double processing.
 
 Both rely on the same principle: a guarded `UPDATE … WHERE <expected state>` so
-the database, not the application, decides the winner. For aggregate updates the
-adapter enforces this with SQLAlchemy's native **`version_id_col`**: Protean owns
-the version value (`version_id_generator=False`, advanced by
-`_validate_and_update_version`), and the ORM flush emits `UPDATE … SET … ,
-_version = <new> WHERE id = :id AND _version = <loaded>`, raising `StaleDataError`
-— translated to `ExpectedVersionError` at commit — when a concurrent write already
-advanced the version. `version_id_col` is used here (rather than issuing an eager
-`UPDATE … WHERE _version = :expected` from the adapter) because the SQLAlchemy
-provider runs an **AUTOCOMMIT engine**: the UnitOfWork achieves atomicity by
-deferring every write to a single flush at commit, so an eager statement would
-autocommit mid-UoW and break transaction isolation and rollback. Because the
-version predicate rides the deferred flush, the guard is atomic without a serial
-isolation level while the write stays invisible until commit. A non-atomic
-read-compare-write (read the version in Python, compare, then write
-unconditionally) would *not* hold: two transactions can both read the same
-version and both write, silently losing one update — the failure the guarded
-`UPDATE` prevents.
+the database, not the application, decides the winner. For aggregate updates
+the adapter enforces this with SQLAlchemy's native **`version_id_col`**:
+Protean owns the version value (`version_id_generator=False`, advanced by
+`_validate_and_update_version`), and the ORM flush emits `UPDATE … SET …,
+_version = <new> WHERE id =:id AND _version = <loaded>`, raising
+`StaleDataError` (translated to `ExpectedVersionError` at commit) when a
+concurrent write already advanced the version. `version_id_col` is used here
+(rather than issuing an eager `UPDATE … WHERE _version =:expected` from the
+adapter) because the SQLAlchemy provider runs an **AUTOCOMMIT engine**: the
+UnitOfWork achieves atomicity by deferring every write to a single flush at
+commit, so an eager statement would autocommit mid-UoW and break transaction
+isolation and rollback. Because the version predicate rides the deferred flush,
+the guard is atomic without a serial isolation level while the write stays
+invisible until commit. A non-atomic read-compare-write (read the version in
+Python, compare, then write unconditionally) would *not* hold: two transactions
+can both read the same version and both write, silently losing one update. The
+failure the guarded `UPDATE` prevents.
 
 > **Superseded in part by ADR-0027.** The AUTOCOMMIT engine described above was
 > later removed. As of ADR-0027 a Unit of Work is one real database transaction,
@@ -138,33 +134,31 @@ version and both write, silently losing one update — the failure the guarded
 > contract in this ADR is unchanged. Only the transaction-model justification
 > above is superseded.
 
-**The aggregate root is the concurrency boundary — including child changes.**
+**The aggregate root is the concurrency boundary, including child changes.**
 The version guard above protects the root's own fields, but an aggregate can be
-modified purely through a child entity (a `HasMany`/`HasOne` member): a change to
-a line item's quantity, with no root-field change and no event. Such a change
-persists the child through the un-versioned path (`_update(expected_version=None)`
-— a child entity is not an aggregate, so `_validate_and_update_version` does not
-run for it), and `Repository._do_add` re-saves the root only when the root itself
-is new or changed. A child-only change would therefore leave the root's version
-untouched, and two concurrent child-only updates would both succeed — the child
-counterpart of the lost update above. We treat the aggregate root as the unit of
-concurrency control: `Repository._do_add` re-saves the root not only when the
-root's own fields changed but also when any persisted child was directly edited
-(`_has_changed_child`, which mirrors the direct-update detection already in
-`_sync_children`), so the guarded root save runs and advances `_version`. This
-covers a child's scalar, value-object, and reference fields uniformly, because
-the check reads the child's own `state_.is_changed` rather than the field kind.
-Under a transactional provider the child writes and the root version bump commit
-together in the Unit of Work.
+modified purely through a child entity (a `HasMany`/`HasOne` member): a change to a line
+item's quantity, with no root-field change and no event. Such a change persists
+the child through the un-versioned path (`_update(expected_version=None)`; a child entity is not an
+aggregate, so `_validate_and_update_version` does not run for it), and `Repository._do_add` re-saves the root only when the
+root itself is new or changed. A child-only change would therefore leave the
+root's version untouched, and two concurrent child-only updates would both
+succeed, the child counterpart of the lost update above. We treat the aggregate
+root as the unit of concurrency control: `Repository._do_add` re-saves the root not only when
+the root's own fields changed but also when any persisted child was directly
+edited (`_has_changed_child`, which mirrors the direct-update detection already in `_sync_children`), so the
+guarded root save runs and advances `_version`. This covers a child's scalar,
+value-object, and reference fields uniformly, because the check reads the
+child's own `state_.is_changed` rather than the field kind. Under a transactional provider the
+child writes and the root version bump commit together in the Unit of Work.
 
 Adding or removing a `HasMany` child through the `add_`/`remove_` collection
-methods is deliberately out of scope: those methods do not mark the root changed,
-`mark_changed` no-ops while a freshly added child is new (so it does not trip
-`_has_changed_child`), and concurrent adds of distinct children do not race the
-way concurrent edits of the same existing data do. Assigning or replacing a
-`HasOne` child (`aggregate.child = ...`) is different — it goes through the root's
-own `__setattr__`, marks the root changed, and is version-guarded like any
-root-field change.
+methods is deliberately out of scope: those methods do not mark the root
+changed, `mark_changed` no-ops while a freshly added child is new (so it does
+not trip `_has_changed_child`), and concurrent adds of distinct children do not
+race the way concurrent edits of the same existing data do. Assigning or
+replacing a `HasOne` child (`aggregate.child = ...`) is different. It goes
+through the root's own `__setattr__`, marks the root changed, and is
+version-guarded like any root-field change.
 
 Because an aggregate that has child rows forces its root `UPDATE` out at
 `repo.add` time (a flush to materialize the parent row before the child inserts
@@ -178,7 +172,7 @@ same mapping the commit path applies.
 
 - The outbox poll path drops from `1 + N` round trips to one (fast path) or
   stays at `1 + N` (portable default), with the TOCTOU window closed in both.
-- "Already claimed" contention log noise disappears on the fast path — workers
+- "Already claimed" contention log noise disappears on the fast path. Workers
   never select rows they cannot claim.
 - Because the claim now happens once at batch fetch (not per message), a worker
   that dies after claiming but before publishing leaves the **whole claimed
@@ -199,21 +193,19 @@ same mapping the commit path applies.
 
 ## Alternatives Considered
 
-- **Ship only the portable default.** Rejected — it is the same `1 + N` cost as
+- **Ship only the portable default**: Rejected. It is the same `1 + N` cost as
   today; the round-trip win is the whole point.
-- **`SELECT … FOR UPDATE SKIP LOCKED` followed by a separate `UPDATE`.** Rejected
-  — observed double-claims in testing because the row locks taken by the `SELECT`
-  were not reliably held across the Python round trip to the separate `UPDATE`,
-  and it is still two statements. The single `UPDATE … RETURNING` with the
-  locking sub-select is atomic and avoids the window entirely.
+- **`SELECT … FOR UPDATE SKIP LOCKED` followed by a separate `UPDATE`**: rejected, because testing showed double-claims: the row locks taken by the `SELECT`
+  were not reliably held across the Python round trip to the separate `UPDATE`, and
+  it is still two statements. The single `UPDATE … RETURNING` with the locking sub-select is
+  atomic and avoids the window entirely.
 - **Hand-rolled raw SQL per dialect (CTEs, `OUTPUT` for MSSQL, two-statement for
-  MySQL).** Rejected for now — PostgreSQL renders the whole claim from one
-  SQLAlchemy Core construct (`UPDATE … FOR UPDATE SKIP LOCKED … RETURNING`),
-  which is far less to maintain and get wrong, and it is the dialect most likely
-  to run a high-throughput outbox. MySQL/MariaDB (no `UPDATE … RETURNING`) and
-  MSSQL (`OUTPUT` + different table hints) would each need bespoke SQL, so they
-  use the portable default for now; dedicated fast paths can be added later if
-  profiling justifies them.
-- **Put dialect dispatch in `OutboxRepository`.** Rejected — the contract is
-  broader than the outbox and belongs at the DAO layer where other consumers can
-  reuse it.
+  MySQL).** Rejected for now, PostgreSQL renders the whole claim from one
+  SQLAlchemy Core construct (`UPDATE … FOR UPDATE SKIP LOCKED … RETURNING`), which is far less to maintain and get wrong,
+  and it is the dialect most likely to run a high-throughput outbox.
+  MySQL/MariaDB (no `UPDATE … RETURNING`) and MSSQL (`OUTPUT` + different table hints) would each
+  need bespoke SQL, so they use the portable default for now; dedicated fast
+  paths can be added later if profiling justifies them.
+- **Put dialect dispatch in `OutboxRepository`**: Rejected. The contract is
+  broader than the outbox and belongs at the DAO layer where other consumers
+  can reuse it.

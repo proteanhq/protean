@@ -1,9 +1,9 @@
 # Harden the server for production
 
-This guide walks through the operational steps of taking a Protean
-domain to production: raising connection pools, exposing Kubernetes
-health probes, enabling DLQ maintenance, picking subscription profiles,
-emitting OpenTelemetry metrics, and shutting down gracefully. For the
+Taking a Protean domain to production means a handful of operational steps:
+raising connection pools, exposing Kubernetes health probes, enabling DLQ
+maintenance, picking subscription profiles, emitting OpenTelemetry metrics,
+and shutting down gracefully. For the
 full catalogue of options, defaults, metric names, and profile values,
 see the [Server Hardening reference](../../reference/server/hardening.md).
 
@@ -51,12 +51,11 @@ the configuration above (`pool_size = 10`, `max_overflow = 20`):
 4 × (10 + 20) = 120 connections
 ```
 
-If the same database also serves an API tier with its own pool, add
-those connections too. Compare the total against your database's
-`max_connections` setting and leave headroom for admin sessions,
-migrations, and read replicas. On PostgreSQL the default
-`max_connections` is `100` — under-sizing the database is the more
-common failure than under-sizing Protean's pool.
+If the same database also serves an API tier with its own pool, add those
+connections too. Compare the total against your database's `max_connections`
+setting and leave headroom for admin sessions, migrations, and read replicas.
+On PostgreSQL the default `max_connections` is `100`. Under-sizing the database
+is the more common failure than under-sizing Protean's pool.
 
 ## Expose health probes to Kubernetes
 
@@ -167,13 +166,13 @@ def on_dlq_alert(dlq_stream: str, depth: int, threshold: int) -> None:
         logger.exception("Failed to post DLQ alert to Slack")
 ```
 
-The callback fires once per maintenance cycle while the threshold is
-breached. Any exception it raises is caught and logged — a broken
-alert handler will not stall the engine.
+The callback fires once per maintenance cycle while the threshold is breached.
+Any exception it raises is caught and logged. A broken alert handler will not
+stall the engine.
 
 Override retention or alerting per handler when a subscription needs
-different SLAs — for example, an auditing handler that must keep 30
-days of failures:
+different SLAs, for example, an auditing handler that must keep 30 days of
+failures:
 
 ```python
 @domain.event_handler(
@@ -246,7 +245,7 @@ Connection-pool and backpressure gauges
 (`protean.db.pool_*`, `protean.broker.pool_active_connections`,
 `protean.subscription.consumer_lag`) are lazily registered on the
 Observatory's `/metrics` endpoint. Scrape it with Prometheus
-alongside your OTLP exporter — see [Monitoring](./monitoring.md).
+alongside your OTLP exporter, see [Monitoring](./monitoring.md).
 
 Every metric is a no-op when `opentelemetry-api` is not installed.
 
@@ -257,8 +256,7 @@ the health server, signalling every subscription and outbox processor
 to stop, waiting up to 10 seconds for in-flight handlers to finish,
 then closing the event store, brokers, caches, and providers in
 reverse initialisation order. Send `SIGTERM` and give the pod a
-`terminationGracePeriodSeconds` of at least `15` — long enough for
-the drain and close steps to complete:
+`terminationGracePeriodSeconds` of at least `15`, long enough for the drain and close steps to complete:
 
 ```yaml
 spec:
@@ -289,8 +287,8 @@ adapter holds sockets, file handles, or background threads.
 
 ## See also
 
-- [Server Hardening reference](../../reference/server/hardening.md) — every option, default, and metric catalogued.
-- [Production Deployment](./production-deployment.md) — process management, Docker, and Kubernetes manifests.
-- [Error Handling](./error-handling.md) — retry flow per subscription type and version-conflict auto-retry.
-- [Dead Letter Queues](./dead-letter-queues.md) — inspect, replay, and purge DLQ entries.
-- [OpenTelemetry Integration](./opentelemetry.md) — exporter setup, TraceParent propagation, and the full span catalogue.
+- [Server Hardening reference](../../reference/server/hardening.md): Every option, default, and metric catalogued.
+- [Production Deployment](./production-deployment.md): Process management, Docker, and Kubernetes manifests.
+- [Error Handling](./error-handling.md): Retry flow per subscription type and version-conflict auto-retry.
+- [Dead Letter Queues](./dead-letter-queues.md): Inspect, replay, and purge DLQ entries.
+- [OpenTelemetry Integration](./opentelemetry.md): Exporter setup, TraceParent propagation, and the full span catalogue.

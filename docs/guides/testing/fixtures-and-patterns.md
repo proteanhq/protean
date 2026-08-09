@@ -2,19 +2,19 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-This guide covers reusable pytest fixtures and `conftest.py` recipes for
-Protean projects. A well-organized fixture hierarchy keeps your tests focused,
-fast, and free of boilerplate.
+Reusable pytest fixtures and `conftest.py` recipes for Protean projects. A
+well-organized fixture hierarchy keeps tests focused and fast, and keeps
+boilerplate out of them.
 
 ## Protean's Pytest Plugin
 
 Protean ships with a pytest plugin that is **automatically activated** when
-Protean is installed — no configuration required. The plugin provides:
+Protean is installed, no configuration required. The plugin provides:
 
-- **`--protean-env` CLI option** — sets `PROTEAN_ENV` before test collection
+- **`--protean-env` CLI option**: Sets `PROTEAN_ENV` before test collection
   (default: `test`), so `domain.toml` environment overlays are applied when
   Domain instances are constructed at import time.
-- **Standard markers** — registers `domain`, `application`, `integration`, and
+- **Standard markers**: Registers `domain`, `application`, `integration`, and
   `slow` markers so `--strict-markers` doesn't complain.
 
 ### `DomainFixture`
@@ -422,7 +422,7 @@ provider = "inline"
 ```
 
 Because `--protean-env` applies before test collection, a single `conftest.py`
-works for both modes -- no per-directory overrides needed. The "Integration-Ready
+works for both modes, no per-directory overrides needed. The "Integration-Ready
 conftest" recipe above still works, but `--protean-env` is the cleaner approach
 for most projects.
 

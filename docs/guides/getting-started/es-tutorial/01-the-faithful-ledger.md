@@ -5,10 +5,10 @@ platform, **Fidelis**. By the end, we will have an event-sourced
 `Account` aggregate that records every state change as an immutable event
 and reconstructs its balance by replaying those events.
 
-A bank cannot simply store the current balance and overwrite it on every
-transaction. Every deposit, every withdrawal is a **fact** that happened
-— and facts cannot be undone. Event Sourcing captures this reality:
-instead of storing state, we store the events that produced it.
+A bank cannot store the current balance and overwrite it on every transaction.
+Every deposit, every withdrawal is a **fact** that happened, and facts cannot
+be undone. Event Sourcing captures this reality: instead of storing state, we
+store the events that produced it.
 
 ## Setting Up
 
@@ -88,8 +88,8 @@ Let's create an account and persist it:
 Two important things happen:
 
 1. **`repo.add(account)`** does not write a row to a database. It writes
-   the `AccountOpened` event to the **event store** — an append-only log
-   of everything that has ever happened.
+   the `AccountOpened` event to the **event store**. An append-only log of
+   everything that has ever happened.
 
 2. **`repo.get(account.id)`** does not read a row. It fetches all events
    for this account from the event store and replays them through the
@@ -110,9 +110,9 @@ Version: 0
 All checks passed!
 ```
 
-The balance was not stored anywhere — it was derived from the single
-`AccountOpened` event. The `_version` starts at `0`, corresponding to
-the first event.
+The balance was not stored anywhere. It was derived from the single
+`AccountOpened` event. The `_version` starts at `0`, corresponding to the first
+event.
 
 ## Exploring in the Shell
 
@@ -138,7 +138,7 @@ inspect the event store interactively:
 
 ## What We Built
 
-- A **Domain** named "fidelis" — the container for our banking logic.
+- A **Domain** named "fidelis", the container for our banking logic.
 - An **AccountOpened** event describing the fact of account creation.
 - An event-sourced **Account** aggregate with an `@apply` handler.
 - A factory method that uses `_create_new()` and `raise_()`.
@@ -146,8 +146,8 @@ inspect the event store interactively:
   replaying them.
 
 All of this ran in-memory with no infrastructure. In the next chapter,
-we will add deposits and withdrawals — multiple events flowing through
-a single aggregate.
+we will add deposits and withdrawals, multiple events flowing through a single
+aggregate.
 
 ## Full Source
 

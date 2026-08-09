@@ -129,16 +129,16 @@ each external broker, processed independently with stripped metadata envelopes.
 
 Learn more in [External Event Dispatch](../../guides/server/external-event-dispatch.md).
 
-## In This Section
+## Pages in this section
 
-- [Engine Architecture](engine.md) - How the engine manages subscriptions and
+- [Engine Architecture](engine.md): How the engine manages subscriptions and
   lifecycle
-- [Subscriptions](subscriptions.md) - How handlers connect to message sources
-- [Subscription Types](../../reference/server/subscription-types.md) - StreamSubscription vs
+- [Subscriptions](subscriptions.md): How handlers connect to message sources
+- [Subscription Types](../../reference/server/subscription-types.md): StreamSubscription vs
   EventStoreSubscription
-- [Configuration](../../reference/server/configuration.md) - Configuring subscriptions with profiles
+- [Configuration](../../reference/server/configuration.md): Configuring subscriptions with profiles
   and options
-- [Outbox Pattern](outbox.md) - Reliable message publishing
-- [Observability](../../reference/server/observability.md) - Real-time tracing and the Observatory
+- [Outbox Pattern](outbox.md): Reliable message publishing
+- [Observability](../../reference/server/observability.md): Real-time tracing and the Observatory
   monitoring server
-- [Running the Server](../../guides/server/index.md) - CLI options and deployment
+- [Running the Server](../../guides/server/index.md): CLI options and deployment

@@ -3,12 +3,12 @@
 !!! info "Builds on CQRS"
     Event Sourcing extends the [CQRS pathway](./cqrs.md) with event replay,
     temporal queries, and full audit trails. If you haven't read the CQRS
-    pathway yet, start there — Event Sourcing builds on those concepts.
+    pathway yet, start there, Event Sourcing builds on those concepts.
 
 !!! tip "Hands-On Tutorial"
     For a hands-on, project-based introduction, see the
-    **[Event Sourcing Tutorial](../getting-started/es-tutorial/index.md)**
-    — a 22-chapter guide that builds a complete banking platform from
+    **[Event Sourcing Tutorial](../getting-started/es-tutorial/index.md)**:
+    A 22-chapter guide that builds a complete banking platform from
     scratch, covering every Event Sourcing capability in Protean.
 
 ## Overview
@@ -59,9 +59,8 @@ sequenceDiagram
    Store
 4. It **replays** them through the aggregate's `@apply` methods to rebuild
    current state
-5. The handler invokes the **domain method**, which calls `raise_()` —
-   `raise_()` automatically invokes the corresponding `@apply` handler,
-   mutating state in-place
+5. The handler invokes the **domain method**, which calls `raise_()`, `raise_()`
+   automatically invokes the corresponding `@apply` handler, mutating state in-place
 6. The repository **appends** the new events to the Event Store
 7. Events flow to **Projectors** that update read-optimized **Projections**
 
@@ -73,7 +72,7 @@ sequenceDiagram
 | Aggregate methods | Use `@apply` decorator for event application |
 | `@domain.repository` | Replace with `@domain.event_sourced_repository` |
 | Persistence Store | Replace with **Event Store** (e.g., Message DB) |
-| Everything else | Commands, Command Handlers, Projections, Projectors — unchanged |
+| Everything else | Commands, Command Handlers, Projections, Projectors, unchanged |
 
 ## Elements You'll Use
 
@@ -82,7 +81,7 @@ Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 | Element | Purpose |
 |---------|---------|
 | Event Sourced Aggregates | Aggregates with `event_sourced=True` that derive state from events |
-| `@apply` decorator | Methods that define how each event type mutates aggregate state — called automatically by `raise_()` and during replay |
+| `@apply` decorator | Methods that define how each event type mutates aggregate state, called automatically by `raise_()` and during replay |
 | Event Sourced Repository | Persists events and reconstructs aggregates from event streams |
 | Fact Events | Auto-generated snapshot events capturing full aggregate state |
 | [Event Store adapter](../../reference/adapters/eventstore/index.md) | Infrastructure for storing and retrieving events (e.g., Message DB) |
@@ -161,8 +160,8 @@ design, command and event handling, and event schema evolution:
 In event-sourced aggregates, state changes are expressed through events.
 The `@apply` decorator marks methods that define how each event type
 mutates the aggregate's state. These handlers are invoked automatically
-by `raise_()` during live operations and during event replay —
-making them the **single source of truth** for all state mutations:
+by `raise_()` during live operations and during event replay, making them the **single
+source of truth** for all state mutations:
 
 ```python
 @domain.aggregate(event_sourced=True)
@@ -187,7 +186,7 @@ When `place()` calls `raise_()`, the framework automatically invokes
 `placed()` to apply the state change. The same `placed()` method runs
 during replay when the aggregate is loaded from the event store. Every
 event raised by an ES aggregate **must** have a corresponding `@apply`
-handler — raising an event without one will throw `NotImplementedError`.
+handler, raising an event without one will throw `NotImplementedError`.
 
 ### Fact Events
 
@@ -198,9 +197,9 @@ projections without replaying the full event history.
 
 ### Mixing Patterns Per Aggregate
 
-Protean allows mixing CQRS and Event Sourcing **at the aggregate level**
-within the same domain. Some aggregates can use standard repositories while
-others use event sourcing — the decision is explicit and per-aggregate:
+Protean allows mixing CQRS and Event Sourcing **at the aggregate level** within
+the same domain. Some aggregates can use standard repositories while others use
+event sourcing. The decision is explicit and per-aggregate:
 
 ```python
 @domain.aggregate  # Standard CQRS — state stored as snapshots

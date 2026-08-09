@@ -9,23 +9,23 @@
 ## Context
 
 A production incident in a HubSpot integration exposed a class of
-concurrency bugs in event-driven systems. Two webhooks -- Client Creation
-(CC) and Client-Contact Association Change (CCA) -- fired in rapid
-succession. Two workers picked up these events concurrently. The CC
-handler began creating a Client aggregate. Simultaneously, the CCA
-handler looked for the Client, didn't find it yet (CC hadn't committed),
-and created its own copy. Result: duplicate Client records.
+concurrency bugs in event-driven systems. Two webhooks, Client Creation (CC)
+and Client-Contact Association Change (CCA), fired in rapid succession. Two
+workers picked up these events concurrently. The CC handler began creating a
+Client aggregate. Simultaneously, the CCA handler looked for the Client, didn't
+find it yet (CC hadn't committed), and created its own copy. Result: duplicate
+Client records.
 
 This triggered a thorough analysis of how Protean handles concurrent
 event processing. The analysis identified four problem classes:
 
-1. **Concurrent entity creation** -- multiple events trigger "find or
+1. **Concurrent entity creation**: Multiple events trigger "find or
    create" logic for the same aggregate
-2. **Concurrent aggregate mutation** -- multiple events modify the same
+2. **Concurrent aggregate mutation**: Multiple events modify the same
    aggregate simultaneously
-3. **Causal dependency violation** -- event B depends on side effects of
+3. **Causal dependency violation**: Event B depends on side effects of
    event A, but B executes before A's effects are visible
-4. **Duplicate processing** -- the same event is delivered twice due to
+4. **Duplicate processing**: The same event is delivered twice due to
    at-least-once delivery semantics
 
 An industry survey of Axon (Java), Eventuous (.NET), Marten (.NET), and
@@ -57,10 +57,9 @@ save and raises `ExpectedVersionError` on mismatch. The `@handle`
 decorator retries with exponential backoff (3 retries, 50ms-1s,
 configurable via `[server.version_retry]`).
 
-We will **not** add a `concurrency_strategy = "optimistic"` Meta option.
-OCC is a correctness mechanism, not a configuration choice. Adding an
-opt-in would imply that running without version checking is a valid
-option -- it is not.
+We will **not** add a `concurrency_strategy = "optimistic"` Meta option. OCC is
+a correctness mechanism, not a configuration choice. Adding an opt-in would
+imply that running without version checking is a valid option. It is not.
 
 The existing atomic race condition (SELECT-compare-UPDATE instead of
 conditional UPDATE) will be fixed in 5.1 #793. This is a bug fix in
@@ -75,11 +74,11 @@ domain layer (invariants), not the database layer."
 
 The DDD-correct solutions for creation races are:
 
-- **Process Manager**: coordinates the flow when events have causal
+- **Process Manager**: Coordinates the flow when events have causal
   dependencies (CC must complete before CCA can act)
-- **Combine into a single handler**: if both events target the same
+- **Combine into a single handler**: If both events target the same
   aggregate, a single handler serializes processing naturally
-- **Unique constraints + retry**: the database prevents duplicates
+- **Unique constraints + retry**: The database prevents duplicates
   via unique constraints; `ExpectedVersionError` retry handles the
   transient conflict
 
@@ -88,9 +87,9 @@ The DDD-correct solutions for creation races are:
 We considered adding `idempotent_by` on event handlers with a
 framework-managed idempotency store, but decided against it because:
 
-- Idempotency is inherently a business-logic concern -- the "right"
-  deduplication strategy depends on the operation (set-based,
-  dedup-tracked, upsert)
+- Idempotency is inherently a business-logic concern, the "right"
+  deduplication strategy depends on the operation (set-based, dedup-tracked,
+  upsert)
 - Protean already has comprehensive pattern documentation for
   idempotent event handlers (600+ lines covering three strategies)
 - Command idempotency via `IdempotencyStore` is already built for the
@@ -131,33 +130,33 @@ worked example of the HubSpot scenario refactored three ways.
 
 ### Positive
 
-- **No new infrastructure to maintain.** The framework stays lean.
+- **No new infrastructure to maintain**: The framework stays lean.
   Concurrency safety comes from composing existing primitives (OCC, PM,
   idempotent patterns), not from new mechanisms.
 
-- **DDD philosophy preserved.** Creation logic stays in the domain layer.
+- **DDD philosophy preserved**: Creation logic stays in the domain layer.
   Coordination logic stays in Process Managers. The framework guides
   developers toward correct patterns rather than providing database-level
   escape hatches.
 
-- **Existing OCC gets stronger.** The atomic fix in 5.1 #793 closes the
+- **Existing OCC gets stronger**: The atomic fix in 5.1 #793 closes the
   last real gap in version checking.
 
-- **Lint rule catches the structural smell early.** Cross-cluster event
+- **Lint rule catches the structural smell early**: Cross-cluster event
   handling without a PM is flagged before it causes production issues.
 
 ### Negative
 
-- **Developers must understand the patterns.** There is no "just add
+- **Developers must understand the patterns**: There is no "just add
   `sequential_by` and it works" shortcut. The pattern doc must be
   excellent to bridge this gap.
 
-- **`sequential_by` is deferred.** For high-throughput systems with many
+- **`sequential_by` is deferred**: For high-throughput systems with many
   handlers on the same stream, the only current option for sequential
   processing is combining handlers or using a PM. Partition-key-based
   routing comes in R4.
 
-- **No database-level upsert.** Developers who want `find_or_create`
+- **No database-level upsert**: Developers who want `find_or_create`
   must implement it in their adapter layer outside the framework, or use
   the recommended DDD patterns instead.
 
@@ -177,9 +176,9 @@ stage (partitioned streams).
 
 An idempotency store for events (similar to the existing command
 `IdempotencyStore`) was considered. We decided against it because event
-handler idempotency is a business-logic concern -- the right dedup
-strategy varies by operation type, and the existing pattern docs already
-provide comprehensive guidance.
+handler idempotency is a business-logic concern, the right dedup strategy
+varies by operation type, and the existing pattern docs already provide
+comprehensive guidance.
 
 ### `CONCURRENT_ENTITY_HANDLERS` lint rule
 

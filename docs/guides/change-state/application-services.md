@@ -22,7 +22,7 @@ decorator:
 
 1. The `@auth.application_service(part_of=User)` decorator registers the class
 as an Application Service associated with the `User` aggregate. The `part_of`
-option is mandatory — every Application Service must be linked to exactly one
+option is mandatory. Every Application Service must be linked to exactly one
 aggregate.
 
 2. The `@use_case` decorator on `register_user` marks the method as a use case
@@ -56,12 +56,12 @@ from protean import use_case
 
 It has two responsibilities:
 
-1. **Unit of Work wrapping** — every method decorated with `@use_case` is
+1. **Unit of Work wrapping**: Every method decorated with `@use_case` is
 automatically enclosed in a `UnitOfWork` context. If the method completes
 successfully, the UoW commits all pending changes. If an exception is raised,
 the UoW rolls back all changes.
 
-2. **Execution logging** — the decorator logs the invocation of each use case
+2. **Execution logging**: The decorator logs the invocation of each use case
 at the INFO level, providing traceability for debugging and auditing.
 
 ```python
@@ -168,9 +168,9 @@ immediately.
 
 ## Unit of Work
 
-Use case methods always execute within a `UnitOfWork` context — if the method
-completes successfully, all changes are committed; if an exception is raised,
-everything is rolled back.
+Use case methods always execute within a `UnitOfWork` context, if the method completes
+successfully, all changes are committed; if an exception is raised, everything
+is rolled back.
 
 For details on how the Unit of Work pattern works, see the
 [Unit of Work](unit-of-work.md) guide.
@@ -244,20 +244,20 @@ def test_register_user(test_domain):
 ```
 
 Because application services always execute synchronously, no special
-configuration is needed — you call the method and assert on the result.
+configuration is needed. You call the method and assert on the result.
 
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Application Services](../../concepts/building-blocks/application-services.md) — Orchestrating use cases between external callers and the domain model.
+    **Concept overview:** [Application Services](../../concepts/building-blocks/application-services.md): Orchestrating use cases between external callers and the domain model.
 
     **Related guides:**
 
-    - [Command Handlers](./command-handlers.md) — The async alternative for fire-and-forget command processing.
-    - [Repositories](./repositories.md) — Persisting and retrieving aggregates.
-    - [Unit of Work](./unit-of-work.md) — Transaction management and commit lifecycle.
+    - [Command Handlers](./command-handlers.md): The async alternative for fire-and-forget command processing.
+    - [Repositories](./repositories.md): Persisting and retrieving aggregates.
+    - [Unit of Work](./unit-of-work.md): Transaction management and commit lifecycle.
 
     **Patterns:**
 
-    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md) — When to use which, with decision tree and comparison table.
-    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping application services thin by delegating to domain logic.
+    - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md): When to use which, with decision tree and comparison table.
+    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping application services thin by delegating to domain logic.

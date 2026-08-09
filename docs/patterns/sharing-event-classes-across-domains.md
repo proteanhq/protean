@@ -2,10 +2,10 @@
 
 ## The Problem
 
-Two domains -- Order and Fulfillment -- communicate through events. The Order
+Two domains (Order and Fulfillment) communicate through events. The Order
 domain raises `OrderPlaced`. The Fulfillment domain consumes it. A developer
-extracts the `OrderPlaced` class into a shared library so both domains use
-the same class definition:
+extracts the `OrderPlaced` class into a shared library so both domains use the
+same class definition:
 
 ```
 shared-events/
@@ -19,31 +19,31 @@ fulfillment-domain/
   requirements.txt     # depends on shared-events
 ```
 
-This feels clean -- no duplication, one source of truth. But it creates a form
-of coupling that undermines the autonomy that bounded contexts are supposed to
+This feels clean, no duplication, one source of truth. But it creates a form of
+coupling that undermines the autonomy that bounded contexts are supposed to
 provide:
 
-- **Release coupling.** When the Order domain needs to add a field to
+- **Release coupling**: When the Order domain needs to add a field to
   `OrderPlaced`, it must update the shared library, release a new version, and
   wait for the Fulfillment domain to upgrade. If the Fulfillment domain is
   maintained by a different team or on a different release cadence, this
   creates coordination overhead.
 
-- **Diamond dependency.** Both domains depend on the shared library. If the
+- **Diamond dependency**: Both domains depend on the shared library. If the
   Order domain needs version 2.0 and the Fulfillment domain is still on 1.5,
   you have a version conflict. Resolving it means either forcing the
   Fulfillment team to upgrade or maintaining backward compatibility in the
-  shared library -- both add friction.
+  shared library. Both add friction.
 
-- **Conceptual coupling.** The `OrderPlaced` class now serves two masters. It
+- **Conceptual coupling**: The `OrderPlaced` class now serves two masters. It
   must satisfy the Order domain's need to express what happened *and* the
   Fulfillment domain's need to consume it. If these needs diverge (Order wants
   to add internal fields, Fulfillment only needs a subset), the shared class
   becomes a compromise.
 
-- **Deployment coupling.** If the shared library has a bug or a breaking
-  change, both domains are affected simultaneously. Independent deployment --
-  a key benefit of bounded contexts -- is compromised.
+- **Deployment coupling**: If the shared library has a bug or a breaking
+  change, both domains are affected simultaneously. Independent deployment (a
+  key benefit of bounded contexts) is compromised.
 
 The root cause: **sharing code across domain boundaries creates coupling that
 sharing messages avoids**.
@@ -309,10 +309,10 @@ bounded contexts), sharing event classes adds no deployment coupling because
 they're already coupled. The overhead of maintaining separate classes may not
 be worth it.
 
-Protean supports this scenario with `register_external_event()`. Each
-domain defines its own event class and registers it with the external
-event's type string — there is no code-level import between domains,
-but you get typed events and IDE support:
+Protean supports this scenario with `register_external_event()`. Each domain
+defines its own event class and registers it with the external event's type
+string. There is no code-level import between domains, but you get typed events
+and IDE support:
 
 ```python
 # Fulfillment domain's own class, not imported from Billing
@@ -331,7 +331,7 @@ This gives you the benefits of typed events (validation, autocomplete,
 handler signatures) while keeping the shared contract at the schema
 level (the type string), not the code level (a shared import).
 
-See [Multi-Domain Applications — Cross-domain
+See [Multi-Domain Applications, Cross-domain
 communication](../guides/multi-domain-applications.md#cross-domain-communication)
 for the full guidance on when to use this approach vs. subscribers.
 
@@ -362,7 +362,7 @@ shared-events/
 
 What started as one shared event class grew into a large shared library that
 every domain depends on. Changes to any file affect all domains. This is an
-accidental shared kernel -- coupling by convenience, not by design.
+accidental shared kernel, coupling by convenience, not by design.
 
 ### Exposing Internal Events
 
@@ -394,18 +394,18 @@ belong to the publishing domain and should not be part of the public contract.
 | Schema registry | Low | Very High | Large-scale, many domains |
 | Intentional shared kernel | Medium | Medium | Stable, agreed-upon concepts |
 
-The principle: **domains communicate through messages, not through shared code.
-Each domain defines its own classes that conform to the agreed-upon schema.
-Share the contract (schema), not the implementation (classes). Use contract
-tests to verify compatibility without code dependencies.**
+Domains communicate through messages, not through shared code. Each domain
+defines its own classes that conform to the agreed-upon schema. Share the
+contract (schema), not the implementation (classes). Use contract tests to
+verify compatibility without code dependencies.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../concepts/building-blocks/events.md) — Event structure and cross-domain communication.
+    - [Events](../concepts/building-blocks/events.md): Event structure and cross-domain communication.
 
     **Guides:**
 
-    - [Events](../guides/domain-definition/events.md) — Defining events, metadata, and versioning.
+    - [Events](../guides/domain-definition/events.md): Defining events, metadata, and versioning.

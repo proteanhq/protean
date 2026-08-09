@@ -14,22 +14,22 @@ cost is invisible on small development data and grows with the production table.
 
 `protean check` reads two halves and joins them:
 
-- the **declared-index** half — the indexes declared on the aggregate, from the
+- the **declared-index** half, the indexes declared on the aggregate, from the
   IR, and
-- the **filter-path** half — the fields each repository query names, read from
+- the **filter-path** half. The fields each repository query names, read from
   method bodies through the behavioral-analysis substrate.
 
 It reports one finding per uncovered field per call-site: the same field
 filtered in two methods yields two findings, each pointing at its own query.
 
-A query is any of the repository read surfaces — `filter`, `get`, `find`,
-`find_by`, `exclude` — recognised on a receiver that statically resolves to a
-registered repository or aggregate class (or is self-rooted, `self._dao`, inside
-a repository). The finding is attributed to the **aggregate** (that is where the
-`Index()` fix and the natural suppression site live), names the field, and points
-at the call-site as `<element>.<method>, line N` — the enclosing element and
-source line, stable across machines so it does not pollute the content-checksummed
-IR (the absolute source path is deliberately left out).
+A query is any of the repository read surfaces (`filter`, `get`, `find`,
+`find_by`, `exclude`) recognised on a receiver that statically resolves to a
+registered repository or aggregate class (or is self-rooted, `self._dao`,
+inside a repository). The finding is attributed to the **aggregate** (that is
+where the `Index()` fix and the natural suppression site live), names the
+field, and points at the call-site as `<element>.<method>, line N`, the enclosing element and source
+line, stable across machines so it does not pollute the content-checksummed IR
+(the absolute source path is deliberately left out).
 
 An operator lookup such as `age__gte`, `status__in`, or `email__contains` filters
 its base field: the rule strips the `__<lookup>` suffix and evaluates the base
@@ -40,9 +40,9 @@ flagged and one on an indexed column is not.
 
 A filtered field is **not** flagged when:
 
-- it is the aggregate's **identifier** — a relational backend indexes the
+- it is the aggregate's **identifier**, a relational backend indexes the
   primary key;
-- it carries a single-column **`unique=True`** constraint — a unique constraint
+- it carries a single-column **`unique=True`** constraint. A unique constraint
   is a real index on a relational backend; or
 - it is the **leading column** of a declared `Index`.
 
@@ -56,18 +56,17 @@ The rule is deterministic and conservative: where it cannot resolve a query to a
 specific aggregate, it **skips rather than guesses**, so an unresolved join is a
 silent miss, never a false positive. It deliberately does **not** cover:
 
-- **Dynamic filters.** `filter(**kwargs)` names no field, so it is skipped.
-- **Unresolvable receivers.** A `.filter(...)` on a receiver static analysis
-  cannot tie to a registered class is skipped — a plain local variable or
-  parameter, or the idiomatic `current_domain.repository_for(Order).filter(...)`
-  whose receiver is a call result. Only a receiver that resolves to a repository
-  or aggregate **class** (`OrderRepository.filter(...)`, `Order.filter(...)`) or
-  a self-rooted repository query joins today; instance and `repository_for(...)`
-  receivers wait on dataflow.
-- **Non-scalar names.** A filter naming a value-object attribute, an
+- **Dynamic filters**: `filter(**kwargs)` names no field, so it is skipped.
+- **Unresolvable receivers**: A `.filter(...)` on a receiver static analysis
+  cannot tie to a registered class is skipped, a plain local variable or
+  parameter, or the idiomatic `current_domain.repository_for(Order).filter(...)` whose receiver is a call result. Only a
+  receiver that resolves to a repository or aggregate **class** (`OrderRepository.filter(...)`, `Order.filter(...)`) or a
+  self-rooted repository query joins today; instance and `repository_for(...)` receivers wait on
+  dataflow.
+- **Non-scalar names**: A filter naming a value-object attribute, an
   association, or a name that is not a declared scalar field of the aggregate is
   left alone (the same scalar-field scope as the sibling persistence rules).
-- **Abstract aggregates.** A non-instantiable base emits no table, so a filter
+- **Abstract aggregates**: A non-instantiable base emits no table, so a filter
   path joined to one is not flagged.
 
 ## Why it matters
@@ -81,7 +80,7 @@ it mechanically, at build time, from the code as written.
 
 ## Example
 
-Flagged — a repository filters on a field the aggregate does not index:
+Flagged, a repository filters on a field the aggregate does not index:
 
 ```python
 from protean import Domain, Index
@@ -107,7 +106,7 @@ class OrderRepository:
         return self._dao.filter(status="open")
 ```
 
-Compliant — the filtered field is indexed:
+Compliant. The filtered field is indexed:
 
 ```python
 @domain.aggregate(indexes=[Index("status"), Index("reference")])
@@ -122,8 +121,8 @@ class Order:
 - Add an index led by the field to the aggregate
   (`indexes=[Index("reference")]`, or a composite index whose **leading** column
   is this field), or
-- suppress the check when the scan is acceptable — a small lookup table, or a
-  one-off admin/reporting query where the cost does not matter.
+- suppress the check when the scan is acceptable, a small lookup table, or a
+   one-off admin/reporting query where the cost does not matter.
 
 ## Suppressing
 

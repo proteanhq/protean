@@ -101,14 +101,14 @@ cache.flush_all()
 
 ## Limitations
 
-- **Requires Redis Server** -- Redis must be installed and running. Use
+- **Requires Redis Server**: Redis must be installed and running. Use
   `make up` to start Protean's Docker-based development services.
-- **Memory Bound** -- Redis stores data in memory. Ensure sufficient RAM for
+- **Memory Bound**: Redis stores data in memory. Ensure sufficient RAM for
   your cache working set.
-- **No Complex Queries** -- The cache API supports key-based and pattern-based
+- **No Complex Queries**: The cache API supports key-based and pattern-based
   lookups only. For complex queries, use a database-backed projection instead.
 
-## Next Steps
+## Related pages
 
 - Learn about [projections](../../../guides/consume-state/projections.md)
 - Understand [cache configuration](../../../reference/configuration/index.md)

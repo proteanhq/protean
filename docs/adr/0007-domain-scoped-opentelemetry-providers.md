@@ -9,11 +9,11 @@
 
 ## Context
 
-Protean needed production-grade observability -- distributed tracing and
-metrics -- to support ops teams shipping telemetry to backends like
-Grafana, Datadog, and Jaeger. OpenTelemetry (OTEL) was the natural choice:
-it is vendor-agnostic, widely adopted, and provides the W3C TraceContext
-propagation that Protean's `TraceParent` value object already uses.
+Protean needed production-grade observability (distributed tracing and metrics)
+to support ops teams shipping telemetry to backends like Grafana, Datadog, and
+Jaeger. OpenTelemetry (OTEL) was the natural choice: it is vendor-agnostic,
+widely adopted, and provides the W3C TraceContext propagation that Protean's
+`TraceParent` value object already uses.
 
 OTEL's recommended usage pattern is to register a single global
 `TracerProvider` and `MeterProvider` at process startup via
@@ -23,33 +23,31 @@ conventional applications that have exactly one telemetry configuration
 per process.
 
 Protean's `Domain` class, however, is designed to be instantiated multiple
-times in the same process -- most commonly in tests, where each test case
-may create its own `Domain(name="Test")` with different configuration.
-The OTEL global registration model creates three problems in this context:
+times in the same process, most commonly in tests, where each test case may
+create its own `Domain(name="Test")` with different configuration. The OTEL global registration
+model creates three problems in this context:
 
-1. **Single-assignment semantics.** OTEL globals are write-once: the first
+1. **Single-assignment semantics**: OTEL globals are write-once: the first
    call to `set_tracer_provider()` wins, and subsequent calls are silently
    ignored (or log a warning). A second domain in the same process cannot
    override the provider with its own configuration.
 
-2. **Shutdown leaves broken globals.** Calling `shutdown()` on the global
+2. **Shutdown leaves broken globals**: Calling `shutdown()` on the global
    provider puts it into a terminal state. Any spans created afterward are
    silently dropped. In tests, where domains are created, activated, and
    shut down repeatedly, this means only the first test gets real spans.
 
-3. **No per-domain configuration.** Different domains may need different
+3. **No per-domain configuration**: Different domains may need different
    service names, exporters, or resource attributes. A single global
    provider cannot express this.
 
-Protean also already had an existing observability system -- the
-**Observatory** -- which provides zero-config, real-time tracing for
-developers running `protean server` locally. Observatory uses Redis
-Streams and SSE, producing flat `MessageTrace` events. OTEL needed to
-coexist with Observatory without replacing it: Observatory serves
-developers; OTEL serves ops teams. The two systems share instrumentation
-callsites but have independent emission paths, connected only at the
-`/metrics` endpoint where OTEL's `PrometheusMetricReader` takes over
-when available.
+Protean also already had an existing observability system (the **Observatory**)
+which provides zero-config, real-time tracing for developers running `protean server`
+locally. Observatory uses Redis Streams and SSE, producing flat `MessageTrace` events.
+OTEL needed to coexist with Observatory without replacing it: Observatory
+serves developers; OTEL serves ops teams. The two systems share instrumentation
+callsites but have independent emission paths, connected only at the `/metrics`
+endpoint where OTEL's `PrometheusMetricReader` takes over when available.
 
 ## Decision
 
@@ -74,13 +72,13 @@ Providers are created during `init_telemetry(domain)`, which is called
 lazily on first access to `domain.tracer` or `domain.meter`. A sentinel
 flag (`_otel_init_attempted`) prevents repeated initialization attempts.
 `shutdown_telemetry(domain)` flushes and destroys the providers, then
-resets the sentinel so a new initialization cycle is possible -- critical
-for test isolation.
+resets the sentinel so a new initialization cycle is possible, critical for
+test isolation.
 
 The `Domain` class exposes two lazy properties:
 
-- `domain.tracer` -- returns a configured OTEL `Tracer` or a `_NoOpTracer`
-- `domain.meter` -- returns a configured OTEL `Meter` or a `_NoOpMeter`
+- `domain.tracer`: Returns a configured OTEL `Tracer` or a `_NoOpTracer`
+- `domain.meter`: Returns a configured OTEL `Meter` or a `_NoOpMeter`
 
 Both use deferred imports so the `opentelemetry` package is never loaded
 unless telemetry is actually accessed.
@@ -102,8 +100,8 @@ needs conditional guards.
 - Multiple domains in the same process (e.g., a multi-bounded-context
   deployment) can have independent service names, exporters, and resource
   attributes.
-- Clean shutdown/re-init cycles work correctly -- no "zombie provider"
-  problem where a shut-down global silently drops spans.
+- Clean shutdown/re-init cycles work correctly, no "zombie provider" problem
+  where a shut-down global silently drops spans.
 - Observatory and OTEL coexist cleanly at instrumentation callsites.
   The `/metrics` endpoint serves OTEL Prometheus exposition when available,
   falling back to the hand-rolled implementation when not.

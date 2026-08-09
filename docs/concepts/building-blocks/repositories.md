@@ -2,9 +2,9 @@
 
 A repository provides a collection-oriented interface to persist and retrieve
 [aggregates](./aggregates.md). It hides the details of the underlying storage
-technology behind a clean, domain-focused API — so the domain model never
-knows whether its data lives in a relational database, a document store, or
-an in-memory map.
+technology behind a clean, domain-focused API, so the domain model never knows
+whether its data lives in a relational database, a document store, or an
+in-memory map.
 
 Repositories are the sole gateway for aggregate persistence. If you need to
 save or load an aggregate, you go through its repository.
@@ -15,7 +15,7 @@ save or load an aggregate, you go through its repository.
 
 A repository mimics a `set` collection. You `add` an aggregate to persist it
 and `get` an aggregate to retrieve it. This design keeps the persistence
-interface familiar and intentional — you work with aggregates as if they were
+interface familiar and intentional. You work with aggregates as if they were
 items in a collection, without thinking about SQL statements or storage
 engines.
 
@@ -24,12 +24,12 @@ engines.
 Protean automatically provides a default repository for every registered
 aggregate. You do not need to write a repository class unless you want to add
 custom query methods or override default behavior. The default repository
-covers `add`, `get`, and basic retrieval out of the box.
+covers `add`, `get`, and basic retrieval.
 
 ### Custom repositories add domain-specific queries. { data-toc-label="Custom Queries" }
 
-When you need to express business-oriented queries — such as retrieving all
-overdue orders or finding customers by region — you define a custom repository
+When you need to express business-oriented queries (such as retrieving all
+overdue orders or finding customers by region) you define a custom repository
 with methods whose names reflect the domain language. This keeps query logic
 close to the aggregate it belongs to and makes intent explicit.
 
@@ -41,17 +41,17 @@ persistence entry point.
 
 ### Repositories return fully-hydrated aggregates. { data-toc-label="Eager Loading" }
 
-When you retrieve an aggregate through its repository, the entire object
-graph — including enclosed [entities](./entities.md) and
-[value objects](./value-objects.md) — is loaded eagerly. You always get a
-complete, consistent snapshot of the aggregate and its children.
+When you retrieve an aggregate through its repository, the entire object graph,
+including enclosed [entities](./entities.md) and [value
+objects](./value-objects.md), is loaded eagerly. You always get a complete,
+consistent snapshot of the aggregate and its children.
 
 ### Repositories operate within Unit of Work transactions. { data-toc-label="Transactions" }
 
 Every repository operation participates in the enclosing Unit of Work. This
-means that adding or updating an aggregate, raising
-[domain events](./events.md), and any other side effects are all committed
-atomically — or rolled back together if something fails.
+means that adding or updating an aggregate, raising [domain
+events](./events.md), and any other side effects are all committed atomically,
+or rolled back together if something fails.
 
 ### Repositories abstract away storage technology. { data-toc-label="Technology-agnostic" }
 
@@ -69,7 +69,7 @@ events are collected, and the Unit of Work can track changes.
 ### Repositories do not support hard deletion. { data-toc-label="No Delete" }
 
 Repositories intentionally have no `delete` or `remove` method. Domain state
-changes — cancellation, deactivation, archival — should be modeled as explicit
+changes (cancellation, deactivation, archival) should be modeled as explicit
 state transitions through commands and events, not as record erasure. Hard
 deletion is available at the infrastructure level (`_dao.delete()`) for
 scenarios like projection rebuilds, test teardown, and compliance requirements.
@@ -97,9 +97,9 @@ aggregate or a [domain service](./domain-services.md).
 
 ### Do not leak persistence concerns. { data-toc-label="No Leaking" }
 
-Avoid exposing database-specific details — column names, join strategies, raw
-query syntax — through the repository interface. The domain model should be
-able to evolve independently of the storage layer.
+Avoid exposing database-specific details (column names, join strategies, raw
+query syntax) through the repository interface. The domain model should be able
+to evolve independently of the storage layer.
 
 ---
 
@@ -108,7 +108,7 @@ able to evolve independently of the storage layer.
 For practical details on defining and using repositories in Protean, see the
 guide pages:
 
-- [Repositories](../../guides/change-state/repositories.md) — Defining
+- [Repositories](../../guides/change-state/repositories.md): Defining
   custom repositories, the DAO layer, and database-specific repositories.
-- [Retrieving Aggregates](../../guides/change-state/retrieve-aggregates.md) —
+- [Retrieving Aggregates](../../guides/change-state/retrieve-aggregates.md):
   QuerySets, filtering, Q objects, bulk operations, and result navigation.

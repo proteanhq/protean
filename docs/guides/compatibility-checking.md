@@ -12,9 +12,9 @@ see the [Compatibility Reference](../reference/compatibility/index.md).
 
 ## Step 1: Materialize the IR baseline
 
-The `.protean/` directory holds your materialized IR snapshot -- the
-baseline that changes are compared against. The easiest way to create it
-is with the pre-commit hook's `--fix` flag (see [Step 3](#step-3-add-pre-commit-hooks)),
+The `.protean/` directory holds your materialized IR snapshot. The baseline
+that changes are compared against. The easiest way to create it is with the
+pre-commit hook's `--fix` flag (see [Step 3](#step-3-add-pre-commit-hooks)),
 which auto-creates the directory and generates the IR on every commit.
 
 To generate the baseline manually, use `--canonical` so the snapshot omits
@@ -27,9 +27,9 @@ protean ir show --domain myapp.domain --canonical > .protean/ir.json
 Commit `.protean/ir.json` to version control. It serves as the baseline for
 detecting changes between releases. Because a canonical baseline excludes the
 materialization timestamp, regenerating it produces a git diff **only** when
-the domain contract actually changes -- keeping baseline diffs reviewable
-instead of drowning in per-file timestamp churn. The `--fix` staleness hook
-writes the same canonical output.
+the domain contract actually changes, keeping baseline diffs reviewable instead
+of drowning in per-file timestamp churn. The `--fix` staleness hook writes the same
+canonical output.
 
 ### Multi-domain projects
 
@@ -60,7 +60,7 @@ ordering = "ordering.domain"
 ## Step 2: Configure strictness
 
 Create `.protean/config.toml` to customize behavior. All settings are
-optional -- sensible defaults apply when the file is absent:
+optional, sensible defaults apply when the file is absent:
 
 ```toml
 [compatibility]
@@ -117,7 +117,7 @@ Blocks the commit if `.protean/ir.json` is out of date.
 
 Without `--fix`, a stale check prints the mismatch and suggests a manual
 regeneration command. With `--fix`, the hook regenerates the IR, stages the
-file with `git add`, and exits 0 -- allowing the commit to proceed.
+file with `git add`, and exits 0, allowing the commit to proceed.
 
 `--fix` writes the **canonical** baseline (sorted keys, no volatile
 `generated_at`), byte-identical to `protean ir show --canonical`. So it is safe
@@ -237,16 +237,16 @@ is 0. When `strictness = "off"`, the command exits 0 immediately.
 
 ### Avro compatibility verdict
 
-`ir diff` also reports an **Avro-style verdict** — `BACKWARD`, `FORWARD`,
-`FULL`, or `NONE` — matching the rules a schema registry applies to the Avro
+`ir diff` also reports an **Avro-style verdict** (`BACKWARD`, `FORWARD`,
+`FULL`, or `NONE`) matching the rules a schema registry applies to the Avro
 that `protean schema generate --format avro` emits (a declared rename, for
 instance, emits Avro `aliases` so it reads as `BACKWARD`):
 
-- **`BACKWARD`** — a consumer on the new schema reads old-written data (safe:
+- **`BACKWARD`**: A consumer on the new schema reads old-written data (safe:
   delete a field, add an optional field).
-- **`FORWARD`** — a consumer on the old schema reads new-written data (safe:
+- **`FORWARD`**: A consumer on the old schema reads new-written data (safe:
   add a field, delete an optional field).
-- **`FULL`** — both; **`NONE`** — neither.
+- **`FULL`**: Both; **`NONE`**: neither.
 
 ```
 Avro compatibility: FORWARD
@@ -256,25 +256,26 @@ Avro compatibility: FORWARD
 The verdict folds every change together: adding an optional field is `FULL`;
 adding a required field with no default is not `BACKWARD`; removing a required
 field is not `FORWARD`; a type change is `NONE`. A registered upcaster that
-covers the version bump makes an otherwise-incompatible change `BACKWARD` —
-a **Protean-specific** rule, since Protean rewrites old payloads at read time
-and a plain schema registry (which knows nothing of upcasters) would still
-report the underlying change. Visibility flips are payload-neutral for the
-verdict but still count as breaking changes.
+covers the version bump makes an otherwise-incompatible change `BACKWARD`, a
+**Protean-specific** rule, since Protean rewrites old payloads at read time and
+a plain schema registry (which knows nothing of upcasters) would still report
+the underlying change. Visibility flips are payload-neutral for the verdict but
+still count as breaking changes.
 
-The verdict is **informational** — it is printed (and, under `--format json`,
+The verdict is **informational**. It is printed (and, under `--format json`,
 included in a `compatibility` block with the full classified report), but the
-exit code stays governed by `strictness` and the breaking-change classification.
+exit code stays governed by `strictness` and the breaking-change
+classification.
 
 For the full CLI reference, see [`protean ir`](../reference/cli/ir.md).
 
 ---
 
 !!! tip "See also"
-    - [Compatibility Reference](../reference/compatibility/index.md)
-      -- Breaking change rules, three-tier taxonomy, deprecation lifecycle,
+    - [Compatibility Reference](../reference/compatibility/index.md):
+      Breaking change rules, three-tier taxonomy, deprecation lifecycle,
       and config key reference.
-    - [`protean ir` CLI Reference](../reference/cli/ir.md)
-      -- Full CLI command documentation.
-    - [ADR-0004](../adr/0004-release-workflow-and-breaking-change-policy.md)
-      -- Release workflow and breaking change policy.
+    - [`protean ir` CLI Reference](../reference/cli/ir.md):
+      Full CLI command documentation.
+    - [ADR-0004](../adr/0004-release-workflow-and-breaking-change-policy.md):
+      Release workflow and breaking change policy.

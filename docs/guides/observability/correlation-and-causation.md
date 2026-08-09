@@ -2,11 +2,11 @@
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Every command and event in Protean carries two tracing identifiers --
-`correlation_id` and `causation_id` -- that let you reconstruct the full
-causal history of any business operation. This guide covers how the IDs
-are generated, how they propagate, how to supply them from external callers,
-and how every observability layer (logging, OTEL, Observatory) uses them.
+Every command and event in Protean carries two tracing identifiers
+(`correlation_id` and `causation_id`) that let you reconstruct the full causal
+history of any business operation. This guide covers how the IDs are generated,
+how they propagate, how to supply them from external callers, and how every
+observability layer (logging, OTEL, Observatory) uses them.
 
 ## The out-of-the-box guarantee
 
@@ -15,9 +15,9 @@ No opt-in configuration, no manual wiring. The moment you call
 `domain.process()`, every command and event in the resulting chain carries
 both IDs:
 
-- **`correlation_id`** -- A constant identifier shared by *every* message in
+- **`correlation_id`**: A constant identifier shared by *every* message in
   the chain. It answers: "Which business operation does this message belong to?"
-- **`causation_id`** -- The `headers.id` of the *immediate parent* message.
+- **`causation_id`**: The `headers.id` of the *immediate parent* message.
   It answers: "What directly caused this message?"
 
 ```python
@@ -33,9 +33,9 @@ it. You never need to check for `None`.
 
 ## Passing correlation IDs from external callers
 
-In production, the `correlation_id` typically originates outside Protean --
-from an API gateway, frontend client, or upstream service. There are two ways
-to pass it in.
+In production, the `correlation_id` typically originates outside Protean, from an API
+gateway, frontend client, or upstream service. There are two ways to pass it
+in.
 
 ### Explicitly via `domain.process()`
 
@@ -99,12 +99,11 @@ context do not include the field.
 When multiple sources provide a correlation ID, Protean resolves them in
 this order:
 
-1. **Explicit `correlation_id` parameter** on `domain.process()` -- highest priority
-2. **Parent message context** (`g.message_in_context`) -- used when an event
-   handler dispatches a new command
-3. **HTTP request header** (`g.request_correlation_id`) -- set by
-   `DomainContextMiddleware`
-4. **Auto-generated UUID4 hex** -- fallback when none of the above is present
+1. **Explicit `correlation_id` parameter** on `domain.process()`, highest priority
+2. **Parent message context** (`g.message_in_context`), used when an event handler dispatches a
+   new command
+3. **HTTP request header** (`g.request_correlation_id`), set by `DomainContextMiddleware`
+4. **Auto-generated UUID4 hex**: Fallback when none of the above is present
 
 ---
 
@@ -317,7 +316,7 @@ Protean maintains two distinct tracing layers that complement each other:
 | **Domain tracing** | `DomainMeta.correlation_id` + `causation_id` | Business operation tracking | Flexible strings |
 | **Distributed tracing** | `MessageHeaders.traceparent` | Infrastructure span tracking (Jaeger, Datadog) | W3C 32-hex / 16-hex |
 
-The `correlation_id` bridges both layers -- it identifies the same business
+The `correlation_id` bridges both layers. It identifies the same business
 operation whether you're looking at domain metadata or a Jaeger trace.
 
 When OTel is enabled, Protean sets `protean.correlation_id` on all major
@@ -331,7 +330,7 @@ The following spans carry correlation and causation ID attributes:
 
 | Span name | `protean.correlation_id` | `protean.causation_id` |
 |-----------|:------------------------:|:----------------------:|
-| `protean.command.process` | Yes | -- |
+| `protean.command.process` | Yes | —  |
 | `protean.handler.execute` | Yes | Yes |
 | `protean.uow.commit` | Yes | Yes |
 | `protean.outbox.process` | Yes (when uniform) | Yes (when uniform) |
@@ -388,10 +387,9 @@ For details on the Observatory, see the
 ## Structured logging setup
 
 `Domain.init()` auto-configures logging and installs the correlation
-integrations — `ProteanCorrelationFilter` on the root stdlib logger and
-`protean_correlation_processor` on the structlog pipeline. Every log
-record emitted during message processing includes `correlation_id` and
-`causation_id` fields; no manual wiring required.
+integrations, `ProteanCorrelationFilter` on the root stdlib logger and `protean_correlation_processor` on the structlog pipeline.
+Every log record emitted during message processing includes `correlation_id` and `causation_id` fields;
+no manual wiring required.
 
 For the full setup, config keys, and the wide event schema, see the
 [Logging guide](../server/logging.md) and the
@@ -425,12 +423,12 @@ structlog.configure(
 ### Safe when no context is active
 
 Both integrations check for an active domain context and a
-`g.message_in_context` before reading IDs. When no context is available
-(e.g., during startup or in a background thread), both fields default to
-`""` so formatters never raise `KeyError`. When no message is in scope,
-both integrations fall back to `g.correlation_id` / `g.causation_id` —
-the documented extension point for HTTP middleware, CLI commands, and
-background jobs that need logs tagged before any domain message exists.
+`g.message_in_context` before reading IDs. When no context is available (e.g.,
+during startup or in a background thread), both fields default to `""` so
+formatters never raise `KeyError`. When no message is in scope, both
+integrations fall back to `g.correlation_id` / `g.causation_id`. The documented
+extension point for HTTP middleware, CLI commands, and background jobs that
+need logs tagged before any domain message exists.
 
 ---
 
@@ -453,18 +451,18 @@ background jobs that need logs tagged before any domain message exists.
 ---
 
 !!! tip "See also"
-    **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md) -- Design considerations, format decisions, and multi-service strategies.
+    **Pattern:** [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md): Design considerations, format decisions, and multi-service strategies.
 
-    **Guide:** [Message Tracing](../domain-behavior/message-tracing.md) -- How-to guide for setting up tracing, accessing trace IDs, and using the test DSL.
+    **Guide:** [Message Tracing](../domain-behavior/message-tracing.md): How-to guide for setting up tracing, accessing trace IDs, and using the test DSL.
 
-    **Guide:** [OpenTelemetry Integration](../server/opentelemetry.md) -- Full span catalog, metrics, APM setup, and TraceParent propagation.
+    **Guide:** [OpenTelemetry Integration](../server/opentelemetry.md): Full span catalog, metrics, APM setup, and TraceParent propagation.
 
-    **Guide:** [Logging](../server/logging.md) -- Configure logging, enrich wide events, and disable auto-configuration.
+    **Guide:** [Logging](../server/logging.md): Configure logging, enrich wide events, and disable auto-configuration.
 
-    **Reference:** [Logging](../../reference/logging.md) -- `[logging]` config keys, framework logger catalog, event schemas, redaction, trace-context fields.
+    **Reference:** [Logging](../../reference/logging.md): `[logging]` config keys, framework logger catalog, event schemas, redaction, trace-context fields.
 
-    **Explanation:** [Logging concepts](../../concepts/observability/logging.md) -- Wide events, query-oriented field design, high-cardinality backends, redaction as a pipeline stage.
+    **Explanation:** [Logging concepts](../../concepts/observability/logging.md): Wide events, query-oriented field design, high-cardinality backends, redaction as a pipeline stage.
 
-    **Reference:** [Observability](../../reference/server/observability.md) -- TraceEmitter, Observatory server, SSE streaming, and Prometheus metrics.
+    **Reference:** [Observability](../../reference/server/observability.md): TraceEmitter, Observatory server, SSE streaming, and Prometheus metrics.
 
-    **Reference:** [`protean events trace`](../../reference/cli/data/events.md) -- CLI command for following causal chains.
+    **Reference:** [`protean events trace`](../../reference/cli/data/events.md): CLI command for following causal chains.

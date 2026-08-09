@@ -50,30 +50,30 @@ The command creates a complete project structure with the following components:
 
 ### Root Files
 
-- `pyproject.toml` - Python project configuration with uv
-- `README.md` - Project documentation
-- `Makefile` - Common development tasks
-- `.gitignore` - Git ignore patterns
-- `.pre-commit-config.yaml` - Pre-commit hooks configuration
-- `.env.example` - Environment variables template
-- `.dockerignore` - Docker ignore patterns
+- `pyproject.toml`: Python project configuration with uv
+- `README.md`: Project documentation
+- `Makefile`: Common development tasks
+- `.gitignore`: Git ignore patterns
+- `.pre-commit-config.yaml`: Pre-commit hooks configuration
+- `.env.example`: Environment variables template
+- `.dockerignore`: Docker ignore patterns
 
 ### Docker Configuration
 
-- `Dockerfile` - Production Docker image
-- `Dockerfile.dev` - Development Docker image
-- `docker-compose.yml` - Base docker-compose configuration
-- `docker-compose.override.yml` - Local development overrides
-- `docker-compose.prod.yml` - Production configuration
-- `nginx.conf` - Nginx configuration for production
+- `Dockerfile`: Production Docker image
+- `Dockerfile.dev`: Development Docker image
+- `docker-compose.yml`: Base docker-compose configuration
+- `docker-compose.override.yml`: Local development overrides
+- `docker-compose.prod.yml`: Production configuration
+- `nginx.conf`: Nginx configuration for production
 
 ### Activation Scripts
 
 The `scripts/` directory contains virtual environment activation scripts for different shells:
 
-- `scripts/activate.sh` - Bash/Zsh activation
-- `scripts/activate.fish` - Fish shell activation
-- `scripts/activate.bat` - Windows batch activation
+- `scripts/activate.sh`: Bash/Zsh activation
+- `scripts/activate.fish`: Fish shell activation
+- `scripts/activate.bat`: Windows batch activation
 
 ### Source Code Structure
 
@@ -113,15 +113,15 @@ once you have your own aggregates.
 
 Key structural decisions:
 
-- **Aggregates are top-level folders** — each aggregate (`example/`) is a
-  chapter heading a business stakeholder would recognize.
-- **Projections live with the aggregate that sources them** — `projection.py`
+- **Aggregates are top-level folders**: Each aggregate (`example/`) is a
+  name someone in the business would recognize.
+- **Projections live with the aggregate that sources them**: `projection.py`
   (the read model) and `projectors.py` (the code that keeps it current) sit
   inside `example/`. As projections grow to span aggregates, lift them into a
   domain-level `projections/` folder.
-- **Shared vocabulary has its own folder** — cross-aggregate value objects
+- **Shared vocabulary has its own folder**: Cross-aggregate value objects
   and utilities live in `shared/`.
-- **`domain.py` and `domain.toml` are front matter** — a newcomer sees
+- **`domain.py` and `domain.toml` are front matter**: A newcomer sees
   what this bounded context is and how it's configured immediately.
 
 As your domain grows, add new aggregates as peer folders alongside
@@ -156,7 +156,7 @@ working test to copy from on day one.
 
 ### CI/CD Configuration
 
-- `.github/workflows/ci.yml` - GitHub Actions CI pipeline
+- `.github/workflows/ci.yml`: GitHub Actions CI pipeline
 
 ## Generated Modules
 
@@ -171,15 +171,16 @@ The generated logging module provides structured logging with:
 
 **Key Features:**
 
-- `get_logger(name)` - Get a configured structlog logger
-- `add_context(**kwargs)` - Add context variables to all subsequent logs
-- `clear_context()` - Clear all context variables
-- `log_method_call` - Decorator for logging method calls
-- `configure_for_testing()` - Reduce verbosity during tests
+- `get_logger(name)`: Get a configured structlog logger
+- `add_context(**kwargs)`: Add context variables to all subsequent logs
+- `clear_context()`: Clear all context variables
+- `log_method_call`: Decorator for logging method calls
+- `configure_for_testing()`: Reduce verbosity during tests
 
 **Environment Configuration:**
 
 The logging level is determined by the `ENVIRONMENT` variable:
+
 - `production`/`staging`: INFO level
 - `development`: DEBUG level
 - `test`: WARNING level
@@ -190,11 +191,11 @@ Override with the `PROTEAN_LOG_LEVEL` environment variable.
 
 Domain-specific exception hierarchy:
 
-- `DomainException` - Base exception for all domain errors
-- `InvalidStateException` - Operation attempted in invalid state
-- `NotFoundException` - Requested resource not found
-- `DuplicateException` - Duplicate resource creation attempt
-- `ValidationException` - Domain validation failure
+- `DomainException`: Base exception for all domain errors
+- `InvalidStateException`: Operation attempted in invalid state
+- `NotFoundException`: Requested resource not found
+- `DuplicateException`: Duplicate resource creation attempt
+- `ValidationException`: Domain validation failure
 
 ## Examples
 

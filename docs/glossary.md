@@ -12,7 +12,10 @@ hide:
 
 # Glossary
 
-A comprehensive reference of terms used throughout Protean and the patterns it implements — Domain-Driven Design, CQRS, and Event Sourcing. Terms are grouped by category and listed alphabetically within each group. Use the sidebar to jump to any term.
+A comprehensive reference of terms used throughout Protean and the patterns it
+implements, Domain-Driven Design, CQRS, and Event Sourcing. Terms are grouped
+by category and listed alphabetically within each group. Use the sidebar to
+jump to any term.
 
 ---
 
@@ -32,13 +35,20 @@ A cluster of domain objects treated as a single unit for the purpose of data cha
 
 ### Aggregate Root
 
-The root entity of an aggregate — the single entry point through which all external interactions with the aggregate occur. The aggregate root is responsible for enforcing invariants and ensuring consistency of the entire cluster. In Protean, the class decorated with `@domain.aggregate` serves as the aggregate root.
+The root entity of an aggregate. The single entry point through which all
+external interactions with the aggregate occur. The aggregate root is
+responsible for enforcing invariants and ensuring consistency of the entire
+cluster. In Protean, the class decorated with `@domain.aggregate` serves as the
+aggregate root.
 
 [Learn more →](concepts/building-blocks/aggregates.md) | **See also**: [Aggregate](#aggregate), [Entity](#entity)
 
 ### Bounded Context
 
-A boundary within which a particular domain model is defined and applicable. Each bounded context has its own ubiquitous language and its own set of aggregates, entities, and value objects — the same real-world concept may be modeled differently in different bounded contexts.
+A boundary within which a particular domain model is defined and applicable.
+Each bounded context has its own ubiquitous language and its own set of
+aggregates, entities, and value objects. The same real-world concept may be
+modeled differently in different bounded contexts.
 
 [Learn more →](concepts/architecture/ddd.md) | **See also**: [Domain](#domain), [Ubiquitous Language](#ubiquitous-language)
 
@@ -68,7 +78,10 @@ A shared vocabulary developed collaboratively by domain experts and developers, 
 
 ### Value Object
 
-An immutable object that represents a descriptive aspect of the domain with no conceptual identity. Value objects are defined entirely by their attributes — two value objects with the same attributes are considered equal. In Protean, value objects are defined with the `@domain.value_object` decorator.
+An immutable object that represents a descriptive aspect of the domain with no
+conceptual identity. Value objects are defined entirely by their attributes,
+two value objects with the same attributes are considered equal. In Protean,
+value objects are defined with the `@domain.value_object` decorator.
 
 [Learn more →](guides/domain-definition/value-objects.md) | **See also**: [Entity](#entity), [Field](#field)
 
@@ -78,7 +91,11 @@ An immutable object that represents a descriptive aspect of the domain with no c
 
 ### Command Query Responsibility Segregation (CQRS)
 
-A design pattern that separates the models used for reading data (queries) from the models used for writing data (commands). This separation allows each side to be optimized independently — the write model enforces business rules while the read model is denormalized for fast queries. Protean supports CQRS through distinct command/query paths and projections.
+A design pattern that separates the models used for reading data (queries) from
+the models used for writing data (commands). This separation allows each side
+to be optimized independently. The write model enforces business rules while
+the read model is denormalized for fast queries. Protean supports CQRS through
+distinct command/query paths and projections.
 
 [Learn more →](concepts/architecture/cqrs.md) | **See also**: [Read Model](#read-model), [Write Model](#write-model), [Projection](#projection)
 
@@ -112,7 +129,13 @@ The model responsible for handling state changes and enforcing business rules. I
 
 ### Concurrency Control
 
-A mechanism for preventing conflicts when multiple processes attempt to modify the same aggregate simultaneously. Protean uses optimistic concurrency control through aggregate versioning — each aggregate tracks a version number that is checked before persisting changes, rejecting updates based on stale versions. When a version mismatch is detected, the framework raises `ExpectedVersionError`. In async handlers, this error is automatically retried with exponential backoff before reaching the subscription retry pipeline.
+A mechanism for preventing conflicts when multiple processes attempt to modify
+the same aggregate simultaneously. Protean uses optimistic concurrency control
+through aggregate versioning, each aggregate tracks a version number that is
+checked before persisting changes, rejecting updates based on stale versions.
+When a version mismatch is detected, the framework raises `ExpectedVersionError`. In async
+handlers, this error is automatically retried with exponential backoff before
+reaching the subscription retry pipeline.
 
 [Learn more →](concepts/building-blocks/aggregates.md) | [Auto-retry config →](guides/server/error-handling.md#version-conflict-auto-retry) | **See also**: [Aggregate](#aggregate), [Event Sourcing](#event-sourcing)
 
@@ -212,7 +235,11 @@ A stateless component that encapsulates domain logic which does not naturally be
 
 ### Event Handler
 
-A component that reacts to domain events by executing follow-up business logic. Event handlers enable decoupled, reactive behavior — they listen for specific events and perform actions such as updating other aggregates, sending notifications, or triggering external processes. In Protean, event handlers are defined with the `@domain.event_handler` decorator.
+A component that reacts to domain events by executing follow-up business logic.
+Event handlers enable decoupled, reactive behavior. They listen for specific
+events and perform actions such as updating other aggregates, sending
+notifications, or triggering external processes. In Protean, event handlers are
+defined with the `@domain.event_handler` decorator.
 
 [Learn more →](guides/consume-state/event-handlers.md) | **See also**: [Domain Event](#domain-event), [Subscriber](#subscriber)
 
@@ -224,7 +251,13 @@ A business rule or constraint that must always hold true within a domain concept
 
 ### Process Manager
 
-A stateful, event-driven coordinator that manages multi-step business processes spanning multiple aggregates. Process managers correlate events from different streams to the same running instance, maintain their own event-sourced state, and issue commands to drive other aggregates forward. They have a defined lifecycle — starting with an initiating event and completing when the process reaches a terminal state. In Protean, process managers are defined with the `@domain.process_manager` decorator.
+A stateful, event-driven coordinator that manages multi-step business processes
+spanning multiple aggregates. Process managers correlate events from different
+streams to the same running instance, maintain their own event-sourced state,
+and issue commands to drive other aggregates forward. They have a defined
+lifecycle, starting with an initiating event and completing when the process
+reaches a terminal state. In Protean, process managers are defined with the `@domain.process_manager`
+decorator.
 
 [Learn more →](guides/consume-state/process-managers.md) | **See also**: [Event Handler](#event-handler), [Command](#command), [Domain Event](#domain-event)
 
@@ -304,7 +337,11 @@ A decorator applied to methods within an application service to mark them as use
 
 ### Composition
 
-The process of assembling a domain by registering its elements — aggregates, entities, value objects, commands, events, handlers, and services — into the `Domain` registry. In Protean, elements are auto-discovered from specified modules or manually registered, then wired together during domain initialization.
+The process of assembling a domain by registering its elements (aggregates,
+entities, value objects, commands, events, handlers, and services) into the
+`Domain` registry. In Protean, elements are auto-discovered from specified
+modules or manually registered, then wired together during domain
+initialization.
 
 [Learn more →](guides/compose-a-domain/index.md) | **See also**: [Domain](#domain)
 
@@ -344,7 +381,11 @@ A pattern that groups all changes made to aggregates within a single business op
 
 ### Event-Driven Architecture
 
-An architectural style in which the flow of the program is determined by events — significant state changes that are published and consumed asynchronously. Components communicate by producing and reacting to events rather than through direct calls, promoting loose coupling and scalability. Protean's reactive layer is built on this principle.
+An architectural style in which the flow of the program is determined by
+events. Significant state changes that are published and consumed
+asynchronously. Components communicate by producing and reacting to events
+rather than through direct calls, promoting loose coupling and scalability.
+Protean's reactive layer is built on this principle.
 
 [Learn more →](guides/consume-state/index.md) | **See also**: [Domain Event](#domain-event), [Event Handler](#event-handler), [Eventual Consistency](#eventual-consistency)
 
@@ -500,13 +541,22 @@ A long-running process that connects message sources (event stores or brokers) t
 
 ### TraceEmitter
 
-A lightweight component attached to the Engine that publishes structured `MessageTrace` events to Redis Pub/Sub as messages flow through the processing pipeline. Designed for zero overhead when nobody is listening — it checks subscriber count via `PUBSUB NUMSUB` and short-circuits before any serialization when no subscribers are found. Tracing failures are silently swallowed and never affect message processing.
+A lightweight component attached to the Engine that publishes structured
+`MessageTrace` events to Redis Pub/Sub as messages flow through the processing
+pipeline. Designed for zero overhead when nobody is listening. It checks
+subscriber count via `PUBSUB NUMSUB` and short-circuits before any
+serialization when no subscribers are found. Tracing failures are silently
+swallowed and never affect message processing.
 
 [Learn more →](reference/server/observability.md) | **See also**: [MessageTrace](#messagetrace), [Observatory](#observatory), [Engine](#engine)
 
 ### Transaction Boundary
 
-The scope within which all state changes must be atomic — either all succeed or all are rolled back. In domain-driven design, each aggregate defines a transaction boundary. No single transaction should span multiple aggregates; cross-aggregate consistency is achieved through eventual consistency via domain events.
+The scope within which all state changes must be atomic, either all succeed or
+all are rolled back. In domain-driven design, each aggregate defines a
+transaction boundary. No single transaction should span multiple aggregates;
+cross-aggregate consistency is achieved through eventual consistency via domain
+events.
 
 [Learn more →](guides/change-state/unit-of-work.md) | **See also**: [Aggregate](#aggregate), [Unit of Work](#unit-of-work), [Eventual Consistency](#eventual-consistency)
 

@@ -15,7 +15,7 @@ protean docs preview [OPTIONS]
 
 ## Running a Preview Server
 
-To start the live preview server for your project's documentation, simply run
+To start the live preview server for your project's documentation, run
 the command without any additional options:
 
 ```shell

@@ -11,14 +11,14 @@ for their own type-checking. But the framework's own source is **not** type-chec
 in CI. A typed library that doesn't type-check itself gives users a weaker type
 experience than it advertises.
 
-The measured baseline (June 2026): **~700 mypy errors across 87 files** under the
-current lenient config, and **~2,400 under `--strict`**. The only mypy in CI today
-is `tests/ext/`, which checks the **plugin against fixtures**, not the source — so
-none of the 700 errors are gated, and new type debt accrues freely.
+The measured baseline (June 2026): **~700 mypy errors across 87 files** under
+the current lenient config, and **~2,400 under `--strict`**. The only mypy in
+CI today is `tests/ext/`, which checks the **plugin against fixtures**, not the
+source, so none of the 700 errors are gated, and new type debt accrues freely.
 
 Two constraints shape the approach:
 
-- **It cannot be a big-bang.** A single 700-error (or 2,400-error) PR is
+- **It cannot be a big-bang**: A single 700-error (or 2,400-error) PR is
   unreviewable and would freeze feature work while it's in flight.
 - **The mypy plugin types *user* code, not the framework's own source.** The
   plugin (`src/protean/ext/mypy_plugin.py`) makes `String()` resolve to `str` and
@@ -28,10 +28,10 @@ Two constraints shape the approach:
 
 ## Decision
 
-Adopt type safety with a **quarantine-then-ratchet** strategy — the same path
+Adopt type safety with a **quarantine-then-ratchet** strategy, the same path
 large codebases (e.g. Dropbox) used to adopt mypy.
 
-- **Gate mypy in CI now, against a per-module quarantine.** `[tool.mypy]` carries
+- **Gate mypy in CI now, against a per-module quarantine**: `[tool.mypy]` carries
   a `[[tool.mypy.overrides]]` list of the currently-failing modules with
   `ignore_errors = true`. A clean run is therefore green, and mypy **blocks any
   new error in a non-quarantined module**. The quarantine list is
@@ -39,17 +39,17 @@ large codebases (e.g. Dropbox) used to adopt mypy.
   and deletes them from the list. The end state is an empty list and
   `strict = true` globally.
 
-- **Enable strict flags by cost.** `no_implicit_optional` is already on (free);
-  `warn_unused_ignores` is enabled now (cheap — it forced a one-time cleanup of
+- **Enable strict flags by cost**: `no_implicit_optional` is already on (free);
+  `warn_unused_ignores` is enabled now (cheap; it forced a one-time cleanup of
   stale `type: ignore`s). The expensive levers (`disallow_any_generics`,
-  `disallow_untyped_defs`, full `--strict`) are not global switches; they fall out
-  naturally per-module as each quarantine entry is cleared.
+  `disallow_untyped_defs`, full `--strict`) are not global switches; they fall
+  out naturally per-module as each quarantine entry is cleared.
 
-- **The plugin is independent of source strictness.** Making the framework strict
+- **The plugin is independent of source strictness**: Making the framework strict
   does not require plugin changes, except where the framework consumes its own
-  field/element machinery — that plugin hardening happens alongside `fields/`.
+  field/element machinery. That plugin hardening happens alongside `fields/`.
 
-- **`py.typed` is a contract.** The public surface (`__init__.py` exports,
+- **`py.typed` is a contract**: The public surface (`__init__.py` exports,
   `protean.fields`, `QuerySet`/DSL, `Domain` methods) gets first-class annotations
   so downstream `reveal_type` is accurate.
 
@@ -75,10 +75,10 @@ large codebases (e.g. Dropbox) used to adopt mypy.
 
 ## Alternatives Considered
 
-- **Big-bang `--strict`.** Rejected: a 2,400-error PR is unreviewable and would
+- **Big-bang `--strict`**: Rejected: a 2,400-error PR is unreviewable and would
   freeze feature work; type quality would arrive as one high-risk drop instead of
   a ratchet.
-- **Leave the source untyped.** Rejected: shipping `py.typed` while not
+- **Leave the source untyped**: Rejected: shipping `py.typed` while not
   type-checking the source misrepresents the type quality users receive.
-- **Gradual typing with no CI gate.** Rejected: without the gate there is no
-  ratchet — new debt accrues as fast as old debt is paid down.
+- **Gradual typing with no CI gate**: Rejected: without the gate there is no
+  ratchet, new debt accrues as fast as old debt is paid down.

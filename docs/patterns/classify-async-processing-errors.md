@@ -38,16 +38,15 @@ Nobody notices. There are no alerts, no DLQ entries, no metrics spike.
 
 On Thursday, a developer deploys a new event version that adds a `currency`
 field to `OrderPlaced`. The projector has not been updated. Every new order
-fails with a schema mismatch -- but the team only monitors HTTP error rates.
+fails with a schema mismatch, but the team only monitors HTTP error rates.
 Async handler failures are invisible.
 
 By Friday, the read model is 72 hours behind the write model. Customer
 support is working from wrong data.
 
 This is not exotic. It is the *default behavior* of any async pipeline that
-logs errors and continues. The Protean engine is resilient -- it never
-crashes on a handler exception -- but resilience without observability is
-silent data drift.
+logs errors and continues. The Protean engine is resilient (it never crashes on
+a handler exception) but resilience without observability is silent data drift.
 
 The root causes are different in kind:
 
@@ -56,7 +55,7 @@ The root causes are different in kind:
 - A bug in the projector's logic is a **logic error**. It needs a code fix,
   not a retry.
 
-Treating all three the same way -- log and continue -- is the real problem.
+Treating all three the same way (log and continue) is the real problem.
 
 ---
 
@@ -88,9 +87,9 @@ Exception raised in handler
 
 ### Why this matters for projectors
 
-Projectors maintain read models. A failed projector update means the read
-side has diverged from the write side. Unlike a failed event handler -- where
-the consequence might be a delayed side effect -- a failed projector creates
+Projectors maintain read models. A failed projector update means the read side
+has diverged from the write side. Unlike a failed event handler (where the
+consequence might be a delayed side effect) a failed projector creates
 **stale data that users see**. This makes projector error handling especially
 critical: a transient failure should retry quickly, a persistent failure
 should alert immediately.
@@ -115,8 +114,8 @@ The engine's processing flow:
 1. `handler_cls._handle(message)` raises an exception.
 2. The engine logs the exception with full traceback.
 3. The `TraceEmitter` emits a `handler.failed` trace event.
-4. `handler_cls.handle_error(exc, message)` is called inside a `try/except`
-   -- if *it* also fails, that secondary exception is logged but does not
+4. `handler_cls.handle_error(exc, message)` is called inside a `try/except`:
+   If *it* also fails, that secondary exception is logged but does not
    crash the engine.
 5. Processing continues with the next message.
 
@@ -286,8 +285,8 @@ class ShippingEventHandler(BaseEventHandler):
 
 ### Logic errors: alert immediately, don't retry
 
-Logic errors are bugs -- a projector dividing by zero, a handler assuming
-a field that no longer exists. They fail identically on every retry.
+Logic errors are bugs: a projector dividing by zero, a handler assuming a field
+that no longer exists. They fail identically on every retry.
 
 ```python
 @domain.projector(projector_for=OrderDashboard, aggregates=[Order])
@@ -458,15 +457,15 @@ class PaymentCompletedSubscriber(ErrorClassificationMixin, BaseSubscriber):
         )
 ```
 
-### Leveraging the TraceEmitter
+### Using the TraceEmitter
 
 The engine's `TraceEmitter` emits structured trace events to Redis for
 every handler exception. The Observatory dashboard tracks these in real
 time:
 
-- **`handler.failed`** -- handler name, message ID, stream, duration, error.
-- **`message.dlq`** -- emitted when `StreamSubscription` exhausts retries.
-- **`message.nacked`** -- emitted on each retry attempt.
+- **`handler.failed`**: Handler name, message ID, stream, duration, error.
+- **`message.dlq`**: Emitted when `StreamSubscription` exhausts retries.
+- **`message.nacked`**: Emitted on each retry attempt.
 
 Monitor the ratio of `handler.failed` to `handler.completed`. A sudden spike
 indicates a systemic problem (deployment bug, infrastructure outage). A
@@ -520,7 +519,7 @@ def handle_error(cls, exc: Exception, message: Message) -> None:
         # ... but no alert, no metric, no dashboard
 ```
 
-**Why it's wrong:** DLQ is a parking lot, not a solution. Unmonitored DLQ
+**Why it's wrong:** a DLQ holds failures, it does not resolve them. Unmonitored DLQ
 depth grows silently.
 
 **Fix:** Alert on DLQ depth. Export `message.dlq` trace events to your
@@ -580,26 +579,25 @@ on the outbox or subscription instead.
 | **Data error** | `KeyError`, `TypeError`, schema/deserialization messages | Route to DLQ, alert team | No | `ERROR` |
 | **Logic error** | Everything else (bugs, unexpected `None`, wrong calculations) | Alert immediately, fix code, replay from event store | No | `CRITICAL` |
 
-The principle: **the default `handle_error` is a no-op by design -- it keeps
-the engine running. In production, override it in every handler to classify
-failures, route to the right recovery path, and ensure that no error goes
-unnoticed. Transient errors heal themselves. Data errors need human
-inspection. Logic errors need code fixes. Treating them all the same way
-produces silent data drift.**
+The default `handle_error` is a no-op by design. It keeps the engine running.
+In production, override it in every handler to classify failures, route to the
+right recovery path, and ensure that no error goes unnoticed. Transient errors
+heal themselves. Data errors need human inspection. Logic errors need code
+fixes. Treating them all the same way produces silent data drift.
 
 ---
 
 !!! tip "Related reading"
     **Patterns:**
 
-    - [Idempotent Event Handlers](idempotent-event-handlers.md) -- Safe replay when retrying.
-    - [Message Tracing](message-tracing.md) -- Correlation and causation IDs for debugging failed handlers.
+    - [Idempotent Event Handlers](idempotent-event-handlers.md): Safe replay when retrying.
+    - [Message Tracing](message-tracing.md): Correlation and causation IDs for debugging failed handlers.
 
     **Concepts:**
 
-    - [Engine](../concepts/async-processing/engine.md) -- How the async processing engine works.
-    - [Outbox](../concepts/async-processing/outbox.md) -- Reliable message delivery with retry.
+    - [Engine](../concepts/async-processing/engine.md): How the async processing engine works.
+    - [Outbox](../concepts/async-processing/outbox.md): Reliable message delivery with retry.
 
     **Guides:**
 
-    - [Event Handlers](../guides/consume-state/event-handlers.md) -- Defining and configuring event handlers.
+    - [Event Handlers](../guides/consume-state/event-handlers.md): Defining and configuring event handlers.

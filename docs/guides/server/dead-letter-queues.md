@@ -6,30 +6,29 @@ queue (DLQ)** instead of blocking the stream. The DLQ is how you recover
 from handler bugs, bad data, and transient failures without losing
 messages or halting production.
 
-This guide is the operational walkthrough: how to find failed messages,
-inspect them, replay them after a fix, and clear out messages that will
-never succeed. For the full retry flow per subscription type — how
-messages *enter* the DLQ — see
-[Error Handling](./error-handling.md).
+This guide is the operational walkthrough: how to find failed messages, inspect
+them, replay them after a fix, and clear out messages that will never succeed.
+For the full retry flow per subscription type (how messages *enter* the DLQ)
+see [Error Handling](./error-handling.md).
 
 ## When messages end up in the DLQ
 
 A message is routed to the DLQ when:
 
 - A handler fails more than `max_retries` times in a row.
-- A message cannot be deserialized (StreamSubscription only — retrying
-  a malformed message can't succeed).
+- A message cannot be deserialized (StreamSubscription only; retrying a
+  malformed message can't succeed).
 
-The handler keeps processing subsequent messages — one poison pill does
-not block the stream. See
-[Error Handling: Subscription error flows](./error-handling.md#subscription-error-flows)
-for the retry mechanics of each subscription type.
+The handler keeps processing subsequent messages. One poison pill does not
+block the stream. See [Error Handling: Subscription error
+flows](./error-handling.md#subscription-error-flows) for the retry mechanics of
+each subscription type.
 
 !!! note "DLQ support depends on the broker"
     StreamSubscription (Redis Streams) and BrokerSubscription route
     failed messages to `{stream}:dlq` streams. EventStoreSubscription
-    uses a recovery-pass model instead — failed positions are retried
-    from the event store rather than copied to a DLQ.
+    uses a recovery-pass model instead. Failed positions are retried from the
+    event store rather than copied to a DLQ.
 
 ---
 
@@ -59,8 +58,8 @@ $ protean dlq list --subscription=order --domain=my_domain
 
 ## Inspect a failure
 
-Use the DLQ ID from `list` to pull the full record — payload, error, and
-retry metadata:
+Use the DLQ ID from `list` to pull the full record, payload, error, and retry
+metadata:
 
 ```shell
 $ protean dlq inspect 1708768400000-0 --domain=my_domain
@@ -80,9 +79,9 @@ came from and why it stopped retrying:
 }
 ```
 
-Read the payload and the error together — they usually point straight
-at the bug. A `KeyError: 'isbn'` on a payload with `"isbn": null` tells
-you the handler needs to guard against missing optional fields.
+Read the payload and the error together. They usually point straight at the
+bug. A `KeyError: 'isbn'` on a payload with `"isbn": null` tells you the
+handler needs to guard against missing optional fields.
 
 ---
 
@@ -102,8 +101,8 @@ The recovery loop is always the same:
    appeared, an aggregate state updated).
 
 `replay` removes the message from the DLQ and republishes it on the
-original stream. The handler sees it as a fresh delivery — retries
-start from zero.
+original stream. The handler sees it as a fresh delivery, retries start from
+zero.
 
 !!! warning "Deploy the fix first"
     If you replay before deploying the fix, the handler fails again,
@@ -114,9 +113,9 @@ start from zero.
 
 ## Bulk replay after a transient incident
 
-When an external dependency was down — database, broker, third-party API
-— and dozens or hundreds of messages have piled up in the DLQ with the
-same root cause, replay the whole subscription at once:
+When an external dependency was down (database, broker, third-party API) and
+dozens or hundreds of messages have piled up in the DLQ with the same root
+cause, replay the whole subscription at once:
 
 ```shell
 $ protean dlq replay-all --subscription=order --domain=my_domain
@@ -130,8 +129,8 @@ $ protean dlq replay-all --subscription=order --yes --domain=my_domain
 
 Only replay in bulk when you're confident the root cause is resolved.
 If the underlying handler bug still exists, every replayed message will
-fail again and end up back in the DLQ — multiplying rather than reducing
-the incident.
+fail again and end up back in the DLQ, multiplying rather than reducing the
+incident.
 
 ---
 
@@ -149,9 +148,9 @@ In those cases, purge them rather than replay:
 $ protean dlq purge --subscription=order --domain=my_domain
 ```
 
-This is **irreversible** — there's no "undo" once a DLQ message is
-purged. Confirm the subscription scope before typing `y`, and prefer
-`replay` whenever a fix is possible.
+This is **irreversible**, there's no "undo" once a DLQ message is purged.
+Confirm the subscription scope before typing `y`, and prefer `replay` whenever a fix
+is possible.
 
 ---
 
@@ -169,9 +168,9 @@ Every CLI operation has an equivalent in the
 The tab auto-refreshes every 5 seconds, so a long-running incident
 shows up in near-real-time without re-running `dlq list`.
 
-For programmatic access — scripting replays from an incident runbook,
-for example — the same actions are exposed as REST endpoints under
-`/api/dlq`. See [DLQ Commands](../../reference/cli/data/dlq.md#observatory-rest-api).
+For programmatic access (scripting replays from an incident runbook, for
+example) the same actions are exposed as REST endpoints under `/api/dlq`. See
+[DLQ Commands](../../reference/cli/data/dlq.md#observatory-rest-api).
 
 ---
 
@@ -192,9 +191,9 @@ enable_dlq = true
 ```
 
 Set `enable_dlq = false` only if you're certain failed messages are safe
-to drop — without the DLQ you lose the fix-and-replay workflow entirely.
-The full configuration matrix is in
-[Error Handling: Configuration reference](./error-handling.md#configuration-reference).
+to drop, without the DLQ you lose the fix-and-replay workflow entirely. The
+full configuration matrix is in [Error Handling: Configuration
+reference](./error-handling.md#configuration-reference).
 
 ---
 
@@ -240,9 +239,9 @@ def page_oncall(dlq_stream: str, depth: int, threshold: int) -> None:
     )
 ```
 
-Exceptions raised by the callback are caught and logged — they never
-crash the maintenance task. Use this hook for PagerDuty, Slack,
-OpsGenie, or whatever your on-call system is.
+Exceptions raised by the callback are caught and logged. They never crash the
+maintenance task. Use this hook for PagerDuty, Slack, OpsGenie, or whatever
+your on-call system is.
 
 ### Override per subscription
 
@@ -272,15 +271,15 @@ For the full option reference, see
 |---|---|
 | Broker doesn't support DLQ | `inspect`, `replay`, and `purge` abort with "does not support dead letter queues". Only brokers implementing the DLQ contract (Redis Streams, BrokerSubscription's Redis-backed transport) expose these commands. |
 | Subscription not found | Aborts with "No subscription found for stream category". Check the `--subscription` value against `protean subscriptions list`. |
-| DLQ message not found | `inspect` and `replay` abort with "not found" — usually because the ID was already replayed or purged. Re-run `list` to get current IDs. |
-| No DLQ messages | `list` prints "No DLQ messages found" — nothing to do. |
+| DLQ message not found | `inspect` and `replay` abort with "not found", usually because the ID was already replayed or purged. Re-run `list` to get current IDs. |
+| No DLQ messages | `list` prints "No DLQ messages found", nothing to do. |
 
 ---
 
 ## See also
 
-- [Error Handling](./error-handling.md) — Retry flows, subscription-specific behavior, and version-conflict auto-retry.
-- [`protean dlq` CLI Reference](../../reference/cli/data/dlq.md) — Full command options, output formats, and REST API.
-- [Observatory Dashboard](../../reference/cli/runtime/observatory.md) — Visual DLQ management.
-- [Monitoring](./monitoring.md) — Alerting on DLQ depth and handler failures.
-- [Priority Lanes](./using-priority-lanes.md) — Backfill streams use separate `{stream}:backfill:dlq` queues.
+- [Error Handling](./error-handling.md): Retry flows, subscription-specific behavior, and version-conflict auto-retry.
+- [`protean dlq` CLI Reference](../../reference/cli/data/dlq.md): Full command options, output formats, and REST API.
+- [Observatory Dashboard](../../reference/cli/runtime/observatory.md): Visual DLQ management.
+- [Monitoring](./monitoring.md): Alerting on DLQ depth and handler failures.
+- [Priority Lanes](./using-priority-lanes.md): Backfill streams use separate `{stream}:backfill:dlq` queues.

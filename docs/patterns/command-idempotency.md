@@ -18,7 +18,7 @@ distributed systems, the same intention can arrive more than once:
 
 In all of these cases, the system receives what is logically the *same command*
 multiple times. Without idempotency, each delivery produces additional state
-changes -- duplicate orders, double charges, extra emails.
+changes, duplicate orders, double charges, extra emails.
 
 **Command idempotency** means that processing the same command more than once
 produces the same observable effect as processing it exactly once. The system
@@ -80,7 +80,7 @@ domain.process(
 
 The key is stored in the command's metadata headers
 (`command._metadata.headers.idempotency_key`), not in the command's payload
-fields. This keeps the command's domain data clean -- the idempotency key is
+fields. This keeps the command's domain data clean. The idempotency key is
 infrastructure, not business data.
 
 **When no key is provided**, `domain.process()` treats every call as a unique
@@ -90,8 +90,8 @@ break legitimate operations.
 
 ### Where Keys Come From
 
-In practice, idempotency keys originate at the system boundary -- the API
-layer, the message consumer, or the saga coordinator:
+In practice, idempotency keys originate at the system boundary, the API layer,
+the message consumer, or the saga coordinator:
 
 ```python
 # In a FastAPI endpoint
@@ -193,9 +193,8 @@ domain.process(command, idempotency_key="req-123")
    this is the event store position. The caller sees exactly the same
    response as the original submission.
 
-2. **Cache miss or error entry**: Proceed normally -- enrich the command,
-   append to event store, process (sync or async), and cache the result on
-   success.
+2. **Cache miss or error entry**: Proceed normally, enrich the command, append
+   to event store, process (sync or async), and cache the result on success.
 
 3. **Processing failure**: The command is in the event store but processing
    failed. The Redis entry is either absent or marked as error. The caller
@@ -204,10 +203,10 @@ domain.process(command, idempotency_key="req-123")
 
 #### Duplicate Behavior
 
-By default, duplicate submissions are **silently acknowledged** -- the caller
+By default, duplicate submissions are **silently acknowledged**, the caller
 receives the same result as the first submission. This is critical for retry
 safety: a client retrying a failed network request should not get an error
-simply because the first attempt actually succeeded.
+because the first attempt actually succeeded.
 
 When explicit feedback is needed, callers can opt into raising an exception:
 
@@ -267,7 +266,7 @@ Layer 1 writes to. When the subscription picks up a command for processing:
    would), then advance the position.
 
 For commands **without** idempotency keys, Layer 2 relies on position tracking
-alone -- the existing behavior. The subscription advances past messages it has
+alone, the existing behavior. The subscription advances past messages it has
 already seen based on its stored position.
 
 #### What This Protects Against
@@ -327,10 +326,10 @@ as set-based operations, you get idempotency for free.
 
 **More examples of naturally idempotent commands:**
 
-- `UpdateAddress` -- replaces the address
-- `SetPreference` -- overwrites a preference value
-- `AssignRole` -- assigns a role (assigning the same role twice is a no-op)
-- `RenameProduct` -- replaces the product name
+- `UpdateAddress`: Replaces the address
+- `SetPreference`: Overwrites a preference value
+- `AssignRole`: Assigns a role (assigning the same role twice is a no-op)
+- `RenameProduct`: Replaces the product name
 
 ### Create Operations: Check-Then-Act
 
@@ -412,7 +411,7 @@ recently processed command keys. For aggregates with high command volume,
 this set can be pruned periodically (keeping only the last N entries or
 entries within a time window).
 
-### Event-Sourced Aggregates: Leverage Expected Version
+### Event-Sourced Aggregates: Use Expected Version
 
 Event-sourced aggregates in Protean use optimistic concurrency via
 `expected_version`. When a handler loads an aggregate, processes a command, and
@@ -513,8 +512,8 @@ class AccountCommandHandler(BaseCommandHandler):
 
 ### External Side Effects
 
-External side effects -- sending emails, calling payment APIs, posting to
-third-party services -- cannot be made idempotent by the framework alone. The
+External side effects (sending emails, calling payment APIs, posting to
+third-party services) cannot be made idempotent by the framework alone. The
 developer must handle these explicitly.
 
 #### Pattern: Status Flag
@@ -649,7 +648,7 @@ The short answer: **always, for commands that originate from system boundaries
 Idempotency keys are the only reliable way to distinguish a retry from a new
 request. Without a key, the framework cannot help with submission-level or
 subscription-level deduplication. Handler-level patterns still work, but they
-require more effort from the developer and are less robust for additive
+require more effort from the developer and are less reliable for additive
 operations.
 
 The only case where omitting a key is reasonable is for purely internal
@@ -719,10 +718,10 @@ error_ttl = 60
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Commands](../concepts/building-blocks/commands.md) — Commands as intent to change state.
-    - [Command Handlers](../concepts/building-blocks/command-handlers.md) — Processing commands and persisting state.
+    - [Commands](../concepts/building-blocks/commands.md): Commands as intent to change state.
+    - [Command Handlers](../concepts/building-blocks/command-handlers.md): Processing commands and persisting state.
 
     **Guides:**
 
-    - [Commands](../guides/change-state/commands.md) — Defining commands, idempotency keys, and processing modes.
-    - [Command Handlers](../guides/change-state/command-handlers.md) — Handler definition, workflow, and idempotency handling.
+    - [Commands](../guides/change-state/commands.md): Defining commands, idempotency keys, and processing modes.
+    - [Command Handlers](../guides/change-state/command-handlers.md): Handler definition, workflow, and idempotency handling.

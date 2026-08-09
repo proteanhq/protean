@@ -1,9 +1,8 @@
 # Chapter 9: Structuring the Project
 
-Our `bookshelf.py` file has grown to hundreds of lines — aggregates,
-value objects, commands, handlers, events, projections, and projectors
-all in one file. Before we add an API layer and more features, we need
-a proper project structure.
+Our `bookshelf.py` file has grown to hundreds of lines, aggregates, value objects,
+commands, handlers, events, projections, and projectors all in one file. Before
+we add an API layer and more features, we need a proper project structure.
 
 ## Why Restructure Now?
 
@@ -146,7 +145,7 @@ All domain elements should be discovered and registered just as before.
 
 - A proper **Python package** with separate modules for models, commands,
   events, handlers, and projections.
-- **Domain auto-discovery** — `domain.init()` scans the package
+- **Domain auto-discovery**: `domain.init()` scans the package
   automatically.
 - **CLI integration** with `--domain` and `PROTEAN_DOMAIN`.
 - The same functionality as before, but organized for growth.

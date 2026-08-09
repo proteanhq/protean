@@ -2,24 +2,24 @@
 
 In this tutorial we will build **Fidelis**, a digital banking ledger
 platform with Protean's Event Sourcing capabilities. By the end, we will
-have a production-grade system with immutable audit trails, temporal
+have a system with immutable audit trails, temporal
 queries, schema evolution, cross-domain integrations, and full operational
 tooling.
 
 ## Why Event Sourcing for Banking?
 
-Every financial transaction is an **immutable fact**. A deposit happened.
-A withdrawal happened. You cannot delete or overwrite a transaction — you
-record a new one. Event Sourcing captures this reality directly: instead
-of storing the current balance, we store every event that changed it and
-derive the balance by replaying the history.
+Every financial transaction is an **immutable fact**. A deposit happened. A
+withdrawal happened. You cannot delete or overwrite a transaction. You record a
+new one. Event Sourcing captures this reality directly: instead of storing the
+current balance, we store every event that changed it and derive the balance by
+replaying the history.
 
 This gives us:
 
-- **Complete audit trails** — every state change is recorded forever
-- **Temporal queries** — "what was the balance on March 15th?"
-- **Schema evolution** — new regulations add fields without rewriting history
-- **Debugging superpowers** — trace every action back to its cause
+- **Complete audit trails**: Every state change is recorded forever
+- **Temporal queries**: "what was the balance on March 15th?"
+- **Schema evolution**: New regulations add fields without rewriting history
+- **Debugging superpowers**: Trace every action back to its cause
 
 ## What We Will Build
 
@@ -28,9 +28,9 @@ This gives us:
 - **Projections** for dashboards and regulatory reports
 - **Event handlers** for compliance alerts and notifications
 - An **external payment gateway** integration
-- **Production tooling** — monitoring, dead letter queues, migrations
+- **Production tooling**: Monitoring, dead letter queues, migrations
 
-## How the Tutorial Is Organized
+## The five parts
 
 The tutorial is divided into five parts. Each chapter builds on the
 previous one, growing the Fidelis platform step by step.
@@ -49,21 +49,21 @@ previous one, growing the Fidelis platform step by step.
     in order for the best experience.
 
 !!! info "Which pathway does this tutorial follow?"
-    This tutorial follows the **Event Sourcing** path — aggregates derive
-    their state from events rather than storing snapshots in a database.
-    If you are looking for the standard CQRS approach, see the
-    [Bookshelf tutorial](../tutorial/index.md).
+    This tutorial follows the **Event Sourcing** path, aggregates derive their
+    state from events rather than storing snapshots in a database. If you are
+    looking for the standard CQRS approach, see the [Bookshelf
+    tutorial](../tutorial/index.md).
 
 ## Prerequisites
 
 - **Python 3.11+**
-- **Protean installed** — see [Installation](../installation.md)
-- **Familiarity with the [Bookshelf tutorial](../tutorial/index.md)** —
+- **Protean installed**: See [Installation](../installation.md)
+- **Familiarity with the [Bookshelf tutorial](../tutorial/index.md)**:
   this tutorial assumes you understand aggregates, fields, commands, and
   events. We build on those concepts with Event Sourcing specifics.
-- **Docker** (from Chapter 8 onward) — for Redis and other services
+- **Docker** (from Chapter 8 onward), for Redis and other services
 
-## Ready?
+## Start here
 
 Start with **[Chapter 1: The Faithful Ledger](01-the-faithful-ledger.md)**
 and build your banking platform from the ground up.

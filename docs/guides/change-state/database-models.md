@@ -4,8 +4,8 @@
 
 Protean auto-generates database models for every aggregate and entity.
 Custom database models let you override the default storage schema when
-you need adapter-specific tuning -- custom table names, Elasticsearch
-analyzers, or multi-database deployments.
+you need adapter-specific tuning, custom table names, Elasticsearch analyzers,
+or multi-database deployments.
 
 ---
 
@@ -134,7 +134,7 @@ domain.register(
 ---
 
 !!! tip "See also"
-    - [Adapters Reference](../../reference/adapters/index.md) -- Provider-specific
+    - [Adapters Reference](../../reference/adapters/index.md): Provider-specific
       configuration and field types.
-    - [Custom Databases](../../reference/adapters/database/custom-databases.md)
-      -- Building your own database adapter.
+    - [Custom Databases](../../reference/adapters/database/custom-databases.md):
+      Building your own database adapter.

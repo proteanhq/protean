@@ -2,7 +2,7 @@
 
 ## The Problem They Solve
 
-Event handlers react to domain events and execute side effects — updating
+Event handlers react to domain events and execute side effects, updating
 another aggregate, sending a notification, syncing a projection. Each handler
 processes one event in isolation, with no memory of what happened before or
 what should happen next.
@@ -21,7 +21,7 @@ These workflows share a common structure: each step produces an event, and
 that event determines what the *next* step should be. If a step fails, earlier
 steps may need to be reversed. The workflow needs to remember where it is.
 
-Event handlers cannot do this. They are stateless — they don't know which step
+Event handlers cannot do this. They are stateless. They don't know which step
 they're on, what happened before, or what should happen next. You need
 something that tracks the progress of the entire process, correlates events
 from different aggregates to the same running instance, and decides what to do
@@ -31,12 +31,12 @@ next at each step. That is a process manager.
 
 | | Event Handler | Process Manager |
 |---|---------------|----------------|
-| **State** | Stateless — each event processed in isolation | Stateful — remembers what happened so far |
+| **State** | Stateless, each event processed in isolation | Stateful, remembers what happened so far |
 | **Steps** | Single reaction to one event | Multi-step workflow across many events |
 | **Scope** | Reacts to events from one aggregate (`part_of`) | Reacts to events from multiple aggregates (`stream_categories`) |
 | **Lifecycle** | No concept of "started" or "done" | Explicit lifecycle with `start`, `end`, `mark_as_complete()` |
 | **Failure handling** | No built-in compensation | Coordinates compensating commands to undo earlier steps |
-| **Correlation** | N/A — each event is independent | Routes events to the correct instance via correlation keys |
+| **Correlation** | N/A; each event is independent | Routes events to the correct instance via correlation keys |
 
 **Use an event handler** when a single event triggers a single reaction that
 doesn't depend on past or future events. Examples: "When an order ships,
@@ -45,8 +45,8 @@ decrease inventory." "When a user registers, send a welcome email."
 **Use a process manager** when you need to coordinate a sequence of steps
 across multiple aggregates, track progress, and handle failures by unwinding
 earlier steps. Examples: "When an order is placed, reserve inventory, then
-charge payment, then create shipment — and if any step fails, undo the
-previous ones."
+charge payment, then create shipment, and if any step fails, undo the previous
+ones."
 
 ## How the Event Chain Works
 
@@ -135,10 +135,10 @@ happened so far and decide what to do next.
 
 ### Process managers correlate events to instances. { data-toc-label="Correlation" }
 
-Every handler declares a `correlate` parameter that extracts an identity
-value from the incoming event (e.g., `correlate="order_id"`). This value is
-used to find the correct process manager instance — or to create one when
-a start event arrives.
+Every handler declares a `correlate` parameter that extracts an identity value
+from the incoming event (e.g., `correlate="order_id"`). This value is used to
+find the correct process manager instance, or to create one when a start event
+arrives.
 
 ### Process managers listen to multiple streams. { data-toc-label="Multi-Stream" }
 
@@ -167,18 +167,18 @@ an instance replays these transitions to rebuild state.
 
 ### Process managers have a lifecycle. { data-toc-label="Lifecycle" }
 
-Every process manager begins with a **start** event — the handler marked
-with `start=True`. It runs through intermediate states as subsequent events
-arrive, and ends when either `mark_as_complete()` is called in a handler or
-a handler is marked with `end=True`. Once complete, subsequent events for
-that instance are skipped.
+Every process manager begins with a **start** event, the handler marked with
+`start=True`. It runs through intermediate states as subsequent events arrive,
+and ends when either `mark_as_complete()` is called in a handler or a handler
+is marked with `end=True`. Once complete, subsequent events for that instance
+are skipped.
 
 ### Process managers issue commands, not mutations. { data-toc-label="Issue Commands" }
 
-Handlers in a process manager issue commands via
-`current_domain.process()` to trigger actions in other aggregates. This
-keeps the PM as a pure coordinator — it decides *what* should happen next,
-and the target aggregate's command handler decides *how*.
+Handlers in a process manager issue commands via `current_domain.process()` to
+trigger actions in other aggregates. This keeps the PM as a pure coordinator.
+It decides *what* should happen next, and the target aggregate's command
+handler decides *how*.
 
 ### Each handler processes one event type. { data-toc-label="Single Event Type" }
 
@@ -197,10 +197,9 @@ occurs, the entire operation is rolled back.
 
 ### Keep process managers focused on coordination. { data-toc-label="Coordination Only" }
 
-A process manager should orchestrate — not contain — business logic. The
-domain logic belongs in the aggregates and domain services. The process
-manager's job is to decide which commands to issue and when, based on the
-events it has seen.
+A process manager should orchestrate (not contain) business logic. The domain
+logic belongs in the aggregates and domain services. The process manager's job
+is to decide which commands to issue and when, based on the events it has seen.
 
 ### Always define a terminal state. { data-toc-label="Terminal State" }
 
@@ -212,9 +211,9 @@ design gap.
 ### Use meaningful correlation keys. { data-toc-label="Meaningful Keys" }
 
 The correlation field should represent the natural identity of the business
-process — typically the ID of the aggregate that initiated it. All events
-participating in the process must carry this field so they can be routed to
-the correct instance.
+process, typically the ID of the aggregate that initiated it. All events
+participating in the process must carry this field so they can be routed to the
+correct instance.
 
 ### Design for idempotency. { data-toc-label="Idempotency" }
 
@@ -235,8 +234,8 @@ in an inconsistent intermediate state. Use `end=True` or
 
 For practical details on defining and using process managers in Protean, see the guide:
 
-- [Process Managers](../../guides/consume-state/process-managers.md) — Defining process managers, correlation, lifecycle management, and configuration.
+- [Process Managers](../../guides/consume-state/process-managers.md): Defining process managers, correlation, lifecycle management, and configuration.
 
 For design guidance:
 
-- [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) — Patterns for resilient multi-step workflows with idempotency, compensation, and timeout handling.
+- [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md): Patterns for resilient multi-step workflows with idempotency, compensation, and timeout handling.

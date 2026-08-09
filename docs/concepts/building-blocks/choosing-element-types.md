@@ -35,32 +35,32 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 
 ### Choose an Aggregate when:
 
-- **It's a core business concept** - The concept is central to your domain and represents a significant business entity
-- **It needs direct access** - External systems or application services need to interact with it directly
-- **It manages a consistency boundary** - Business rules require that certain data changes happen together atomically
-- **It controls other entities** - The concept needs to manage the lifecycle of related entities
-- **It's a transaction root** - Operations on this concept and its related data should be transactional
-- **It has complex business behavior** - The concept encapsulates significant business logic and rules
-- **It generates domain events** - Changes to this concept trigger events that other parts of the system care about
+- **It's a core business concept**: The concept is central to your domain and represents a significant business entity
+- **It needs direct access**: External systems or application services need to interact with it directly
+- **It manages a consistency boundary**: Business rules require that certain data changes happen together atomically
+- **It controls other entities**: The concept needs to manage the lifecycle of related entities
+- **It's a transaction root**: Operations on this concept and its related data should be transactional
+- **It has complex business behavior**: The concept encapsulates significant business logic and rules
+- **It generates domain events**: Changes to this concept trigger events that other parts of the system care about
 
 ### Choose an Entity when:
 
-- **It has unique identity** - The concept has a distinct identity that remains the same throughout its lifecycle
-- **Identity matters more than attributes** - Two instances with the same attributes but different identities are considered different
-- **It belongs to an aggregate** - The concept is part of a larger aggregate's consistency boundary
-- **It needs to change over time** - The concept's attributes can be modified while maintaining its identity
-- **It has entity-specific behavior** - The concept has methods that operate on its own state
-- **It's accessed through an aggregate** - The concept doesn't need direct external access
+- **It has unique identity**: The concept has a distinct identity that remains the same throughout its lifecycle
+- **Identity matters more than attributes**: Two instances with the same attributes but different identities are considered different
+- **It belongs to an aggregate**: The concept is part of a larger aggregate's consistency boundary
+- **It needs to change over time**: The concept's attributes can be modified while maintaining its identity
+- **It has entity-specific behavior**: The concept has methods that operate on its own state
+- **It's accessed through an aggregate**: The concept doesn't need direct external access
 
 ### Choose a Value Object when:
 
-- **Identity doesn't matter** - Two instances with the same attributes are considered identical
-- **It's descriptive** - The concept describes or measures something (e.g., money, address, email)
-- **It should be immutable** - Once created, the concept's values shouldn't change
-- **It encapsulates validation rules** - The concept has specific rules about what constitutes valid values
-- **It's frequently shared** - Multiple entities might use the same value object instance
-- **It represents a atomic concept** - The concept is meaningful only when all its attributes are considered together
-- **It simplifies the domain model** - Using this concept as a value object reduces complexity
+- **Identity doesn't matter**: Two instances with the same attributes are considered identical
+- **It's descriptive**: The concept describes or measures something (e.g., money, address, email)
+- **It should be immutable**: Once created, the concept's values shouldn't change
+- **It encapsulates validation rules**: The concept has specific rules about what constitutes valid values
+- **It's frequently shared**: Multiple entities might use the same value object instance
+- **It represents a atomic concept**: The concept is meaningful only when all its attributes are considered together
+- **It simplifies the domain model**: Using this concept as a value object reduces complexity
 
 ## Practical Examples
 
@@ -318,13 +318,13 @@ Does this concept need to be accessed directly from outside the domain?
 
 ### Default Guidelines
 
-1. **Start with Value Object** - If you're unsure, try modeling as a value object first. It's easier to promote to entity/aggregate later than to demote.
+1. **Start with Value Object**: If you're unsure, try modeling as a value object first. It's easier to promote to entity/aggregate later than to demote.
 
-2. **Favor composition** - Prefer value objects embedded in entities over creating new entities.
+2. **Favor composition**: Prefer value objects embedded in entities over creating new entities.
 
-3. **Question aggregates** - Only create aggregates when you have a clear business justification for direct access and consistency boundaries.
+3. **Question aggregates**: Only create aggregates when you have a clear business justification for direct access and consistency boundaries.
 
-4. **Context matters** - The same concept might be different element types in different bounded contexts.
+4. **Context matters**: The same concept might be different element types in different bounded contexts.
 
 ### Common Patterns
 

@@ -133,10 +133,10 @@ with assert_query_count(1, engine=my_engine):
 
 ## Avoiding false positives
 
-- **Scope the block tightly.** Only wrap the call under test. Seeding, fixture
+- **Scope the block tightly**: Only wrap the call under test. Seeding, fixture
   setup, and assertions that themselves query should sit outside the block.
-- **Count what the operation issues, not the framework.** A `.all()` with the
+- **Count what the operation issues, not the framework**: A `.all()` with the
   default `with_total=True` issues a second `COUNT` query; use
   `with_total=False` when you mean to assert a single round trip.
-- **These are deterministic, not statistical.** They catch shape regressions,
+- **These are deterministic, not statistical**: They catch shape regressions,
   not latency. For timing-based regression detection, use a benchmark instead.

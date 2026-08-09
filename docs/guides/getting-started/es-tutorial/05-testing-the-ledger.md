@@ -1,9 +1,9 @@
 # Chapter 5: Testing the Ledger
 
-We have been running code manually in scripts and the Protean shell. It
-is time for proper automated tests. In this chapter we will discover
-Protean's testing DSL — a fluent API that reads like English: "given an
-Account after these events, process this command."
+We have been running code manually in scripts and the Protean shell. It is time
+for proper automated tests. In this chapter we will discover Protean's testing
+DSL. A fluent API that reads like English: "given an Account after these
+events, process this command."
 
 ## The Testing DSL
 
@@ -15,9 +15,9 @@ from protean.testing import given
 
 The DSL chains three concepts:
 
-1. **`given(Aggregate, ...events)`** — set up aggregate history
-2. **`.process(Command)`** — dispatch a command through the full pipeline
-3. **Assert** the result — `.accepted`, `.rejected`, `.events`, etc.
+1. **`given(Aggregate, ...events)`**: Set up aggregate history
+2. **`.process(Command)`**: Dispatch a command through the full pipeline
+3. **Assert** the result, `.accepted`, `.rejected`, `.events`, etc.
 
 ## Setting Up Tests
 
@@ -44,12 +44,12 @@ arguments:
 
 Key assertions:
 
-- **`result.accepted`** — the command was processed successfully.
-- **`AccountOpened in result.events`** — the `EventLog` supports `in`
+- **`result.accepted`**: The command was processed successfully.
+- **`AccountOpened in result.events`**: The `EventLog` supports `in`
   for type checking.
-- **`result.events[AccountOpened]`** — access the event instance by
+- **`result.events[AccountOpened]`**: Access the event instance by
   type.
-- **`result.holder_name`** — the result proxies attribute access to the
+- **`result.holder_name`**: The result proxies attribute access to the
   aggregate, so you can check final state directly.
 
 ## Testing with History
@@ -73,11 +73,11 @@ When a command violates a business rule, use `.rejected`:
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_rejection"
 ```
 
-- **`result.rejected`** — the command was rejected (a `ValidationError`
+- **`result.rejected`**: The command was rejected (a `ValidationError`
   was raised).
-- **`result.rejection_messages`** — a flat list of error strings from
+- **`result.rejection_messages`**: A flat list of error strings from
   the `ValidationError`.
-- **`len(result.events) == 0`** — no events were recorded because the
+- **`len(result.events) == 0`**: No events were recorded because the
   command was rejected.
 
 ## Multi-Command Chaining
@@ -120,10 +120,10 @@ Notice that `given().process()` runs the **full pipeline**: it calls
 aggregate from the event store, calls the domain method, persists the
 result, and returns. There are no mocks.
 
-This is deliberate. Event-sourced systems derive their state from events
-— mocking the event store would defeat the purpose. The testing DSL
-makes integration tests fast enough (in-memory) and expressive enough
-(fluent API) that you rarely need unit tests with mocks.
+This is deliberate. Event-sourced systems derive their state from events.
+Mocking the event store would defeat the purpose. The testing DSL makes
+integration tests fast enough (in-memory) and expressive enough (fluent API)
+that you rarely need unit tests with mocks.
 
 ## What We Built
 
@@ -136,7 +136,7 @@ makes integration tests fast enough (in-memory) and expressive enough
 - **`.all_events`** for cross-command event accumulation.
 - **`.rejection_messages`** for flat error string access.
 
-Part I is complete. We have a solid banking ledger with business rules
+That completes Part I. We have a banking ledger with business rules
 and comprehensive tests. In Part II, we will grow the platform with
 projections, event handlers, async processing, and cross-aggregate
 coordination.

@@ -1,7 +1,7 @@
 # Message DB
 
 Message DB is a PostgreSQL-based event store that provides durable,
-production-grade event storage. It is built on the
+durable event storage. It is built on the
 [Message DB](https://github.com/message-db/message-db) project and accessed
 through the [message-db-py](https://pypi.org/project/message-db-py/) Python
 client.
@@ -103,14 +103,14 @@ See [`protean events`](../../cli/data/events.md) for the full CLI reference.
 
 ## Limitations
 
-- **Requires PostgreSQL** -- Message DB is built on PostgreSQL and requires a
+- **Requires PostgreSQL**: Message DB is built on PostgreSQL and requires a
   running instance with the Message DB extension installed.
-- **Separate Database** -- Message DB uses its own PostgreSQL database
+- **Separate Database**: Message DB uses its own PostgreSQL database
   (`message_store`), separate from your application database.
-- **Docker Dependency** -- The recommended setup uses Docker. Installing
+- **Docker Dependency**: The recommended setup uses Docker. Installing
   Message DB directly on a PostgreSQL instance requires additional setup.
 
-## Next Steps
+## Related pages
 
 - Learn about [temporal queries](../../../guides/change-state/temporal-queries.md)
 - Explore [event sourcing architecture](../../../concepts/architecture/event-sourcing.md)

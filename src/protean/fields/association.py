@@ -600,6 +600,7 @@ class HasMany(Association):
         We track the change in the instance's `_temp_cache` to determine if the relationship
         has been added, updated, or deleted. We track each item's state and group the changes
         into three buckets:
+
         - ADDED: The relationship is being added for the first time
         - UPDATED: The relationship is being updated
         - DELETED: The relationship is being removed

@@ -8,14 +8,14 @@ lifecycle management.
 
 The Engine is responsible for:
 
-1. **Registering handler subscriptions** - Creating subscriptions for event
+1. **Registering handler subscriptions**: Creating subscriptions for event
    handlers, command handlers, and projectors
-2. **Managing broker subscriptions** - Handling external message consumers
-3. **Running outbox processors** - Publishing messages from the transactional
+2. **Managing broker subscriptions**: Handling external message consumers
+3. **Running outbox processors**: Publishing messages from the transactional
    outbox
-4. **Coordinating lifecycle** - Starting, running, and gracefully shutting down
+4. **Coordinating lifecycle**: Starting, running, and gracefully shutting down
    all components
-5. **Emitting trace events** - Publishing structured `MessageTrace` events at
+5. **Emitting trace events**: Publishing structured `MessageTrace` events at
    each stage of message processing for real-time observability
 
 ## Engine Initialization
@@ -123,9 +123,9 @@ tick_interval = 1
 ### External Outbox Processors
 
 When `external_brokers` is configured, the Engine creates additional
-`OutboxProcessor` instances — one per external broker per database provider.
-These processors only pick up outbox rows tagged with their target broker and
-publish using a stripped metadata envelope suitable for external consumers:
+`OutboxProcessor` instances, one per external broker per database provider. These processors
+only pick up outbox rows tagged with their target broker and publish using a
+stripped metadata envelope suitable for external consumers:
 
 ```toml
 [outbox]
@@ -135,8 +135,8 @@ external_brokers = ["partner_events"]   # Adds external processors
 
 With one database provider, this creates two processors:
 
-- `outbox-processor-default-to-default` — internal events
-- `outbox-processor-default-to-partner_events-external` — published events to
+- `outbox-processor-default-to-default`: Internal events
+- `outbox-processor-default-to-partner_events-external`: Published events to
   external broker
 
 External processors emit `outbox.external_published` and
@@ -166,9 +166,9 @@ The Engine initializes a `TraceEmitter` at startup that publishes structured
 `MessageTrace` events as messages flow through the pipeline. Trace events are
 emitted at three points during `handle_message`:
 
-- `handler.started` -- Before the handler processes the message
-- `handler.completed` -- After successful processing (includes `duration_ms`)
-- `handler.failed` -- When the handler raises an exception (includes `error`)
+- `handler.started`: Before the handler processes the message
+- `handler.completed`: After successful processing (includes `duration_ms`)
+- `handler.failed`: When the handler raises an exception (includes `error`)
 
 Additional trace events are emitted by `StreamSubscription` (`message.acked`,
 `message.nacked`, `message.dlq`) and `OutboxProcessor` (`outbox.published`,
@@ -178,11 +178,11 @@ Additional trace events are emitted by `StreamSubscription` (`message.acked`,
 
 The TraceEmitter writes to two Redis channels:
 
-- **Pub/Sub** (`protean:trace`) -- Real-time fan-out for SSE clients. The
-  emitter checks subscriber count and skips when nobody is listening.
-- **Stream** (`protean:traces`) -- Time-bounded history for the Observatory
-  dashboard and REST API. Old entries are automatically trimmed based on the
-  configured retention period.
+- **Pub/Sub** (`protean:trace`), Real-time fan-out for SSE clients. The emitter checks
+  subscriber count and skips when nobody is listening.
+- **Stream** (`protean:traces`), Time-bounded history for the Observatory dashboard and
+  REST API. Old entries are automatically trimmed based on the configured
+  retention period.
 
 ### Trace retention
 
@@ -192,8 +192,9 @@ disabled and only Pub/Sub broadcasting is available. If the configuration value
 is missing or invalid, the Engine falls back to the 7-day default.
 
 The emitter adds zero overhead when no monitoring tools are subscribed and
-persistence is disabled -- see [Observability](../../reference/server/observability.md) for the full
-design, the Observatory monitoring server, and trace API endpoints.
+persistence is disabled, see
+[Observability](../../reference/server/observability.md) for the full design,
+the Observatory monitoring server, and trace API endpoints.
 
 ## Context Propagation
 
@@ -238,8 +239,8 @@ tenant_id = g.message_in_context.metadata.extensions.get("tenant_id")
 tenant_id = g.tenant_id
 ```
 
-After the handler completes (or fails), the domain context is torn down and
-`g` is cleaned up — extensions do not leak between messages.
+After the handler completes (or fails), the domain context is torn down and `g`
+is cleaned up. Extensions do not leak between messages.
 
 For a complete worked example of context propagation in a multi-tenant
 application, see [Multi-Tenancy in Event-Driven Systems](../../patterns/multi-tenancy.md).
@@ -252,14 +253,14 @@ The Engine owns the lifecycle of every infrastructure adapter it
 opens. When it receives `SIGINT`, `SIGTERM`, or `SIGHUP`, it walks a
 deliberate four-step sequence that preserves three invariants:
 
-1. **Load balancers pull the pod out of rotation first** — readiness
+1. **Load balancers pull the pod out of rotation first**: Readiness
    probes flip to `503` before handlers stop, so new traffic stops
    arriving before in-flight work is disturbed.
-2. **In-flight handlers finish or are bounded** — each handler gets up
+2. **In-flight handlers finish or are bounded**: Each handler gets up
    to 10 seconds to complete, after which stragglers are cancelled.
    This bounds shutdown time without sacrificing successful commits
    that are already underway.
-3. **Resources close in reverse-initialisation order** — dependents
+3. **Resources close in reverse-initialisation order**: Dependents
    close before their dependencies, so a handler mid-commit never
    finds its repository's connection pool closed out from under it.
 
@@ -287,25 +288,25 @@ sequenceDiagram
 
 Two guarantees fall out of this sequence:
 
-- **`/readyz` fails before any handler is disturbed.** The health
+- **`/readyz` fails before any handler is disturbed**: The health
   server stops in step 3; subscriptions stop in step 4; in-flight
   handlers drain in step 5. A load balancer that polls `/readyz` every
   5 seconds pulls the pod within that window, and requests already in
   flight complete on the old pod.
-- **`Domain.close()` is safe to call from application code.** Tests
+- **`Domain.close()` is safe to call from application code**: Tests
   and tooling that create domains on demand can invoke `domain.close()`
   directly. Each adapter's `close()` is wrapped in `try/except` inside
   the Domain so a misbehaving adapter cannot prevent the rest from
   closing. Custom adapters inherit a no-op `close()`; override it when
   the adapter holds sockets, file handles, or background threads.
 
-For the `terminationGracePeriodSeconds` you need in Kubernetes, and
-the full reference — what `Domain.close()` does per adapter, when
-`SIGHUP` vs `SIGTERM` matter, how to disable the health server — see
-[Server Hardening reference](../../reference/server/hardening.md#shutdown-sequence)
-and [Harden the Server](../../guides/server/hardening.md#shut-down-gracefully).
-The design rationale — why subscriptions stop first, why 10 seconds,
-why per-adapter error isolation — is captured in
+For the `terminationGracePeriodSeconds` you need in Kubernetes, and the full
+reference. What `Domain.close()` does per adapter, when `SIGHUP` vs `SIGTERM`
+matter, how to disable the health server, see [Server Hardening
+reference](../../reference/server/hardening.md#shutdown-sequence) and [Harden
+the Server](../../guides/server/hardening.md#shut-down-gracefully). The design
+rationale (why subscriptions stop first, why 10 seconds, why per-adapter error
+isolation) is captured in
 [ADR-0011](../../adr/0011-engine-shutdown-and-resource-lifecycle-contract.md).
 
 ---
@@ -324,7 +325,7 @@ For comprehensive information on how to start, configure, and operate the engine
 
 See the [Running the Server](../../guides/server/index.md) guide.
 
-## Next Steps
+## Where to go next
 
 - [Subscriptions](subscriptions.md): Learn how handlers connect to message sources and react to events.
 - [Subscription Types](../../reference/server/subscription-types.md): Compare StreamSubscription and EventStoreSubscription, and choose the right one for your workload.

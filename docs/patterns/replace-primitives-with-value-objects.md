@@ -21,7 +21,7 @@ class User:
     balance_currency: String(default="USD")
 ```
 
-This compiles, tests pass, and the application works -- until it doesn't.
+This compiles, tests pass, and the application works, until it doesn't.
 
 - A user signs up with `email="not-an-email"`. The system stores it, sends a
   welcome email, and the email bounces. The bounce handler crashes because it
@@ -29,7 +29,7 @@ This compiles, tests pass, and the application works -- until it doesn't.
 
 - A financial report sums `balance_amount` across users in different currencies.
   The result is meaningless: you can't add USD and EUR. But the code doesn't
-  know that -- they're just floats.
+  know that, they're just floats.
 
 - A test creates a user with `country="United States"`, another with
   `country="US"`, and a third with `country="usa"`. The query for US users
@@ -40,16 +40,16 @@ This compiles, tests pass, and the application works -- until it doesn't.
   between methods, it passes six parameters. To compare two addresses, it
   compares six fields.
 
-These problems share a root cause: **primitive obsession** -- using basic
-types (strings, integers, floats) to represent domain concepts that have
-structure, rules, and meaning beyond the primitive type's capabilities.
+These problems share a root cause: **primitive obsession**, using basic types
+(strings, integers, floats) to represent domain concepts that have structure,
+rules, and meaning beyond the primitive type's capabilities.
 
 ---
 
 ## The Pattern
 
 Replace groups of related primitives and validated primitives with
-**value objects** -- immutable domain objects that encapsulate their own
+**value objects**, immutable domain objects that encapsulate their own
 validation rules, are defined by their attributes (not identity), and make
 invalid states unrepresentable.
 
@@ -68,22 +68,22 @@ Value objects:
 
 Apply these tests to identify primitives that should be value objects:
 
-1. **Format rules exist.** If a string must match a pattern (email, phone,
+1. **Format rules exist**: If a string must match a pattern (email, phone,
    postal code, URL), it's a value object. The validation should live with the
    data, not in every handler that touches it.
 
-2. **Multiple fields travel together.** If two or more fields are meaningless
+2. **Multiple fields travel together**: If two or more fields are meaningless
    alone but meaningful together (amount + currency, latitude + longitude,
    street + city + state + postal code), they form a value object.
 
-3. **The same validation is duplicated.** If you're checking `if '@' in email`
+3. **The same validation is duplicated**: If you're checking `if '@' in email`
    in multiple places, the validation belongs in a value object, written once.
 
-4. **Equality is by value, not identity.** Two email addresses "user@example.com"
+4. **Equality is by value, not identity**: Two email addresses "user@example.com"
    are the same regardless of which user they belong to. Two `Money(100, "USD")`
    instances are equal. These are value objects.
 
-5. **Operations exist.** If you can add two of them, compare them, or transform
+5. **Operations exist**: If you can add two of them, compare them, or transform
    them, the operation logic should live in the value object. `Money` can be
    added (if currencies match). `DateRange` can check for overlaps.
 
@@ -93,7 +93,7 @@ Apply these tests to identify primitives that should be value objects:
 
 ### Email: Validated String
 
-The simplest case -- a string with format rules.
+The simplest case, a string with format rules.
 
 **Before: primitive**
 
@@ -169,7 +169,7 @@ class Product:
     cost_currency: String(max_length=3, required=True)
 ```
 
-Can you calculate margin? `price_amount - cost_amount` -- but only if the
+Can you calculate margin? `price_amount - cost_amount`, but only if the
 currencies match. Nothing enforces that. The currency fields are just strings.
 You could set `price_currency="XYZ"` and the system would happily store it.
 
@@ -301,9 +301,9 @@ class Customer:
     billing_address = ValueObject(Address)
 ```
 
-The aggregate went from twelve fields to two. Adding a work address is one
-more field. The `Address` value object validates itself -- you can't create
-a partial address with just a city and no street.
+The aggregate went from twelve fields to two. Adding a work address is one more
+field. The `Address` value object validates itself. You can't create a partial
+address with just a city and no street.
 
 ```python
 customer = Customer(
@@ -518,9 +518,9 @@ class User:
     # No email or phone validation invariants needed on User
 ```
 
-The aggregate's invariants now focus on **business rules** -- things like "a
-user must have a verified email before they can place orders." Format validation
-is the value object's responsibility.
+The aggregate's invariants now focus on **business rules**, things like "a user
+must have a verified email before they can place orders." Format validation is
+the value object's responsibility.
 
 ---
 
@@ -598,14 +598,14 @@ These emerge from your specific domain:
 
 Not every string needs to be a value object. A `name` field with no format
 rules, no operations, and no composition is fine as a `String`. Apply the
-extraction tests from the beginning of this pattern -- if none apply, keep
-the primitive.
+extraction tests from the beginning of this pattern, if none apply, keep the
+primitive.
 
 ### Performance-Critical Paths
 
 Value objects add a small overhead: object construction, invariant checking,
 and the wrapper object itself. In hot paths processing millions of records per
-second, this overhead might matter. Profile before optimizing -- in most
+second, this overhead might matter. Profile before optimizing, in most
 applications, the overhead is negligible compared to database and network
 latency.
 
@@ -613,8 +613,8 @@ latency.
 
 If two fields happen to appear together but don't have a conceptual
 relationship, don't force them into a value object. `created_at` and
-`updated_at` often appear together but aren't a single concept -- they're
-two independent timestamps.
+`updated_at` often appear together but aren't a single concept, they're two independent
+timestamps.
 
 ---
 
@@ -647,10 +647,10 @@ value object's guarantees. Replace the entire value object instead.
 
 ### Value Objects with Identity
 
-If a concept has identity -- meaning two instances with the same attributes
-can be different -- it's an entity, not a value object. A `BankAccount` with
-a balance of $100 is not the same as another `BankAccount` with $100 -- they
-have different identities. Use an entity or aggregate instead.
+If a concept has identity (meaning two instances with the same attributes can
+be different) it's an entity, not a value object. A `BankAccount` with a
+balance of $100 is not the same as another `BankAccount` with $100. They have
+different identities. Use an entity or aggregate instead.
 
 ---
 
@@ -667,18 +667,18 @@ have different identities. Use an entity or aggregate instead.
 | Reusability | Copy-paste validation | Share the VO class |
 | Readability | `shipping_street`, `shipping_city`, ... | `shipping_address` |
 
-The principle: **if a primitive value has format rules, composition, or
-operations, it's a value object. Extract it, validate it once, and let the
-type system enforce your domain rules.**
+If a primitive value has format rules, composition, or operations, it's a value
+object. Extract it, validate it once, and let the type system enforce your
+domain rules.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Value Objects](../concepts/building-blocks/value-objects.md) — Immutable descriptive objects without identity.
+    - [Value Objects](../concepts/building-blocks/value-objects.md): Immutable descriptive objects without identity.
 
     **Guides:**
 
-    - [Value Objects](../guides/domain-definition/value-objects.md) — Defining, embedding, and validating value objects.
-    - [Fields](../reference/fields/index.md) — Field types and configuration options.
+    - [Value Objects](../guides/domain-definition/value-objects.md): Defining, embedding, and validating value objects.
+    - [Fields](../reference/fields/index.md): Field types and configuration options.

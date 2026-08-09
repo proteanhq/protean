@@ -1,6 +1,6 @@
 """Pytest integration for Protean.
 
-Provides :class:`DomainFixture` for managing the domain lifecycle in tests,
+Provides `DomainFixture` for managing the domain lifecycle in tests,
 and an auto-registered pytest plugin that sets ``PROTEAN_ENV`` before
 test collection.
 
@@ -9,7 +9,7 @@ adapter package, load the conformance plugin in your ``conftest.py``::
 
     pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
 
-For event-sourcing test DSL, use :mod:`protean.testing`::
+For event-sourcing test DSL, use [`protean.testing`][protean.testing]::
 
     from protean.testing import given
 

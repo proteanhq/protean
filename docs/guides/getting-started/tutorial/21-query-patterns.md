@@ -3,9 +3,9 @@
 The storefront needs rich browsing capabilities: filter books by author,
 sort by price, paginate results, and show inventory availability
 alongside book information. In this chapter we will explore the full
-power of `domain.view_for()` and build a cross-aggregate projection.
+full range of `domain.view_for()` and build a cross-aggregate projection.
 
-## ReadOnlyQuerySet Deep Dive
+## ReadOnlyQuerySet in detail
 
 `domain.view_for()` returns a `ReadView`. Its `query` property gives
 you a `ReadOnlyQuerySet` that supports:
@@ -92,7 +92,7 @@ flow through commands on the write side.
 ## Cross-Aggregate Projections
 
 The storefront needs a unified view showing books *with their stock
-levels* — data from two aggregates (Book and Inventory).
+levels*, data from two aggregates (Book and Inventory).
 
 ### The StorefrontView Projection
 
@@ -133,8 +133,8 @@ $ curl "http://localhost:8000/storefront?limit=10&offset=20"
 
 ## What We Built
 
-- A deep understanding of **`ReadOnlyQuerySet`** — filtering, sorting,
-  pagination, and read-only enforcement.
+- A deep understanding of **`ReadOnlyQuerySet`**, filtering, sorting, pagination, and
+  read-only enforcement.
 - A **`StorefrontView`** cross-aggregate projection combining Book and
   Inventory data.
 - **Enhanced API endpoints** with query parameters for rich browsing.

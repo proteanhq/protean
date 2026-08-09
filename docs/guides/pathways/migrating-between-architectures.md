@@ -4,8 +4,8 @@ Protean is designed so you can start simple and evolve your architecture
 incrementally. This guide shows the concrete code transformations for each
 migration step: **DDD to CQRS** and **CQRS to Event Sourcing**.
 
-Each migration is additive -- you layer new capabilities on top of what
-already works, without rewriting from scratch.
+Each migration is additive. You layer new capabilities on top of what already
+works, without rewriting from scratch.
 
 ---
 
@@ -207,7 +207,7 @@ produces the same aggregate state.
 
 ### Step 3: Update command handlers
 
-Command handlers for event-sourced aggregates use the same pattern -- the
+Command handlers for event-sourced aggregates use the same pattern, the
 repository automatically loads from the event store and saves by appending
 events.
 
@@ -236,8 +236,8 @@ database_uri = "postgresql://message_store@localhost:5433/message_store"
 
 ### Step 5: Mix patterns per aggregate
 
-You don't have to migrate everything at once. Protean supports mixing CQRS
-and Event Sourcing within the same domain -- each aggregate chooses its own
+You don't have to migrate everything at once. Protean supports mixing CQRS and
+Event Sourcing within the same domain. Each aggregate chooses its own
 persistence strategy.
 
 ```python
@@ -273,7 +273,7 @@ guide for criteria on which aggregates benefit from event sourcing.
 
 **Migrate one aggregate at a time.** Don't try to move your entire domain in
 one step. Pick the aggregate that benefits most from the next architecture
-level and migrate it. The rest can follow later -- or stay where they are.
+level and migrate it. The rest can follow later, or stay where they are.
 
 **Keep tests green at every step.** Each transformation above is small enough
 to verify independently. Run your tests after each step, not just at the
@@ -282,7 +282,7 @@ end.
 **The tutorials show the full picture.** If you want to see each architecture
 in a complete application context:
 
-- [CQRS Tutorial](../getting-started/tutorial/index.md) -- 22 chapters
+- [CQRS Tutorial](../getting-started/tutorial/index.md): 22 chapters
   building a bookshelf app from DDD through CQRS
-- [Event Sourcing Tutorial](../getting-started/es-tutorial/index.md) -- 22
+- [Event Sourcing Tutorial](../getting-started/es-tutorial/index.md): 22
   chapters building a banking app with full event sourcing

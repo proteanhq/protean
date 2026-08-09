@@ -2,8 +2,8 @@
 
 A projection is a read-optimized, denormalized view of domain data. It
 exists on the query side of a CQRS architecture, purpose-built to serve
-specific read use-cases efficiently — without the constraints or complexity
-of the domain model that produced the data.
+specific read use-cases efficiently, without the constraints or complexity of
+the domain model that produced the data.
 
 Projections are populated by [projectors](./projectors.md) in response to
 [domain events](./events.md). They are never written to directly by domain
@@ -21,12 +21,12 @@ post-processing.
 
 ### Projections support simple field types and value objects. { data-toc-label="Supported Fields" }
 
-Projections hold simple, scalar field types — strings, integers, floats,
-identifiers, timestamps — and may also embed
-[value objects](./value-objects.md) for grouping related attributes (e.g. an
-address or monetary amount). Value objects are persisted as flattened shadow
-fields (e.g. `billing_address_street`, `billing_address_city`), making them
-queryable by individual attribute.
+Projections hold simple, scalar field types (strings, integers, floats,
+identifiers, timestamps) and may also embed [value objects](./value-objects.md)
+for grouping related attributes (e.g. an address or monetary amount). Value
+objects are persisted as flattened shadow fields (e.g.
+`billing_address_street`, `billing_address_city`), making them queryable by
+individual attribute.
 
 Projections cannot contain associations (`HasOne`, `HasMany`) or references
 (`Reference`). These navigational constructs belong to the domain model, not
@@ -36,7 +36,7 @@ the read side.
 
 A projection can be persisted to a database provider for durable storage, or
 to a cache (such as Redis) for high-speed access. The choice depends on the
-read pattern — caching suits high-throughput, low-latency lookups, while
+read pattern, caching suits high-throughput, low-latency lookups, while
 database storage suits complex queries and long-term retention.
 
 ### Every projection has at least one identifier. { data-toc-label="Identity" }
@@ -47,10 +47,10 @@ deletion.
 
 ### Projections are populated by projectors. { data-toc-label="Populated by Projectors" }
 
-Projections do not decide how they are built — that responsibility belongs to
-[projectors](./projectors.md). Projectors listen to domain events and write
-or update projection records accordingly. The projection itself is a passive
-data structure.
+Projections do not decide how they are built, that responsibility belongs to
+[projectors](./projectors.md). Projectors listen to domain events and write or
+update projection records accordingly. The projection itself is a passive data
+structure.
 
 ### Projections enable read/write separation. { data-toc-label="CQRS Read Side" }
 
@@ -62,20 +62,20 @@ other.
 
 ### Projections have a dedicated read-only query API. { data-toc-label="Query API" }
 
-Use `domain.view_for(ProjectionClass)` to obtain a `ReadView` — a read-only
+Use `domain.view_for(ProjectionClass)` to obtain a `ReadView`. A read-only
 facade that exposes `get()`, `query`, `find_by()`, `count()`, and `exists()`
 but no write methods. The `query` property returns a `ReadOnlyQuerySet` that
 supports filtering, ordering, and pagination but structurally prevents
-mutation. This enforces the CQRS contract at the API level — reads cannot
-accidentally write. This is the recommended way to access projections from
-API endpoints and query handlers, ensuring CQRS separation is enforced
-structurally rather than by convention.
+mutation. This enforces the CQRS contract at the API level. Reads cannot
+accidentally write. This is the recommended way to access projections from API
+endpoints and query handlers, ensuring CQRS separation is enforced structurally
+rather than by convention.
 
 ### Projections can aggregate data across aggregates. { data-toc-label="Cross-Aggregate Views" }
 
 A single projection can combine data from multiple aggregate streams. For
 example, an "Order Summary" projection might incorporate data from Order,
-Customer, and Inventory aggregates — something that would be impractical to
+Customer, and Inventory aggregates. Something that would be impractical to
 query against the write-side models.
 
 ### Projection schemas are independent of aggregate schemas. { data-toc-label="Independent Schema" }
@@ -90,8 +90,8 @@ suit the specific query use-case the projection serves.
 
 For practical details on defining and using projections in Protean, see the guide:
 
-- [Projections](../../guides/consume-state/projections.md) — Defining projections, configuration options, querying, projector setup, and testing.
+- [Projections](../../guides/consume-state/projections.md): Defining projections, configuration options, querying, projector setup, and testing.
 
 For design guidance:
 
-- [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so projectors can build reliable read models.
+- [Design Events for Consumers](../../patterns/design-events-for-consumers.md): Structuring events so projectors can build reliable read models.

@@ -21,8 +21,8 @@ model it produces clear and traceable.
 ### Projectors listen to events from one or more aggregates. { data-toc-label="Multiple Aggregates" }
 
 A projector can subscribe to event streams from multiple aggregates. This is
-what allows a single projection to incorporate data from across the domain —
-for example, a dashboard view that combines order, customer, and product data.
+what allows a single projection to incorporate data from across the domain, for
+example, a dashboard view that combines order, customer, and product data.
 
 ### Projectors use a handler decorator to process events. { data-toc-label="Handler Decorator" }
 
@@ -39,7 +39,7 @@ a broad set of events across many instances of an aggregate type.
 ### Projectors keep projections consistent with domain state. { data-toc-label="Consistency" }
 
 As domain events are emitted by aggregates and persisted to the event store,
-projectors consume those events — typically asynchronously — and apply the
+projectors consume those events (typically asynchronously) and apply the
 corresponding changes to their projection. The projection is eventually
 consistent with the write-side state.
 
@@ -61,7 +61,7 @@ processes an event once or multiple times.
 
 ### Handle event ordering carefully. { data-toc-label="Ordering" }
 
-Projections often depend on events arriving in the correct order — an
+Projections often depend on events arriving in the correct order, an
 "OrderShipped" event makes no sense without the preceding "OrderPlaced." Design
 projectors to handle ordering constraints, and be aware that cross-aggregate
 events may not have a guaranteed global order.
@@ -79,8 +79,8 @@ perform better than a single monolithic one.
 
 For practical details on defining and using projectors in Protean, see the guide:
 
-- [Projectors](../../guides/consume-state/projectors.md) — Projector definition, the @on decorator, error handling, multi-aggregate projectors, and testing.
+- [Projectors](../../guides/consume-state/projectors.md): Projector definition, the @on decorator, error handling, multi-aggregate projectors, and testing.
 
 For design guidance:
 
-- [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring projectors produce correct results even when events are replayed.
+- [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md): Ensuring projectors produce correct results even when events are replayed.

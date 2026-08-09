@@ -3,15 +3,15 @@
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 In event-driven systems, every event and command often needs cross-cutting
-metadata that has nothing to do with the event's business payload -- who
+metadata that has nothing to do with the event's business payload, who
 performed the action, which tenant it belongs to, the originating IP address,
 or custom audit context. Without a central mechanism, developers must sprinkle
 this logic into every `raise_()` call, which is repetitive and easy to forget.
 
 **Message enrichment hooks** solve this by letting you register callables on
 the domain that automatically add custom metadata to every event and command.
-The enriched data is stored in `metadata.extensions` -- a user-space dict that
-is persisted alongside all other metadata in the event store and survives
+The enriched data is stored in `metadata.extensions`. A user-space dict that is
+persisted alongside all other metadata in the event store and survives
 serialization round-trips.
 
 ## Event Enrichers
@@ -112,11 +112,11 @@ def enricher(command: BaseCommand) -> dict[str, Any]:
 ## Aggregate Pre-Persist Enrichers
 
 Event and command enrichers write to `metadata.extensions`. When you instead
-need to stamp fields **on the aggregate itself** -- audit columns like
-`updated_by`, or lifecycle timestamps -- register an **aggregate enricher**. It
+need to stamp fields **on the aggregate itself** (audit columns like
+`updated_by`, or lifecycle timestamps) register an **aggregate enricher**. It
 runs in the persistence path just before an aggregate is saved (on both create
-and update), and unlike the enrichers above it **mutates the aggregate in place**
-rather than returning a dict:
+and update), and unlike the enrichers above it **mutates the aggregate in
+place** rather than returning a dict:
 
 ```python
 from protean.utils.globals import g
@@ -137,8 +137,8 @@ with domain.domain_context(current_user="alice"):
 ```
 
 Aggregate enrichers run in registration order, fire only for aggregates (not
-child entities), and -- because they assign through normal attributes --
-invariants still run on the stamped fields. If one raises, the save is aborted.
+child entities), and (because they assign through normal attributes) invariants
+still run on the stamped fields. If one raises, the save is aborted.
 
 Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
 business logic or for raising events. For the complete recipe (an abstract audit
@@ -189,19 +189,19 @@ are enriched automatically.
 
 ## Best Practices
 
-1. **Keep enrichers fast** -- they run synchronously inside `raise_()` for
+1. **Keep enrichers fast**: They run synchronously inside `raise_()` for
    every event. Avoid I/O calls; prefer reading from thread-local context
    (like Flask's `g` or Protean's `g`).
 
-2. **Use enrichers for cross-cutting concerns only** -- user context, tenant
+2. **Use enrichers for cross-cutting concerns only**: User context, tenant
    ID, request tracing, audit metadata. Don't use them for business logic
    that belongs in the aggregate or event itself.
 
-3. **Use `metadata.extensions` for querying** -- the Outbox and event store
+3. **Use `metadata.extensions` for querying**: The Outbox and event store
    persist extensions, making them available for filtering and correlation
    in downstream processing.
 
-4. **Combine with [message tracing](message-tracing.md)** -- enrichers
+4. **Combine with [message tracing](message-tracing.md)**: Enrichers
    complement correlation and causation IDs. Use correlation_id for causal
    chains and extensions for contextual metadata (who, where, why).
 
@@ -210,7 +210,7 @@ are enriched automatically.
 !!! tip "See also"
     **Related guides:**
 
-    - [Message Tracing](message-tracing.md) -- Correlation and causation IDs for distributed tracing, plus the programmatic causation chain API
-    - [Correlation and Causation IDs](../observability/correlation-and-causation.md) -- Complete guide covering HTTP headers, OTEL spans, Observatory, logging, and cross-service propagation
-    - [Raising Events](raising-events.md) -- How aggregates raise domain events
-    - [Commands](../../guides/change-state/commands.md) -- Command processing via `domain.process()`
+    - [Message Tracing](message-tracing.md): Correlation and causation IDs for distributed tracing, plus the programmatic causation chain API
+    - [Correlation and Causation IDs](../observability/correlation-and-causation.md): Complete guide covering HTTP headers, OTEL spans, Observatory, logging, and cross-service propagation
+    - [Raising Events](raising-events.md): How aggregates raise domain events
+    - [Commands](../../guides/change-state/commands.md): Command processing via `domain.process()`

@@ -12,7 +12,7 @@ business-oriented query methods.
 
 ## Default repository
 
-Every aggregate gets a default repository out of the box. You access it with
+Every aggregate gets a default repository. You access it with
 `domain.repository_for()`:
 
 ```python
@@ -37,20 +37,20 @@ Out[2]: <PersonRepository at 0x104f3a1d0>
 
 The default repository provides these methods:
 
-- **`add(aggregate)`** -- persist or update an aggregate.
-- **`get(identifier)`** -- retrieve an aggregate by its identity.
-- **`get_or_none(identifier)`** -- like `get()`, but return `None` instead of
+- **`add(aggregate)`**: Persist or update an aggregate.
+- **`get(identifier)`**: Retrieve an aggregate by its identity.
+- **`get_or_none(identifier)`**: Like `get()`, but return `None` instead of
   raising when nothing matches.
-- **`find(criteria)`** -- find all aggregates matching a `Q` expression.
-- **`find_by(**kwargs)`** -- find a single aggregate by field values.
-- **`exists(criteria)`** -- check if any aggregate matches a `Q` expression.
+- **`find(criteria)`**: Find all aggregates matching a `Q` expression.
+- **`find_by(**kwargs)`**: find a single aggregate by field values.
+- **`exists(criteria)`**: Check if any aggregate matches a `Q` expression.
 
 For basic operations, the default repository is all you need.
 
 ## Defining a custom repository
 
-When you need domain-named query methods -- such as finding all overdue
-orders or looking up customers by region -- you define a custom repository:
+When you need domain-named query methods (such as finding all overdue orders or
+looking up customers by region) you define a custom repository:
 
 ```python hl_lines="16"
 --8<-- "guides/change-state/004.py:full"
@@ -106,14 +106,14 @@ Out[3]: [<Person: Person object (id: ...)>]
 
 Every repository exposes these methods for building queries:
 
-- **`self.query`** -- a [QuerySet](./retrieve-aggregates.md#queryset) for
+- **`self.query`**: A [QuerySet](./retrieve-aggregates.md#queryset) for
   building filtered, sorted, paginated queries.
-- **`self.find_by(**kwargs)`** -- find a single aggregate matching the given
+- **`self.find_by(**kwargs)`**: find a single aggregate matching the given
   fields. Raises `ObjectNotFoundError` if no match is found, and
   `TooManyObjectsError` if multiple matches are found.
-- **`self.find(criteria)`** -- find all aggregates matching a `Q` expression.
+- **`self.find(criteria)`**: Find all aggregates matching a `Q` expression.
   Returns a `ResultSet`.
-- **`self.exists(criteria)`** -- check if any aggregate matches a `Q`
+- **`self.exists(criteria)`**: Check if any aggregate matches a `Q`
   expression. Returns `True` or `False`.
 
 ```python
@@ -133,8 +133,8 @@ class PersonRepository:
         return self.exists(Q(age__gte=18))
 ```
 
-Internally, these delegate to the repository's Data Access Object (DAO) --
-the layer that talks to the database.
+Internally, these delegate to the repository's Data Access Object (DAO), the
+layer that talks to the database.
 
 !!!warning "Avoid direct `_dao` access"
     The underlying DAO is accessible as `self._dao`, but it is an internal
@@ -165,7 +165,7 @@ except ObjectNotFoundError:
     ...
 ```
 
-`exists()` never raises — it returns `True` or `False`:
+`exists()` never raises. It returns `True` or `False`:
 
 ```python
 if repo.exists(Q(email="john@example.com")):
@@ -224,13 +224,13 @@ How it works:
 - If the aggregate has `event_sourced=True`, `repository_for()` returns an
   **event-sourced repository** backed by the event store. The event-sourced
   repository reconstructs aggregate state by replaying events from the
-  aggregate's stream — it does not read from a database table.
+  aggregate's stream. It does not read from a database table.
 
 - Otherwise, it returns the aggregate's database-backed repository (custom if
   one is registered, default if not).
 
-This routing is transparent — you always call `domain.repository_for()` the
-same way, and Protean returns the correct repository based on the aggregate's
+This routing is transparent. You always call `domain.repository_for()` the same
+way, and Protean returns the correct repository based on the aggregate's
 configuration.
 
 ## Why there is no `delete` or `remove`
@@ -240,8 +240,8 @@ Repositories intentionally do not provide a `delete()` or `remove()` method.
 In Domain-Driven Design, "deleting" a business entity is almost always a
 **state transition**, not a record erasure. An order is *cancelled*, a user is
 *deactivated*, a subscription is *archived*. These transitions are meaningful
-domain events that should be modeled explicitly — with commands, aggregate
-methods, and events — not hidden behind a database `DELETE`.
+domain events that should be modeled explicitly (with commands, aggregate
+methods, and events) not hidden behind a database `DELETE`.
 
 For infrastructure-level record removal (projection rebuilds, test teardown,
 GDPR right-to-erasure compliance), you can access the underlying DAO directly:
@@ -256,10 +256,10 @@ only when the domain model does not apply (e.g., cleaning up test data).
 
 ## Transactions and Unit of Work
 
-Every call to `repository.add()` participates in the enclosing
-[Unit of Work](./unit-of-work.md). Inside a command handler or `@use_case`
-method, this happens automatically — changes are committed when the handler
-completes, or rolled back if an exception is raised.
+Every call to `repository.add()` participates in the enclosing [Unit of
+Work](./unit-of-work.md). Inside a command handler or `@use_case` method, this
+happens automatically. Changes are committed when the handler completes, or
+rolled back if an exception is raised.
 
 Outside a handler (e.g., in a shell session or script), `add()` creates a
 temporary UoW, commits immediately, and discards it.
@@ -268,19 +268,19 @@ temporary UoW, commits immediately, and discards it.
 
 Define a custom repository when you need to:
 
-- **Express domain queries** -- methods like `overdue_orders()` or
+- **Express domain queries**: Methods like `overdue_orders()` or
   `customers_in_region(region)` that encapsulate business-oriented queries.
-- **Compose complex queries** -- queries involving
+- **Compose complex queries**: Queries involving
   [Q objects](./retrieve-aggregates.md#complex-queries-with-q-objects),
   multiple filters, or specific ordering.
-- **Use raw queries** -- database-specific queries that cannot be expressed
+- **Use raw queries**: Database-specific queries that cannot be expressed
   through the QuerySet API.
 
 You do **not** need a custom repository for:
 
-- Basic `add` and `get` operations -- the default repository handles these.
-- One-off queries in command handlers or application services -- consider
-  adding a named method to a custom repository instead.
+- Basic `add` and `get` operations, the default repository handles these.
+- One-off queries in command handlers or application services, consider adding
+  a named method to a custom repository instead.
 
 !!!note
     Keep repositories thin. They should contain query logic, not business
@@ -291,10 +291,10 @@ You do **not** need a custom repository for:
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md) — The role of repositories in DDD and how Protean implements the pattern.
+    **Concept overview:** [Repositories](../../concepts/building-blocks/repositories.md): The role of repositories in DDD and how Protean implements the pattern.
 
     **Related guides:**
 
-    - [Retrieving Aggregates](./retrieve-aggregates.md) — QuerySets, filtering, Q objects, and pagination.
-    - [Persist Aggregates](./persist-aggregates.md) — Save and update aggregates through repositories.
-    - [Unit of Work](./unit-of-work.md) — Transaction management and commit lifecycle.
+    - [Retrieving Aggregates](./retrieve-aggregates.md): QuerySets, filtering, Q objects, and pagination.
+    - [Persist Aggregates](./persist-aggregates.md): Save and update aggregates through repositories.
+    - [Unit of Work](./unit-of-work.md): Transaction management and commit lifecycle.

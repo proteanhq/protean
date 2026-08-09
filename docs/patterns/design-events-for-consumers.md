@@ -33,8 +33,8 @@ class NotificationEventHandler(BaseEventHandler):
 ```
 
 The handler must load the Order aggregate to get the data it needs. But the
-Notification handler shouldn't know about the Order aggregate at all -- it's
-in a different bounded context. Now a projector also needs the data:
+Notification handler shouldn't know about the Order aggregate at all, it's in a
+different bounded context. Now a projector also needs the data:
 
 ```python
 @domain.projector(part_of=OrderSummaryProjection)
@@ -57,23 +57,23 @@ class OrderSummaryProjector(BaseProjector):
 
 Every consumer must load the aggregate. This creates a cascade of problems:
 
-- **Coupling through queries.** Every event consumer depends on the Order
+- **Coupling through queries**: Every event consumer depends on the Order
   aggregate's structure. If Order's fields change, every consumer breaks.
 
-- **Performance degradation.** Each consumer triggers a separate database
+- **Performance degradation**: Each consumer triggers a separate database
   query to load the same aggregate. With five consumers, a single event causes
   five aggregate loads.
 
-- **Cross-aggregate data access.** The notification handler needs the customer's
+- **Cross-aggregate data access**: The notification handler needs the customer's
   email, which lives on the Customer aggregate. Now it needs to load *two*
-  aggregates -- Order and Customer -- to process one event.
+  aggregates (Order and Customer) to process one event.
 
-- **Event sourcing incompatibility.** In an event-sourced system, the aggregate's
+- **Event sourcing incompatibility**: In an event-sourced system, the aggregate's
   current state may have advanced past the state at the time the event was raised.
   Loading the current aggregate gives you *today's* data, not the data at event
   time.
 
-- **Broken in async processing.** When events are processed asynchronously (as
+- **Broken in async processing**: When events are processed asynchronously (as
   they should be), the aggregate may have been modified between when the event
   was raised and when the handler runs. The handler loads stale or inconsistent
   data.
@@ -520,7 +520,7 @@ class OrderPlaced(BaseEvent):
     # That's it. Every consumer must load the Order aggregate.
 ```
 
-### The Kitchen Sink Event
+### The event that carries everything
 
 ```python
 # Anti-pattern: event with every field from the aggregate
@@ -576,21 +576,21 @@ business-meaningful data, not implementation details.
 | Design effort | Low (just the ID) | Higher (think about consumers) |
 | Evolution cost | Low (nothing to change) | Higher (more fields to maintain) |
 
-The principle: **design events so that every consumer can process them
-independently. Include enough context for consumers to act without querying
-back to the source aggregate. Work backward from the projection to determine
-what data each event must carry.**
+Design events so that every consumer can process them independently. Include
+enough context for consumers to act without querying back to the source
+aggregate. Work backward from the projection to determine what data each event
+must carry.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Events](../concepts/building-blocks/events.md) — Domain events and their role in the system.
-    - [Projections](../concepts/building-blocks/projections.md) — Read-optimized views built from events.
+    - [Events](../concepts/building-blocks/events.md): Domain events and their role in the system.
+    - [Projections](../concepts/building-blocks/projections.md): Read-optimized views built from events.
 
     **Guides:**
 
-    - [Events](../guides/domain-definition/events.md) — Defining events, structure, and metadata.
-    - [Raising Events](../guides/domain-behavior/raising-events.md) — Raising and dispatching events from aggregates.
-    - [Projections](../guides/consume-state/projections.md) — Building read models with projectors.
+    - [Events](../guides/domain-definition/events.md): Defining events, structure, and metadata.
+    - [Raising Events](../guides/domain-behavior/raising-events.md): Raising and dispatching events from aggregates.
+    - [Projections](../guides/consume-state/projections.md): Building read models with projectors.

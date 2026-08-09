@@ -1,10 +1,10 @@
 # Application Services
 
-Application services coordinate use-cases. They sit at the boundary between
-the external world — API controllers, CLI commands, background jobs — and the
-domain model. An application service receives a request, orchestrates the
-necessary [aggregates](./aggregates.md) and
-[domain services](./domain-services.md), and returns a result.
+Application services coordinate use-cases. They sit at the boundary between the
+external world (API controllers, CLI commands, background jobs) and the domain
+model. An application service receives a request, orchestrates the necessary
+[aggregates](./aggregates.md) and [domain services](./domain-services.md), and
+returns a result.
 
 Application services are the entry point for the DDD architectural style.
 In a pure DDD application (before introducing CQRS), application services
@@ -29,7 +29,7 @@ decisions, that logic should be pushed down into the domain model.
 
 Use-case methods are automatically wrapped in a Unit of Work. All aggregate
 mutations, [event](./events.md) publications, and persistence operations within
-a single use-case are committed as one atomic transaction — or rolled back
+a single use-case are committed as one atomic transaction, or rolled back
 entirely if something fails.
 
 ### Application services return values synchronously. { data-toc-label="Return Values" }
@@ -48,10 +48,10 @@ the result. The application service coordinates; the domain model acts.
 
 ### Application services are named after use-cases. { data-toc-label="Use-Case Naming" }
 
-Service and method names should reflect what the business operation achieves —
-`place_order`, `register_customer`, `cancel_subscription` — not the technical
-mechanism. This keeps the application layer aligned with the
-ubiquitous language.
+Service and method names should reflect what the business operation achieves
+(`place_order`, `register_customer`, `cancel_subscription`) not the technical
+mechanism. This keeps the application layer aligned with the ubiquitous
+language.
 
 ### Application services are replaced by Command Handlers in CQRS. { data-toc-label="CQRS Transition" }
 
@@ -89,8 +89,8 @@ invalid state.
 
 For practical details on defining and using application services in Protean, see the guide:
 
-- [Application Services](../../guides/change-state/application-services.md) — Defining services, the @use_case decorator, workflow, return values, and error handling.
+- [Application Services](../../guides/change-state/application-services.md): Defining services, the @use_case decorator, workflow, return values, and error handling.
 
 For design guidance:
 
-- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md) — Keeping orchestration layers thin by pushing logic into the domain model.
+- [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping orchestration layers thin by pushing logic into the domain model.

@@ -27,7 +27,7 @@ with at most one instance of a child entity.
 
 !!!note
     If you carefully observe the `HasOne` field declaration, the child entity's
-    name is a string value! This is usually the way to avoid circular references.
+    name is a string value. This is the usual way to avoid circular references.
     It applies to all aspects of Protean that link two entities - the string
     value will be resolved to the class at runtime.
 

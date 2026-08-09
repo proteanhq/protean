@@ -1,7 +1,7 @@
 # Inspecting the IR
 
 After you define and initialize a domain, Protean can generate its
-**Intermediate Representation (IR)** -- a JSON document that captures the
+**Intermediate Representation (IR)**, a JSON document that captures the
 complete topology of your domain model: what elements exist, what shape they
 have, and how they connect.
 
@@ -90,7 +90,7 @@ Every IR document has the same shape:
 | Section | What it contains |
 |---------|-----------------|
 | `domain` | Bounded context name and global config (identity strategy, processing mode) |
-| `clusters` | Aggregate clusters -- each aggregate with its entities, value objects, commands, events, handlers, and repositories |
+| `clusters` | Aggregate clusters, each aggregate with its entities, value objects, commands, events, handlers, and repositories |
 | `projections` | Read-side projections with their projectors, queries, and query handlers |
 | `flows` | Cross-aggregate elements: domain services, process managers, subscribers |
 | `elements` | Flat index of all element types for quick lookup |
@@ -105,9 +105,8 @@ The same domain always produces **byte-identical** IR JSON (excluding the
 lists are sorted, and optional attributes with default values are omitted.
 
 This makes the IR safe to commit to source control and diff across versions.
-The `checksum` field (SHA-256 of the canonical JSON) provides a quick
-staleness check -- if the checksum hasn't changed, the domain structure
-hasn't changed.
+The `checksum` field (SHA-256 of the canonical JSON) provides a quick staleness
+check. If the checksum hasn't changed, the domain structure hasn't changed.
 
 See the [Compatibility Checking](../compatibility-checking.md) guide for
 how to use IR diffing, pre-commit hooks, and CI integration to detect
@@ -119,8 +118,8 @@ breaking changes automatically.
 
 The `$schema` field contains a logical URI
 (`https://protean.dev/ir/v0.1.0/schema.json`). This URI identifies the
-schema version but is **not a network endpoint** -- the actual JSON Schema
-ships with the Protean package at `protean.ir.SCHEMA_PATH`.
+schema version but is **not a network endpoint**, the actual JSON Schema ships
+with the Protean package at `protean.ir.SCHEMA_PATH`.
 
 To validate an IR document programmatically:
 
@@ -152,7 +151,7 @@ Treat missing keys as their default value.
 
 **Check `ir_version`.** Reject documents whose major version is higher than
 what your tool supports. Minor version increases are always backward
-compatible -- new keys may appear, but existing keys retain their meaning.
+compatible. New keys may appear, but existing keys retain their meaning.
 
 See the [IR specification](../../concepts/internals/ir-specification.md) for
 the full compatibility contract, field reference, and design decisions.
@@ -162,7 +161,7 @@ the full compatibility contract, field reference, and design decisions.
 ## From IR to JSON Schema
 
 Once you have an IR document, you can generate **JSON Schema (Draft 2020-12)**
-files for every data-carrying element -- aggregates, entities, value objects,
+files for every data-carrying element, aggregates, entities, value objects,
 commands, events, and projections. This is useful for contract validation,
 documentation, and integration with external tools.
 

@@ -2,11 +2,11 @@
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Why not just query the aggregate directly? You can — but aggregates are
-designed for consistency, not for read performance. Loading a full aggregate
-graph just to display a dashboard row is wasteful. Projections solve this by
-maintaining a separate, flattened view that is shaped for the query, not for
-the write model. They're the "read side" of CQRS.
+Why not just query the aggregate directly? You can, but aggregates are designed
+for consistency, not for read performance. Loading a full aggregate graph just
+to display a dashboard row is wasteful. Projections solve this by maintaining a
+separate, flattened view that is shaped for the query, not for the write model.
+They're the "read side" of CQRS.
 
 Projections are populated in response to domain events by
 [projectors](./projectors.md).
@@ -27,11 +27,11 @@ and schema behavior:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | `"default"` | Database provider name |
-| `cache` | `None` | Cache provider — takes precedence over `provider` when set |
+| `cache` | `None` | Cache provider, takes precedence over `provider` when set |
 | `schema_name` | `snake_case(cls)` | Table or collection name in the backing store |
 | `order_by` | `()` | Default field ordering for queries (e.g. `("-placed_at",)`) |
 | `limit` | `100` | Default maximum number of results returned by queries |
-| `abstract` | `False` | When `True`, the projection cannot be instantiated — use as a base class |
+| `abstract` | `False` | When `True`, the projection cannot be instantiated, use as a base class |
 | `database_model` | `None` | Custom database model class for advanced schema control |
 | `externally_populated` | `False` | When `True`, declares that a subscriber or event handler populates this projection (the anti-corruption-layer / cross-domain pattern) rather than a co-located `@projector`. Suppresses the `PROJECTION_WITHOUT_PROJECTOR` check warning |
 
@@ -136,7 +136,7 @@ The `ReadView` returned by `domain.view_for()` exposes these methods:
 | `find_by` | `find_by(**kwargs)` | Projection instance | Look up a single record matching the given field criteria. |
 | `count` | `count()` | `int` | Return the total number of projection records. Accepts no arguments. |
 | `exists` | `exists(identifier)` | `bool` | Check whether a record with the given identifier exists. |
-| `query` | *(property)* | `ReadOnlyQuerySet` | Fluent query builder — supports `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`, and `all()`. |
+| `query` | *(property)* | `ReadOnlyQuerySet` | Fluent query builder, supports `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`, and `all()`. |
 
 !!! note "`count()` accepts no arguments"
     `view.count()` returns the total count of all records. To count records
@@ -144,9 +144,8 @@ The `ReadView` returned by `domain.view_for()` exposes these methods:
     `view.query.filter(status="active").all().total`.
 
 The `query` property returns a `ReadOnlyQuerySet` that supports all read
-operations — `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`,
-and `all()` — but blocks mutations (`update`, `delete`) to enforce CQRS
-read/write separation.
+operations, `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`, and `all()`, but blocks mutations (`update`, `delete`)
+to enforce CQRS read/write separation.
 
 ### Pagination
 
@@ -164,9 +163,8 @@ page.page_size    # Items per page
 page.total_pages  # Total number of pages
 ```
 
-`ReadView` does not expose `add()`, `_dao`, or any mutation methods — it is
-safe to pass to API endpoints and query handlers without risking accidental
-writes.
+`ReadView` does not expose `add()`, `_dao`, or any mutation methods. It is safe
+to pass to API endpoints and query handlers without risking accidental writes.
 
 For write operations (used inside projectors), continue using
 `domain.repository_for()`:
@@ -198,8 +196,8 @@ Protean provides three levels of read access to projections:
 | **Facade** | `domain.view_for(Projection)` | Read-only projection access without handler ceremony |
 | **Raw** | `domain.connection_for(Projection)` | Technology-specific queries (SQL, Elasticsearch DSL, Redis) |
 
-`domain.view_for(Projection)` returns a `ReadView` — the default, read-only by
-design — and `domain.connection_for(Projection)` returns the raw DB or cache
+`domain.view_for(Projection)` returns a `ReadView` (the default, read-only by
+design) and `domain.connection_for(Projection)` returns the raw DB or cache
 connection as an escape hatch.
 
 To *write* to a projection (inside a projector), use
@@ -208,8 +206,8 @@ To *write* to a projection (inside a projector), use
 ### Raw connection access
 
 When you need to run technology-specific queries that cannot be expressed
-through `QuerySet` — such as SQL aggregations, Elasticsearch DSL, or Redis
-`SCAN` commands — use `domain.connection_for()`:
+through `QuerySet` (such as SQL aggregations, Elasticsearch DSL, or Redis
+`SCAN` commands) use `domain.connection_for()`:
 
 ```python
 conn = domain.connection_for(OrderSummary)
@@ -225,15 +223,15 @@ the cache client.
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Projections](../../concepts/building-blocks/projections.md) — Read-optimized views in CQRS.
+    **Concept overview:** [Projections](../../concepts/building-blocks/projections.md): Read-optimized views in CQRS.
 
     **Related guides:**
 
-    - [Projectors](./projectors.md) — How to define and configure projectors that maintain projections.
-    - [Query Handlers](./query-handlers.md) — How to dispatch structured read intents via `domain.dispatch()`.
-    - [Monitor the System](../../guides/server/monitoring.md#monitoring-projection-staleness) — Check projection staleness, lag, and row counts.
+    - [Projectors](./projectors.md): How to define and configure projectors that maintain projections.
+    - [Query Handlers](./query-handlers.md): How to dispatch structured read intents via `domain.dispatch()`.
+    - [Monitor the System](../../guides/server/monitoring.md#monitoring-projection-staleness): Check projection staleness, lag, and row counts.
 
     **Patterns:**
 
-    - [Projection Granularity](../../patterns/projection-granularity.md) — How many projections to create and what each should contain.
-    - [Projection Rebuilds as Deployment](../../patterns/projection-rebuilds-as-deployment.md) — Treating projection rebuilds as standard deployment operations.
+    - [Projection Granularity](../../patterns/projection-granularity.md): How many projections to create and what each should contain.
+    - [Projection Rebuilds as Deployment](../../patterns/projection-rebuilds-as-deployment.md): Treating projection rebuilds as standard deployment operations.

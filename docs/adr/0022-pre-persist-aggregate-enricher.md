@@ -2,7 +2,8 @@
 
 **Status:** Accepted
 
-> Amended July 2026 (#1255) — see [Amendment](#amendment-july-2026-unified-persist-lifecycle) below.
+> Amended July 2026 (#1255), see
+[Amendment](#amendment-july-2026-unified-persist-lifecycle) below.
 
 **Date:** July 2026
 
@@ -10,9 +11,8 @@
 
 Applications routinely need cross-cutting technical fields on their aggregates:
 `created_at`/`updated_at` timestamps and `created_by`/`updated_by` audit fields
-that record the acting user. Protean already made timestamps *possible* — an
-abstract base aggregate with `created_at: DateTime(default=utc_now)` — but the
-population story was incomplete:
+that record the acting user. Protean already made timestamps *possible*, an
+abstract base aggregate with `created_at: DateTime(default=utc_now)`, but the population story was incomplete:
 
 - `created_at` was set once at construction (a callable field default), which is
   fine.
@@ -42,9 +42,9 @@ and only apply to the `Repository.add` → `save` write path (see Consequences).
 **2. A registered pre-persist aggregate enricher.** Domains gain
 `register_aggregate_enricher(fn)` and the `@domain.aggregate_enricher`
 decorator, symmetric with the existing `register_event_enricher` /
-`register_command_enricher`. Both new mechanisms fire in `BaseDAO.save` — the
+`register_command_enricher`. Both new mechanisms fire in `BaseDAO.save`. The
 write path that `Repository.add` funnels through, and the same spot where the
-optimistic-concurrency version is advanced — before the entity is frozen into a
+optimistic-concurrency version is advanced. Before the entity is frozen into a
 model (`from_entity`), on both the create and update paths.
 
 The aggregate enricher differs from the event/command enrichers in one important
@@ -69,7 +69,7 @@ mechanism; the audit *user* model stays app-defined.
 - The mechanism is symmetric with the enrichers developers already know, so
   there is little new surface to learn.
 - Because the enricher mutates the aggregate through normal attribute
-  assignment, invariants still run on the stamped fields — the hook does **not**
+  assignment, invariants still run on the stamped fields. The hook does **not**
   bypass validation. It also does not touch `_events`, so event raising is
   unaffected.
 - The enricher fires on every aggregate persisted through the repository, so it
@@ -84,24 +84,25 @@ mechanism; the audit *user* model stays app-defined.
   populated in memory before persistence should keep using a field default.
 - Both mechanisms fire on the `Repository.add` → `save` path, alongside version
   management. **They also fire on the DAO `update()` / `QuerySet.update()` paths,
-  which persist through `save` (unified in #1255 — see [Amendment](#amendment-july-2026-unified-persist-lifecycle)).**
-  A raw write can opt out of the hooks with `apply_hooks=False`; version
-  management still applies. An event-sourced aggregate persists through the event
-  store rather than a DAO, so it carries audit data in its events instead — the
-  audit recipe remains a DDD/CQRS pattern, not an ES one.
+  which persist through `save` (unified in #1255, see
+  [Amendment](#amendment-july-2026-unified-persist-lifecycle)).** A raw write
+  can opt out of the hooks with `apply_hooks=False`; version management still applies. An
+  event-sourced aggregate persists through the event store rather than a DAO,
+  so it carries audit data in its events instead. The audit recipe remains a
+  DDD/CQRS pattern, not an ES one.
 
 ## Alternatives Considered
 
 **An overridable `_before_save()` method on the aggregate.** Simpler and
 per-aggregate, but less composable than a registered enricher (you cannot layer
 several concerns), and it invites exactly the "general mutation hook" abuse we
-want to discourage — a method on the aggregate reads as part of the aggregate's
+want to discourage. A method on the aggregate reads as part of the aggregate's
 own behavior. A registered, domain-level enricher keeps the cross-cutting
 concern visibly separate from domain logic.
 
 **Leaving it entirely to the application.** Works, but every mutator
 re-implements `updated_at` and audit stamping, and there is no central place to
-read the acting user — which is the gap this ADR closes.
+read the acting user. That is the gap this ADR closes.
 
 **Reusing the event/command enricher return-a-dict contract.** Rejected because
 those enrichers target `metadata.extensions`, not aggregate columns. Forcing the
@@ -117,20 +118,20 @@ The original decision scoped the lifecycle hooks (and version management) to the
 fires on `Model.save()` but not the set-based `QuerySet.update()`).
 
 That analogy did not hold for Protean. Protean's `QuerySet.update()` is **not**
-set-based — it loads each matched row and updates it individually ("to fire
+set-based. It loads each matched row and updates it individually ("to fire
 callback methods and ensure validations are run"). So it already ran per-row
-Python (uniqueness validation) while skipping *only* the version guard, timestamp
-stamping, and enrichers. That partial exclusion was arbitrary, and its most
-serious symptom was a silent lost update: an update through `update()` bypassed
-the optimistic-concurrency version check (#1255).
+Python (uniqueness validation) while skipping *only* the version guard,
+timestamp stamping, and enrichers. That partial exclusion was arbitrary, and
+its most serious symptom was a silent lost update: an update through `update()`
+bypassed the optimistic-concurrency version check (#1255).
 
 **Amended decision:** `update()` and `QuerySet.update()` persist through `save`,
-so they run the full lifecycle — version management, `auto_now` stamping, and
-enrichers — by default. Two qualifications:
+so they run the full lifecycle (version management, `auto_now` stamping, and
+enrichers) by default. Two qualifications:
 
-- **Optimistic concurrency is always on.** It is a correctness guard against lost
+- **Optimistic concurrency is always on**: It is a correctness guard against lost
   updates, not a cosmetic hook, and cannot be switched off by the flag below.
-- **The cosmetic hooks are opt-out.** `save(..., apply_hooks=False)` /
+- **The cosmetic hooks are opt-out**: `save(..., apply_hooks=False)` /
   `update(..., apply_hooks=False)` / `QuerySet.update(..., apply_hooks=False)`
   skip `auto_now` stamping and enrichers for a raw write (e.g. a bulk migration
   that must not touch audit fields), turning the old *implicit* omission into an

@@ -6,17 +6,17 @@ Fields are the attributes you declare on aggregates, entities, value objects,
 commands, and events. They define what data an element carries, which values
 are valid, how defaults are supplied, and how relationships are expressed.
 
-This guide walks through the everyday task of **putting fields on a domain
-element**: picking the right type, making them required, giving them
-defaults, constraining values, and hooking up relationships. For the full
+Here is the everyday work of **putting fields on a domain element**: picking
+the right type, making a field required, giving it a default, constraining its
+values, and hooking up relationships. For the full
 list of field types and every argument they accept, see the
 [Fields Reference](../../reference/fields/index.md).
 
 ## Declaring a field
 
 Fields are declared inside a domain element using one of Protean's field
-functions — `String`, `Integer`, `Float`, `DateTime`, `List`, and so on.
-The recommended form is an annotation:
+functions, `String`, `Integer`, `Float`, `DateTime`, `List`, and so on. The recommended form is an
+annotation:
 
 ```python
 from protean import Domain
@@ -31,9 +31,9 @@ class Product:
     created_at: DateTime(default="utc_now")
 ```
 
-You can also assign fields as class attributes (`name = String(...)`) — the
-two styles are interchangeable and can be mixed freely. A third escape
-hatch lets you use raw Pydantic annotations when you need more control.
+You can also assign fields as class attributes (`name = String(...)`). The two
+styles are interchangeable and can be mixed freely. A third escape hatch lets
+you use raw Pydantic annotations when you need more control.
 
 See [Defining Fields](../../reference/fields/defining-fields.md) for the
 differences between styles and a caveat about
@@ -65,10 +65,11 @@ class Order:
     items = HasMany("LineItem")                            # association
 ```
 
-Lifecycle state gets its own type — use [`Status`](../../reference/fields/simple-fields.md#status)
-when the value must move through a defined state machine. See the
-[Status Transitions](../domain-behavior/status-transitions.md) guide for
-patterns like `atomic_change` and event-sourced flows.
+Lifecycle state gets its own type, use
+[`Status`](../../reference/fields/simple-fields.md#status) when the value must move
+through a defined state machine. See the [Status
+Transitions](../domain-behavior/status-transitions.md) guide for patterns like
+`atomic_change` and event-sourced flows.
 
 ---
 
@@ -93,9 +94,9 @@ In [1]: Customer(name="Jane Doe")
 ValidationError: {'email': ['is required']}
 ```
 
-Identifier fields are an exception — they are auto-generated when you
-don't provide one. See [Identity](../../reference/domain-elements/identity.md)
-for how identity generation is configured.
+Identifier fields are an exception. They are auto-generated when you don't
+provide one. See [Identity](../../reference/domain-elements/identity.md) for
+how identity generation is configured.
 
 ---
 
@@ -178,8 +179,8 @@ indexes that speed up queries, declare an
 
 ## Adding custom validation
 
-For single-field format checks that go beyond length or numeric bounds —
-email addresses, phone numbers, SKUs — pass a callable to `validators`:
+For single-field format checks that go beyond length or numeric bounds (email
+addresses, phone numbers, SKUs) pass a callable to `validators`:
 
 ```python
 from protean.fields import String
@@ -207,10 +208,10 @@ validators do not need to be `None`-aware.
 
 !!! tip "Single field vs. cross-field rules"
     Use `validators` when the rule involves **one field in isolation**.
-    When a rule spans multiple fields — "shipping date must be after
-    order date", "balance cannot go negative for USD" — express it as
-    an [invariant](../domain-behavior/invariants.md) on the aggregate or
-    value object instead.
+    When a rule spans multiple fields ("shipping date must be after order
+    date", "balance cannot go negative for USD") express it as an
+    [invariant](../domain-behavior/invariants.md) on the aggregate or value
+    object instead.
 
 ---
 
@@ -220,9 +221,9 @@ Associations connect aggregates to the entities they own and let entities
 reference their parent aggregate. Use the association field that matches
 the cardinality you need:
 
-- `HasOne` — the aggregate owns exactly one child entity.
-- `HasMany` — the aggregate owns zero or more child entities.
-- `Reference` — the inverse link from a child entity back to its
+- `HasOne`: The aggregate owns exactly one child entity.
+- `HasMany`: The aggregate owns zero or more child entities.
+- `Reference`: The inverse link from a child entity back to its
   aggregate (Protean adds this automatically when you define `HasOne` or
   `HasMany`).
 
@@ -239,10 +240,10 @@ class Comment:
     content: String(max_length=500)
 ```
 
-Aggregates never reference each other directly — cross-aggregate links
-are modeled as `Identifier` fields. See
-[Expressing Relationships](./relationships.md) for the full treatment,
-including bidirectional navigation, `via`, and shadow fields.
+Aggregates never reference each other directly. Cross-aggregate links are
+modeled as `Identifier` fields. See [Expressing
+Relationships](./relationships.md) for the full treatment, including
+bidirectional navigation, `via`, and shadow fields.
 
 ---
 
@@ -267,16 +268,15 @@ class Account:
 ```
 
 You can hand in a `Money(...)` instance or the flattened attributes
-(`balance_currency`, `balance_amount`) — Protean reconstitutes the VO in
-either case.
+(`balance_currency`, `balance_amount`), Protean reconstitutes the VO in either case.
 
 ---
 
 ## Mapping to a different storage name
 
-Use `referenced_as` when the persisted column or document key needs to
-differ from the Python attribute name — typically when matching an
-existing database schema:
+Use `referenced_as` when the persisted column or document key needs to differ
+from the Python attribute name, typically when matching an existing database
+schema:
 
 ```python
 @domain.aggregate
@@ -293,8 +293,8 @@ sees the `referenced_as` name.
 
 ## Introspecting fields
 
-To see what's declared on an element — during debugging, or inside a
-custom behaviour — use the helpers in `protean.utils.reflection`:
+To see what's declared on an element (during debugging, or inside a custom
+behaviour) use the helpers in `protean.utils.reflection`:
 
 ```shell
 In [1]: from protean.utils.reflection import declared_fields
@@ -318,25 +318,29 @@ key columns that `HasMany` and `Reference` create behind the scenes.
 | `ValidationError` | A `required` field is missing, a length/numeric bound is violated, or a value isn't in the declared `choices`. Contains a `messages` dict keyed by field name. |
 | `ValidationError` | A custom `validators` callable raises it. The message from the validator is preserved. |
 | `ValidationError` | A `unique` field collides with an existing record at persistence time. |
-| `IncorrectUsageError` | A value object field is marked `unique=True` or `identifier=True` — value objects have no concept of identity. |
-| Silent mis-declaration | `from __future__ import annotations` is active and the annotation style is used — the `FieldSpec` is treated as a string. Use assignment style instead. See [Defining Fields](../../reference/fields/defining-fields.md#known-limitation-from-__future__-import-annotations). |
+| `IncorrectUsageError` | A value object field is marked `unique=True` or `identifier=True`, value objects have no concept of identity. |
+| Silent mis-declaration | `from __future__ import annotations` is active and the annotation style is used, the `FieldSpec` is treated as a string. Use assignment style instead. See [Defining Fields](../../reference/fields/defining-fields.md#known-limitation-from-__future__-import-annotations). |
 
 ---
 
 !!! tip "See also"
     **Reference:**
 
-    - [Fields Overview](../../reference/fields/index.md) — All field types and options.
-    - [Common Arguments](../../reference/fields/arguments.md) — `required`, `default`, `choices`, `unique`, `validators`, `referenced_as`, and more.
-    - [Simple Fields](../../reference/fields/simple-fields.md), [Container Fields](../../reference/fields/container-fields.md), [Association Fields](../../reference/fields/association-fields.md) — Per-type specs.
+    - [Fields Overview](../../reference/fields/index.md): All field types and options.
+    - [Common Arguments](../../reference/fields/arguments.md): `required`, `default`, `choices`, `unique`, `validators`, `referenced_as`, and more.
+    - [Simple Fields](../../reference/fields/simple-fields.md), [Container
+      Fields](../../reference/fields/container-fields.md), [Association
+      Fields](../../reference/fields/association-fields.md), Per-type specs.
 
     **Related guides:**
 
-    - [Expressing Relationships](./relationships.md) — `HasOne`, `HasMany`, `Reference`, `via`, and shadow fields.
-    - [Value Objects](./value-objects.md) — Immutable, attribute-identified types.
-    - [Validations](../domain-behavior/validations.md) and [Invariants](../domain-behavior/invariants.md) — Single-field vs. cross-field rules.
-    - [Status Transitions](../domain-behavior/status-transitions.md) — Enforced lifecycle states with the `Status` field.
+    - [Expressing Relationships](./relationships.md): `HasOne`, `HasMany`, `Reference`, `via`, and shadow fields.
+    - [Value Objects](./value-objects.md): Immutable, attribute-identified types.
+    - [Validations](../domain-behavior/validations.md) and
+      [Invariants](../domain-behavior/invariants.md), Single-field vs.
+      cross-field rules.
+    - [Status Transitions](../domain-behavior/status-transitions.md): Enforced lifecycle states with the `Status` field.
 
     **Explanation:**
 
-    - [Field system internals](../../concepts/internals/field-system.md) — How Protean resolves field declarations and integrates with Pydantic.
+    - [Field system internals](../../concepts/internals/field-system.md): How Protean resolves field declarations and integrates with Pydantic.

@@ -3,14 +3,14 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Integration tests verify that your application works correctly with real
-infrastructure — databases, message brokers, event stores, and caches. They
+infrastructure, databases, message brokers, event stores, and caches. They
 exercise the same code paths as production, giving you confidence that your
 domain logic persists and communicates correctly through real adapters.
 
 Like [application tests](./application-tests.md), we recommend using
 **pytest-bdd** for integration tests. The BDD structure works just as well
-here — the only difference is the domain is configured with real
-infrastructure instead of in-memory adapters.
+here. The only difference is the domain is configured with real infrastructure
+instead of in-memory adapters.
 
 Integration tests reuse the same feature files and step definitions as
 [application tests](./application-tests.md), but swap in real adapters
@@ -68,7 +68,7 @@ def domain_initialized():
     tables for all configured providers. `teardown()` drops them.
     `domain_context()` resets all data (providers, brokers, event store)
     after each test. The same application code and domain elements are
-    used — only the infrastructure changes.
+    used, only the infrastructure changes.
 
 ## Using Server Test Mode
 
@@ -100,7 +100,7 @@ def test_order_creates_inventory_reservation():
         assert reservation.quantity == 5
 ```
 
-Test mode handles cascading events automatically -- if processing one event
+Test mode handles cascading events automatically, if processing one event
 raises another, the engine continues until all chains are complete:
 
 ```python
@@ -161,8 +161,8 @@ def test_placing_an_order_reserves_inventory():
 
 A `ProcessResult` exposes exactly what an integration test asserts on:
 
-- `result`: the handler's return value (sync) or the enqueued command's store position (async).
-- `events`: an `EventLog` of every event raised in the command's correlation chain.
+- `result`: The handler's return value (sync) or the enqueued command's store position (async).
+- `events`: An `EventLog` of every event raised in the command's correlation chain.
 - `error` / `succeeded` / `failed`: the synchronous or submission-time error (an unregistered command, an expired deadline, a duplicate key, an enrichment `ValidationError`). Asynchronous *handler* failures happen after the command is enqueued, are absorbed by the engine (retries or DLQ), and are not surfaced here.
 
 ### Asserting on events with `EventLog`
@@ -264,8 +264,8 @@ Feature: Persistence
 
 ## Step Definitions for Integration Tests
 
-Step definitions are the same as application tests — they import your domain
-and use `domain.process()` and `domain.repository_for()`:
+Step definitions are the same as application tests. They import your domain and
+use `domain.process()` and `domain.repository_for()`:
 
 ```python
 # tests/integration/test_order_flow.py
@@ -443,8 +443,8 @@ TEST_DB=postgresql DATABASE_URL=postgresql://localhost/myapp_test pytest tests/i
 TEST_DB=sqlite pytest tests/integration/
 ```
 
-This lets the same feature files and step definitions run against any
-adapter — the domain logic is identical, only the infrastructure changes.
+This lets the same feature files and step definitions run against any adapter.
+The domain logic is identical, only the infrastructure changes.
 
 ## Per-Test Data Cleanup
 

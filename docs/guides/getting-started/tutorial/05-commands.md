@@ -5,25 +5,25 @@ processes it, so books are added through a formal command interface
 instead of direct aggregate creation.
 
 !!! note "DDD Alternative: Application Services"
-    This chapter introduces the **CQRS** approach to handling state changes.
-    In the pure **DDD** approach, you'd use
+    From here the tutorial takes the **CQRS** approach to handling state
+    changes. In the pure **DDD** approach, you'd use
     [Application Services](../../change-state/application-services.md) instead
-    of Commands and Command Handlers — the Application Service receives
-    requests directly and coordinates the domain logic. See the
-    [DDD Pathway](../../pathways/ddd.md) for that reading order.
+    of Commands and Command Handlers, the Application Service receives requests
+    directly and coordinates the domain logic. See the [DDD
+    Pathway](../../pathways/ddd.md) for that reading order.
 
 ## Defining a Command
 
 So far we have created aggregates directly. In a real application, state
-changes arrive as **commands** — formal requests to do something, named
-with imperative verbs:
+changes arrive as **commands**. Formal requests to do something, named with
+imperative verbs:
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch05.py:command"
 ```
 
-A command is an immutable data object — it carries the intent ("add this
-book") and the data needed to fulfill it.
+A command is an immutable data object. It carries the intent ("add this book")
+and the data needed to fulfill it.
 
 ## The Command Handler
 
@@ -63,16 +63,16 @@ Total books: 2
 All checks passed!
 ```
 
-Notice that we never touched the repository directly — the command
-handler did that for us. This separation means the same command can
-later be processed asynchronously by a background server (Chapter 12).
+Notice that we never touched the repository directly. The command handler did
+that for us. This separation means the same command can later be processed
+asynchronously by a background server (Chapter 12).
 
 ## What We Built
 
-- An **`AddBook` command** — an immutable intent object.
-- A **`BookCommandHandler`** — receives the command, creates and persists
+- An **`AddBook` command**: an immutable intent object.
+- A **`BookCommandHandler`**: receives the command, then creates and persists
   the aggregate.
-- **`domain.process()`** — dispatches commands to their handlers.
+- **`domain.process()`**: Dispatches commands to their handlers.
 
 In the next chapter, we will add domain events and event handlers so the
 system can react automatically when things happen.

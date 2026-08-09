@@ -31,24 +31,24 @@ class TestPlaceOrder:
 ```
 
 This test works, but it tests the entire pipeline: command deserialization,
-handler dispatch, repository operations, and aggregate behavior -- all in one
+handler dispatch, repository operations, and aggregate behavior, all in one
 test. When it fails, which part broke? The test doesn't tell you. It requires
-registering multiple domain elements, initializing the domain, and managing
-a domain context. It's slow relative to a unit test and tests more than it
+registering multiple domain elements, initializing the domain, and managing a
+domain context. It's slow relative to a unit test and tests more than it
 intends to.
 
 The deeper problem: when tests can only exercise business logic through the
 handler pipeline, developers write fewer tests. The setup overhead discourages
-testing edge cases, boundary conditions, and specific business rules. The domain
-model -- the most important part of the system -- ends up being the least
+testing edge cases, boundary conditions, and specific business rules. The
+domain model (the most important part of the system) ends up being the least
 tested.
 
 ---
 
 ## The Pattern
 
-Test domain logic **directly on domain objects** -- aggregates, value objects,
-entities, and domain services -- without handlers, repositories, commands, or
+Test domain logic **directly on domain objects** (aggregates, value objects,
+entities, and domain services) without handlers, repositories, commands, or
 infrastructure. These are **unit tests** that exercise business rules in
 isolation.
 
@@ -626,7 +626,7 @@ class TestInventoryReservationIntegration:
   events are delivered to handlers.
 
 - **End-to-end tests (top):** Verify the full system with real databases
-  and brokers. Test critical paths only -- these are slow and brittle.
+  and brokers. Test critical paths only. These are slow and brittle.
 
 The domain unit tests should be the **majority** of your test suite because
 they test the most important code with the least overhead.
@@ -643,26 +643,25 @@ they test the most important code with the least overhead.
 | Integration | Handler + repo pipeline | Domain registration | Medium | Critical paths |
 | End-to-end | Full system behavior | Real infrastructure | Slow | Happy paths |
 
-The principle: **domain logic is the most important code in your system. Test
-it directly, without infrastructure, in isolation. Construct aggregates, call
-methods, assert results. Save integration tests for verifying the plumbing.**
+Domain logic is the most important code in your system. Test it directly,
+without infrastructure, in isolation. Construct aggregates, call methods,
+assert results. Save integration tests for verifying the plumbing.
 
 !!! tip "Run all test layers in both modes"
     Domain unit tests already use in-memory adapters. Integration tests can
-    too -- with Protean's [Dual-Mode Testing](dual-mode-testing.md), a single
-    `pytest --protean-env memory` flag switches every adapter to its in-memory
-    equivalent. Run fast during development, then validate against real
-    infrastructure in CI.
+    too, with Protean's [Dual-Mode Testing](dual-mode-testing.md), a single `pytest --protean-env memory`
+    flag switches every adapter to its in-memory equivalent. Run fast during
+    development, then validate against real infrastructure in CI.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../concepts/building-blocks/aggregates.md) — Aggregate structure and invariants.
-    - [Value Objects](../concepts/building-blocks/value-objects.md) — Testing immutable domain concepts.
+    - [Aggregates](../concepts/building-blocks/aggregates.md): Aggregate structure and invariants.
+    - [Value Objects](../concepts/building-blocks/value-objects.md): Testing immutable domain concepts.
 
     **Guides:**
 
-    - [Domain Model Tests](../guides/testing/domain-model-tests.md) — Unit testing aggregates, entities, and value objects.
-    - [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md) — Reusable pytest fixtures and test recipes.
+    - [Domain Model Tests](../guides/testing/domain-model-tests.md): Unit testing aggregates, entities, and value objects.
+    - [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md): Reusable pytest fixtures and test recipes.

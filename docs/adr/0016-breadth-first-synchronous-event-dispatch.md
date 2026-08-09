@@ -9,20 +9,21 @@
 With `event_processing = "sync"`, `UnitOfWork._do_commit` consumed the events
 raised in the transaction by calling `handler_cls._handle(event)` immediately,
 in-stack, at commit time. This is **depth-first, re-entrant** dispatch: an event
-raised *inside* a running handler is processed nested — before the current
-handler's side effects, including a process manager's transition, are persisted.
+raised *inside* a running handler is processed nested, before the current
+handler's side effects, including a process manager's transition, are
+persisted.
 
 Two failures follow directly from that ordering:
 
-- **Multi-step process managers stall after step 1.** A saga's start handler
+- **Multi-step process managers stall after step 1**: A saga's start handler
   typically dispatches the next command (`current_domain.process(cmd,
   asynchronous=False)`), which raises the next event. Under re-entrancy that
   event re-enters `_handle` for step 2 while step 1 is still running, so
-  `_load_or_create` reads the PM's stream — still empty, because the start
-  transition is persisted only *after* the handler returns — gets `None`, and
-  silently skips the step. The saga can never advance past step 1 in sync mode.
+  `_load_or_create` reads the PM's stream. Still empty, because the start
+  transition is persisted only *after* the handler returns, so it gets `None`
+  and silently skips the step. The saga can never advance past step 1 in sync mode.
 
-- **Projectors can update before they create.** The same depth-first order lets
+- **Projectors can update before they create**: The same depth-first order lets
   a projector for a *nested* event run before the projector for the
   *originating* event. A read model that creates on `Requested` and updates on
   `Reserved` sees `Reserved` first and raises `ObjectNotFoundError` on the
@@ -30,15 +31,15 @@ Two failures follow directly from that ordering:
 
 The asynchronous engine does not have either problem: a handler's raised events
 are written to the outbox and re-enter the engine as brand-new messages, one
-full commit at a time. It is already **breadth-first**. Synchronous processing —
-used by tests and single-process/dev setups — should behave the same.
+full commit at a time. It is already **breadth-first**. Synchronous processing
+(used by tests and single-process/dev setups) should behave the same.
 
 ## Decision
 
 Make synchronous dispatch **breadth-first** using a chain-scoped FIFO queue
 (`src/protean/utils/sync_dispatch.py`).
 
-1. **Enqueue, then drain at the outermost point.** Every synchronous dispatch
+1. **Enqueue, then drain at the outermost point**: Every synchronous dispatch
    site (`UnitOfWork._do_commit` and the three `testing.py` sites) enqueues
    `(event, handler)` pairs and calls the drain. Only the *outermost* drain runs;
    a nested call (a handler's own commit re-entering) returns immediately, and
@@ -46,17 +47,17 @@ Make synchronous dispatch **breadth-first** using a chain-scoped FIFO queue
    re-entrancy flag live on the domain-context `g`, so they survive nested
    UnitOfWork commits and re-entrant `process()` calls.
 
-2. **Each handler commits before the next runs.** Draining FIFO means a process
+2. **Each handler commits before the next runs**: Draining FIFO means a process
    manager's transition for the current step is persisted before the next step's
    event is handled, and an originating event's projector runs before a nested
    event's projector.
 
-3. **Preserve trace lineage.** The active `message_in_context` is captured at
+3. **Preserve trace lineage**: The active `message_in_context` is captured at
    enqueue time and restored around each drained `_handle`, so causation and
-   correlation are identical to before — only *when* a handler runs changes, not
+   correlation are identical to before. Only *when* a handler runs changes, not
    the context it runs under.
 
-4. **No configuration flag.** Breadth-first is the only synchronous behavior.
+4. **No configuration flag**: Breadth-first is the only synchronous behavior.
    The prior depth-first behavior left multi-step process managers broken and
    diverged from the async engine, so there is no correct legacy behavior worth
    preserving behind a flag. This is a deliberate departure from the default
@@ -99,16 +100,16 @@ def on_placed(self, event):
 
 Move such assertions/reads out of the handler to after the top-level
 `process()`/`add()` call returns. The final state after the whole chain settles
-is unchanged; only mid-handler visibility of downstream effects differs. Process
-managers, event handlers, and projectors require no changes — they benefit from
-the fix automatically.
+is unchanged; only mid-handler visibility of downstream effects differs.
+Process managers, event handlers, and projectors require no changes. They
+benefit from the fix automatically.
 
 ## Alternatives Considered
 
 **Opt-in configuration flag (strict Tier-2).** Default to depth-first, let
 operators opt into breadth-first, and flip the default over three minor
 versions. Rejected: it keeps multi-step process managers broken by default, and
-depth-first is not a "correct old behavior" worth preserving — it is the bug.
+depth-first is not a "correct old behavior" worth preserving. It is the bug.
 
 **Narrow process-manager-only fix.** Persist the PM transition before running the
 handler body, or special-case PM re-entry. Rejected: persisting the transition

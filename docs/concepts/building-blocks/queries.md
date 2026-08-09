@@ -1,8 +1,8 @@
 # Queries
 
-A query is an immutable, validated **read intent** -- a named request for data on
-the read side of CQRS. Where a command expresses intent to *change* state, a query
-expresses intent to *read* it.
+A query is an immutable, validated **read intent**, a named request for data on
+the read side of CQRS. Where a command expresses intent to *change* state, a
+query expresses intent to *read* it.
 
 Queries are the input to query handlers. A query carries the parameters a read
 needs (an identifier, a filter, a page number); the handler answers it from a
@@ -19,8 +19,8 @@ the denormalized views that projectors maintain.
 
 ### Queries are immutable. { data-toc-label="Immutable" }
 
-Once constructed, a query's fields cannot be changed -- assigning to a field raises
-`IncorrectUsageError`. To issue a different read, build a new query.
+Once constructed, a query's fields cannot be changed, assigning to a field
+raises `IncorrectUsageError`. To issue a different read, build a new query.
 
 ### Queries are validated at construction. { data-toc-label="Validated" }
 
@@ -30,9 +30,9 @@ raises `ValidationError` immediately.
 
 ### Queries carry only basic data. { data-toc-label="Basic Fields" }
 
-A query holds simple field types (and value objects) -- the parameters of a read.
-It cannot contain associations (`HasOne`, `HasMany`, `Reference`); those belong to
-aggregates.
+A query holds simple field types (and value objects). The parameters of a read.
+It cannot contain associations (`HasOne`, `HasMany`, `Reference`); those belong
+to aggregates.
 
 ### Queries are named for what they return. { data-toc-label="Naming" }
 
@@ -49,8 +49,8 @@ immediately.
 
 ### Keep queries to read parameters. { data-toc-label="Read Parameters Only" }
 
-A query is a parameter object, not a place for behavior. It should not reach into
-repositories or compute results -- that is the query handler's job.
+A query is a parameter object, not a place for behavior. It should not reach
+into repositories or compute results. That is the query handler's job.
 
 ### Model one query per read shape. { data-toc-label="One per Read" }
 
@@ -64,11 +64,11 @@ validate more precisely.
 
 For practical details on defining queries and answering them, see the guide:
 
-- [Query Handlers](../../guides/consume-state/query-handlers.md) -- Defining
+- [Query Handlers](../../guides/consume-state/query-handlers.md): Defining
   queries, the `@read` decorator, and dispatching with `domain.dispatch()`.
 
 For related concepts:
 
-- [Query Handlers](./query-handlers.md) -- The read-side handlers that answer queries.
-- [Projections](./projections.md) -- The read models queries target.
-- [Commands](./commands.md) -- The write-side counterpart (intent to change state).
+- [Query Handlers](./query-handlers.md): The read-side handlers that answer queries.
+- [Projections](./projections.md): The read models queries target.
+- [Commands](./commands.md): The write-side counterpart (intent to change state).

@@ -2,7 +2,7 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-An aggregate rarely exists in isolation — its state changes often mean that
+An aggregate rarely exists in isolation. Its state changes often mean that
 other parts of the system have to sync up. An order being placed needs to
 reserve inventory; a user changing their email needs to update downstream
 projections. Without a mechanism to communicate these changes, aggregates
@@ -66,7 +66,7 @@ When you call `self.raise_(event)`, Protean:
 
 1. **Verifies** the event is associated with this aggregate
    (`event.meta_.part_of` must match the aggregate class).
-2. **Enriches** the event with metadata — the aggregate's identity, stream
+2. **Enriches** the event with metadata: the aggregate's identity, stream
    name, a monotonically increasing `sequence_id`, and a checksum.
 3. **Appends** the event to `self._events`.
 4. For **event-sourced aggregates**, additionally invokes the corresponding
@@ -83,10 +83,9 @@ consumers process them in the order they were raised.
 ## Dispatching Events {#stream-category}
 
 Events are dispatched automatically when the aggregate is persisted through
-a repository. You do not need to publish events manually — when you call
-`domain.repository_for(Aggregate).add(aggregate)` within a Unit of Work,
-Protean persists the aggregate's accumulated events to the event store and
-forwards them to registered brokers.
+a repository. You do not need to publish events manually, when you call `domain.repository_for(Aggregate).add(aggregate)`
+within a Unit of Work, Protean persists the aggregate's accumulated events to
+the event store and forwards them to registered brokers.
 
 Events are published to streams based on the aggregate's [stream category](../../concepts/async-processing/stream-categories.md). Each event is stored in a stream named `<domain>::<stream_category>-<aggregate_id>`, ensuring that all events for a specific aggregate instance are grouped together and can be processed in order.
 
@@ -113,12 +112,12 @@ persistence, the event list is cleared.
 From there, the [async processing engine](../../concepts/async-processing/engine.md)
 picks up events via subscriptions and delivers them to:
 
-- **[Event handlers](../consume-state/event-handlers.md)** — react to events
+- **[Event handlers](../consume-state/event-handlers.md)**: React to events
   and orchestrate side effects (e.g. syncing another aggregate, sending a
   notification).
-- **[Projectors](../consume-state/projectors.md)** — maintain read-optimized
+- **[Projectors](../consume-state/projectors.md)**: Maintain read-optimized
   projections by processing events into denormalized views.
-- **[Subscribers](../consume-state/subscribers.md)** — consume messages from
+- **[Subscribers](../consume-state/subscribers.md)**: Consume messages from
   external brokers at the domain boundary.
 
 The event store is the **source of truth** for the async processing engine.
@@ -127,12 +126,11 @@ them even after restarts.
 
 ## Event Sourced Aggregates: `raise_()` and `@apply` {#es-raise-apply}
 
-For **event-sourced aggregates** (`event_sourced=True`), `raise_()`
-does more than collect events — it automatically invokes the
-corresponding `@apply` handler to mutate the aggregate's state in-place.
-This makes `@apply` the **single source of truth** for all state
-mutations, whether the aggregate is processing live commands or being
-reconstructed from stored events.
+For **event-sourced aggregates** (`event_sourced=True`), `raise_()` does more
+than collect events. It automatically invokes the corresponding `@apply`
+handler to mutate the aggregate's state in-place. This makes `@apply` the
+**single source of truth** for all state mutations, whether the aggregate is
+processing live commands or being reconstructed from stored events.
 
 ```python
 from protean import apply
@@ -166,8 +164,8 @@ class Order:
 
 Key points for ES aggregates:
 
-- Business methods **only raise events** — they never mutate state
-  directly. The `@apply` handler does the mutation.
+- Business methods **only raise events**. They never mutate state directly.
+  The `@apply` handler does the mutation.
 - `raise_()` wraps the `@apply` call inside `atomic_change()`, so
   **invariants are checked** before and after the state change.
 - Every event raised **must** have a corresponding `@apply` handler.
@@ -178,17 +176,16 @@ Key points for ES aggregates:
 
 !!! note
     For standard (non-ES) aggregates, `raise_()` only collects
-    events — it does not call `@apply` handlers. State is mutated
-    directly in the business method, and `@apply` is not used.
+    events. It does not call `@apply` handlers. State is mutated directly in
+    the business method, and `@apply` is not used.
 
 ## Fact Events
 
 [Fact events](../domain-definition/events.md#fact-events) are automatically
-generated by Protean when an aggregate opts in with `fact_events=True`.
-Unlike delta events (which you raise explicitly in business methods), fact
-events are generated during **repository persistence** — each time the
-aggregate is saved, Protean snapshots the full aggregate state into a fact
-event.
+generated by Protean when an aggregate opts in with `fact_events=True`. Unlike
+delta events (which you raise explicitly in business methods), fact events are
+generated during **repository persistence**. Each time the aggregate is saved,
+Protean snapshots the full aggregate state into a fact event.
 
 The event name is of the format
 `<AggregateName>FactEvent`, and the stream name will be
@@ -204,19 +201,19 @@ and the output stream is `user-fact-e97cef08-f11d-43eb-8a69-251a0828bbff`
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Events](../../concepts/building-blocks/events.md) — Domain events and their role in system communication.
+    **Concept overview:** [Events](../../concepts/building-blocks/events.md): Domain events and their role in system communication.
 
     **Related guides:**
 
-    - [Aggregate Mutation](aggregate-mutation.md) — How state changes work inside aggregates.
-    - [Invariants](invariants.md) — Business rules checked before and after state changes.
-    - [Event Handlers](../consume-state/event-handlers.md) — Processing events to orchestrate side effects.
-    - [Projections](../consume-state/projections.md) — Building read models from event streams.
-    - [Message Enrichment](message-enrichment.md) — Automatically add custom metadata (user context, tenant ID, audit data) to every event.
-    - [Message Tracing](message-tracing.md) — Follow causal chains with correlation and causation IDs.
-    - [Evolving Events Over Time](../evolving-events.md) — Evolve an event safely over time. Raising a **deprecated** event (marked with `deprecated=`/`superseded_by=`) emits a `DeprecationWarning` at runtime that names its replacement.
+    - [Aggregate Mutation](aggregate-mutation.md): How state changes work inside aggregates.
+    - [Invariants](invariants.md): Business rules checked before and after state changes.
+    - [Event Handlers](../consume-state/event-handlers.md): Processing events to orchestrate side effects.
+    - [Projections](../consume-state/projections.md): Building read models from event streams.
+    - [Message Enrichment](message-enrichment.md): Automatically add custom metadata (user context, tenant ID, audit data) to every event.
+    - [Message Tracing](message-tracing.md): Follow causal chains with correlation and causation IDs.
+    - [Evolving Events Over Time](../evolving-events.md): Evolve an event safely over time. Raising a **deprecated** event (marked with `deprecated=`/`superseded_by=`) emits a `DeprecationWarning` at runtime that names its replacement.
 
     **Patterns:**
 
-    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so consumers can process them reliably.
-    - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md) — Using fact events for cross-domain communication.
+    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md): Structuring events so consumers can process them reliably.
+    - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md): Using fact events for cross-domain communication.

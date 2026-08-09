@@ -92,11 +92,11 @@ myproj/                     # project root
 
 The rules that make this a contract, not a suggestion:
 
-1. **One composition root per domain.** `src/<package>/domain.py` constructs the single
+1. **One composition root per domain**: `src/<package>/domain.py` constructs the single
    `Domain` instance. Its directory is the discovery root. One `Domain` is one bounded
    context is one IR document (ADR-0003).
 
-2. **Config sits at the domain root.** `domain.toml` lives next to `domain.py` in
+2. **Config sits at the domain root**: `domain.toml` lives next to `domain.py` in
    `src/<package>/`, where `load_from_path` finds it first.
 
 3. **Element modules live at most one directory below the domain root, one concept per
@@ -106,17 +106,17 @@ The rules that make this a contract, not a suggestion:
    `example/handlers/foo.py`) is silently not discovered. Modules import the domain with
    `from <package>.domain import <domain>` and siblings with relative imports.
 
-4. **Package `__init__.py` files are side-effect free.** They carry a docstring at most.
+4. **Package `__init__.py` files are side-effect free**: They carry a docstring at most.
    They do not re-export from submodules. Re-exports run during traversal and create
    partially initialized module cycles, which is exactly what broke `init(traverse=True)`
    in #1316. Discovery finds elements by importing each module directly, so the re-exports
    buy nothing and cost correctness.
 
-5. **Tests live outside the domain root.** `tests/` is a sibling of `src/`, so no test
+5. **Tests live outside the domain root**: `tests/` is a sibling of `src/`, so no test
    module is ever imported as domain code during traversal. Tests boot the domain
    themselves through a session-scoped fixture in `conftest.py`.
 
-6. **A nested config file marks a boundary discovery skips.** A subdirectory of the domain
+6. **A nested config file marks a boundary discovery skips**: A subdirectory of the domain
    root that carries its own `domain.toml` / `.domain.toml` / `pyproject.toml` is treated
    as a separate boundary and is not traversed into. This is the escape hatch for a
    subtree that should not register into this domain.

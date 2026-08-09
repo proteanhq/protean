@@ -56,12 +56,12 @@ same event id at a compatible position is a no-op) and guarded by
 We will make the event-store append the **durable anchor** of the commit
 sequence, and make the relational commit and outbox follow it.
 
-1. **Reorder.** `UnitOfWork._do_commit` appends events to the event store first,
+1. **Reorder**: `UnitOfWork._do_commit` appends events to the event store first,
    and only then commits the relational session that carries aggregate state and
    the outbox rows. The event store, which is the source of truth for
    event-sourced aggregates, becomes the first durable write.
 
-2. **Idempotent on retry.** Because a commit can be retried after a partial
+2. **Idempotent on retry**: Because a commit can be retried after a partial
    failure (the append succeeds, the relational commit fails), the append must be
    safe to repeat. We rely on the event store's optimistic-concurrency contract,
    keyed on a stable event id (Protean's `_metadata.headers.id`): a repeated
@@ -71,11 +71,11 @@ sequence, and make the relational commit and outbox follow it.
    natively through `EventId` idempotency; Message DB satisfies it through
    `expected_version` plus an already-applied check.
 
-3. **Event-store-agnostic.** The decision is expressed as a principle about
+3. **Event-store-agnostic**: The decision is expressed as a principle about
    ordering and idempotency, not about a particular backend. It holds unchanged
    for the in-memory store, Message DB, and a future EventStoreDB adapter.
 
-4. **Reconciliation and repair.** Reordering moves the unrecoverable failure (the
+4. **Reconciliation and repair**: Reordering moves the unrecoverable failure (the
    event store missing a committed event) to a recoverable one (events durable in
    the store, but the outbox rows or relational state not yet committed). We will
    provide reconciliation that detects this divergence and repairs it by deriving

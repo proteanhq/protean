@@ -7,7 +7,7 @@ the shape a new command that emits `--json` output should follow.
 
 `check` and `verify` follow these contracts today. The other commands that print
 JSON (`upgrade-check`, `ir diff`, `ir check`) predate them and are **not yet
-converged** — their exit codes and output shapes still differ. Converging them is
+converged**: their exit codes and output shapes still differ. Converging them is
 a separate follow-on; until then, only `check` and `verify` are guaranteed to
 match what this page describes.
 
@@ -29,16 +29,16 @@ Every command that emits machine-readable output (under `--json`, or
 |-------|------|-------------|
 | `version` | str | Semantic version of the envelope format. |
 | `status` | str | Coarse verdict: `pass`, `fail`, or `error` (see below). |
-| `data` | object | The command's own detail — check's report, verify's stage tree, etc. |
+| `data` | object | The command's own detail: check's report, verify's stage tree, and so on. |
 | `diagnostics` | array | The typed [`Diagnostic`](../fitness-functions.md) records (may be empty). |
 
 `status` is the coarse verdict that maps to the exit-code class:
 
-- `pass` — success (exit `0`).
-- `fail` — the command ran and found a failure it is designed to detect (a
+- `pass`: Success (exit `0`).
+- `fail`: The command ran and found a failure it is designed to detect (a
   gating diagnostic, a failed stage). The fine-grained severity is in `data` and
   `diagnostics`, not the status.
-- `error` — a usage or environment error it could not run past (a bad option, no
+- `error`: A usage or environment error it could not run past (a bad option, no
   or unloadable domain, malformed config, IO). Maps to the usage class (exit `2`).
 
 The envelope ships a pinned, versioned JSON Schema at
@@ -49,7 +49,7 @@ against it, so the shape is enforced, not just documented.
 `data` and `diagnostics` split the payload deliberately, so a consumer should
 read **both**: `diagnostics` carries the lint findings (the recoverable,
 per-element diagnostics), while `data` carries the command's own detail and its
-*fatal* errors — a domain that would not load, a malformed `[lint]` config, a
+*fatal* errors: a domain that would not load, a malformed `[lint]` config, a
 failed init stage. Those fatal errors live under `data` (e.g. `data.error`, or
 `data.stages.init.error` for `verify`), not in `diagnostics`. A diagnostics-only
 consumer will miss them.
@@ -64,7 +64,7 @@ schemas consumed by other tools, and stay as-is.
 |-----------|---------|
 | `0` | Success. |
 | `1` | The command ran and reports a failure it is designed to detect. The severity/stage detail is in the envelope, not the code. |
-| `2` | A usage or environment error it could not run past — a bad option or argument (Click's own default), no or unloadable domain, malformed config, IO. |
+| `2` | A usage or environment error it could not run past: a bad option or argument (Click's own default), no or unloadable domain, malformed config, IO. |
 | `>=3` | Command-specific failure classes, documented per command. |
 
 Because `2 = usage` is Click's own default for a malformed command line, a
@@ -92,13 +92,13 @@ command that sets no explicit exit code already conforms.
 
 ## Clean stdout
 
-Under machine-readable output, stdout carries **only** the envelope — exactly
+Under machine-readable output, stdout carries **only** the envelope: exactly
 one JSON object and nothing else. Every log line, warning, and human error
 message goes to stderr, so `protean check --format json | jq` (or
 `protean verify --json | jq`) stays parseable.
 
 ## Related
 
-- [`protean check`](check.md) — the exemplar command.
-- [`protean verify`](verify.md) — init + check + tests in one verdict.
-- [Migrating to 0.18](../migration/v0-18.md) — the shape and exit-code changes.
+- [`protean check`](check.md): The exemplar command.
+- [`protean verify`](verify.md): Init, check, and tests in one verdict.
+- [Migrating to 0.18](../migration/v0-18.md): The shape and exit-code changes.

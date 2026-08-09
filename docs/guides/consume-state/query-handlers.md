@@ -28,15 +28,14 @@ class GetOrdersByCustomer:
     page_size = Integer(default=20)
 ```
 
-Queries are immutable once created — attempting to modify a field after
-construction raises `IncorrectUsageError`. Fields support the same validation
-constraints as other domain elements (`required`, `max_length`, `min_value`,
-`max_value`, `choices`). Invalid inputs raise `ValidationError` at
+Queries are immutable once created, attempting to modify a field after
+construction raises `IncorrectUsageError`. Fields support the same validation constraints as
+other domain elements (`required`, `max_length`, `min_value`, `max_value`, `choices`). Invalid inputs raise `ValidationError` at
 construction time, before the query reaches the handler.
 
 ### Query Naming Conventions
 
-Name queries with the intent they represent — typically starting with `Get`,
+Name queries with the intent they represent, typically starting with `Get`,
 `Find`, `List`, or `Search`:
 
 | Pattern | Example | Use when |
@@ -51,7 +50,7 @@ Name queries with the intent they represent — typically starting with `Get`,
 | Option | Default | Description |
 |--------|---------|-------------|
 | **`part_of`** | — | **Required.** The projection class this query targets |
-| `abstract` | `False` | When `True`, the query cannot be instantiated — use as a base class |
+| `abstract` | `False` | When `True`, the query cannot be instantiated, use as a base class |
 
 ## Defining a Query Handler
 
@@ -104,7 +103,7 @@ class OrderSummaryQueryHandler:
 ### The `@read` Decorator
 
 The `@read` decorator marks methods as query handlers. It accepts a single
-argument -- the query class to handle:
+argument, the query class to handle:
 
 ```python
 @read(GetOrdersByCustomer)
@@ -177,10 +176,10 @@ Protean provides three levels of read access to projections:
 
 Query handlers operate at Level 1, the most structured approach. Use
 `domain.view_for(Projection)` (Level 2) for read-only lookups that don't need a
-handler — it returns a `ReadView`, and `view.query` gives you a chainable
+handler. It returns a `ReadView`, and `view.query` gives you a chainable
 `ReadOnlyQuerySet` (a `QuerySet` subclass whose `update()`/`delete()` raise
-`NotSupportedError`). Use `domain.connection_for(Projection)` (Level 3) when you
-need the raw database or cache client for technology-specific queries.
+`NotSupportedError`). Use `domain.connection_for(Projection)` (Level 3) when
+you need the raw database or cache client for technology-specific queries.
 
 To *write* to a projection (inside a projector), use
 `domain.repository_for(Projection)`. That is the write path, not a read level.
@@ -222,20 +221,20 @@ sides of CQRS:
 | Aspect | `@handle` | `@read` |
 |--------|-----------|---------|
 | Used in | Command handlers, event handlers | Query handlers only |
-| UoW wrapping | Yes — rolls back on error | No — read-only, no transaction |
-| Side effects | Expected (persist aggregates, raise events) | None — reads only |
+| UoW wrapping | Yes, rolls back on error | No, read-only, no transaction |
+| Side effects | Expected (persist aggregates, raise events) | None, reads only |
 | Parameters | `start`, `correlate`, `end` for lifecycle control | None beyond the query class |
 
-Using `@handle` on a query-handler method is **not permitted** -- `domain.init()`
-raises `IncorrectUsageError` (naming `@read`), because a query handler must be a
-stateless read with no UnitOfWork. Use `@read` for every query-handler method.
+Using `@handle` on a query-handler method is **not permitted**, `domain.init()` raises `IncorrectUsageError`
+(naming `@read`), because a query handler must be a stateless read with no
+UnitOfWork. Use `@read` for every query-handler method.
 
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Query Handlers](../../concepts/building-blocks/query-handlers.md) — How query handlers process read intents in CQRS.
+    **Concept overview:** [Query Handlers](../../concepts/building-blocks/query-handlers.md): How query handlers process read intents in CQRS.
 
     **Related guides:**
 
-    - [Projections](./projections.md) — The read models that query handlers operate on.
-    - [Event Handlers](./event-handlers.md) — The write-side consumer counterpart.
+    - [Projections](./projections.md): The read models that query handlers operate on.
+    - [Event Handlers](./event-handlers.md): The write-side consumer counterpart.

@@ -2,9 +2,9 @@
 
 We have been working with events through aggregates, projections, and
 handlers for the entire tutorial. But we have never looked at the event
-store directly. In this chapter we will explore it as a database —
-reading raw events, viewing statistics, searching by type, and
-understanding the stream naming conventions.
+store directly. In this chapter we will explore it as a database, reading raw
+events, viewing statistics, searching by type, and understanding the stream
+naming conventions.
 
 ## Reading Events from a Stream
 
@@ -95,9 +95,9 @@ $ protean events search --type=deposit --domain=fidelis
 
 Two position numbers appear in event listings:
 
-- **Position** — the event's index within its specific stream
+- **Position**: The event's index within its specific stream
   (0-indexed). This is the aggregate's version number.
-- **Global Position** — a monotonically increasing counter across the
+- **Global Position**: A monotonically increasing counter across the
   **entire** event store. This establishes a total ordering of all
   events, regardless of which aggregate they belong to.
 
@@ -106,10 +106,10 @@ replayed in global order) and for subscription position tracking.
 
 ## Memory vs. MessageDB
 
-Throughout this tutorial we used the **memory event store** — great for
+Throughout this tutorial we used the **memory event store**, great for
 development and testing, but not persistent across restarts.
 
-For production, use **MessageDB** — a PostgreSQL-based event store:
+For production, use **MessageDB**. A PostgreSQL-based event store:
 
 ```toml
 # domain.toml (production)
@@ -125,7 +125,7 @@ MessageDB provides:
 - Efficient category reads and stream queries
 - SQL access for ad-hoc analysis
 
-The domain code does not change — only the configuration.
+The domain code does not change, only the configuration.
 
 ## What We Built
 
@@ -136,9 +136,9 @@ The domain code does not change — only the configuration.
 - Understanding of **position** vs. **global position**.
 - **Memory** vs. **MessageDB** event store adapters.
 
-The event store is not just an implementation detail — it is a database
-of facts about your business. Learning to query it directly is a
-powerful debugging and analysis tool.
+The event store is not just an implementation detail. It is a database of facts
+about your business. Learning to query it directly is a useful debugging and
+analysis tool.
 
 ## Next
 

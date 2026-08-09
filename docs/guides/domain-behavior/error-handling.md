@@ -2,9 +2,9 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-This guide covers how to raise, propagate, and handle domain exceptions
-in Protean -- from aggregate invariants through command handlers to
-API responses.
+A domain exception starts at an aggregate invariant and ends as an API
+response. Here is how to raise one, how it propagates, and where to handle it
+along the way.
 
 ---
 
@@ -69,8 +69,8 @@ class Order:
 
 ## Error propagation through layers
 
-Protean exceptions propagate naturally -- don't catch them in handlers
-or services unless you need to translate them:
+Protean exceptions propagate naturally, don't catch them in handlers or
+services unless you need to translate them:
 
 ```
 Aggregate method
@@ -100,7 +100,7 @@ class OrderCommandHandler:
 
 ### In application services
 
-Same principle -- let domain exceptions propagate to the caller:
+Same principle, let domain exceptions propagate to the caller:
 
 ```python
 @domain.application_service(part_of=Order)
@@ -143,9 +143,9 @@ if repo.exists(Q(email=email)):
 
 Transaction failures during `UnitOfWork.commit()` raise:
 
-- **`ExpectedVersionError`** -- optimistic concurrency conflict in
+- **`ExpectedVersionError`**: Optimistic concurrency conflict in
   event-sourced aggregates. The client should retry with fresh state.
-- **`TransactionError`** -- wraps the underlying database error. The
+- **`TransactionError`**: Wraps the underlying database error. The
   original exception is available as `exc.__cause__`.
 
 ---
@@ -209,7 +209,7 @@ def test_order_requires_items():
 ---
 
 !!! tip "See also"
-    - [Invariants](./invariants.md) -- How to define business rules.
-    - [Classify Async Processing Errors](../../patterns/classify-async-processing-errors.md)
-      -- Error handling in event handlers and projectors.
-    - [FastAPI Integration](../fastapi/index.md) -- Exception handler setup.
+    - [Invariants](./invariants.md): How to define business rules.
+    - [Classify Async Processing Errors](../../patterns/classify-async-processing-errors.md):
+      Error handling in event handlers and projectors.
+    - [FastAPI Integration](../fastapi/index.md): Exception handler setup.

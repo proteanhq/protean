@@ -1,10 +1,10 @@
-# Chapter 13: Check Before You Ship — Domain Services
+# Chapter 13: Checking Before You Ship with Domain Services
 
-A customer just complained: they ordered five copies of a book, the
-order was confirmed, but only three were in stock. The current system
-confirms orders blindly — it never checks inventory. We need business
-logic that spans two aggregates (Order and Inventory), and that logic
-does not belong in either aggregate. It belongs in a **domain service**.
+A customer just complained: they ordered five copies of a book, the order was
+confirmed, but only three were in stock. The current system confirms orders
+blindly. It never checks inventory. We need business logic that spans two
+aggregates (Order and Inventory), and that logic does not belong in either
+aggregate. It belongs in a **domain service**.
 
 ## What Is a Domain Service?
 
@@ -18,18 +18,18 @@ spanning two or more aggregates. Unlike aggregates, domain services:
 
 ### When to Use a Domain Service (vs. an Event Handler)
 
-You might wonder: couldn't we just use an event handler to check
+You might wonder: couldn't we use an event handler to check
 inventory when an order is confirmed? The key difference is
 **transactional consistency**:
 
 | Approach | Guarantees |
 |----------|-----------|
-| **Domain service** | Synchronous, single transaction — inventory is checked *before* the order is confirmed. If stock is insufficient, the entire operation rolls back. |
-| **Event handler** | Eventually consistent — the order is confirmed first, then the handler runs. If stock is insufficient, you need compensating actions. |
+| **Domain service** | Synchronous, single transaction, inventory is checked *before* the order is confirmed. If stock is insufficient, the entire operation rolls back. |
+| **Event handler** | Eventually consistent; the order is confirmed first, then the handler runs. If stock is insufficient, you need compensating actions. |
 
-Use a domain service when the business rule says "this must not happen" —
-like confirming an order without sufficient stock. Use event handlers when
-the reaction can happen after the fact.
+Use a domain service when the business rule says "this must not happen", like
+confirming an order without sufficient stock. Use event handlers when the
+reaction can happen after the fact.
 
 ## The Fulfillment Service
 
@@ -39,21 +39,21 @@ the reaction can happen after the fact.
 
 Let's break down how this works:
 
-1. **`part_of=[Order, Inventory]`** — The service is associated with both
+1. **`part_of=[Order, Inventory]`**: The service is associated with both
    aggregates. Protean requires domain services to declare which aggregates
    they coordinate.
 
-2. **`__init__`** — The constructor receives the aggregates and calls
+2. **`__init__`**: The constructor receives the aggregates and calls
    `super().__init__()` with all of them. This is required for Protean to
    track the aggregates and run invariants.
 
-3. **`@invariant.pre`** — The `all_items_in_stock` invariant runs
+3. **`@invariant.pre`**: The `all_items_in_stock` invariant runs
    *before* `confirm_order()` executes. If any item is out of stock, a
    `ValidationError` is raised and the order is never confirmed. Pre-invariants
-   are the domain service's main value — they enforce cross-aggregate
-   business rules atomically.
+   are the domain service's main value. They enforce cross-aggregate business
+   rules atomically.
 
-4. **`confirm_order()`** — The domain method that performs the actual
+4. **`confirm_order()`**: The domain method that performs the actual
    mutation: reserving inventory for each item and confirming the order.
 
 ## Updating the Command Handler
@@ -84,10 +84,9 @@ Test both the happy path and the out-of-stock scenario:
 --8<-- "guides/getting-started/tutorial/ch13.py:tests"
 ```
 
-Notice that we test the domain service directly — no need for a full
-domain context or command processing. The service is a plain Python
-object that takes aggregates as input. This makes domain services easy
-to unit test.
+Notice that we test the domain service directly, no need for a full domain
+context or command processing. The service is a plain Python object that takes
+aggregates as input. This makes domain services easy to unit test.
 
 ## What We Built
 
@@ -109,4 +108,4 @@ using a subscriber.
 
 ## Next
 
-[Chapter 14: Connecting to the Outside World →](14-subscribers.md)
+[Chapter 14: Connecting to the Outside World with Subscribers →](14-subscribers.md)

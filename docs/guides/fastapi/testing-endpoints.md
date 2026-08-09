@@ -1,6 +1,6 @@
 # Endpoint Tests
 
-Protean endpoints are thin adapters — they translate HTTP into domain commands
+Protean endpoints are thin adapters. They translate HTTP into domain commands
 and let `domain.process()` handle the rest. Testing them means verifying that
 the HTTP layer correctly dispatches commands and returns appropriate responses,
 while the domain takes care of business logic. This separation makes endpoint
@@ -10,15 +10,15 @@ tests surprisingly straightforward.
 
 Endpoint tests sit at the boundary between HTTP and your domain. They verify:
 
-- **Request → Command translation** — Does the endpoint extract the right
+- **Request → Command translation**: Does the endpoint extract the right
   data from the request and build the correct command?
-- **Response shaping** — Does the endpoint return the right status code
+- **Response shaping**: Does the endpoint return the right status code
   and body for success and failure cases?
-- **Error mapping** — Do domain exceptions become the correct HTTP errors?
+- **Error mapping**: Do domain exceptions become the correct HTTP errors?
 
-They do *not* test business logic — that belongs in
-[domain model tests](../testing/domain-model-tests.md) and
-[application tests](../testing/application-tests.md).
+They do *not* test business logic, that belongs in [domain model
+tests](../testing/domain-model-tests.md) and [application
+tests](../testing/application-tests.md).
 
 ## Setup
 
@@ -36,7 +36,7 @@ uv add fastapi httpx
 
 !!! note
     FastAPI's `TestClient` is powered by
-    [httpx](https://www.python-httpx.org/) under the hood. You need `httpx`
+    [httpx](https://www.python-httpx.org/) internally. You need `httpx`
     installed for `TestClient` to work.
 
 ### Project layout
@@ -106,10 +106,9 @@ def client():
     return TestClient(app)
 ```
 
-That's it. The root `conftest.py` handles domain lifecycle and per-test
-cleanup (via `DomainFixture`). The API-specific `conftest.py` just provides
-the client. Every test starts with a clean slate — no leftover data from
-previous tests.
+That's it. The root `conftest.py` handles domain lifecycle and per-test cleanup
+(via `DomainFixture`). The API-specific `conftest.py` provides the client.
+Every test starts with a clean slate, no leftover data from previous tests.
 
 !!! tip "Why a separate `tests/api/conftest.py`?"
     Keeping the `TestClient` fixture local to `tests/api/` avoids creating
@@ -182,15 +181,15 @@ def test_place_order_returns_201(client):
 
 Notice the pattern:
 
-1. **Seed** — Set up the preconditions using repositories directly.
-2. **Act** — Make an HTTP request through the `TestClient`.
-3. **Assert** — Check the HTTP response.
+1. **Seed**: Set up the preconditions using repositories directly.
+2. **Act**: Make an HTTP request through the `TestClient`.
+3. **Assert**: Check the HTTP response.
 
 The `DomainContextMiddleware` pushes the domain context for the request,
 so `current_domain` resolves correctly inside the endpoint. And because
 `command_processing` is set to `"sync"`, the command handler runs
-immediately — by the time the response returns, all side effects
-(aggregate creation, events, projections) have completed.
+immediately, by the time the response returns, all side effects (aggregate
+creation, events, projections) have completed.
 
 ### Verifying side effects
 
@@ -240,9 +239,9 @@ def test_place_order_with_invalid_data_returns_400(client):
     assert response.status_code == 400
 ```
 
-The endpoint code doesn't need try/except — it raises domain exceptions
-naturally, and the exception handlers translate them into HTTP responses.
-This keeps endpoints thin and tests focused on behavior.
+The endpoint code doesn't need try/except. It raises domain exceptions
+naturally, and the exception handlers translate them into HTTP responses. This
+keeps endpoints thin and tests focused on behavior.
 
 ## Testing query endpoints
 
@@ -442,8 +441,8 @@ def _ctx(identity_fixture, ordering_fixture):
             yield
 ```
 
-Each request path activates the correct domain context automatically.
-The test just makes requests — the middleware handles the rest.
+Each request path activates the correct domain context automatically. The test
+makes requests, the middleware handles the rest.
 
 ## Keeping endpoints thin
 
@@ -458,10 +457,10 @@ HTTP, that's a signal to push the logic down:
 | Queries and transforms data | Projection + projector |
 | Catches and maps exceptions | `register_exception_handlers` |
 
-When endpoints are thin, endpoint tests become thin too. Most of your
-testing energy goes into [domain model tests](../testing/domain-model-tests.md)
-and [application tests](../testing/application-tests.md) — the endpoint
-tests are just the final sanity check that HTTP wiring works.
+When endpoints are thin, endpoint tests become thin too. Most of your testing
+energy goes into [domain model tests](../testing/domain-model-tests.md) and
+[application tests](../testing/application-tests.md). The endpoint tests are
+just the final sanity check that HTTP wiring works.
 
 ## Checklist
 
@@ -473,15 +472,15 @@ Before shipping endpoint tests, verify:
   resolves correctly
 - [ ] `register_exception_handlers` is called so domain exceptions map
   to HTTP status codes
-- [ ] Each test seeds its own data — no shared mutable state between tests
+- [ ] Each test seeds its own data, no shared mutable state between tests
 - [ ] `DomainFixture.domain_context()` resets all data after each test
   (via the `_ctx` autouse fixture)
 
 ## Next steps
 
-- [FastAPI Integration](./index.md) — Middleware and exception handler
+- [FastAPI Integration](./index.md): Middleware and exception handler
   reference
-- [Fixtures and Patterns](../testing/fixtures-and-patterns.md) — Reusable
+- [Fixtures and Patterns](../testing/fixtures-and-patterns.md): Reusable
   test recipes for Protean projects
-- [Application Tests](../testing/application-tests.md) — BDD-style tests
+- [Application Tests](../testing/application-tests.md): BDD-style tests
   for command and event handler logic

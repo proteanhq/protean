@@ -3,11 +3,11 @@
 Every diagnostic `protean check` can report, grouped by category. Each entry
 lists the rule's category and severity level, why it fires, and how to fix it.
 
-For a task-oriented walkthrough — running the checks, suppressing findings, and
-wiring them into CI — see the
-[Architecture Fitness Functions guide](../guides/architecture-fitness-functions.md).
-For the JSON/SARIF shape of a finding and the CLI flags, see the
-[`protean check` reference](cli/check.md).
+For a task-oriented walkthrough (running the checks, suppressing findings, and
+wiring them into CI) see the [Architecture Fitness Functions
+guide](../guides/architecture-fitness-functions.md). For the JSON/SARIF shape
+of a finding and the CLI flags, see the [`protean check`
+reference](cli/check.md).
 
 Each diagnostic carries a stable **code** (e.g. `AGGREGATE_TOO_LARGE`). A code is
 a public identifier you can rely on in CI gates, suppression lists, and SARIF
@@ -22,8 +22,8 @@ is what the tool emits.
 | `warning` | A likely design problem worth addressing. Gates CI at the default `[lint].level = "warn"` floor. |
 | `info` | An advisory observation. Never gates CI unless `[lint].level = "info"`. |
 
-Validator **errors** (malformed domains that cannot build an IR) are a separate,
-always-fatal class and are not listed here — they always exit `1`.
+Validator **errors** (malformed domains that cannot build an IR) are a
+separate, always-fatal class and are not listed here. They always exit `1`.
 
 ---
 
@@ -174,6 +174,29 @@ and breaks the ports-and-adapters boundary.
 domain-layer abstractions and let the adapter be wired through the domain's
 provider configuration instead.
 
+### ADAPTER_CALL_IN_DOMAIN { #adapter-call-in-domain }
+
+| | |
+|---|---|
+| **Category** | `bounded_context` |
+| **Level** | `warning` (opt-in) |
+
+Off by default. Enable with `[lint].check_adapter_calls = true`. It is gated
+separately from `check_infra_imports`, so the two rules switch independently:
+this one reads method bodies rather than the module's import list, and catches a
+call whose import was aliased or made locally.
+
+**Why.** Domain elements must not depend on concrete infrastructure adapters.
+Calling into `protean.adapters` from a domain method couples the domain layer to
+a specific adapter at runtime and breaks the ports-and-adapters boundary.
+
+**Fix.** Remove the `protean.adapters` call from the domain method. Depend on
+domain-layer abstractions and let the adapter be wired through the domain's
+provider configuration instead.
+
+See the [ADAPTER_CALL_IN_DOMAIN reference](../concepts/protean-check/rules/adapter-call-from-domain.md)
+for the exact scope and the receivers it resolves.
+
 ---
 
 ## Handler Completeness
@@ -238,7 +261,7 @@ events are internal.
 | **Category** | `handler_completeness` |
 | **Level** | `warning` |
 
-**Why.** An aggregate with no command handler has no write path — nothing can
+**Why.** An aggregate with no command handler has no write path, nothing can
 change its state.
 
 **Fix.** Add a command handler for the aggregate, or model it as a read-only
@@ -265,7 +288,7 @@ if it is filled by a subscriber.
 | **Level** | `warning` |
 
 **Why.** A projection with a query handler but no query has a read path that
-nothing can invoke — no query is registered for the handler to serve.
+nothing can invoke, no query is registered for the handler to serve.
 
 **Fix.** Register a `Query(part_of=<projection>)` for the handler to serve, or
 remove the query handler if the projection needs no read path.
@@ -278,7 +301,7 @@ remove the query handler if the projection needs no read path.
 | **Level** | `warning` |
 
 **Why.** A projector handling an event the domain does not register is wired to a
-type that can never be dispatched — usually a stale reference after a rename or
+type that can never be dispatched, usually a stale reference after a rename or
 removal.
 
 **Fix.** Register the event, or remove the handler for the orphaned type from the
@@ -401,8 +424,49 @@ SQL Server, needs a prefix length on MySQL, and is inefficient on PostgreSQL.
 **Fix.** Give the field a bounded length (`String(max_length=N)`) sized to its
 domain, or remove it from the index if it does not need to be indexed.
 
-See the [UNBOUNDED_INDEXED_STRING deep dive](../concepts/protean-check/rules/unbounded-indexed-string.md)
+See the [UNBOUNDED_INDEXED_STRING reference](../concepts/protean-check/rules/unbounded-indexed-string.md)
 for the exact scope, limits, and per-engine behaviour.
+
+### UNINDEXED_FILTER_PATH { #unindexed-filter-path }
+
+| | |
+|---|---|
+| **Category** | `persistence` |
+| **Level** | `warning` |
+
+**Why.** A repository filter on a field with no covering index forces a full
+table scan on a relational backend. The cost is invisible on small development
+data and grows with the production table.
+
+**Fix.** Add an index led by this field to the aggregate
+(`indexes=[Index("field")]`), or suppress the check when the table is small or
+the query is a one-off, such as admin or reporting access.
+
+A field counts as covered when it is the aggregate's identifier, carries a
+single-column `unique` constraint, or leads a declared index. Target resolution
+is conservative: a receiver the builder cannot resolve to an aggregate is
+skipped rather than guessed, so an unresolved query is a silent miss instead of
+a false positive.
+
+See the [UNINDEXED_FILTER_PATH reference](../concepts/protean-check/rules/unindexed-filter-path.md)
+for the recognized query surfaces and the resolution rules.
+
+### LOW_POOL_SIZE { #low-pool-size }
+
+| | |
+|---|---|
+| **Category** | `persistence` |
+| **Level** | `warning` |
+
+Fires when a database provider declares `pool_size` below `5`. The `memory`
+provider is skipped, since it holds no connections.
+
+**Why.** A connection pool smaller than the production default starves
+concurrent requests under load, so operations queue or fail while waiting for a
+free connection.
+
+**Fix.** Raise the provider's `pool_size` to at least `5` for production
+workloads.
 
 ---
 
@@ -433,17 +497,17 @@ Rules that surface elements, fields, and options scheduled for removal. See the
     Every active framework-API deprecation is recorded in the declarative
     registry in `protean._deprecation` (`DEPRECATIONS`). Each framework-API warn
     site routes through `warn_from_registry` / `deprecated_from_registry`, which
-    read the removal version and replacement advice from the entry — so a
-    framework deprecation cannot warn without being registered, and a source-scan
-    test fails if any module reaches for the low-level `warn_deprecated` /
-    `@deprecated` primitives directly (the one exception is a user-declared
-    deprecated *event*, whose removal comes from the user's event meta, not the
-    registry). A deprecation may not ship unless it is both registered
-    **and** covered by its detection mechanism: either a `protean check` rule
-    that fires on it (`detection="check"`, with a `detection_hint` token that
-    proves the rule fired), or, for an imperative call with no static site, its
-    per-version `DeprecationWarning` plus a recorded `reason` for why `check`
-    cannot see it (`detection="runtime"`). The audit in
+    read the removal version and replacement advice from the entry. So a
+    framework deprecation cannot warn without being registered, and a
+    source-scan test fails if any module reaches for the low-level
+    `warn_deprecated` / `@deprecated` primitives directly (the one exception is
+    a user-declared deprecated *event*, whose removal comes from the user's
+    event meta, not the registry). A deprecation may not ship unless it is both
+    registered **and** covered by its detection mechanism: either a `protean
+    check` rule that fires on it (`detection="check"`, with a `detection_hint`
+    token that proves the rule fired), or, for an imperative call with no
+    static site, its per-version `DeprecationWarning` plus a recorded `reason`
+    for why `check` cannot see it (`detection="runtime"`). The audit in
     `tests/ir/test_deprecation_coverage_audit.py` enforces both arms.
 
 ### DEPRECATED_ELEMENT { #deprecated-element }
@@ -523,9 +587,10 @@ access). All are scheduled for removal in v1.0.0. The diagnostic is attributed t
 the module and emitted once per deprecated symbol, not once per element in it.
 
 **Scope.** The scan only reads modules that host a registered element (the same
-element-oriented boundary as the infra-import scan). A deprecated use in a plain
-helper module or the domain composition root — one with no registered class — is
-not seen; the per-declaration `DeprecationWarning` still fires there at runtime.
+element-oriented boundary as the infra-import scan). A deprecated use in a
+plain helper module or the domain composition root (one with no registered
+class) is not seen; the per-declaration `DeprecationWarning` still fires there
+at runtime.
 
 **Why.** A deprecated import surface is scheduled for removal; code using it will
 break at the removal version.

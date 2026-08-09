@@ -2,12 +2,12 @@
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Why not just call a method on an aggregate directly? In simple cases you can —
-that's the DDD path with [Application Services](./application-services.md).
-But as systems grow, you need to decouple *who requests a change* from
-*how the change is executed*. Commands give you that separation: they can be
-serialized, routed, processed asynchronously, retried, and audited — all
-without the caller knowing the details.
+Why not call a method on an aggregate directly? In simple cases you can,
+that's the DDD path with [Application Services](./application-services.md). But
+as systems grow, you need to decouple *who requests a change* from *how the
+change is executed*. Commands give you that separation: they can be serialized,
+routed, processed asynchronously, retried, and audited, all without the caller
+knowing the details.
 
 Commands represent actions or operations that change the state of the system.
 They encapsulate the intent to perform a specific task, containing the data
@@ -45,7 +45,7 @@ Since a Protean domain constructs and manages the object graph of all
 domain elements, you don't need to identify the appropriate Command Handler
 for your commands.
 
-You can simply submit the command to the domain for processing with
+You can submit the command to the domain for processing with
 `domain.process()`:
 
 ```shell
@@ -80,13 +80,13 @@ appropriate command handler immediately.
 
 In distributed systems, the same command can arrive more than once due to
 network retries, broker redelivery, user double-clicks, or saga retries.
-Protean provides built-in support for **command idempotency** -- ensuring that
+Protean provides built-in support for **command idempotency**, ensuring that
 processing the same command multiple times produces the same effect as
 processing it once.
 
 ### Idempotency Keys
 
-When submitting a command, you can provide an **idempotency key** -- a unique
+When submitting a command, you can provide an **idempotency key**, a unique
 token that identifies the specific request:
 
 ```python
@@ -98,8 +98,8 @@ domain.process(
 
 If the same idempotency key is submitted again, `domain.process()` returns the
 cached result from the first processing without invoking the handler again.
-This makes retries safe -- a client that re-sends a request due to a timeout
-gets the same response regardless of whether the original succeeded.
+This makes retries safe, a client that re-sends a request due to a timeout gets
+the same response regardless of whether the original succeeded.
 
 The idempotency key is stored in the command's metadata headers, not in the
 command payload. This keeps the command's domain data clean:
@@ -112,12 +112,12 @@ key = command._metadata.headers.idempotency_key
 !!!note
     Idempotency keys are **caller-provided**, following the model established
     by Stripe and other well-designed APIs. Protean does not auto-derive keys
-    from command data -- only the caller knows whether a submission is a retry
-    or a new intent.
+    from command data, only the caller knows whether a submission is a retry or
+    a new intent.
 
 ### Duplicate Behavior
 
-By default, duplicate submissions are silently acknowledged -- the caller
+By default, duplicate submissions are silently acknowledged, the caller
 receives the same result as the first submission. When explicit feedback is
 needed, use `raise_on_duplicate=True`:
 
@@ -146,8 +146,8 @@ ttl = 86400       # Success entries: 24 hours (default)
 error_ttl = 60    # Error entries: 60 seconds (default)
 ```
 
-Without Redis configured, `domain.process()` works normally -- no
-deduplication occurs, and no errors are raised.
+Without Redis configured, `domain.process()` works normally, no deduplication
+occurs, and no errors are raised.
 
 For a comprehensive treatment of idempotency patterns, including
 subscription-level deduplication and handler-level strategies, see the
@@ -260,7 +260,7 @@ deadline = command._metadata.headers.deadline
 
 ### What happens when a command expires
 
-The behavior differs by processing mode — a deliberate asymmetry:
+The behavior differs by processing mode, a deliberate asymmetry:
 
 | | Synchronous (`asynchronous=False`) | Asynchronous (default) |
 |---|---|---|
@@ -278,7 +278,7 @@ except CommandExpiredError as exc:
     exc.deadline      # the deadline that was exceeded
 ```
 
-An expired command **changes no state** — no aggregate is loaded, no invariant
+An expired command **changes no state**, no aggregate is loaded, no invariant
 is evaluated, no event is raised. Expiry is a delivery-layer policy, not a
 domain-rule violation. The risk it introduces is *lost intent*: in the async
 case the caller has already moved on, so expiries are surfaced via the
@@ -289,7 +289,7 @@ your business.
 ### Propagation through the causal chain
 
 When a handler dispatches a downstream command, that command inherits the
-deadline of the message currently being processed — the whole causal chain is
+deadline of the message currently being processed. The whole causal chain is
 bound by the original deadline unless a downstream call overrides it:
 
 ```python
@@ -310,7 +310,7 @@ passing one on every call. Resolution precedence (highest wins):
 2. Deadline inherited from the parent message in the causal chain
 3. The handling command handler's `timeout` option
 4. The domain-level `command_default_timeout` config
-5. No deadline (the default — commands never expire)
+5. No deadline (the default, commands never expire)
 
 ```python
 # Per-handler default (seconds or a timedelta)
@@ -324,14 +324,14 @@ class OrderCommandHandler:
 command_default_timeout = 30
 ```
 
-Both defaults are **disabled** out of the box, so existing applications are
-unaffected. A default deadline bounds *staleness*, not *failure* — pair it with
+Both defaults are **disabled** by default, so existing applications are
+unaffected. A default deadline bounds *staleness*, not *failure*, pair it with
 [retry/backoff](command-handlers.md#error-handling) and a dead-letter strategy
 for a complete resilience story.
 
-For the design rationale — why deadlines are opt-in, the sync/async trade-off,
-and how this fits DDD — see the
-[Expiring Stale Commands](../../patterns/expiring-stale-commands.md) pattern.
+For the design rationale (why deadlines are opt-in, the sync/async trade-off,
+and how this fits DDD) see the [Expiring Stale
+Commands](../../patterns/expiring-stale-commands.md) pattern.
 
 ## Workflow
 
@@ -400,6 +400,7 @@ IncorrectUsageError: 'Command Objects are immutable and cannot be modified once 
 ## Relationship with Event Processing
 
 Protean offers similar configuration options for events through:
+
 - The `event_processing` domain configuration setting
 - The ability to raise events with specific `asynchronous` flags
 
@@ -420,13 +421,13 @@ This flexibility allows you to implement various architectural patterns like CQR
 ---
 
 !!! tip "See also"
-    **Concept overview:** [Commands](../../concepts/building-blocks/commands.md) — The role of commands as immutable DTOs expressing intent.
+    **Concept overview:** [Commands](../../concepts/building-blocks/commands.md): The role of commands as immutable DTOs expressing intent.
 
     **Related guides:**
 
-    - [Command Handlers](./command-handlers.md) — Processing commands and persisting state changes.
-    - [Application Services](./application-services.md) — An alternative for synchronous use cases.
+    - [Command Handlers](./command-handlers.md): Processing commands and persisting state changes.
+    - [Application Services](./application-services.md): An alternative for synchronous use cases.
 
     **Patterns:**
 
-    - [Command Idempotency](../../patterns/command-idempotency.md) — Ensuring commands can be safely retried without side effects.
+    - [Command Idempotency](../../patterns/command-idempotency.md): Ensuring commands can be safely retried without side effects.

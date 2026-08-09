@@ -46,14 +46,13 @@ associated with a specific projection via `projector_for`:
 ```
 
 You must also specify which events to listen to, via either `aggregates` (a
-list of aggregate classes — Protean derives the
-[stream categories](../../concepts/async-processing/stream-categories.md)
-automatically) or `stream_categories` (a list of stream category names for
-more fine-grained control). When both are specified, `stream_categories` takes
-precedence.
+list of aggregate classes, Protean derives the [stream
+categories](../../concepts/async-processing/stream-categories.md)
+automatically) or `stream_categories` (a list of stream category names for more fine-grained
+control). When both are specified, `stream_categories` takes precedence.
 
 !!! note "Required: `projector_for`"
-    Every projector must specify `projector_for` — the projection class it
+    Every projector must specify `projector_for`, the projection class it
     maintains. Omitting it raises `IncorrectUsageError`.
 
 ## Event Handling with `@on`
@@ -212,15 +211,15 @@ design and its boundaries.
 
 Keep three boundaries in mind:
 
-- **Use a relational projection in production.** The exactly-once and
+- **Use a relational projection in production**: The exactly-once and
   concurrency guarantees rely on a transactional provider that materializes the
   marker's unique index. The in-memory provider enforces neither, so there the
   option only skips ordinary sequential redeliveries.
-- **Adding the option to an existing deployment needs a schema change.** The
+- **Adding the option to an existing deployment needs a schema change**: The
   marker table appears only once a projector sets `idempotent=True`; run
   `protean db setup` (or your migration tool) before deploying, or the first
   delivery fails querying a missing table.
-- **Markers accumulate.** One row is written per `(message_id, handler)`. Prune
+- **Markers accumulate**: One row is written per `(message_id, handler)`. Prune
   markers older than your redelivery/recovery window by running `protean
   idempotency cleanup` periodically (from cron); the retention window and batch
   size come from `[consume_idempotency.cleanup]` (default 7 days / 5000 rows).
@@ -257,10 +256,10 @@ primary-key conflict (a `TransactionError`, which the version/OCC retry does
 run retry instead of aborting the command under `event_processing=sync`.
 
 The retry re-runs the *same* handler, so convergence is only automatic if the
-handler re-checks existence each time — write it as an idempotent upsert
+handler re-checks existence each time, write it as an idempotent upsert
 (get-or-create, as under [Idempotency](#idempotency) above) rather than an
-unconditional `repo.add(...)`. On the retry the winning run's record is now
-visible, so the handler takes the update path and commits cleanly.
+unconditional `repo.add(...)`. On the retry the winning run's record is now visible, so the
+handler takes the update path and commits cleanly.
 
 The behaviour is identical to event and command handlers: it is opt-in and
 disabled unless `retries` is set or `server.transient_retry` is enabled. See
@@ -453,10 +452,10 @@ def test_projector_integration():
 !!! tip "See also"
     **Concept overviews:**
 
-    - [Projections](../../concepts/building-blocks/projections.md) — Read-optimized views in CQRS.
-    - [Projectors](../../concepts/building-blocks/projectors.md) — Specialized handlers that maintain projections.
+    - [Projections](../../concepts/building-blocks/projections.md): Read-optimized views in CQRS.
+    - [Projectors](../../concepts/building-blocks/projectors.md): Specialized handlers that maintain projections.
 
     **Patterns:**
 
-    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md) — Structuring events so projectors can build reliable read models.
-    - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md) — Ensuring projectors handle replayed events correctly.
+    - [Design Events for Consumers](../../patterns/design-events-for-consumers.md): Structuring events so projectors can build reliable read models.
+    - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md): Ensuring projectors handle replayed events correctly.

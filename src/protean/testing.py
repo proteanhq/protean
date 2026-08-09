@@ -151,7 +151,7 @@ def _event_store_of(domain: Domain) -> BaseEventStore:
 def _flatten_messages(
     messages: dict[str, list[str]] | list[str] | str,
 ) -> list[str]:
-    """Flatten a :class:`ProteanExceptionWithMessage.messages` value.
+    """Flatten a `ProteanExceptionWithMessage.messages` value.
 
     ``messages`` can be a ``{field: [msg, ...]}`` dict, a flat list of
     messages, or a single string. Normalise all three into a flat
@@ -171,11 +171,11 @@ def given(
 
     Polymorphic entry point:
 
-    - ``given(AggregateClass, *events)`` — returns an ``AggregateResult`` for
+    - ``given(AggregateClass, *events)``: Returns an ``AggregateResult`` for
       event-sourcing tests.
-    - ``given(ProcessManagerClass, *events)`` — returns a
+    - ``given(ProcessManagerClass, *events)``: Returns a
       ``ProcessManagerResult`` for process manager tests.
-    - ``given(event, *events)`` — returns an ``EventSequence`` for projection
+    - ``given(event, *events)``: Returns an ``EventSequence`` for projection
       or process manager tests (via ``.results_in()``).
 
     Examples::
@@ -283,7 +283,7 @@ class AggregateResult:
     Proxies attribute access to the underlying aggregate, so
     ``order.status`` works directly.
 
-    Supports multi-command chaining — call ``.process()`` repeatedly
+    Supports multi-command chaining: call ``.process()`` repeatedly
     to build up aggregate state through the real pipeline::
 
         order = (
@@ -555,24 +555,24 @@ class AggregateResult:
 
 
 class ProcessResult:
-    """The outcome of :func:`process_and_wait`.
+    """The outcome of [`process_and_wait`][protean.testing.process_and_wait].
 
     Surfaces the three things an integration test cares about without
     reaching into framework internals (outbox rows, event store streams):
 
-    - ``result`` — the command handler's return value (synchronous
+    - ``result``: The command handler's return value (synchronous
       processing) or the store position of the enqueued command
       (asynchronous processing).
-    - ``events`` — an :class:`EventLog` of every event raised in the
+    - ``events``: An [`EventLog`][protean.testing.EventLog] of every event raised in the
       command's correlation chain, ordered chronologically.
-    - ``error`` — the exception raised by :meth:`Domain.process`, or
+    - ``error``: The exception raised by [`Domain.process`][protean.domain.Domain.process], or
       ``None``. This covers a synchronous handler error and any
       submission-time rejection (unregistered command, expired deadline,
       duplicate key, enrichment ``ValidationError``) in either mode.
       Asynchronous *handler* failures happen after the command is enqueued,
       are absorbed by the engine (retries / DLQ), and are not surfaced here.
 
-    Created by :func:`process_and_wait`, not directly.
+    Created by [`process_and_wait`][protean.testing.process_and_wait], not directly.
 
     Example::
 
@@ -606,7 +606,7 @@ class ProcessResult:
 
     @property
     def error(self) -> Exception | None:
-        """The exception raised by :meth:`Domain.process`, or ``None``.
+        """The exception raised by [`Domain.process`][protean.domain.Domain.process], or ``None``.
 
         A synchronous handler error, or a submission-time rejection in either
         mode. Asynchronous handler failures (after enqueue) are not captured.
@@ -615,19 +615,19 @@ class ProcessResult:
 
     @property
     def succeeded(self) -> bool:
-        """``True`` if :meth:`Domain.process` raised no exception.
+        """``True`` if [`Domain.process`][protean.domain.Domain.process] raised no exception.
 
         In asynchronous mode this reflects *submission* success, not the
-        eventual async handler outcome — engine failures are absorbed and
+        eventual async handler outcome. Engine failures are absorbed and
         never flip this to ``False``.
         """
         return self._error is None
 
     @property
     def failed(self) -> bool:
-        """``True`` if :meth:`Domain.process` raised an exception.
+        """``True`` if [`Domain.process`][protean.domain.Domain.process] raised an exception.
 
-        Mirrors :attr:`succeeded` (submission-level in async mode).
+        Mirrors [`succeeded`][protean.testing.ProcessResult.succeeded] (submission-level in async mode).
         """
         return not self.succeeded
 
@@ -678,7 +678,7 @@ def drain(
         max_cycles: Upper bound on engine passes so a never-satisfied
             *until* cannot hang the test. Must be at least 1. Each test-mode
             engine pass takes at least ~1 second, so the bound is also a
-            worst-case latency budget — raise it only for flows that
+            worst-case latency budget. Raise it only for flows that
             genuinely need more passes.
 
     Returns:
@@ -739,15 +739,15 @@ def process_and_wait(
         command: The command instance to process.
         domain: The domain to process against. Defaults to
             ``current_domain``.
-        until: Optional predicate forwarded to :func:`drain`; draining
+        until: Optional predicate forwarded to [`drain`][protean.testing.drain]; draining
             stops early once it returns truthy (async mode only).
         max_cycles: Upper bound on engine passes when draining (see
-            :func:`drain` — each pass takes at least ~1 second).
+            [`drain`][protean.testing.drain]; each pass takes at least ~1 second).
 
     Returns:
-        A :class:`ProcessResult` exposing the command result, the events
+        A [`ProcessResult`][protean.testing.ProcessResult] exposing the command result, the events
         that fired, and any synchronous/submission-time error (see
-        :class:`ProcessResult` for what is and isn't captured).
+        [`ProcessResult`][protean.testing.ProcessResult] for what is and isn't captured).
 
     Example::
 
@@ -916,7 +916,7 @@ class ProcessManagerResult:
             self._process_events()
 
     def _process_events(self) -> None:
-        """Feed all events through the PM's _handle() method — breadth-first
+        """Feed all events through the PM's _handle() method, breadth-first
         via the shared drain so a multi-step PM cascades to completion under
         synchronous processing (ADR-0016)."""
         dispatch_events_sync(self._events, lambda _event: [self._pm_cls])
@@ -1116,7 +1116,7 @@ def assert_chain(
     """Assert that a correlation chain matches an expected message sequence.
 
     Compares the ``message_type`` of each
-    :class:`~protean.port.event_store.CausationNode` against the expected
+    [`CausationNode`][protean.port.event_store.CausationNode] against the expected
     names, in order.
 
     Args:

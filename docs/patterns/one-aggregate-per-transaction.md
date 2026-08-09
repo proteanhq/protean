@@ -17,28 +17,28 @@ This is the cost of modifying multiple aggregates in a single transaction.
 
 The problems compound:
 
-- **Deadlocks.** Two transactions each hold a lock on one aggregate and wait for
+- **Deadlocks**: Two transactions each hold a lock on one aggregate and wait for
   a lock on the other. Database deadlock detection kills one transaction, but the
   retry may deadlock again.
 
-- **Increased failure surface.** A transaction that touches two aggregates can
+- **Increased failure surface**: A transaction that touches two aggregates can
   fail because of a conflict on *either* one. The probability of failure
   increases multiplicatively, not additively, with each aggregate added to the
   transaction.
 
-- **Coupling through transactions.** If Account and Inventory are modified in
+- **Coupling through transactions**: If Account and Inventory are modified in
   the same transaction, they cannot be stored in different databases, cannot be
   scaled independently, and cannot be deployed independently. The transaction
   boundary is a hard architectural constraint.
 
-- **Unclear rollback semantics.** If the credit succeeds but the debit fails,
-  what happens? The transaction rolls back both -- but what if the credit had
+- **Unclear rollback semantics**: If the credit succeeds but the debit fails,
+  what happens? The transaction rolls back both. But what if the credit had
   already raised a domain event that was partially processed? Partial failures
   in multi-aggregate transactions are difficult to reason about and harder to
   recover from.
 
-- **Violated aggregate boundaries.** DDD defines an aggregate as the unit of
-  consistency -- the boundary within which invariants are guaranteed. Modifying
+- **Violated aggregate boundaries**: DDD defines an aggregate as the unit of
+  consistency. The boundary within which invariants are guaranteed. Modifying
   two aggregates in one transaction blurs those boundaries. You're no longer
   treating aggregates as independent consistency units; you're treating the
   transaction as the consistency unit, which defeats the purpose of aggregate
@@ -73,7 +73,7 @@ Pattern:
 ```
 
 Each aggregate is loaded, modified, and persisted in its own transaction. The
-link between them is a domain event -- an asynchronous, reliable message that
+link between them is a domain event: an asynchronous, reliable message that
 triggers the next step.
 
 This means cross-aggregate changes are **eventually consistent** rather than
@@ -103,15 +103,15 @@ contradicts the aggregate's purpose.
 
 Most cross-aggregate operations don't require immediate consistency. Consider:
 
-- "When an order is placed, reserve inventory." -- Does the inventory need to
-  be reserved in the same instant the order is placed? No. Milliseconds later
-  is fine. If reservation fails, a compensating action cancels the order.
+- "When an order is placed, reserve inventory.". Does the inventory need to be
+  reserved in the same instant the order is placed? No. Milliseconds later is
+  fine. If reservation fails, a compensating action cancels the order.
 
-- "When a user upgrades their plan, update their feature flags." -- Does the
+- "When a user upgrades their plan, update their feature flags.". Does the
   flag update need to be atomic with the plan change? No. A few seconds of
   delay is invisible to the user.
 
-- "When a payment is confirmed, mark the order as paid." -- The payment system
+- "When a payment is confirmed, mark the order as paid.". The payment system
   is already asynchronous. Adding a brief delay for the order update is
   negligible.
 
@@ -122,6 +122,7 @@ When they arise, consider whether the aggregate boundaries are drawn correctly
 ### Independent Scalability
 
 When each aggregate is its own transaction, aggregates can be:
+
 - Stored in different databases or tables
 - Sharded independently
 - Processed by different services
@@ -213,9 +214,9 @@ class InventoryEventHandler(BaseEventHandler):
 ### Event Handlers Run Independently
 
 Each event handler invocation runs in its own UoW context. If the inventory
-reservation fails, the Order is already placed -- the failure is isolated.
-The event handler can retry, and if it ultimately fails, the system can raise
-a compensating event or alert for manual intervention.
+reservation fails, the Order is already placed. The failure is isolated. The
+event handler can retry, and if it ultimately fails, the system can raise a
+compensating event or alert for manual intervention.
 
 This is the natural architecture: aggregates are modified one at a time, events
 carry information between them, and failures are contained.
@@ -312,7 +313,7 @@ class AccountEventHandler(BaseEventHandler):
 **What about failure?** If the credit fails (target account doesn't exist,
 database error), the debit has already been committed. The event handler retries.
 If retries are exhausted, a compensating action re-credits the source account.
-This is the saga pattern -- complex, but each step is a single-aggregate
+This is the saga pattern, complex, but each step is a single-aggregate
 transaction, making failures predictable and recoverable.
 
 ### Order Fulfillment Pipeline
@@ -383,7 +384,7 @@ reserved. Each concern is independent.
 
 ## Domain Services: The Exception That Isn't
 
-Domain services coordinate logic that spans multiple aggregates -- but they
+Domain services coordinate logic that spans multiple aggregates, but they
 should **read** from multiple aggregates, not **write** to them.
 
 A domain service can validate a business rule that requires data from multiple
@@ -458,12 +459,12 @@ aggregate.
 If after analysis you're certain the data belongs in separate aggregates but
 must be atomically consistent, you have a modeling tension. Options:
 
-1. **Merge the aggregates.** If they must always change together, they may not
+1. **Merge the aggregates**: If they must always change together, they may not
    be truly separate aggregates.
-2. **Accept eventual consistency with compensating actions.** Most "must be
+2. **Accept eventual consistency with compensating actions**: Most "must be
    atomic" requirements soften when you discuss the actual business impact of
    a brief inconsistency window.
-3. **Use database-level transactions as a conscious trade-off.** This sacrifices
+3. **Use database-level transactions as a conscious trade-off**: This sacrifices
    independent scalability for immediate consistency. Document it as technical
    debt.
 
@@ -522,19 +523,19 @@ def close_expired(self, command: CloseExpiredOrders):
 | Testing | Must set up multiple aggregates | Test each aggregate independently |
 | Protean support | Possible but not recommended | Natural fit with UoW + events |
 
-The principle: **one aggregate, one transaction, one commit. Everything else
-flows through events.**
+One aggregate, one transaction, one commit. Everything else flows through
+events.
 
 ---
 
 !!! tip "Related reading"
     **Concepts:**
 
-    - [Aggregates](../concepts/building-blocks/aggregates.md) — Transaction boundaries and consistency guarantees.
-    - [Event Handlers](../concepts/building-blocks/event-handlers.md) — Reacting to events for cross-aggregate coordination.
+    - [Aggregates](../concepts/building-blocks/aggregates.md): Transaction boundaries and consistency guarantees.
+    - [Event Handlers](../concepts/building-blocks/event-handlers.md): Reacting to events for cross-aggregate coordination.
 
     **Guides:**
 
-    - [Command Handlers](../guides/change-state/command-handlers.md) — Processing commands within a single aggregate.
-    - [Event Handlers](../guides/consume-state/event-handlers.md) — Syncing state across aggregates asynchronously.
-    - [Unit of Work](../guides/change-state/unit-of-work.md) — Transaction management in Protean.
+    - [Command Handlers](../guides/change-state/command-handlers.md): Processing commands within a single aggregate.
+    - [Event Handlers](../guides/consume-state/event-handlers.md): Syncing state across aggregates asynchronously.
+    - [Unit of Work](../guides/change-state/unit-of-work.md): Transaction management in Protean.
