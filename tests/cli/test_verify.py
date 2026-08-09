@@ -23,6 +23,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -596,6 +597,27 @@ def _subprocess_env(project: Path) -> dict[str, str]:
     return env
 
 
+def _parse_verify_json(stdout: str) -> dict[str, Any]:
+    """Parse the JSON envelope printed by ``protean verify --json``.
+
+    ``verify`` emits the envelope via ``typer.echo`` to stdout. Locate the
+    first ``{`` and decode only that JSON object, ignoring any stray output
+    before or after it (e.g. warnings or extra prints that end up on
+    stdout instead of stderr).
+    """
+    start = stdout.find("{")
+    assert start != -1, f"no JSON object in verify stdout:\n{stdout}"
+    try:
+        envelope, _ = json.JSONDecoder().raw_decode(stdout, start)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"invalid JSON envelope from verify:\n{stdout}") from exc
+    assert isinstance(envelope, dict), (
+        f"verify JSON envelope must be an object, got {type(envelope).__name__}: "
+        f"{stdout}"
+    )
+    return envelope
+
+
 class TestVerifyOnRealScaffold:
     """End-to-end: `protean verify` on a freshly generated project passes.
 
@@ -622,16 +644,22 @@ class TestVerifyOnRealScaffold:
             env=_subprocess_env(project),
             capture_output=True,
             text=True,
+            errors="replace",
         )
 
         assert completed.returncode == 0, (
             "`protean verify` must pass on a freshly generated project:\n"
             f"{completed.stdout}\n{completed.stderr}"
         )
-        data = json.loads(completed.stdout)
-        assert data["verdict"] == "pass"
-        assert data["stages"]["init"]["status"] == "pass"
-        assert data["stages"]["check"]["status"] == "pass"
-        assert data["stages"]["tests"]["status"] == "pass"
+        envelope = _parse_verify_json(completed.stdout)
+        assert envelope["verdict"] == "pass"
+        for stage in ("init", "check", "tests"):
+            assert envelope["stages"][stage]["status"] == "pass", (
+                f"`protean verify` stage {stage!r} must pass: {envelope}"
+            )
+        assert envelope["stages"]["tests"]["returncode"] == 0
         # The scaffold ships passing tests; verify actually ran them.
-        assert data["stages"]["tests"]["passed"] >= 1
+        assert envelope["stages"]["tests"]["passed"] >= 1, (
+            "`protean verify` must run at least one real test, not report "
+            f"green on an empty suite: {envelope}"
+        )
