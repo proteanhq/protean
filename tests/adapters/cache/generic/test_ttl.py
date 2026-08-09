@@ -142,12 +142,20 @@ class TestGetTTLOnANeverExpiringKey:
     """Redis can hold a key with no expiry; the memory cache structurally
     cannot (`_resolve_ttl` never returns `None`, so `MemoryCache.__init__`
     always builds its `TTLDict` with a concrete default TTL and every entry
-    gets one). A missing capability, not a disagreement, so this is gated to
-    Redis rather than xfailed on memory.
+    gets one). A missing capability, not a disagreement, so this is skipped
+    on memory rather than xfailed.
     """
 
-    @pytest.mark.never_expires
-    def test_get_ttl_of_a_never_expiring_key_is_the_documented_sentinel(self, cache):
+    def test_get_ttl_of_a_never_expiring_key_is_the_documented_sentinel(
+        self, cache, request
+    ):
+        if request.node.callspec.params["cache"]["provider"] == "memory":
+            pytest.skip(
+                "The memory cache cannot hold a key with no expiry: "
+                "_resolve_ttl never returns None, so every entry gets a "
+                "concrete default TTL. Redis can."
+            )
+
         # Bypass `add()`, which always resolves and applies a TTL, and write
         # the key directly through the raw connection so it has no expiry.
         conn = cache.get_connection()

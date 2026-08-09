@@ -56,32 +56,3 @@ def cache(request):
         else:
             provider.flush_all()
         provider.close()
-
-
-def pytest_collection_modifyitems(config, items):
-    """Deselect the memory param for tests marked `never_expires`.
-
-    `_resolve_ttl` never returns `None` (`src/protean/port/cache.py:60-61`),
-    so `MemoryCache.__init__` always builds its `TTLDict` with a concrete
-    default TTL and every entry gets one; Redis can hold a key with no
-    expiry. That is a missing capability rather than a disagreement, so the
-    test is scoped to Redis instead of xfailed on memory.
-    """
-    deselected = []
-    remaining = []
-
-    for item in items:
-        callspec = getattr(item, "callspec", None)
-        is_never_expires_on_memory = (
-            item.get_closest_marker("never_expires") is not None
-            and callspec is not None
-            and callspec.params.get("cache", {}).get("provider") == "memory"
-        )
-        if is_never_expires_on_memory:
-            deselected.append(item)
-        else:
-            remaining.append(item)
-
-    if deselected:
-        config.hook.pytest_deselected(items=deselected)
-        items[:] = remaining

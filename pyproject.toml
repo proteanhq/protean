@@ -318,7 +318,6 @@ markers = [
     "schema_management: tests requiring table/index creation and deletion",
     "native_json: tests requiring native JSON column support",
     "native_array: tests requiring native array column support",
-    "never_expires: cache can hold a key that never expires",
 ]
 
 [tool.mypy]
