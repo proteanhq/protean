@@ -25,6 +25,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ParamSpec, TypeVar
 
+from protean.ir.diagnostics import DiagnosticCode
+
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
@@ -278,7 +280,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="Use `event_sourced` instead.",
             detection_hint="is_event_sourced",
-            check_code="DEPRECATED_OPTION",
+            check_code=DiagnosticCode.DEPRECATED_OPTION.value,
         ),
         Deprecation(
             slug="command_published_option",
@@ -291,7 +293,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "are published. It has no effect."
             ),
             detection_hint="published",
-            check_code="DEPRECATED_OPTION",
+            check_code=DiagnosticCode.DEPRECATED_OPTION.value,
         ),
         Deprecation(
             slug="email_element",
@@ -301,7 +303,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative=_EMAIL_ALTERNATIVE,
             detection_hint="email subsystem",
-            check_code="DEPRECATED_EMAIL",
+            check_code=DiagnosticCode.DEPRECATED_EMAIL.value,
         ),
         Deprecation(
             slug="method_field",
@@ -311,7 +313,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="Serializer fields are no longer supported.",
             detection_hint="Method",
-            check_code="DEPRECATED_IMPORT",
+            check_code=DiagnosticCode.DEPRECATED_IMPORT.value,
         ),
         Deprecation(
             slug="nested_field",
@@ -321,7 +323,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="Serializer fields are no longer supported.",
             detection_hint="Nested",
-            check_code="DEPRECATED_IMPORT",
+            check_code=DiagnosticCode.DEPRECATED_IMPORT.value,
         ),
         Deprecation(
             slug="list_pickled",
@@ -331,7 +333,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="It has no effect.",
             detection_hint="pickled",
-            check_code="DEPRECATED_FIELD",
+            check_code=DiagnosticCode.DEPRECATED_FIELD.value,
         ),
         Deprecation(
             slug="email_providers_config",
@@ -341,7 +343,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative=_EMAIL_ALTERNATIVE,
             detection_hint="email_providers",
-            check_code="DEPRECATED_CONFIG",
+            check_code=DiagnosticCode.DEPRECATED_CONFIG.value,
         ),
         Deprecation(
             slug="utils_plumbing",
@@ -351,7 +353,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="check",
             alternative="It is internal plumbing with no public replacement.",
             detection_hint="protean.utils",
-            check_code="DEPRECATED_IMPORT",
+            check_code=DiagnosticCode.DEPRECATED_IMPORT.value,
         ),
         Deprecation(
             slug="get_email_provider",

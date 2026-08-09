@@ -9,6 +9,12 @@ wiring them into CI — see the
 For the JSON/SARIF shape of a finding and the CLI flags, see the
 [`protean check` reference](cli/check.md).
 
+Each diagnostic carries a stable **code** (e.g. `AGGREGATE_TOO_LARGE`). A code is
+a public identifier you can rely on in CI gates, suppression lists, and SARIF
+consumers: renaming or removing one is a breaking change. Every code and its
+metadata live in one place, `protean.ir.diagnostics`, so what you match on here
+is what the tool emits.
+
 ## Severity levels
 
 | Level | Meaning |

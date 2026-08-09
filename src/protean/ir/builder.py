@@ -39,6 +39,7 @@ from protean.ir.analysis import (
     SourceProvider,
 )
 from protean.ir.constants import VOLATILE_IR_KEYS
+from protean.ir.diagnostics import Diagnostic, DiagnosticCode, build_diagnostic
 from protean.utils import _DEPRECATED_PLUMBING, fqn
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
@@ -205,7 +206,11 @@ class IRBuilder:
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
-        self._diagnostics: list[dict[str, Any]] = []
+        # Built-in diagnostics are the full ``Diagnostic`` shape from
+        # ``build_diagnostic``; custom lint rules (``_run_custom_lint_rules``)
+        # contribute dicts that only guarantee ``code``/``element``/``level``/
+        # ``message``, so the element type reflects both shapes.
+        self._diagnostics: list[Diagnostic | dict[str, Any]] = []
         self._source: SourceProvider | None = None
         self._index: ElementIndex | None = None
         self._view: BehavioralView | None = None
@@ -1792,33 +1797,12 @@ class IRBuilder:
         group = ", ".join(f"`{fqn}`" for fqn in component)
         for cluster_fqn in component:
             self._diagnostics.append(
-                {
-                    "code": "CIRCULAR_CLUSTER_DEPENDENCY",
-                    "category": "bounded_context",
-                    "element": cluster_fqn,
-                    "level": "warning",
-                    "message": (
-                        f"Cluster `{cluster_fqn}` participates in a circular "
-                        f"dependency among clusters: {group}"
-                    ),
-                    "rule": {
-                        "rationale": (
-                            "Circular identity references between aggregate "
-                            "clusters prevent independent decomposition, "
-                            "deployment, and event sourcing of the aggregates."
-                        ),
-                        "fix": (
-                            "Break the cycle by replacing one direction of the "
-                            "reference with a domain event or a process manager "
-                            "that coordinates the two aggregates asynchronously."
-                        ),
-                    },
-                    "suggestion": (
-                        "Break the cycle by replacing one direction of the "
-                        "reference with a domain event or a process manager "
-                        "that coordinates the two aggregates asynchronously."
-                    ),
-                }
+                build_diagnostic(
+                    DiagnosticCode.CIRCULAR_CLUSTER_DEPENDENCY,
+                    element=cluster_fqn,
+                    message=f"Cluster `{cluster_fqn}` participates in a circular "
+                    f"dependency among clusters: {group}",
+                )
             )
 
     def _diagnose_infra_imports(self, ir: dict[str, Any]) -> None:
@@ -1913,40 +1897,13 @@ class IRBuilder:
         for element_fqn, name, module in sorted(scanned):
             if _module_imports_infra(module):
                 self._diagnostics.append(
-                    {
-                        "code": "INFRA_IMPORT_IN_DOMAIN",
-                        "category": "bounded_context",
-                        "element": element_fqn,
-                        "level": "warning",
-                        "message": (
-                            f"Domain element `{name}` "
-                            f"(module `{module}`) imports from "
-                            f"`protean.adapters`."
-                        ),
-                        "rule": {
-                            "rationale": (
-                                "Domain elements must not depend on concrete "
-                                "infrastructure adapters; importing from "
-                                "`protean.adapters` couples the domain layer "
-                                "to a specific adapter and breaks the "
-                                "ports-and-adapters boundary."
-                            ),
-                            "fix": (
-                                "Remove the `protean.adapters` import from "
-                                "the domain module. Depend on domain-layer "
-                                "abstractions and let the adapter be wired "
-                                "through the domain's provider configuration "
-                                "instead."
-                            ),
-                        },
-                        "suggestion": (
-                            "Remove the `protean.adapters` import from the "
-                            "domain module. Depend on domain-layer "
-                            "abstractions and let the adapter be wired "
-                            "through the domain's provider configuration "
-                            "instead."
-                        ),
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.INFRA_IMPORT_IN_DOMAIN,
+                        element=element_fqn,
+                        message=f"Domain element `{name}` "
+                        f"(module `{module}`) imports from "
+                        f"`protean.adapters`.",
+                    )
                 )
 
     def _diagnose_adapter_calls(self, ir: dict[str, Any]) -> None:
@@ -1976,20 +1933,6 @@ class IRBuilder:
             return
 
         ADAPTER_PREFIX = "protean.adapters"
-
-        rule = {
-            "rationale": (
-                "Domain elements must not depend on concrete infrastructure "
-                "adapters; calling into `protean.adapters` from a domain method "
-                "couples the domain layer to a specific adapter at runtime and "
-                "breaks the ports-and-adapters boundary."
-            ),
-            "fix": (
-                "Remove the `protean.adapters` call from the domain method. "
-                "Depend on domain-layer abstractions and let the adapter be "
-                "wired through the domain's provider configuration instead."
-            ),
-        }
 
         # Iterate every non-internal registered element in a stable (fqn) order
         # so emitted diagnostics are deterministic; dedupe by FQN as the
@@ -2021,20 +1964,14 @@ class IRBuilder:
                     ):
                         continue
                     self._diagnostics.append(
-                        {
-                            "code": "ADAPTER_CALL_IN_DOMAIN",
-                            "category": "bounded_context",
-                            "element": element_fqn,
-                            "level": "warning",
-                            "message": (
-                                f"Domain element `{name}` calls "
-                                f"`{callee}` in method `{method_name}` "
-                                f"(line {call.location.line}), coupling the "
-                                f"domain to `protean.adapters`."
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.ADAPTER_CALL_IN_DOMAIN,
+                            element=element_fqn,
+                            message=f"Domain element `{name}` calls "
+                            f"`{callee}` in method `{method_name}` "
+                            f"(line {call.location.line}), coupling the "
+                            f"domain to `protean.adapters`.",
+                        )
                     )
 
     def _diagnose_event_handler_foreign_event(self, ir: dict[str, Any]) -> None:
@@ -2067,20 +2004,6 @@ class IRBuilder:
                         event["name"],
                     )
 
-        rule = {
-            "rationale": (
-                "An event handler should react to events of its own "
-                "aggregate cluster. Handling another cluster's event "
-                "couples two aggregates through the handler and is often "
-                "better expressed as a Process Manager coordinating the two."
-            ),
-            "fix": (
-                "Move the handler into the owning cluster, or introduce a "
-                "ProcessManager that reacts to the source event and issues "
-                "a command into this cluster."
-            ),
-        }
-
         for handler_cluster_fqn, cluster in ir["clusters"].items():
             handler_cluster_name = cluster["aggregate"]["name"]
             for eh in cluster["event_handlers"].values():
@@ -2092,23 +2015,17 @@ class IRBuilder:
                     if owner_cluster_fqn == handler_cluster_fqn:
                         continue
                     self._diagnostics.append(
-                        {
-                            "category": "handler_completeness",
-                            "code": "EVENT_HANDLER_FOREIGN_EVENT",
-                            "element": eh["fqn"],
-                            "level": "warning",
-                            "message": (
-                                f"{eh['name']} (part_of {handler_cluster_name}) "
-                                f"handles event {event_name}, owned by "
-                                f"cluster {owner_cluster_name}. Cross-cluster "
-                                f"event handling couples two aggregates; "
-                                f"consider a ProcessManager to mediate the "
-                                f"interaction if the events have causal "
-                                f"dependencies."
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.EVENT_HANDLER_FOREIGN_EVENT,
+                            element=eh["fqn"],
+                            message=f"{eh['name']} (part_of {handler_cluster_name}) "
+                            f"handles event {event_name}, owned by "
+                            f"cluster {owner_cluster_name}. Cross-cluster "
+                            f"event handling couples two aggregates; "
+                            f"consider a ProcessManager to mediate the "
+                            f"interaction if the events have causal "
+                            f"dependencies.",
+                        )
                     )
 
     def _apply_suppressions(self) -> None:
@@ -2178,7 +2095,7 @@ class IRBuilder:
         if error:
             raise ConfigurationError(error)
         seen: dict[str, int] = {}
-        kept: list[dict[str, Any]] = []
+        kept: list[Diagnostic | dict[str, Any]] = []
         for d in survivors:
             code = d.get("code", "")
             seen[code] = seen.get(code, 0) + 1
@@ -2226,27 +2143,12 @@ class IRBuilder:
 
                 event_type = event.get("__type__", "")
                 if event_type and event_type not in handled_event_types:
-                    rule = {
-                        "rationale": (
-                            "An event with no registered handler is published "
-                            "but never consumed, so a state change goes unobserved."
-                        ),
-                        "fix": (
-                            "Register an event handler, projector, or process "
-                            "manager for this event, or mark it `published=True` "
-                            "if it is intentionally external."
-                        ),
-                    }
                     self._diagnostics.append(
-                        {
-                            "category": "handler_completeness",
-                            "code": "UNHANDLED_EVENT",
-                            "element": event["fqn"],
-                            "level": "warning",
-                            "message": f"Event {event['name']} has no registered handler",
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.UNHANDLED_EVENT,
+                            element=event["fqn"],
+                            message=f"Event {event['name']} has no registered handler",
+                        )
                     )
 
     def _diagnose_unused_commands(self, ir: dict[str, Any]) -> None:
@@ -2263,26 +2165,12 @@ class IRBuilder:
             for command in cluster["commands"].values():
                 command_type = command.get("__type__", "")
                 if command_type and command_type not in handled_command_types:
-                    rule = {
-                        "rationale": (
-                            "A command with no handler cannot be processed, so "
-                            "the intent it represents can never be fulfilled."
-                        ),
-                        "fix": (
-                            "Add a command handler method for this command, or "
-                            "remove the command if it is unused."
-                        ),
-                    }
                     self._diagnostics.append(
-                        {
-                            "category": "handler_completeness",
-                            "code": "UNUSED_COMMAND",
-                            "element": command["fqn"],
-                            "level": "warning",
-                            "message": f"Command {command['name']} has no registered handler",
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.UNUSED_COMMAND,
+                            element=command["fqn"],
+                            message=f"Command {command['name']} has no registered handler",
+                        )
                     )
 
     def _diagnose_es_missing_apply(self, ir: dict[str, Any]) -> None:
@@ -2310,27 +2198,13 @@ class IRBuilder:
 
                 event_fqn = event["fqn"]
                 if event_fqn not in apply_handlers:
-                    rule = {
-                        "rationale": (
-                            "An event-sourced aggregate rebuilds its state by "
-                            "applying events; an event without an @apply handler "
-                            "is never folded into state."
-                        ),
-                        "fix": "Add an @apply method on the aggregate for this event.",
-                    }
                     self._diagnostics.append(
-                        {
-                            "category": "handler_completeness",
-                            "code": "ES_EVENT_MISSING_APPLY",
-                            "element": event_fqn,
-                            "level": "warning",
-                            "message": (
-                                f"Event {event['name']} has no @apply handler "
-                                f"on aggregate {aggregate['name']}"
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.ES_EVENT_MISSING_APPLY,
+                            element=event_fqn,
+                            message=f"Event {event['name']} has no @apply handler "
+                            f"on aggregate {aggregate['name']}",
+                        )
                     )
 
     def _diagnose_published_no_external_broker(self, ir: dict[str, Any]) -> None:
@@ -2352,31 +2226,14 @@ class IRBuilder:
             for event in cluster["events"].values()
         )
         if has_published:
-            rule = {
-                "rationale": (
-                    "Events marked published are meant to leave the bounded "
-                    "context, but with no external broker configured they are "
-                    "only dispatched internally."
-                ),
-                "fix": (
-                    "Configure `outbox.external_brokers`, or remove "
-                    "`published=True` if the events are internal."
-                ),
-            }
             self._diagnostics.append(
-                {
-                    "category": "handler_completeness",
-                    "code": "PUBLISHED_NO_EXTERNAL_BROKER",
-                    "element": self._domain.name,
-                    "level": "warning",
-                    "message": (
-                        "Domain has published events but no external_brokers "
-                        "configured in outbox settings. Published events will "
-                        "only be dispatched internally."
-                    ),
-                    "rule": rule,
-                    "suggestion": rule["fix"],
-                }
+                build_diagnostic(
+                    DiagnosticCode.PUBLISHED_NO_EXTERNAL_BROKER,
+                    element=self._domain.name,
+                    message="Domain has published events but no external_brokers "
+                    "configured in outbox settings. Published events will "
+                    "only be dispatched internally.",
+                )
             )
 
     def _diagnose_aggregate_without_command_handler(self, ir: dict[str, Any]) -> None:
@@ -2392,29 +2249,13 @@ class IRBuilder:
             if aggregate["fqn"].startswith("protean.adapters."):
                 continue
             if not cluster["command_handlers"]:
-                rule = {
-                    "rationale": (
-                        "An aggregate with no command handler has no write "
-                        "path — nothing can change its state."
-                    ),
-                    "fix": (
-                        "Add a command handler for the aggregate, or model it "
-                        "as a read-only projection if no writes are expected."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "handler_completeness",
-                        "code": "AGGREGATE_WITHOUT_COMMAND_HANDLER",
-                        "element": aggregate["fqn"],
-                        "level": "warning",
-                        "message": (
-                            f"Aggregate `{aggregate['name']}` has no command handler "
-                            f"— no write path exists"
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.AGGREGATE_WITHOUT_COMMAND_HANDLER,
+                        element=aggregate["fqn"],
+                        message=f"Aggregate `{aggregate['name']}` has no command handler "
+                        f"— no write path exists",
+                    )
                 )
 
     def _diagnose_projection_without_projector(self, ir: dict[str, Any]) -> None:
@@ -2427,30 +2268,13 @@ class IRBuilder:
             if proj.get("options", {}).get("externally_populated"):
                 continue
             if not proj_entry["projectors"]:
-                rule = {
-                    "rationale": (
-                        "A projection with no projector is never populated, so "
-                        "queries against it will always return empty."
-                    ),
-                    "fix": (
-                        "Add a projector for the projection, or set "
-                        "`externally_populated=True` if it is filled by a "
-                        "subscriber."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "handler_completeness",
-                        "code": "PROJECTION_WITHOUT_PROJECTOR",
-                        "element": proj["fqn"],
-                        "level": "warning",
-                        "message": (
-                            f"Projection `{proj['name']}` has no projector "
-                            f"to populate it"
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.PROJECTION_WITHOUT_PROJECTOR,
+                        element=proj["fqn"],
+                        message=f"Projection `{proj['name']}` has no projector "
+                        f"to populate it",
+                    )
                 )
 
     def _diagnose_unbounded_indexed_string(self, ir: dict[str, Any]) -> None:
@@ -2507,42 +2331,21 @@ class IRBuilder:
                     if not unbounded:
                         continue
 
-                    rule = {
-                        "rationale": (
-                            "An index over an unbounded string field is "
-                            "unportable: the DDL fails on SQL Server, needs a "
-                            "prefix length on MySQL, and is inefficient on "
-                            "PostgreSQL."
-                        ),
-                        "fix": (
-                            "Give the field a bounded length "
-                            "(`String(max_length=N)`) sized to its domain, or "
-                            "remove it from the index if it does not need to be "
-                            "indexed."
-                        ),
-                    }
                     self._diagnostics.append(
-                        {
-                            "code": "UNBOUNDED_INDEXED_STRING",
-                            "category": "persistence",
-                            "element": aggregate["fqn"],
-                            "level": "warning",
-                            "field": field_name,
-                            "message": (
-                                f"Field `{field_name}` on aggregate "
-                                f"`{aggregate['name']}` is included in index "
-                                f"`{index_name}` but is an unbounded string "
-                                f"(`{field_type}`). SQL Server rejects indexes "
-                                f"on unbounded strings, MySQL requires an "
-                                f"explicit prefix length, and PostgreSQL builds "
-                                f"the index with storage and performance overhead."
-                            ),
-                            "rule": rule,
-                            "suggestion": (
-                                f"{field_name} = String(max_length=255)  "
-                                f"# size to the field's domain"
-                            ),
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.UNBOUNDED_INDEXED_STRING,
+                            element=aggregate["fqn"],
+                            message=f"Field `{field_name}` on aggregate "
+                            f"`{aggregate['name']}` is included in index "
+                            f"`{index_name}` but is an unbounded string "
+                            f"(`{field_type}`). SQL Server rejects indexes "
+                            f"on unbounded strings, MySQL requires an "
+                            f"explicit prefix length, and PostgreSQL builds "
+                            f"the index with storage and performance overhead.",
+                            field=field_name,
+                            suggestion=f"{field_name} = String(max_length=255)  "
+                            f"# size to the field's domain",
+                        )
                     )
 
     def _diagnose_unindexed_filter_path(self, ir: dict[str, Any]) -> None:
@@ -2762,35 +2565,16 @@ class IRBuilder:
         would make a committed baseline machine-specific.
         """
         where = f"{source_fqn}.{method_name}, line {location.line}"
-        rule = {
-            "rationale": (
-                "A repository filter on a field with no covering index forces a "
-                "full table scan on a relational backend. The cost is invisible "
-                "on small development data and grows with the production table."
-            ),
-            "fix": (
-                "Add an index led by this field to the aggregate "
-                '(`indexes=[Index("field")]`), or suppress the check when the '
-                "table is small or the query is a one-off (admin/reporting)."
-            ),
-        }
         self._diagnostics.append(
-            {
-                "code": "UNINDEXED_FILTER_PATH",
-                "category": "persistence",
-                "element": aggregate["fqn"],
-                "level": "warning",
-                "field": field_name,
-                "message": (
-                    f"Field `{field_name}` on aggregate `{aggregate['name']}` is "
-                    f"filtered by `{where}` but no declared index covers it, so "
-                    f"the query scans the whole table."
-                ),
-                "rule": rule,
-                "suggestion": (
-                    f'Index("{field_name}")  # add to `{aggregate["name"]}` indexes'
-                ),
-            }
+            build_diagnostic(
+                DiagnosticCode.UNINDEXED_FILTER_PATH,
+                element=aggregate["fqn"],
+                message=f"Field `{field_name}` on aggregate `{aggregate['name']}` is "
+                f"filtered by `{where}` but no declared index covers it, so "
+                f"the query scans the whole table.",
+                field=field_name,
+                suggestion=f'Index("{field_name}")  # add to `{aggregate["name"]}` indexes',
+            )
         )
 
     def _diagnose_upcaster_gap(self, ir: dict[str, Any]) -> None:
@@ -2834,30 +2618,16 @@ class IRBuilder:
             )
             if missing:
                 versions = ", ".join(f"v{v}" for v in missing)
-                rule = {
-                    "rationale": (
-                        "Stored payloads at older versions with no upcaster "
-                        "path to the current version fail to deserialize at "
-                        "read time."
-                    ),
-                    "fix": "Add upcasters covering the missing source versions.",
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "versioning",
-                        "code": "UPCASTER_GAP",
-                        "element": fqn(event_cls),
-                        "level": "warning",
-                        "message": (
-                            f"Event `{event_cls.__name__}` is at version "
-                            f"{current_version}; stored payloads at {versions}, if "
-                            f"any exist, have no upcaster path to "
-                            f"v{current_version} and would fail to deserialize. "
-                            f"Add upcasters covering the missing versions."
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.UPCASTER_GAP,
+                        element=fqn(event_cls),
+                        message=f"Event `{event_cls.__name__}` is at version "
+                        f"{current_version}; stored payloads at {versions}, if "
+                        f"any exist, have no upcaster path to "
+                        f"v{current_version} and would fail to deserialize. "
+                        f"Add upcasters covering the missing versions.",
+                    )
                 )
 
     def _abstract_aggregate_fqns(self) -> set[str]:
@@ -2890,22 +2660,6 @@ class IRBuilder:
         """
         cluster_keys = set(ir["clusters"])
         abstract_fqns = self._abstract_aggregate_fqns()
-        rule = {
-            "rationale": (
-                "Aggregates coordinate other aggregates by identity, not by "
-                "object reference (Vernon's Rule 3). A `Reference` to another "
-                "aggregate's root couples the two into one object graph and "
-                "invites a single transaction to span both clusters. The "
-                "compliant reference is a child entity pointing back at its own "
-                "aggregate root, where the target is the element's own cluster."
-            ),
-            "fix": (
-                "Hold the other aggregate by its identifier instead of a "
-                "`Reference`. Replace `Reference(<Other>)` with an `Identifier` "
-                "field (for example `<other>_id: Identifier()`) and load the "
-                "other aggregate through its own repository when needed."
-            ),
-        }
         for own, cluster in ir["clusters"].items():
             # Skip infrastructure and abstract aggregates
             if cluster["aggregate"]["fqn"].startswith("protean.adapters."):
@@ -2928,21 +2682,15 @@ class IRBuilder:
                     target = field.get("target")
                     if target in cluster_keys and target != own:
                         self._diagnostics.append(
-                            {
-                                "category": "aggregate_design",
-                                "code": "CROSS_AGGREGATE_REFERENCE",
-                                "element": element_fqn,
-                                "field": field_name,
-                                "level": "warning",
-                                "message": (
-                                    f"Reference `{field_name}` points at a "
-                                    f"different aggregate's root `{target}`; "
-                                    f"aggregates should reference each other by "
-                                    f"identity, not by `Reference`."
-                                ),
-                                "rule": rule,
-                                "suggestion": rule["fix"],
-                            }
+                            build_diagnostic(
+                                DiagnosticCode.CROSS_AGGREGATE_REFERENCE,
+                                element=element_fqn,
+                                message=f"Reference `{field_name}` points at a "
+                                f"different aggregate's root `{target}`; "
+                                f"aggregates should reference each other by "
+                                f"identity, not by `Reference`.",
+                                field=field_name,
+                            )
                         )
 
     def _diagnose_es_aggregate_no_events(self, ir: dict[str, Any]) -> None:
@@ -2955,19 +2703,6 @@ class IRBuilder:
         are skipped.
         """
         abstract_fqns = self._abstract_aggregate_fqns()
-        rule = {
-            "rationale": (
-                "An event-sourced aggregate reconstitutes its state by replaying "
-                "its events. With no events registered it can record no state "
-                "changes and cannot be rebuilt from its stream."
-            ),
-            "fix": (
-                "Declare at least one domain event with `part_of=<Aggregate>` and "
-                "raise it from the aggregate's behaviour, or drop "
-                "`event_sourced=True` if the aggregate is not meant to be "
-                "event-sourced."
-            ),
-        }
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
             # Skip infrastructure and abstract aggregates
@@ -2984,19 +2719,13 @@ class IRBuilder:
             ]
             if len(domain_events) == 0:
                 self._diagnostics.append(
-                    {
-                        "category": "aggregate_design",
-                        "code": "ES_AGGREGATE_NO_EVENTS",
-                        "element": aggregate["fqn"],
-                        "level": "warning",
-                        "message": (
-                            f"Event-sourced aggregate `{aggregate['name']}` has "
-                            f"no events; it records no state changes and cannot "
-                            f"be rebuilt from its stream."
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.ES_AGGREGATE_NO_EVENTS,
+                        element=aggregate["fqn"],
+                        message=f"Event-sourced aggregate `{aggregate['name']}` has "
+                        f"no events; it records no state changes and cannot "
+                        f"be rebuilt from its stream.",
+                    )
                 )
 
     def _diagnose_query_handler_without_query(self, ir: dict[str, Any]) -> None:
@@ -3009,31 +2738,13 @@ class IRBuilder:
         for proj in ir["projections"].values():
             if len(proj["query_handlers"]) > 0 and len(proj["queries"]) == 0:
                 projection = proj["projection"]
-                rule = {
-                    "rationale": (
-                        "A projection with a query handler but no query has a "
-                        "read path that nothing can invoke — no query is "
-                        "registered for the handler to serve."
-                    ),
-                    "fix": (
-                        "Register a `Query(part_of=<projection>)` for the "
-                        "handler to serve, or remove the query handler if the "
-                        "projection needs no read path."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "handler_completeness",
-                        "code": "QUERY_HANDLER_WITHOUT_QUERY",
-                        "element": projection["fqn"],
-                        "level": "warning",
-                        "message": (
-                            f"Projection `{projection['name']}` has a query "
-                            f"handler but no query to serve"
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.QUERY_HANDLER_WITHOUT_QUERY,
+                        element=projection["fqn"],
+                        message=f"Projection `{projection['name']}` has a query "
+                        f"handler but no query to serve",
+                    )
                 )
 
     def _diagnose_value_object_mutable_field(self, ir: dict[str, Any]) -> None:
@@ -3046,20 +2757,6 @@ class IRBuilder:
         ``field`` key (mirroring ``DEPRECATED_FIELD``).
         """
         abstract_fqns = self._abstract_aggregate_fqns()
-        rule = {
-            "rationale": (
-                "Value objects are compared by value and must be immutable. A "
-                "`List` or `Dict` field gives the value object mutable internal "
-                "state, so two instances that should be equal can diverge and "
-                "value equality no longer holds."
-            ),
-            "fix": (
-                "Replace the mutable collection with an immutable representation, "
-                "or move the collection onto the containing entity or aggregate. "
-                "If the values form a concept with its own identity, model them "
-                "as an entity referenced by the aggregate instead."
-            ),
-        }
         for cluster in ir["clusters"].values():
             if cluster["aggregate"]["fqn"] in abstract_fqns:
                 continue
@@ -3068,20 +2765,14 @@ class IRBuilder:
                     if field.get("kind") not in ("list", "dict"):
                         continue
                     self._diagnostics.append(
-                        {
-                            "category": "aggregate_design",
-                            "code": "VALUE_OBJECT_MUTABLE_FIELD",
-                            "element": vo["fqn"],
-                            "field": field_name,
-                            "level": "warning",
-                            "message": (
-                                f"Value object `{vo['name']}` has mutable field "
-                                f"`{field_name}` (`{field['kind']}`); value "
-                                f"objects must be immutable."
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.VALUE_OBJECT_MUTABLE_FIELD,
+                            element=vo["fqn"],
+                            message=f"Value object `{vo['name']}` has mutable field "
+                            f"`{field_name}` (`{field['kind']}`); value "
+                            f"objects must be immutable.",
+                            field=field_name,
+                        )
                     )
 
     def _diagnose_projector_handles_orphaned_event(self, ir: dict[str, Any]) -> None:
@@ -3104,32 +2795,14 @@ class IRBuilder:
             for projector in proj["projectors"].values():
                 for event_type in projector.get("handlers", {}):
                     if event_type not in registered:
-                        rule = {
-                            "rationale": (
-                                "A projector handling an event the domain does "
-                                "not register is wired to a type that can never "
-                                "be dispatched — usually a stale reference after "
-                                "a rename or removal."
-                            ),
-                            "fix": (
-                                "Register the event, or remove the handler for "
-                                "the orphaned type from the projector."
-                            ),
-                        }
                         self._diagnostics.append(
-                            {
-                                "category": "handler_completeness",
-                                "code": "PROJECTOR_HANDLES_ORPHANED_EVENT",
-                                "element": projector["fqn"],
-                                "level": "warning",
-                                "message": (
-                                    f"Projector `{projector['name']}` handles "
-                                    f"event `{event_type}` which the domain does "
-                                    f"not register"
-                                ),
-                                "rule": rule,
-                                "suggestion": rule["fix"],
-                            }
+                            build_diagnostic(
+                                DiagnosticCode.PROJECTOR_HANDLES_ORPHANED_EVENT,
+                                element=projector["fqn"],
+                                message=f"Projector `{projector['name']}` handles "
+                                f"event `{event_type}` which the domain does "
+                                f"not register",
+                            )
                         )
 
     def _diagnose_command_handler_cross_cluster(self, ir: dict[str, Any]) -> None:
@@ -3152,32 +2825,14 @@ class IRBuilder:
                 for command_type in ch.get("handlers", {}):
                     owner = cmd_type_to_cluster.get(command_type)
                     if owner is not None and owner != agg_fqn:
-                        rule = {
-                            "rationale": (
-                                "A command handler that processes another "
-                                "cluster's command puts that aggregate's write "
-                                "path outside its consistency boundary."
-                            ),
-                            "fix": (
-                                "Move the command handler into the owning "
-                                "cluster, or model the interaction as an event "
-                                "reaction across the boundary."
-                            ),
-                        }
                         self._diagnostics.append(
-                            {
-                                "category": "handler_completeness",
-                                "code": "COMMAND_HANDLER_CROSS_CLUSTER",
-                                "element": ch["fqn"],
-                                "level": "warning",
-                                "message": (
-                                    f"Command handler `{ch['name']}` in cluster "
-                                    f"`{agg_fqn}` handles command `{command_type}` "
-                                    f"owned by cluster `{owner}`"
-                                ),
-                                "rule": rule,
-                                "suggestion": rule["fix"],
-                            }
+                            build_diagnostic(
+                                DiagnosticCode.COMMAND_HANDLER_CROSS_CLUSTER,
+                                element=ch["fqn"],
+                                message=f"Command handler `{ch['name']}` in cluster "
+                                f"`{agg_fqn}` handles command `{command_type}` "
+                                f"owned by cluster `{owner}`",
+                            )
                         )
 
     # ------------------------------------------------------------------
@@ -3198,31 +2853,13 @@ class IRBuilder:
                 continue
             entity_count = len(cluster["entities"])
             if entity_count > limit:
-                rule = {
-                    "rationale": (
-                        "A large aggregate is a consistency boundary and "
-                        "contention hotspot; oversized clusters are hard to "
-                        "keep transactionally consistent."
-                    ),
-                    "fix": (
-                        "Split the aggregate into smaller aggregates, or raise "
-                        "`[lint] aggregate_size_limit` if the size is "
-                        "intentional."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "aggregate_design",
-                        "code": "AGGREGATE_TOO_LARGE",
-                        "element": aggregate["fqn"],
-                        "level": "info",
-                        "message": (
-                            f"Aggregate `{aggregate['name']}` has {entity_count} "
-                            f"entities (limit: {limit})"
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.AGGREGATE_TOO_LARGE,
+                        element=aggregate["fqn"],
+                        message=f"Aggregate `{aggregate['name']}` has {entity_count} "
+                        f"entities (limit: {limit})",
+                    )
                 )
 
     def _diagnose_handler_too_broad(self, ir: dict[str, Any]) -> None:
@@ -3232,52 +2869,30 @@ class IRBuilder:
         (default 5).
         """
         limit = self._domain.config.get("lint", {}).get("handler_breadth_limit", 5)
-        rule = {
-            "rationale": (
-                "A handler that handles many message types accretes unrelated "
-                "responsibilities and becomes hard to reason about."
-            ),
-            "fix": (
-                "Split the handler into focused handlers, or raise "
-                "`[lint] handler_breadth_limit` if the breadth is intentional."
-            ),
-        }
         for cluster in ir["clusters"].values():
             # Check command handlers
             for ch in cluster["command_handlers"].values():
                 handler_count = len(ch.get("handlers", {}))
                 if handler_count > limit:
                     self._diagnostics.append(
-                        {
-                            "category": "aggregate_design",
-                            "code": "HANDLER_TOO_BROAD",
-                            "element": ch["fqn"],
-                            "level": "info",
-                            "message": (
-                                f"Handler `{ch['name']}` handles {handler_count} "
-                                f"message types (limit: {limit})"
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.HANDLER_TOO_BROAD,
+                            element=ch["fqn"],
+                            message=f"Handler `{ch['name']}` handles {handler_count} "
+                            f"message types (limit: {limit})",
+                        )
                     )
             # Check event handlers
             for eh in cluster["event_handlers"].values():
                 handler_count = len(eh.get("handlers", {}))
                 if handler_count > limit:
                     self._diagnostics.append(
-                        {
-                            "category": "aggregate_design",
-                            "code": "HANDLER_TOO_BROAD",
-                            "element": eh["fqn"],
-                            "level": "info",
-                            "message": (
-                                f"Handler `{eh['name']}` handles {handler_count} "
-                                f"message types (limit: {limit})"
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.HANDLER_TOO_BROAD,
+                            element=eh["fqn"],
+                            message=f"Handler `{eh['name']}` handles {handler_count} "
+                            f"message types (limit: {limit})",
+                        )
                     )
 
     def _diagnose_event_without_data(self, ir: dict[str, Any]) -> None:
@@ -3301,29 +2916,12 @@ class IRBuilder:
                     if name not in auto_field_names
                 }
                 if not user_fields:
-                    rule = {
-                        "rationale": (
-                            "An event with no fields carries no information "
-                            "beyond its name, so consumers cannot react to what "
-                            "actually changed."
-                        ),
-                        "fix": (
-                            "Add fields capturing the state change, or confirm "
-                            "the event is intentionally a bare signal."
-                        ),
-                    }
                     self._diagnostics.append(
-                        {
-                            "category": "aggregate_design",
-                            "code": "EVENT_WITHOUT_DATA",
-                            "element": event["fqn"],
-                            "level": "info",
-                            "message": (
-                                f"Event `{event['name']}` has no user-defined fields"
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.EVENT_WITHOUT_DATA,
+                            element=event["fqn"],
+                            message=f"Event `{event['name']}` has no user-defined fields",
+                        )
                     )
 
     def _diagnose_subscriber_no_streams(self, ir: dict[str, Any]) -> None:
@@ -3334,28 +2932,12 @@ class IRBuilder:
         """
         for sub in ir["flows"]["subscribers"].values():
             if not sub.get("stream"):
-                rule = {
-                    "rationale": (
-                        "A subscriber with no stream has nothing to consume, so "
-                        "it is registered but can never be invoked."
-                    ),
-                    "fix": (
-                        "Set the subscriber's `stream`, or remove the "
-                        "subscriber if it is unused."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "handler_completeness",
-                        "code": "SUBSCRIBER_NO_STREAMS",
-                        "element": sub["fqn"],
-                        "level": "info",
-                        "message": (
-                            f"Subscriber `{sub['name']}` declares no stream to consume"
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.SUBSCRIBER_NO_STREAMS,
+                        element=sub["fqn"],
+                        message=f"Subscriber `{sub['name']}` declares no stream to consume",
+                    )
                 )
 
     def _diagnose_process_manager_unclosed(self, ir: dict[str, Any]) -> None:
@@ -3369,30 +2951,13 @@ class IRBuilder:
         for pm in ir["flows"]["process_managers"].values():
             handlers = pm["handlers"]
             if handlers and not any(h.get("end") for h in handlers.values()):
-                rule = {
-                    "rationale": (
-                        "A process manager with no `end=True` handler never "
-                        "signals completion, so its instances accumulate "
-                        "without being retired."
-                    ),
-                    "fix": (
-                        "Mark the terminating handler with `end=True` so the "
-                        "process manager closes its instances."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "handler_completeness",
-                        "code": "PROCESS_MANAGER_UNCLOSED",
-                        "element": pm["fqn"],
-                        "level": "info",
-                        "message": (
-                            f"Process manager `{pm['name']}` has no handler "
-                            f"marked `end=True` to close its instances"
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.PROCESS_MANAGER_UNCLOSED,
+                        element=pm["fqn"],
+                        message=f"Process manager `{pm['name']}` has no handler "
+                        f"marked `end=True` to close its instances",
+                    )
                 )
 
     def _diagnose_deprecated_elements(self, ir: dict[str, Any]) -> None:
@@ -3454,26 +3019,12 @@ class IRBuilder:
             if superseded_by:
                 msg += f"; superseded by `{superseded_by}`"
 
-            rule = {
-                "rationale": (
-                    "A deprecated element is scheduled for removal; code "
-                    "depending on it will break at the removal version."
-                ),
-                "fix": (
-                    "Migrate to the replacement element before the scheduled "
-                    "removal version."
-                ),
-            }
             self._diagnostics.append(
-                {
-                    "category": "deprecation",
-                    "code": "DEPRECATED_ELEMENT",
-                    "element": fqn_val,
-                    "level": "info",
-                    "message": msg,
-                    "rule": rule,
-                    "suggestion": rule["fix"],
-                }
+                build_diagnostic(
+                    DiagnosticCode.DEPRECATED_ELEMENT,
+                    element=fqn_val,
+                    message=msg,
+                )
             )
 
         # Field-level deprecation (independent of element deprecation)
@@ -3491,27 +3042,13 @@ class IRBuilder:
                     f_msg = (
                         f"Field `{name}.{field_name}` is deprecated since v{f_since}"
                     )
-                f_rule = {
-                    "rationale": (
-                        "A deprecated field is scheduled for removal; code "
-                        "reading or writing it will break at the removal version."
-                    ),
-                    "fix": (
-                        "Migrate to the replacement field before the scheduled "
-                        "removal version."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "deprecation",
-                        "code": "DEPRECATED_FIELD",
-                        "element": fqn_val,
-                        "field": field_name,
-                        "level": "info",
-                        "message": f_msg,
-                        "rule": f_rule,
-                        "suggestion": f_rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.DEPRECATED_FIELD,
+                        element=fqn_val,
+                        message=f_msg,
+                        field=field_name,
+                    )
                 )
 
             # Deprecated ``pickled=`` argument on a ``List`` field. The argument
@@ -3519,31 +3056,19 @@ class IRBuilder:
             # drop it before the removal version.
             if field_info.get("deprecated_pickled"):
                 p_removal = DEPRECATIONS["list_pickled"].removal
-                p_rule = {
-                    "rationale": (
-                        "The `pickled` argument on `List` is a dead legacy flag "
-                        "with no effect; it is scheduled for removal."
-                    ),
-                    "fix": (
-                        f"Remove the `pickled=` argument from `{name}.{field_name}`; "
-                        f"it has no effect."
-                    ),
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "deprecation",
-                        "code": "DEPRECATED_FIELD",
-                        "element": fqn_val,
-                        "field": field_name,
-                        "level": "info",
-                        "message": (
-                            f"Field `{name}.{field_name}` uses the deprecated "
-                            f"`pickled=` argument on `List`, scheduled for removal "
-                            f"in v{p_removal}; it has no effect."
-                        ),
-                        "rule": p_rule,
-                        "suggestion": p_rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.DEPRECATED_FIELD,
+                        element=fqn_val,
+                        message=f"Field `{name}.{field_name}` uses the deprecated "
+                        f"`pickled=` argument on `List`, scheduled for removal "
+                        f"in v{p_removal}; it has no effect.",
+                        field=field_name,
+                        rationale="The `pickled` argument on `List` is a dead legacy flag "
+                        "with no effect; it is scheduled for removal.",
+                        fix=f"Remove the `pickled=` argument from `{name}.{field_name}`; "
+                        f"it has no effect.",
+                    )
                 )
 
         # Option-level deprecation (currently only commands passed the event-only
@@ -3551,28 +3076,19 @@ class IRBuilder:
         # deprecated element, the option is inert today and becomes a hard
         # ``IncorrectUsageError`` at v1.0.0.
         for opt in element.get("deprecated_options", []):
-            opt_rule = {
-                "rationale": (
-                    "The option is inert today and becomes a hard "
-                    "IncorrectUsageError at v1.0.0."
-                ),
-                "fix": (f"Remove the `{opt}` option from `{name}`; it has no effect."),
-            }
             self._diagnostics.append(
-                {
-                    "category": "deprecation",
-                    "code": "DEPRECATED_OPTION",
-                    "element": fqn_val,
-                    "level": "warning",
-                    "message": (
-                        f"The `{opt}` option on `{name}` is deprecated and "
-                        f"scheduled for removal in v1.0.0; commands are internal "
-                        f"to the bounded context and carry no published-language "
-                        f"or fact-event semantics, so it has no effect."
-                    ),
-                    "rule": opt_rule,
-                    "suggestion": opt_rule["fix"],
-                }
+                build_diagnostic(
+                    DiagnosticCode.DEPRECATED_OPTION,
+                    element=fqn_val,
+                    message=f"The `{opt}` option on `{name}` is deprecated and "
+                    f"scheduled for removal in v1.0.0; commands are internal "
+                    f"to the bounded context and carry no published-language "
+                    f"or fact-event semantics, so it has no effect.",
+                    level="warning",
+                    rationale="The option is inert today and becomes a hard "
+                    "IncorrectUsageError at v1.0.0.",
+                    fix=f"Remove the `{opt}` option from `{name}`; it has no effect.",
+                )
             )
 
     def _diagnose_deprecated_options(self, ir: dict[str, Any]) -> None:
@@ -3590,25 +3106,13 @@ class IRBuilder:
             # subclass of an alias-using aggregate is not wrongly flagged.
             used = record.cls.__dict__.get("_deprecated_options_used", ())
             for option in used:
-                rule = {
-                    "rationale": (
-                        "The option is a deprecated alias scheduled for removal."
-                    ),
-                    "fix": "Use `event_sourced` instead of the deprecated alias.",
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "deprecation",
-                        "code": "DEPRECATED_OPTION",
-                        "element": fqn(record.cls),
-                        "level": "info",
-                        "message": (
-                            f"Option `{option}` is deprecated, scheduled for "
-                            f"removal in v{removal}; use `event_sourced` instead."
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.DEPRECATED_OPTION,
+                        element=fqn(record.cls),
+                        message=f"Option `{option}` is deprecated, scheduled for "
+                        f"removal in v{removal}; use `event_sourced` instead.",
+                    )
                 )
 
     def _diagnose_email_deprecated(self, ir: dict[str, Any]) -> None:
@@ -3627,32 +3131,16 @@ class IRBuilder:
             if record.internal or record.auto_generated:
                 continue
             email_cls = record.cls
-            rule = {
-                "rationale": (
-                    "The email subsystem is deprecated and scheduled for "
-                    "removal in v1.0.0."
-                ),
-                "fix": (
-                    "Notify from an event handler or subscriber that calls an "
-                    "application-level notification service instead."
-                ),
-            }
             self._diagnostics.append(
-                {
-                    "category": "deprecation",
-                    "code": "DEPRECATED_EMAIL",
-                    "element": fqn(email_cls),
-                    "level": "info",
-                    "message": (
-                        f"Email element `{email_cls.__name__}` uses the "
-                        f"deprecated email subsystem, scheduled for removal in "
-                        f"v1.0.0. Notify from an event handler or subscriber "
-                        f"that calls an application-level notification service "
-                        f"instead."
-                    ),
-                    "rule": rule,
-                    "suggestion": rule["fix"],
-                }
+                build_diagnostic(
+                    DiagnosticCode.DEPRECATED_EMAIL,
+                    element=fqn(email_cls),
+                    message=f"Email element `{email_cls.__name__}` uses the "
+                    f"deprecated email subsystem, scheduled for removal in "
+                    f"v1.0.0. Notify from an event handler or subscriber "
+                    f"that calls an application-level notification service "
+                    f"instead.",
+                )
             )
 
     def _diagnose_email_config_deprecated(self, ir: dict[str, Any]) -> None:
@@ -3675,26 +3163,15 @@ class IRBuilder:
 
         entry = DEPRECATIONS["email_providers_config"]
         alternative = entry.alternative or ""
-        rule = {
-            "rationale": (
-                "The email subsystem is deprecated and scheduled for removal in v1.0.0."
-            ),
-            "fix": alternative,
-        }
         self._diagnostics.append(
-            {
-                "category": "deprecation",
-                "code": "DEPRECATED_CONFIG",
-                "element": "email_providers",
-                "level": "info",
-                "message": (
-                    f"The `email_providers` config block uses the deprecated "
-                    f"email subsystem, scheduled for removal in v{entry.removal}. "
-                    f"{alternative}"
-                ),
-                "rule": rule,
-                "suggestion": rule["fix"],
-            }
+            build_diagnostic(
+                DiagnosticCode.DEPRECATED_CONFIG,
+                element="email_providers",
+                message=f"The `email_providers` config block uses the deprecated "
+                f"email subsystem, scheduled for removal in v{entry.removal}. "
+                f"{alternative}",
+                fix=alternative,
+            )
         )
 
     def _diagnose_deprecated_imports(self, ir: dict[str, Any]) -> None:
@@ -3759,23 +3236,13 @@ class IRBuilder:
                         f"for removal in v{removal}. It has no public replacement."
                     )
                     fix = f"Stop importing `{symbol}`; it is internal plumbing."
-                rule = {
-                    "rationale": (
-                        "A deprecated import surface is scheduled for removal; "
-                        "code using it will break at the removal version."
-                    ),
-                    "fix": fix,
-                }
                 self._diagnostics.append(
-                    {
-                        "category": "deprecation",
-                        "code": "DEPRECATED_IMPORT",
-                        "element": module,
-                        "level": "info",
-                        "message": message,
-                        "rule": rule,
-                        "suggestion": fix,
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.DEPRECATED_IMPORT,
+                        element=module,
+                        message=message,
+                        fix=fix,
+                    )
                 )
 
     @staticmethod
@@ -3865,18 +3332,6 @@ class IRBuilder:
         flag only when *both* lists are empty.
         """
         registry = self._domain._domain_registry
-        rule = {
-            "rationale": (
-                "An aggregate is a consistency boundary. With no pre- or "
-                "post-invariants it enforces no business rules and is usually an "
-                "anemic data holder rather than a true aggregate."
-            ),
-            "fix": (
-                "Add one or more `@invariant.pre` or `@invariant.post` methods "
-                "expressing the business rules the aggregate must always satisfy, "
-                "or reconsider whether this concept is an aggregate at all."
-            ),
-        }
         for record in registry._elements.get("AGGREGATE", {}).values():
             if record.internal:
                 continue
@@ -3892,19 +3347,13 @@ class IRBuilder:
             invariants = cluster["aggregate"]["invariants"]
             if not invariants["pre"] and not invariants["post"]:
                 self._diagnostics.append(
-                    {
-                        "category": "aggregate_design",
-                        "code": "AGGREGATE_NO_INVARIANTS",
-                        "element": agg_fqn,
-                        "level": "info",
-                        "message": (
-                            f"Aggregate `{record.cls.__name__}` has no pre/post "
-                            f"invariants (own or inherited); it enforces no "
-                            f"business rules and may be an anemic data holder."
-                        ),
-                        "rule": rule,
-                        "suggestion": rule["fix"],
-                    }
+                    build_diagnostic(
+                        DiagnosticCode.AGGREGATE_NO_INVARIANTS,
+                        element=agg_fqn,
+                        message=f"Aggregate `{record.cls.__name__}` has no pre/post "
+                        f"invariants (own or inherited); it enforces no "
+                        f"business rules and may be an anemic data holder.",
+                    )
                 )
 
     def _diagnose_event_not_past_tense(self, ir: dict[str, Any]) -> None:
@@ -3917,15 +3366,6 @@ class IRBuilder:
         fact events and auto-generated process-manager events — are not
         user-named and are skipped.
         """
-        rule = {
-            "rationale": (
-                "A domain event records a fact that has already happened, so a "
-                "past-tense name (`OrderPlaced`) reads truthfully; a gerund "
-                "(`OrderPlacing`) describes an in-flight action and reads like "
-                "a command."
-            ),
-            "fix": "Rename the event to the past tense (e.g. `OrderPlaced`).",
-        }
         for cluster in ir["clusters"].values():
             for event in cluster["events"].values():
                 # Framework-managed events (fact events, PM-generated events)
@@ -3936,18 +3376,12 @@ class IRBuilder:
                     continue
                 if event["name"].lower().endswith("ing"):
                     self._diagnostics.append(
-                        {
-                            "category": "naming_conventions",
-                            "code": "EVENT_NOT_PAST_TENSE",
-                            "element": event["fqn"],
-                            "level": "info",
-                            "message": (
-                                f"Event `{event['name']}` is named as a gerund; "
-                                f"domain events read best in the past tense"
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.EVENT_NOT_PAST_TENSE,
+                            element=event["fqn"],
+                            message=f"Event `{event['name']}` is named as a gerund; "
+                            f"domain events read best in the past tense",
+                        )
                     )
 
     def _diagnose_command_not_imperative(self, ir: dict[str, Any]) -> None:
@@ -3961,17 +3395,6 @@ class IRBuilder:
         the verb, so ``AddressChange`` is not mistaken for ``Add``-prefixed
         (``AddItem``).
         """
-        rule = {
-            "rationale": (
-                "A command expresses an intent to act, so a verb-first "
-                "imperative name (`PlaceOrder`) reads truthfully; a noun-like "
-                "name (`OrderCreation`) obscures the intent."
-            ),
-            "fix": (
-                "Rename the command to a verb-first imperative phrase "
-                "(e.g. `PlaceOrder`)."
-            ),
-        }
         for cluster in ir["clusters"].values():
             for command in cluster["commands"].values():
                 raw_name = command["name"]
@@ -3982,19 +3405,13 @@ class IRBuilder:
                     for verb in IMPERATIVE_VERBS
                 ):
                     self._diagnostics.append(
-                        {
-                            "category": "naming_conventions",
-                            "code": "COMMAND_NOT_IMPERATIVE",
-                            "element": command["fqn"],
-                            "level": "info",
-                            "message": (
-                                f"Command `{command['name']}` does not start "
-                                f"with an imperative verb; commands read best "
-                                f"as verb-first phrases"
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.COMMAND_NOT_IMPERATIVE,
+                            element=command["fqn"],
+                            message=f"Command `{command['name']}` does not start "
+                            f"with an imperative verb; commands read best "
+                            f"as verb-first phrases",
+                        )
                     )
 
     def _diagnose_aggregate_not_noun(self, ir: dict[str, Any]) -> None:
@@ -4008,18 +3425,6 @@ class IRBuilder:
         (``Customer``, ``Auditor``) and are *not* flagged. Infrastructure
         aggregates under ``protean.adapters.`` are skipped.
         """
-        rule = {
-            "rationale": (
-                "An aggregate models a thing in the domain, so a noun name "
-                "(`Order`) reads truthfully; a gerund, verb, or adjective "
-                "(`OrderProcessing`) reads like a process or capability rather "
-                "than an entity."
-            ),
-            "fix": (
-                "Rename the aggregate to the domain-concept noun it represents "
-                "(e.g. `Order` rather than `OrderProcessing`)."
-            ),
-        }
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
             # Skip infrastructure aggregates
@@ -4031,19 +3436,13 @@ class IRBuilder:
                 # Length guard: a name equal to a suffix must not self-match.
                 if lowered.endswith(suffix) and len(name) > len(suffix):
                     self._diagnostics.append(
-                        {
-                            "category": "naming_conventions",
-                            "code": "AGGREGATE_NOT_NOUN",
-                            "element": aggregate["fqn"],
-                            "level": "info",
-                            "message": (
-                                f"Aggregate `{name}` is named as a verb, "
-                                f"gerund, or adjective; aggregates read best "
-                                f"as nouns"
-                            ),
-                            "rule": rule,
-                            "suggestion": rule["fix"],
-                        }
+                        build_diagnostic(
+                            DiagnosticCode.AGGREGATE_NOT_NOUN,
+                            element=aggregate["fqn"],
+                            message=f"Aggregate `{name}` is named as a verb, "
+                            f"gerund, or adjective; aggregates read best "
+                            f"as nouns",
+                        )
                     )
                     break
 

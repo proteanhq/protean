@@ -14,6 +14,7 @@ from protean.core.index import validate_indexes
 from protean.domain.helpers import get_env
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import HasMany, HasOne
+from protean.ir.diagnostics import DiagnosticCode
 from protean.utils import DomainObjects, fqn
 from protean.utils.reflection import declared_fields
 
@@ -466,7 +467,7 @@ class DomainValidator:
                 )
                 self._warnings.append(
                     {
-                        "code": "UNUSED_COMMAND",
+                        "code": DiagnosticCode.UNUSED_COMMAND.value,
                         "element": fqn(cmd_record.cls),
                         "level": "warning",
                         "message": message,
@@ -499,7 +500,7 @@ class DomainValidator:
                     )
                     self._warnings.append(
                         {
-                            "code": "ES_EVENT_MISSING_APPLY",
+                            "code": DiagnosticCode.ES_EVENT_MISSING_APPLY.value,
                             "element": fqn(evt_record.cls),
                             "level": "warning",
                             "message": message,
@@ -552,7 +553,7 @@ class DomainValidator:
                 )
                 self._warnings.append(
                     {
-                        "code": "LOW_POOL_SIZE",
+                        "code": DiagnosticCode.LOW_POOL_SIZE.value,
                         "element": f"databases.{db_name}",
                         "level": "warning",
                         "message": message,
@@ -581,7 +582,7 @@ class DomainValidator:
             )
             self._warnings.append(
                 {
-                    "code": "PUBLISHED_NO_EXTERNAL_BROKER",
+                    "code": DiagnosticCode.PUBLISHED_NO_EXTERNAL_BROKER.value,
                     "element": self._domain.name,
                     "level": "warning",
                     "message": message,
