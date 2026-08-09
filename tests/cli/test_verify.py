@@ -487,6 +487,9 @@ class TestVerifyUsageErrors:
             data["data"]["stages"][s]["status"] == "skipped"
             for s in ("init", "check", "tests")
         )
+        # No stage carries this error (nothing ran), so it lands on data.error —
+        # otherwise a --json consumer would have only the bare exit code to go on.
+        assert "--path is not a directory" in data["data"]["error"]
 
     def test_path_is_a_file_exits_2(self, tmp_path):
         a_file = tmp_path / "not_a_dir.txt"

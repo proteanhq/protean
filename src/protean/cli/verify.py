@@ -352,7 +352,7 @@ def _verdict(stages: dict[str, dict[str, Any]]) -> str:
 
 
 def _envelope(
-    stages: dict[str, dict[str, Any]], status: EnvelopeStatus
+    stages: dict[str, dict[str, Any]], status: EnvelopeStatus, error: str = ""
 ) -> dict[str, Any]:
     """Build the shared CLI envelope from the accumulated stage results.
 
@@ -360,14 +360,15 @@ def _envelope(
     diagnostics surface at the top level (empty when check never ran).
     ``status`` is the coarse verdict: ``"pass"`` all green, ``"fail"`` a stage
     the command detected as failing, ``"error"`` a usage error it could not run
-    past.
+    past. ``error`` — set only for a usage error caught before any stage
+    ran — lands at ``data.error`` (mirrors ``check``'s usage-error shape), so
+    the message survives in ``--json`` output even though no stage carries it.
     """
     diagnostics = stages["check"].get("diagnostics", [])
-    return build_envelope(
-        status=status,
-        data={"verdict": _verdict(stages), "stages": stages},
-        diagnostics=diagnostics,
-    )
+    data: dict[str, Any] = {"verdict": _verdict(stages), "stages": stages}
+    if error:
+        data["error"] = error
+    return build_envelope(status=status, data=data, diagnostics=diagnostics)
 
 
 def _emit(
@@ -375,10 +376,12 @@ def _emit(
     stages: dict[str, dict[str, Any]],
     tests_output: str,
     status: EnvelopeStatus,
+    error: str = "",
 ) -> None:
     """Print either the JSON envelope or the human table."""
     if json_output:
-        typer.echo(json.dumps(_envelope(stages, status), indent=2, sort_keys=True))
+        envelope = _envelope(stages, status, error=error)
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True))
     else:
         _render(stages, tests_output)
 
@@ -395,11 +398,13 @@ def _emit_and_exit(
 
     The envelope status follows the exit-code class: a usage error (exit 2) is
     ``"error"``; a detected failure (init, exit 3) is ``"fail"``. The red error
-    line goes to stderr so ``--json`` stdout stays a single parseable object."""
+    line goes to stderr so ``--json`` stdout stays a single parseable object;
+    ``error_line`` is also carried into the envelope itself (``data.error``) so
+    a ``--json`` consumer is not left with only an exit code to go on."""
     if not json_output and error_line:
         _ERR_CONSOLE.print(f"[red]{escape(error_line)}[/red]")
     status: EnvelopeStatus = "error" if code == _EXIT_USAGE else "fail"
-    _emit(json_output, stages, tests_output, status)
+    _emit(json_output, stages, tests_output, status, error=error_line)
     raise typer.Exit(code)
 
 

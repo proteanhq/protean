@@ -104,13 +104,16 @@ check-stage diagnostics at the top level.
 | `data.stages.init.status` | `pass` or `fail` once init runs; `skipped` (with no other sub-keys) if `verify` aborts before init — e.g. `--path` is not a directory. |
 | `data.stages.check` | The `status` plus the `counts`, `errors`, and `diagnostics` from `Domain.check()` (see the [check envelope](check.md#result-envelope)). A malformed `[lint]` config is reported here as a single synthetic error. |
 | `data.stages.tests` | The `status`, the pytest `returncode`, and best-effort `passed`/`failed` counts parsed from pytest's summary line. The returncode — not the parsed counts — decides pass/fail. |
+| `data.error` | Present only for a usage error caught before any stage ran (e.g. `--path` is not a directory) — the same human-facing message that goes to stderr in the non-`--json` case. |
 | `diagnostics` | The check-stage diagnostics, surfaced at the top level (empty when check never ran). |
 
 When `verify` aborts early — the domain is not found (exit 2), `--path` is not a
 directory (exit 2), or init fails (exit 3) — the stages that never ran are
 reported as a bare `{ "status": "skipped" }` **without** their other sub-keys. A
 consumer that reads, say, `data.stages.check.counts` must guard for the skipped
-shape (or check the top-level `status`/`data.verdict` first).
+shape (or check the top-level `status`/`data.verdict` first). The domain-not-found
+and init-failure cases carry their message under `data.stages.init.error`
+instead of `data.error`, since those are tied to the init stage.
 
 ## Related
 
