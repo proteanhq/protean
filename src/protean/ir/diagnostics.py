@@ -108,10 +108,12 @@ class CodeMeta:
     """Metadata for one diagnostic code, resolved by code and never repeated
     on an instance.
 
-    ``category`` and ``rationale`` are constant per code. ``level`` and
-    ``fix`` are the canonical defaults; a producer may override either at an
-    emission site (e.g. a code emitted at two severities, or a fix built from
-    per-instance context). ``meaning`` is a one-line human summary.
+    ``category`` is constant per code. ``level``, ``rationale``, and ``fix``
+    are the canonical defaults; a producer may override any of them at an
+    emission site (e.g. a code emitted at two severities, or a rationale/fix
+    built from per-instance context, as ``DEPRECATED_FIELD``'s `pickled=`
+    diagnostic and ``DEPRECATED_OPTION`` do). ``meaning`` is a one-line human
+    summary.
     """
 
     category: str
