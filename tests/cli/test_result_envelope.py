@@ -113,6 +113,38 @@ class TestEnvelopeHelpers:
         with pytest.raises(ValidationError):
             validate(bad, schema)
 
+    def test_extra_top_level_key_is_rejected(self, schema):
+        """``additionalProperties: false`` on the frame: a 5th key fails."""
+        bad = build_envelope(status="pass", data={}, diagnostics=[])
+        bad["extra"] = "nope"
+        with pytest.raises(ValidationError):
+            validate(bad, schema)
+
+    def test_non_object_data_is_rejected(self, schema):
+        """``data`` must be an object — a scalar or a list fails."""
+        bad = build_envelope(status="pass", data={}, diagnostics=[])
+        bad["data"] = "not an object"
+        with pytest.raises(ValidationError):
+            validate(bad, schema)
+
+    @pytest.mark.parametrize(
+        "diag",
+        [
+            {"level": "error", "message": "m"},  # missing code
+            {"code": "C", "message": "m"},  # missing level
+            {"code": "C", "level": "error"},  # missing message
+            {"code": "", "level": "error", "message": "m"},  # empty code
+            {"code": "C", "level": "fatal", "message": "m"},  # bad level enum
+        ],
+    )
+    def test_malformed_diagnostic_is_rejected(self, schema, diag):
+        """The diagnostic ``$def`` is guarded too, not just the frame: a
+        diagnostic missing a required field, with an empty ``code``, or an
+        out-of-enum ``level`` fails validation."""
+        bad = build_envelope(status="fail", data={}, diagnostics=[diag])
+        with pytest.raises(ValidationError):
+            validate(bad, schema)
+
 
 # ---------------------------------------------------------------------------
 # check --format json conformance
@@ -239,3 +271,27 @@ class TestMachineOutputCleanStdout:
         result = runner.invoke(app, ["check", "-d", _WARN_DOMAIN, "-f", "json"])
         env = _sole_json_object(result.stdout)
         assert env["status"] == "fail"
+
+    def test_check_json_stdout_clean_when_domain_logs(self, tmp_path, schema):
+        """The #1010 generalization, exercised directly: a domain that emits a
+        log line while ``protean check`` loads it must not corrupt the JSON
+        envelope. The log lands on stderr (protean routes its console handler
+        there); stdout stays exactly one envelope object."""
+        marker = "LEAKY_LOG_LINE_1329"
+        dom = tmp_path / "logging_domain.py"
+        dom.write_text(
+            "import structlog\n"
+            "from protean import Domain\n"
+            # Fires when `protean check` imports the domain module — the exact
+            # kind of stray log #1010 was about.
+            f'structlog.get_logger("test.leak").warning("{marker}")\n'
+            'domain = Domain(name="LoggingDomain")\n'
+        )
+        result = runner.invoke(app, ["check", "-d", f"{dom}:domain", "-f", "json"])
+        env = _sole_json_object(result.stdout)
+        validate(env, schema)
+        # The log must not have leaked onto the machine payload...
+        assert marker not in result.stdout
+        # ...and it must actually have fired (else this test asserts nothing):
+        # it lands on stderr, which the runner captures separately.
+        assert marker in result.stderr

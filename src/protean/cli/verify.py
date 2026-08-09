@@ -64,7 +64,7 @@ from rich import print
 from rich.console import Console
 from rich.markup import escape
 
-from protean.cli.result import EnvelopeStatus, build_envelope
+from protean.cli.result import EnvelopeStatus, build_envelope, route_logs_to_stderr
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 
@@ -123,6 +123,10 @@ def verify(
     ] = False,
 ) -> None:
     """Initialize a domain, run check, and run its tests — one verdict."""
+    # Route logs to stderr before ``derive_domain`` imports the domain module, so
+    # a stray import-time log cannot corrupt the JSON envelope on stdout.
+    route_logs_to_stderr()
+
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.
     stages: dict[str, dict[str, Any]] = {

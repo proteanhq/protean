@@ -1,30 +1,35 @@
 """The shared CLI result envelope, its versioned schema, and the exit-code convention.
 
-Every Protean command that emits machine-readable output under ``--json`` (or
+A Protean command that emits machine-readable output under ``--json`` (or
 ``--format json``) wraps its result in one stable envelope::
 
     {
       "version": "0.1.0",
       "status": "pass" | "fail" | "error",
       "data": { ... command-specific detail ... },
-      "diagnostics": [ ... typed Diagnostic records ... ]
+      "diagnostics": [ ... diagnostic records ... ]
     }
 
-so an agent can consume any command's output uniformly. ``status`` is the
-coarse verdict that maps to the exit-code class: ``"pass"`` (exit ``0``),
-``"fail"`` (a failure the command is designed to detect), ``"error"`` (a usage
-or environment error it could not run past). The fine-grained detail — a
-command's own status, counts, or stage tree — lives under ``data``;
-``diagnostics`` carries the typed ``Diagnostic`` list from the registry
-(:mod:`protean.ir.diagnostics`).
+so an agent can consume it uniformly. ``status`` is the coarse verdict that maps
+to the exit-code class: ``"pass"`` (exit ``0``), ``"fail"`` (a failure the
+command is designed to detect), ``"error"`` (a usage or environment error it
+could not run past). The fine-grained detail — a command's own status, counts,
+or stage tree — lives under ``data``; ``diagnostics`` carries the diagnostic
+records (the :mod:`protean.ir.diagnostics` shape, plain dicts at runtime).
+
+``check`` and ``verify`` emit this envelope today. The other commands that print
+``--json``/``--format json`` (``upgrade-check``, ``ir diff``, ``ir check``) are
+not yet converged onto it — that is a separate follow-on. Do not read this module
+as a claim that they already conform.
 
 The envelope is a guarded contract, not just a shape: it ships a pinned,
 versioned JSON Schema at :data:`SCHEMA_PATH`, mirroring the IR precedent at
-``src/protean/ir/schema/v0.1.0/schema.json``. A conformance test asserts every
-command's ``--json`` output validates against it.
+``src/protean/ir/schema/v0.1.0/schema.json``. A conformance test asserts the
+``check`` and ``verify`` ``--json`` output validates against it.
 
-The exit-code convention every command follows (with command-specific classes
-documented per command):
+The exit-code convention ``check`` and ``verify`` follow (and the shape a new
+command should adopt when it converges), with command-specific classes
+documented per command:
 
     0 — success.
     1 — the command ran and reports a failure it is designed to detect (the
@@ -58,6 +63,29 @@ EXIT_USAGE = 2
 EnvelopeStatus = Literal["pass", "fail", "error"]
 
 
+def route_logs_to_stderr() -> None:
+    """Route all Protean logging to stderr, before the domain is imported.
+
+    A command that emits a machine payload on stdout must call this first. Until
+    :func:`protean.utils.logging.configure_logging` runs, ``structlog`` is at its
+    unconfigured default, which prints to **stdout** — so any log line a domain
+    module emits *at import time* (which ``derive_domain`` triggers) would land on
+    stdout and corrupt the envelope (the #1010 leak, generalized). Configuring
+    logging up front installs the stderr console handler and switches structlog
+    onto the stdlib bridge, so every subsequent log (import-time or during
+    ``check``/``init``) goes to stderr and stdout stays the sole envelope.
+
+    ``Domain.init`` also auto-configures logging, but only after the import has
+    already happened; it then sees the root handler this installed and skips,
+    so calling both is safe and idempotent.
+    """
+    # Local import: keep ``protean --help`` from eagerly pulling the logging
+    # subsystem for commands that never emit a machine payload.
+    from protean.utils.logging import configure_logging  # noqa: PLC0415
+
+    configure_logging()
+
+
 def load_envelope_schema() -> dict[str, Any]:
     """Load and return the CLI result-envelope JSON Schema as a Python dict."""
     # json.loads is untyped (returns Any); annotate the local to hold the
@@ -75,11 +103,13 @@ def build_envelope(
     """Build one result envelope from a command's status, detail, and diagnostics.
 
     ``status`` is the coarse verdict (``"pass"``/``"fail"``/``"error"``);
-    ``data`` is the command's own detail; ``diagnostics`` is the typed
-    ``Diagnostic`` list (empty when the command has none). The returned dict
-    carries exactly the four contract keys and validates against
-    :data:`SCHEMA_PATH`. ``diagnostics`` is copied so a later mutation of the
-    caller's list does not reach into the envelope.
+    ``data`` is the command's own detail; ``diagnostics`` is the diagnostic list
+    (empty when the command has none). The returned dict carries exactly the four
+    contract keys and validates against :data:`SCHEMA_PATH`. The caller's
+    ``diagnostics`` *list* is copied (shallow) so appending to or clearing it
+    does not reach into the envelope; the diagnostic dicts and ``data`` are stored
+    by reference. Every caller serializes the envelope immediately, so the shared
+    references are never mutated in practice.
     """
     return {
         "version": ENVELOPE_VERSION,

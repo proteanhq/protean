@@ -1,9 +1,15 @@
 # CLI conventions: the result envelope and exit codes
 
-Protean's CLI commands share two contracts so that a script or an agent can
-consume any command uniformly: one **result envelope** for machine-readable
-output, and one **exit-code convention**. This page is the durable reference for
-both. A new command that emits `--json` output should follow them.
+Protean is standardizing two contracts so that a script or an agent can consume a
+command's output uniformly: one **result envelope** for machine-readable output,
+and one **exit-code convention**. This page is the durable reference for both, and
+the shape a new command that emits `--json` output should follow.
+
+`check` and `verify` follow these contracts today. The other commands that print
+JSON (`upgrade-check`, `ir diff`, `ir check`) predate them and are **not yet
+converged** — their exit codes and output shapes still differ. Converging them is
+a separate follow-on; until then, only `check` and `verify` are guaranteed to
+match what this page describes.
 
 ## The result envelope
 
@@ -37,8 +43,16 @@ Every command that emits machine-readable output (under `--json`, or
 
 The envelope ships a pinned, versioned JSON Schema at
 `src/protean/cli/schema/v0.1.0/envelope.schema.json` (mirroring the IR schema
-precedent). A conformance test validates every command's `--json` output against
-it, so the shape is enforced, not just documented.
+precedent). A conformance test validates the `check` and `verify` `--json` output
+against it, so the shape is enforced, not just documented.
+
+`data` and `diagnostics` split the payload deliberately, so a consumer should
+read **both**: `diagnostics` carries the lint findings (the recoverable,
+per-element diagnostics), while `data` carries the command's own detail and its
+*fatal* errors — a domain that would not load, a malformed `[lint]` config, a
+failed init stage. Those fatal errors live under `data` (e.g. `data.error`, or
+`data.stages.init.error` for `verify`), not in `diagnostics`. A diagnostics-only
+consumer will miss them.
 
 SARIF and GitHub-annotations output (`check --format sarif` /
 `--format github-annotations`) are **not** wrapped: they are external standard

@@ -209,37 +209,60 @@ class TestCheckRichOutput:
 class TestCheckLevelFilter:
     """The --level flag filters diagnostics by severity threshold."""
 
-    def test_level_warning_excludes_info(self):
+    def test_level_warning_excludes_info_in_rich_view(self):
+        """--level is a human display filter: --level warning hides the info
+        section in the rich view but keeps warnings."""
         result = runner.invoke(
             app,
-            ["check", "-d", _DIAG_DOMAIN, "-f", "json", "--level", "warning"],
+            ["check", "-d", _DIAG_DOMAIN, "--level", "warning"],
         )
-        data = json.loads(result.output)
-        levels = {d["level"] for d in data["diagnostics"]}
-        assert "info" not in levels
-        # Warnings should still be present
-        assert data["data"]["counts"]["warnings"] > 0
-        assert data["data"]["counts"]["infos"] == 0
+        assert "Warnings (" in result.output
+        assert "Info (" not in result.output
 
-    def test_level_error_excludes_warnings_and_info(self):
+    def test_level_error_excludes_warnings_and_info_in_rich_view(self):
+        """--level error hides both the warning and info sections in the rich
+        view; only errors would remain."""
         result = runner.invoke(
+            app,
+            ["check", "-d", _DIAG_DOMAIN, "--level", "error"],
+        )
+        assert "Warnings (" not in result.output
+        assert "Info (" not in result.output
+
+    def test_json_ignores_level_filter(self):
+        """Machine output is never filtered by --level: a consumer must not have
+        findings silently dropped. --level=error still yields the full
+        diagnostics and counts, identical to the unfiltered run, matching SARIF
+        and the annotations formats."""
+        filtered = runner.invoke(
             app,
             ["check", "-d", _DIAG_DOMAIN, "-f", "json", "--level", "error"],
         )
-        data = json.loads(result.output)
-        assert data["diagnostics"] == []
-        assert data["data"]["counts"]["warnings"] == 0
-        assert data["data"]["counts"]["infos"] == 0
+        unfiltered = runner.invoke(
+            app,
+            ["check", "-d", _DIAG_DOMAIN, "-f", "json"],
+        )
+        fdata = json.loads(filtered.output)
+        assert fdata == json.loads(unfiltered.output)
+        # The warnings that gate are present even though --level=error would hide
+        # them in the human view.
+        assert any(d["level"] == "warning" for d in fdata["diagnostics"])
+        assert fdata["data"]["counts"]["warnings"] > 0
 
     def test_level_filter_does_not_suppress_exit_code(self):
-        """--level only affects display, not the exit code. A domain with
-        warnings still exits 1 even when --level=error hides them."""
+        """--level only affects display, not the exit code, and it never blanks
+        the machine envelope. A warn domain exits 1 even with --level=error, and
+        the envelope still carries the warning that caused the failure — no
+        'fail with an empty diagnostics list'."""
         result = runner.invoke(
             app,
             ["check", "-d", _DIAG_DOMAIN, "-f", "json", "--level", "error"],
         )
         # test25 has warnings → findings failure (exit 1) regardless of filter
         assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert data["status"] == "fail"
+        assert any(d["level"] == "warning" for d in data["diagnostics"])
 
     def test_level_info_shows_all(self):
         result = runner.invoke(

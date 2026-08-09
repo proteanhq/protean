@@ -24,7 +24,7 @@ protean check --format=sarif > protean.sarif
 |--------|-------|---------|-------------|
 | `--domain` | `-d` | `.` | Path to the domain module (e.g. `my_app.domain`). Uses the same [domain discovery](project/discovery.md) as other commands. |
 | `--format` | `-f` | `rich` | Output format: `rich`, `json`, `sarif`, or `github-annotations`. |
-| `--level` | `-l` | `info` | Minimum severity to **display**: `error`, `warning`, or `info`. Filters the human-facing output only — it never changes the exit code, and it never filters the `sarif`/`github-annotations` machine formats. |
+| `--level` | `-l` | `info` | Minimum severity to **display**: `error`, `warning`, or `info`. Filters the `rich`/`--quiet` human output only — it never changes the exit code, and it never filters the machine formats (`json`, `sarif`, `github-annotations`). |
 | `--quiet` | `-q` | `false` | Show only a one-line count summary and set the exit code. |
 
 ## Output formats
@@ -36,9 +36,12 @@ protean check --format=sarif > protean.sarif
 | `sarif` | [SARIF 2.1.0](https://sarifweb.azurewebsites.net/) for GitHub Code Scanning. |
 | `github-annotations` | GitHub Actions `::error`/`::warning`/`::notice` workflow commands. |
 
-The `sarif` and `github-annotations` formats always emit the **unfiltered** set
-of findings regardless of `--level`, because they feed machines (a Code Scanning
-upload or CI annotations) where a display filter must not silently drop findings.
+The `json`, `sarif`, and `github-annotations` formats always emit the
+**unfiltered** set of findings regardless of `--level`, because they feed
+machines (an agent consuming the envelope, a Code Scanning upload, CI
+annotations) where a display filter must not silently drop findings. So a
+`json` envelope with `status="fail"` always carries the diagnostics and counts
+that caused it — filter with `jq` if you want a subset.
 
 ## Exit codes
 

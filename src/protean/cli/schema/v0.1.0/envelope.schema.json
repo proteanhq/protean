@@ -20,7 +20,7 @@
     },
     "diagnostics": {
       "type": "array",
-      "description": "Typed Diagnostic records from the registry (may be empty)",
+      "description": "Diagnostic records (the protean.ir.diagnostics shape; may be empty)",
       "items": {
         "$ref": "#/$defs/diagnostic"
       }

@@ -265,9 +265,23 @@ class TestVerifyLoadFailures:
         assert data["status"] == "error"
         assert data["data"]["verdict"] == "fail"
         assert data["data"]["stages"]["init"]["status"] == "fail"
+        # The human-facing message survives in the JSON payload — an agent reads
+        # it from data.stages.init.error, not from the (stderr) red line. This is
+        # the JSON error payload that matters most to a consumer, so pin it.
+        assert "Error loading Protean domain" in data["data"]["stages"]["init"]["error"]
         # Check and tests never ran.
         assert data["data"]["stages"]["check"]["status"] == "skipped"
         assert data["data"]["stages"]["tests"]["status"] == "skipped"
+
+    def test_init_failure_json_envelope_carries_error(self):
+        """A found-but-broken domain (init failure, exit 3) carries its message
+        under data.stages.init.error in the JSON envelope, with status "fail"."""
+        result = runner.invoke(app, ["verify", "-d", _INIT_FAIL_DOMAIN, "--json"])
+        assert result.exit_code == 3, result.output
+        data = json.loads(result.stdout)
+        assert data["status"] == "fail"
+        assert data["data"]["stages"]["init"]["status"] == "fail"
+        assert "Domain failed to initialize" in data["data"]["stages"]["init"]["error"]
 
     def test_init_failure_exits_3(self):
         result = runner.invoke(app, ["verify", "-d", _INIT_FAIL_DOMAIN])
