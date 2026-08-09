@@ -38,21 +38,25 @@ before it is installed.
 
 ## Exit codes
 
-The exit code is a stable contract, ordered by precedence (init before check
-before tests):
+`verify` follows the [CLI-wide exit-code convention](conventions.md), with its
+stage classes pinned above the shared `0`/`2`. The code is a stable contract,
+ordered by precedence (init before check before tests):
 
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | All green — init, check, and tests all pass. |
-| `1` | `verify`'s own error — the domain was not found, or `--path` is not a directory. |
-| `2` | The domain was found but failed to initialize. |
-| `3` | Check failed — a malformed `[lint]` config, or findings at or above the `[lint].level` floor. |
-| `4` | Tests failed. |
+| `2` | Usage error — the domain was not found, or `--path` is not a directory. |
+| `3` | The domain was found but failed to initialize. |
+| `4` | Check failed — a malformed `[lint]` config, or findings at or above the `[lint].level` floor. |
+| `5` | Tests failed. |
 
 A malformed command line (an unknown flag, a missing option value) is rejected
-by the argument parser **before** `verify` runs and exits `2` — Click's
-convention, which happens to share a code with init-failure. The table above
-applies once `verify` itself starts running.
+by the argument parser **before** `verify` runs and also exits `2` — Click's
+convention, which the usage class here matches. The table above applies once
+`verify` itself starts running.
+
+(These codes shifted up by one from an earlier unreleased set so that `2` is
+reserved for usage; see the [v0.18 migration note](../migration/v0-18.md#check-and-verify-machine-output-changed-shape-and-exit-codes).)
 
 The check stage honours `[lint].level` (default `"warn"`), the **same** severity
 floor [`protean check`](check.md) uses: `"error"` gates on errors only, `"warn"`
@@ -68,36 +72,45 @@ as a **pass** for the tests stage. The returncode is preserved in the envelope s
 
 ## JSON envelope
 
-`--json` prints a single JSON document on stdout:
+`--json` prints a single [result envelope](conventions.md#the-result-envelope)
+on stdout: a coarse `status`, the verdict and stage tree under `data`, and the
+check-stage diagnostics at the top level.
 
 ```json
 {
-  "verdict": "pass",
-  "stages": {
-    "init": { "status": "pass", "error": null },
-    "check": {
-      "status": "pass",
-      "counts": { "errors": 0, "warnings": 0, "infos": 0 },
-      "errors": [],
-      "diagnostics": []
-    },
-    "tests": { "status": "pass", "returncode": 0, "passed": 12, "failed": 0 }
-  }
+  "version": "0.1.0",
+  "status": "pass",
+  "data": {
+    "verdict": "pass",
+    "stages": {
+      "init": { "status": "pass", "error": null },
+      "check": {
+        "status": "pass",
+        "counts": { "errors": 0, "warnings": 0, "infos": 0 },
+        "errors": [],
+        "diagnostics": []
+      },
+      "tests": { "status": "pass", "returncode": 0, "passed": 12, "failed": 0 }
+    }
+  },
+  "diagnostics": []
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `verdict` | `pass` only when every stage passes; otherwise `fail`. |
-| `stages.init.status` | `pass` or `fail` once init runs; `skipped` (with no other sub-keys) if `verify` aborts before init — e.g. `--path` is not a directory. |
-| `stages.check` | The `status` plus the `counts`, `errors`, and `diagnostics` from `Domain.check()` (see the [check result schema](check.md#result-schema)). A malformed `[lint]` config is reported here as a single synthetic error. |
-| `stages.tests` | The `status`, the pytest `returncode`, and best-effort `passed`/`failed` counts parsed from pytest's summary line. The returncode — not the parsed counts — decides pass/fail. |
+| `status` | Coarse verdict: `pass` (exit 0), `fail` (a failed stage), or `error` (a usage error, exit 2). |
+| `data.verdict` | `pass` only when every stage passes; otherwise `fail`. |
+| `data.stages.init.status` | `pass` or `fail` once init runs; `skipped` (with no other sub-keys) if `verify` aborts before init — e.g. `--path` is not a directory. |
+| `data.stages.check` | The `status` plus the `counts`, `errors`, and `diagnostics` from `Domain.check()` (see the [check envelope](check.md#result-envelope)). A malformed `[lint]` config is reported here as a single synthetic error. |
+| `data.stages.tests` | The `status`, the pytest `returncode`, and best-effort `passed`/`failed` counts parsed from pytest's summary line. The returncode — not the parsed counts — decides pass/fail. |
+| `diagnostics` | The check-stage diagnostics, surfaced at the top level (empty when check never ran). |
 
-When `verify` aborts early — the domain is not found (exit 1), `--path` is not a
-directory (exit 1), or init fails (exit 2) — the stages that never ran are
+When `verify` aborts early — the domain is not found (exit 2), `--path` is not a
+directory (exit 2), or init fails (exit 3) — the stages that never ran are
 reported as a bare `{ "status": "skipped" }` **without** their other sub-keys. A
-consumer that reads, say, `stages.check.counts` must guard for the skipped shape
-(or check the top-level `verdict` first).
+consumer that reads, say, `data.stages.check.counts` must guard for the skipped
+shape (or check the top-level `status`/`data.verdict` first).
 
 ## Related
 

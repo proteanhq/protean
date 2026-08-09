@@ -50,8 +50,11 @@ class TestCheckCleanDomain:
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
+        # The shared CLI envelope: coarse status at the top, check detail under
+        # ``data`` (see src/protean/cli/result.py).
         assert data["status"] == "pass"
-        assert data["counts"]["errors"] == 0
+        assert data["version"] == "0.1.0"
+        assert data["data"]["counts"]["errors"] == 0
 
 
 @pytest.mark.no_test_domain
@@ -66,7 +69,7 @@ class TestCheckDomainLoadFailure:
 
 @pytest.mark.no_test_domain
 class TestCheckJsonStructure:
-    """JSON output has the expected structure."""
+    """JSON output is the shared CLI envelope."""
 
     def test_json_has_expected_keys(self):
         result = runner.invoke(
@@ -80,15 +83,11 @@ class TestCheckJsonStructure:
             ],
         )
         data = json.loads(result.output)
-        expected_keys = {
-            "domain",
-            "status",
-            "errors",
-            "diagnostics",
-            "counts",
-        }
-        assert set(data.keys()) == expected_keys
-        assert set(data["counts"].keys()) == {"errors", "warnings", "infos"}
+        # Top-level envelope frame.
+        assert set(data.keys()) == {"version", "status", "data", "diagnostics"}
+        # Check's own report lives under ``data``.
+        assert set(data["data"].keys()) == {"domain", "status", "errors", "counts"}
+        assert set(data["data"]["counts"].keys()) == {"errors", "warnings", "infos"}
 
 
 # Domain with diagnostics at multiple levels (test25)
@@ -105,17 +104,17 @@ _UPCASTER_ERR_DOMAIN = "tests/support/domains/test30/domain30.py:domain"
 
 @pytest.mark.no_test_domain
 class TestCheckMalformedUpcasterChain:
-    """A malformed upcaster chain is a structured error (exit 1), not a Python
-    traceback — the chain build used to crash `protean check`."""
+    """A malformed upcaster chain is a structured findings failure (exit 1), not
+    a Python traceback — the chain build used to crash `protean check`."""
 
     def test_malformed_chain_json_reports_structured_error(self):
         result = runner.invoke(app, ["check", "-d", _UPCASTER_ERR_DOMAIN, "-f", "json"])
         assert result.exit_code == 1
         data = json.loads(result.output)
         assert data["status"] == "fail"
-        assert data["counts"]["errors"] >= 1
+        assert data["data"]["counts"]["errors"] >= 1
         upcaster_errors = [
-            e for e in data["errors"] if "upcaster" in e["message"].lower()
+            e for e in data["data"]["errors"] if "upcaster" in e["message"].lower()
         ]
         assert len(upcaster_errors) == 1
         assert upcaster_errors[0]["level"] == "error"
@@ -165,7 +164,9 @@ class TestCheckRichOutput:
             app,
             ["check", "-d", _DIAG_DOMAIN],
         )
-        assert result.exit_code == 2
+        # Warnings at the floor are a findings failure — exit 1 (the old
+        # warning-only exit 2 collapsed; severity moved into the envelope).
+        assert result.exit_code == 1
         # Warning section markers
         assert "WARN" in result.output
         assert "warning(s)" in result.output
@@ -217,8 +218,8 @@ class TestCheckLevelFilter:
         levels = {d["level"] for d in data["diagnostics"]}
         assert "info" not in levels
         # Warnings should still be present
-        assert data["counts"]["warnings"] > 0
-        assert data["counts"]["infos"] == 0
+        assert data["data"]["counts"]["warnings"] > 0
+        assert data["data"]["counts"]["infos"] == 0
 
     def test_level_error_excludes_warnings_and_info(self):
         result = runner.invoke(
@@ -227,18 +228,18 @@ class TestCheckLevelFilter:
         )
         data = json.loads(result.output)
         assert data["diagnostics"] == []
-        assert data["counts"]["warnings"] == 0
-        assert data["counts"]["infos"] == 0
+        assert data["data"]["counts"]["warnings"] == 0
+        assert data["data"]["counts"]["infos"] == 0
 
     def test_level_filter_does_not_suppress_exit_code(self):
         """--level only affects display, not the exit code. A domain with
-        warnings still exits 2 even when --level=error hides them."""
+        warnings still exits 1 even when --level=error hides them."""
         result = runner.invoke(
             app,
             ["check", "-d", _DIAG_DOMAIN, "-f", "json", "--level", "error"],
         )
-        # test25 has warnings → exit code 2 regardless of display filter
-        assert result.exit_code == 2
+        # test25 has warnings → findings failure (exit 1) regardless of filter
+        assert result.exit_code == 1
 
     def test_level_info_shows_all(self):
         result = runner.invoke(
@@ -255,8 +256,22 @@ class TestCheckLevelFilter:
             app,
             ["check", "-d", _DIAG_DOMAIN, "--level", "critical"],
         )
-        assert result.exit_code != 0
+        # A bad option is a usage error (exit 2), and the message goes to stderr
+        # (result.output mixes both streams in write order).
+        assert result.exit_code == 2
         assert "Invalid --level" in result.output
+
+    def test_invalid_format_exits_with_usage_error(self):
+        """An unknown --format is a usage error (exit 2), not a silent
+        fall-through to the rich renderer. The message is on stderr, so stdout
+        stays empty."""
+        result = runner.invoke(
+            app,
+            ["check", "-d", _CLEAN_DOMAIN, "-f", "xml"],
+        )
+        assert result.exit_code == 2
+        assert "Invalid --format" in result.stderr
+        assert result.stdout.strip() == ""
 
 
 @pytest.mark.no_test_domain
@@ -278,7 +293,7 @@ class TestCheckQuietMode:
             app,
             ["check", "-d", _DIAG_DOMAIN, "-q"],
         )
-        assert result.exit_code == 2
+        assert result.exit_code == 1
         assert "warn" in result.output
 
     def test_quiet_suppresses_details(self):
@@ -312,15 +327,15 @@ class TestCheckLintLevelExitCode:
     """``[lint].level`` sets the config-driven exit-code severity floor.
 
     ``--level`` only affects display; ``[lint].level`` decides which severities
-    fail CI. The default ("warn") reproduces the historical exit codes, which
-    the surrounding suite already exercises (test25 warnings → 2, test27 info
-    → 0). These tests cover the two non-default floors and validation.
+    fail CI. A findings failure now collapses to exit 1 (test25 warnings → 1,
+    test27 info → 0). These tests cover the two non-default floors and validation.
     """
 
     def test_default_warn_gates_warnings(self):
-        """Unset [lint].level defaults to "warn": warnings still exit 2."""
+        """Unset [lint].level defaults to "warn": warnings are a findings
+        failure (exit 1)."""
         result = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN])
-        assert result.exit_code == 2
+        assert result.exit_code == 1
 
     def test_default_warn_info_only_exits_zero(self):
         """Unset [lint].level: an info-only domain exits 0 (info never gates)."""
@@ -339,30 +354,33 @@ class TestCheckLintLevelExitCode:
         assert result.exit_code == 1
 
     def test_malformed_suppressions_exits_with_clean_error(self):
-        """A non-integer [lint].suppressions count is a CLI error (exit 1),
-        not a traceback — validated before the IR build runs."""
+        """A non-integer [lint].suppressions count is a usage error (exit 2),
+        not a traceback — validated before the IR build runs. The message goes
+        to stderr (result.output mixes both streams)."""
         result = runner.invoke(app, ["check", "-d", _BAD_SUPPRESSIONS_DOMAIN])
-        assert result.exit_code == 1
+        assert result.exit_code == 2
         assert "[lint].suppressions" in result.output
         assert "non-negative integer" in result.output
 
     def test_malformed_lint_table_exits_with_clean_error(self):
-        """A non-table [lint] value (e.g. ``lint = 5``) is a CLI error (exit 1),
-        not a bare AttributeError — validated before any [lint] key is read."""
+        """A non-table [lint] value (e.g. ``lint = 5``) is a usage error (exit
+        2), not a bare AttributeError — validated before any [lint] key is
+        read."""
         result = runner.invoke(app, ["check", "-d", _BAD_LINT_TABLE_DOMAIN])
-        assert result.exit_code == 1
+        assert result.exit_code == 2
         assert "[lint]" in result.output
         assert "must be a table" in result.output
 
     def test_level_info_gates_info(self):
-        """[lint].level="info": an info-only domain now exits 2."""
+        """[lint].level="info": an info-only domain is a findings failure
+        (exit 1)."""
         result = runner.invoke(app, ["check", "-d", _LEVEL_INFO_DOMAIN])
-        assert result.exit_code == 2
+        assert result.exit_code == 1
 
     def test_invalid_lint_level_exits_with_error(self):
-        """An invalid [lint].level value is a CLI error (exit 1)."""
+        """An invalid [lint].level value is a usage error (exit 2)."""
         result = runner.invoke(app, ["check", "-d", _LEVEL_INVALID_DOMAIN])
-        assert result.exit_code == 1
+        assert result.exit_code == 2
         assert "Invalid [lint].level" in result.output
 
 
@@ -527,7 +545,7 @@ class TestCheckSarifOutput:
         unimplemented format would degrade to rich and pass this vacuously)."""
         rich = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN])
         sarif = runner.invoke(app, ["check", "-d", _DIAG_DOMAIN, "-f", "sarif"])
-        assert sarif.exit_code == rich.exit_code == 2
+        assert sarif.exit_code == rich.exit_code == 1
         # Assert the SARIF branch actually ran, not the rich fallback.
         assert json.loads(sarif.output)["version"] == "2.1.0"
 
@@ -736,7 +754,7 @@ class TestCheckGithubAnnotations:
         gha = runner.invoke(
             app, ["check", "-d", _DIAG_DOMAIN, "-f", "github-annotations"]
         )
-        assert gha.exit_code == rich.exit_code == 2
+        assert gha.exit_code == rich.exit_code == 1
         lines = [ln for ln in gha.output.splitlines() if ln]
         assert lines and all(ln.startswith("::") for ln in lines)
 

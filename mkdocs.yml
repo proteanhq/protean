@@ -317,6 +317,7 @@ nav:
     - Logging: reference/logging.md
     - CLI:
       - reference/cli/index.md
+      - reference/cli/conventions.md
       - reference/cli/check.md
       - reference/cli/verify.md
       - reference/cli/upgrade-check.md

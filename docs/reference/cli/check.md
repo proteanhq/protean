@@ -32,7 +32,7 @@ protean check --format=sarif > protean.sarif
 | Format | Description |
 |--------|-------------|
 | `rich` | Human-readable table (default). |
-| `json` | The raw check-result document (see [Result schema](#result-schema)), `indent=2`, keys sorted. |
+| `json` | The shared CLI [result envelope](#result-envelope), `indent=2`, keys sorted. |
 | `sarif` | [SARIF 2.1.0](https://sarifweb.azurewebsites.net/) for GitHub Code Scanning. |
 | `github-annotations` | GitHub Actions `::error`/`::warning`/`::notice` workflow commands. |
 
@@ -42,15 +42,19 @@ upload or CI annotations) where a display filter must not silently drop findings
 
 ## Exit codes
 
-The exit code is driven by the **unfiltered** counts and gated by the
-`[lint].level` config key (the severity *floor*), not by the `--level` display
-flag:
+`check` follows the [CLI-wide exit-code convention](conventions.md). The code is
+driven by the **unfiltered** counts and gated by the `[lint].level` config key
+(the severity *floor*), not by the `--level` display flag:
 
 | Exit code | Meaning |
 |-----------|---------|
 | `0` | Nothing at or above the configured floor. |
-| `1` | One or more validator **errors** (always, regardless of floor). |
-| `2` | A gating warning/info finding at or above the floor, with no errors. |
+| `1` | A findings failure: validator errors, or a warning/info at or above the floor. The severity detail is in the envelope, not the code. |
+| `2` | A usage or environment error: a bad `--domain`, `--level`, or `--format`; a domain that will not load; or a malformed `[lint]` config. |
+
+The single findings-failure code (`1`) replaced an earlier split (errors `1`,
+warnings `2`); the severity now lives in the envelope. Load and config errors,
+previously `1`, are usage errors (`2`).
 
 `[lint].level` maps as follows (default `warn`):
 
@@ -64,15 +68,22 @@ See the [`[lint]` configuration reference](../configuration/index.md#lint) for
 the full set of config keys (`level`, `suppressions`, `aggregate_size_limit`,
 `handler_breadth_limit`, `check_infra_imports`, `rules`).
 
-## Result schema
+## Result envelope
 
-The `--format=json` output is the document returned by `Domain.check()`:
+The `--format=json` output is the shared CLI
+[result envelope](conventions.md#the-result-envelope): a coarse `status`, the
+check report under `data`, and the diagnostics list at the top level.
 
 ```json
 {
-  "domain": "my_app",
-  "status": "warn",
-  "errors": [],
+  "version": "0.1.0",
+  "status": "fail",
+  "data": {
+    "domain": "my_app",
+    "status": "warn",
+    "errors": [],
+    "counts": { "errors": 0, "warnings": 1, "infos": 0 }
+  },
   "diagnostics": [
     {
       "category": "aggregate_design",
@@ -87,20 +98,30 @@ The `--format=json` output is the document returned by `Domain.check()`:
       },
       "suggestion": "Hold the other aggregate by its identifier instead of a Reference..."
     }
-  ],
-  "counts": { "errors": 0, "warnings": 1, "infos": 0 }
+  ]
 }
 ```
 
-**Top-level fields**
+**Envelope fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | str | Envelope format version. |
+| `status` | str | Coarse verdict: `pass` (exit 0), `fail` (a findings failure, exit 1), or `error` (a usage/environment error, exit 2). |
+| `data` | object | The check report (fields below). |
+| `diagnostics` | list | Fitness function findings (see below). Carried at the top level, not under `data`. |
+
+**`data` fields**
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `domain` | str | The domain name. |
-| `status` | str | Overall status: `pass`, `info`, `warn`, or `fail`. |
+| `status` | str | Fine-grained status: `pass`, `info`, `warn`, or `fail`. |
 | `errors` | list | Validator errors (malformed domains). Each has `code` and `message` and is always fatal. Present only when the domain fails to build; when non-empty, `diagnostics` is empty. |
-| `diagnostics` | list | Fitness function findings (see below). |
 | `counts` | object | `{errors, warnings, infos}` tallies. |
+
+On a usage/environment error (`status: "error"`, exit 2) `data` carries a single
+`error` message instead of the report, and `diagnostics` is empty.
 
 **Diagnostic fields**
 

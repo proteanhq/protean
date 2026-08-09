@@ -6,6 +6,10 @@ Most commands accept a domain instance to load and initialize, prepping it for
 shell access. The [`--domain`](project/discovery.md) option is used to specify how to
 load the domain.
 
+Commands that emit machine-readable output share one
+[result envelope and exit-code convention](conventions.md), so a script or an
+agent can consume any command uniformly.
+
 | Command                        |                                    |
 | :----------------------------- | :----------------------------------|
 | [`protean check`](check.md)            | Validate a domain and report architecture fitness diagnostics |

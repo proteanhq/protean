@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://protean.dev/cli/v0.1.0/envelope.schema.json",
+  "title": "Protean CLI result envelope v0.1.0",
+  "description": "The shared result envelope every Protean command emits under --json. A coarse status plus command-specific detail under data and the typed Diagnostic list. See src/protean/cli/result.py.",
+
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Semantic version of the envelope format"
+    },
+    "status": {
+      "enum": ["pass", "fail", "error"],
+      "description": "Coarse verdict mapping to the exit-code class: pass=0, fail=a detected failure, error=a usage/environment error"
+    },
+    "data": {
+      "type": "object",
+      "description": "The command's own detail (permissive: it holds both check's report and verify's stage tree)"
+    },
+    "diagnostics": {
+      "type": "array",
+      "description": "Typed Diagnostic records from the registry (may be empty)",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    }
+  },
+  "required": ["version", "status", "data", "diagnostics"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "description": "One diagnostic record. Mirrors the IR schema's diagnostic shape so custom-lint diagnostics (which pin only code/level/message/element) still validate.",
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "level": { "enum": ["error", "warning", "info"] },
+        "message": { "type": "string", "minLength": 1 },
+        "element": { "type": "string" }
+      },
+      "required": ["code", "level", "message"],
+      "additionalProperties": true
+    }
+  }
+}
