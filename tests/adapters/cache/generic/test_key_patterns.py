@@ -69,25 +69,36 @@ class TestGetAllPaginationAgrees:
 
         Memory treats `last_position` as a list offset into a freshly
         sorted-by-insertion key list (`results[last_position:last_position
-        + size]` in `memory.py`). Redis passes it straight through as an
-        opaque `SCAN` cursor (`self._client.scan(cursor=last_position, ...)`
-        in `redis.py`), where `count` is only a hint and the continuation
-        cursor `get_all` should return for the next call is discarded. A
-        caller that walks pages with `last_position` counting 0, 1, 2, ...
-        (the only option `get_all` leaves it, since it never hands back a
-        cursor to resume from) visits every entry exactly once on memory
-        and an adapter-dependent, incomplete subset on Redis. Not one of
-        #1391/#1392/#1393/#1399 — filed as its own follow-up, #1401.
+        + size]` in `memory.py`), which also makes `size` a hard cap on the
+        page length. Redis passes both straight through to `SCAN`
+        (`self._client.scan(cursor=last_position, match=key_pattern,
+        count=size)` in `redis.py`): `last_position` is an opaque cursor,
+        not an offset, and `count` is only a hint Redis uses to decide how
+        much internal work to do, not a page-size cap, so a single call can
+        return more than `size` results. The continuation cursor `scan`
+        returns for the next call is discarded by `get_all` entirely too.
+        Not one of #1391/#1392/#1393/#1399 — filed as its own follow-up,
+        #1401.
+
+        The assertion below only pins the `size`-as-a-cap half of the
+        divergence: it is guaranteed true on memory and, empirically,
+        overwhelmingly likely to be violated by at least one call on Redis
+        for a keyspace this size, regardless of Redis' per-server random
+        hash seed. An earlier version asserted that walking
+        `last_position=0, 1, 2, ...` visits every entry, but Redis' `SCAN`
+        `COUNT` being a hint means a single call can happen to return every
+        matching key, which would XPASS a `strict=True` xfail.
         """
         if request.node.callspec.params["cache"]["provider"] == "redis":
             request.applymarker(
                 pytest.mark.xfail(
                     strict=True,
                     reason=(
-                        "#1401: get_all's last_position means 'skip this "
-                        "many results' on memory but is an opaque Redis "
-                        "SCAN cursor, so walking last_position=0,1,2,... "
-                        "does not visit every entry on Redis."
+                        "#1401: get_all's size means 'return at most this "
+                        "many results' on memory but is only a hint to "
+                        "Redis' SCAN about how much work to do per call, "
+                        "so a single call can return more than size "
+                        "results."
                     ),
                 )
             )
@@ -96,12 +107,12 @@ class TestGetAllPaginationAgrees:
         for entry in entries:
             cache.add(entry)
 
-        seen = set()
-        for last_position in range(30):
-            page = cache.get_all("cache_entry:::*", last_position=last_position, size=1)
-            seen.update(result.key for result in page)
+        pages = [
+            cache.get_all("cache_entry:::*", last_position=last_position, size=1)
+            for last_position in range(30)
+        ]
 
-        assert seen == {entry.key for entry in entries}
+        assert all(len(page) <= 1 for page in pages)
 
 
 class TestPatternLanguageIsAGlobOnEveryAdapter:
