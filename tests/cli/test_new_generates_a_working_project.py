@@ -96,9 +96,10 @@ def _subprocess_env(project: Path) -> dict[str, str]:
 def _parse_verify_json(stdout: str) -> dict[str, Any]:
     """Parse the JSON envelope printed by ``protean verify --json``.
 
-    ``verify`` emits the envelope via ``typer.echo`` to stdout, but subprocess
-    output can also contain stray log lines. Locate the first ``{`` and parse
-    from there so a parse failure produces a useful message.
+    ``verify`` emits the envelope via ``typer.echo`` to stdout. Locate the
+    first ``{`` and parse from there so a parse failure produces a useful
+    message. All logging goes to stderr, so stdout is expected to be clean,
+    but finding the first brace gives a slightly clearer error if it is not.
     """
     start = stdout.find("{")
     assert start != -1, f"no JSON object in verify stdout:\n{stdout}"
@@ -296,6 +297,7 @@ class TestGeneratedProjectStarts:
             env=_subprocess_env(project),
             capture_output=True,
             text=True,
+            errors="replace",
         )
 
         assert completed.returncode == 0, (
