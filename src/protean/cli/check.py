@@ -218,7 +218,7 @@ def check(
         typer.echo(_format_github_annotations(result, derived_domain))
     else:
         # Human views only: apply the ``--level`` display filter, then render.
-        _filter_for_display(result, level)
+        _filter_for_display(result, level, gates)
         if quiet:
             _print_quiet(result)
         else:
@@ -231,14 +231,22 @@ def check(
         raise typer.Exit(code=EXIT_FAILURE)
 
 
-def _filter_for_display(result: dict[str, Any], level: str) -> None:
+def _filter_for_display(result: dict[str, Any], level: str, gates: bool) -> None:
     """Apply the ``--level`` severity threshold to the human view, in place.
 
     ``--level`` is a display filter only: it shapes the rich/quiet output but
-    never the exit code (computed from the unfiltered counts) or the machine
-    formats (json/sarif/github-annotations emit the full result). Drops
-    diagnostics below the threshold and recomputes the displayed counts and
-    status to match, so the human summary is internally consistent.
+    never the exit code (computed from the unfiltered counts, passed in as
+    ``gates``) or the machine formats (json/sarif/github-annotations emit the
+    full result). Drops diagnostics below the threshold and recomputes the
+    displayed counts and status to match, so the human summary is internally
+    consistent.
+
+    ``gates`` guards against a display lie: ``--level`` can filter out the very
+    findings that make ``[lint].level`` fail the run (e.g. only warnings exist,
+    ``[lint].level`` is the default ``"warn"``, and ``--level=error`` hides
+    them), which would otherwise recompute ``status`` as ``"pass"`` while the
+    process still exits non-zero. When that happens, status stays ``"fail"``
+    instead of a display-only, contradicted "pass".
     """
     threshold = _LEVEL_ORDER[level]
     result["diagnostics"] = [
@@ -258,6 +266,8 @@ def _filter_for_display(result: dict[str, Any], level: str) -> None:
         result["status"] = "warn"
     elif result["counts"]["infos"] > 0:
         result["status"] = "info"
+    elif gates:
+        result["status"] = "fail"
     else:
         result["status"] = "pass"
 
@@ -362,6 +372,12 @@ def _print_rich(result: dict[str, Any]) -> None:
         print("\n  [green]All checks passed.[/green]")
     elif status == "info":
         print("\n  [cyan]All checks passed with informational findings.[/cyan]")
+    elif status == "fail" and not counts["errors"] and not warnings and not infos:
+        # ``--level`` hid every finding that made [lint].level gate the run.
+        print(
+            "\n  [red]Failing findings are hidden by --level; rerun with a "
+            "lower --level to see them.[/red]"
+        )
 
     print()
 

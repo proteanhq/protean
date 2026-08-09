@@ -229,6 +229,19 @@ class TestCheckLevelFilter:
         assert "Warnings (" not in result.output
         assert "Info (" not in result.output
 
+    def test_level_error_does_not_print_pass_when_gating_findings_are_hidden(self):
+        """test25's warnings are what gate the run (default [lint].level="warn"),
+        and --level=error hides warnings from the rich view. The rich status
+        line must still say FAIL, not PASS — the exit code is 1 either way, and
+        showing PASS here would contradict it."""
+        result = runner.invoke(
+            app,
+            ["check", "-d", _DIAG_DOMAIN, "--level", "error"],
+        )
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+        assert "PASS" not in result.output
+
     def test_json_ignores_level_filter(self):
         """Machine output is never filtered by --level: a consumer must not have
         findings silently dropped. --level=error still yields the full
