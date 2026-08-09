@@ -20,7 +20,7 @@ import types as _types
 import typing
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from protean._deprecation import DEPRECATIONS
 from protean.core.aggregate import BaseAggregate
@@ -206,7 +206,11 @@ class IRBuilder:
 
     def __init__(self, domain: Domain) -> None:
         self._domain = domain
-        self._diagnostics: list[Diagnostic] = []
+        # Built-in diagnostics are the full ``Diagnostic`` shape from
+        # ``build_diagnostic``; custom lint rules (``_run_custom_lint_rules``)
+        # contribute dicts that only guarantee ``code``/``element``/``level``/
+        # ``message``, so the element type reflects both shapes.
+        self._diagnostics: list[Diagnostic | dict[str, Any]] = []
         self._source: SourceProvider | None = None
         self._index: ElementIndex | None = None
         self._view: BehavioralView | None = None
@@ -2091,7 +2095,7 @@ class IRBuilder:
         if error:
             raise ConfigurationError(error)
         seen: dict[str, int] = {}
-        kept: list[Diagnostic] = []
+        kept: list[Diagnostic | dict[str, Any]] = []
         for d in survivors:
             code = d.get("code", "")
             seen[code] = seen.get(code, 0) + 1
@@ -3513,11 +3517,9 @@ class IRBuilder:
                     continue
                 # Custom findings default to the ``custom`` category so they
                 # carry the same schema shape as built-in diagnostics; the
-                # forward-compat ``rule``/``suggestion`` keys stay optional,
-                # unlike the ``Diagnostic`` shape ``build_diagnostic`` always
-                # fills, hence the cast rather than a structural match.
+                # forward-compat ``rule``/``suggestion`` keys stay optional.
                 item.setdefault("category", "custom")
-                self._diagnostics.append(cast(Diagnostic, item))
+                self._diagnostics.append(item)
 
     @staticmethod
     def _import_callable(dotted_path: str) -> Any:
