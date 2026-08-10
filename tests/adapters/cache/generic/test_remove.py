@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from .conftest import CacheEntry
 
 
@@ -20,17 +18,5 @@ class TestRemoveByKey:
 
         assert cache.get(_key("alpha")) is None
 
-    def test_remove_by_key_is_silent_when_the_key_is_absent(self, cache, request):
-        if request.node.callspec.params["cache"]["provider"] == "memory":
-            request.applymarker(
-                pytest.mark.xfail(
-                    strict=True,
-                    reason=(
-                        "#1391: removing an absent key should do nothing. "
-                        "The memory cache raises KeyError; Redis is already "
-                        "silent."
-                    ),
-                )
-            )
-
+    def test_remove_by_key_is_silent_when_the_key_is_absent(self, cache):
         cache.remove_by_key(_key("does-not-exist"))

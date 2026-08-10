@@ -111,28 +111,7 @@ class TestFailedAddLeavesNothingCached:
 
 
 class TestSetTTLOnAMissingKey:
-    def test_set_ttl_is_silent_when_the_key_is_absent(self, cache, request):
-        """Same divergence as #1391, a different entry point.
-
-        `set_ttl` on a missing key raises `KeyError` on the memory cache
-        (`TTLDict.set_ttl` indexes `self._values[key]`) and is a silent
-        no-op on Redis (`PEXPIRE` on a missing key returns `False`, does not
-        raise). #1391 tables this alongside `remove_by_key` and `remove` as
-        the same class of bug, reached through `set_ttl` instead.
-        """
-        if request.node.callspec.params["cache"]["provider"] == "memory":
-            request.applymarker(
-                pytest.mark.xfail(
-                    strict=True,
-                    reason=(
-                        "#1391: acting on an absent key should do nothing, "
-                        "on every entry point. The memory cache raises "
-                        "KeyError from set_ttl; Redis' PEXPIRE is silently a "
-                        "no-op on a missing key."
-                    ),
-                )
-            )
-
+    def test_set_ttl_is_silent_when_the_key_is_absent(self, cache):
         cache.set_ttl(_key("does-not-exist"), 60)
 
 

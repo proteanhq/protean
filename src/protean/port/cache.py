@@ -181,11 +181,17 @@ class BaseCache(metaclass=ABCMeta):
 
     @abstractmethod
     def remove(self, projection: BaseProjection) -> None:
-        """Remove a cache record by projection object"""
+        """Remove a cache record by projection object
+
+        Does nothing if no record exists for the projection.
+        """
 
     @abstractmethod
     def remove_by_key(self, key: str) -> None:
-        """Remove a cache record by key"""
+        """Remove a cache record by key
+
+        Does nothing if the key is absent.
+        """
 
     @abstractmethod
     def remove_by_key_pattern(self, key_pattern: str) -> None:
@@ -201,6 +207,8 @@ class BaseCache(metaclass=ABCMeta):
 
         Takes the same shapes as `add`: a number, or a string holding one, and
         rejects anything that is not a positive, finite number of seconds.
+
+        Does nothing if the key is absent.
         """
 
     @abstractmethod

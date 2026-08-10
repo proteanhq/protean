@@ -7,8 +7,6 @@ without being duplicated per adapter.
 
 from __future__ import annotations
 
-import pytest
-
 from .conftest import CacheEntry
 
 
@@ -51,26 +49,5 @@ class TestRemoveByProjection:
 
         assert cache.get(_key("alpha")) is None
 
-    def test_remove_is_silent_when_the_projection_is_absent(self, cache, request):
-        """Same divergence as #1391, a different entry point.
-
-        `remove(projection)` on an absent projection raises `KeyError` on
-        the memory cache (`del self._db[key]`) and is silent on Redis
-        (`DEL` on a missing key). #1391 tables this alongside
-        `remove_by_key` and `set_ttl` as the same class of bug, reached
-        through `remove` instead.
-        """
-        if request.node.callspec.params["cache"]["provider"] == "memory":
-            request.applymarker(
-                pytest.mark.xfail(
-                    strict=True,
-                    reason=(
-                        "#1391: removing an absent key should do nothing, "
-                        "on every entry point. The memory cache raises "
-                        "KeyError from remove(); Redis' DEL is silently a "
-                        "no-op on a missing key."
-                    ),
-                )
-            )
-
+    def test_remove_is_silent_when_the_projection_is_absent(self, cache):
         cache.remove(CacheEntry(key="does-not-exist", value="x"))
