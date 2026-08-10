@@ -7,6 +7,8 @@ without being duplicated per adapter.
 
 from __future__ import annotations
 
+import time
+
 from .conftest import CacheEntry
 
 
@@ -50,4 +52,21 @@ class TestRemoveByProjection:
         assert cache.get(_key("alpha")) is None
 
     def test_remove_is_silent_when_the_projection_is_absent(self, cache):
+        # A neighbor must survive an absent-projection `remove` untouched, so
+        # an implementation that clears the whole store (or the wrong key)
+        # cannot pass by accident.
+        cache.add(CacheEntry(key="alpha", value="one"))
+
         cache.remove(CacheEntry(key="does-not-exist", value="x"))
+
+        assert cache.get(_key("alpha")) is not None
+
+    def test_remove_is_silent_when_the_projection_has_expired(self, cache):
+        entry = CacheEntry(key="alpha", value="one")
+        cache.add(entry, ttl=0.05)
+        time.sleep(0.3)
+        assert cache.get(_key("alpha")) is None
+
+        cache.remove(entry)
+
+        assert cache.get(_key("alpha")) is None

@@ -10,6 +10,7 @@ here instead of shipping unnoticed.
 from __future__ import annotations
 
 import math
+import time
 
 import pytest
 
@@ -112,7 +113,33 @@ class TestFailedAddLeavesNothingCached:
 
 class TestSetTTLOnAMissingKey:
     def test_set_ttl_is_silent_when_the_key_is_absent(self, cache):
+        # A neighbor must survive an absent-key `set_ttl` untouched, and the
+        # absent key itself must not spring into existence as a side effect.
+        cache.add(CacheEntry(key="alpha", value="one"))
+
         cache.set_ttl(_key("does-not-exist"), 60)
+
+        assert cache.get(_key("alpha")) is not None
+        assert cache.get(_key("does-not-exist")) is None
+
+    @pytest.mark.parametrize("bad_ttl", REJECTED_TTLS)
+    def test_set_ttl_rejects_an_invalid_ttl_even_when_the_key_is_absent(
+        self, cache, bad_ttl
+    ):
+        # TTL validation must run whether or not the key exists: Redis
+        # resolves the TTL before touching the key (`_ttl_for` runs ahead of
+        # `pexpire`), so an absent key does not excuse a malformed TTL.
+        with pytest.raises(ConfigurationError):
+            cache.set_ttl(_key("does-not-exist"), bad_ttl)
+
+    def test_set_ttl_is_silent_when_the_key_has_expired(self, cache):
+        cache.add(CacheEntry(key="alpha", value="one"), ttl=0.05)
+        time.sleep(0.3)
+        assert cache.get(_key("alpha")) is None
+
+        cache.set_ttl(_key("alpha"), 60)
+
+        assert cache.get(_key("alpha")) is None
 
 
 class TestGetTTLOnAMissingKey:

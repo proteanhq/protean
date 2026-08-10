@@ -202,8 +202,9 @@ class MemoryCache(BaseCache):
         self._db.clear()
 
     def set_ttl(self, key: str, ttl: TTLValue) -> None:
+        resolved_ttl = self._ttl_for(ttl)
         if key in self._db:
-            self._db.set_ttl(key, self._ttl_for(ttl))
+            self._db.set_ttl(key, resolved_ttl)
 
     def get_ttl(self, key: str) -> float:
         return self._db.get_ttl(key)

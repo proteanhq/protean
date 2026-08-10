@@ -206,9 +206,10 @@ class BaseCache(metaclass=ABCMeta):
         """Set a TTL explicitly on a key.
 
         Takes the same shapes as `add`: a number, or a string holding one, and
-        rejects anything that is not a positive, finite number of seconds.
+        rejects anything that is not a positive, finite number of seconds,
+        whether or not the key is present.
 
-        Does nothing if the key is absent.
+        Otherwise, does nothing if the key is absent.
         """
 
     @abstractmethod
