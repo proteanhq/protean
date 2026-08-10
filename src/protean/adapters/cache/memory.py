@@ -184,10 +184,10 @@ class MemoryCache(BaseCache):
         assert id_f.field_name is not None
         identifier = getattr(projection, id_f.field_name)
         key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
-        del self._db[key]
+        self._db.pop(key, None)
 
     def remove_by_key(self, key: str) -> None:
-        del self._db[key]
+        self._db.pop(key, None)
 
     def remove_by_key_pattern(self, key_pattern: str) -> None:
         full_key_list = self._db.keys()
@@ -202,7 +202,9 @@ class MemoryCache(BaseCache):
         self._db.clear()
 
     def set_ttl(self, key: str, ttl: TTLValue) -> None:
-        self._db.set_ttl(key, self._ttl_for(ttl))
+        resolved_ttl = self._ttl_for(ttl)
+        if key in self._db:
+            self._db.set_ttl(key, resolved_ttl)
 
     def get_ttl(self, key: str) -> float:
         return self._db.get_ttl(key)
