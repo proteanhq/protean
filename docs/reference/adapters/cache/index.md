@@ -25,7 +25,9 @@ within the process. No external dependencies are needed.
 
 - **Use cases**: Development, testing, prototyping
 - All data is lost on process restart
-- No TTL enforcement (entries live until explicitly removed or process ends)
+- TTL is enforced lazily: every entry is written with an expiry, and an expired
+  entry is dropped the next time it is read, iterated or counted. There is no
+  background sweep, so an expired entry nobody touches still occupies memory.
 
 ### Redis
 
@@ -115,7 +117,7 @@ else:
 ```
 
 Needing that at all is the divergence, not the fix.
-[#1310](https://github.com/proteanhq/protean/issues/1310) tracks making the two
+[#1392](https://github.com/proteanhq/protean/issues/1392) tracks making the two
 adapters answer alike, at which point one of these branches goes away.
 
 ## Interface
@@ -130,11 +132,11 @@ All cache adapters implement these methods:
 | `get(key)` | Retrieve a projection by key |
 | `get_all(key_pattern, last_position, size)` | Retrieve projections matching a pattern |
 | `count(key_pattern)` | Count entries matching a pattern |
-| `remove(projection)` | Remove a cached projection |
-| `remove_by_key(key)` | Remove an entry by key |
+| `remove(projection)` | Remove a cached projection. Does nothing if no record exists for it |
+| `remove_by_key(key)` | Remove an entry by key. Does nothing if the key is absent |
 | `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern |
 | `flush_all()` | Remove all entries |
-| `set_ttl(key, ttl)` | Set a TTL on a specific key |
+| `set_ttl(key, ttl)` | Set a TTL on a specific key. Does nothing if the key is absent, but still rejects an invalid TTL |
 | `get_ttl(key)` | Seconds remaining before a key expires. See below for how adapters answer when there is no such key |
 
 ### Key Format
