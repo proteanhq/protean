@@ -51,8 +51,7 @@ the recorded value instead of re-executing.
 
 **A handler method either persists or talks to the outside world. Not both.**
 
-That is the whole rule, and it is what the framework teaches, checks, and
-documents. Around it:
+That is the whole rule. Around it:
 
 - **Guarantee: no persistence means no transaction.** A handler method that makes
   no repository access runs no transaction and holds no connection. The lazy
@@ -65,14 +64,15 @@ documents. Around it:
   is the feature that exists for exactly this, and keeping the call short. Protean
   does not build a mechanism for this case.
 
-- **An advisory diagnostic** reports a handler method that both persists and calls
-  out. It is advisory, not an error, because the previous point makes that shape
-  legitimate sometimes, and a check that fires on correct code is one people learn
-  to ignore. It is suppressible through the existing `suppress_checks` option.
+- **An advisory diagnostic** will report a handler method that both persists and
+  calls out. It stays advisory rather than an error, because the previous point
+  makes that shape legitimate sometimes, and a check that fires on correct code is
+  one people learn to ignore. It is suppressible through the existing
+  `suppress_checks` option.
 
 - **A failing handler method must not skip its siblings.** Fact 3 above is a
-  defect against the model this ADR states, and it is fixed rather than
-  documented.
+  defect against the model this ADR states, so it gets fixed rather than written
+  down as behavior.
 
 - **No ordering between handlers for the same event, ever.** If two reactions must
   happen in order, the second is not reacting to the event, it is reacting to what
@@ -85,6 +85,11 @@ documents. Around it:
 outbox for outbound messages, `idempotent=True` for redelivery, event chains for
 sequencing, and separate handler classes for full independence with their own
 subscriptions and checkpoints.
+
+This records a decision, not the state of the code. The lazy Unit of Work already
+behaves as the guarantee requires, and a regression test locks that in. The
+advisory diagnostic does not exist yet, and the sibling-skipping defect is still
+live. Both are tracked as separate work.
 
 ## Consequences
 
