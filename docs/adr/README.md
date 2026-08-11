@@ -99,3 +99,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0026](0026-max-length-bounds-the-sanitized-value.md) | Sanitized String Values Satisfy Their Field's Length Bounds |
 | [0027](0027-unit-of-work-is-a-real-transaction.md) | The Unit of Work is a Real Database Transaction |
 | [0028](0028-partition-per-key-sequential-processing.md) | Partition-Per-Key Sequential Processing (`sequential_by`) |
+| [0031](0031-handlers-persist-or-call-out.md) | A Handler Method Persists or Calls Out, Never Both |
