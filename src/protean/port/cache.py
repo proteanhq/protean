@@ -213,7 +213,7 @@ class BaseCache(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    def get_ttl(self, key: str) -> float:
+    def get_ttl(self, key: str) -> float | None:
         """Seconds remaining before `key` expires.
 
         Seconds, like every other TTL on this port. Stating it is the point:
@@ -221,17 +221,9 @@ class BaseCache(metaclass=ABCMeta):
         directly and answered milliseconds while the memory adapter answered
         seconds, and each adapter's own tests agreed with it (#1307).
 
-        **Adapters disagree on the edge cases, so check yours before relying on
-        them.** Redis answers with two sentinels rather than a duration: `-1`
-        when the key exists with no expiry, `-2` when there is no such key.
-        Those are returned unscaled, since dividing them would turn documented
-        flags into `-0.001` and `-0.002`. The memory cache raises `KeyError` for
-        a missing key instead, and cannot reach the no-expiry state at all
-        because every entry is written with one.
+        Every adapter answers the same three cases:
 
-        Unifying that is tracked in #1310, which adds the cross-adapter suite
-        this port has never had. Until then, do not write a check that assumes
-        either shape: `ttl < 0` is meaningful on Redis and never reached on the
-        memory cache, which raises first, so a caller handling a missing key has
-        to handle both an exception and a sentinel to work on either adapter.
+        - `None` when there is no such key.
+        - `math.inf` when the key exists and never expires.
+        - the seconds remaining otherwise.
         """

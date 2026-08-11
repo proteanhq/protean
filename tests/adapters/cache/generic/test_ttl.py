@@ -143,16 +143,18 @@ class TestSetTTLOnAMissingKey:
 
 
 class TestGetTTLOnAMissingKey:
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "#1392: get_ttl on a missing key should return None on every "
-            "adapter. The memory cache raises KeyError and Redis returns "
-            "the raw PTTL sentinel -2 instead."
-        ),
-    )
     def test_get_ttl_returns_none_for_a_missing_key(self, cache):
         assert cache.get_ttl(_key("does-not-exist")) is None
+
+    def test_get_ttl_returns_none_for_an_expired_key(self, cache):
+        # An expired-then-evicted key is absent as far as the port is
+        # concerned, so `get_ttl` answers `None` for it too, matching `get`.
+        # Not a stale negative number and not a raise.
+        cache.add(CacheEntry(key="alpha", value="one"), ttl=0.05)
+        time.sleep(0.3)
+        assert cache.get(_key("alpha")) is None
+
+        assert cache.get_ttl(_key("alpha")) is None
 
 
 class TestGetTTLOnANeverExpiringKey:
@@ -170,17 +172,6 @@ class TestGetTTLOnANeverExpiringKey:
                 "_resolve_ttl never returns None, so every entry gets a "
                 "concrete default TTL. Redis can."
             )
-
-        request.applymarker(
-            pytest.mark.xfail(
-                strict=True,
-                reason=(
-                    "#1392: get_ttl on a never-expiring key should return "
-                    "math.inf on every adapter. Redis returns the raw PTTL "
-                    "sentinel -1 instead."
-                ),
-            )
-        )
 
         # Bypass `add()`, which always resolves and applies a TTL, and write
         # the key directly through the raw connection so it has no expiry.

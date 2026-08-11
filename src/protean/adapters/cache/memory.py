@@ -206,5 +206,13 @@ class MemoryCache(BaseCache):
         if key in self._db:
             self._db.set_ttl(key, resolved_ttl)
 
-    def get_ttl(self, key: str) -> float:
+    def get_ttl(self, key: str) -> float | None:
+        # `key not in self._db` goes through `TTLDict.__getitem__`, which
+        # evicts and reports absent for an expired key, so a never-added key and
+        # an expired-but-not-yet-evicted key both answer `None` here, matching
+        # how `get` already treats them. `math.inf` (no expiry) is unreachable
+        # on this adapter: `MemoryCache` always builds its `TTLDict` with a
+        # concrete default TTL, so every entry has an expiry.
+        if key not in self._db:
+            return None
         return self._db.get_ttl(key)
