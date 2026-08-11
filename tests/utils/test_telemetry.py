@@ -11,11 +11,14 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from protean.utils.telemetry import (
+    _DESCRIBE_MAX_LENGTH,
     _NoOpMeter,
     _NoOpTracer,
+    describe_exception,
     get_meter,
     get_tracer,
     init_telemetry,
+    set_span_error,
     shutdown_telemetry,
 )
 
@@ -410,3 +413,104 @@ class TestInitTelemetryConsoleExporter:
 
         shutdown_telemetry(test_domain)
         assert test_domain._otel_init_attempted is False
+
+
+class TestDescribeException:
+    """``str()`` of an exception group names its own message and a count, and
+    drops every member. Anywhere a failure is recorded as a single string (a
+    span description, a trace field) that would leave the reader with a count
+    and no cause, so ``describe_exception`` flattens instead."""
+
+    def test_a_plain_exception_is_named_with_its_type(self):
+        assert describe_exception(ValueError("bad input")) == "ValueError: bad input"
+
+    def test_a_group_names_every_member(self):
+        group = ExceptionGroup(
+            "2 handler methods failed",
+            [ConnectionError("warehouse unreachable"), KeyError("sku")],
+        )
+
+        described = describe_exception(group)
+
+        # The member messages are exactly what `str(group)` throws away.
+        assert "warehouse unreachable" in described
+        assert "sku" in described
+        assert "2 handler methods failed" in described
+        assert "warehouse unreachable" not in str(group)
+
+    def test_nested_groups_are_flattened(self):
+        inner = ExceptionGroup("inner", [ValueError("deep")])
+        outer = ExceptionGroup("outer", [inner, TypeError("shallow")])
+
+        described = describe_exception(outer)
+
+        assert "deep" in described
+        assert "shallow" in described
+
+
+class TestSetSpanErrorWithoutOtel:
+    """Without OpenTelemetry installed the status is set through the no-op
+    shim, and it must carry the same flattened description as the real one."""
+
+    def test_the_description_names_every_member_of_a_group(self):
+        recorded = {}
+
+        class _Span:
+            def record_exception(self, exc):
+                recorded["exc"] = exc
+
+            def set_status(self, status, description=None):
+                recorded["status"] = status
+                recorded["description"] = description
+
+        group = ExceptionGroup("2 handler methods failed", [ValueError("bad sku")])
+
+        with patch("protean.utils.telemetry._OTEL_AVAILABLE", False):
+            set_span_error(_Span(), group)
+
+        assert recorded["status"] == "ERROR"
+        assert "bad sku" in recorded["description"]
+
+
+class TestDescribeExceptionNeverRaises:
+    """It runs on paths that are already handling a failure, so a user
+    exception with a broken ``__str__`` must not replace the one being
+    reported."""
+
+    def test_an_unprintable_exception_is_described_not_raised(self):
+        class Unprintable(Exception):
+            def __str__(self):
+                raise RuntimeError("str exploded")
+
+        assert describe_exception(Unprintable()) == "Unprintable: <unprintable>"
+
+    def test_a_self_referencing_group_does_not_recurse_forever(self):
+        class Recursive(ExceptionGroup):
+            @property
+            def exceptions(self):
+                return (self,)
+
+        described = describe_exception(Recursive("loop", [ValueError("x")]))
+
+        assert "nested too deeply" in described
+
+    def test_a_very_wide_group_stops_rendering_once_it_has_enough(self):
+        """Bounded output, and bounded work: the members past the budget are
+        never rendered, so an erroring path does not pay for all of them."""
+        group = ExceptionGroup(
+            "many failed", [ValueError("x" * 200) for _ in range(40)]
+        )
+
+        described = describe_exception(group)
+
+        assert "<truncated>" in described
+        assert len(described) <= _DESCRIBE_MAX_LENGTH + 20
+        # Only the members inside the budget were rendered at all.
+        assert described.count("ValueError") < 40
+
+    def test_a_group_with_a_huge_message_is_capped_too(self):
+        """The group branch has to go through the same cap: its own message can
+        be arbitrarily long even when it has one short member."""
+        group = ExceptionGroup("m" * 5000, [ValueError("y")])
+
+        assert len(describe_exception(group)) <= _DESCRIBE_MAX_LENGTH + 20

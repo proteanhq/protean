@@ -27,6 +27,7 @@ from protean.exceptions import ConfigurationError
 from protean.utils import DomainObjects
 from protean.utils.eventing import Message
 from protean.utils.inflection import underscore
+from protean.utils.telemetry import describe_exception
 
 if TYPE_CHECKING:
     from protean.core.projection import BaseProjection
@@ -245,12 +246,16 @@ def _replay_projector(
             )
             skipped += 1
         except Exception as exc:
-            logger.warning(
+            # `exc_info` matters more than it looks: a skipped message means the
+            # projection is wrong, and `str()` of an exception group names none
+            # of its members, so without the traceback there is nothing to act on.
+            logger.error(
                 "Error processing message at position %s: %s",
                 message.metadata.event_store.global_position
                 if message.metadata and message.metadata.event_store
                 else "unknown",
-                exc,
+                describe_exception(exc),
+                exc_info=exc,
             )
             skipped += 1
 

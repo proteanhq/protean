@@ -67,7 +67,24 @@ Around it:
   It is suppressible through the existing `suppress_checks` option.
 
 - **Siblings are independent in failure**: Fact 3 above is a defect against the
-  model this ADR states, and it gets fixed.
+  model this ADR states, and it gets fixed. Two failures are excluded from that,
+  for reasons that come from the machinery rather than the principle. An
+  `ExpectedVersionError` propagates at once. Under synchronous processing the
+  enclosing Unit of Work's commit classifies by exception type, and a group is
+  not an `ExpectedVersionError`, so the conflict would surface as a
+  `TransactionError` and the enclosing handler's version retry would never fire.
+  (The conflicting method's own retry sits inside `@handle` and has already
+  exhausted by this point.) A `BaseException` that is not an `Exception` also
+  stops dispatch. On both paths the failures already collected are attached to
+  the raised exception as a note and logged, since a version conflict is matched
+  by type and the engine catches only `Exception`, so nothing downstream would
+  otherwise report them.
+
+- **Process managers are out of scope**: `BaseProcessManager` overrides
+  `_handle` and runs its own loop, so it keeps the old skip-on-first-failure
+  behavior. A process-manager method drives a state transition, so carrying on
+  after one fails has to be reconciled with what the instance's state means
+  afterwards. That is a separate decision, not an oversight.
 
 - **No ordering between handlers for the same event**: If two reactions must
   happen in order, the second is reacting to what the first did, so it subscribes
@@ -144,8 +161,10 @@ sequencing, and separate handler classes for full independence with their own
 subscriptions and checkpoints.
 
 The lazy Unit of Work already behaves as the guarantee requires, and a regression
-test will lock it in. The advisory diagnostic does not exist yet, and the
-sibling-skipping defect is still live. Both are tracked as separate work.
+test will lock it in. The advisory diagnostic does not exist yet. The
+sibling-skipping defect is fixed for event handlers and projectors; the same
+fan-out problem remains at three other sites (handler classes under synchronous
+dispatch, process managers, and broker subscribers) and is tracked separately.
 
 ## Consequences
 
