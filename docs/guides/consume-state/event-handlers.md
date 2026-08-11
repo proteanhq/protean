@@ -153,6 +153,15 @@ Each `@handle` method runs within its own Unit of Work. If the handler
 modifies an aggregate and persists it, the changes are committed atomically.
 If an error occurs, the transaction is rolled back.
 
+Several methods can also handle the *same* event. They are independent
+reactions to one fact: each gets its own Unit of Work, and one that fails does
+not stop the others from running. Their order is unspecified, so nothing may
+depend on one running before another. When two steps must happen in order, put
+them in one method, or have the first raise an event that the second handles.
+
+If more than one method fails while handling the same event, the failures are
+raised together as an `ExceptionGroup`. A single failure propagates as itself.
+
 !!! note "One event class per method"
     Each `@handle` method accepts exactly one event class. To handle multiple
     event types, define multiple methods in the same handler class. The one

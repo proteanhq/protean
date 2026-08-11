@@ -17,7 +17,11 @@ from protean.utils.globals import _uow_context_stack, current_domain, g
 from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
 from protean.utils.sync_dispatch import dispatch_events_sync
-from protean.utils.telemetry import get_domain_metrics, set_span_error
+from protean.utils.telemetry import (
+    describe_exception,
+    get_domain_metrics,
+    set_span_error,
+)
 
 if TYPE_CHECKING:
     from protean.port.provider import SessionProtocol
@@ -494,7 +498,7 @@ class UnitOfWork:
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise TransactionError(
-                f"Unit of Work commit failed: {exc!s}",
+                f"Unit of Work commit failed: {describe_exception(exc)}",
                 extra_info={
                     "original_exception": exc.__class__.__name__,
                     "original_message": str(exc),

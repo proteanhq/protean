@@ -1,9 +1,10 @@
+import contextlib
 import functools
 import importlib
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import timedelta
 from typing import Any, ClassVar
 
@@ -21,7 +22,11 @@ from protean.utils.consume_idempotency import resolve_dispatch_context
 from protean.utils.eventing import Message
 from protean.utils.globals import _domain_now, current_domain, g
 from protean.utils.logging import access_log_handler
-from protean.utils.telemetry import get_domain_metrics, set_span_error
+from protean.utils.telemetry import (
+    describe_exception,
+    get_domain_metrics,
+    set_span_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +294,46 @@ def _deadline_exceeded_after(delay: float) -> bool:
         return False
     next_attempt_at = _domain_now() + timedelta(seconds=delay)
     return bool(headers.is_expired(next_attempt_at))
+
+
+def _carry_discarded_failures(
+    handler_cls: type,
+    item: Any,
+    failures: list[Exception],
+    exc: BaseException,
+) -> None:
+    """Attach failures collected before *exc* ended sibling dispatch early.
+
+    Both early exits from the dispatch loop leave `failures` unreported, and on
+    neither path does anything downstream look at them: a version conflict is
+    classified by type, and the engine catches `Exception`, so an interrupt
+    never reaches `handle_error`. Without this they would vanish with no log
+    and no chain.
+    """
+    if not failures:
+        return
+
+    # Everything here is best-effort. A user exception with a broken __str__, or
+    # one whose `__notes__` is not a list, would otherwise raise from this
+    # helper and *replace* the exception it was annotating, swallowing an
+    # interrupt or destroying the ExpectedVersionError carve-out above.
+    with contextlib.suppress(Exception):
+        summary = "; ".join(describe_exception(f) for f in failures)
+        exc.add_note(
+            f"{handler_cls.__name__}: dispatch of {type(item).__name__} ended "
+            f"early; these handler failures were not raised: {summary}"
+        )
+
+    with contextlib.suppress(Exception):
+        logger.error(
+            "handler.sibling_failures_discarded",
+            extra={
+                "handler": handler_cls.__name__,
+                "item": type(item).__name__,
+                "discarded": len(failures),
+            },
+            exc_info=failures[0],
+        )
 
 
 class handle:
@@ -577,10 +622,29 @@ class HandlerMixin:
     @classmethod
     def _dispatch_handlers(
         cls,
-        handlers: set[Callable[..., Any]],
+        handlers: Collection[Callable[..., Any]],
         item: BaseCommand | BaseEvent | BaseQuery,
     ) -> Any:
-        """Dispatch item to registered handler methods."""
+        """Dispatch item to registered handler methods.
+
+        Command and query handlers resolve to exactly one method, and its return
+        value goes back to the caller.
+
+        An event handler or projector can register several methods for the same
+        item. Each one runs in its own ``UnitOfWork`` and is an independent
+        reaction to the same fact, so a failing method must not stop the others
+        (ADR-0031). Every method runs, and failures surface afterwards: a single
+        failure propagates unchanged, and several are raised together as an
+        ``ExceptionGroup``.
+
+        Two things are not collected, and both end dispatch where they are
+        raised. An ``ExpectedVersionError`` propagates at once, because the
+        conflict dooms the message and burying it in a group would stop the
+        version retry that resolves it. A ``BaseException`` that is not an
+        ``Exception``, such as ``KeyboardInterrupt``, propagates for the obvious
+        reason. On either path, failures gathered before it are attached to it
+        as a note and logged, since nothing downstream would otherwise see them.
+        """
         # Map element_type to access log kind
         _KIND_MAP = {
             DomainObjects.COMMAND_HANDLER: "command",
@@ -597,10 +661,40 @@ class HandlerMixin:
             handler_method = next(iter(handlers))
             with access_log_handler(kind, item, cls, handler_method.__name__):
                 return handler_method(cls(), item)
-        else:
-            for handler_method in handlers:
+        failures: list[Exception] = []
+        for handler_method in handlers:
+            try:
                 with access_log_handler(kind, item, cls, handler_method.__name__):
                     handler_method(cls(), item)
+            except ExpectedVersionError as exc:
+                # Not collected. A version conflict dooms the whole message: it
+                # is redelivered and every sibling runs again, so there is
+                # nothing to gain by carrying on. Grouping it would also hide it
+                # from the enclosing Unit of Work's commit, which classifies by
+                # exception type. The conflict would surface as a
+                # TransactionError and the enclosing handler's version retry
+                # would never fire.
+                _carry_discarded_failures(cls, item, failures, exc)
+                raise
+            # `Exception` and not `BaseException`, so an interrupt or a
+            # cancellation still stops dispatch where it is raised.
+            except Exception as exc:
+                failures.append(exc)
+            except BaseException as exc:
+                _carry_discarded_failures(cls, item, failures, exc)
+                raise
+
+        if failures:
+            if len(failures) == 1:
+                # One failure is the shape that already existed, so it keeps its
+                # existing type. Only two-or-more was previously unreachable,
+                # because the first failure ended dispatch.
+                raise failures[0]
+            raise ExceptionGroup(
+                f"{cls.__name__}: {len(failures)} handler methods failed "
+                f"handling {type(item).__name__}",
+                failures,
+            )
 
         return None
 
@@ -622,7 +716,11 @@ class HandlerMixin:
         but not propagated further.
 
         Args:
-            exc (Exception): The exception that was raised during message handling
+            exc (Exception): The exception that was raised during message
+                handling. When several ``@handle`` methods on the same handler
+                failed for one event, this is an ``ExceptionGroup`` holding one
+                entry per failure, so a classifier matching on exception type
+                has to recurse into ``exc.exceptions``.
             message (Message): The original message being processed when the exception occurred
 
         Returns:
