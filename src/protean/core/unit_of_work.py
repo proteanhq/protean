@@ -501,7 +501,15 @@ class UnitOfWork:
                 f"Unit of Work commit failed: {describe_exception(exc)}",
                 extra_info={
                     "original_exception": exc.__class__.__name__,
-                    "original_message": str(exc),
+                    # `str()` of a group is its own message and a count, so
+                    # flatten that one. For anything else `str()` is the
+                    # message, and prefixing the type would duplicate
+                    # `original_exception` right above.
+                    "original_message": (
+                        describe_exception(exc)
+                        if isinstance(exc, BaseExceptionGroup)
+                        else str(exc)
+                    ),
                     "sessions": list(self._sessions.keys()),
                     "events_count": sum(len(events) for events in all_events.values()),
                     "messages_count": len(self._messages_to_dispatch),

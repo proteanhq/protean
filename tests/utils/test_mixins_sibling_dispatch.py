@@ -21,7 +21,7 @@ from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector
 from protean.exceptions import ExpectedVersionError
 from protean.fields import Identifier, String
-from protean.utils.mixins import handle
+from protean.utils.mixins import _carry_discarded_failures, handle
 
 ran: list[str] = []
 
@@ -334,3 +334,23 @@ class TestBaseExceptionsStopDispatch:
 
         with pytest.raises(KeyboardInterrupt):
             UnprintableThenInterrupt._dispatch_handlers(ordered, Placed(order_id="1"))
+
+
+class TestTheDiscardedFailureNoteIsBounded:
+    """A handler can register many methods for one event, so the note must not
+    grow with the failure count on a path that is already failing."""
+
+    def test_many_long_failures_still_produce_a_bounded_note(self):
+        from protean.utils.telemetry import _DESCRIBE_MAX_LENGTH
+
+        failures = [ValueError("z" * 300) for _ in range(60)]
+        interrupt = KeyboardInterrupt("stop")
+
+        _carry_discarded_failures(
+            OneSiblingFails, Placed(order_id="1"), failures, interrupt
+        )
+
+        note = interrupt.__notes__[0]
+        assert len(note) <= _DESCRIBE_MAX_LENGTH + 20
+        assert "<truncated>" in note
+        assert "OneSiblingFails" in note

@@ -318,10 +318,19 @@ def _carry_discarded_failures(
     # helper and *replace* the exception it was annotating, swallowing an
     # interrupt or destroying the ExpectedVersionError carve-out above.
     with contextlib.suppress(Exception):
-        summary = "; ".join(describe_exception(f) for f in failures)
+        # Described as one group rather than joined member by member, so the
+        # note inherits `describe_exception`'s length bound. A handler can
+        # register many methods for one event, and this runs on a path that is
+        # already failing.
         exc.add_note(
-            f"{handler_cls.__name__}: dispatch of {type(item).__name__} ended "
-            f"early; these handler failures were not raised: {summary}"
+            describe_exception(
+                ExceptionGroup(
+                    f"{handler_cls.__name__}: dispatch of "
+                    f"{type(item).__name__} ended early; these handler "
+                    f"failures were not raised",
+                    failures,
+                )
+            )
         )
 
     with contextlib.suppress(Exception):
