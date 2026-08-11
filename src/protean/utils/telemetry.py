@@ -430,8 +430,11 @@ def describe_exception(exc: BaseException, _depth: int = 0) -> str:
                 if budget <= 0:
                     parts.append("... <truncated>")
                     break
-            return f"{exc.message}: " + "; ".join(parts)
-        described = f"{type(exc).__name__}: {exc}"
+            # Falls through to the length cap below: the group's own message can
+            # be arbitrarily long, and the last member can overshoot the budget.
+            described = f"{exc.message}: " + "; ".join(parts)
+        else:
+            described = f"{type(exc).__name__}: {exc}"
     except Exception:
         return f"{type(exc).__name__}: <unprintable>"
 

@@ -11,6 +11,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from protean.utils.telemetry import (
+    _DESCRIBE_MAX_LENGTH,
     _NoOpMeter,
     _NoOpTracer,
     describe_exception,
@@ -503,6 +504,13 @@ class TestDescribeExceptionNeverRaises:
         described = describe_exception(group)
 
         assert "<truncated>" in described
-        assert len(described) < 2500
+        assert len(described) <= _DESCRIBE_MAX_LENGTH + 20
         # Only the members inside the budget were rendered at all.
         assert described.count("ValueError") < 40
+
+    def test_a_group_with_a_huge_message_is_capped_too(self):
+        """The group branch has to go through the same cap: its own message can
+        be arbitrarily long even when it has one short member."""
+        group = ExceptionGroup("m" * 5000, [ValueError("y")])
+
+        assert len(describe_exception(group)) <= _DESCRIBE_MAX_LENGTH + 20
