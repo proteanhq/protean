@@ -395,6 +395,54 @@ def instrument_fastapi_app(app: Any, **kwargs: Any) -> bool:
     return True
 
 
+# Bounds for `describe_exception`. Depth stops a self-referencing or absurdly
+# nested group from recursing; length stops a wide group from pushing thousands
+# of characters into a span description or a trace field.
+_DESCRIBE_MAX_DEPTH = 5
+_DESCRIBE_MAX_LENGTH = 2000
+
+
+def describe_exception(exc: BaseException, _depth: int = 0) -> str:
+    """Name *exc*, or every member when it is a group.
+
+    ``str()`` of an exception group gives its own message and a count, dropping
+    the members. Anywhere a failure is recorded as a single string (a span
+    description, a trace field), that would leave the reader with "2
+    sub-exceptions" and no cause, so flatten instead.
+
+    Never raises. It runs on paths that are already handling a failure, and a
+    user exception whose ``__str__`` blows up would otherwise replace the
+    exception being reported.
+    """
+    try:
+        if isinstance(exc, BaseExceptionGroup):
+            if _depth >= _DESCRIBE_MAX_DEPTH:
+                return f"{type(exc).__name__}: <nested too deeply to render>"
+            # Stop rendering once there is enough output, so a group with
+            # hundreds of members does not build a large string on a path that
+            # is already handling a failure.
+            parts: list[str] = []
+            budget = _DESCRIBE_MAX_LENGTH
+            for inner in exc.exceptions:
+                part = describe_exception(inner, _depth + 1)
+                parts.append(part)
+                budget -= len(part) + 2
+                if budget <= 0:
+                    parts.append("... <truncated>")
+                    break
+            # Falls through to the length cap below: the group's own message can
+            # be arbitrarily long, and the last member can overshoot the budget.
+            described = f"{exc.message}: " + "; ".join(parts)
+        else:
+            described = f"{type(exc).__name__}: {exc}"
+    except Exception:
+        return f"{type(exc).__name__}: <unprintable>"
+
+    if len(described) > _DESCRIBE_MAX_LENGTH:
+        return described[:_DESCRIBE_MAX_LENGTH] + " ... <truncated>"
+    return described
+
+
 def set_span_error(span: Any, exc: BaseException) -> None:
     """Record an exception on a span and set its status to ERROR.
 
@@ -402,12 +450,13 @@ def set_span_error(span: Any, exc: BaseException) -> None:
     need to import ``opentelemetry`` directly.
     """
     span.record_exception(exc)
+    description = describe_exception(exc)
     if _OTEL_AVAILABLE:
         from opentelemetry.trace import StatusCode  # noqa: PLC0415
 
-        span.set_status(StatusCode.ERROR, description=str(exc))
+        span.set_status(StatusCode.ERROR, description=description)
     else:
-        span.set_status("ERROR", description=str(exc))
+        span.set_status("ERROR", description=description)
 
 
 # ---------------------------------------------------------------------------

@@ -165,6 +165,10 @@ DATA_ERROR_PATTERNS = (
 
 def _is_transient(exc: Exception) -> bool:
     """Determine if an exception is transient and likely to succeed on retry."""
+    if isinstance(exc, BaseExceptionGroup):
+        # Retrying re-runs every sibling that an idempotency marker does not
+        # skip, so it only helps when all of them failed transiently.
+        return all(_is_transient(inner) for inner in exc.exceptions)
     if isinstance(exc, TRANSIENT_EXCEPTION_TYPES):
         return True
     msg = str(exc).lower()
@@ -173,11 +177,25 @@ def _is_transient(exc: Exception) -> bool:
 
 def _is_data_error(exc: Exception) -> bool:
     """Determine if an exception is caused by bad message data."""
+    if isinstance(exc, BaseExceptionGroup):
+        # One member blaming the message data is enough: a retry will hit the
+        # same bad payload.
+        return any(_is_data_error(inner) for inner in exc.exceptions)
     if isinstance(exc, DATA_ERROR_TYPES):
         return True
     msg = str(exc).lower()
     return any(p in msg for p in DATA_ERROR_PATTERNS)
 ```
+
+!!! warning "Classify the members of an `ExceptionGroup`"
+    When an event handler or projector has several `@handle` methods for one
+    event and more than one of them fails, `handle_error` receives an
+    `ExceptionGroup` holding each failure. A classifier that only asks
+    `isinstance(exc, ConnectionError)` sees the group, matches nothing, and
+    treats a passing network blip as a logic error. Recurse into
+    `exc.exceptions`, as the functions above do. `except*` matches a group too,
+    but `handle_error` receives the exception as an argument rather than raising
+    it, so reaching for `except*` means re-raising it inside a `try` first.
 
 !!! note
     This classification is domain-specific. If your projection store is
@@ -361,6 +379,10 @@ class ErrorClassificationMixin:
 
     @classmethod
     def _classify_transient(cls, exc: Exception) -> bool:
+        # Retrying re-runs every sibling that an idempotency marker does not
+        # skip, so it only helps when all of them failed transiently.
+        if isinstance(exc, BaseExceptionGroup):
+            return all(cls._classify_transient(e) for e in exc.exceptions)
         types = TRANSIENT_EXCEPTION_TYPES + cls._extra_transient_types
         if isinstance(exc, types):
             return True
@@ -369,6 +391,10 @@ class ErrorClassificationMixin:
 
     @classmethod
     def _classify_data_error(cls, exc: Exception) -> bool:
+        # A group means several sibling methods failed. One member blaming the
+        # message data is enough, since a retry hits the same payload.
+        if isinstance(exc, BaseExceptionGroup):
+            return any(cls._classify_data_error(e) for e in exc.exceptions)
         types = DATA_ERROR_TYPES + cls._extra_data_error_types
         if isinstance(exc, types):
             return True
