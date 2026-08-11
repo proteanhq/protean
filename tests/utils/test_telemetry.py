@@ -493,9 +493,16 @@ class TestDescribeExceptionNeverRaises:
 
         assert "nested too deeply" in described
 
-    def test_a_very_wide_group_is_truncated(self):
+    def test_a_very_wide_group_stops_rendering_once_it_has_enough(self):
+        """Bounded output, and bounded work: the members past the budget are
+        never rendered, so an erroring path does not pay for all of them."""
         group = ExceptionGroup(
             "many failed", [ValueError("x" * 200) for _ in range(40)]
         )
 
-        assert len(describe_exception(group)) < 2100
+        described = describe_exception(group)
+
+        assert "<truncated>" in described
+        assert len(described) < 2500
+        # Only the members inside the budget were rendered at all.
+        assert described.count("ValueError") < 40

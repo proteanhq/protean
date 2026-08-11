@@ -418,12 +418,20 @@ def describe_exception(exc: BaseException, _depth: int = 0) -> str:
         if isinstance(exc, BaseExceptionGroup):
             if _depth >= _DESCRIBE_MAX_DEPTH:
                 return f"{type(exc).__name__}: <nested too deeply to render>"
-            members = "; ".join(
-                describe_exception(inner, _depth + 1) for inner in exc.exceptions
-            )
-            described = f"{exc.message}: {members}"
-        else:
-            described = f"{type(exc).__name__}: {exc}"
+            # Stop rendering once there is enough output, so a group with
+            # hundreds of members does not build a large string on a path that
+            # is already handling a failure.
+            parts: list[str] = []
+            budget = _DESCRIBE_MAX_LENGTH
+            for inner in exc.exceptions:
+                part = describe_exception(inner, _depth + 1)
+                parts.append(part)
+                budget -= len(part) + 2
+                if budget <= 0:
+                    parts.append("... <truncated>")
+                    break
+            return f"{exc.message}: " + "; ".join(parts)
+        described = f"{type(exc).__name__}: {exc}"
     except Exception:
         return f"{type(exc).__name__}: <unprintable>"
 
