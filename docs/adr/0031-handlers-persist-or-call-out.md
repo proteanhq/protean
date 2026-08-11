@@ -82,8 +82,6 @@ Two reactions to one event, one persisting and one calling out. They are
 independent, run in no particular order, and neither can cancel the other:
 
 ```python
-from protean import current_domain, handle
-
 @domain.event_handler(part_of=Order)
 class OrderReactions:
     @handle(OrderPlaced)
@@ -146,7 +144,7 @@ sequencing, and separate handler classes for full independence with their own
 subscriptions and checkpoints.
 
 The lazy Unit of Work already behaves as the guarantee requires, and a regression
-test locks it in. The advisory diagnostic does not exist yet, and the
+test will lock it in. The advisory diagnostic does not exist yet, and the
 sibling-skipping defect is still live. Both are tracked as separate work.
 
 ## Consequences
@@ -158,16 +156,16 @@ Positive:
 - The public surface does not grow. There is no flag, phase, scope, or journal to
   learn, and no new interaction with retry, idempotency, or nesting to reason
   about.
-- Sibling handler methods become genuinely independent, matching the model users
-  already have of them.
+- Sibling handler methods become genuinely independent once the sibling-skipping
+  defect is fixed, matching the model users already have of them.
 - ADR-0027 is untouched. Nothing nests, nothing commits independently, and one
   Unit of Work still maps to one use case.
 
 Negative:
 
 - A handler that needs an external result to compute its write still holds a
-  transaction across that call. Protean offers guidance and a diagnostic. An
-  operator who ignores both will hold locks across the network.
+  transaction across that call. Protean answers with guidance and, once built, a
+  diagnostic. An operator who ignores both will hold locks across the network.
 - The "no persistence, no transaction" guarantee constrains the implementation.
   Opening a session eagerly is no longer free, because handler methods that only
   call out would start holding connections.
