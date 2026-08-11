@@ -427,6 +427,7 @@ nav:
       - adr/0028-partition-per-key-sequential-processing.md
       - adr/0029-runtime-dependency-boundary-and-extras.md
       - adr/0030-canonical-project-layout.md
+      - adr/0031-handlers-persist-or-call-out.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
