@@ -125,7 +125,7 @@ class TestGetAllPaginationAgrees:
 
 
 class TestPatternLanguageIsAGlobOnEveryAdapter:
-    def test_pattern_is_a_glob_on_every_adapter(self, cache, request):
+    def test_pattern_is_a_glob_on_every_adapter(self, cache):
         """A literal `.` is where glob and regex disagree.
 
         Redis' `SCAN ... MATCH` is a real glob, where `.` is an ordinary
