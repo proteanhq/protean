@@ -148,24 +148,28 @@ trace_run() {
     echo "$verdict"
 }
 
-# check_trace <label> <log.jsonl> <expect>
-# expect is one of:
-#   accept          conforms to OCC.tla AND witnesses a conflict (a real log)
+# check_trace <converter> <prefix> <conform_cfg> <cover_cfg> <cover_inv> \
+#             <label> <log.jsonl> <expect>
+# <converter> is the to-tla script, <prefix> the generated module's name prefix,
+# and <cover_inv> the invariant the coverage cfg must see violated on a real log
+# (OCC: NoConflict; checkpoint: CoverGap). expect is one of:
+#   accept          conforms to the spec AND witnesses the covered behaviour
 #   reject-conform  fails conformance on TraceAccepted (a seeded divergence)
-#   reject-cover    conforms but records no conflict, so under-covered
+#   reject-cover    conforms but does not witness the covered behaviour
 # Each fixture asserts the exact outcome it was written to produce.
 check_trace() {
-    local label="$1" jsonl="$2" expect="$3"
-    local module="OCCTrace_$label"
-    if ! "$PY3" "$SPECS_DIR/occ_trace.py" to-tla \
+    local converter="$1" prefix="$2" conform_cfg="$3" cover_cfg="$4" cover_inv="$5"
+    local label="$6" jsonl="$7" expect="$8"
+    local module="${prefix}_$label"
+    if ! "$PY3" "$converter" to-tla \
             --in "$jsonl" --out "$TDIR/$module.tla" >/dev/null 2>&1; then
         echo "  FAIL   trace:$label: could not convert $jsonl to TLA+"
         fail=1
         return
     fi
     local conform cover ok=0 detail
-    conform="$(trace_run "$label-conform" "$module.tla" OCCTrace_conform.cfg)"
-    cover="$(trace_run "$label-cover" "$module.tla" OCCTrace_cover.cfg)"
+    conform="$(trace_run "$label-conform" "$module.tla" "$conform_cfg")"
+    cover="$(trace_run "$label-cover" "$module.tla" "$cover_cfg")"
     if [[ $conform == error || $cover == error ]]; then
         echo "  FAIL   trace:$label: TLC did not finish cleanly (conform=$conform cover=$cover)"
         fail=1
@@ -173,14 +177,14 @@ check_trace() {
     fi
     case "$expect" in
         accept)
-            [[ $conform == pass && $cover == "inv:NoConflict" ]] && ok=1
-            detail="conforms to OCC.tla and exercises contention" ;;
+            [[ $conform == pass && $cover == "inv:$cover_inv" ]] && ok=1
+            detail="conforms to the spec and witnesses the covered behaviour" ;;
         reject-conform)
             [[ $conform == temporal ]] && ok=1
-            detail="correctly rejected -- diverges from OCC.tla (TraceAccepted stalled)" ;;
+            detail="correctly rejected -- diverges from the spec (TraceAccepted stalled)" ;;
         reject-cover)
             [[ $conform == pass && $cover == pass ]] && ok=1
-            detail="correctly rejected -- no conflict recorded, under-covered" ;;
+            detail="correctly rejected -- covered behaviour not witnessed, under-covered" ;;
     esac
     if [[ $ok -eq 1 ]]; then
         echo "  PASS   trace:$label: $detail"
@@ -190,21 +194,22 @@ check_trace() {
     fi
 }
 
-# record_trace <out.jsonl>: record a fresh Memory-adapter OCC trace.
+# record_trace <converter> <out.jsonl> [extra record args...]: record a fresh trace.
 # Exit status distinguishes the two cases the caller treats differently:
 #   0  a trace was written
 #   1  an interpreter with `protean` was found but the recording errored (a FAIL)
 #   3  no interpreter with `protean` is available (a SKIP, like a missing jar)
 record_trace() {
-    local out="$1"
+    local converter="$1" out="$2"
+    shift 2
     if command -v uv >/dev/null 2>&1 \
        && (cd "$REPO_ROOT" && uv run python -c "import protean") >/dev/null 2>&1; then
-        (cd "$REPO_ROOT" && uv run python "$SPECS_DIR/occ_trace.py" \
-            record --out "$out" --writers 4) >/dev/null 2>&1 && return 0
+        (cd "$REPO_ROOT" && uv run python "$converter" \
+            record --out "$out" "$@") >/dev/null 2>&1 && return 0
         return 1
     fi
     if [[ -n "$PY3" ]] && "$PY3" -c "import protean" >/dev/null 2>&1; then
-        "$PY3" "$SPECS_DIR/occ_trace.py" record --out "$out" --writers 4 \
+        "$PY3" "$converter" record --out "$out" "$@" \
             >/dev/null 2>&1 && return 0
         return 1
     fi
@@ -245,9 +250,11 @@ else
     cp "$SPECS_DIR/OCC.tla" "$SPECS_DIR/OCCTrace.tla" \
        "$SPECS_DIR/OCCTrace_conform.cfg" "$SPECS_DIR/OCCTrace_cover.cfg" "$TDIR/"
     real="$WORKDIR/occ_real.jsonl"
-    record_trace "$real"
+    record_trace "$SPECS_DIR/occ_trace.py" "$real" --writers 4
     case $? in
-        0) check_trace real "$real" accept ;;
+        0) check_trace "$SPECS_DIR/occ_trace.py" OCCTrace \
+               OCCTrace_conform.cfg OCCTrace_cover.cfg NoConflict \
+               real "$real" accept ;;
         3) echo "  SKIP   real trace: no interpreter with 'protean' available to record one" ;;
         *) echo "  FAIL   real trace: 'protean' is importable but recording errored"
            fail=1 ;;
@@ -255,8 +262,41 @@ else
     # Negative checks (fixtures under specs/traces/): a green run must mean
     # something, so a seeded divergence must fail conformance and an uncontended
     # log must fail coverage. These need only python3 + java, no `protean`.
-    check_trace bug        "$SPECS_DIR/traces/occ_bug.jsonl"         reject-conform
-    check_trace noconflict "$SPECS_DIR/traces/occ_no_conflict.jsonl" reject-cover
+    check_trace "$SPECS_DIR/occ_trace.py" OCCTrace \
+        OCCTrace_conform.cfg OCCTrace_cover.cfg NoConflict \
+        bug        "$SPECS_DIR/traces/occ_bug.jsonl"         reject-conform
+    check_trace "$SPECS_DIR/occ_trace.py" OCCTrace \
+        OCCTrace_conform.cfg OCCTrace_cover.cfg NoConflict \
+        noconflict "$SPECS_DIR/traces/occ_no_conflict.jsonl" reject-cover
+fi
+
+echo ""
+echo "Checkpoint trace validation (real code vs Checkpoint.tla, #1384):"
+if [[ -z "$PY3" ]]; then
+    echo "  SKIP   python3 not found; cannot convert checkpoint logs to TLA+"
+else
+    mkdir -p "$TDIR"
+    cp "$SPECS_DIR/Checkpoint.tla" "$SPECS_DIR/CheckpointTrace.tla" \
+       "$SPECS_DIR/CheckpointTrace_conform.cfg" \
+       "$SPECS_DIR/CheckpointTrace_cover.cfg" "$TDIR/"
+    ckpt_real="$WORKDIR/checkpoint_real.jsonl"
+    record_trace "$SPECS_DIR/checkpoint_trace.py" "$ckpt_real"
+    case $? in
+        0) check_trace "$SPECS_DIR/checkpoint_trace.py" CheckpointTrace \
+               CheckpointTrace_conform.cfg CheckpointTrace_cover.cfg CoverGap \
+               real "$ckpt_real" accept ;;
+        3) echo "  SKIP   real trace: no interpreter with 'protean' available to record one" ;;
+        *) echo "  FAIL   real trace: 'protean' is importable but recording errored"
+           fail=1 ;;
+    esac
+    # Negative checks (fixtures under specs/traces/): a seeded gap-skip divergence
+    # must fail conformance and an in-order (gapless) log must fail coverage.
+    check_trace "$SPECS_DIR/checkpoint_trace.py" CheckpointTrace \
+        CheckpointTrace_conform.cfg CheckpointTrace_cover.cfg CoverGap \
+        bug   "$SPECS_DIR/traces/checkpoint_bug.jsonl"    reject-conform
+    check_trace "$SPECS_DIR/checkpoint_trace.py" CheckpointTrace \
+        CheckpointTrace_conform.cfg CheckpointTrace_cover.cfg CoverGap \
+        nogap "$SPECS_DIR/traces/checkpoint_no_gap.jsonl" reject-cover
 fi
 
 echo ""

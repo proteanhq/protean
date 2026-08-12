@@ -25,7 +25,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.utils import Processing, fqn
+from protean.utils import Processing, checkpoint_trace, fqn
 from protean.utils.mixins import handle
 
 
@@ -204,6 +204,63 @@ class TestGapSafeBatch:
 
     def test_gap_timeout_default_is_five_seconds(self, all_subscription):
         assert all_subscription.gap_timeout_seconds == 5
+
+
+class TestGapSafeBatchTracing:
+    """``_gap_safe_batch`` emits its raw observed advance to the checkpoint trace
+    recorder when a capture is active (for spec-conformance checking, #1384), and
+    nothing at all when it is not — the shipped path is byte-for-byte unchanged.
+    """
+
+    def test_records_the_stranded_hold(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(1), _msg(3)])
+
+        assert _positions(out) == [1]  # behaviour unchanged: held at the gap
+        assert events == [{"cursor": 0, "present": [1, 3], "abandoned": [], "safe": 1}]
+
+    def test_records_an_abandoned_hole(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+        sub.gap_timeout_seconds = 5
+        sub._gap_first_seen = {2: time.monotonic() - 10}  # hole 2 timed out
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(1), _msg(3)])
+
+        assert _positions(out) == [1, 3]  # 2 abandoned, 3 released past it
+        assert events == [{"cursor": 0, "present": [1, 3], "abandoned": [2], "safe": 3}]
+
+    def test_records_a_contiguous_drain(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(1), _msg(2), _msg(3)])
+
+        assert _positions(out) == [1, 2, 3]
+        assert events == [
+            {"cursor": 0, "present": [1, 2, 3], "abandoned": [], "safe": 3}
+        ]
+
+    def test_does_not_record_when_no_capture_is_active(
+        self, all_subscription, monkeypatch
+    ):
+        sub = all_subscription
+        sub.current_position = 0
+        calls: list[dict] = []
+        monkeypatch.setattr(
+            checkpoint_trace, "record", lambda **kwargs: calls.append(kwargs)
+        )
+
+        # No capture in progress, so the emit is gated off and record never fires.
+        out = sub._gap_safe_batch([_msg(1), _msg(3)])
+
+        assert _positions(out) == [1]  # behaviour byte-for-byte unchanged
+        assert calls == []
 
 
 @pytest.mark.asyncio
