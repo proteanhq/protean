@@ -90,7 +90,7 @@ def _load(cache):
         cache.add(CacheEntry(key=f"k{i}", value=str(i)))
 
 
-def test_get_all_returns_every_match_in_key_order(cache):
+def test__get_all_returns_every_match_in_key_order(cache):
     _load(cache)
 
     results = cache._get_all(PATTERN)

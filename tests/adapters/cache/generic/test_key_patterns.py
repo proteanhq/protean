@@ -6,7 +6,7 @@ from .conftest import CacheEntry
 
 
 class TestSharedPatternBehaviour:
-    def test_get_all_returns_matching_entries(self, cache):
+    def test__get_all_returns_matching_entries(self, cache):
         alpha = CacheEntry(key="alpha", value="one")
         beta = CacheEntry(key="beta", value="two")
         cache.add(alpha)

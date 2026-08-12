@@ -19,13 +19,13 @@ from protean.port.provider import BaseProvider
 # Finding #18: Cache adapter signatures match port
 # ---------------------------------------------------------------------------
 class TestCacheParameterConsistency:
-    def test_port_get_all_takes_only_key_pattern(self):
+    def test_port__get_all_takes_only_key_pattern(self):
         """Port declares `_get_all(key_pattern)` with no pagination params."""
         sig = inspect.signature(BaseCache._get_all)
         param_names = [p for p in sig.parameters if p != "self"]
         assert param_names == ["key_pattern"]
 
-    def test_memory_cache_get_all_matches_port(self):
+    def test_memory_cache__get_all_matches_port(self):
         """MemoryCache._get_all matches the port signature."""
         sig = inspect.signature(MemoryCache._get_all)
         param_names = [p for p in sig.parameters if p != "self"]
@@ -87,7 +87,7 @@ class TestCachePortTypeHints:
         hints = get_type_hints(BaseCache.get)
         assert "return" in hints
 
-    def test_get_all_has_return_type(self):
+    def test__get_all_has_return_type(self):
         hints = get_type_hints(BaseCache._get_all)
         assert "return" in hints
 

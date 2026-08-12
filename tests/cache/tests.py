@@ -95,7 +95,7 @@ class TestCachePersistenceFlows:
         assert len(tokens) == 2
         assert all(token in tokens for token in [token1, token2])
 
-    def test_get_all_skips_a_key_that_vanishes_after_the_scan(
+    def test__get_all_skips_a_key_that_vanishes_after_the_scan(
         self, test_domain, monkeypatch
     ):
         """A key can expire between the key scan and the per-key read.
