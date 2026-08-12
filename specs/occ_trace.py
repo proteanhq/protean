@@ -153,7 +153,11 @@ def _parse_event(event: object) -> tuple[str, int, str, int]:
     """
     if not isinstance(event, dict):
         raise ValueError("event is not a JSON object")
-    missing = {"stream", "base", "outcome"} - event.keys()
+    # Require every non-optional OCCEvent field. ``writer`` is reassigned
+    # positionally below and its recorded value is not used, but requiring it keeps
+    # the validator matched to the recorder's schema, so a drifted log that dropped
+    # a field is rejected rather than silently accepted.
+    missing = {"stream", "writer", "base", "outcome"} - event.keys()
     if missing:
         raise ValueError(f"missing field(s) {sorted(missing)}")
     outcome = event["outcome"]

@@ -33,6 +33,7 @@ def _write(path: Path, events: list[dict]) -> Path:
 def _committed(base, after, stream="counter:seed"):
     return {
         "stream": stream,
+        "writer": "t",
         "base": base,
         "outcome": "committed",
         "version_after": after,
@@ -42,6 +43,7 @@ def _committed(base, after, stream="counter:seed"):
 def _conflicted(base, stream="counter:seed"):
     return {
         "stream": stream,
+        "writer": "t",
         "base": base,
         "outcome": "conflicted",
         "version_after": base + 1,
@@ -78,7 +80,7 @@ def test_multiple_streams_are_rejected(tmp_path):
 def test_bad_outcome_is_rejected(tmp_path):
     log = _write(
         tmp_path / "bad.jsonl",
-        [{"stream": "counter:seed", "base": 0, "outcome": "maybe", "version_after": 1}],
+        [{"stream": "counter:seed", "writer": "t", "base": 0, "outcome": "maybe"}],
     )
     assert occ_trace_script._to_tla(log, tmp_path / "o.tla") == 2
 
@@ -91,6 +93,7 @@ def test_committed_without_version_after_is_rejected(tmp_path):
         [
             {
                 "stream": "counter:seed",
+                "writer": "t",
                 "base": 0,
                 "outcome": "committed",
                 "version_after": None,
@@ -109,6 +112,7 @@ def test_conflict_without_version_after_falls_back_to_base(tmp_path):
             _committed(0, 1),
             {
                 "stream": "counter:seed",
+                "writer": "t",
                 "base": 0,
                 "outcome": "conflicted",
                 "version_after": None,
@@ -121,10 +125,11 @@ def test_conflict_without_version_after_falls_back_to_base(tmp_path):
 
 
 def test_missing_required_field_is_rejected(tmp_path):
-    # A line missing stream/base/outcome must reject cleanly, not raise a KeyError.
+    # A line missing a required field must reject cleanly, not raise a KeyError.
     log = _write(
         tmp_path / "missing.jsonl",
-        [{"base": 0, "outcome": "committed", "version_after": 1}],  # no "stream"
+        # Well-formed but for the missing "stream".
+        [{"writer": "t", "base": 0, "outcome": "committed", "version_after": 1}],
     )
     assert occ_trace_script._to_tla(log, tmp_path / "o.tla") == 2
 
@@ -133,7 +138,14 @@ def test_non_integer_version_is_rejected(tmp_path):
     # A non-integer base/version must reject cleanly, not raise a ValueError.
     log = _write(
         tmp_path / "nonint.jsonl",
-        [{"stream": "counter:seed", "base": "x", "outcome": "conflicted"}],
+        [
+            {
+                "stream": "counter:seed",
+                "writer": "t",
+                "base": "x",
+                "outcome": "conflicted",
+            }
+        ],
     )
     assert occ_trace_script._to_tla(log, tmp_path / "o.tla") == 2
 
