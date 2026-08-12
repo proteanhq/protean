@@ -143,6 +143,18 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def _natural(value: object, name: str) -> int:
+    """Return ``value`` as a version number, or raise :class:`ValueError`.
+
+    A version is a non-negative integer. JSON numbers parse to ``int`` or ``float``,
+    so this rejects floats (``1.9``), negatives, and booleans rather than coercing
+    them into a value that would surface later as a confusing TLC failure.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return value
+
+
 def _parse_event(event: object) -> tuple[str, int, str, int]:
     """Validate one recorded event and return ``(stream, base, outcome, after)``.
 
@@ -163,20 +175,16 @@ def _parse_event(event: object) -> tuple[str, int, str, int]:
     outcome = event["outcome"]
     if outcome not in ("committed", "conflicted"):
         raise ValueError(f"bad outcome {outcome!r}")
-    try:
-        base = int(event["base"])
-    except (TypeError, ValueError):
-        raise ValueError("base is not an integer") from None
+    base = _natural(event["base"], "base")
     version_after = event.get("version_after")
     # The model reads ``after`` on a commit (``version' = after``), so a committed
     # event without it is malformed. A conflict leaves the version unchanged and
     # the model never reads ``after`` for it, so a missing value falls back to base.
     if outcome == "committed" and version_after is None:
         raise ValueError("committed event without version_after")
-    try:
-        after = int(version_after) if version_after is not None else base
-    except (TypeError, ValueError):
-        raise ValueError("version_after is not an integer") from None
+    after = (
+        _natural(version_after, "version_after") if version_after is not None else base
+    )
     return event["stream"], base, outcome, after
 
 

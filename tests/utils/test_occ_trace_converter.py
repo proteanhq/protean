@@ -150,6 +150,24 @@ def test_non_integer_version_is_rejected(tmp_path):
     assert occ_trace_script._to_tla(log, tmp_path / "o.tla") == 2
 
 
+def test_float_and_negative_versions_are_rejected(tmp_path):
+    # Versions are natural numbers; a float (which int() would truncate) or a
+    # negative must reject cleanly rather than reach TLC as a confusing value.
+    for bad in (1.9, -1):
+        log = _write(
+            tmp_path / "nat.jsonl",
+            [
+                {
+                    "stream": "counter:seed",
+                    "writer": "t",
+                    "base": bad,
+                    "outcome": "conflicted",
+                }
+            ],
+        )
+        assert occ_trace_script._to_tla(log, tmp_path / "o.tla") == 2, bad
+
+
 def test_non_object_line_is_rejected(tmp_path):
     (tmp_path / "scalar.jsonl").write_text("42\n", encoding="utf-8")
     assert occ_trace_script._to_tla(tmp_path / "scalar.jsonl", tmp_path / "o.tla") == 2
