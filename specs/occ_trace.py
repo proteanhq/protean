@@ -135,6 +135,39 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def _parse_event(event: object) -> tuple[str, int, str, int]:
+    """Validate one recorded event and return ``(stream, base, outcome, after)``.
+
+    Raises :class:`ValueError` with a readable message on any malformed input (not
+    a JSON object, a missing field, a non-integer version, or an unknown outcome),
+    so the caller can reject the whole log cleanly instead of crashing on a raw
+    ``KeyError``/``ValueError``.
+    """
+    if not isinstance(event, dict):
+        raise ValueError("event is not a JSON object")
+    missing = {"stream", "base", "outcome"} - event.keys()
+    if missing:
+        raise ValueError(f"missing field(s) {sorted(missing)}")
+    outcome = event["outcome"]
+    if outcome not in ("committed", "conflicted"):
+        raise ValueError(f"bad outcome {outcome!r}")
+    try:
+        base = int(event["base"])
+    except (TypeError, ValueError):
+        raise ValueError("base is not an integer") from None
+    version_after = event.get("version_after")
+    # The model reads ``after`` on a commit (``version' = after``), so a committed
+    # event without it is malformed. A conflict leaves the version unchanged and
+    # the model never reads ``after`` for it, so a missing value falls back to base.
+    if outcome == "committed" and version_after is None:
+        raise ValueError("committed event without version_after")
+    try:
+        after = int(version_after) if version_after is not None else base
+    except (TypeError, ValueError):
+        raise ValueError("version_after is not an integer") from None
+    return event["stream"], base, outcome, after
+
+
 def _to_tla(in_path: Path, out_path: Path) -> int:
     """Convert a JSON-lines OCC log into a runnable OCCTrace_* TLA+ module."""
     events = _read_jsonl(in_path)
@@ -142,7 +175,23 @@ def _to_tla(in_path: Path, out_path: Path) -> int:
         print(f"error: {in_path} has no events", file=sys.stderr)
         return 2
 
-    streams = {event["stream"] for event in events}
+    records = []
+    writer_names = []
+    streams = set()
+    for index, event in enumerate(events, start=1):
+        try:
+            stream, base, outcome, after = _parse_event(event)
+        except ValueError as exc:
+            print(f"error: {in_path} line {index}: {exc}", file=sys.stderr)
+            return 2
+        streams.add(stream)
+        writer = f"w{index}"  # positional, so every unit of work is a distinct writer
+        writer_names.append(writer)
+        records.append(
+            f'    [w |-> "{writer}", base |-> {base}, '
+            f'outcome |-> "{outcome}", after |-> {after}]'
+        )
+
     if len(streams) != 1:
         # OCC is per aggregate: one version cell, one trace. A multi-stream log
         # would interleave independent cells, which this model cannot represent.
@@ -151,37 +200,6 @@ def _to_tla(in_path: Path, out_path: Path) -> int:
             file=sys.stderr,
         )
         return 2
-
-    records = []
-    writer_names = []
-    for index, event in enumerate(events, start=1):
-        writer = f"w{index}"  # positional, so every unit of work is a distinct writer
-        writer_names.append(writer)
-        base = int(event["base"])
-        outcome = event["outcome"]
-        if outcome not in ("committed", "conflicted"):
-            print(f"error: bad outcome {outcome!r} in {in_path}", file=sys.stderr)
-            return 2
-        version_after = event.get("version_after")
-        if outcome == "committed":
-            # The model reads ``after`` on a commit (``version' = after``), so a
-            # committed event without it is malformed, not a version that happens
-            # to equal the base.
-            if version_after is None:
-                print(
-                    f"error: committed event without version_after in {in_path}",
-                    file=sys.stderr,
-                )
-                return 2
-            after = int(version_after)
-        else:
-            # A conflict leaves the version unchanged and the model never reads
-            # ``after`` for it, so a missing value falls back to the base.
-            after = int(version_after) if version_after is not None else base
-        records.append(
-            f'    [w |-> "{writer}", base |-> {base}, '
-            f'outcome |-> "{outcome}", after |-> {after}]'
-        )
 
     module = out_path.stem
     trace_def = " <<\n" + ",\n".join(records) + "\n>>"

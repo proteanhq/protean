@@ -120,6 +120,29 @@ def test_conflict_without_version_after_falls_back_to_base(tmp_path):
     assert 'outcome |-> "conflicted", after |-> 0' in out.read_text(encoding="utf-8")
 
 
+def test_missing_required_field_is_rejected(tmp_path):
+    # A line missing stream/base/outcome must reject cleanly, not raise a KeyError.
+    log = _write(
+        tmp_path / "missing.jsonl",
+        [{"base": 0, "outcome": "committed", "version_after": 1}],  # no "stream"
+    )
+    assert occ_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+
+
+def test_non_integer_version_is_rejected(tmp_path):
+    # A non-integer base/version must reject cleanly, not raise a ValueError.
+    log = _write(
+        tmp_path / "nonint.jsonl",
+        [{"stream": "counter:seed", "base": "x", "outcome": "conflicted"}],
+    )
+    assert occ_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+
+
+def test_non_object_line_is_rejected(tmp_path):
+    (tmp_path / "scalar.jsonl").write_text("42\n", encoding="utf-8")
+    assert occ_trace_script._to_tla(tmp_path / "scalar.jsonl", tmp_path / "o.tla") == 2
+
+
 def test_converter_reads_the_recorder_schema_fields():
     # Guard against drift: the converter reads these keys by name off each event,
     # so a rename in OCCEvent must be matched here or the script breaks at runtime.
