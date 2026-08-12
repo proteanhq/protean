@@ -183,7 +183,13 @@ class MemoryCache(BaseCache):
         # Apply pagination
         page = results[last_position : last_position + size]
 
-        return [projection_cls(self._db.get(key)) for key in page]
+        # A key can expire between the scan above and this read, so a `get`
+        # can come back empty. Skip it, the same way the Redis adapter does.
+        return [
+            projection_cls(value)
+            for key in page
+            if (value := self._db.get(key)) is not None
+        ]
 
     def count(self, key_pattern: str) -> int:
         key_list = self._db.keys()
@@ -203,8 +209,10 @@ class MemoryCache(BaseCache):
     def remove_by_key_pattern(self, key_pattern: str) -> None:
         key_list = self._db.keys()
         keys_to_delete = [key for key in key_list if fnmatchcase(key, key_pattern)]
+        # A key can expire between the scan above and this delete, so use
+        # `pop` with a default, the same as `remove` and `remove_by_key`.
         for key in keys_to_delete:
-            del self._db[key]
+            self._db.pop(key, None)
 
     def flush_all(self) -> None:
         # Clear in place so the TTLDict (and its configured default TTL) is
