@@ -364,3 +364,43 @@ class TestAFailedAddLeavesNothingBehind:
         assert cache.get_ttl("token:::e1") == pytest.approx(
             cache.get_ttl("token:::e2"), abs=1
         )
+
+
+class TestTTLDictGetTTLOrNone:
+    """The atomic read `MemoryCache.get_ttl` delegates to."""
+
+    def test_evicts_and_returns_none_for_an_expired_but_present_entry(self):
+        """An entry that has expired but is not yet evicted answers `None` and
+        is evicted in the same locked read, so `get_ttl` never returns a stale
+        negative. Deterministic: back-date the expiry instead of sleeping."""
+        from protean.adapters.cache.memory import TTLDict
+
+        ttl_dict = TTLDict(default_ttl=300)
+        ttl_dict["k"] = "v"
+        ttl_dict.expire_at("k", 0.0)  # far in the past; still present in _values
+        assert "k" in ttl_dict._values
+
+        assert ttl_dict.get_ttl_or_none("k") is None
+        assert "k" not in ttl_dict._values  # evicted during the read
+
+    def test_returns_seconds_for_a_live_entry(self):
+        from protean.adapters.cache.memory import TTLDict
+
+        ttl_dict = TTLDict(default_ttl=300)
+        ttl_dict["k"] = "v"
+        assert ttl_dict.get_ttl_or_none("k") == pytest.approx(300, abs=1)
+
+    def test_returns_none_for_a_missing_key(self):
+        from protean.adapters.cache.memory import TTLDict
+
+        assert TTLDict(default_ttl=300).get_ttl_or_none("nope") is None
+
+    def test_returns_math_inf_for_a_never_expiring_entry(self):
+        """A TTLDict built with default_ttl=None writes entries with no expiry.
+        MemoryCache never does this, but the helper still answers math.inf for
+        that entry, the port's shared no-expiry contract, rather than raising."""
+        from protean.adapters.cache.memory import TTLDict
+
+        ttl_dict = TTLDict(default_ttl=None)
+        ttl_dict["k"] = "v"
+        assert ttl_dict.get_ttl_or_none("k") == float("inf")

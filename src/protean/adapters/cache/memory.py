@@ -1,4 +1,5 @@
 import collections.abc
+import math
 import re
 import time
 from collections.abc import Iterator
@@ -33,13 +34,25 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             _expire, value = self._values[key]
             self._values[key] = (now + ttl, value)
 
-    def get_ttl(self, key: str, now: float | None = None) -> float:
-        """Return remaining TTL for a key"""
-        if now is None:
-            now = time.time()
+    def get_ttl_or_none(self, key: str) -> float | None:
+        """Remaining TTL for a key, or ``None`` when it is absent or expired.
+
+        The presence check, the eviction of a stale entry, and the read all run
+        under one lock, so a concurrent eviction between the check and the read
+        cannot turn a live-looking key into a `KeyError` or a stale reading.
+        """
         with self._lock:
+            if key not in self._values:
+                return None
+            now = time.time()
+            if self.is_expired(key, now=now, remove=True):
+                return None
             expire, _value = self._values[key]
-            assert expire is not None
+            # A `None` expiry is a never-expiring entry (a `TTLDict` built with
+            # `default_ttl=None`). `MemoryCache` never does this, but `TTLDict`
+            # allows it, so report it as `math.inf`, the port's shared answer.
+            if expire is None:
+                return math.inf
             return expire - now
 
     def expire_at(self, key: str, timestamp: float) -> None:
@@ -206,5 +219,11 @@ class MemoryCache(BaseCache):
         if key in self._db:
             self._db.set_ttl(key, resolved_ttl)
 
-    def get_ttl(self, key: str) -> float:
-        return self._db.get_ttl(key)
+    def get_ttl(self, key: str) -> float | None:
+        # A never-added key and an expired-but-not-yet-evicted key both answer
+        # `None`, matching how `get` already treats them. The check and the read
+        # are one locked operation, so a concurrent eviction cannot reintroduce
+        # the `KeyError` this contract removes. `math.inf` (no expiry) is
+        # unreachable on this adapter: `MemoryCache` always builds its `TTLDict`
+        # with a concrete default TTL, so every entry has an expiry.
+        return self._db.get_ttl_or_none(key)

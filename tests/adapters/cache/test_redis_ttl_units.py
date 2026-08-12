@@ -1,16 +1,19 @@
-"""`get_ttl` answers seconds, and passes Redis' sentinels through unscaled.
+"""`get_ttl` answers seconds, and translates Redis' sentinels.
 
 `PTTL` is milliseconds, so #1307 divides by 1000 to match the memory cache and
 the rest of the port. Two of its answers are not durations though: `-1` means
 the key exists with no expiry, `-2` that there is no such key. Scaling those
-turns documented flags into `-0.001` and `-0.002`, which read as "expiring
-imminently" to anything comparing against zero.
+would turn documented flags into `-0.001` and `-0.002`, which read as "expiring
+imminently" to anything comparing against zero. #1392 unifies the contract
+instead: `-1` becomes `math.inf` and `-2` becomes `None`.
 
 Driven through a stub client rather than a live Redis, so it runs in the core
 suite: the arithmetic is the whole behaviour under test.
 """
 
 from __future__ import annotations
+
+import math
 
 import pytest
 
@@ -53,14 +56,22 @@ class TestGetTTLUnits:
         assert cache_with(milliseconds).get_ttl("k") == pytest.approx(expected_seconds)
 
 
-class TestRedisSentinelsSurvive:
-    """`-1` and `-2` are flags, not durations."""
+class TestRedisSentinelsAreTranslated:
+    """`-1` and `-2` are flags, not durations, so they are not scaled."""
 
-    @pytest.mark.parametrize("sentinel", [-1, -2])
-    def test_a_sentinel_passes_through_unscaled(self, cache_with, sentinel):
-        assert cache_with(sentinel).get_ttl("k") == float(sentinel)
+    def test_no_expiry_sentinel_becomes_math_inf(self, cache_with):
+        assert cache_with(-1).get_ttl("k") == math.inf
+
+    def test_absent_key_sentinel_becomes_none(self, cache_with):
+        assert cache_with(-2).get_ttl("k") is None
 
     def test_a_sentinel_is_not_mistaken_for_an_imminent_expiry(self, cache_with):
-        """Dividing gave -0.001 and -0.002, which any `ttl < 1` check misreads."""
-        for sentinel in (-1, -2):
-            assert cache_with(sentinel).get_ttl("k") <= -1
+        """Dividing would give -0.001 and -0.002, which any `ttl < 1` misreads."""
+        assert cache_with(-1).get_ttl("k") == math.inf
+        assert cache_with(-2).get_ttl("k") is None
+
+    def test_an_unexpected_negative_raises(self, cache_with):
+        """Redis answers only -2, -1, or a duration. Any other negative is a
+        broken client, so it fails loud instead of scaling to a near-zero TTL."""
+        with pytest.raises(ValueError, match="Unexpected PTTL value"):
+            cache_with(-3).get_ttl("k")

@@ -87,38 +87,31 @@ Omitting the TTL (or passing an empty string) uses the cache's configured `TTL`.
 ### What `get_ttl` returns when there is nothing to count
 
 `get_ttl(key)` answers the seconds remaining before a key expires. Two states
-are not durations, and the adapters do not answer them the same way:
+are not durations, and every adapter answers them the same way:
 
 | State | Memory cache | Redis cache |
 |-------|--------------|-------------|
 | Key exists, expiry pending | seconds remaining | seconds remaining |
-| No such key | raises `KeyError` | returns `-2` |
-| Key exists, no expiry set | not reachable, every entry is written with one | returns `-1` |
+| No such key | returns `None` | returns `None` |
+| Key exists, no expiry set | not reachable, every entry is written with one | returns `math.inf` |
 
-Redis' `-1` and `-2` are its own documented sentinels and are passed through
-unscaled: dividing them into seconds would turn flags into `-0.001` and
-`-0.002`, which read as "expiring imminently" to anything comparing against
-zero.
+An expired entry counts as absent, so `get_ttl` returns `None` for it, the same
+way `get` does. `math.inf` only ever comes from Redis: the memory cache writes
+every entry with a concrete TTL, so it has no never-expiring keys to report.
 
-**On the Redis cache**, a negative return is a flag rather than a duration.
-That is a Redis convention, not a port-wide one: the memory cache never returns
-a negative, because it raises `KeyError` before there is anything to return.
-
-So code that must work on either adapter has to handle both shapes:
+So code reads the same on either adapter:
 
 ```python
-try:
-    remaining = cache.get_ttl(key)
-except KeyError:            # memory cache: no such key
-    remaining = None
-else:
-    if remaining < 0:       # redis: -2 no such key, -1 no expiry
-        remaining = None
-```
+import math
 
-Needing that at all is the divergence, not the fix.
-[#1392](https://github.com/proteanhq/protean/issues/1392) tracks making the two
-adapters answer alike, at which point one of these branches goes away.
+remaining = cache.get_ttl(key)
+if remaining is None:
+    ...                     # no such key
+elif remaining == math.inf:
+    ...                     # never expires
+else:
+    ...                     # seconds remaining
+```
 
 ## Interface
 
@@ -137,7 +130,7 @@ All cache adapters implement these methods:
 | `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern |
 | `flush_all()` | Remove all entries |
 | `set_ttl(key, ttl)` | Set a TTL on a specific key. Does nothing if the key is absent, but still rejects an invalid TTL |
-| `get_ttl(key)` | Seconds remaining before a key expires. See below for how adapters answer when there is no such key |
+| `get_ttl(key)` | Seconds remaining before a key expires; `None` if there is no such key, `math.inf` if it never expires. See below |
 
 ### Key Format
 

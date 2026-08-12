@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 from typing import Any
 
 import redis
@@ -149,17 +150,22 @@ class RedisCache(BaseCache):
     def set_ttl(self, key: str, ttl: TTLValue) -> None:
         self._client.pexpire(key, int(self._ttl_for(ttl) * 1000))
 
-    def get_ttl(self, key: str) -> float:
+    def get_ttl(self, key: str) -> float | None:
         # `PTTL` answers milliseconds. Every other TTL on this port is seconds
         # (the `TTL` config key, `add(ttl=)`, `set_ttl`), and the memory cache
         # returns seconds here too, so returning milliseconds made the same
         # method mean different things depending on the adapter (#1307).
         remaining_ms = self._client.pttl(key)
 
-        # Two of Redis' answers are not durations: `-1` means the key exists
-        # with no expiry and `-2` means there is no such key. Scaling those
-        # would turn documented sentinels into `-0.001` and `-0.002`, which
-        # compare as "expiring imminently" rather than as the flags they are.
+        # Two of Redis' answers are not durations: `-2` means there is no such
+        # key and `-1` means the key exists with no expiry. Map them to the
+        # port's shared contract by exact value. Redis only ever answers `-2`,
+        # `-1`, or a non-negative duration, so any other negative is a broken
+        # client: raise instead of scaling it into a misleading near-zero TTL.
+        if remaining_ms == -2:
+            return None
+        if remaining_ms == -1:
+            return math.inf
         if remaining_ms < 0:
-            return float(remaining_ms)
+            raise ValueError(f"Unexpected PTTL value from Redis: {remaining_ms}")
         return float(remaining_ms) / 1000
