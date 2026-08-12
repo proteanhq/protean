@@ -126,12 +126,20 @@ def _write_jsonl(path: Path, events: list[dict[str, Any]]) -> None:
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Parse a JSON-lines file, raising :class:`ValueError` on an invalid line.
+
+    A syntactically-broken line is malformed input, so it is reported with its line
+    number for the caller to reject cleanly, rather than crashing the converter.
+    """
     events: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
+        for index, line in enumerate(handle, start=1):
             line = line.strip()
             if line:
-                events.append(json.loads(line))
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"line {index}: invalid JSON: {exc}") from None
     return events
 
 
@@ -170,7 +178,11 @@ def _parse_event(event: object) -> tuple[str, int, str, int]:
 
 def _to_tla(in_path: Path, out_path: Path) -> int:
     """Convert a JSON-lines OCC log into a runnable OCCTrace_* TLA+ module."""
-    events = _read_jsonl(in_path)
+    try:
+        events = _read_jsonl(in_path)
+    except ValueError as exc:
+        print(f"error: {in_path} {exc}", file=sys.stderr)
+        return 2
     if not events:
         print(f"error: {in_path} has no events", file=sys.stderr)
         return 2

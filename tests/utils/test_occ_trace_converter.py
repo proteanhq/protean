@@ -143,6 +143,12 @@ def test_non_object_line_is_rejected(tmp_path):
     assert occ_trace_script._to_tla(tmp_path / "scalar.jsonl", tmp_path / "o.tla") == 2
 
 
+def test_invalid_json_line_is_rejected(tmp_path):
+    # A syntactically-broken line rejects cleanly, not with a JSONDecodeError crash.
+    (tmp_path / "broken.jsonl").write_text('{"stream": oops}\n', encoding="utf-8")
+    assert occ_trace_script._to_tla(tmp_path / "broken.jsonl", tmp_path / "o.tla") == 2
+
+
 def test_converter_reads_the_recorder_schema_fields():
     # Guard against drift: the converter reads these keys by name off each event,
     # so a rename in OCCEvent must be matched here or the script breaks at runtime.
