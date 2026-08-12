@@ -84,8 +84,12 @@ def _record(out_path: Path, writers: int) -> int:
                 errors.append(f"worker {worker_no}: {type(exc).__name__}: {exc}")
 
         with occ_trace.capture() as events:
+            # Daemon threads so a hung worker cannot keep the interpreter alive:
+            # the join below is timed, and _record must be able to exit and report
+            # a failure rather than wedging specs/check.sh.
             threads = [
-                threading.Thread(target=worker, args=(i,)) for i in range(writers)
+                threading.Thread(target=worker, args=(i,), daemon=True)
+                for i in range(writers)
             ]
             for thread in threads:
                 thread.start()
