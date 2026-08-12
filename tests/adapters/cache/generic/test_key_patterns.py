@@ -131,6 +131,17 @@ class TestGetAllPaginationAgrees:
         # Two entries left past offset 18, fewer than the size-5 request.
         assert len(cache.get_all(self.PATTERN, last_position=18, size=5)) == 2
 
+    def test_negative_offset_or_size_raises_on_every_adapter(self, cache):
+        self._load(cache)
+
+        # A negative offset or size would slice from the end under Python's list
+        # semantics and silently return a different page than the offset names,
+        # so both adapters reject it rather than page from the wrong spot.
+        with pytest.raises(ValueError):
+            cache.get_all(self.PATTERN, last_position=-1, size=5)
+        with pytest.raises(ValueError):
+            cache.get_all(self.PATTERN, last_position=0, size=-1)
+
 
 class TestPatternLanguageIsAGlobOnEveryAdapter:
     def test_pattern_is_a_glob_on_every_adapter(self, cache):

@@ -147,3 +147,24 @@ def test_scan_returning_a_key_twice_is_deduplicated(monkeypatch):
         # Without dedup the page would be [k0, k0, k1]: the duplicate repeats a
         # projection and shifts every later offset.
         assert [entry.key for entry in page] == ["k0", "k1"]
+
+
+def test_count_deduplicates_a_key_scan_returns_twice(monkeypatch):
+    domain = _install(monkeypatch, _DuplicatingStub())
+    with domain.domain_context():
+        cache = domain.cache_for(CacheEntry)
+        cache.add(CacheEntry(key="k0", value="0"))
+        cache.add(CacheEntry(key="k1", value="1"))
+
+        # `scan_iter` yields k0 twice. Without dedup `count` returns 3 and
+        # disagrees with the two distinct entries `get_all` returns.
+        assert cache.count(PATTERN) == 2
+
+
+def test_negative_offset_or_size_raises(cache):
+    _load(cache)
+
+    with pytest.raises(ValueError):
+        cache.get_all(PATTERN, last_position=-1, size=5)
+    with pytest.raises(ValueError):
+        cache.get_all(PATTERN, last_position=0, size=-1)

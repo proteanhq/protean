@@ -188,7 +188,7 @@ class MemoryCache(BaseCache):
         results = sorted(key for key in key_list if fnmatchcase(key, key_pattern))
 
         # Apply pagination
-        page = results[last_position : last_position + size]
+        page = self._page(results, last_position, size)
 
         # A key can expire between the scan above and this read, so a `get`
         # can come back empty. Skip it, the same way the Redis adapter does.

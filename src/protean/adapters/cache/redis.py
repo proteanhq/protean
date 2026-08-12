@@ -128,7 +128,7 @@ class RedisCache(BaseCache):
         # duplicate would otherwise repeat a projection in the page and shift
         # every later offset, breaking the stable-offset contract.
         keys = sorted(set(self._client.scan_iter(match=key_pattern)))
-        page = keys[last_position : last_position + size]
+        page = self._page(keys, last_position, size)
 
         results: list[BaseProjection] = []
         for key in page:
@@ -138,8 +138,11 @@ class RedisCache(BaseCache):
         return results
 
     def count(self, key_pattern: str) -> int:
-        values = self._client.scan_iter(match=key_pattern)
-        return len(list(values))
+        # `SCAN` can return the same key more than once during a full iteration
+        # (rehashing, concurrent writes), so dedupe before counting. Without
+        # this, `count` overcounts and disagrees with the number of distinct
+        # entries `get_all` returns, which dedupes the same scan.
+        return len(set(self._client.scan_iter(match=key_pattern)))
 
     def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)

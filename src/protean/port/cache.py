@@ -1,10 +1,12 @@
 import math
 from abc import ABCMeta, abstractmethod
-from typing import Any
+from typing import Any, TypeVar
 
 from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError
 from protean.utils.inflection import underscore
+
+_Key = TypeVar("_Key")
 
 DEFAULT_TTL = 300
 """Seconds a cached projection lives when the cache config sets no `TTL`."""
@@ -123,6 +125,28 @@ class BaseCache(metaclass=ABCMeta):
             return None
         return _resolve_ttl(ttl, f"Cache '{self.name}'")
 
+    def _page(self, keys: list[_Key], last_position: int, size: int) -> list[_Key]:
+        """Slice a key list already sorted ascending into one `get_all` page.
+
+        `last_position` is a zero-based offset and `size` a hard cap on the
+        page, so both have to be zero or greater. A negative value would slice
+        from the end under Python's list semantics (`keys[0:-1]` drops the last
+        entry, `keys[-5:]` pages from the end), which silently returns a
+        different page than the offset the caller named, so reject it instead.
+
+        An adapter authoring `get_all` sorts its matching keys ascending and
+        passes them here to get the page, so every adapter shares one bounds
+        check and one slice.
+        """
+        if last_position < 0 or size < 0:
+            raise ValueError(
+                "get_all pagination is out of range: "
+                f"last_position={last_position!r}, size={size!r}. "
+                "last_position is a zero-based offset and size a page cap, so "
+                "both must be zero or greater."
+            )
+        return keys[last_position : last_position + size]
+
     def register_projection(self, projection_cls: type[BaseProjection]) -> None:
         """Registers a projection object for data serialization and de-serialization"""
         projection_name = underscore(projection_cls.__name__)
@@ -188,6 +212,7 @@ class BaseCache(metaclass=ABCMeta):
         - `last_position` is a zero-based offset into it.
         - `size` is the maximum number of entries returned.
         - an offset at or past the end returns an empty list.
+        - a negative `last_position` or `size` raises `ValueError`.
 
         So the same `last_position` names the same entry on every adapter, and a
         caller walks a result set by stepping `last_position` forward by `size`

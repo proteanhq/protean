@@ -122,6 +122,7 @@ else:
 - `last_position` is a zero-based offset into that order.
 - `size` is the most entries a page returns.
 - An offset at or past the end returns an empty list.
+- A negative `last_position` or `size` raises `ValueError`.
 
 So the same `last_position` names the same entry on the memory and Redis caches,
 and you can walk a result set by stepping `last_position` forward by `size` each
