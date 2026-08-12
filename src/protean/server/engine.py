@@ -27,6 +27,7 @@ from protean.utils.globals import g
 from protean.utils.processing import processing_priority
 from protean.utils.telemetry import (
     create_observation,
+    describe_exception,
     extract_context_from_traceparent,
     get_domain_metrics,
     get_meter,
@@ -954,7 +955,7 @@ class Engine:
                     status="error",
                     handler=handler_name,
                     duration_ms=round(duration_ms, 2),
-                    error=str(exc),
+                    error=describe_exception(exc),
                     worker_id=worker_id,
                     correlation_id=correlation_id,
                     causation_id=causation_id,

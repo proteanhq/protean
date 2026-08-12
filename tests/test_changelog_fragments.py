@@ -45,7 +45,7 @@ _MIGRATION_LINK = re.compile(r"\*\*Migration:\*\*\s*\[[^\]]+\]\(([^)]+)\)")
 # accepts" or "now reports" are not breaks and are not listed.
 _SOUNDS_LIKE_A_BREAK = re.compile(
     r"\bnow (raises|rejects|fails|refuses|errors|stops|requires)\b"
-    r"|\bno longer (accepts|works|starts|runs)\b",
+    r"|\bno longer (accepts|works|starts|runs|stops|skips)\b",
     re.I,
 )
 
@@ -335,6 +335,10 @@ class TestABreakCannotHideInProse:
             "a bool there now raises a ConfigurationError"
         )
         assert _SOUNDS_LIKE_A_BREAK.search("the old shape no longer works")
+        # A break can read as something ceasing to prevent, not ceasing to work.
+        assert _SOUNDS_LIKE_A_BREAK.search(
+            "a failing method no longer stops its siblings"
+        )
         # Not breaks: gaining an ability, or reporting something differently.
         assert not _SOUNDS_LIKE_A_BREAK.search("`set_ttl` now accepts a string")
         assert not _SOUNDS_LIKE_A_BREAK.search(

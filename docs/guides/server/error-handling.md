@@ -287,14 +287,35 @@ class OrderEventHandler:
     @classmethod
     def handle_error(cls, exc, message):
         """Called when the handler raises an exception."""
-        if isinstance(exc, ExternalServiceUnavailable):
-            alert_ops_team(exc, message)
-        logger.error(f"OrderEventHandler failed: {exc}")
+        for failure in _each(exc):
+            if isinstance(failure, ExternalServiceUnavailable):
+                alert_ops_team(failure, message)
+        # `{exc}` on a group prints a count and drops every cause.
+        logger.error("OrderEventHandler failed: %s", "; ".join(
+            f"{type(f).__name__}: {f}" for f in _each(exc)
+        ))
+
+
+def _each(exc):
+    """Yield each failure, flattening an exception group."""
+    if isinstance(exc, BaseExceptionGroup):
+        for inner in exc.exceptions:
+            yield from _each(inner)
+    else:
+        yield exc
 ```
 
 The `handle_error()` callback receives the exception and the original
 message. If `handle_error()` itself raises, the exception is caught and
 logged — the engine continues processing.
+
+When a handler class has several `@handle` methods for one event and more than
+one of them fails, `exc` is an `ExceptionGroup` holding every failure, so
+matching on exception type has to look at the members. A handler method that
+raises its own group arrives the same way, which is why the helper above treats
+a group as a shape to unwrap instead of a signal about how many methods failed.
+[Classify async processing errors](../../patterns/classify-async-processing-errors.md)
+works this through in full.
 
 ---
 

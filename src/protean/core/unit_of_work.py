@@ -17,7 +17,11 @@ from protean.utils.globals import _uow_context_stack, current_domain, g
 from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
 from protean.utils.sync_dispatch import dispatch_events_sync
-from protean.utils.telemetry import get_domain_metrics, set_span_error
+from protean.utils.telemetry import (
+    describe_exception,
+    get_domain_metrics,
+    set_span_error,
+)
 
 if TYPE_CHECKING:
     from protean.port.provider import SessionProtocol
@@ -152,6 +156,15 @@ class UnitOfWork:
 
     def start(self) -> None:
         """Begin the transaction and push this UnitOfWork onto the context stack.
+
+        **Opens no session, deliberately.** The session, and on SQLAlchemy the
+        real ``BEGIN``, appears at the first repository access through
+        :meth:`_initialize_session`. ADR-0031 turns that into a contract: a
+        handler method reaching no repository runs no transaction and holds no
+        pooled connection, which is what lets a handler talk to an external
+        system by putting the call in its own method. Opening a session here
+        would silently pin a connection for the length of every such call, so
+        this method must stay free of any eager connection or session.
 
         A UnitOfWork started while another is already active on this context does
         not open its own transaction. There are no savepoints, so it joins the
@@ -497,10 +510,18 @@ class UnitOfWork:
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise TransactionError(
-                f"Unit of Work commit failed: {exc!s}",
+                f"Unit of Work commit failed: {describe_exception(exc)}",
                 extra_info={
                     "original_exception": exc.__class__.__name__,
-                    "original_message": str(exc),
+                    # `str()` of a group is its own message and a count, so
+                    # flatten that one. For anything else `str()` is the
+                    # message, and prefixing the type would duplicate
+                    # `original_exception` right above.
+                    "original_message": (
+                        describe_exception(exc)
+                        if isinstance(exc, BaseExceptionGroup)
+                        else str(exc)
+                    ),
                     "sessions": list(self._sessions.keys()),
                     "events_count": sum(len(events) for events in all_events.values()),
                     "messages_count": len(self._messages_to_dispatch),
