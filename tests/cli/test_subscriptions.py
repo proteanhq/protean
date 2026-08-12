@@ -1,6 +1,5 @@
 """Tests for CLI subscriptions commands (protean subscriptions ...)."""
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -10,8 +9,10 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.cli.result import EXIT_USAGE
 from protean.exceptions import NoDomainException
 from protean.server.subscription_status import SubscriptionStatus
+from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
@@ -145,10 +146,11 @@ class TestSubscriptionsStatus:
             )
 
         assert result.exit_code == 0
-        parsed = json.loads(result.output)
-        assert isinstance(parsed, list)
-        assert len(parsed) == 1
-        assert parsed[0]["handler_name"] == "OrderHandler"
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        subs = env["data"]["subscriptions"]
+        assert len(subs) == 1
+        assert subs[0]["handler_name"] == "OrderHandler"
 
     def test_json_output_empty(self):
         change_working_directory_to("test7")
@@ -168,8 +170,9 @@ class TestSubscriptionsStatus:
             )
 
         assert result.exit_code == 0
-        parsed = json.loads(result.output)
-        assert parsed == []
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["subscriptions"] == []
 
     def test_domain_loading_error(self):
         change_working_directory_to("test7")
@@ -183,7 +186,67 @@ class TestSubscriptionsStatus:
                 ["subscriptions", "status", "--domain", "nonexistent.py"],
             )
 
-        assert result.exit_code != 0
+        # Historical human path: typer.Abort, exit 1 (not the envelope's exit 2).
+        assert result.exit_code == 1
+
+    def test_json_load_error_is_envelope(self):
+        """A domain-load failure under --json is the error envelope on stdout,
+        exit 2, with no rich markup leaking onto the machine payload."""
+        change_working_directory_to("test7")
+
+        with patch(
+            "protean.cli._helpers.derive_domain",
+            side_effect=NoDomainException("not found"),
+        ):
+            result = runner.invoke(
+                app,
+                ["subscriptions", "status", "--domain", "nonexistent.py", "--json"],
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "Error loading Protean domain" in env["data"]["error"]
+        assert "[red]" not in result.stdout
+
+    def test_json_init_failure_is_envelope(self):
+        """A domain that derives but fails to init, under --json, is the error
+        envelope (the _helpers.load_domain init branch)."""
+        change_working_directory_to("test7")
+
+        mock_domain = MagicMock()
+        mock_domain.name = "test-domain"
+        mock_domain.init.side_effect = RuntimeError("adapter down")
+
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                ["subscriptions", "status", "--domain", "publishing7.py", "--json"],
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "Error initialising Protean domain" in env["data"]["error"]
+        assert "[red]" not in result.stdout
+
+    def test_non_json_init_failure_is_unchanged(self):
+        """Without --json an init failure keeps its historical propagation:
+        surfaced by handle_cli_exceptions at exit 1, never the envelope."""
+        change_working_directory_to("test7")
+
+        mock_domain = MagicMock()
+        mock_domain.name = "test-domain"
+        mock_domain.init.side_effect = RuntimeError("adapter down")
+
+        with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app,
+                ["subscriptions", "status", "--domain", "publishing7.py"],
+            )
+
+        assert result.exit_code == 1
+        assert '"status": "error"' not in result.stdout
 
     def test_table_with_unknown_and_zero_counts(self):
         """Table renders '-' for lag=None, dlq_depth=0, and consumer_count=0."""

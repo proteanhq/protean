@@ -13,14 +13,15 @@ Usage::
     protean projection rebuild --domain=my_domain
 """
 
-import json as json_mod
+import json
 from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich import print
 from rich.table import Table
 
-from protean.cli._helpers import handle_cli_exceptions, load_domain
+from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions, load_domain
+from protean.cli.result import build_envelope, route_logs_to_stderr
 from protean.utils import DomainObjects
 
 if TYPE_CHECKING:
@@ -145,6 +146,7 @@ def _status_style(status: str) -> str:
 @app.command()
 @handle_cli_exceptions("projection status")
 def status(
+    ctx: typer.Context,
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     output_json: Annotated[
         bool,
@@ -156,25 +158,37 @@ def status(
     For each projection (read model) this reports how far behind it is in time
     (``staleness``) and in events (``lag``) across all the projectors that feed it,
     plus its current row count. Does not require the server to be running.
+
+    Under ``--json`` the result is the shared CLI result envelope, with the
+    per-projection list under ``data.projections``.
     """
+    if output_json:
+        # Route logs to stderr before the domain import so a stray import-time
+        # log cannot corrupt the machine payload on stdout.
+        route_logs_to_stderr(
+            log_already_configured=bool((ctx.obj or {}).get(CTX_LOG_CONFIGURED))
+        )
+
     from protean.server.projection_status import (  # noqa: PLC0415
         collect_projection_statuses,
     )
 
-    derived_domain = load_domain(domain)
+    derived_domain = load_domain(domain, as_json=output_json)
 
     with derived_domain.domain_context():
         statuses = collect_projection_statuses(derived_domain)
 
-    if not statuses:
-        if output_json:
-            print(json_mod.dumps([]))
-        else:
-            print("No projections found in domain.")
+    if output_json:
+        envelope = build_envelope(
+            status="pass",
+            data={"projections": [s.to_dict() for s in statuses]},
+            diagnostics=[],
+        )
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True, default=str))
         return
 
-    if output_json:
-        print(json_mod.dumps([s.to_dict() for s in statuses], indent=2, default=str))
+    if not statuses:
+        print("No projections found in domain.")
         return
 
     table = Table(title=f"Projections — {derived_domain.name}")

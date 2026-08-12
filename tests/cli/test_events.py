@@ -19,7 +19,9 @@ from protean.cli.events import (
     _format_upcaster_chain,
     _truncate_id,
 )
+from protean.cli.result import EXIT_USAGE
 from protean.exceptions import NoDomainException
+from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
@@ -1474,7 +1476,9 @@ class TestEventsCatalog:
         ir_file = _write_catalog_ir(tmp_path)
         result = runner.invoke(app, ["events", "catalog", f"--ir={ir_file}", "--json"])
         assert result.exit_code == 0
-        data = json.loads(result.output)
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        data = env["data"]["events"]
         assert len(data) == 2
 
         placed = next(e for e in data if e["name"] == "OrderPlaced")
@@ -1530,13 +1534,15 @@ class TestEventsCatalog:
             app, ["events", "catalog", f"--domain={domain_file}", "--json"]
         )
         assert result.exit_code == 0, result.output
-        data = json.loads(result.output)
+        env = assert_envelope(result.stdout)
+        data = env["data"]["events"]
         assert any(e["name"] == "OrderPlaced" for e in data)
 
     def test_requires_domain_or_ir(self):
         result = runner.invoke(app, ["events", "catalog"])
-        assert result.exit_code != 0
-        assert "provide either" in result.output
+        assert result.exit_code == EXIT_USAGE
+        # Usage errors go to stderr so a --json run keeps stdout to the envelope.
+        assert "provide either" in result.stderr
 
     def test_domain_and_ir_are_mutually_exclusive(self, tmp_path: Path):
         ir_file = _write_catalog_ir(tmp_path)
@@ -1544,8 +1550,162 @@ class TestEventsCatalog:
             app,
             ["events", "catalog", f"--ir={ir_file}", "--domain=some.module"],
         )
-        assert result.exit_code != 0
-        assert "mutually exclusive" in result.output
+        assert result.exit_code == EXIT_USAGE
+        assert "mutually exclusive" in result.stderr
+
+    def test_json_usage_error_is_envelope(self):
+        """A usage error under --json is the error envelope on stdout, exit 2,
+        with no rich markup leaking onto the machine payload."""
+        result = runner.invoke(app, ["events", "catalog", "--json"])
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "provide either" in env["data"]["error"]
+        assert "[red]" not in result.stdout
+
+    def test_json_missing_ir_file_is_envelope(self, tmp_path: Path):
+        """A missing --ir file under --json is the error envelope on stdout,
+        exit 2, not a rich line."""
+        missing = tmp_path / "nope.json"
+        result = runner.invoke(app, ["events", "catalog", f"--ir={missing}", "--json"])
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "file not found" in env["data"]["error"]
+        assert "[red]" not in result.stdout
+
+    def test_json_unloadable_domain_is_envelope(self):
+        """An unloadable --domain under --json is the error envelope on stdout,
+        exit 2 (the load path through load_domain_ir)."""
+        result = runner.invoke(
+            app, ["events", "catalog", "--domain=nonexistent.module", "--json"]
+        )
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "Error loading Protean domain" in env["data"]["error"]
+        assert "[red]" not in result.stdout
+
+    def test_json_init_failure_is_envelope(self):
+        """A domain that derives but fails to init, under --json, is the error
+        envelope (the _ir_utils.load_domain init branch)."""
+        mock_domain = MagicMock()
+        mock_domain.init.side_effect = RuntimeError("adapter down")
+        with patch("protean.cli._ir_utils.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app, ["events", "catalog", "--domain=some.module", "--json"]
+            )
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "Error initialising Protean domain" in env["data"]["error"]
+        assert "[red]" not in result.stdout
+
+    def test_json_to_ir_failure_is_envelope(self):
+        """A domain that inits but fails to build IR, under --json, is the error
+        envelope (the load_domain_ir to_ir branch)."""
+        mock_domain = MagicMock()
+        mock_domain.to_ir.side_effect = RuntimeError("bad ir")
+        with patch("protean.cli._ir_utils.derive_domain", return_value=mock_domain):
+            result = runner.invoke(
+                app, ["events", "catalog", "--domain=some.module", "--json"]
+            )
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "Error generating IR" in env["data"]["error"]
+
+    def test_json_invalid_ir_file_is_envelope(self, tmp_path: Path):
+        """Invalid JSON in an --ir file, under --json, is the error envelope
+        (the load_ir_file JSONDecodeError branch)."""
+        bad = tmp_path / "bad.json"
+        bad.write_text("not valid json {{{", encoding="utf-8")
+        result = runner.invoke(app, ["events", "catalog", f"--ir={bad}", "--json"])
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "invalid JSON" in env["data"]["error"]
+
+    def test_json_non_object_ir_file_is_envelope(self, tmp_path: Path):
+        """An --ir file that parses to a non-object (here a list), under --json,
+        is the error envelope (the load_ir_file dict-check branch)."""
+        f = tmp_path / "list.json"
+        f.write_text("[]", encoding="utf-8")
+        result = runner.invoke(app, ["events", "catalog", f"--ir={f}", "--json"])
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "not a JSON object" in env["data"]["error"]
+
+    def test_json_unreadable_ir_file_is_envelope(self, tmp_path: Path, monkeypatch):
+        """An --ir file that exists but cannot be read (OSError), under --json,
+        is the error envelope (the load_ir_file OSError branch)."""
+        f = tmp_path / "ir.json"
+        f.write_text("{}", encoding="utf-8")
+
+        def boom(self, *args, **kwargs):
+            raise OSError("permission denied")
+
+        monkeypatch.setattr("pathlib.Path.read_text", boom)
+        result = runner.invoke(app, ["events", "catalog", f"--ir={f}", "--json"])
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "could not read" in env["data"]["error"]
+
+    def test_non_json_load_error_stays_exit_1_and_not_an_envelope(self):
+        """Without --json a load failure keeps its historical shape: a human
+        message and exit 1, never the envelope. Pins the format-dependent exit
+        class so a regression flipping the default path is caught."""
+        result = runner.invoke(
+            app, ["events", "catalog", "--domain=nonexistent.module"]
+        )
+        assert result.exit_code == 1
+        assert '"status": "error"' not in result.stdout
+        assert not result.stdout.strip().startswith("{")
+
+    def test_json_stdout_clean_when_domain_logs(self, tmp_path: Path, monkeypatch):
+        """route_logs_to_stderr: a domain that logs at import must not corrupt
+        the envelope on stdout — the log lands on stderr instead."""
+        marker = "LEAKY_CATALOG_LOG_1394"
+        # Unique module stem: derive_domain imports by file stem and caches in
+        # sys.modules, so a name shared with another test's throwaway domain
+        # (check's is "logging_domain") would shadow it and skip its import.
+        dom = tmp_path / "catalog_leak_domain.py"
+        dom.write_text(
+            "import structlog\n"
+            "from protean import Domain\n"
+            f'structlog.get_logger("test.leak").warning("{marker}")\n'
+            'domain = Domain(name="LoggingDomain")\n',
+            encoding="utf-8",
+        )
+
+        # Pin the call itself, not just its effect. Logging is process-global, so
+        # once an earlier test configures it, the marker reaches stderr through
+        # the root handler whether or not catalog routes it. A spy makes the test
+        # fail if catalog stops calling route_logs_to_stderr on the --json path.
+        import protean.cli.events as events_mod
+
+        real_route = events_mod.route_logs_to_stderr
+        calls: list[tuple] = []
+
+        def spy(*args, **kwargs):
+            calls.append((args, kwargs))
+            return real_route(*args, **kwargs)
+
+        monkeypatch.setattr(events_mod, "route_logs_to_stderr", spy)
+
+        result = runner.invoke(
+            app, ["events", "catalog", f"--domain={dom}:domain", "--json"]
+        )
+        assert result.exit_code == 0, result.stderr
+        assert calls, "catalog did not route logs to stderr on the --json path"
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        # The log must not have corrupted the payload...
+        assert marker not in result.stdout
+        # ...and it must actually have fired (else this asserts nothing).
+        assert marker in result.stderr
 
     def test_empty_ir_reports_no_events(self, tmp_path: Path):
         ir_file = tmp_path / "empty-ir.json"
@@ -1559,7 +1719,9 @@ class TestEventsCatalog:
         ir_file.write_text(json.dumps({"clusters": {}}), encoding="utf-8")
         result = runner.invoke(app, ["events", "catalog", f"--ir={ir_file}", "--json"])
         assert result.exit_code == 0
-        assert json.loads(result.output) == []
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["events"] == []
 
 
 class TestCatalogFormatters:

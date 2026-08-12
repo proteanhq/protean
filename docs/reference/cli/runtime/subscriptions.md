@@ -42,23 +42,36 @@ integration with external monitoring:
 protean subscriptions status --domain=my_app --json
 ```
 
+The output is the shared [result envelope](../conventions.md), with the
+per-subscription list under `data.subscriptions`:
+
 ```json
-[
-  {
-    "name": "order-projector",
-    "handler_name": "OrderProjector",
-    "subscription_type": "event_store",
-    "stream_category": "order",
-    "lag": 0,
-    "pending": 0,
-    "current_position": "42",
-    "head_position": "42",
-    "status": "ok",
-    "consumer_count": 0,
-    "dlq_depth": 0
-  }
-]
+{
+  "version": "0.1.0",
+  "status": "pass",
+  "data": {
+    "subscriptions": [
+      {
+        "name": "order-projector",
+        "handler_name": "OrderProjector",
+        "subscription_type": "event_store",
+        "stream_category": "order",
+        "lag": 0,
+        "pending": 0,
+        "current_position": "42",
+        "head_position": "42",
+        "status": "ok",
+        "consumer_count": 0,
+        "dlq_depth": 0
+      }
+    ]
+  },
+  "diagnostics": []
+}
 ```
+
+stdout carries exactly this one object; logs go to stderr, so a `| jq` pipe
+stays parseable.
 
 ## Subscription types
 

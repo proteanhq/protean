@@ -134,9 +134,34 @@ across all of them.
 protean projection status --domain=my_domain --json
 ```
 
-Emits a JSON array of objects (`projection_name`, `projectors`, `last_updated`,
-`staleness_seconds`, `lag`, `row_count`, `status`), suitable for piping into
-other tooling.
+The output is the shared [result envelope](../conventions.md), with the
+per-projection list under `data.projections`. Each entry carries
+`projection_name`, `projectors`, `last_updated`, `staleness_seconds`, `lag`,
+`row_count`, and `status`:
+
+```json
+{
+  "version": "0.1.0",
+  "status": "pass",
+  "data": {
+    "projections": [
+      {
+        "projection_name": "Balances",
+        "projectors": ["BalancesProjector"],
+        "last_updated": "2026-06-27T12:00:00+00:00",
+        "staleness_seconds": 90.0,
+        "lag": 5,
+        "row_count": 3,
+        "status": "lagging"
+      }
+    ]
+  },
+  "diagnostics": []
+}
+```
+
+stdout carries exactly this one object; logs go to stderr, so a `| jq` pipe
+stays parseable.
 
 **Options**
 

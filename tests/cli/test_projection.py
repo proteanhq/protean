@@ -1,6 +1,5 @@
 """Tests for CLI projection commands (protean projection ...)."""
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -10,9 +9,11 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.cli.result import EXIT_USAGE
 from protean.exceptions import NoDomainException
 from protean.server.projection_status import ProjectionStatus
 from protean.utils.projection_rebuilder import RebuildResult
+from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
@@ -305,15 +306,18 @@ class TestProjectionStatus:
     def test_json_output(self):
         result = self._run([self._status()], "--json")
         assert result.exit_code == 0
-        parsed = json.loads(result.output)
-        assert isinstance(parsed, list)
-        assert parsed[0]["projection_name"] == "Balances"
-        assert parsed[0]["staleness_seconds"] == 90.0
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        projections = env["data"]["projections"]
+        assert projections[0]["projection_name"] == "Balances"
+        assert projections[0]["staleness_seconds"] == 90.0
 
     def test_json_output_empty(self):
         result = self._run([], "--json")
         assert result.exit_code == 0
-        assert json.loads(result.output) == []
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["projections"] == []
 
     def test_renders_dashes_for_unknown(self):
         result = self._run(
@@ -340,4 +344,22 @@ class TestProjectionStatus:
             result = runner.invoke(
                 app, ["projection", "status", "--domain", "nonexistent.py"]
             )
-        assert result.exit_code != 0
+        # Historical human path: typer.Abort, exit 1 (not the envelope's exit 2).
+        assert result.exit_code == 1
+
+    def test_json_load_error_is_envelope(self):
+        """A domain-load failure under --json is the error envelope on stdout,
+        exit 2, with no rich markup leaking onto the machine payload."""
+        change_working_directory_to("test7")
+        with patch(
+            "protean.cli._helpers.derive_domain",
+            side_effect=NoDomainException("not found"),
+        ):
+            result = runner.invoke(
+                app, ["projection", "status", "--domain", "nonexistent.py", "--json"]
+            )
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "Error loading Protean domain" in env["data"]["error"]
+        assert "[red]" not in result.stdout

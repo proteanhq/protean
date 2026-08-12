@@ -299,9 +299,34 @@ Exactly one of `--domain` or `--ir` is required; they are mutually exclusive.
 2 event(s)
 ```
 
-With `--json`, each entry additionally includes the event's `fqn`, owning
-`aggregate`, `published`/`is_fact_event` flags, and full `fields`, so the output
-is a complete contract dump suitable for tooling.
+With `--json`, the output is the shared [result envelope](../conventions.md),
+with the event list under `data.events`. Each entry additionally includes the
+event's `fqn`, owning `aggregate`, `published`/`is_fact_event` flags, and full
+`fields`, so the output is a complete contract dump suitable for tooling:
+
+```json
+{
+  "version": "0.1.0",
+  "status": "pass",
+  "data": {
+    "events": [
+      { "name": "OrderPlaced", "type": "Shop.OrderPlaced.v3", "version": 3, "...": "..." }
+    ]
+  },
+  "diagnostics": []
+}
+```
+
+Under `--json`, any usage or load error (neither `--domain` nor `--ir`, both at
+once, an unloadable domain, or a missing/unreadable/non-object `--ir` file) is
+the error envelope (`status="error"`, the message under `data.error`) on stdout
+and exits `2`, so stdout stays exactly one object and a `| jq` pipe stays
+parseable.
+
+Without `--json` the two error kinds differ, as they did before this change. A
+usage error (neither `--domain` nor `--ir`, or both) prints to stderr and exits
+`2`. A load error (unloadable domain, unreadable `--ir` file) prints to stdout
+and exits `1`.
 
 Together with `protean schema generate --format all` (which emits the matching versioned `.protean/schemas/` tree in JSON, Avro,
 and Protobuf) the catalog forms a **local schema-registry on-ramp**: exactly
@@ -312,7 +337,7 @@ integrating the service. See [`protean schema`](../schema.md).
 
 | Condition | Behavior |
 |-----------|----------|
-| Invalid domain path | Aborts with "Error loading Protean domain" |
+| Invalid domain path | Aborts with "Error loading Protean domain" (under `catalog --json`, the error envelope on stdout, exit `2`) |
 | Aggregate not found in registry (`history`) | Aborts with "not found in domain" |
 | No events in stream (`read`) | Prints "No events found in stream" |
 | No matching events (`search`) | Prints "No events found matching type" |

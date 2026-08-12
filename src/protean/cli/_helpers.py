@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 import typer
 from rich import print
 
+from protean.cli.result import emit_usage_error
 from protean.exceptions import NoDomainException
 from protean.utils.dependencies import (
     FEATURE_EXTRA_MODULES,
@@ -86,7 +87,7 @@ def abort_for_missing_dependency(
     raise typer.Abort() from exc
 
 
-def load_domain(domain_path: str) -> "Domain":
+def load_domain(domain_path: str, *, as_json: bool = False) -> "Domain":
     """Load and initialize a domain from ``domain_path``, or abort cleanly.
 
     Shared by the ``protean`` subcommands that operate on a domain (``outbox``
@@ -94,17 +95,36 @@ def load_domain(domain_path: str) -> "Domain":
     module — so the error handling stays identical across commands. On a
     missing/undiscoverable domain it prints a clear message and raises
     ``typer.Abort`` so Typer exits non-zero.
+
+    Pass ``as_json=True`` from a command emitting the result envelope: a load
+    failure then becomes the shared ``status="error"`` envelope on stdout and
+    exit ``2``, so machine output stays exactly one JSON object.
     """
     try:
         derived_domain = derive_domain(domain_path)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
-        print(msg)
         logger.error(msg)
+        if as_json:
+            emit_usage_error(as_json=True, message=msg)
+        print(msg)
         raise typer.Abort() from exc
 
     assert derived_domain is not None
-    derived_domain.init()
+
+    try:
+        derived_domain.init()
+    except Exception as exc:
+        # Under ``--json`` an init failure (bad config, an adapter that will not
+        # connect) becomes the error envelope too, so the machine payload stays
+        # one JSON object. Without it, re-raise so the historical handling
+        # (logged and surfaced by ``handle_cli_exceptions``) is unchanged for
+        # every other caller.
+        if as_json:
+            msg = f"Error initialising Protean domain: {exc}"
+            logger.error(msg)
+            emit_usage_error(as_json=True, message=msg)
+        raise
     return derived_domain
 
 

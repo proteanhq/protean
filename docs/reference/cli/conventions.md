@@ -5,11 +5,13 @@ command's output uniformly: one **result envelope** for machine-readable output,
 and one **exit-code convention**. This page is the durable reference for both, and
 the shape a new command that emits `--json` output should follow.
 
-`check` and `verify` follow these contracts today. The other commands that print
-JSON (`upgrade-check`, `ir diff`, `ir check`) predate them and are **not yet
-converged**: their exit codes and output shapes still differ. Converging them is
-a separate follow-on; until then, only `check` and `verify` are guaranteed to
-match what this page describes.
+`check` and `verify` follow these contracts on every output format. `events
+catalog`, `subscriptions status`, and `projection status` follow them for their
+`--json` machine output: a successful run and any usage or load error are the
+envelope, with the exit codes below. Their human (non-`--json`) output keeps its
+historical shape, so a load failure there still exits `1`. The other commands
+that print JSON (`upgrade-check`, `ir diff`, `ir check`) predate the contracts
+and are **not yet converged**: their exit codes and output shapes still differ.
 
 ## The result envelope
 
@@ -43,7 +45,7 @@ Every command that emits machine-readable output (under `--json`, or
 
 The envelope ships a pinned, versioned JSON Schema at
 `src/protean/cli/schema/v0.1.0/envelope.schema.json` (mirroring the IR schema
-precedent). A conformance test validates the `check` and `verify` `--json` output
+precedent). Conformance tests validate each converged command's `--json` output
 against it, so the shape is enforced, not just documented.
 
 `data` and `diagnostics` split the payload deliberately, so a consumer should

@@ -17,15 +17,16 @@ could not run past). The fine-grained detail — a command's own status, counts,
 or stage tree — lives under ``data``; ``diagnostics`` carries the diagnostic
 records (the :mod:`protean.ir.diagnostics` shape, plain dicts at runtime).
 
-``check`` and ``verify`` emit this envelope today. The other commands that print
+``check``, ``verify``, ``events catalog``, ``subscriptions status``, and
+``projection status`` emit this envelope today. The other commands that print
 ``--json``/``--format json`` (``upgrade-check``, ``ir diff``, ``ir check``) are
 not yet converged onto it — that is a separate follow-on. Do not read this module
 as a claim that they already conform.
 
 The envelope is a guarded contract, not just a shape: it ships a pinned,
 versioned JSON Schema at :data:`SCHEMA_PATH`, mirroring the IR precedent at
-``src/protean/ir/schema/v0.1.0/schema.json``. A conformance test asserts the
-``check`` and ``verify`` ``--json`` output validates against it.
+``src/protean/ir/schema/v0.1.0/schema.json``. Conformance tests assert each
+converged command's ``--json`` output validates against it.
 
 The exit-code convention ``check`` and ``verify`` follow (and the shape a new
 command should adopt when it converges), with command-specific classes
@@ -45,7 +46,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
+
+import typer
+from rich.console import Console
+from rich.markup import escape
 
 ENVELOPE_VERSION = "0.1.0"
 
@@ -61,6 +66,32 @@ EXIT_USAGE = 2
 # The envelope's coarse verdict — the exit-code class, not the fine-grained
 # severity (which lives under ``data``).
 EnvelopeStatus = Literal["pass", "fail", "error"]
+
+# Usage/environment errors write to stderr so ``--json`` keeps stdout to the
+# envelope alone.
+_ERR_CONSOLE = Console(stderr=True)
+
+
+def emit_usage_error(*, as_json: bool, message: str) -> NoReturn:
+    """Emit a usage/environment error and exit :data:`EXIT_USAGE` with clean stdout.
+
+    Under ``--json`` the error is the shared envelope (``status="error"``, the
+    message under ``data.error``) on stdout and nothing else, so a ``| jq`` stays
+    parseable; otherwise a red line goes to stderr. ``escape`` keeps a bracketed
+    token in the message (``[lint]``) from being parsed as rich markup and
+    dropped. Shared by every command that emits the envelope.
+    """
+    if as_json:
+        typer.echo(
+            json.dumps(
+                build_envelope(status="error", data={"error": message}, diagnostics=[]),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        _ERR_CONSOLE.print(f"[red]{escape(message)}[/red]")
+    raise typer.Exit(code=EXIT_USAGE)
 
 
 def route_logs_to_stderr(log_already_configured: bool = False) -> None:
