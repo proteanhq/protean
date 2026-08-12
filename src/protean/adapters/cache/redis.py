@@ -141,8 +141,9 @@ class RedisCache(BaseCache):
         self._client.delete(key)
 
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        values = self._client.scan_iter(match=key_pattern)
-        self._client.delete(*values)
+        values = list(self._client.scan_iter(match=key_pattern))
+        if values:
+            self._client.delete(*values)
 
     def flush_all(self) -> None:
         self._client.flushall()

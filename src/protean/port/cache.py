@@ -195,7 +195,10 @@ class BaseCache(metaclass=ABCMeta):
 
     @abstractmethod
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        """Remove a cache record by key pattern"""
+        """Remove a cache record by key pattern
+
+        Does nothing if the pattern matches no keys.
+        """
 
     @abstractmethod
     def flush_all(self) -> None:

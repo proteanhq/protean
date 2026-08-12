@@ -36,31 +36,26 @@ class TestSharedPatternBehaviour:
 
 
 class TestRemoveByKeyPatternOnNoMatch:
-    def test_remove_by_key_pattern_is_silent_when_nothing_matches(self, cache, request):
-        """A 4th cross-adapter divergence, found by running this suite.
+    def test_remove_by_key_pattern_is_silent_when_nothing_matches(self, cache):
+        """`remove_by_key_pattern` on a pattern that matches nothing is a
+        no-op on every adapter.
 
         Memory's `remove_by_key_pattern` filters to an empty key list and
-        loops zero times: silent. Redis' builds `values` from `scan_iter`
-        and calls `self._client.delete(*values)`; when nothing matches that
-        is `delete()` with zero keys, which raises
-        `redis.exceptions.ResponseError: wrong number of arguments for 'del'
-        command`. Not one of #1391/#1392/#1393 — filed as its own follow-up,
-        #1399.
+        loops zero times: silent. Redis used to build `values` from
+        `scan_iter` and call `self._client.delete(*values)` unconditionally;
+        when nothing matched that was `delete()` with zero keys, which
+        raised `redis.exceptions.ResponseError: wrong number of arguments
+        for 'del' command`. Fixed in #1399 by only calling `delete` when
+        there is at least one matching key.
         """
-        if request.node.callspec.params["cache"]["provider"] == "redis":
-            request.applymarker(
-                pytest.mark.xfail(
-                    strict=True,
-                    reason=(
-                        "#1399: remove_by_key_pattern on a pattern that "
-                        "matches nothing is silent on memory but raises "
-                        "redis.exceptions.ResponseError on Redis, because "
-                        "delete(*values) is called with zero keys."
-                    ),
-                )
-            )
+        cache.remove_by_key_pattern("cache_entry:::does-not-exist-*")
+
+    def test_remove_by_key_pattern_on_no_match_leaves_other_keys_intact(self, cache):
+        cache.add(CacheEntry(key="alpha", value="one"))
 
         cache.remove_by_key_pattern("cache_entry:::does-not-exist-*")
+
+        assert cache.count("cache_entry:::*") == 1
 
 
 class TestGetAllPaginationAgrees:
