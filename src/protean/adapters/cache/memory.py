@@ -1,8 +1,8 @@
 import collections.abc
 import math
-import re
 import time
 from collections.abc import Iterator
+from fnmatch import fnmatchcase
 from threading import RLock
 from typing import Any
 
@@ -177,19 +177,28 @@ class MemoryCache(BaseCache):
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
+        # Snapshot with list() so the matching below runs outside the store's
+        # lock: keys() is a lazy iterator that holds TTLDict's RLock for the
+        # whole traversal, so matching while iterating it would hold the lock
+        # across every fnmatch call.
         key_list = list(self._db.keys())
-        regex = re.compile(key_pattern)
-        results = list(filter(regex.match, key_list))
+        results = [key for key in key_list if fnmatchcase(key, key_pattern)]
 
         # Apply pagination
         page = results[last_position : last_position + size]
 
-        return [projection_cls(self._db.get(key)) for key in page]
+        # A key can expire between the scan above and this read, so a `get`
+        # can come back empty. Skip it, the same way the Redis adapter does.
+        return [
+            projection_cls(value)
+            for key in page
+            if (value := self._db.get(key)) is not None
+        ]
 
     def count(self, key_pattern: str) -> int:
-        key_list = self._db.keys()
-        regex = re.compile(key_pattern)
-        return len(list(filter(regex.match, key_list)))
+        # list() snapshots under the store's lock; matching then runs lock-free.
+        key_list = list(self._db.keys())
+        return sum(1 for key in key_list if fnmatchcase(key, key_pattern))
 
     def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)
@@ -203,11 +212,13 @@ class MemoryCache(BaseCache):
         self._db.pop(key, None)
 
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        full_key_list = self._db.keys()
-        regex = re.compile(key_pattern)
-        keys_to_delete = list(filter(regex.match, full_key_list))
+        # list() snapshots under the store's lock; matching then runs lock-free.
+        key_list = list(self._db.keys())
+        keys_to_delete = [key for key in key_list if fnmatchcase(key, key_pattern)]
+        # A key can expire between the scan above and this delete, so use
+        # `pop` with a default, the same as `remove` and `remove_by_key`.
         for key in keys_to_delete:
-            del self._db[key]
+            self._db.pop(key, None)
 
     def flush_all(self) -> None:
         # Clear in place so the TTLDict (and its configured default TTL) is

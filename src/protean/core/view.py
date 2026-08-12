@@ -128,7 +128,9 @@ class ReadView:
         """Return the total number of projection records."""
         if self._is_cache_backed:
             projection_name = underscore(self._projection_cls.__name__)
-            key_pattern = f"{projection_name}:::.*"
+            # Keys are `name:::identifier`; count every entry for this
+            # projection with the glob the cache port expects.
+            key_pattern = f"{projection_name}:::*"
             return self._cache().count(key_pattern)
         else:
             return self.query.count()

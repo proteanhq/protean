@@ -141,6 +141,12 @@ order_summary:::ord-123
 user_profile:::usr-456
 ```
 
+The `key_pattern` on `get_all`, `count`, and `remove_by_key_pattern` is a glob.
+`*` matches any run of characters, `?` matches one, `[...]` is a character
+class, and other characters are literal. Every entry of one projection is
+`order_summary:::*`. Adapters agree on `*`, `?`, and literal characters; bracket
+negation and escaping can differ, so keep patterns to the `name:::*` shape.
+
 ## Configuring a cache
 
 1. **A default cache is required**, even if it is only the memory cache for
