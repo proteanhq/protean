@@ -3,11 +3,12 @@
 ``specs/OCC.tla`` states what the OCC compare-and-set is *allowed* to do; TLC never
 reads the Python, so nothing today confirms the shipped adapters behave the way the
 model says. This recorder closes that gap the other way round. When a capture is in
-progress, the real commit paths in the Memory and SQLAlchemy adapters emit, per unit
-of work, the state each writer observed at its compare-and-set: the version it read
-as its base, whether the commit went through or conflicted, and the resulting stored
-version. ``specs/check.sh`` feeds that log to TLC and confirms it is a behaviour
-``OCC.tla`` permits (see ``specs/OCCTrace.tla``).
+progress, the real commit paths in the Memory and SQLAlchemy adapters emit, for each
+version-checked aggregate write (a single unit of work can produce several), the
+state observed at its compare-and-set: the version read as the base, whether the
+commit went through or conflicted, and the resulting stored version. ``specs/check.sh``
+feeds that log to TLC and confirms it is a behaviour ``OCC.tla`` permits (see
+``specs/OCCTrace.tla``).
 
 The values are captured under the same lock or transaction as the real operation.
 Almost all are read straight from the store rather than derived, so the log cannot

@@ -117,7 +117,11 @@ def test_record_is_thread_safe_under_contention():
                 version_after=1,
             )
 
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(50)]
+        # Daemon so a hung worker cannot keep the pytest process alive and stall the
+        # run; the assertion below still validates that they all finished.
+        threads = [
+            threading.Thread(target=worker, args=(i,), daemon=True) for i in range(50)
+        ]
         for thread in threads:
             thread.start()
         for thread in threads:

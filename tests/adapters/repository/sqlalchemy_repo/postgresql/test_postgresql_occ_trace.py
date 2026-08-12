@@ -19,6 +19,7 @@ is observable.
 """
 
 import pytest
+from sqlalchemy import text
 
 from protean import Domain, UnitOfWork
 from protean.core.aggregate import BaseAggregate
@@ -111,3 +112,68 @@ def test_update_through_a_unit_of_work_records_nothing(trace_domain):
         recorded = list(events)
 
     assert recorded == [], recorded
+
+
+def _provoke_standalone_flush_conflict(domain, monkeypatch):
+    """Return a ``save()`` that hits a standalone flush-time version conflict.
+
+    A standalone ``_update`` reads and flushes back to back, so there is no window
+    to race it single-threaded. This injects an out-of-band version bump *between*
+    the read and the flush by wrapping ``_commit_if_standalone``, making the flush's
+    ``WHERE _version = 0`` match zero rows deterministically (the same trick as
+    ``test_flush_time_version_conflict_raises_expected_version_error``, adapted to
+    the standalone path)."""
+    repo = domain.repository_for(OCCTraceCounter)
+    with UnitOfWork():
+        seed = OCCTraceCounter(value=0)
+        repo.add(seed)
+    counter_id = seed.id
+
+    entity = repo.get(counter_id)  # loaded at version 0, before the patch below
+    entity.value = 7
+
+    provider = domain.providers["default"]
+    dao_cls = type(repo._dao)
+    real_commit = dao_cls._commit_if_standalone
+
+    def bump_then_commit(self, conn):
+        with provider._engine.connect() as other:
+            other.execute(
+                text(
+                    "UPDATE occ_trace_counter SET _version = _version + 1 WHERE id = :id"
+                ),
+                {"id": str(counter_id)},
+            )
+            other.commit()
+        return real_commit(self, conn)
+
+    monkeypatch.setattr(dao_cls, "_commit_if_standalone", bump_then_commit)
+    return counter_id, lambda: repo._dao.save(entity)
+
+
+def test_standalone_flush_conflict_raises_expected_version_error(
+    trace_domain, monkeypatch
+):
+    """A standalone flush that loses the version-id race raises StaleDataError; it
+    must surface as ExpectedVersionError, matching the UoW path and _flush/_filter/
+    _count, so callers see one optimistic-concurrency error everywhere
+    (:issue:`#1382`)."""
+    _, do_save = _provoke_standalone_flush_conflict(trace_domain, monkeypatch)
+    with pytest.raises(ExpectedVersionError):
+        do_save()  # no capture active: exercises the translation on its own
+
+
+def test_standalone_flush_conflict_is_recorded_as_a_conflict(trace_domain, monkeypatch):
+    """The losing standalone writer records a ``conflicted`` event against its base;
+    the row was rolled back and the connection closed, so the resulting version is
+    unknown and recorded as ``None`` (:issue:`#1382`)."""
+    counter_id, do_save = _provoke_standalone_flush_conflict(trace_domain, monkeypatch)
+    with occ_trace.capture() as events:
+        with pytest.raises(ExpectedVersionError):
+            do_save()
+        recorded = list(events)
+
+    assert [e["outcome"] for e in recorded] == ["conflicted"]
+    assert recorded[0]["stream"] == f"occ_trace_counter:{counter_id}"
+    assert recorded[0]["base"] == 0
+    assert recorded[0]["version_after"] is None
