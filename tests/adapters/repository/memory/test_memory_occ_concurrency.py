@@ -355,3 +355,23 @@ def test_uncontended_commits_record_one_clean_event_each(test_domain):
     assert [e["outcome"] for e in recorded] == ["committed", "committed"], recorded
     assert [e["base"] for e in recorded] == [0, 1], recorded
     assert [e["version_after"] for e in recorded] == [1, 2], recorded
+
+
+def test_version_checked_then_deleted_record_is_not_traced(test_domain):
+    """A record updated (so it is version-checked) and then deleted in the same
+    session leaves no row, so there is no resulting version to record. A delete is
+    not the version-advancing compare-and-set the OCC spec models, so the commit
+    records nothing rather than a bogus ``committed`` with ``version_after=None``
+    (:issue:`#1382`)."""
+    counter_id = _seed_counter(test_domain)
+
+    with occ_trace.capture() as events:
+        with test_domain.domain_context(), UnitOfWork():
+            repo = test_domain.repository_for(Counter)
+            counter = repo.get(counter_id)
+            counter.value = 5
+            repo.add(counter)  # update — records the version check
+            repo._dao.delete(counter)  # then delete, same session
+        recorded = list(events)
+
+    assert recorded == [], recorded

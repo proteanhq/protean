@@ -118,5 +118,6 @@ def test_record_is_thread_safe_under_contention():
             thread.start()
         for thread in threads:
             thread.join(timeout=10)
+        assert not any(thread.is_alive() for thread in threads), "a worker hung"
     assert len(events) == 50
     assert {e["writer"] for e in events} == {str(i) for i in range(50)}

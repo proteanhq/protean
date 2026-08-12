@@ -240,14 +240,17 @@ class MemorySession:
                 # (raw, still under the lock), rather than assuming ``base + 1``.
                 for (schema, identifier), expected in checks.items():
                     merged = live.get(schema, {}).get(identifier)
-                    merged_version = (
-                        merged.get("_version") if merged is not None else None
-                    )
+                    if merged is None:
+                        # The record was version-checked and then deleted in this
+                        # same session, so there is no resulting version to record.
+                        # A delete is not the version-advancing compare-and-set the
+                        # OCC spec models, so it is left out of the trace.
+                        continue
                     occ_trace.record(
                         stream=f"{schema}:{identifier}",
                         base=expected,
                         outcome="committed",
-                        version_after=merged_version,
+                        version_after=merged.get("_version"),
                     )
 
             # Clear the changeset so a repeated commit is a no-op.

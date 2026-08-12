@@ -79,10 +79,16 @@ def record(
     id, which uniquely tags each concurrent unit of work. See :class:`OCCEvent`
     for the fields.
     """
-    events = _events
-    if events is None:
-        return
+    if _events is None:
+        return  # fast, lock-free path when inactive (the common case)
     with _lock:
+        # Re-read under the lock so a concurrent or nested capture() swap (also
+        # taken under the lock) can never land this append on a list that has
+        # already been restored. The None case here is only reachable if record()
+        # races a capture() exit, which the single-driver usage never does.
+        events = _events
+        if events is None:  # pragma: no cover
+            return
         events.append(
             OCCEvent(
                 stream=stream,
