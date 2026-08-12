@@ -117,9 +117,10 @@ TDIR="$WORKDIR/trace"
 # mechanism it exercises, so a fixture that starts failing for the wrong reason is
 # caught rather than counted as a correct rejection.
 trace_run() {
-    local label="$1" module="$2" cfg="$3" out which
+    local label="$1" module="$2" cfg="$3" out rc which verdict
     out="$(cd "$TDIR" && java -XX:+UseParallelGC -cp "$JAR" tlc2.TLC \
         -metadir "$WORKDIR/trace-$label" -config "$cfg" "$module" 2>&1)"
+    rc=$?
     # Extract a named invariant first. A temporal-property failure can also print
     # "... is violated" (e.g. "Property TraceAccepted is violated"), so match the
     # specific "Invariant <Name>" form and only treat the rest as temporal, rather
@@ -127,14 +128,24 @@ trace_run() {
     which="$(printf '%s\n' "$out" \
         | grep -oE "Invariant [A-Za-z0-9_]+ is violated" | head -1 | awk '{print $2}')"
     if [[ $out == *"No error has been found"* ]]; then
-        echo pass
+        verdict=pass
     elif [[ -n $which ]]; then
-        echo "inv:$which"
+        verdict="inv:$which"
     elif [[ $out == *"is violated"* || $out == *"Temporal properties were violated"* ]]; then
-        echo temporal
+        verdict=temporal
     else
         echo error
+        return
     fi
+    # Cross-check the report against TLC's exit code, as run() does: a clean report
+    # with a non-zero exit, or a violation with a zero exit, means TLC did not
+    # terminate cleanly, so report error rather than trusting the text.
+    if { [[ $verdict == pass ]] && [[ $rc -ne 0 ]]; } \
+       || { [[ $verdict != pass ]] && [[ $rc -eq 0 ]]; }; then
+        echo error
+        return
+    fi
+    echo "$verdict"
 }
 
 # check_trace <label> <log.jsonl> <expect>
