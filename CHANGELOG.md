@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-08-12
+
+### Added
+
+- A handler method invocation that reaches no repository now carries a stated guarantee that it opens no transaction and holds no pooled connection, so a handler can talk to an external system by putting the call in its own method. Regression tests cover the memory and SQLite providers. (#1407)
+
+### Fixed
+
+- **Breaking (event handlers and projectors).** A failing `@handle` method no longer stops its sibling methods from running. Every method registered for the same event now gets its turn, and when more than one fails the failures are raised together as an `ExceptionGroup`. A single failure still propagates unchanged. Two failures are not collected and still end dispatch: an `ExpectedVersionError`, which has to keep its type so the enclosing handler's version retry still fires, and a `BaseException` such as `KeyboardInterrupt`. Methods that used to be skipped now run, so their side effects happen in a failure that previously suppressed them. (#1406)
+  **Migration:** [A failing handler method no longer stops its siblings](https://docs.proteanhq.com/reference/migration/v0-17/#a-failing-handler-method-no-longer-stops-its-siblings)
+- **Breaking (synchronous dispatch).** Under `event_processing = "sync"`, a failing event handler *class* no longer aborts the drain and discards the handler classes queued behind it. Sibling classes registered for the same event are now independent in failure, matching how they already behave under async. Every class runs, and the failures surface once the drain finishes: one on its own, or several together as an `ExceptionGroup` (the enclosing commit then classifies what the caller sees; see the migration guide). Two failures still end the drain at once: an `ExpectedVersionError`, which keeps its type so the enclosing Unit of Work's version retry still fires, and a `BaseException` such as `KeyboardInterrupt`. Classes that used to be skipped now run, so their side effects happen in a failure that previously suppressed them. (#1411)
+  **Migration:** [Sibling handler classes are independent in failure under synchronous dispatch](https://docs.proteanhq.com/reference/migration/v0-17/#sibling-handler-classes-are-independent-in-failure-under-synchronous-dispatch)
+
 ## [0.17.0] - 2026-08-04
 
 ### Added
@@ -721,7 +734,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.17.1...HEAD
+[0.17.1]: https://github.com/proteanhq/protean/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/proteanhq/protean/compare/v0.16.3...v0.17.0
 [0.16.3]: https://github.com/proteanhq/protean/compare/v0.16.2...v0.16.3
 [0.16.2]: https://github.com/proteanhq/protean/compare/v0.16.1...v0.16.2
