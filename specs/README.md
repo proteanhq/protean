@@ -140,9 +140,9 @@ gap-safe checkpoint. `src/protean/utils/checkpoint_trace.py` records, per
 `_gap_safe_batch` call, the raw state the walk observed: the cursor it started
 from, the `global_position` values it saw present, the holes it abandoned, and the
 watermark it settled on. `specs/checkpoint_trace.py record` drives the real
-`_gap_safe_batch` through an out-of-order commit interleaving (the #1251 model via
-`tests/verification/strategies.py`, so no store is re-driven) with the recorder
-active. `to-tla` expands each raw batch into the atomic transitions
+`_gap_safe_batch` through a scripted out-of-order gap (reusing the #1251 model's
+subscription via `tests/verification/strategies.py`, so no store is re-driven) with
+the recorder active. `to-tla` expands each raw batch into the atomic transitions
 `CheckpointTrace.tla` replays: a `commit` the first time a position is seen
 present, an `abandon` per stepped-over hole, and an `advance` per real cursor move
 (no-progress holds are dropped). `CheckpointTrace.tla` replays each through

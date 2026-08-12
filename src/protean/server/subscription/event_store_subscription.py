@@ -551,7 +551,7 @@ class EventStoreSubscription(BaseSubscription):
             # checking (specs/Checkpoint.tla): the cursor it started from, the
             # positions it saw present, the holes it abandoned, and the watermark it
             # settled on. Emitting is a no-op unless a capture is running, so the
-            # shipped path is untouched.
+            # shipped path's return value is unchanged.
             checkpoint_trace.record(
                 cursor=entry_cursor,
                 present=list(present),

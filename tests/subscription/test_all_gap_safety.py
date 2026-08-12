@@ -209,7 +209,7 @@ class TestGapSafeBatch:
 class TestGapSafeBatchTracing:
     """``_gap_safe_batch`` emits its raw observed advance to the checkpoint trace
     recorder when a capture is active (for spec-conformance checking, #1384), and
-    nothing at all when it is not — the shipped path is byte-for-byte unchanged.
+    nothing at all when it is not — the shipped path's return value is unchanged.
     """
 
     def test_records_the_stranded_hold(self, all_subscription):
@@ -221,6 +221,22 @@ class TestGapSafeBatchTracing:
 
         assert _positions(out) == [1]  # behaviour unchanged: held at the gap
         assert events == [{"cursor": 0, "present": [1, 3], "abandoned": [], "safe": 1}]
+
+    def test_records_the_entry_cursor_when_it_is_non_zero(self, all_subscription):
+        # The recorded ``cursor`` is the watermark the batch started from, not a
+        # hardcoded 0: start above the sequence floor and confirm it is carried
+        # through, so the ``cursor=entry_cursor`` binding is exercised off zero.
+        sub = all_subscription
+        sub.current_position = 5
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(6), _msg(8)])
+
+        assert _positions(out) == [6]  # held at the gap above position 6
+        assert len(events) == 1
+        assert events[0]["cursor"] == 5
+        assert events[0]["safe"] == 6
+        assert sorted(events[0]["present"]) == [6, 8]
 
     def test_records_an_abandoned_hole(self, all_subscription):
         sub = all_subscription
@@ -259,7 +275,7 @@ class TestGapSafeBatchTracing:
         # No capture in progress, so the emit is gated off and record never fires.
         out = sub._gap_safe_batch([_msg(1), _msg(3)])
 
-        assert _positions(out) == [1]  # behaviour byte-for-byte unchanged
+        assert _positions(out) == [1]  # return value unchanged, record never fired
         assert calls == []
 
 

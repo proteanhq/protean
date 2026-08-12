@@ -40,6 +40,16 @@ def _batch(cursor, present, safe, abandoned=None):
     }
 
 
+def _reject(log, out, capsys, expected):
+    """Assert the converter rejects ``log`` with exit 2, names the intended guard in
+    its stderr, and writes no module — so a refactor that trips a *different* guard
+    (still exit 2) does not slip through green."""
+    assert checkpoint_trace_script._to_tla(log, out) == 2
+    err = capsys.readouterr().err
+    assert expected in err, f"expected {expected!r} in stderr, got: {err!r}"
+    assert not out.exists()
+
+
 def test_valid_log_converts_to_a_runnable_module(tmp_path):
     # The real-trace shape: a stranded gap that fills, plus an abandoned hole.
     log = _write(
@@ -79,36 +89,46 @@ def test_no_progress_tick_is_dropped(tmp_path):
     assert '[kind |-> "advance", safe |-> 3]' in text
 
 
-def test_empty_log_is_rejected(tmp_path):
+def test_empty_log_is_rejected(tmp_path, capsys):
     log = _write(tmp_path / "empty.jsonl", [])
-    assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    _reject(log, tmp_path / "o.tla", capsys, "has no events")
 
 
-def test_log_without_a_commit_is_rejected(tmp_path):
+def test_log_without_a_commit_is_rejected(tmp_path, capsys):
     # A batch that saw nothing present records no committed position, so there is
     # nothing for the model to replay.
     log = _write(tmp_path / "nocommit.jsonl", [_batch(0, [], 0)])
-    assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    _reject(log, tmp_path / "o.tla", capsys, "records no committed position")
 
 
-def test_log_without_an_advance_is_rejected(tmp_path):
+def test_log_without_an_advance_is_rejected(tmp_path, capsys):
     # A position committed but the cursor never advanced past it (safe == cursor):
     # no Tick to replay, so the log is degenerate.
     log = _write(tmp_path / "noadvance.jsonl", [_batch(0, [1], 0)])
-    assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    _reject(log, tmp_path / "o.tla", capsys, "records no cursor advance")
 
 
-def test_position_both_committed_and_abandoned_is_rejected(tmp_path):
+def test_position_committed_then_abandoned_is_rejected(tmp_path, capsys):
     # A position is either visible (committed) or a rolled-back hole (abandoned),
     # never both — a log claiming both is malformed.
     log = _write(
         tmp_path / "both.jsonl",
         [_batch(0, [1, 2], 2), _batch(2, [3], 3, abandoned=[2])],
     )
-    assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    _reject(log, tmp_path / "o.tla", capsys, "is both committed and abandoned")
 
 
-def test_non_contiguous_cursor_is_rejected(tmp_path):
+def test_position_abandoned_then_committed_is_rejected(tmp_path, capsys):
+    # The other direction of the same contradiction: a hole abandoned in one batch
+    # cannot later be seen present. The guard is symmetric, so this rejects too.
+    log = _write(
+        tmp_path / "both2.jsonl",
+        [_batch(0, [1], 1, abandoned=[2]), _batch(1, [2, 3], 3)],
+    )
+    _reject(log, tmp_path / "o.tla", capsys, "is both committed and abandoned")
+
+
+def test_non_contiguous_cursor_is_rejected(tmp_path, capsys):
     # The replay reproduces one monotonic cursor from 0, so a batch that starts
     # where the previous one did not leave off (a spliced or crash-resume log) is
     # rejected rather than converted to a Trace the replay cannot reproduce.
@@ -116,54 +136,63 @@ def test_non_contiguous_cursor_is_rejected(tmp_path):
         tmp_path / "jump.jsonl",
         [_batch(0, [1], 1), _batch(5, [6], 6)],  # second batch should start at 1
     )
-    assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    _reject(log, tmp_path / "o.tla", capsys, "batch starts at cursor")
 
 
-def test_missing_field_is_rejected(tmp_path):
+def test_watermark_above_highest_position_is_rejected(tmp_path, capsys):
+    # ``global_position`` is 1-based, so the watermark can never settle above the
+    # highest position anyone recorded. A log that advances past every known
+    # position is corrupt; reject it here rather than aborting TLC on ``0..N``.
+    log = _write(tmp_path / "over.jsonl", [_batch(0, [1], 100)])
+    _reject(log, tmp_path / "o.tla", capsys, "above the highest recorded position")
+
+
+def test_missing_field_is_rejected(tmp_path, capsys):
     log = _write(
         tmp_path / "missing.jsonl",
         [{"cursor": 0, "present": [1], "safe": 1}],  # no "abandoned"
     )
-    assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    _reject(log, tmp_path / "o.tla", capsys, "missing field(s)")
 
 
-def test_non_integer_position_is_rejected(tmp_path):
-    for bad in (
-        {"cursor": "x", "present": [1], "abandoned": [], "safe": 1},
-        {"cursor": 0, "present": [1], "abandoned": [], "safe": "y"},
-    ):
+def test_non_integer_position_is_rejected(tmp_path, capsys):
+    cases = [
+        ({"cursor": "x", "present": [1], "abandoned": [], "safe": 1}, "cursor must be"),
+        ({"cursor": 0, "present": [1], "abandoned": [], "safe": "y"}, "safe must be"),
+    ]
+    for i, (bad, expected) in enumerate(cases):
         log = _write(tmp_path / "nonint.jsonl", [bad])
-        assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2, bad
+        _reject(log, tmp_path / f"nonint_{i}.tla", capsys, expected)
 
 
-def test_float_and_negative_positions_are_rejected(tmp_path):
-    for bad in (1.9, -1, True):
+def test_float_negative_and_zero_positions_are_rejected(tmp_path, capsys):
+    # ``present`` holds 1-based positions, so a float, a negative, a boolean, and a
+    # 0 (which would put TraceFate outside Checkpoint.tla's 1..N domain) all reject.
+    for i, bad in enumerate((1.9, -1, True, 0)):
         log = _write(
             tmp_path / "nat.jsonl",
             [{"cursor": 0, "present": [bad], "abandoned": [], "safe": 1}],
         )
-        assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2, bad
+        _reject(log, tmp_path / f"nat_{i}.tla", capsys, "present entry must be")
 
 
-def test_present_not_a_list_is_rejected(tmp_path):
+def test_present_not_a_list_is_rejected(tmp_path, capsys):
     log = _write(
         tmp_path / "notlist.jsonl",
         [{"cursor": 0, "present": 1, "abandoned": [], "safe": 1}],
     )
-    assert checkpoint_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    _reject(log, tmp_path / "o.tla", capsys, "present must be a list")
 
 
-def test_non_object_line_is_rejected(tmp_path):
+def test_non_object_line_is_rejected(tmp_path, capsys):
     (tmp_path / "scalar.jsonl").write_text("42\n", encoding="utf-8")
-    out = tmp_path / "o.tla"
-    assert checkpoint_trace_script._to_tla(tmp_path / "scalar.jsonl", out) == 2
+    _reject(tmp_path / "scalar.jsonl", tmp_path / "o.tla", capsys, "not a JSON object")
 
 
-def test_invalid_json_line_is_rejected(tmp_path):
+def test_invalid_json_line_is_rejected(tmp_path, capsys):
     # A syntactically-broken line rejects cleanly, not with a JSONDecodeError crash.
     (tmp_path / "broken.jsonl").write_text('{"cursor": oops}\n', encoding="utf-8")
-    out = tmp_path / "o.tla"
-    assert checkpoint_trace_script._to_tla(tmp_path / "broken.jsonl", out) == 2
+    _reject(tmp_path / "broken.jsonl", tmp_path / "o.tla", capsys, "invalid JSON")
 
 
 def test_converter_reads_the_recorder_schema_fields():

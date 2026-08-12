@@ -136,23 +136,26 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return events
 
 
-def _natural(value: object, name: str) -> int:
-    """Return ``value`` as a position number, or raise :class:`ValueError`.
+def _natural(value: object, name: str, minimum: int = 0) -> int:
+    """Return ``value`` as an integer ``>= minimum``, or raise :class:`ValueError`.
 
-    A position is a non-negative integer. JSON numbers parse to ``int`` or ``float``,
-    so this rejects floats (``1.9``), negatives, and booleans rather than coercing
-    them into a value that would surface later as a confusing TLC failure.
+    JSON numbers parse to ``int`` or ``float``, so this rejects floats (``1.9``) and
+    booleans rather than coercing them into a value that would surface later as a
+    confusing TLC failure. ``minimum`` is 0 for a watermark (``cursor``/``safe``,
+    which start below the first position) and 1 for a ``global_position`` (which is
+    1-based, so a 0 there would put ``TraceFate`` outside ``Checkpoint.tla``'s
+    ``1..N`` domain and abort TLC on its ``ASSUME N >= 1``).
     """
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{name} must be a non-negative integer")
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}")
     return value
 
 
 def _naturals(value: object, name: str) -> list[int]:
-    """Return ``value`` as a list of position numbers, or raise :class:`ValueError`."""
+    """Return ``value`` as a list of 1-based positions, or raise :class:`ValueError`."""
     if not isinstance(value, list):
         raise ValueError(f"{name} must be a list")
-    return [_natural(item, f"{name} entry") for item in value]
+    return [_natural(item, f"{name} entry", minimum=1) for item in value]
 
 
 def _parse_batch(event: object) -> tuple[int, list[int], list[int], int]:
@@ -196,6 +199,7 @@ def _to_tla(in_path: Path, out_path: Path) -> int:
     committed_seen: set[int] = set()
     abandoned_seen: set[int] = set()
     cursor = 0
+    max_safe = 0
     for index, event in enumerate(events, start=1):
         try:
             entry_cursor, present, holes, safe = _parse_batch(event)
@@ -214,6 +218,13 @@ def _to_tla(in_path: Path, out_path: Path) -> int:
             )
             return 2
         for position in sorted(present):
+            if position in abandoned_seen:
+                print(
+                    f"error: {in_path} line {index}: position {position} is both "
+                    f"committed and abandoned",
+                    file=sys.stderr,
+                )
+                return 2
             if position not in committed_seen:
                 committed_seen.add(position)
                 transitions.append(f'    [kind |-> "commit", pos |-> {position}]')
@@ -228,6 +239,7 @@ def _to_tla(in_path: Path, out_path: Path) -> int:
             if position not in abandoned_seen:
                 abandoned_seen.add(position)
                 transitions.append(f'    [kind |-> "abandon", pos |-> {position}]')
+        max_safe = max(max_safe, safe)
         if safe > cursor:
             transitions.append(f'    [kind |-> "advance", safe |-> {safe}]')
             cursor = safe
@@ -241,6 +253,16 @@ def _to_tla(in_path: Path, out_path: Path) -> int:
 
     all_positions = committed_seen | abandoned_seen
     highest = max(all_positions)
+    # The watermark can never settle above the highest position anyone recorded; a
+    # log that advances past every known position is corrupt, so reject it here
+    # instead of letting it abort TLC later against ``cursor' \in 0..N``.
+    if max_safe > highest:
+        print(
+            f"error: {in_path} settles at watermark {max_safe} above the highest "
+            f"recorded position {highest}",
+            file=sys.stderr,
+        )
+        return 2
     commit_set = "{" + ", ".join(str(p) for p in sorted(committed_seen)) + "}"
 
     module = out_path.stem
