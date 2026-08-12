@@ -161,7 +161,10 @@ class TestCachePersistenceFlows:
         monkeypatch.setattr(RedisCache, "_DELETE_BATCH_SIZE", 2)
 
         cache = test_domain.cache_for(Token)
-        cache.flush_all()
+        # Clear only this suite's DB. `flush_all` runs FLUSHALL, which wipes
+        # every DB on the server, including other Redis suites running
+        # alongside this one.
+        cache.get_connection().flushdb()
         for i in range(5):
             cache.add(Token(key=f"batch-{i}", user_id="foo", email="bar@baz.com"))
         assert cache.count("token:::batch-*") == 5
