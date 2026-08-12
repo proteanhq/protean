@@ -14,6 +14,72 @@ from __future__ import annotations
 import json
 from typing import Any
 
+#: Libraries whose use marks a call as reaching outside the process. Shared by
+#: the ``IO_INSIDE_UNIT_OF_WORK`` upgrade check and the
+#: ``HANDLER_PERSISTS_AND_CALLS_OUT`` diagnostic so the two cannot drift: adding
+#: a client here teaches both at once.
+#:
+#: Deliberately import-driven. Matching bare verb names would flag
+#: ``repository_for(Order).get(id)``, the most common call there is inside a
+#: Unit of Work, and a check that fires on correct code is one people learn to
+#: ignore.
+EXTERNAL_IO_MODULES = frozenset(
+    {"httpx", "requests", "urllib", "urllib3", "aiohttp", "smtplib"}
+)
+
+#: Verbs that actually reach the network, only ever matched against a callee
+#: already rooted in :data:`EXTERNAL_IO_MODULES`. Without this gate the module
+#: alone would flag `urllib.parse.urlencode` (pure string work) and
+#: `requests.Session` (a constructor).
+EXTERNAL_IO_VERBS = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "request", "send"}
+)
+
+#: Names distinctive enough to count wherever the callee chain resolves to
+#: them, root regardless. `publish` is the broker API; the rest are unambiguous
+#: by construction. Like every entry here, a name only counts once the whole
+#: callee resolves to a clean dotted path: a receiver held on a local or reached
+#: through a subscript (`brokers["default"].publish`) does not resolve, so this
+#: set catches the module-rooted spellings (`urllib.request.urlopen`), not the
+#: receiver-held ones.
+UNAMBIGUOUS_IO_NAMES = frozenset(
+    {"publish", "send_email", "sendmail", "send_message", "urlopen"}
+)
+
+
+def is_external_io_call(callee_fqn: str | None) -> bool:
+    """Does *callee_fqn* name a call that reaches outside the process?
+
+    Two ways to count, and an unresolvable callee is never guessed at. A name in
+    :data:`UNAMBIGUOUS_IO_NAMES` counts wherever the chain resolves, root
+    regardless (`some.pkg.publish`). Otherwise the callee has to be both rooted
+    in a known I/O library and named like a request (`httpx.post`), so the verb
+    gate keeps `urllib.parse.urlencode` and `requests.Session` out.
+    """
+    if not callee_fqn:
+        return False
+    name = callee_fqn.rpartition(".")[2]
+    if name in UNAMBIGUOUS_IO_NAMES:
+        return True
+    return callee_fqn.partition(".")[0] in EXTERNAL_IO_MODULES and name in (
+        EXTERNAL_IO_VERBS
+    )
+
+
+#: The framework accessor that hands back a repository. Matched on the trailing
+#: name rather than a full path, because `current_domain` is imported from two
+#: places (`protean` and `protean.utils.globals`) that resolve to different
+#: FQNs. The name is distinctive enough that a trailing match cannot collide.
+PERSISTENCE_ACCESSORS = frozenset({"repository_for"})
+
+
+def is_persistence_call(callee_fqn: str | None) -> bool:
+    """Does *callee_fqn* name a call that reaches a repository?"""
+    if not callee_fqn:
+        return False
+    return callee_fqn.rpartition(".")[2] in PERSISTENCE_ACCESSORS
+
+
 #: Top-level IR keys excluded from content comparison:
 #:
 #: - ``$schema`` / ``ir_version`` — format and framework-version markers

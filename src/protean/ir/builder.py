@@ -38,7 +38,11 @@ from protean.ir.analysis import (
     ReceiverRole,
     SourceProvider,
 )
-from protean.ir.constants import VOLATILE_IR_KEYS
+from protean.ir.constants import (
+    VOLATILE_IR_KEYS,
+    is_external_io_call,
+    is_persistence_call,
+)
 from protean.ir.diagnostics import Diagnostic, DiagnosticCode, build_diagnostic
 from protean.utils import _DEPRECATED_PLUMBING, fqn
 from protean.utils.container import Element, OptionsMixin
@@ -1667,6 +1671,7 @@ class IRBuilder:
         self._diagnose_unindexed_filter_path(ir)
         self._diagnose_event_handler_foreign_event(ir)
         # Info-level rules (design smells)
+        self._diagnose_handler_persists_and_calls_out(ir)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
         self._diagnose_event_without_data(ir)
@@ -2725,6 +2730,101 @@ class IRBuilder:
                         message=f"Event-sourced aggregate `{aggregate['name']}` has "
                         f"no events; it records no state changes and cannot "
                         f"be rebuilt from its stream.",
+                    )
+                )
+
+    def _diagnose_handler_persists_and_calls_out(self, ir: dict[str, Any]) -> None:
+        """HANDLER_PERSISTS_AND_CALLS_OUT: one handler method both persists and
+        calls an external system.
+
+        A handler method runs inside a Unit of Work whose transaction opens at
+        the first repository read or write, so an external call after a
+        `repository_for` can hold row locks and a pooled connection for the
+        length of the call, and a retry re-runs the method and re-issues it
+        (ADR-0031).
+
+        Advisory, not a warning. A handler that needs the call's result to
+        compute its write is expected to do both in one method, with the remote
+        system's idempotency key as the mitigation, so this fires on code the
+        documentation tells people to write. A rule that fires on correct code
+        is one people learn to ignore, and `suppress_checks` silences it per
+        element.
+
+        Import-driven, like the `IO_INSIDE_UNIT_OF_WORK` upgrade check and
+        sharing its module list: only a callee that *resolves* counts.
+        `repository_for(...)` resolves and is the persistence signal; the
+        `repo.get(...)` and `repo.add(...)` that follow resolve to nothing and
+        are never guessed at, which keeps the verdict reproducible (ADR-0019).
+
+        The I/O call has to come *after* the first `repository_for` in the same
+        method, since that is when the transaction can be open. A call that runs
+        before any repository access is outside the transaction and is not
+        flagged.
+
+        The analysis is per method body. A persist delegated to a helper the
+        method calls, a repository held on `self`, or a persist through the
+        event store rather than `repository_for` are not seen. Both signals must
+        resolve statically, which is what keeps the rule reproducible; it trades
+        completeness for no false positives.
+        """
+        # Process managers are included: they run their own dispatch loop, but
+        # it wraps each method in a UnitOfWork too, so the hazard is identical.
+        # (ADR-0031 defers process managers on *sibling failure isolation*, a
+        # state-transition question. This rule is about transaction boundaries,
+        # which has no process-manager-specific semantics.)
+        handler_types = (
+            "EVENT_HANDLER",
+            "COMMAND_HANDLER",
+            "PROJECTOR",
+            "PROCESS_MANAGER",
+        )
+
+        # `_elements[<type>]` is already keyed by fqn, and a class lands in
+        # exactly one bucket, so no dedupe is needed. Sorted for a stable
+        # diagnostic order.
+        registry = self._domain._domain_registry
+        scanned = sorted(
+            (element_fqn, record.cls)
+            for element_type in handler_types
+            for element_fqn, record in registry._elements.get(element_type, {}).items()
+            if not record.internal
+        )
+
+        for element_fqn, cls in scanned:
+            for method_name, facts in self.view.element_facts(cls).items():
+                # `(line, col)` so a persist and an I/O call on the same physical
+                # line still order correctly.
+                persist_pos = min(
+                    (
+                        (call.location.line, call.location.col)
+                        for call in facts.calls
+                        if is_persistence_call(call.callee_fqn)
+                    ),
+                    default=None,
+                )
+                if persist_pos is None:
+                    continue
+                # Only an I/O call after the first repository access can be
+                # inside the transaction; one before it runs outside.
+                io = next(
+                    (
+                        call
+                        for call in facts.calls
+                        if (call.location.line, call.location.col) > persist_pos
+                        and is_external_io_call(call.callee_fqn)
+                    ),
+                    None,
+                )
+                if io is None:
+                    continue
+                self._diagnostics.append(
+                    build_diagnostic(
+                        DiagnosticCode.HANDLER_PERSISTS_AND_CALLS_OUT,
+                        element=element_fqn,
+                        message=f"Handler `{cls.__name__}` method "
+                        f"`{method_name}` persists, then calls "
+                        f"`{io.callee_fqn}` (line {io.location.line}), which "
+                        f"can hold the transaction open across the call.",
                     )
                 )
 

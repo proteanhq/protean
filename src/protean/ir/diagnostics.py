@@ -55,6 +55,7 @@ class DiagnosticCode(StrEnum):
     EVENT_NOT_PAST_TENSE = "EVENT_NOT_PAST_TENSE"
     EVENT_WITHOUT_DATA = "EVENT_WITHOUT_DATA"
     HANDLER_TOO_BROAD = "HANDLER_TOO_BROAD"
+    HANDLER_PERSISTS_AND_CALLS_OUT = "HANDLER_PERSISTS_AND_CALLS_OUT"
     INFRA_IMPORT_IN_DOMAIN = "INFRA_IMPORT_IN_DOMAIN"
     LOW_POOL_SIZE = "LOW_POOL_SIZE"
     PROCESS_MANAGER_UNCLOSED = "PROCESS_MANAGER_UNCLOSED"
@@ -388,6 +389,31 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         fix=(
             "Add fields capturing the state change, or confirm the event is "
             "intentionally a bare signal."
+        ),
+    ),
+    DiagnosticCode.HANDLER_PERSISTS_AND_CALLS_OUT: CodeMeta(
+        category="persistence",
+        level="info",
+        meaning=(
+            "A handler method both persists through a repository and calls an "
+            "external system."
+        ),
+        rationale=(
+            "A handler method runs inside a Unit of Work, and the transaction "
+            "opens at the first repository access. An external call after that "
+            "point holds row locks and a pooled connection for as long as the "
+            "call takes, and a retry re-runs the whole method, re-issuing the "
+            "call (ADR-0031)."
+        ),
+        fix=(
+            "Split the method: one that persists, and one that calls out. When "
+            "the call must follow the write, have the persisting method raise "
+            "an event and handle that. On a process manager, prefer raising an "
+            "event for a plain handler to act on, because splitting a "
+            "transition in two records two transitions where you wanted one. "
+            "When the method genuinely needs the call's result to compute its "
+            "write, keep both and pass the remote system's idempotency key so a "
+            "retry does not duplicate the effect."
         ),
     ),
     DiagnosticCode.HANDLER_TOO_BROAD: CodeMeta(
