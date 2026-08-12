@@ -146,7 +146,9 @@ class RedisCache(BaseCache):
         self._client.delete(key)
 
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        batch: list[str] = []
+        # `scan_iter` yields `bytes`: this adapter does not enable
+        # `decode_responses`. `delete()` takes bytes keys directly.
+        batch: list[bytes] = []
         for key in self._client.scan_iter(
             match=key_pattern, count=self._DELETE_BATCH_SIZE
         ):
