@@ -89,7 +89,9 @@ class TestCacheBackedProjectionTruncation:
         _truncate_projection(mock_domain, mock_projection_cls)
 
         mock_domain.cache_for.assert_called_once_with(mock_projection_cls)
-        mock_cache.remove_by_key_pattern.assert_called_once_with("cached_view::*")
+        # Keys are `name:::identifier`, so the truncation glob is the name,
+        # the three-colon separator, then `*`.
+        mock_cache.remove_by_key_pattern.assert_called_once_with("cached_view:::*")
 
     def test_truncate_uses_dao_when_database_backed(self):
         """_truncate_projection uses dao._delete_all for database-backed projections."""
