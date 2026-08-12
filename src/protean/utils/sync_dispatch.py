@@ -19,16 +19,31 @@ which enqueues ``(event, handler_cls)`` pairs and asks to drain; only the
 commits fully before the next is dispatched. That mirrors the async engine,
 where a handler's raised events re-enter as fresh outbox messages one commit at
 a time. See ADR-0016.
+
+Each ``(event, handler_cls)`` pair is an independent reaction to a fact: under
+async each handler class has its own subscription, so one class failing never
+touches another. The drain gives sync the same guarantee (ADR-0031). Every pair
+runs, failures are collected, and one (or a group) surfaces once the drain
+finishes. Two failures are excluded and end the drain where they are raised, for
+the same reasons they are in :func:`~protean.utils.mixins.HandlerMixin._dispatch_handlers`:
+an ``ExpectedVersionError`` must reach the enclosing Unit of Work's commit as
+itself so version retry still fires, and a ``BaseException`` that is not an
+``Exception`` (an interrupt) must not be swallowed.
 """
 
 from __future__ import annotations
 
+import logging
 from collections import deque
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager, suppress
 from typing import Any
 
+from protean.exceptions import ExpectedVersionError
 from protean.utils.globals import g
+from protean.utils.telemetry import describe_exception
+
+logger = logging.getLogger(__name__)
 
 # Attribute names on the domain-context ``g`` (thread-local, per domain
 # context — the same scope used for ``message_in_context`` and the access-log
@@ -80,20 +95,97 @@ def drain_sync_dispatch() -> None:
     already in progress. The queue and draining flag are cleared even if a
     handler raises, so the exception surfaces to the top-level caller ("sync
     raises") and any later work starts from a clean slate.
+
+    A failing handler class no longer aborts the drain. Each ``(event,
+    handler_cls)`` pair is an independent reaction, so every one runs and
+    failures are collected: a single failure surfaces unchanged, and several are
+    raised together as an ``ExceptionGroup``. An ``ExpectedVersionError`` and a
+    non-``Exception`` ``BaseException`` are the two exclusions — they end the
+    drain where they are raised and propagate at once (see the module docstring
+    and ADR-0031). Failures gathered before either one are attached to it as a
+    note and logged, since nothing downstream would otherwise report them.
     """
     if getattr(g, _DRAINING_KEY, False):
         return
 
     setattr(g, _DRAINING_KEY, True)
+    failures: list[Exception] = []
     try:
         queue = getattr(g, _QUEUE_KEY, None) or ()
         while queue:
             event, handler_cls, message_context = queue.popleft()
             with _message_in_context(message_context):
-                handler_cls._handle(event)
+                try:
+                    handler_cls._handle(event)
+                except ExpectedVersionError as exc:
+                    # Not collected. Grouping it would hide it from the enclosing
+                    # Unit of Work's commit, which classifies by exception type,
+                    # so the conflict would surface as a TransactionError and the
+                    # version retry that resolves it would never fire.
+                    _carry_discarded_failures(failures, exc)
+                    raise
+                # `Exception` and not `BaseException`, so an interrupt or a
+                # cancellation still stops the drain where it is raised. Keeping
+                # `failures` to `Exception` also matters below: the
+                # `ExceptionGroup` rejects a bare `BaseException` as a member.
+                except Exception as exc:
+                    failures.append(exc)
+                except BaseException as exc:
+                    _carry_discarded_failures(failures, exc)
+                    raise
+
+        if failures:
+            if len(failures) == 1:
+                # A lone failure propagates as itself rather than wrapped in a
+                # one-member group, keeping its original exception type for the
+                # enclosing commit to classify.
+                raise failures[0]
+            raise ExceptionGroup(
+                f"Synchronous dispatch: {len(failures)} handler classes failed",
+                failures,
+            )
     finally:
         g.pop(_QUEUE_KEY, None)
         g.pop(_DRAINING_KEY, None)
+
+
+def _carry_discarded_failures(
+    failures: Sequence[Exception], exc: BaseException
+) -> None:
+    """Attach failures collected before *exc* ended the drain early.
+
+    Each exclusion path re-raises only *exc* itself — a version conflict kept as
+    ``ExpectedVersionError`` for the commit's classification, or a non-``Exception``
+    ``BaseException`` interrupt — so the failures gathered from earlier handler
+    classes are dropped and nothing on the synchronous path reports them. Without
+    this they would vanish with no log and no chain.
+    """
+    if not failures:
+        return
+
+    # Everything here is best-effort. A user exception with a broken ``__str__``,
+    # or one whose ``__notes__`` is not a list, would otherwise raise from this
+    # helper and *replace* the exception it was annotating, swallowing an
+    # interrupt or destroying the ExpectedVersionError exclusion above.
+    with suppress(Exception):
+        # Described as one group rather than joined member by member, so the note
+        # inherits ``describe_exception``'s length bound.
+        exc.add_note(
+            describe_exception(
+                ExceptionGroup(
+                    "Synchronous dispatch ended early; these handler-class "
+                    "failures were not raised",
+                    failures,
+                )
+            )
+        )
+
+    with suppress(Exception):
+        logger.error(
+            "sync_dispatch.sibling_failures_discarded",
+            extra={"discarded": len(failures)},
+            exc_info=failures[0],
+        )
 
 
 @contextmanager
