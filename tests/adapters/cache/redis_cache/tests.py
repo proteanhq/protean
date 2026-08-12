@@ -153,6 +153,23 @@ class TestCachePersistenceFlows:
         value = cache.get("token:::qux")
         assert value is None
 
+    def test_removal_by_key_pattern_deletes_across_batches(
+        self, test_domain, monkeypatch
+    ):
+        # Shrink the batch so the keys cross the mid-loop flush, not just the
+        # final one, exercising the batched delete path end to end.
+        monkeypatch.setattr(RedisCache, "_DELETE_BATCH_SIZE", 2)
+
+        cache = test_domain.cache_for(Token)
+        cache.flush_all()
+        for i in range(5):
+            cache.add(Token(key=f"batch-{i}", user_id="foo", email="bar@baz.com"))
+        assert cache.count("token:::batch-*") == 5
+
+        cache.remove_by_key_pattern("token:::batch-*")
+
+        assert cache.count("token:::batch-*") == 0
+
     def test_get_ttl_on_key(self, test_domain):
         cache = test_domain.cache_for(Token)
 

@@ -41,11 +41,11 @@ class TestRemoveByKeyPatternOnNoMatch:
         no-op on every adapter.
 
         Memory's `remove_by_key_pattern` filters to an empty key list and
-        loops zero times: silent. Redis builds `values` from `scan_iter`
-        and only calls `self._client.delete(*values)` when `values` is
-        non-empty; calling `delete()` with zero keys raises
-        `redis.exceptions.ResponseError: wrong number of arguments for
-        'del' command`.
+        loops zero times: silent. Redis iterates `scan_iter` and calls
+        `self._client.delete(...)` only for a non-empty batch of keys, so a
+        pattern that matches nothing issues no delete at all. Calling
+        `delete()` with zero keys raises `redis.exceptions.ResponseError:
+        wrong number of arguments for 'del' command`.
         """
         cache.remove_by_key_pattern("cache_entry:::does-not-exist-*")
 
