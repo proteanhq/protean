@@ -47,23 +47,17 @@ from typing import Annotated, Any, NoReturn
 
 import typer
 from rich import print
-from rich.console import Console
-from rich.markup import escape
 
 import protean
 from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
 from protean.cli.result import (
     EXIT_FAILURE,
-    EXIT_USAGE,
     build_envelope,
+    emit_usage_error,
     route_logs_to_stderr,
 )
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
-
-# Error paths write to stderr so ``--format json`` keeps stdout to the envelope
-# alone (the #1010 fix, generalized). Human/rich output stays on stdout.
-_ERR_CONSOLE = Console(stderr=True)
 
 # Valid ``--format`` values. An unknown format is a usage error (exit 2), not a
 # silent fall-through to the rich renderer.
@@ -290,22 +284,13 @@ def _gates(counts: dict[str, int], lint_level: str) -> bool:
 
 
 def _fail_usage(fmt: str, message: str) -> NoReturn:
-    """Emit a usage/environment error and exit ``EXIT_USAGE`` with clean stdout.
+    """Emit a usage/environment error and exit with clean stdout.
 
-    Under ``--format json`` the error is the shared envelope (``status="error"``,
-    the message under ``data``) on stdout and nothing else, so a ``| jq`` stays
-    parseable; every other format prints a red line to stderr instead. ``escape``
-    keeps a bracketed token in the message (``[lint]``) from being parsed as
-    rich markup and dropped.
+    ``--format json`` is the only machine format that carries the error in the
+    envelope; every other format prints a red line to stderr. Delegates to the
+    shared :func:`~protean.cli.result.emit_usage_error`.
     """
-    if fmt == "json":
-        envelope = build_envelope(
-            status="error", data={"error": message}, diagnostics=[]
-        )
-        typer.echo(json.dumps(envelope, indent=2, sort_keys=True))
-    else:
-        _ERR_CONSOLE.print(f"[red]{escape(message)}[/red]")
-    raise typer.Exit(code=EXIT_USAGE)
+    emit_usage_error(as_json=(fmt == "json"), message=message)
 
 
 def _print_quiet(result: dict[str, Any]) -> None:

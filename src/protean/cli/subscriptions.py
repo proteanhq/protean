@@ -13,14 +13,15 @@ Usage::
     protean subscriptions status --domain=my_domain --json
 """
 
-import json as json_mod
+import json
 from typing import Annotated
 
 import typer
 from rich import print
 from rich.table import Table
 
-from protean.cli._helpers import handle_cli_exceptions, load_domain
+from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions, load_domain
+from protean.cli.result import build_envelope, route_logs_to_stderr
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -42,31 +43,45 @@ def _status_style(status: str) -> str:
 @app.command()
 @handle_cli_exceptions("subscriptions status")
 def status(
+    ctx: typer.Context,
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     output_json: Annotated[
         bool,
         typer.Option("--json", help="Output raw JSON instead of a table"),
     ] = False,
 ) -> None:
-    """Show subscription lag status for all handlers."""
+    """Show subscription lag status for all handlers.
+
+    Under ``--json`` the result is the shared CLI result envelope, with the
+    per-subscription list under ``data.subscriptions``.
+    """
+    if output_json:
+        # Route logs to stderr before the domain import so a stray import-time
+        # log cannot corrupt the machine payload on stdout.
+        route_logs_to_stderr(
+            log_already_configured=bool((ctx.obj or {}).get(CTX_LOG_CONFIGURED))
+        )
+
     from protean.server.subscription_status import (  # noqa: PLC0415
         collect_subscription_statuses,
     )
 
-    derived_domain = load_domain(domain)
+    derived_domain = load_domain(domain, as_json=output_json)
 
     with derived_domain.domain_context():
         statuses = collect_subscription_statuses(derived_domain)
 
-    if not statuses:
-        if output_json:
-            print(json_mod.dumps([]))
-        else:
-            print("No subscriptions found in domain.")
+    if output_json:
+        envelope = build_envelope(
+            status="pass",
+            data={"subscriptions": [s.to_dict() for s in statuses]},
+            diagnostics=[],
+        )
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True, default=str))
         return
 
-    if output_json:
-        print(json_mod.dumps([s.to_dict() for s in statuses], indent=2, default=str))
+    if not statuses:
+        print("No subscriptions found in domain.")
         return
 
     # Rich table

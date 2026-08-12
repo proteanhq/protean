@@ -34,8 +34,9 @@ from rich import print
 from rich.table import Table
 from rich.tree import Tree as RichTree
 
-from protean.cli._helpers import handle_cli_exceptions, load_domain
+from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions, load_domain
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
+from protean.cli.result import build_envelope, emit_usage_error, route_logs_to_stderr
 from protean.utils import DomainObjects
 
 if TYPE_CHECKING:
@@ -596,6 +597,7 @@ def _build_catalog_table(entries: list[dict[str, Any]]) -> Table:
 @app.command()
 @handle_cli_exceptions("events catalog")
 def catalog(
+    ctx: typer.Context,
     domain: Annotated[
         str, typer.Option("--domain", "-d", help="Domain module path")
     ] = "",
@@ -611,21 +613,38 @@ def catalog(
     ``protean schema generate --format all`` to emit the matching versioned
     schema tree (JSON + Avro + Protobuf) — together they form the local
     registry on-ramp.
+
+    Under ``--json`` the catalog is the shared CLI result envelope, with the
+    event list under ``data.events``.
     """
+    if as_json:
+        # Route logs to stderr before the domain import so a stray import-time
+        # log cannot corrupt the machine payload on stdout.
+        route_logs_to_stderr(
+            log_already_configured=bool((ctx.obj or {}).get(CTX_LOG_CONFIGURED))
+        )
+
     if not domain and not ir:
-        print("[red]Error:[/red] provide either --domain or --ir")
-        raise typer.Abort()
+        emit_usage_error(as_json=as_json, message="provide either --domain or --ir")
     if domain and ir:
-        print("[red]Error:[/red] --domain and --ir are mutually exclusive")
-        raise typer.Abort()
+        emit_usage_error(
+            as_json=as_json, message="--domain and --ir are mutually exclusive"
+        )
 
     from protean.ir.generators.catalog import build_event_catalog  # noqa: PLC0415
 
-    ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
+    ir_data = (
+        load_domain_ir(domain, as_json=as_json)
+        if domain
+        else load_ir_file(ir, as_json=as_json)
+    )
     entries = build_event_catalog(ir_data)
 
     if as_json:
-        typer.echo(json.dumps(entries, indent=2, default=str))
+        envelope = build_envelope(
+            status="pass", data={"events": entries}, diagnostics=[]
+        )
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True, default=str))
         return
 
     if not entries:
