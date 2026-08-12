@@ -159,11 +159,13 @@ class RedisCache(BaseCache):
 
         # Two of Redis' answers are not durations: `-2` means there is no such
         # key and `-1` means the key exists with no expiry. Map them to the
-        # port's shared contract. Match by exact value, not `< 0`, so any other
-        # negative falls through to the scaling branch and surfaces instead of
-        # being silently swallowed as one of these two.
+        # port's shared contract by exact value. Redis only ever answers `-2`,
+        # `-1`, or a non-negative duration, so any other negative is a broken
+        # client: raise instead of scaling it into a misleading near-zero TTL.
         if remaining_ms == -2:
             return None
         if remaining_ms == -1:
             return math.inf
+        if remaining_ms < 0:
+            raise ValueError(f"Unexpected PTTL value from Redis: {remaining_ms}")
         return float(remaining_ms) / 1000

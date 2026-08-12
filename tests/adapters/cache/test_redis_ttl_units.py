@@ -69,3 +69,9 @@ class TestRedisSentinelsAreTranslated:
         """Dividing would give -0.001 and -0.002, which any `ttl < 1` misreads."""
         assert cache_with(-1).get_ttl("k") == math.inf
         assert cache_with(-2).get_ttl("k") is None
+
+    def test_an_unexpected_negative_raises(self, cache_with):
+        """Redis answers only -2, -1, or a duration. Any other negative is a
+        broken client, so it fails loud instead of scaling to a near-zero TTL."""
+        with pytest.raises(ValueError, match="Unexpected PTTL value"):
+            cache_with(-3).get_ttl("k")
