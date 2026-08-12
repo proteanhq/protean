@@ -166,9 +166,12 @@ subscriptions and checkpoints.
 
 The lazy Unit of Work already behaves as the guarantee requires, and a regression
 test will lock it in. The advisory diagnostic does not exist yet. The
-sibling-skipping defect is fixed for event handlers and projectors; the same
-fan-out problem remains at three other sites (handler classes under synchronous
-dispatch, process managers, and broker subscribers) and is tracked separately.
+sibling-skipping defect is fixed for event handler and projector methods, and for
+sibling handler classes under synchronous dispatch, which brings sync into line
+with async: "independent reactions to one fact are independent in failure" now
+holds for event handlers and projectors in both processing modes, apart from the
+two exclusions above. The same fan-out problem remains at two sites (process
+managers' own dispatch loop and broker subscribers) and is tracked separately.
 
 ## Consequences
 
