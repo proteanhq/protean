@@ -102,6 +102,8 @@ every entry with a concrete TTL, so it has no never-expiring keys to report.
 So code reads the same on either adapter:
 
 ```python
+import math
+
 remaining = cache.get_ttl(key)
 if remaining is None:
     ...                     # no such key
