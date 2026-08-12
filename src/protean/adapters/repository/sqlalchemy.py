@@ -67,7 +67,7 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import IdentityType, _fully_qualified_name
+from protean.utils import IdentityType, _fully_qualified_name, occ_trace
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
@@ -1057,13 +1057,15 @@ class SADAO(BaseDAO):
         ``UPDATE … SET … WHERE _version = :loaded``. If a concurrent commit
         advanced the version after this read, the flush matches zero rows and
         SQLAlchemy raises ``StaleDataError``, which the persistence layer maps to
-        :class:`ExpectedVersionError`. The version predicate keeps the guard
-        atomic: a plain ``UPDATE … WHERE id`` would let two readers of the same
-        version both write and lose one update. The write rides the UnitOfWork's
-        real transaction (ADR-0027), so it is invisible to other connections
-        until the UoW commits and is rolled back with it. When
-        ``expected_version`` is not ``None`` the Python check below additionally
-        rejects a version already stale at read time.
+        :class:`ExpectedVersionError`. On the UnitOfWork path that mapping happens
+        at the UoW commit; on the standalone path the flush runs in
+        ``_commit_if_standalone`` below, so the mapping is applied there. The
+        version predicate keeps the guard atomic: a plain ``UPDATE … WHERE id``
+        would let two readers of the same version both write and lose one update.
+        The write rides the UnitOfWork's real transaction (ADR-0027), so it is
+        invisible to other connections until the UoW commits and is rolled back
+        with it. When ``expected_version`` is not ``None`` the Python check below
+        additionally rejects a version already stale at read time.
         """
         conn = self._get_session()
         assert conn is not None
@@ -1086,6 +1088,20 @@ class SADAO(BaseDAO):
         if expected_version is not None:
             stored_version = getattr(db_item, "_version", None)
             if stored_version != expected_version:
+                # Only a standalone update observes the whole compare-and-set here;
+                # under a UnitOfWork the version-guarded flush is deferred to the UoW
+                # commit, so the outcome resolves there, not in ``_update``. Record
+                # only what this path truthfully sees, so the SQLAlchemy log is a
+                # coherent standalone trace and never a half-observed UoW one.
+                if occ_trace.is_active() and self._is_standalone:
+                    # Raw conflict observation: the version this writer read as its
+                    # base, and the row's live version that no longer matches it.
+                    occ_trace.record(
+                        stream=f"{self.schema_name}:{identifier}",
+                        base=expected_version,
+                        outcome="conflicted",
+                        version_after=stored_version,
+                    )
                 self._rollback_if_standalone(conn)
                 raise ExpectedVersionError(
                     f"Wrong expected version: {expected_version} "
@@ -1099,7 +1115,42 @@ class SADAO(BaseDAO):
             ):
                 setattr(db_item, attribute, getattr(model_obj, attribute))
 
-        self._commit_if_standalone(conn)
+        try:
+            self._commit_if_standalone(conn)
+        except StaleDataError as exc:
+            # A standalone commit flushes the version-guarded UPDATE immediately.
+            # If a concurrent writer advanced the version between this read and the
+            # flush, the UPDATE matches zero rows and SQLAlchemy raises
+            # StaleDataError. Translate it to ExpectedVersionError, matching the UoW
+            # commit and the _flush/_filter/_count paths, so callers see one
+            # optimistic-concurrency error everywhere.
+            if occ_trace.is_active() and expected_version is not None:
+                # The losing writer conflicted; the connection is rolled back and
+                # closed, so the resulting version is not readable here.
+                occ_trace.record(
+                    stream=f"{self.schema_name}:{identifier}",
+                    base=expected_version,
+                    outcome="conflicted",
+                    version_after=None,
+                )
+            raise ExpectedVersionError(str(exc)) from None
+
+        if (
+            occ_trace.is_active()
+            and expected_version is not None
+            and self._is_standalone
+        ):
+            # The standalone commit above flushed the version-guarded UPDATE and
+            # returned without a StaleDataError, so this writer committed. The guard
+            # is guaranteed to advance the row from ``expected_version`` to
+            # ``expected_version + 1``; the connection is closed by now, so record
+            # that value rather than reading the detached row back.
+            occ_trace.record(
+                stream=f"{self.schema_name}:{identifier}",
+                base=expected_version,
+                outcome="committed",
+                version_after=expected_version + 1,
+            )
         return model_obj
 
     def _update_all(

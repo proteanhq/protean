@@ -44,6 +44,11 @@ TLA+ verifies the *spec*, not the Python. There is always a spec-to-code gap. So
   reachability probes (which witness that at-least-once redelivery, and OCC
   contention, are reachable).
 
+**Trace validation is the exception.** It checks the *real code* against a spec
+rather than the spec against itself, so it cannot go silently stale the way a
+hand-maintained model can. It is designed to run as a per-PR gate, invoked through
+`check.sh`. OCC is the first protocol wired up; see the next section.
+
 ## Running the checks
 
 You need a Java runtime and the TLA+ tools jar (`tla2tools.jar`, from the
@@ -76,6 +81,72 @@ From the repository root, `make verify-specs` delegates to this script.
 
 The runs are small (a few thousand states each) and finish in about a second.
 
+## Trace validation: proving the code conforms to the spec
+
+The model checks above verify the *design*. Trace validation verifies the
+*shipped code*: it records what the real commit paths actually do, then asks TLC
+whether that recording is a behaviour the spec permits. OCC is the first protocol
+wired up (#1382); the harness (`OCCTrace.tla`, the two cfgs, `occ_trace.py`, and
+the `check.sh` plumbing) is built to be reused by the others.
+
+How it works, end to end:
+
+1. **Record observations.** `src/protean/utils/occ_trace.py` is a recorder that is
+   inactive by default. When a capture is active, the real commit paths emit, per
+   unit of work, the state the spec talks about — the version read as the base, the
+   outcome (`committed`/`conflicted`), and the resulting stored version — captured
+   under the same lock or transaction as the real compare-and-set.
+   `MemorySession.commit` and the SQLAlchemy `_update` version check are
+   instrumented. Almost every value is read straight from the store rather than
+   derived, so the log cannot share a blind spot with the spec; the one exception
+   is the SQLAlchemy committed version, recorded as `base + 1` (the value the
+   `version_id_col` guard is guaranteed to set), since the standalone commit closes
+   the connection before the row can be read back.
+2. **Replay against the real `.tla`.** `OCCTrace.tla` reads the log as a constant
+   `Trace` and replays each entry as a read that captures the recorded base (a
+   `DoRead` faithful to `OCC!Read`) and then the real `OCC!Commit` action, whose
+   verdict must match what was recorded. The judge is `OCC.tla` itself, not a
+   re-encoding of the protocol. If the code diverged, `OCC!Commit` and the
+   recording disagree, the replay stalls, and `TraceAccepted` fails on the first
+   step no spec action explains.
+3. **Two negative checks, so green means something.** A seeded lost-update log
+   (`traces/occ_bug.jsonl`: two commits from the same base) must fail conformance;
+   a log with no conflict (`traces/occ_no_conflict.jsonl`) leaves `NoConflict`
+   holding and is rejected as under-covered. Both mirror the model's own revert
+   test and reachability probe.
+
+`check.sh` runs all three: it records a fresh Memory-adapter trace and asserts it
+is **accepted** (conforms to `OCC.tla` *and* exercises contention), and asserts
+the two fixtures are **rejected** for the right reason (the seeded one fails
+conformance, the uncontended one fails coverage). `python3` is required for the
+whole leg (it converts each log to TLA+); recording a fresh trace additionally
+needs `protean` importable, so when only that is missing the real-trace leg is
+skipped and the two fixtures still run. No external services are needed — the
+Memory adapter's compare-and-set produces a genuine one-winner/rest-conflict trace
+on its own.
+
+**Adapter coverage.** The Memory path is validated end to end. The SQLAlchemy
+`_update` path emits the same observations for a standalone (non-UoW) update, which
+is what `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_occ_trace.py`
+pins. Under `repository.add` the version-guarded flush is deferred to the Unit of
+Work commit, so both a *concurrent* SQL commit and its conflict resolve there
+rather than in `_update` (the SQL emits are gated on the standalone path for that
+reason); capturing that deferred outcome is left for a follow-up, and `check.sh`
+uses the deterministic Memory trace as its conformance source.
+
+### Adding a protocol
+
+The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
+
+1. Add the raw fields the spec talks about to the recorder (or a sibling
+   recorder), and emit them from the real path under its lock/transaction.
+2. Write `<Spec>Trace.tla`: `EXTENDS <Spec>`, read a `Trace` constant, and replay
+   each entry through the spec's own actions, cross-checking the recorded outcome.
+   Reuse the spec's invariants and reachability probes rather than restating them.
+3. Add a converter path (or reuse `occ_trace.py`'s `to-tla`) and the `check.sh`
+   plumbing: a conformance cfg (the accept property), a coverage cfg (a reachability
+   probe that must be witnessed), and fixtures for the two negative checks.
+
 ## Files
 
 | File | What it is |
@@ -98,7 +169,13 @@ The runs are small (a few thousand states each) and finish in about a second.
 | `Recovery.cfg` | Shipped protocol (record before advance); all invariants + liveness hold. |
 | `Recovery_bug.cfg` | Revert test: advance the cursor past a failed message without its record; TLC must fail on `NoDrop`. |
 | `Recovery_dup.cfg` | Reachability probe: TLC must fail on `NoRedeliver`, witnessing a crash-resume re-reading an already-recorded failed message. |
-| `check.sh` | Runs every config and asserts the expected pass/violation. |
+| `OCCTrace.tla` | Trace validation for OCC: replays a recorded log through `OCC!Commit` and checks it is a behaviour `OCC.tla` permits (#1382). |
+| `OCCTrace_conform.cfg` | Conformance check: `TraceAccepted` holds iff the whole recorded log matched an OCC verdict. |
+| `OCCTrace_cover.cfg` | Coverage check: `NoConflict` must be *violated*, witnessing the log actually exercised contention. |
+| `occ_trace.py` | Records a real Memory-adapter OCC trace, and converts a JSON-lines log into a runnable `OCCTrace_*.tla`. |
+| `traces/occ_bug.jsonl` | Negative fixture: a seeded lost update (two commits from one base); conformance must reject it. |
+| `traces/occ_no_conflict.jsonl` | Negative fixture: an uncontended log; the coverage check must reject it as under-covered. |
+| `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC trace validation. |
 
 ## What is modeled
 
