@@ -122,7 +122,12 @@ class RedisCache(BaseCache):
         # Redis has no native ordering, so page over the sorted key list the way
         # memory does; this scans all matching keys per call, like `count` and
         # `remove_by_key_pattern` already do (#1401).
-        keys = sorted(self._client.scan_iter(match=key_pattern))
+        #
+        # `SCAN` can return the same key more than once during a full iteration
+        # (rehashing, concurrent writes), so deduplicate before sorting; a
+        # duplicate would otherwise repeat a projection in the page and shift
+        # every later offset, breaking the stable-offset contract.
+        keys = sorted(set(self._client.scan_iter(match=key_pattern)))
         page = keys[last_position : last_position + size]
 
         results: list[BaseProjection] = []

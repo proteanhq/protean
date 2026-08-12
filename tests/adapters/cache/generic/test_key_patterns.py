@@ -89,8 +89,12 @@ class TestGetAllPaginationAgrees:
             for n in range(self.COUNT)
         ]
 
+        # Every offset 0..COUNT-1 has an entry, so a size-1 page holds exactly
+        # one: `== 1`, not `<= 1`, so an adapter that returned `[]` for every
+        # call (which also satisfies `<= 1`) fails here, and one that ignored
+        # `size` and returned the whole set fails too.
         assert len(pages) == self.COUNT
-        assert all(len(page) <= 1 for page in pages)
+        assert all(len(page) == 1 for page in pages)
 
     def test_offsets_tile_the_result_set_in_one_stable_order(self, cache):
         self._load(cache)

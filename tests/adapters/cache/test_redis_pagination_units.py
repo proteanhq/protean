@@ -56,10 +56,8 @@ class _StubClient:
         return self._store.get(key)
 
 
-@pytest.fixture
-def cache(monkeypatch):
-    """A Redis cache whose client is a dict, so it runs without a server."""
-    stub = _StubClient()
+def _install(monkeypatch, stub):
+    """Point `RedisCache._client` at `stub` and build a domain around it."""
     monkeypatch.setattr(RedisCache, "_client", property(lambda self: stub))
 
     domain = Domain(name="Test")
@@ -70,7 +68,13 @@ def cache(monkeypatch):
     }
     domain.register(CacheEntry)
     domain.init(traverse=False)
+    return domain
 
+
+@pytest.fixture
+def cache(monkeypatch):
+    """A Redis cache whose client is a dict, so it runs without a server."""
+    domain = _install(monkeypatch, _StubClient())
     with domain.domain_context():
         yield domain.cache_for(CacheEntry)
 
@@ -113,3 +117,33 @@ def test_past_the_end_is_empty(cache):
 
     assert cache.get_all(PATTERN, last_position=COUNT, size=5) == []
     assert cache.get_all(PATTERN, last_position=COUNT + 100, size=5) == []
+
+
+class _DuplicatingStub(_StubClient):
+    """A stub whose `scan_iter` yields the first matching key twice.
+
+    Redis `SCAN` is documented to return the same element more than once during
+    a full iteration (rehashing, concurrent writes), and `scan_iter` inherits
+    that. This reproduces it so the dedup in `get_all` is covered on the core
+    leg, not only against a live server.
+    """
+
+    def scan_iter(self, match=None):
+        keys = list(super().scan_iter(match=match))
+        if keys:
+            yield keys[0]
+        yield from keys
+
+
+def test_scan_returning_a_key_twice_is_deduplicated(monkeypatch):
+    domain = _install(monkeypatch, _DuplicatingStub())
+    with domain.domain_context():
+        cache = domain.cache_for(CacheEntry)
+        cache.add(CacheEntry(key="k0", value="0"))
+        cache.add(CacheEntry(key="k1", value="1"))
+
+        page = cache.get_all(PATTERN, last_position=0, size=25)
+
+        # Without dedup the page would be [k0, k0, k1]: the duplicate repeats a
+        # projection and shifts every later offset.
+        assert [entry.key for entry in page] == ["k0", "k1"]
