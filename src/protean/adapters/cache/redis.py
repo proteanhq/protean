@@ -33,6 +33,11 @@ class RedisCache(BaseCache):
         }
     )
 
+    # A broad pattern can match a huge number of keys. Delete them in batches
+    # so no single DEL blocks Redis and the full key list never sits in memory
+    # at once.
+    _DELETE_BATCH_SIZE = 500
+
     def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
         """Initialize Cache with Connection/Adapter details"""
 
@@ -156,8 +161,20 @@ class RedisCache(BaseCache):
         self._client.delete(key)
 
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        values = self._client.scan_iter(match=key_pattern)
-        self._client.delete(*values)
+        # `scan_iter` yields `bytes`: this adapter does not enable
+        # `decode_responses`. `delete()` takes bytes keys directly.
+        batch: list[bytes] = []
+        for key in self._client.scan_iter(
+            match=key_pattern, count=self._DELETE_BATCH_SIZE
+        ):
+            batch.append(key)
+            if len(batch) >= self._DELETE_BATCH_SIZE:
+                self._client.delete(*batch)
+                batch.clear()
+        # A pattern that matches nothing leaves `batch` empty, so no `DEL`
+        # runs. `delete()` with zero keys is what Redis rejects.
+        if batch:
+            self._client.delete(*batch)
 
     def flush_all(self) -> None:
         self._client.flushall()

@@ -143,7 +143,7 @@ All cache adapters implement these methods:
 | `count(key_pattern)` | Count entries matching a pattern |
 | `remove(projection)` | Remove a cached projection. Does nothing if no record exists for it |
 | `remove_by_key(key)` | Remove an entry by key. Does nothing if the key is absent |
-| `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern |
+| `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern. Does nothing if the pattern matches no keys |
 | `flush_all()` | Remove all entries |
 | `set_ttl(key, ttl)` | Set a TTL on a specific key. Does nothing if the key is absent, but still rejects an invalid TTL |
 | `get_ttl(key)` | Seconds remaining before a key expires; `None` if there is no such key, `math.inf` if it never expires. See below |
