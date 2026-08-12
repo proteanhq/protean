@@ -157,6 +157,15 @@ class UnitOfWork:
     def start(self) -> None:
         """Begin the transaction and push this UnitOfWork onto the context stack.
 
+        **Opens no session, deliberately.** The session, and on SQLAlchemy the
+        real ``BEGIN``, appears at the first repository access through
+        :meth:`_initialize_session`. ADR-0031 turns that into a contract: a
+        handler method reaching no repository runs no transaction and holds no
+        pooled connection, which is what lets a handler talk to an external
+        system by putting the call in its own method. Opening a session here
+        would silently pin a connection for the length of every such call, so
+        this method must stay free of any eager connection or session.
+
         A UnitOfWork started while another is already active on this context does
         not open its own transaction. There are no savepoints, so it joins the
         active (outermost) UnitOfWork: it does not push onto the stack, so
