@@ -173,11 +173,22 @@ class BaseCache(metaclass=ABCMeta):
     def get_all(
         self, key_pattern: str, last_position: int = 0, size: int = 25
     ) -> list[BaseProjection]:
-        """Retrieve data by key pattern"""
+        """Retrieve data by key pattern.
+
+        `key_pattern` is a glob. `*` matches any run of characters, `?`
+        matches one, `[...]` is a character class, and other characters,
+        including `.`, are literal. Keys are `name:::identifier`, so a
+        projection's entries are `"user_profile:::*"`. Every adapter agrees on
+        `*`, `?`, and literal characters; bracket negation and escaping can
+        differ between adapters, so keep patterns to the `name:::*` shape.
+        """
 
     @abstractmethod
     def count(self, key_pattern: str) -> int:
-        """Retrieve count of data by key pattern"""
+        """Retrieve count of data by key pattern.
+
+        `key_pattern` is a glob. See `get_all` for the syntax.
+        """
 
     @abstractmethod
     def remove(self, projection: BaseProjection) -> None:
@@ -195,7 +206,10 @@ class BaseCache(metaclass=ABCMeta):
 
     @abstractmethod
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        """Remove a cache record by key pattern"""
+        """Remove a cache record by key pattern.
+
+        `key_pattern` is a glob. See `get_all` for the syntax.
+        """
 
     @abstractmethod
     def flush_all(self) -> None:

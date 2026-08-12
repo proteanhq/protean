@@ -160,7 +160,9 @@ def _truncate_projection(
     """
     if projection_cls.meta_.cache:
         cache = domain.cache_for(projection_cls)
-        key_pattern = f"{underscore(projection_cls.__name__)}::*"
+        # Keys are `name:::identifier`, so the glob for every entry of this
+        # projection is the name, the three-colon separator, then `*`.
+        key_pattern = f"{underscore(projection_cls.__name__)}:::*"
         cache.remove_by_key_pattern(key_pattern)
     else:
         repo = domain.repository_for(projection_cls)

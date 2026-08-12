@@ -82,7 +82,7 @@ class TestCachePersistenceFlows:
         value = cache.get("token:::qux")
         assert value == token
 
-    def test_get_keys_by_keyname_regex(self, test_domain):
+    def test_get_keys_by_keyname_glob(self, test_domain):
         cache = test_domain.cache_for(Token)
 
         token1 = Token(key="qux", user_id="foo", email="bar@baz.com")

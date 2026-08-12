@@ -1,8 +1,8 @@
 import collections.abc
 import math
-import re
 import time
 from collections.abc import Iterator
+from fnmatch import fnmatchcase
 from threading import RLock
 from typing import Any
 
@@ -177,9 +177,8 @@ class MemoryCache(BaseCache):
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        key_list = list(self._db.keys())
-        regex = re.compile(key_pattern)
-        results = list(filter(regex.match, key_list))
+        key_list = self._db.keys()
+        results = [key for key in key_list if fnmatchcase(key, key_pattern)]
 
         # Apply pagination
         page = results[last_position : last_position + size]
@@ -188,8 +187,7 @@ class MemoryCache(BaseCache):
 
     def count(self, key_pattern: str) -> int:
         key_list = self._db.keys()
-        regex = re.compile(key_pattern)
-        return len(list(filter(regex.match, key_list)))
+        return sum(1 for key in key_list if fnmatchcase(key, key_pattern))
 
     def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)
@@ -203,9 +201,8 @@ class MemoryCache(BaseCache):
         self._db.pop(key, None)
 
     def remove_by_key_pattern(self, key_pattern: str) -> None:
-        full_key_list = self._db.keys()
-        regex = re.compile(key_pattern)
-        keys_to_delete = list(filter(regex.match, full_key_list))
+        key_list = self._db.keys()
+        keys_to_delete = [key for key in key_list if fnmatchcase(key, key_pattern)]
         for key in keys_to_delete:
             del self._db[key]
 
