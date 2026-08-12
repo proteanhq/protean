@@ -121,7 +121,7 @@ class RedisCache(BaseCache):
         # them mean something different from the memory adapter's stable offset.
         # Redis has no native ordering, so page over the sorted key list the way
         # memory does; this scans all matching keys per call, like `count` and
-        # `remove_by_key_pattern` already do (#1401).
+        # `remove_by_key_pattern` already do.
         #
         # `SCAN` can return the same key more than once during a full iteration
         # (rehashing, concurrent writes), so deduplicate before sorting; a
