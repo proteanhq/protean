@@ -31,6 +31,24 @@ cannot corrupt another handler's changes. A UoW opened *inside* an already-activ
 one is different: it joins the outer transaction rather than getting its own (see
 [Nested Units of Work](#nested-units-of-work)).
 
+### When the transaction actually opens
+
+A Unit of Work opens no session when it starts. The session, and on a relational
+provider the real `BEGIN`, appears at the **first repository access**. An
+invocation that reaches no repository therefore runs no transaction and holds no
+pooled connection.
+
+That is what lets a handler talk to an external system without paying for it: put
+the call in a method that persists nothing, and it costs only wall-clock time.
+A method that calls out *after* touching a repository holds row locks and a
+connection for the length of the call, and `protean check` reports it as
+[HANDLER_PERSISTS_AND_CALLS_OUT](../../reference/fitness-functions.md#handler-persists-and-calls-out).
+
+The guarantee is about the invocation rather than the method body. A handler
+carrying `idempotent=True` reads its processed-message marker before the body
+runs, and when that marker store is DB-backed the read is a repository access,
+so the invocation opens a session before the body.
+
 ### Manual UoW
 
 For scripts, data migrations, shell sessions, and tests, you can create a UoW

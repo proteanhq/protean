@@ -2,12 +2,14 @@
 
 from protean import Domain, handle
 from protean.core.aggregate import apply
+from protean.core.process_manager import BaseProcessManager
 from protean.fields import Identifier, List, Reference
 from protean.fields.simple import Float, String
 from protean.ir.builder import IRBuilder
 from tests.ir.support import (
     adapter_call_domain,
     deprecated_usage_domain,
+    handler_io_domain,
     infra_import_domain,
 )
 
@@ -22,6 +24,7 @@ _BUILTIN_CODES = frozenset(
         "AGGREGATE_WITHOUT_COMMAND_HANDLER",
         "PROJECTION_WITHOUT_PROJECTOR",
         "AGGREGATE_TOO_LARGE",
+        "HANDLER_PERSISTS_AND_CALLS_OUT",
         "HANDLER_TOO_BROAD",
         "EVENT_WITHOUT_DATA",
         "UPCASTER_GAP",
@@ -291,6 +294,13 @@ def _all_builtin_diagnostics() -> list[dict]:
     diagnostics += IRBuilder(_build_completeness_domain()).build()["diagnostics"]
     diagnostics += IRBuilder(_build_es_domain()).build()["diagnostics"]
     diagnostics += IRBuilder(_build_aggregate_design_domain()).build()["diagnostics"]
+    # HANDLER_PERSISTS_AND_CALLS_OUT needs a handler whose method body reaches
+    # both a repository and an I/O library, which only the on-disk fixture has.
+    diagnostics += IRBuilder(
+        _build_handler_io_domain(
+            "EnrichHandlerIo", handler_io_domain.PersistsAndCallsOut
+        )
+    ).build()["diagnostics"]
 
     # DEPRECATED_OPTION — command ``published`` emit site (distinct dict from
     # the aggregate-alias site above; both are hand-copied and must be checked).
@@ -511,6 +521,22 @@ def _build_adapter_call_domain(
         domain.config["lint"] = lint
     for cls in elements or (adapter_call_domain.AdapterCallOrder,):
         domain.register(cls)
+    domain.init(traverse=False)
+    return domain
+
+
+def _build_handler_io_domain(name: str, *handlers: type) -> Domain:
+    """Register the handler-I/O fixture aggregate, event, and given handlers."""
+    domain = Domain(name=name, root_path=".")
+    domain.register(handler_io_domain.IoOrder)
+    domain.register(handler_io_domain.IoPlaced, part_of=handler_io_domain.IoOrder)
+    for cls in handlers:
+        # A process manager is not `part_of` an aggregate; it correlates across
+        # several, so it takes no such option.
+        if issubclass(cls, BaseProcessManager):
+            domain.register(cls)
+        else:
+            domain.register(cls, part_of=handler_io_domain.IoOrder)
     domain.init(traverse=False)
     return domain
 

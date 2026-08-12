@@ -411,6 +411,11 @@ class handle:
             # inside the SAME UnitOfWork as the handler's read-model write — so a
             # redelivered event is applied exactly once on a transactional
             # provider. Resolved once; the marker read/write happen per attempt.
+            #
+            # Note for ADR-0031's "no repository access, no transaction": when
+            # this resolves (a DB-backed marker store), the marker read is itself
+            # a repository access, so the invocation opens a session before the
+            # body runs. The contract is about the invocation, not the body.
             idempotency = resolve_dispatch_context(instance, fn, target_obj)
 
             def _invoke() -> Any:

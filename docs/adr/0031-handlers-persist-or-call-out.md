@@ -52,9 +52,13 @@ in history so replay returns the recorded value instead of re-executing.
 
 Around it:
 
-- **No persistence, no transaction**: A handler method that makes no repository
-  access runs no transaction and holds no connection. The lazy session becomes a
-  stated contract.
+- **No repository access, no transaction**: A handler method invocation that
+  reaches no repository runs no transaction and holds no connection. The lazy
+  session becomes a stated contract rather than an incidental optimization. The
+  contract is about the invocation, not about the body: a handler carrying
+  `idempotent=True` reads its `(message_id, handler)` marker before the body
+  runs, and when the marker store is DB-backed that read is itself a repository
+  access, so those invocations open a session before the body.
 
 - **Both in one method**: A handler that needs an external result to compute its
   local write does both in one method, and the transaction stays open for the
@@ -185,7 +189,7 @@ Negative:
 - A handler that needs an external result to compute its write still holds a
   transaction across that call. Protean answers with guidance and, once built, a
   diagnostic. An operator who ignores both will hold locks across the network.
-- The "no persistence, no transaction" guarantee constrains the implementation.
+- The "no repository access, no transaction" guarantee constrains the implementation.
   Opening a session eagerly is no longer free, because handler methods that only
   call out would start holding connections.
 - Splitting persistence from external calls means more handler methods, and the
@@ -214,7 +218,7 @@ Negative:
   already solves that at the layer that can guarantee it.
 
 - **A suspend scope**, a context manager running a block with no transaction.
-  Rejected as unnecessary. The "no persistence, no transaction" guarantee gives
+  Rejected as unnecessary. The "no repository access, no transaction" guarantee gives
   the same result by splitting the method, which is the shape we want people to
   write anyway. ADR-0027 does not rule this out: its rejection of independent
   inner transactions rests on savepoint reasoning, and removing a transaction

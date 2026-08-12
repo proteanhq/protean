@@ -28,23 +28,16 @@ from typing import TYPE_CHECKING
 
 from protean.ir.analysis.source_provider import SourceProvider
 
+# One shared notion of "external I/O call", also used by the
+# HANDLER_PERSISTS_AND_CALLS_OUT diagnostic (see `protean.ir.constants`). Local
+# aliases so the call sites below read as before; the definitions live in one
+# place so the two rules cannot drift.
+from protean.ir.constants import EXTERNAL_IO_MODULES as _HTTP_MODULES
+from protean.ir.constants import EXTERNAL_IO_VERBS as _HTTP_VERBS
+from protean.ir.constants import UNAMBIGUOUS_IO_NAMES as _UNAMBIGUOUS_IO
+
 if TYPE_CHECKING:
     from protean.domain import Domain
-
-# Libraries whose use inside a transaction is what this rule is looking for.
-_HTTP_MODULES = frozenset({"httpx", "requests", "urllib", "urllib3", "aiohttp"})
-
-# HTTP verbs, only ever matched against a receiver already known to be an HTTP
-# client (see `_http_names`), never on their own.
-_HTTP_VERBS = frozenset(
-    {"get", "post", "put", "patch", "delete", "head", "options", "request", "send"}
-)
-
-# Names distinctive enough to flag wherever they appear. `publish` is the broker
-# API; the rest are unambiguous by construction.
-_UNAMBIGUOUS_IO = frozenset(
-    {"publish", "send_email", "sendmail", "send_message", "urlopen"}
-)
 
 
 def _is_unit_of_work(node: ast.expr) -> bool:

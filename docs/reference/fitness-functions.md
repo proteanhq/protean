@@ -411,6 +411,50 @@ process or capability rather than an entity.
 
 ## Persistence
 
+### HANDLER_PERSISTS_AND_CALLS_OUT { #handler-persists-and-calls-out }
+
+| | |
+|---|---|
+| **Category** | `persistence` |
+| **Level** | `info` |
+
+**Why.** A handler method runs inside a Unit of Work, and the transaction opens
+at its first repository access. An external call after that point holds row locks
+and a pooled connection for as long as the call takes, and a retry re-runs the
+whole method and re-issues the call.
+
+**Fix.** Split the method: one that persists, and one that calls out. A method
+that touches no repository runs no transaction, so the call costs only
+wall-clock time. When the call must follow the write, have the persisting method
+raise an event and handle that.
+
+This one is advisory rather than a warning, because a handler that needs the
+call's result to compute its write is expected to do both in one method. Pass
+the remote system's idempotency key so a retry does not duplicate the effect,
+and silence the check on that handler with `suppress_checks`.
+
+Process managers are covered too: their dispatch loop wraps each method in its
+own Unit of Work, so the hazard is the same. The remedy differs, though. Every
+process-manager method drives a state transition, and the transition is persisted
+after each one, so splitting a method in two records two transitions where you
+wanted one. Have the process manager raise an event and let a plain handler make
+the call instead.
+
+The rule is import-driven: it fires only when both signals resolve, a
+`repository_for(...)` call and a call into a known I/O library, with the call
+after the first `repository_for` in the same method. The `repo.get(...)` and
+`repo.add(...)` that follow a `repository_for` do not resolve and are never
+guessed at.
+
+It reads one method body at a time and reports nothing it cannot see
+statically, so it trades completeness for no false positives. A persist
+delegated to a helper the method calls, a repository held on `self`, a persist
+through the event store rather than `repository_for`, or an I/O client reached
+through a local variable or a subscript are not flagged. A clean report is not
+proof; when in doubt, keep the external call out of any method that also
+persists. See
+[ADR-0031](https://github.com/proteanhq/protean/blob/main/docs/adr/0031-handlers-persist-or-call-out.md).
+
 ### UNBOUNDED_INDEXED_STRING { #unbounded-indexed-string }
 
 | | |
