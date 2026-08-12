@@ -115,12 +115,19 @@ class RedisCache(BaseCache):
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        _cursor, values = self._client.scan(
-            cursor=last_position, match=key_pattern, count=size
-        )
+        # Collect every matching key, sort ascending, then slice by offset.
+        # `SCAN`'s cursor is opaque and `count` only hints how much work Redis
+        # does per call, so passing `last_position`/`size` straight through made
+        # them mean something different from the memory adapter's stable offset.
+        # Redis has no native ordering, so page over the sorted key list the way
+        # memory does; this scans all matching keys per call, like `count` and
+        # `remove_by_key_pattern` already do (#1401).
+        keys = sorted(self._client.scan_iter(match=key_pattern))
+        page = keys[last_position : last_position + size]
+
         results: list[BaseProjection] = []
-        for value in values:
-            raw = self._client.get(value)
+        for key in page:
+            raw = self._client.get(key)
             if raw is not None:
                 results.append(projection_cls(json.loads(raw)))
         return results

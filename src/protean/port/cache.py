@@ -173,7 +173,7 @@ class BaseCache(metaclass=ABCMeta):
     def get_all(
         self, key_pattern: str, last_position: int = 0, size: int = 25
     ) -> list[BaseProjection]:
-        """Retrieve data by key pattern.
+        """Retrieve projections whose key matches `key_pattern`, one page at a time.
 
         `key_pattern` is a glob. `*` matches any run of characters, `?`
         matches one, `[...]` is a character class, and other characters,
@@ -181,6 +181,18 @@ class BaseCache(metaclass=ABCMeta):
         projection's entries are `"user_profile:::*"`. Every adapter agrees on
         `*`, `?`, and literal characters; bracket negation and escaping can
         differ between adapters, so keep patterns to the `name:::*` shape.
+
+        Every adapter paginates the same way. The matching entries are ordered
+        by key ascending, and within that order:
+
+        - `last_position` is a zero-based offset into it.
+        - `size` is the maximum number of entries returned.
+        - an offset at or past the end returns an empty list.
+
+        So the same `last_position` names the same entry on every adapter, and a
+        caller walks a result set by stepping `last_position` forward by `size`
+        each call. On a store with no native ordering (Redis), this scans every
+        matching key per call to produce the stable order.
         """
 
     @abstractmethod

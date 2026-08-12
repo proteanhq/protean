@@ -113,6 +113,21 @@ else:
     ...                     # seconds remaining
 ```
 
+### How `get_all` paginates
+
+`get_all(key_pattern, last_position, size)` returns entries whose key matches
+`key_pattern`, one page at a time, the same way on every adapter:
+
+- Matching entries are ordered by key ascending.
+- `last_position` is a zero-based offset into that order.
+- `size` is the most entries a page returns.
+- An offset at or past the end returns an empty list.
+
+So the same `last_position` names the same entry on the memory and Redis caches,
+and you can walk a result set by stepping `last_position` forward by `size` each
+call. Redis has no native ordering, so it scans every matching key per call to
+produce the stable order.
+
 ## Interface
 
 All cache adapters implement these methods:

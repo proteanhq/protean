@@ -64,64 +64,68 @@ class TestRemoveByKeyPatternOnNoMatch:
 
 
 class TestGetAllPaginationAgrees:
-    def test_last_position_means_the_same_thing_on_every_adapter(
-        self, cache, request, monkeypatch
-    ):
-        """A 5th cross-adapter divergence, found by running this suite.
+    """`get_all` paginates the same way on every adapter (#1401).
 
-        Memory treats `last_position` as a list offset into a freshly
-        sorted-by-insertion key list (`results[last_position:last_position
-        + size]` in `memory.py`), which also makes `size` a hard cap on the
-        page length. Redis passes both straight through to `SCAN`
-        (`self._client.scan(cursor=last_position, match=key_pattern,
-        count=size)` in `redis.py`): `last_position` is an opaque cursor,
-        not an offset, and `count` is only a hint Redis uses to decide how
-        much internal work to do, not a page-size cap, so a single call can
-        return more than `size` results. The continuation cursor `scan`
-        returns for the next call is discarded by `get_all` entirely too.
-        Not one of #1391/#1392/#1393/#1399 — filed as its own follow-up,
-        #1401.
+    Matching entries are ordered by key ascending; `last_position` is a
+    zero-based offset into that order and `size` is a hard cap on the page.
+    Memory used to page over insertion order and Redis forwarded
+    `last_position`/`size` straight to `SCAN`, where the cursor is opaque and
+    `count` is only a work hint, so the same offset returned different entries
+    on the two adapters and `size` did not cap the Redis page.
+    """
 
-        The assertion below only pins the `size`-as-a-cap half of the
-        divergence. It is guaranteed true on memory as-is. On Redis, `scan`
-        is stubbed to always answer with more keys than `size`, so the
-        violation is deterministic instead of depending on `COUNT` being a
-        hint that Redis happens to overshoot for this keyspace and the
-        server's hash seed.
-        """
-        entries = [CacheEntry(key=f"k{i}", value=str(i)) for i in range(20)]
-        for entry in entries:
-            cache.add(entry)
+    COUNT = 20
+    PATTERN = "cache_entry:::*"
 
-        if request.node.callspec.params["cache"]["provider"] == "redis":
-            request.applymarker(
-                pytest.mark.xfail(
-                    strict=True,
-                    reason=(
-                        "#1401: get_all's size means 'return at most this "
-                        "many results' on memory but is only a hint to "
-                        "Redis' SCAN about how much work to do per call, "
-                        "so a single call can return more than size "
-                        "results."
-                    ),
-                )
-            )
-            oversized_batch = [
-                f"cache_entry:::{entries[0].key}",
-                f"cache_entry:::{entries[1].key}",
-            ]
-            monkeypatch.setattr(
-                cache.get_connection(),
-                "scan",
-                lambda cursor=0, match=None, count=None: (0, oversized_batch),
-            )
+    def _load(self, cache):
+        for i in range(self.COUNT):
+            cache.add(CacheEntry(key=f"k{i}", value=str(i)))
+
+    def test_size_is_a_hard_cap(self, cache):
+        self._load(cache)
 
         pages = [
-            cache.get_all("cache_entry:::*", last_position=last_position, size=1)
-            for last_position in range(30)
+            cache.get_all(self.PATTERN, last_position=n, size=1)
+            for n in range(self.COUNT)
         ]
 
+        assert len(pages) == self.COUNT
         assert all(len(page) <= 1 for page in pages)
+
+    def test_offsets_tile_the_result_set_in_one_stable_order(self, cache):
+        self._load(cache)
+
+        walked = []
+        for n in range(self.COUNT):
+            walked.extend(cache.get_all(self.PATTERN, last_position=n, size=1))
+
+        single_page = cache.get_all(self.PATTERN, last_position=0, size=self.COUNT)
+
+        # The order is keys sorted ascending, the same on every adapter. Pin the
+        # concrete sequence, not just that the adapter agrees with itself: memory
+        # used to page over insertion order (k0..k19), so without the sort this
+        # would still tile the set but in the wrong order and disagree with
+        # Redis. As strings, `k10` sorts before `k2`, so the order is not k0..k19.
+        expected_order = sorted(f"k{i}" for i in range(self.COUNT))
+
+        # Walking size-1 pages across every offset recovers every entry once, in
+        # the same order a single page returns: no duplicate, no omission, so the
+        # offset names the same entry either way.
+        assert [entry.key for entry in walked] == expected_order
+        assert [entry.key for entry in single_page] == expected_order
+
+    def test_past_the_end_is_empty(self, cache):
+        self._load(cache)
+
+        assert cache.get_all(self.PATTERN, last_position=self.COUNT, size=5) == []
+        assert cache.get_all(self.PATTERN, last_position=self.COUNT + 100, size=5) == []
+
+    def test_multi_item_page_caps_at_size_and_at_the_end(self, cache):
+        self._load(cache)
+
+        assert len(cache.get_all(self.PATTERN, last_position=0, size=5)) == 5
+        # Two entries left past offset 18, fewer than the size-5 request.
+        assert len(cache.get_all(self.PATTERN, last_position=18, size=5)) == 2
 
 
 class TestPatternLanguageIsAGlobOnEveryAdapter:

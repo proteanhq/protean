@@ -182,7 +182,10 @@ class MemoryCache(BaseCache):
         # whole traversal, so matching while iterating it would hold the lock
         # across every fnmatch call.
         key_list = list(self._db.keys())
-        results = [key for key in key_list if fnmatchcase(key, key_pattern)]
+        # Sort so `last_position` is a stable offset into a fixed order rather
+        # than insertion order. Both adapters page over keys sorted ascending,
+        # so the same offset names the same entry on memory and Redis.
+        results = sorted(key for key in key_list if fnmatchcase(key, key_pattern))
 
         # Apply pagination
         page = results[last_position : last_position + size]
