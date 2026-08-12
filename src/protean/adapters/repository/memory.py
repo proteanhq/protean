@@ -21,7 +21,7 @@ from protean.exceptions import (
 )
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import _fully_qualified_name
+from protean.utils import _fully_qualified_name, occ_trace
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
 from protean.utils.query import F, Q
@@ -202,12 +202,24 @@ class MemorySession:
         with self._db["lock"]:
             live = self._provider._databases
             data = self._db["data"]
+            checks = self._db["version_checks"]
 
             # Compare: every recorded version must still match the live store.
-            for (schema, identifier), expected in self._db["version_checks"].items():
+            for (schema, identifier), expected in checks.items():
                 stored = live.get(schema, {}).get(identifier)
                 stored_version = stored.get("_version") if stored is not None else None
                 if stored_version != expected:
+                    if occ_trace.is_active():
+                        # Raw conflict observation, taken under the provider lock
+                        # (the same lock the compare-and-set holds): the version
+                        # this writer read as its base, and the live version that
+                        # no longer matches it.
+                        occ_trace.record(
+                            stream=f"{schema}:{identifier}",
+                            base=expected,
+                            outcome="conflicted",
+                            version_after=stored_version,
+                        )
                     raise ExpectedVersionError(
                         f"Wrong expected version: {expected} "
                         f"(Schema: {schema}, Identifier: {identifier}, "
@@ -221,6 +233,22 @@ class MemorySession:
                     live[schema][identifier] = data[schema][identifier]
                 elif schema in live:  # op == "delete"
                     live[schema].pop(identifier, None)
+
+            if occ_trace.is_active():
+                # Every checked record merged cleanly, so this writer committed.
+                # Read the stored version back from the live store after the merge
+                # (raw, still under the lock), rather than assuming ``base + 1``.
+                for (schema, identifier), expected in checks.items():
+                    merged = live.get(schema, {}).get(identifier)
+                    merged_version = (
+                        merged.get("_version") if merged is not None else None
+                    )
+                    occ_trace.record(
+                        stream=f"{schema}:{identifier}",
+                        base=expected,
+                        outcome="committed",
+                        version_after=merged_version,
+                    )
 
             # Clear the changeset so a repeated commit is a no-op.
             self._clear_changeset()

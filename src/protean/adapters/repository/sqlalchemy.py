@@ -67,7 +67,7 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import IdentityType, _fully_qualified_name
+from protean.utils import IdentityType, _fully_qualified_name, occ_trace
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
@@ -1086,6 +1086,20 @@ class SADAO(BaseDAO):
         if expected_version is not None:
             stored_version = getattr(db_item, "_version", None)
             if stored_version != expected_version:
+                # Only a standalone update observes the whole compare-and-set here;
+                # under a UnitOfWork the version-guarded flush is deferred to the UoW
+                # commit, so the outcome resolves there, not in ``_update``. Record
+                # only what this path truthfully sees, so the SQLAlchemy log is a
+                # coherent standalone trace and never a half-observed UoW one.
+                if occ_trace.is_active() and self._is_standalone:
+                    # Raw conflict observation: the version this writer read as its
+                    # base, and the row's live version that no longer matches it.
+                    occ_trace.record(
+                        stream=f"{self.schema_name}:{identifier}",
+                        base=expected_version,
+                        outcome="conflicted",
+                        version_after=stored_version,
+                    )
                 self._rollback_if_standalone(conn)
                 raise ExpectedVersionError(
                     f"Wrong expected version: {expected_version} "
@@ -1100,6 +1114,23 @@ class SADAO(BaseDAO):
                 setattr(db_item, attribute, getattr(model_obj, attribute))
 
         self._commit_if_standalone(conn)
+
+        if (
+            occ_trace.is_active()
+            and expected_version is not None
+            and self._is_standalone
+        ):
+            # The standalone commit above flushed the version-guarded UPDATE and
+            # returned without a StaleDataError, so this writer committed. The guard
+            # is guaranteed to advance the row from ``expected_version`` to
+            # ``expected_version + 1``; the connection is closed by now, so record
+            # that value rather than reading the detached row back.
+            occ_trace.record(
+                stream=f"{self.schema_name}:{identifier}",
+                base=expected_version,
+                outcome="committed",
+                version_after=expected_version + 1,
+            )
         return model_obj
 
     def _update_all(

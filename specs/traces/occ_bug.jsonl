@@ -1,0 +1,2 @@
+{"stream": "counter:seed", "writer": "a", "base": 0, "outcome": "committed", "version_after": 1}
+{"stream": "counter:seed", "writer": "b", "base": 0, "outcome": "committed", "version_after": 1}

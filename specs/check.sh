@@ -10,13 +10,17 @@
 #   - the reachability probes (…_dup) MUST fail on their named invariant (the
 #     counterexample is the witness that the behavior is reachable).
 #
-# This is design-time verification, not a CI gate: run it deliberately when a
-# modeled protocol changes, not on every commit.
+# The model checks are design-time verification, not a CI gate: run them
+# deliberately when a modeled protocol changes, not on every commit. The final
+# section (OCC trace validation, #1382) is different — it checks a log of the real
+# code against OCC.tla, so it cannot go stale and is meant to run as a per-PR gate.
 #
 # Requirements: a Java runtime and the TLA+ tools jar. Point at the jar with
 #   TLA_TOOLS=/path/to/tla2tools.jar ./check.sh
 # Default location is ~/.tla/tla2tools.jar. Download it from
-#   https://github.com/tlaplus/tlaplus/releases (tla2tools.jar).
+#   https://github.com/tlaplus/tlaplus/releases (tla2tools.jar). The OCC trace
+#   validation additionally needs python3 (and `protean` importable to record a
+#   fresh trace); it degrades to running the checked-in fixtures otherwise.
 
 set -uo pipefail
 
@@ -93,6 +97,105 @@ run() {
     fi
 }
 
+# --- OCC trace validation (#1382): check the real code against OCC.tla ---------
+#
+# Unlike the model checks above, these run TLC over a log the *real* Memory /
+# SQLAlchemy commit paths emitted, and confirm each recorded step is a behaviour
+# OCC.tla permits (see OCCTrace.tla). The conversion needs python3; recording a
+# fresh trace additionally needs the `protean` package importable.
+
+REPO_ROOT="$(cd "$SPECS_DIR/.." && pwd)"
+PY3="$(command -v python3 || true)"
+TDIR="$WORKDIR/trace"
+
+# trace_run <label> <module.tla> <cfg> -> prints the TLC outcome on stdout, one of:
+#   pass         no error found
+#   temporal     a temporal property was violated (the conform cfg's TraceAccepted)
+#   inv:<Name>   the named invariant was violated (e.g. inv:NoConflict)
+#   error        TLC did not finish cleanly
+# Naming the failed check (as run() does) is what lets a fixture assert the exact
+# mechanism it exercises, so a fixture that starts failing for the wrong reason is
+# caught rather than counted as a correct rejection.
+trace_run() {
+    local label="$1" module="$2" cfg="$3" out which
+    out="$(cd "$TDIR" && java -XX:+UseParallelGC -cp "$JAR" tlc2.TLC \
+        -metadir "$WORKDIR/trace-$label" -config "$cfg" "$module" 2>&1)"
+    if [[ $out == *"No error has been found"* ]]; then
+        echo pass
+    elif [[ $out == *"is violated"* ]]; then
+        which="$(printf '%s\n' "$out" \
+            | grep -oE "Invariant [A-Za-z0-9_]+ is violated" | head -1 | awk '{print $2}')"
+        echo "inv:${which:-unknown}"
+    elif [[ $out == *"Temporal properties were violated"* ]]; then
+        echo temporal
+    else
+        echo error
+    fi
+}
+
+# check_trace <label> <log.jsonl> <expect>
+# expect is one of:
+#   accept          conforms to OCC.tla AND witnesses a conflict (a real log)
+#   reject-conform  fails conformance on TraceAccepted (a seeded divergence)
+#   reject-cover    conforms but records no conflict, so under-covered
+# Each fixture asserts the exact outcome it was written to produce.
+check_trace() {
+    local label="$1" jsonl="$2" expect="$3"
+    local module="OCCTrace_$label"
+    if ! "$PY3" "$SPECS_DIR/occ_trace.py" to-tla \
+            --in "$jsonl" --out "$TDIR/$module.tla" >/dev/null 2>&1; then
+        echo "  FAIL   trace:$label: could not convert $jsonl to TLA+"
+        fail=1
+        return
+    fi
+    local conform cover ok=0 detail
+    conform="$(trace_run "$label-conform" "$module.tla" OCCTrace_conform.cfg)"
+    cover="$(trace_run "$label-cover" "$module.tla" OCCTrace_cover.cfg)"
+    if [[ $conform == error || $cover == error ]]; then
+        echo "  FAIL   trace:$label: TLC did not finish cleanly (conform=$conform cover=$cover)"
+        fail=1
+        return
+    fi
+    case "$expect" in
+        accept)
+            [[ $conform == pass && $cover == "inv:NoConflict" ]] && ok=1
+            detail="conforms to OCC.tla and exercises contention" ;;
+        reject-conform)
+            [[ $conform == temporal ]] && ok=1
+            detail="correctly rejected -- diverges from OCC.tla (TraceAccepted stalled)" ;;
+        reject-cover)
+            [[ $conform == pass && $cover == pass ]] && ok=1
+            detail="correctly rejected -- no conflict recorded, under-covered" ;;
+    esac
+    if [[ $ok -eq 1 ]]; then
+        echo "  PASS   trace:$label: $detail"
+    else
+        echo "  FAIL   trace:$label: expected $expect (conform=$conform cover=$cover)"
+        fail=1
+    fi
+}
+
+# record_trace <out.jsonl>: record a fresh Memory-adapter OCC trace.
+# Exit status distinguishes the two cases the caller treats differently:
+#   0  a trace was written
+#   1  an interpreter with `protean` was found but the recording errored (a FAIL)
+#   3  no interpreter with `protean` is available (a SKIP, like a missing jar)
+record_trace() {
+    local out="$1"
+    if command -v uv >/dev/null 2>&1 \
+       && (cd "$REPO_ROOT" && uv run python -c "import protean") >/dev/null 2>&1; then
+        (cd "$REPO_ROOT" && uv run python "$SPECS_DIR/occ_trace.py" \
+            record --out "$out" --writers 4) >/dev/null 2>&1 && return 0
+        return 1
+    fi
+    if [[ -n "$PY3" ]] && "$PY3" -c "import protean" >/dev/null 2>&1; then
+        "$PY3" "$SPECS_DIR/occ_trace.py" record --out "$out" --writers 4 \
+            >/dev/null 2>&1 && return 0
+        return 1
+    fi
+    return 3
+}
+
 echo "Checkpoint protocol (\$all gap-safe checkpointing, ADR-0025):"
 run Checkpoint.tla Checkpoint.cfg          pass
 run Checkpoint.tla Checkpoint_timeout.cfg  pass
@@ -117,6 +220,29 @@ echo "Recovery protocol (subscription failure-recovery record-before-advance):"
 run Recovery.tla   Recovery.cfg            pass
 run Recovery.tla   Recovery_bug.cfg        violation  NoDrop
 run Recovery.tla   Recovery_dup.cfg        violation  NoRedeliver
+
+echo ""
+echo "OCC trace validation (real code vs OCC.tla, #1382):"
+if [[ -z "$PY3" ]]; then
+    echo "  SKIP   python3 not found; cannot convert OCC logs to TLA+"
+else
+    mkdir -p "$TDIR"
+    cp "$SPECS_DIR/OCC.tla" "$SPECS_DIR/OCCTrace.tla" \
+       "$SPECS_DIR/OCCTrace_conform.cfg" "$SPECS_DIR/OCCTrace_cover.cfg" "$TDIR/"
+    real="$WORKDIR/occ_real.jsonl"
+    record_trace "$real"
+    case $? in
+        0) check_trace real "$real" accept ;;
+        3) echo "  SKIP   real trace: no interpreter with 'protean' available to record one" ;;
+        *) echo "  FAIL   real trace: 'protean' is importable but recording errored"
+           fail=1 ;;
+    esac
+    # Negative checks (fixtures under specs/traces/): a green run must mean
+    # something, so a seeded divergence must fail conformance and an uncontended
+    # log must fail coverage. These need only python3 + java, no `protean`.
+    check_trace bug        "$SPECS_DIR/traces/occ_bug.jsonl"         reject-conform
+    check_trace noconflict "$SPECS_DIR/traces/occ_no_conflict.jsonl" reject-cover
+fi
 
 echo ""
 if [[ "$fail" -eq 0 ]]; then

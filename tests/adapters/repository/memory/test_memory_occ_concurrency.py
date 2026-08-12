@@ -25,6 +25,7 @@ from protean.core.entity import BaseEntity
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import HasMany, Integer, Reference, String
+from protean.utils import occ_trace
 
 _WORKERS = 8
 
@@ -284,3 +285,73 @@ def test_create_then_update_same_aggregate_in_one_uow_commits_cleanly(test_domai
     # Committed without a spurious ExpectedVersionError, and the update stuck.
     persisted = test_domain.repository_for(Counter).get(counter_id)
     assert persisted.value == 2
+
+
+def test_commit_emits_the_occ_trace_the_spec_checks(test_domain):
+    """With the recorder active, ``MemorySession.commit`` emits the raw
+    compare-and-set the OCC spec talks about (:issue:`#1382`): the winner records
+    a ``committed`` event advancing the version, and every loser records a
+    ``conflicted`` event against the same base. ``specs/check.sh`` feeds this log
+    to TLC and confirms it is a behaviour ``specs/OCC.tla`` permits."""
+    counter_id = _seed_counter(test_domain)
+
+    load_barrier = threading.Barrier(_WORKERS, timeout=20)
+
+    def worker(worker_no: int) -> None:
+        try:
+            with test_domain.domain_context(), UnitOfWork():
+                repo = test_domain.repository_for(Counter)
+                counter = repo.get(counter_id)
+                counter.value = worker_no + 1
+                load_barrier.wait()
+                repo.add(counter)
+        except ExpectedVersionError:
+            pass  # a losing writer; the tracer already recorded the conflict
+
+    with occ_trace.capture() as events:
+        _run_workers(worker)
+        recorded = list(events)
+
+    committed = [e for e in recorded if e["outcome"] == "committed"]
+    conflicted = [e for e in recorded if e["outcome"] == "conflicted"]
+
+    assert len(recorded) == _WORKERS, recorded
+    # Exactly one winner and the rest conflicts — the shape the no-lost-update
+    # guarantee produces, recorded straight from the live store under the lock.
+    assert len(committed) == 1, recorded
+    assert len(conflicted) == _WORKERS - 1, recorded
+
+    # One aggregate, so one contention stream; every writer read base 0.
+    assert {e["stream"] for e in recorded} == {f"counter:{counter_id}"}
+    assert all(e["base"] == 0 for e in recorded), recorded
+
+    # The winner advanced the stored version to 1; every loser observed that
+    # same live version 1 that no longer matched its base.
+    assert committed[0]["version_after"] == 1, committed
+    assert all(e["version_after"] == 1 for e in conflicted), conflicted
+
+
+def test_uncontended_commits_record_one_clean_event_each(test_domain):
+    """An uncontended commit records exactly one ``committed`` event advancing the
+    version, and no ``conflicted`` event (:issue:`#1382`). This is the shape
+    ``specs/traces/occ_no_conflict.jsonl`` stands in for, checked here against the
+    real Memory commit path. It also pins that a commit *outside* a capture emits
+    nothing, so the recorder stays inactive by default."""
+    # Seeded outside the capture: an inactive recorder must contribute nothing.
+    counter_id = _seed_counter(test_domain)
+    assert occ_trace.is_active() is False
+
+    with occ_trace.capture() as events:
+        for _ in range(2):
+            with test_domain.domain_context(), UnitOfWork():
+                repo = test_domain.repository_for(Counter)
+                counter = repo.get(counter_id)
+                counter.value = counter.value + 1
+                repo.add(counter)
+        recorded = list(events)
+
+    # Only the two in-capture commits were recorded, both clean, no conflicts —
+    # the version walked 0->1 then 1->2.
+    assert [e["outcome"] for e in recorded] == ["committed", "committed"], recorded
+    assert [e["base"] for e in recorded] == [0, 1], recorded
+    assert [e["version_after"] for e in recorded] == [1, 2], recorded
