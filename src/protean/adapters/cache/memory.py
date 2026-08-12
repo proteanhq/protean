@@ -42,18 +42,17 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             assert expire is not None
             return expire - now
 
-    def get_ttl_or_none(self, key: str, now: float | None = None) -> float | None:
+    def get_ttl_or_none(self, key: str) -> float | None:
         """Remaining TTL for a key, or ``None`` when it is absent or expired.
 
         The presence check, the eviction of a stale entry, and the read all run
         under one lock, so a concurrent eviction between the check and the read
         cannot turn a live-looking key into a `KeyError` or a stale reading.
         """
-        if now is None:
-            now = time.time()
         with self._lock:
             if key not in self._values:
                 return None
+            now = time.time()
             if self.is_expired(key, now=now, remove=True):
                 return None
             expire, _value = self._values[key]
