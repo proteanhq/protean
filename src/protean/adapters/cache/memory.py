@@ -34,15 +34,6 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             _expire, value = self._values[key]
             self._values[key] = (now + ttl, value)
 
-    def get_ttl(self, key: str, now: float | None = None) -> float:
-        """Return remaining TTL for a key"""
-        if now is None:
-            now = time.time()
-        with self._lock:
-            expire, _value = self._values[key]
-            assert expire is not None
-            return expire - now
-
     def get_ttl_or_none(self, key: str) -> float | None:
         """Remaining TTL for a key, or ``None`` when it is absent or expired.
 
