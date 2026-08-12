@@ -13,6 +13,10 @@ import pytest
 
 from protean.utils import occ_trace
 
+# Pure recorder unit tests: they never touch a domain, so skip the autouse
+# ``test_domain`` fixture rather than building a Domain for each one.
+pytestmark = pytest.mark.no_test_domain
+
 
 def test_inactive_by_default():
     assert occ_trace.is_active() is False

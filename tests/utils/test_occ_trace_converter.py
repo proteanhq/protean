@@ -10,7 +10,12 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 from protean.utils.occ_trace import OCCEvent
+
+# Converter/schema unit tests: no domain is used, so skip the autouse fixture.
+pytestmark = pytest.mark.no_test_domain
 
 # Load specs/occ_trace.py by path: it is a standalone script (so `to-tla` can run
 # under a bare python3 without protean), not an importable package.

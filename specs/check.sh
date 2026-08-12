@@ -120,13 +120,17 @@ trace_run() {
     local label="$1" module="$2" cfg="$3" out which
     out="$(cd "$TDIR" && java -XX:+UseParallelGC -cp "$JAR" tlc2.TLC \
         -metadir "$WORKDIR/trace-$label" -config "$cfg" "$module" 2>&1)"
+    # Extract a named invariant first. A temporal-property failure can also print
+    # "... is violated" (e.g. "Property TraceAccepted is violated"), so match the
+    # specific "Invariant <Name>" form and only treat the rest as temporal, rather
+    # than letting any "is violated" text be misread as an invariant.
+    which="$(printf '%s\n' "$out" \
+        | grep -oE "Invariant [A-Za-z0-9_]+ is violated" | head -1 | awk '{print $2}')"
     if [[ $out == *"No error has been found"* ]]; then
         echo pass
-    elif [[ $out == *"is violated"* ]]; then
-        which="$(printf '%s\n' "$out" \
-            | grep -oE "Invariant [A-Za-z0-9_]+ is violated" | head -1 | awk '{print $2}')"
-        echo "inv:${which:-unknown}"
-    elif [[ $out == *"Temporal properties were violated"* ]]; then
+    elif [[ -n $which ]]; then
+        echo "inv:$which"
+    elif [[ $out == *"is violated"* || $out == *"Temporal properties were violated"* ]]; then
         echo temporal
     else
         echo error
