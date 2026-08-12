@@ -11,14 +11,15 @@
 #     counterexample is the witness that the behavior is reachable).
 #
 # The model checks are design-time verification, not a CI gate: run them
-# deliberately when a modeled protocol changes, not on every commit. The final
-# section (OCC trace validation, #1382) is different — it checks a log of the real
-# code against OCC.tla, so it cannot go stale and is meant to run as a per-PR gate.
+# deliberately when a modeled protocol changes, not on every commit. The trace
+# validation sections (OCC #1382, checkpoint #1384) are different — they check a
+# log of the real code against its spec, so they cannot go stale and are meant to
+# run as a per-PR gate.
 #
 # Requirements: a Java runtime and the TLA+ tools jar. Point at the jar with
 #   TLA_TOOLS=/path/to/tla2tools.jar ./check.sh
 # Default location is ~/.tla/tla2tools.jar. Download it from
-#   https://github.com/tlaplus/tlaplus/releases (tla2tools.jar). The OCC trace
+#   https://github.com/tlaplus/tlaplus/releases (tla2tools.jar). The trace
 #   validation additionally needs python3 (and `protean` importable to record a
 #   fresh trace); it degrades to running the checked-in fixtures otherwise.
 
