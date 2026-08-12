@@ -114,29 +114,19 @@ class RedisCache(BaseCache):
         value = self._client.get(key)
         return projection_cls(json.loads(value)) if value else None
 
-    def get_all(
-        self, key_pattern: str, last_position: int = 0, size: int = 25
-    ) -> list[BaseProjection]:
+    def _get_all(self, key_pattern: str) -> list[BaseProjection]:
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        # Collect every matching key, sort ascending, then slice by offset.
-        # `SCAN`'s cursor is opaque and `count` only hints how much work Redis
-        # does per call, so passing `last_position`/`size` straight through made
-        # them mean something different from the memory adapter's stable offset.
-        # Redis has no native ordering, so page over the sorted key list the way
-        # memory does; this scans all matching keys per call, like `count` and
-        # `remove_by_key_pattern` already do.
-        #
-        # `SCAN` can return the same key more than once during a full iteration
-        # (rehashing, concurrent writes), so deduplicate before sorting; a
-        # duplicate would otherwise repeat a projection in the page and shift
-        # every later offset, breaking the stable-offset contract.
+        # Redis has no native key ordering, so read every matching key, sort,
+        # and materialise. That is a full keyspace scan; `_get_all` is a bounded
+        # utility, not a production read path. `SCAN` can return the same key
+        # more than once during a full iteration (rehashing, concurrent writes),
+        # so dedupe before sorting, or an entry would repeat in the result.
         keys = sorted(set(self._client.scan_iter(match=key_pattern)))
-        page = self._page(keys, last_position, size)
 
         results: list[BaseProjection] = []
-        for key in page:
+        for key in keys:
             raw = self._client.get(key)
             if raw is not None:
                 results.append(projection_cls(json.loads(raw)))
@@ -146,7 +136,7 @@ class RedisCache(BaseCache):
         # `SCAN` can return the same key more than once during a full iteration
         # (rehashing, concurrent writes), so dedupe before counting. Without
         # this, `count` overcounts and disagrees with the number of distinct
-        # entries `get_all` returns, which dedupes the same scan.
+        # entries `_get_all` returns, which dedupes the same scan.
         return len(set(self._client.scan_iter(match=key_pattern)))
 
     def remove(self, projection: BaseProjection) -> None:

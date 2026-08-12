@@ -1,14 +1,13 @@
-"""`get_all` pages Redis keys by a stable sorted offset (#1401).
+"""`_get_all` reads Redis keys in sorted key order, deduped.
 
-Redis has no native ordering, so `get_all` collects every matching key with
-`scan_iter`, sorts them ascending, then slices `[last_position : last_position +
-size]`. That sort and slice is the whole behaviour that made Redis agree with
-the memory cache, so it is worth covering on its own.
+Redis has no native ordering, so `_get_all` collects every matching key with
+`scan_iter`, dedupes, sorts them ascending, and materialises them. That sort and
+dedupe is the whole behaviour, so it is worth covering on its own.
 
-Driven through a stub client rather than a live Redis, so the pagination logic
-runs in the core suite the way `test_redis_ttl_units.py` covers `get_ttl`. The
-cross-adapter `TestGetAllPaginationAgrees` in `generic/test_key_patterns.py`
-still pins the same contract against a real Redis on the `--redis` leg.
+Driven through a stub client rather than a live Redis, so the logic runs in the
+core suite the way `test_redis_ttl_units.py` covers `get_ttl`. The cross-adapter
+`TestGetAllReturnsEveryMatchInKeyOrder` in `generic/test_key_patterns.py` still
+pins the same contract against a real Redis on the `--redis` leg.
 """
 
 import fnmatch
@@ -29,12 +28,12 @@ class CacheEntry(BaseProjection):
 
 
 class _StubClient:
-    """The parts of the Redis client `get_all`/`add` touch, backed by a dict.
+    """The parts of the Redis client `_get_all`/`add`/`count` touch, backed by a dict.
 
     Keys and values come back as `bytes`, the way redis-py answers without
     `decode_responses`, so the test exercises the same bytes sort the live
     adapter does. `scan_iter` yields keys in insertion order, deliberately not
-    sorted, so a `get_all` that forgot to sort would return them in the wrong
+    sorted, so a `_get_all` that forgot to sort would return them in the wrong
     order and the order assertion would catch it.
     """
 
@@ -91,32 +90,12 @@ def _load(cache):
         cache.add(CacheEntry(key=f"k{i}", value=str(i)))
 
 
-def test_offsets_tile_the_result_set_in_one_stable_order(cache):
+def test_get_all_returns_every_match_in_key_order(cache):
     _load(cache)
 
-    walked = []
-    for n in range(COUNT):
-        walked.extend(cache.get_all(PATTERN, last_position=n, size=1))
+    results = cache._get_all(PATTERN)
 
-    single_page = cache.get_all(PATTERN, last_position=0, size=COUNT)
-
-    assert [entry.key for entry in walked] == EXPECTED_ORDER
-    assert [entry.key for entry in single_page] == EXPECTED_ORDER
-
-
-def test_size_is_a_hard_cap(cache):
-    _load(cache)
-
-    assert len(cache.get_all(PATTERN, last_position=0, size=5)) == 5
-    # Two entries left past offset 18, fewer than the size-5 request.
-    assert len(cache.get_all(PATTERN, last_position=18, size=5)) == 2
-
-
-def test_past_the_end_is_empty(cache):
-    _load(cache)
-
-    assert cache.get_all(PATTERN, last_position=COUNT, size=5) == []
-    assert cache.get_all(PATTERN, last_position=COUNT + 100, size=5) == []
+    assert [entry.key for entry in results] == EXPECTED_ORDER
 
 
 class _DuplicatingStub(_StubClient):
@@ -124,8 +103,8 @@ class _DuplicatingStub(_StubClient):
 
     Redis `SCAN` is documented to return the same element more than once during
     a full iteration (rehashing, concurrent writes), and `scan_iter` inherits
-    that. This reproduces it so the dedup in `get_all` is covered on the core
-    leg, not only against a live server.
+    that. This reproduces it so the dedup in `_get_all` and `count` is covered
+    on the core leg, not only against a live server.
     """
 
     def scan_iter(self, match=None):
@@ -142,11 +121,11 @@ def test_scan_returning_a_key_twice_is_deduplicated(monkeypatch):
         cache.add(CacheEntry(key="k0", value="0"))
         cache.add(CacheEntry(key="k1", value="1"))
 
-        page = cache.get_all(PATTERN, last_position=0, size=25)
+        results = cache._get_all(PATTERN)
 
-        # Without dedup the page would be [k0, k0, k1]: the duplicate repeats a
-        # projection and shifts every later offset.
-        assert [entry.key for entry in page] == ["k0", "k1"]
+        # Without dedup the result would be [k0, k0, k1]: the duplicate repeats
+        # a projection.
+        assert [entry.key for entry in results] == ["k0", "k1"]
 
 
 def test_count_deduplicates_a_key_scan_returns_twice(monkeypatch):
@@ -157,14 +136,5 @@ def test_count_deduplicates_a_key_scan_returns_twice(monkeypatch):
         cache.add(CacheEntry(key="k1", value="1"))
 
         # `scan_iter` yields k0 twice. Without dedup `count` returns 3 and
-        # disagrees with the two distinct entries `get_all` returns.
+        # disagrees with the two distinct entries `_get_all` returns.
         assert cache.count(PATTERN) == 2
-
-
-def test_negative_offset_or_size_raises(cache):
-    _load(cache)
-
-    with pytest.raises(ValueError):
-        cache.get_all(PATTERN, last_position=-1, size=5)
-    with pytest.raises(ValueError):
-        cache.get_all(PATTERN, last_position=0, size=-1)

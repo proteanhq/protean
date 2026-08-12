@@ -113,21 +113,17 @@ else:
     ...                     # seconds remaining
 ```
 
-### How `get_all` paginates
+### `_get_all` is a bounded utility, not a paged read
 
-`get_all(key_pattern, last_position, size)` returns entries whose key matches
-`key_pattern`, one page at a time, the same way on every adapter:
+`_get_all(key_pattern)` returns every entry whose key matches `key_pattern`, in
+key order, the same on every adapter. It is private (the leading underscore) and
+deliberately unpaginated. A cache is for point reads by key; enumerating a match
+set is not what it is for. On Redis it scans the whole keyspace and materialises
+every match, so it is a convenience for tests and small, bounded stores, not a
+production read path. `count` has the same full-scan cost.
 
-- Matching entries are ordered by key ascending.
-- `last_position` is a zero-based offset into that order.
-- `size` is the most entries a page returns.
-- An offset at or past the end returns an empty list.
-- A negative `last_position` or `size` raises `ValueError`.
-
-So the same `last_position` names the same entry on the memory and Redis caches,
-and you can walk a result set by stepping `last_position` forward by `size` each
-call. Redis has no native ordering, so it scans every matching key per call to
-produce the stable order.
+To page a large projection set, query the projection's repository
+(`repository_for(Projection).query`), which has indexes and native pagination.
 
 ## Interface
 
@@ -139,7 +135,7 @@ All cache adapters implement these methods:
 | `get_connection()` | Return the underlying cache connection |
 | `add(projection, ttl=None)` | Store a projection with optional TTL override |
 | `get(key)` | Retrieve a projection by key |
-| `get_all(key_pattern, last_position, size)` | Retrieve projections matching a pattern |
+| `_get_all(key_pattern)` | Private. Every matching projection, in key order. A bounded utility for tests and small stores, not a production read path |
 | `count(key_pattern)` | Count entries matching a pattern |
 | `remove(projection)` | Remove a cached projection. Does nothing if no record exists for it |
 | `remove_by_key(key)` | Remove an entry by key. Does nothing if the key is absent |
@@ -157,7 +153,7 @@ order_summary:::ord-123
 user_profile:::usr-456
 ```
 
-The `key_pattern` on `get_all`, `count`, and `remove_by_key_pattern` is a glob.
+The `key_pattern` on `_get_all`, `count`, and `remove_by_key_pattern` is a glob.
 `*` matches any run of characters, `?` matches one, `[...]` is a character
 class, and other characters are literal. Every entry of one projection is
 `order_summary:::*`. Adapters agree on `*`, `?`, and literal characters; bracket

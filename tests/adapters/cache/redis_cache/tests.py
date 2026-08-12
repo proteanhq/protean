@@ -83,7 +83,7 @@ class TestCachePersistenceFlows:
         cache.add(token1)
         cache.add(token2)
 
-        tokens = cache.get_all("token:::qu*")
+        tokens = cache._get_all("token:::qu*")
         assert len(tokens) == 2
         assert all(token in tokens for token in [token1, token2])
 

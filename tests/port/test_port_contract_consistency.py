@@ -1,6 +1,6 @@
 """Tests for Bucket G: Port Contract Consistency.
 
-Finding #18: Redis cache get_all/count parameter names match port.
+Finding #18: cache _get_all/count signatures match port.
 Finding #19: Broker _get_next() return type matches implementations.
 Finding #21: Port abstract methods have complete type hints.
 """
@@ -19,17 +19,17 @@ from protean.port.provider import BaseProvider
 # Finding #18: Cache adapter signatures match port
 # ---------------------------------------------------------------------------
 class TestCacheParameterConsistency:
-    def test_port_get_all_uses_size_parameter(self):
-        """Port declares get_all with 'size' parameter."""
-        sig = inspect.signature(BaseCache.get_all)
-        assert "size" in sig.parameters
-        assert "count" not in sig.parameters
+    def test_port_get_all_takes_only_key_pattern(self):
+        """Port declares `_get_all(key_pattern)` with no pagination params."""
+        sig = inspect.signature(BaseCache._get_all)
+        param_names = [p for p in sig.parameters if p != "self"]
+        assert param_names == ["key_pattern"]
 
-    def test_memory_cache_get_all_uses_size_parameter(self):
-        """MemoryCache.get_all uses 'size' matching the port."""
-        sig = inspect.signature(MemoryCache.get_all)
-        assert "size" in sig.parameters
-        assert "count" not in sig.parameters
+    def test_memory_cache_get_all_matches_port(self):
+        """MemoryCache._get_all matches the port signature."""
+        sig = inspect.signature(MemoryCache._get_all)
+        param_names = [p for p in sig.parameters if p != "self"]
+        assert param_names == ["key_pattern"]
 
     def test_port_count_has_no_extra_parameters(self):
         """Port declares count(self, key_pattern) with no extra params."""
@@ -88,7 +88,7 @@ class TestCachePortTypeHints:
         assert "return" in hints
 
     def test_get_all_has_return_type(self):
-        hints = get_type_hints(BaseCache.get_all)
+        hints = get_type_hints(BaseCache._get_all)
         assert "return" in hints
 
     def test_count_has_return_type(self):
