@@ -1,4 +1,5 @@
 import collections.abc
+import math
 import re
 import time
 from collections.abc import Iterator
@@ -56,7 +57,11 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             if self.is_expired(key, now=now, remove=True):
                 return None
             expire, _value = self._values[key]
-            assert expire is not None
+            # A `None` expiry is a never-expiring entry (a `TTLDict` built with
+            # `default_ttl=None`). `MemoryCache` never does this, but `TTLDict`
+            # allows it, so report it as `math.inf`, the port's shared answer.
+            if expire is None:
+                return math.inf
             return expire - now
 
     def expire_at(self, key: str, timestamp: float) -> None:

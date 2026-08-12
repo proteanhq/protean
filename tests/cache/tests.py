@@ -394,3 +394,13 @@ class TestTTLDictGetTTLOrNone:
         from protean.adapters.cache.memory import TTLDict
 
         assert TTLDict(default_ttl=300).get_ttl_or_none("nope") is None
+
+    def test_returns_math_inf_for_a_never_expiring_entry(self):
+        """A TTLDict built with default_ttl=None writes entries with no expiry.
+        MemoryCache never does this, but the helper still answers math.inf for
+        that entry, the port's shared no-expiry contract, rather than raising."""
+        from protean.adapters.cache.memory import TTLDict
+
+        ttl_dict = TTLDict(default_ttl=None)
+        ttl_dict["k"] = "v"
+        assert ttl_dict.get_ttl_or_none("k") == float("inf")
