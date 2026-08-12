@@ -309,6 +309,11 @@ def _carry_discarded_failures(
     classified by type, and the engine catches `Exception`, so an interrupt
     never reaches `handle_error`. Without this they would vanish with no log
     and no chain.
+
+    A near-identical copy lives in ``sync_dispatch`` for the fan-out over handler
+    classes under synchronous dispatch. The two are kept separate on purpose
+    while the remaining fan-out sites are still open; unify them once all the
+    sites share one collect-and-raise policy.
     """
     if not failures:
         return
