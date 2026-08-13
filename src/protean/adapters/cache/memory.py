@@ -171,9 +171,7 @@ class MemoryCache(BaseCache):
         value = self._db.get(key)
         return projection_cls(value) if value else None
 
-    def get_all(
-        self, key_pattern: str, last_position: int = 0, size: int = 25
-    ) -> list[BaseProjection]:
+    def _get_all(self, key_pattern: str) -> list[BaseProjection]:
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
@@ -182,16 +180,17 @@ class MemoryCache(BaseCache):
         # whole traversal, so matching while iterating it would hold the lock
         # across every fnmatch call.
         key_list = list(self._db.keys())
-        results = [key for key in key_list if fnmatchcase(key, key_pattern)]
-
-        # Apply pagination
-        page = results[last_position : last_position + size]
+        # Sort by key so the result is deterministic and in the same order the
+        # Redis adapter returns, keeping this utility consistent across adapters.
+        matches = sorted(key for key in key_list if fnmatchcase(key, key_pattern))
+        # Cap to the first GET_ALL_MAX in key order, warning if it truncated.
+        matches = self._capped(matches, key_pattern)
 
         # A key can expire between the scan above and this read, so a `get`
         # can come back empty. Skip it, the same way the Redis adapter does.
         return [
             projection_cls(value)
-            for key in page
+            for key in matches
             if (value := self._db.get(key)) is not None
         ]
 

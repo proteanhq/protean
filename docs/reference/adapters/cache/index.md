@@ -113,6 +113,23 @@ else:
     ...                     # seconds remaining
 ```
 
+### `_get_all` is a bounded utility, not a paged read
+
+`_get_all(key_pattern)` returns the entries whose key matches `key_pattern`, in
+key order, the same on every adapter. It is private (the leading underscore) and
+deliberately unpaginated. A cache is for point reads by key; enumerating a match
+set is not what it is for. On Redis it scans the whole keyspace, so it is a
+convenience for tests and small, bounded stores, not a production read path.
+`count` has the same full-scan cost.
+
+It returns at most 1000 entries (`GET_ALL_MAX`). Past that it truncates to the
+first 1000 in key order and logs a warning naming the pattern and the match
+count, so a store that outgrew the cache surfaces as a warning rather than a
+silent partial read.
+
+To page a large projection set, query the projection's repository
+(`repository_for(Projection).query`), which has indexes and native pagination.
+
 ## Interface
 
 All cache adapters implement these methods:
@@ -123,7 +140,7 @@ All cache adapters implement these methods:
 | `get_connection()` | Return the underlying cache connection |
 | `add(projection, ttl=None)` | Store a projection with optional TTL override |
 | `get(key)` | Retrieve a projection by key |
-| `get_all(key_pattern, last_position, size)` | Retrieve projections matching a pattern |
+| `_get_all(key_pattern)` | Private. Up to 1000 matching projections, in key order, then it truncates and warns. A bounded utility for tests and small stores, not a production read path |
 | `count(key_pattern)` | Count entries matching a pattern |
 | `remove(projection)` | Remove a cached projection. Does nothing if no record exists for it |
 | `remove_by_key(key)` | Remove an entry by key. Does nothing if the key is absent |
@@ -141,7 +158,7 @@ order_summary:::ord-123
 user_profile:::usr-456
 ```
 
-The `key_pattern` on `get_all`, `count`, and `remove_by_key_pattern` is a glob.
+The `key_pattern` on `_get_all`, `count`, and `remove_by_key_pattern` is a glob.
 `*` matches any run of characters, `?` matches one, `[...]` is a character
 class, and other characters are literal. Every entry of one projection is
 `order_summary:::*`. Adapters agree on `*`, `?`, and literal characters; bracket
