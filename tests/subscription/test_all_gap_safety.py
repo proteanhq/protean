@@ -25,7 +25,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.utils import Processing, fqn
+from protean.utils import Processing, checkpoint_trace, fqn
 from protean.utils.mixins import handle
 
 
@@ -204,6 +204,94 @@ class TestGapSafeBatch:
 
     def test_gap_timeout_default_is_five_seconds(self, all_subscription):
         assert all_subscription.gap_timeout_seconds == 5
+
+
+class TestGapSafeBatchTracing:
+    """``_gap_safe_batch`` emits its raw observed advance to the checkpoint trace
+    recorder when a capture is active (for spec-conformance checking, #1384), and
+    nothing at all when it is not — the shipped path's return value is unchanged.
+    """
+
+    def test_records_the_stranded_hold(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(1), _msg(3)])
+
+        assert _positions(out) == [1]  # behaviour unchanged: held at the gap
+        assert events == [{"cursor": 0, "present": [1, 3], "abandoned": [], "safe": 1}]
+
+    def test_records_the_entry_cursor_when_it_is_non_zero(self, all_subscription):
+        # The recorded ``cursor`` is the watermark the batch started from, not a
+        # hardcoded 0: start above the sequence floor and confirm it is carried
+        # through, so the ``cursor=entry_cursor`` binding is exercised off zero.
+        sub = all_subscription
+        sub.current_position = 5
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(6), _msg(8)])
+
+        assert _positions(out) == [6]  # held at the gap above position 6
+        assert len(events) == 1
+        assert events[0]["cursor"] == 5
+        assert events[0]["safe"] == 6
+        assert sorted(events[0]["present"]) == [6, 8]
+
+    def test_records_a_fresh_subscription_hold_at_the_0_floor(self, all_subscription):
+        # A fresh subscription starts both watermarks at -1. If its first batch
+        # strands the frontier (position 1 is still an open gap), ``cursor`` and
+        # ``safe`` are both -1 in the code; the recorded event clamps them to 0 so
+        # the converter (which floors watermarks at 0, and whose replay starts the
+        # cursor at 0) accepts a real first-batch capture instead of rejecting it.
+        sub = all_subscription
+        assert sub.current_position == -1  # fresh, nothing processed yet
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(2), _msg(3)])
+
+        assert _positions(out) == []  # held at the gap below position 2
+        assert events == [{"cursor": 0, "present": [2, 3], "abandoned": [], "safe": 0}]
+
+    def test_records_an_abandoned_hole(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+        sub.gap_timeout_seconds = 5
+        sub._gap_first_seen = {2: time.monotonic() - 10}  # hole 2 timed out
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(1), _msg(3)])
+
+        assert _positions(out) == [1, 3]  # 2 abandoned, 3 released past it
+        assert events == [{"cursor": 0, "present": [1, 3], "abandoned": [2], "safe": 3}]
+
+    def test_records_a_contiguous_drain(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(1), _msg(2), _msg(3)])
+
+        assert _positions(out) == [1, 2, 3]
+        assert events == [
+            {"cursor": 0, "present": [1, 2, 3], "abandoned": [], "safe": 3}
+        ]
+
+    def test_does_not_record_when_no_capture_is_active(
+        self, all_subscription, monkeypatch
+    ):
+        sub = all_subscription
+        sub.current_position = 0
+        calls: list[dict] = []
+        monkeypatch.setattr(
+            checkpoint_trace, "record", lambda **kwargs: calls.append(kwargs)
+        )
+
+        # No capture in progress, so the emit is gated off and record never fires.
+        out = sub._gap_safe_batch([_msg(1), _msg(3)])
+
+        assert _positions(out) == [1]  # return value unchanged, record never fired
+        assert calls == []
 
 
 @pytest.mark.asyncio

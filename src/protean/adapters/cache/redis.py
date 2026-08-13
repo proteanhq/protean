@@ -114,25 +114,39 @@ class RedisCache(BaseCache):
         value = self._client.get(key)
         return projection_cls(json.loads(value)) if value else None
 
-    def get_all(
-        self, key_pattern: str, last_position: int = 0, size: int = 25
-    ) -> list[BaseProjection]:
+    def _get_all(self, key_pattern: str) -> list[BaseProjection]:
         projection_name = key_pattern.split(":::")[0]
         projection_cls = self._projections[projection_name]
 
-        _cursor, values = self._client.scan(
-            cursor=last_position, match=key_pattern, count=size
-        )
+        # Redis has no native key ordering, so read every matching key, sort,
+        # and materialise. That is a full keyspace scan; `_get_all` is a bounded
+        # utility, not a production read path. `SCAN` can return the same key
+        # more than once during a full iteration (rehashing, concurrent writes),
+        # so dedupe before sorting, or an entry would repeat in the result.
+        #
+        # The keys are `bytes` (this adapter does not set `decode_responses`).
+        # Sorting them by raw bytes matches the memory adapter's `str` sort:
+        # UTF-8 byte order preserves Unicode code-point order, so both adapters
+        # return keys in the same order, non-ASCII included. Decoding to `str`
+        # first would change nothing and would raise on a non-UTF-8 key.
+        keys = sorted(set(self._client.scan_iter(match=key_pattern)))
+        # Cap to the first GET_ALL_MAX in key order, warning if it truncated, so
+        # only that many GET round trips run below.
+        keys = self._capped(keys, key_pattern)
+
         results: list[BaseProjection] = []
-        for value in values:
-            raw = self._client.get(value)
+        for key in keys:
+            raw = self._client.get(key)
             if raw is not None:
                 results.append(projection_cls(json.loads(raw)))
         return results
 
     def count(self, key_pattern: str) -> int:
-        values = self._client.scan_iter(match=key_pattern)
-        return len(list(values))
+        # `SCAN` can return the same key more than once during a full iteration
+        # (rehashing, concurrent writes), so dedupe before counting. Without
+        # this, `count` overcounts and disagrees with the number of distinct
+        # entries `_get_all` returns, which dedupes the same scan.
+        return len(set(self._client.scan_iter(match=key_pattern)))
 
     def remove(self, projection: BaseProjection) -> None:
         id_f = id_field(projection)

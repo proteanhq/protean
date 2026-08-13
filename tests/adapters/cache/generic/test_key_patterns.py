@@ -1,20 +1,20 @@
-"""Cross-adapter key-pattern behaviour for `get_all`/`count`/`remove_by_key_pattern`."""
+"""Cross-adapter key-pattern behaviour for `_get_all`/`count`/`remove_by_key_pattern`."""
 
 from __future__ import annotations
 
-import pytest
+import logging
 
 from .conftest import CacheEntry
 
 
 class TestSharedPatternBehaviour:
-    def test_get_all_returns_matching_entries(self, cache):
+    def test__get_all_returns_matching_entries(self, cache):
         alpha = CacheEntry(key="alpha", value="one")
         beta = CacheEntry(key="beta", value="two")
         cache.add(alpha)
         cache.add(beta)
 
-        results = cache.get_all("cache_entry:::*")
+        results = cache._get_all("cache_entry:::*")
 
         assert len(results) == 2
         assert alpha in results
@@ -57,65 +57,96 @@ class TestRemoveByKeyPatternOnNoMatch:
         assert cache.count("cache_entry:::*") == 1
 
 
-class TestGetAllPaginationAgrees:
-    def test_last_position_means_the_same_thing_on_every_adapter(
-        self, cache, request, monkeypatch
+class TestGetAllReturnsEveryMatchInKeyOrder:
+    """`_get_all` returns every matching entry, in key order, on every adapter.
+
+    It is a bounded, unpaginated utility: no `last_position`/`size`, it returns
+    the whole match set. Ordering by key keeps the result deterministic and
+    identical on memory and Redis.
+    """
+
+    COUNT = 20
+    PATTERN = "cache_entry:::*"
+
+    def _load(self, cache):
+        for i in range(self.COUNT):
+            cache.add(CacheEntry(key=f"k{i}", value=str(i)))
+
+    def test_returns_every_match_in_key_order(self, cache):
+        self._load(cache)
+
+        results = cache._get_all(self.PATTERN)
+
+        # Pin the concrete sorted sequence, not just that the adapter agrees
+        # with itself. As strings, `k10` sorts before `k2`, so key order is not
+        # the k0..k19 insertion order: an adapter that returned insertion order
+        # (memory) or Redis' unordered scan order fails here.
+        expected_order = sorted(f"k{i}" for i in range(self.COUNT))
+        assert [entry.key for entry in results] == expected_order
+
+    def test_non_ascii_keys_come_back_in_str_order_on_every_adapter(self, cache):
+        # The memory adapter sorts `str` keys; the Redis adapter sorts the
+        # `bytes` keys `scan_iter` yields. UTF-8 byte order preserves Unicode
+        # code-point order, so both must return non-ASCII keys in the same
+        # `sorted()`-by-str order. On the Redis leg this fails if the byte sort
+        # ever diverged from the memory adapter's string sort.
+        keys = ["apple", "cafe", "café", "señor", "über", "zebra", "Ávila"]
+        for key in keys:
+            cache.add(CacheEntry(key=key, value=key))
+
+        results = cache._get_all(self.PATTERN)
+
+        assert [entry.key for entry in results] == sorted(keys)
+
+
+class TestGetAllHardCap:
+    """`_get_all` returns at most `GET_ALL_MAX` entries and warns when it caps.
+
+    The cap is patched down to a small number so the test does not have to load
+    thousands of entries. Both adapters slice the same sorted key list through
+    `BaseCache._capped`, so the behaviour is one contract on every adapter.
+    """
+
+    PATTERN = "cache_entry:::*"
+
+    def _load(self, cache, count):
+        for i in range(count):
+            cache.add(CacheEntry(key=f"k{i:03d}", value=str(i)))
+
+    def test_truncates_to_the_cap_in_key_order_and_warns(
+        self, cache, monkeypatch, caplog
     ):
-        """A 5th cross-adapter divergence, found by running this suite.
+        monkeypatch.setattr("protean.port.cache.GET_ALL_MAX", 3)
+        self._load(cache, 5)
 
-        Memory treats `last_position` as a list offset into a freshly
-        sorted-by-insertion key list (`results[last_position:last_position
-        + size]` in `memory.py`), which also makes `size` a hard cap on the
-        page length. Redis passes both straight through to `SCAN`
-        (`self._client.scan(cursor=last_position, match=key_pattern,
-        count=size)` in `redis.py`): `last_position` is an opaque cursor,
-        not an offset, and `count` is only a hint Redis uses to decide how
-        much internal work to do, not a page-size cap, so a single call can
-        return more than `size` results. The continuation cursor `scan`
-        returns for the next call is discarded by `get_all` entirely too.
-        Not one of #1391/#1392/#1393/#1399 — filed as its own follow-up,
-        #1401.
+        with caplog.at_level(logging.WARNING, logger="protean.port.cache"):
+            results = cache._get_all(self.PATTERN)
 
-        The assertion below only pins the `size`-as-a-cap half of the
-        divergence. It is guaranteed true on memory as-is. On Redis, `scan`
-        is stubbed to always answer with more keys than `size`, so the
-        violation is deterministic instead of depending on `COUNT` being a
-        hint that Redis happens to overshoot for this keyspace and the
-        server's hash seed.
-        """
-        entries = [CacheEntry(key=f"k{i}", value=str(i)) for i in range(20)]
-        for entry in entries:
-            cache.add(entry)
-
-        if request.node.callspec.params["cache"]["provider"] == "redis":
-            request.applymarker(
-                pytest.mark.xfail(
-                    strict=True,
-                    reason=(
-                        "#1401: get_all's size means 'return at most this "
-                        "many results' on memory but is only a hint to "
-                        "Redis' SCAN about how much work to do per call, "
-                        "so a single call can return more than size "
-                        "results."
-                    ),
-                )
-            )
-            oversized_batch = [
-                f"cache_entry:::{entries[0].key}",
-                f"cache_entry:::{entries[1].key}",
-            ]
-            monkeypatch.setattr(
-                cache.get_connection(),
-                "scan",
-                lambda cursor=0, match=None, count=None: (0, oversized_batch),
-            )
-
-        pages = [
-            cache.get_all("cache_entry:::*", last_position=last_position, size=1)
-            for last_position in range(30)
+        # First 3 in key order, the ones a caller can predict, not any 3.
+        assert [entry.key for entry in results] == ["k000", "k001", "k002"]
+        warnings = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "returning the first 3" in r.getMessage()
         ]
+        assert len(warnings) == 1
+        # The pattern and the true match count are in the message.
+        assert self.PATTERN in warnings[0].getMessage()
+        assert "matched 5" in warnings[0].getMessage()
 
-        assert all(len(page) <= 1 for page in pages)
+    def test_does_not_warn_at_or_under_the_cap(self, cache, monkeypatch, caplog):
+        monkeypatch.setattr("protean.port.cache.GET_ALL_MAX", 3)
+        self._load(cache, 3)  # exactly the cap, not over it
+
+        with caplog.at_level(logging.WARNING, logger="protean.port.cache"):
+            results = cache._get_all(self.PATTERN)
+
+        assert len(results) == 3
+        # Exactly at the cap is not truncation, so nothing is logged.
+        assert not [
+            r for r in caplog.records if "returning the first" in r.getMessage()
+        ]
 
 
 class TestPatternLanguageIsAGlobOnEveryAdapter:
@@ -132,12 +163,12 @@ class TestPatternLanguageIsAGlobOnEveryAdapter:
         cache.add(literal_dot)
         cache.add(any_char)
 
-        results = cache.get_all("cache_entry:::a.c")
+        results = cache._get_all("cache_entry:::a.c")
 
         assert results == [literal_dot]
 
     def test_count_treats_the_pattern_as_a_glob(self, cache):
-        """`count` reads `.` as a literal, the same as `get_all`.
+        """`count` reads `.` as a literal, the same as `_get_all`.
 
         The shared `count` test uses `*`, which selects the same keys under
         a glob and under a regex, so it cannot tell the two apart. A literal
@@ -150,7 +181,7 @@ class TestPatternLanguageIsAGlobOnEveryAdapter:
 
     def test_remove_by_key_pattern_treats_the_pattern_as_a_glob(self, cache):
         """`remove_by_key_pattern` reads `.` as a literal, the same as
-        `get_all`.
+        `_get_all`.
 
         Under a regex the `.` would also match `abc`, so the removal would
         take both entries. Over-deletion on a truncate path is the dangerous

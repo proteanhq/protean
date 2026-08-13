@@ -91,16 +91,16 @@ class TestCachePersistenceFlows:
         cache.add(token1)
         cache.add(token2)
 
-        tokens = cache.get_all("token:::qu*")
+        tokens = cache._get_all("token:::qu*")
         assert len(tokens) == 2
         assert all(token in tokens for token in [token1, token2])
 
-    def test_get_all_skips_a_key_that_vanishes_after_the_scan(
+    def test__get_all_skips_a_key_that_vanishes_after_the_scan(
         self, test_domain, monkeypatch
     ):
         """A key can expire between the key scan and the per-key read.
 
-        `get_all` collects the matching keys, then reads each one. If a key
+        `_get_all` collects the matching keys, then reads each one. If a key
         is evicted in that window, the read comes back empty; skip it rather
         than build a projection from nothing, the same as the Redis adapter.
         """
@@ -117,7 +117,7 @@ class TestCachePersistenceFlows:
 
         monkeypatch.setattr(cache._db, "get", get_with_one_eviction)
 
-        tokens = cache.get_all("token:::qu*")
+        tokens = cache._get_all("token:::qu*")
 
         assert len(tokens) == 1
         assert tokens[0].key == "quux"
