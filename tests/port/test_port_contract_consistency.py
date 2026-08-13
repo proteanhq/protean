@@ -10,6 +10,7 @@ from typing import Any, get_type_hints
 
 from protean.adapters.broker.inline import InlineBroker
 from protean.adapters.cache.memory import MemoryCache
+from protean.adapters.cache.redis import RedisCache
 from protean.port.broker import BaseBroker
 from protean.port.cache import BaseCache
 from protean.port.provider import BaseProvider
@@ -28,6 +29,12 @@ class TestCacheParameterConsistency:
     def test_memory_cache__get_all_matches_port(self):
         """MemoryCache._get_all matches the port signature."""
         sig = inspect.signature(MemoryCache._get_all)
+        param_names = [p for p in sig.parameters if p != "self"]
+        assert param_names == ["key_pattern"]
+
+    def test_redis_cache__get_all_matches_port(self):
+        """RedisCache._get_all matches the port signature."""
+        sig = inspect.signature(RedisCache._get_all)
         param_names = [p for p in sig.parameters if p != "self"]
         assert param_names == ["key_pattern"]
 
