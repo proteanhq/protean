@@ -123,6 +123,12 @@ class RedisCache(BaseCache):
         # utility, not a production read path. `SCAN` can return the same key
         # more than once during a full iteration (rehashing, concurrent writes),
         # so dedupe before sorting, or an entry would repeat in the result.
+        #
+        # The keys are `bytes` (this adapter does not set `decode_responses`).
+        # Sorting them by raw bytes matches the memory adapter's `str` sort:
+        # UTF-8 byte order preserves Unicode code-point order, so both adapters
+        # return keys in the same order, non-ASCII included. Decoding to `str`
+        # first would change nothing and would raise on a non-UTF-8 key.
         keys = sorted(set(self._client.scan_iter(match=key_pattern)))
 
         results: list[BaseProjection] = []

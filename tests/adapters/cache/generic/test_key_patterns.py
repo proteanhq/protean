@@ -82,6 +82,20 @@ class TestGetAllReturnsEveryMatchInKeyOrder:
         expected_order = sorted(f"k{i}" for i in range(self.COUNT))
         assert [entry.key for entry in results] == expected_order
 
+    def test_non_ascii_keys_come_back_in_str_order_on_every_adapter(self, cache):
+        # The memory adapter sorts `str` keys; the Redis adapter sorts the
+        # `bytes` keys `scan_iter` yields. UTF-8 byte order preserves Unicode
+        # code-point order, so both must return non-ASCII keys in the same
+        # `sorted()`-by-str order. On the Redis leg this fails if the byte sort
+        # ever diverged from the memory adapter's string sort.
+        keys = ["apple", "cafe", "café", "señor", "über", "zebra", "Ávila"]
+        for key in keys:
+            cache.add(CacheEntry(key=key, value=key))
+
+        results = cache._get_all(self.PATTERN)
+
+        assert [entry.key for entry in results] == sorted(keys)
+
 
 class TestPatternLanguageIsAGlobOnEveryAdapter:
     def test_pattern_is_a_glob_on_every_adapter(self, cache):
