@@ -1,13 +1,29 @@
+import logging
 import math
 from abc import ABCMeta, abstractmethod
-from typing import Any
+from typing import Any, TypeVar
 
 from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError
 from protean.utils.inflection import underscore
 
+logger = logging.getLogger(__name__)
+
+_Key = TypeVar("_Key")
+
 DEFAULT_TTL = 300
 """Seconds a cached projection lives when the cache config sets no `TTL`."""
+
+GET_ALL_MAX = 1000
+"""The most entries `_get_all` returns before it truncates and warns.
+
+`_get_all` is a bounded utility, not a paged read. This cap keeps a match set
+that outgrew the store from materialising in full and hiding that a cache is the
+wrong place to enumerate it. Past the cap, `_get_all` returns the first
+`GET_ALL_MAX` entries in key order and logs a warning naming the pattern and the
+match count. It is a fixed number, not a per-call argument: tuning it would make
+it a pagination knob again.
+"""
 
 TTLValue = int | float | str
 """What a caller may pass as a TTL.
@@ -123,6 +139,27 @@ class BaseCache(metaclass=ABCMeta):
             return None
         return _resolve_ttl(ttl, f"Cache '{self.name}'")
 
+    def _capped(self, keys: list[_Key], key_pattern: str) -> list[_Key]:
+        """Cap a sorted key list to `GET_ALL_MAX` for `_get_all`, warning if it did.
+
+        Both adapters sort their matching keys ascending and pass them here
+        before reading, so the cap and the warning live in one place. Under the
+        cap this is a no-op; over it, return the first `GET_ALL_MAX` keys and log
+        a warning naming the pattern and how many matched, so a truncated read is
+        never silent.
+        """
+        if len(keys) > GET_ALL_MAX:
+            logger.warning(
+                "cache _get_all(%r) matched %d entries; returning the first %d "
+                "in key order. _get_all is a bounded utility, not a paged read: "
+                "page large projection sets through the projection's repository.",
+                key_pattern,
+                len(keys),
+                GET_ALL_MAX,
+            )
+            return keys[:GET_ALL_MAX]
+        return keys
+
     def register_projection(self, projection_cls: type[BaseProjection]) -> None:
         """Registers a projection object for data serialization and de-serialization"""
         projection_name = underscore(projection_cls.__name__)
@@ -193,6 +230,11 @@ class BaseCache(metaclass=ABCMeta):
 
         Matches come back ordered by key ascending, the same on every adapter,
         so the result is deterministic.
+
+        It returns at most `GET_ALL_MAX` entries. Past that it truncates to the
+        first `GET_ALL_MAX` in key order and logs a warning, so a store that
+        outgrew the cache surfaces as a warning rather than a silent partial
+        read.
         """
 
     @abstractmethod

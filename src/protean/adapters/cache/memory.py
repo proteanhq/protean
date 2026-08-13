@@ -183,6 +183,8 @@ class MemoryCache(BaseCache):
         # Sort by key so the result is deterministic and in the same order the
         # Redis adapter returns, keeping this utility consistent across adapters.
         matches = sorted(key for key in key_list if fnmatchcase(key, key_pattern))
+        # Cap to the first GET_ALL_MAX in key order, warning if it truncated.
+        matches = self._capped(matches, key_pattern)
 
         # A key can expire between the scan above and this read, so a `get`
         # can come back empty. Skip it, the same way the Redis adapter does.

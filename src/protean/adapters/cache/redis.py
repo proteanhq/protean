@@ -130,6 +130,9 @@ class RedisCache(BaseCache):
         # return keys in the same order, non-ASCII included. Decoding to `str`
         # first would change nothing and would raise on a non-UTF-8 key.
         keys = sorted(set(self._client.scan_iter(match=key_pattern)))
+        # Cap to the first GET_ALL_MAX in key order, warning if it truncated, so
+        # only that many GET round trips run below.
+        keys = self._capped(keys, key_pattern)
 
         results: list[BaseProjection] = []
         for key in keys:

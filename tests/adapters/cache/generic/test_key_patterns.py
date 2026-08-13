@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from .conftest import CacheEntry
 
 
@@ -95,6 +97,56 @@ class TestGetAllReturnsEveryMatchInKeyOrder:
         results = cache._get_all(self.PATTERN)
 
         assert [entry.key for entry in results] == sorted(keys)
+
+
+class TestGetAllHardCap:
+    """`_get_all` returns at most `GET_ALL_MAX` entries and warns when it caps.
+
+    The cap is patched down to a small number so the test does not have to load
+    thousands of entries. Both adapters slice the same sorted key list through
+    `BaseCache._capped`, so the behaviour is one contract on every adapter.
+    """
+
+    PATTERN = "cache_entry:::*"
+
+    def _load(self, cache, count):
+        for i in range(count):
+            cache.add(CacheEntry(key=f"k{i:03d}", value=str(i)))
+
+    def test_truncates_to_the_cap_in_key_order_and_warns(
+        self, cache, monkeypatch, caplog
+    ):
+        monkeypatch.setattr("protean.port.cache.GET_ALL_MAX", 3)
+        self._load(cache, 5)
+
+        with caplog.at_level(logging.WARNING, logger="protean.port.cache"):
+            results = cache._get_all(self.PATTERN)
+
+        # First 3 in key order, the ones a caller can predict, not any 3.
+        assert [entry.key for entry in results] == ["k000", "k001", "k002"]
+        warnings = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "returning the first 3" in r.getMessage()
+        ]
+        assert len(warnings) == 1
+        # The pattern and the true match count are in the message.
+        assert self.PATTERN in warnings[0].getMessage()
+        assert "matched 5" in warnings[0].getMessage()
+
+    def test_does_not_warn_at_or_under_the_cap(self, cache, monkeypatch, caplog):
+        monkeypatch.setattr("protean.port.cache.GET_ALL_MAX", 3)
+        self._load(cache, 3)  # exactly the cap, not over it
+
+        with caplog.at_level(logging.WARNING, logger="protean.port.cache"):
+            results = cache._get_all(self.PATTERN)
+
+        assert len(results) == 3
+        # Exactly at the cap is not truncation, so nothing is logged.
+        assert not [
+            r for r in caplog.records if "returning the first" in r.getMessage()
+        ]
 
 
 class TestPatternLanguageIsAGlobOnEveryAdapter:
