@@ -104,8 +104,8 @@ class Diagnostic(_DiagnosticRequired, total=False):
     """The wire shape of a diagnostic built by :func:`build_diagnostic`.
 
     ``field`` is present only on field-scoped diagnostics. ``location`` is
-    provisioned on the wire shape but no ``build_diagnostic`` caller sets it
-    today; it is currently carried on the exception attribute path
+    provisioned on the wire shape but no core IR/``protean check`` producer sets
+    it today; it is currently carried on the exception attribute path
     (``ProteanException.location``), not on any IR/``check`` diagnostic. Every
     other key is always present on diagnostics built through
     :func:`build_diagnostic`.
