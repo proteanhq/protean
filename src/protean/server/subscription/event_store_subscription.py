@@ -551,12 +551,15 @@ class EventStoreSubscription(BaseSubscription):
             # checking (specs/Checkpoint.tla): the cursor it started from, the
             # positions it saw present, the holes it abandoned, and the watermark it
             # settled on. Emitting is a no-op unless a capture is running, so the
-            # shipped path's return value is unchanged.
+            # shipped path's return value is unchanged. A fresh subscription starts
+            # both watermarks at -1; Checkpoint.tla's cursor domain starts at 0, so
+            # clamp them to the 0 floor (the same "before position 1" the -1 means)
+            # instead of emitting a -1 the converter would reject.
             checkpoint_trace.record(
-                cursor=entry_cursor,
+                cursor=max(entry_cursor, 0),
                 present=list(present),
                 abandoned=abandoned,
-                safe=safe,
+                safe=max(safe, 0),
             )
 
         # Record the settled watermark. ``tick`` advances ``current_position`` to

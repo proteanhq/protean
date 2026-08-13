@@ -238,6 +238,21 @@ class TestGapSafeBatchTracing:
         assert events[0]["safe"] == 6
         assert sorted(events[0]["present"]) == [6, 8]
 
+    def test_records_a_fresh_subscription_hold_at_the_0_floor(self, all_subscription):
+        # A fresh subscription starts both watermarks at -1. If its first batch
+        # strands the frontier (position 1 is still an open gap), ``cursor`` and
+        # ``safe`` are both -1 in the code; the recorded event clamps them to 0 so
+        # the converter (which floors watermarks at 0, and whose replay starts the
+        # cursor at 0) accepts a real first-batch capture instead of rejecting it.
+        sub = all_subscription
+        assert sub.current_position == -1  # fresh, nothing processed yet
+
+        with checkpoint_trace.capture() as events:
+            out = sub._gap_safe_batch([_msg(2), _msg(3)])
+
+        assert _positions(out) == []  # held at the gap below position 2
+        assert events == [{"cursor": 0, "present": [2, 3], "abandoned": [], "safe": 0}]
+
     def test_records_an_abandoned_hole(self, all_subscription):
         sub = all_subscription
         sub.current_position = 0
