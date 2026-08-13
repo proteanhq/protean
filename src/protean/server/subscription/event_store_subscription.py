@@ -12,7 +12,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
-from protean.utils import fqn
+from protean.utils import fqn, recovery_trace
 from protean.utils.eventing import Message, MessageType
 
 from . import BaseSubscription
@@ -382,7 +382,7 @@ class EventStoreSubscription(BaseSubscription):
 
         self.messages_since_last_position_write = 0  # Reset counter
 
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             self.store._write,
             self.subscriber_stream_name,
             "Read",
@@ -400,6 +400,9 @@ class EventStoreSubscription(BaseSubscription):
                 },
             },
         )
+        # The durable cursor checkpoint advanced to this position (the spec's Flush).
+        recovery_trace.record(action="flush", position=position)
+        return result
 
     def filter_on_origin(self, messages: list[Message]) -> list[Message]:
         """
@@ -627,6 +630,9 @@ class EventStoreSubscription(BaseSubscription):
                     f"{message_type} (pos: {position}) — already processed inline"
                 )
                 await self.update_read_position(position)
+                # A skipped sync message is a non-failed advance past the cursor,
+                # the same transition the spec models as HandleOk.
+                recovery_trace.record(action="handle_ok", position=position)
                 continue
 
             # Check idempotency store for already-processed commands
@@ -643,6 +649,9 @@ class EventStoreSubscription(BaseSubscription):
                         f"{message_type} (ID: {short_id}...) — already processed (idempotent)"
                     )
                     await self.update_read_position(position)
+                    # An idempotent skip is a non-failed advance (already handled),
+                    # the same HandleOk transition the spec models.
+                    recovery_trace.record(action="handle_ok", position=position)
                     successful_count += 1
                     continue
 
@@ -656,6 +665,7 @@ class EventStoreSubscription(BaseSubscription):
                     f"[{self.subscriber_class_name}] "
                     f"Failed {message_type} (ID: {short_id}..., pos: {position})"
                 )
+                recovery_trace.record(action="fail", position=position)
                 # Record the failure durably BEFORE advancing the cursor past it
                 # (see the method docstring): the recovery record has to be durable
                 # first, or a crash in the gap would drop the message.
@@ -689,9 +699,15 @@ class EventStoreSubscription(BaseSubscription):
                     f"[{self.subscriber_class_name}] "
                     f"Completed {message_type} (ID: {short_id}..., pos: {position})"
                 )
+                # A handled message advances the cursor as one step (HandleOk).
+                recovery_trace.record(action="handle_ok", position=position)
                 # Record success in the idempotency store for future dedup
                 if idempotency_key and idempotency_store.is_active:
                     idempotency_store.record_success(idempotency_key, True)
+            else:
+                # The cursor advanced past a failed position (after its record, if
+                # recovery is enabled) — the spec's Advance.
+                recovery_trace.record(action="advance", position=position)
 
         return successful_count
 
@@ -753,6 +769,10 @@ class EventStoreSubscription(BaseSubscription):
                 },
             },
         )
+
+        # The durable Failed record is now written (the spec's Record); a re-record
+        # of an already-recorded position leaves the recorded set unchanged.
+        recovery_trace.record(action="record", position=position)
 
         # Update in-memory tracking only after the record is durable. If the write
         # above raised, we leave no stale entry, so a later recovery pass never
@@ -977,6 +997,12 @@ class EventStoreSubscription(BaseSubscription):
                 # Remove from in-memory tracking
                 self._failed_positions.pop(position, None)
 
+                # The recovery pass took this position terminal without delivering
+                # it (exhausted) — the spec's Recover with delivered = FALSE.
+                recovery_trace.record(
+                    action="recover", position=position, delivered=False
+                )
+
                 # Emit handler.failed trace for exhausted position
                 self.engine.emitter.emit(
                     event="handler.failed",
@@ -1051,6 +1077,12 @@ class EventStoreSubscription(BaseSubscription):
                 )
                 self._failed_positions.pop(position, None)
                 recovered_count += 1
+
+                # The recovery pass delivered and resolved this position — the
+                # spec's Recover with delivered = TRUE.
+                recovery_trace.record(
+                    action="recover", position=position, delivered=True
+                )
             else:
                 # Still failing — update in-memory state and write new Failed record
                 logger.warning(

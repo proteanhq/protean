@@ -1,0 +1,4 @@
+{"action": "fail", "position": 1, "delivered": null}
+{"action": "record", "position": 1, "delivered": null}
+{"action": "advance", "position": 1, "delivered": null}
+{"action": "recover", "position": 1, "delivered": true}

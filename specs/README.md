@@ -87,7 +87,8 @@ The model checks above verify the *design*. Trace validation verifies the
 *shipped code*: it records what the real commit paths actually do, then asks TLC
 whether that recording is a behaviour the spec permits. OCC is the first protocol
 wired up (#1382); the harness (`OCCTrace.tla`, the two cfgs, `occ_trace.py`, and
-the `check.sh` plumbing) is built to be reused by the others.
+the `check.sh` plumbing) is built to be reused by the others, and Recovery is the
+second (#1385; see "Recovery trace validation" below).
 
 How it works, end to end:
 
@@ -134,6 +135,40 @@ rather than in `_update` (the SQL emits are gated on the standalone path for tha
 reason); capturing that deferred outcome is left for a follow-up, and `check.sh`
 uses the deterministic Memory trace as its conformance source.
 
+### Recovery trace validation
+
+The same harness, applied to the recovery protocol (#1385). The recorder
+`src/protean/utils/recovery_trace.py` is a sibling of `occ_trace.py`, inactive by
+default. When a capture is active, the real `EventStoreSubscription` recovery path
+emits the transitions `Recovery.tla` talks about, in order: `handle_ok` (a non-failed
+advance), `fail`, `record` (a durable `Failed` write), `advance` (past a failed
+position), `flush` (a durable cursor checkpoint), and `recover` (a recovery-pass
+terminal, carrying whether it delivered). A `crash` is a process event, not a code
+branch, so the recording harness records it at the point it drops and rebuilds the
+subscription.
+
+`RecoveryTrace.tla` (`EXTENDS Recovery`) replays each entry through `Recovery.tla`'s
+own actions, advancing a pointer. Two points differ from OCC:
+
+- **`fate` is pinned from the trace.** `Recovery!Init` picks the per-position
+  success/failure pattern nondeterministically; `RecoveryTrace`'s `TInit` fixes
+  `fate[p] = "F"` for exactly the positions the log fails, `"S"` otherwise, so
+  `<>AtEnd` is checked only against the pattern the log actually observed.
+- **the recorded `recover` outcome is cross-checked**, pinning the branch of
+  `Recovery!Recover` (delivered or exhausted) the real pass took, exactly as OCC's
+  trace validation pins the commit verdict.
+
+The conformance catch is free from the real spec: under `RecordFirst = TRUE`,
+`Recovery!Advance` is gated on the durable record existing first, so a log that
+advanced past a failed position with no record leaves `Advance` disabled, the replay
+stalls, and `TraceAccepted` fails. The coverage check is `NoRedeliver`, which TLC
+must *violate*: a real trace has to witness a crash between record and advance that
+re-reads the recorded failed position (the exact window the protocol exists for). A
+log with no such crash leaves `NoRedeliver` holding and is rejected as under-covered.
+`check.sh` runs all three — a fresh recorded trace accepted, `traces/recovery_
+divergence.jsonl` rejected on conformance, `traces/recovery_no_crash.jsonl` rejected
+on coverage.
+
 ### Adding a protocol
 
 The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
@@ -175,7 +210,13 @@ The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
 | `occ_trace.py` | Records a real Memory-adapter OCC trace, and converts a JSON-lines log into a runnable `OCCTrace_*.tla`. |
 | `traces/occ_bug.jsonl` | Negative fixture: a seeded lost update (two commits from one base); conformance must reject it. |
 | `traces/occ_no_conflict.jsonl` | Negative fixture: an uncontended log; the coverage check must reject it as under-covered. |
-| `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC trace validation. |
+| `RecoveryTrace.tla` | Trace validation for recovery: replays a recorded log through `Recovery.tla`'s actions and checks it is a behaviour the spec permits (#1385). |
+| `RecoveryTrace_conform.cfg` | Conformance check: `TraceAccepted` holds iff the whole recorded log matched a `Recovery` action. |
+| `RecoveryTrace_cover.cfg` | Coverage check: `NoRedeliver` must be *violated*, witnessing a crash between record and advance re-read the failed message. |
+| `recovery_trace.py` | Records a real recovery trace, and converts a JSON-lines log into a runnable `RecoveryTrace_*.tla`. |
+| `traces/recovery_divergence.jsonl` | Negative fixture: an advance past a failed position with no durable record; conformance must reject it. |
+| `traces/recovery_no_crash.jsonl` | Negative fixture: a log with no crash redelivery; the coverage check must reject it as under-covered. |
+| `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC and recovery trace validation. |
 
 ## What is modeled
 
