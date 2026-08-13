@@ -54,6 +54,12 @@ VALID_ACTIONS = (
 # cursor, which the model ignores, so they do not raise N.
 POSITIONAL_ACTIONS = ("handle_ok", "fail", "record", "advance", "recover")
 
+# Upper bound on a message position. TLC enumerates `fate` over `Positions == 1..N`
+# at every initial state, so a large N is not a "confusing TLC failure" but an
+# out-of-memory hang. The recording scenario uses position 1; this cap is generous
+# for any hand-written fixture and turns a fat-fingered position into a clean error.
+MAX_POSITION = 10_000
+
 
 def _record(out_path: Path) -> int:
     """Drive the real EventStoreSubscription through the recovery shape and log it."""
@@ -98,7 +104,8 @@ def _record(out_path: Path) -> int:
     class RecoveringHandler(BaseEventHandler):
         # Fail on the first read and again on the crash-resume re-read (the
         # redelivery), then succeed on the recovery-pass retry. Two failures then a
-        # success is the minimal shape that lands a crash between record and advance.
+        # success is the minimal shape that lands a crash after the record but before
+        # the durable flush.
         remaining_failures = 2
 
         @handle(Registered)
@@ -143,7 +150,7 @@ def _record(out_path: Path) -> int:
             RecoveringHandler,
             messages_per_tick=10,
             # High enough that the durable cursor never flushes before the crash,
-            # which is what lands the crash between record and advance.
+            # which is what lands the crash after the record but before the flush.
             position_update_interval=100,
             max_retries=3,
             enable_recovery=True,
@@ -293,6 +300,8 @@ def _parse_event(event: object) -> tuple[str, int, bool]:
     if action not in VALID_ACTIONS:
         raise ValueError(f"bad action {action!r}")
     position = _natural(event["position"], "position")
+    if position > MAX_POSITION:
+        raise ValueError(f"position {position} exceeds the {MAX_POSITION} cap")
     delivered = event.get("delivered")
     # The model reads ``delivered`` only on a recover, where it pins the retry
     # verdict, so a recover without a boolean is malformed. Every other action

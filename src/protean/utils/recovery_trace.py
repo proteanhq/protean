@@ -20,8 +20,8 @@ the raw transitions the spec talks about, in the order they happen:
 
 ``specs/check.sh`` feeds that log to TLC and confirms it is a behaviour
 ``Recovery.tla`` permits (see ``specs/RecoveryTrace.tla``), that it witnesses the
-crash-between-record-and-advance redelivery the protocol exists for, and that a
-seeded advance-without-record is rejected.
+redelivery from a crash after the record but before the durable flush (the window
+the protocol exists for), and that a seeded advance-without-record is rejected.
 
 The recorder is inactive by default, so the subscription pays nothing on the normal
 path: :func:`record` returns on its first line unless a :func:`capture` is in

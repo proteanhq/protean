@@ -629,10 +629,11 @@ class EventStoreSubscription(BaseSubscription):
                     f"[{self.subscriber_class_name}] "
                     f"{message_type} (pos: {position}) — already processed inline"
                 )
-                await self.update_read_position(position)
                 # A skipped sync message is a non-failed advance past the cursor,
-                # the same transition the spec models as HandleOk.
+                # the same transition the spec models as HandleOk. Emit before the
+                # cursor write so a durable flush lands after it in the log.
                 recovery_trace.record(action="handle_ok", position=position)
+                await self.update_read_position(position)
                 continue
 
             # Check idempotency store for already-processed commands
@@ -648,10 +649,11 @@ class EventStoreSubscription(BaseSubscription):
                         f"[{self.subscriber_class_name}] "
                         f"{message_type} (ID: {short_id}...) — already processed (idempotent)"
                     )
-                    await self.update_read_position(position)
                     # An idempotent skip is a non-failed advance (already handled),
-                    # the same HandleOk transition the spec models.
+                    # the same HandleOk transition the spec models. Emit before the
+                    # cursor write so a durable flush lands after it in the log.
                     recovery_trace.record(action="handle_ok", position=position)
+                    await self.update_read_position(position)
                     successful_count += 1
                     continue
 
@@ -688,6 +690,15 @@ class EventStoreSubscription(BaseSubscription):
                         stream_position=stream_position,
                     )
 
+            # The in-memory cursor advances past this message: HandleOk for a handled
+            # message, Advance for a failed one (after its record, if recovery is
+            # enabled). Emit before the cursor write below so a durable flush
+            # (write_position emits it) lands after the advance in the log —
+            # Recovery!Flush requires cursorDur < cursorMem.
+            recovery_trace.record(
+                action="handle_ok" if is_successful else "advance", position=position
+            )
+
             # Advance the cursor after any failure record (non-blocking, to avoid a
             # poison pill). With recovery enabled the record above is already
             # durable; with it disabled a failed message is intentionally dropped.
@@ -699,15 +710,9 @@ class EventStoreSubscription(BaseSubscription):
                     f"[{self.subscriber_class_name}] "
                     f"Completed {message_type} (ID: {short_id}..., pos: {position})"
                 )
-                # A handled message advances the cursor as one step (HandleOk).
-                recovery_trace.record(action="handle_ok", position=position)
                 # Record success in the idempotency store for future dedup
                 if idempotency_key and idempotency_store.is_active:
                     idempotency_store.record_success(idempotency_key, True)
-            else:
-                # The cursor advanced past a failed position (after its record, if
-                # recovery is enabled) — the spec's Advance.
-                recovery_trace.record(action="advance", position=position)
 
         return successful_count
 

@@ -162,8 +162,9 @@ The conformance catch is free from the real spec: under `RecordFirst = TRUE`,
 `Recovery!Advance` is gated on the durable record existing first, so a log that
 advanced past a failed position with no record leaves `Advance` disabled, the replay
 stalls, and `TraceAccepted` fails. The coverage check is `NoRedeliver`, which TLC
-must *violate*: a real trace has to witness a crash between record and advance that
-re-reads the recorded failed position (the exact window the protocol exists for). A
+must *violate*: a real trace has to witness a crash after the record but before the
+durable flush that re-reads the recorded failed position (the exact window the
+protocol exists for). A
 log with no such crash leaves `NoRedeliver` holding and is rejected as under-covered.
 `check.sh` runs all three — a fresh recorded trace accepted, `traces/recovery_
 divergence.jsonl` rejected on conformance, `traces/recovery_no_crash.jsonl` rejected
@@ -212,10 +213,10 @@ The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
 | `traces/occ_no_conflict.jsonl` | Negative fixture: an uncontended log; the coverage check must reject it as under-covered. |
 | `RecoveryTrace.tla` | Trace validation for recovery: replays a recorded log through `Recovery.tla`'s actions and checks it is a behaviour the spec permits (#1385). |
 | `RecoveryTrace_conform.cfg` | Conformance check: `TraceAccepted` holds iff the whole recorded log matched a `Recovery` action. |
-| `RecoveryTrace_cover.cfg` | Coverage check: `NoRedeliver` must be *violated*, witnessing a crash between record and advance re-read the failed message. |
+| `RecoveryTrace_cover.cfg` | Coverage check: `NoRedeliver` must be *violated*, witnessing a crash after the record but before the durable flush re-read the failed message. |
 | `recovery_trace.py` | Records a real recovery trace, and converts a JSON-lines log into a runnable `RecoveryTrace_*.tla`. |
 | `traces/recovery_divergence.jsonl` | Negative fixture: an advance past a failed position with no durable record; conformance must reject it. |
-| `traces/recovery_no_crash.jsonl` | Negative fixture: a log with no crash redelivery; the coverage check must reject it as under-covered. |
+| `traces/recovery_no_crash.jsonl` | Negative fixture: a log with a durable flush but no crash redelivery; conformance (including `Flush`) holds, so the coverage check must reject it as under-covered. |
 | `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC and recovery trace validation. |
 
 ## What is modeled

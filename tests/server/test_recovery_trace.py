@@ -295,6 +295,48 @@ async def test_successful_batch_emits_only_handle_ok(register):
     assert not any(e["action"] in ("fail", "record", "advance") for e in events)
 
 
+@pytest.mark.asyncio
+async def test_flush_emits_after_the_cursor_advance(register):
+    """When the durable cursor flushes during a batch (the interval is reached), the
+    flush emit lands *after* the in-memory advance it checkpoints. That is the order
+    Recovery!Flush requires (cursorDur < cursorMem): a flush before the advance would
+    stall replay, so the emit order, not just the emit, is the contract."""
+    sub = _make_subscription(register, SucceedingHandler, position_update_interval=1)
+    msg = _create_message(global_position=1)
+
+    with recovery_trace.capture() as events:
+        await sub.process_batch([msg])
+
+    assert [e["action"] for e in events] == ["handle_ok", "flush"]
+    assert [e["position"] for e in events] == [1, 1]
+
+
+@pytest.mark.asyncio
+async def test_recovery_pass_still_failing_re_records_without_recover(register):
+    """A recovery retry that fails again re-records the position (a bare record) and
+    must NOT emit recover; only the later retry that resolves emits recover. This is
+    the still-failing branch of run_recovery_pass, distinct from resolve and from
+    immediate exhaustion."""
+    global _fail_budget
+    # Fail the initial handle and the first recovery retry, then succeed on the next.
+    _fail_budget = 2
+    sub = _make_subscription(register, BudgetedHandler, max_retries=3)
+    msg = _create_message(global_position=1)
+    _write_event(register, msg)
+
+    with recovery_trace.capture() as events:
+        await sub.process_batch([msg])  # fail, record, advance
+        after_batch = len(events)
+        await sub.run_recovery_pass()  # retry fails again → re-record, no recover
+        first_recovery = [e["action"] for e in events[after_batch:]]
+        after_first = len(events)
+        await sub.run_recovery_pass()  # retry succeeds → recover, delivered=True
+        second_recovery = list(events[after_first:])
+
+    assert first_recovery == ["record"]  # re-record only; never a recover here
+    assert second_recovery == [{"action": "recover", "position": 1, "delivered": True}]
+
+
 class _ActiveIdempotencyStore:
     """Idempotency store stub that reports every key as already processed."""
 
@@ -358,15 +400,20 @@ def _write(path: Path, events: list[dict]) -> Path:
 
 @pytest.mark.no_test_domain
 def test_valid_log_converts_to_a_runnable_module(tmp_path):
+    # Positions vary and the highest (3) is neither the first nor the last, so NDef
+    # is the max rather than a first/last position that happened to match. Two crashes
+    # pin MaxCrashesDef as a real count, not a constant-folded 1.
     log = _write(
         tmp_path / "log.jsonl",
         [
-            {"action": "fail", "position": 2},
-            {"action": "record", "position": 2},
+            {"action": "fail", "position": 1},
+            {"action": "record", "position": 1},
+            {"action": "fail", "position": 3},
+            {"action": "record", "position": 3},
             {"action": "crash", "position": 0},
-            {"action": "fail", "position": 2},
+            {"action": "crash", "position": 0},
             {"action": "advance", "position": 2},
-            {"action": "recover", "position": 2, "delivered": True},
+            {"action": "recover", "position": 1, "delivered": True},
         ],
     )
     out = tmp_path / "RecoveryTrace_run.tla"
@@ -376,10 +423,45 @@ def test_valid_log_converts_to_a_runnable_module(tmp_path):
     text = out.read_text(encoding="utf-8")
     assert "---- MODULE RecoveryTrace_run ----" in text
     assert "EXTENDS RecoveryTrace" in text
-    assert 'action |-> "fail", pos |-> 2, delivered |-> FALSE' in text
-    assert 'action |-> "recover", pos |-> 2, delivered |-> TRUE' in text
-    assert "NDef == 2" in text  # highest message position
-    assert "MaxCrashesDef == 1" in text  # one crash entry
+    assert 'action |-> "fail", pos |-> 3, delivered |-> FALSE' in text
+    assert 'action |-> "recover", pos |-> 1, delivered |-> TRUE' in text
+    assert "NDef == 3" in text  # highest message position, not the first or last
+    assert "MaxCrashesDef == 2" in text  # both crash entries counted
+
+
+@pytest.mark.no_test_domain
+def test_crash_count_and_max_position_track_the_log(tmp_path):
+    # A log with no crash floors nothing to 1: MaxCrashesDef is 0. flush/crash carry
+    # the durable cursor, which the model ignores, so they never raise NDef.
+    log = _write(
+        tmp_path / "nocrash.jsonl",
+        [
+            {"action": "handle_ok", "position": 5},
+            {"action": "flush", "position": 9999},
+        ],
+    )
+    out = tmp_path / "o.tla"
+    assert recovery_trace_script._to_tla(log, out) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "NDef == 5" in text  # flush's 9999 does not raise N
+    assert "MaxCrashesDef == 0" in text
+
+
+@pytest.mark.no_test_domain
+def test_position_over_the_cap_is_rejected(tmp_path):
+    # An out-of-range position would make TLC enumerate fate over 1..N and hang, so
+    # it is rejected as malformed input rather than converted.
+    log = _write(
+        tmp_path / "huge.jsonl",
+        [{"action": "fail", "position": recovery_trace_script.MAX_POSITION + 1}],
+    )
+    assert recovery_trace_script._to_tla(log, tmp_path / "o.tla") == 2
+    # The cap itself is allowed.
+    ok = _write(
+        tmp_path / "atcap.jsonl",
+        [{"action": "fail", "position": recovery_trace_script.MAX_POSITION}],
+    )
+    assert recovery_trace_script._to_tla(ok, tmp_path / "o2.tla") == 0
 
 
 @pytest.mark.no_test_domain
@@ -443,6 +525,46 @@ def test_non_object_line_is_rejected(tmp_path):
     assert (
         recovery_trace_script._to_tla(tmp_path / "scalar.jsonl", tmp_path / "o.tla")
         == 2
+    )
+
+
+@pytest.mark.no_test_domain
+def test_witnesses_redelivery_needs_a_post_crash_reread_of_a_recorded_position():
+    """The recorder's anti-vacuity guard: it only reports a witness when a recorded
+    position fails again *after* a crash. check.sh drives this on the happy path only,
+    so its branches would rot untested without these."""
+    witnesses = recovery_trace_script._witnesses_redelivery
+
+    # record → crash → fail on the same position: the redelivery window.
+    assert witnesses(
+        [
+            {"action": "record", "position": 1},
+            {"action": "crash", "position": 0},
+            {"action": "fail", "position": 1},
+        ]
+    )
+    # No crash: a re-fail of a recorded position is not a crash redelivery.
+    assert not witnesses(
+        [
+            {"action": "record", "position": 1},
+            {"action": "fail", "position": 1},
+        ]
+    )
+    # The fail precedes the crash: not a post-crash re-read.
+    assert not witnesses(
+        [
+            {"action": "record", "position": 1},
+            {"action": "fail", "position": 1},
+            {"action": "crash", "position": 0},
+        ]
+    )
+    # The post-crash fail is a different, unrecorded position: no witness.
+    assert not witnesses(
+        [
+            {"action": "record", "position": 1},
+            {"action": "crash", "position": 0},
+            {"action": "fail", "position": 2},
+        ]
     )
 
 

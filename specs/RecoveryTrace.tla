@@ -15,11 +15,15 @@
 (* instrumentation and the conversion to this constant live in                  *)
 (* `specs/recovery_trace.py`; `specs/check.sh` drives the whole check.           *)
 (*                                                                          *)
-(* The judge is `Recovery.tla` itself, not a re-encoding. Each recorded entry is *)
-(* replayed by taking the matching `Recovery` action at the entry's position,     *)
-(* advancing a 1-based pointer `ti`. If the code diverged from the protocol, the  *)
-(* matching action is disabled, the log cannot be consumed, and `TraceAccepted`   *)
-(* fails on the first step no spec action explains. The headline catch: under     *)
+(* The judge is `Recovery.tla` itself: each recorded entry is replayed by taking  *)
+(* the matching `Recovery` action at the entry's position, advancing a 1-based     *)
+(* pointer `ti`. If the code diverged from the protocol, the matching action is    *)
+(* disabled, the log cannot be consumed, and `TraceAccepted` fails on the first    *)
+(* step no spec action explains. Two things are hand-authored on top of the        *)
+(* spec's own actions, both disclosed below: `TInit` pins `fate` from the trace    *)
+(* instead of exploring it, and `DoRecord` also accepts a re-record of an already-  *)
+(* recorded position as a no-op on `recordDur` (a real recovery-retry or post-crash *)
+(* re-record, which `Recovery!Record` does not model). The headline catch: under   *)
 (* `RecordFirst = TRUE`, `Recovery!Advance` is gated on the durable record        *)
 (* existing first, so a log that advanced past a failed position with no record    *)
 (* leaves `Advance` disabled and the replay stalls — the seeded-divergence catch, *)
@@ -41,10 +45,10 @@
 (*     `TraceAccepted` fail, because `Advance` is disabled without the durable     *)
 (*     record under `RecordFirst = TRUE`; and                                     *)
 (*   - `NoRedeliver` (imported from `Recovery.tla`) must be *violated* by a real   *)
-(*     log, which witnesses that a crash between record and advance re-read a       *)
-(*     recorded failed message (the exact window the protocol exists for). A log    *)
-(*     with no such crash leaves `NoRedeliver` holding, and `check.sh` rejects it   *)
-(*     as under-covered.                                                          *)
+(*     log, which witnesses that a crash after the record but before the durable    *)
+(*     flush re-read a recorded failed message (the exact window the protocol       *)
+(*     exists for). A log with no such crash leaves `NoRedeliver` holding, and      *)
+(*     `check.sh` rejects it as under-covered.                                      *)
 (***************************************************************************)
 EXTENDS Recovery, Sequences
 
@@ -99,10 +103,16 @@ DoFail ==
     /\ Fail(Trace[ti].pos)
     /\ ti' = ti + 1
 
-\* A re-record of an already-recorded position is a legitimate real write (the
-\* retry count increments), but it leaves the durable-record *set* unchanged, so it
-\* is a no-op on `recordDur` rather than a `Record` transition. Consuming it keeps a
-\* faithful log conforming without weakening the advance-without-record catch.
+\* A re-record of an already-recorded position is a legitimate real write that
+\* `Recovery!Record` (guarded on `p \notin recordDur`) does not model. It happens two
+\* real ways: the recovery retry re-records a still-failing position (advanced out of
+\* `pending`), and a post-crash redelivery re-records a re-read position (fail put it
+\* back in `pending`). Either way the durable-record *set* is unchanged, so this is a
+\* no-op on `recordDur` rather than a `Record` transition. This is the one hand-
+\* authored step that goes beyond `Recovery`'s own actions (see the header). It does
+\* not weaken the advance-without-record catch: `recordDur` is monotonic, so a no-op
+\* record can never *create* the durable record an `Advance` is gated on — a position
+\* only reaches `recordDur` through a genuine `Record`, which requires it be pending.
 DoRecord ==
     /\ ~AtEnd
     /\ Trace[ti].action = "record"
@@ -161,7 +171,7 @@ TraceAccepted == <>AtEnd
 \* The conformance config also checks `Recovery.tla`'s own safety invariants
 \* (`TypeOK`, `NoDrop`, `DurableBehindCursor`, imported via EXTENDS) on the
 \* replayed run, as a second, authoritative read on the same log. The coverage
-\* config checks `NoRedeliver` must be *violated*, witnessing the crash-between-
-\* record-and-advance redelivery.
+\* config checks `NoRedeliver` must be *violated*, witnessing the redelivery from a
+\* crash after the record but before the durable flush.
 
 =============================================================================
