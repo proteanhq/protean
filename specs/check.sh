@@ -12,7 +12,8 @@
 #
 # The model checks are design-time verification, not a CI gate: run them
 # deliberately when a modeled protocol changes, not on every commit. The trace
-# validation sections (OCC #1382, checkpoint #1384) are different — they check a
+# validation sections (OCC #1382, checkpoint #1384, recovery #1385) are different:
+# they check a
 # log of the real code against its spec, so they cannot go stale and are meant to
 # run as a per-PR gate.
 #
@@ -217,6 +218,72 @@ record_trace() {
     return 3
 }
 
+# --- Recovery trace validation (#1385): check the real code against Recovery.tla -
+#
+# The recovery analogue of check_trace/record_trace: run TLC over a log the *real*
+# EventStoreSubscription recovery path emitted, and confirm each recorded step is a
+# behaviour Recovery.tla permits (see RecoveryTrace.tla). Reuses the generic
+# trace_run helper above.
+
+# check_recovery_trace <label> <log.jsonl> <expect>
+# expect is one of:
+#   accept          conforms to Recovery.tla AND witnesses the crash redelivery
+#   reject-conform  fails conformance on TraceAccepted (a seeded advance-without-record)
+#   reject-cover    conforms but records no crash redelivery, so under-covered
+check_recovery_trace() {
+    local label="$1" jsonl="$2" expect="$3"
+    local module="RecoveryTrace_$label"
+    if ! "$PY3" "$SPECS_DIR/recovery_trace.py" to-tla \
+            --in "$jsonl" --out "$TDIR/$module.tla" >/dev/null 2>&1; then
+        echo "  FAIL   recovery-trace:$label: could not convert $jsonl to TLA+"
+        fail=1
+        return
+    fi
+    local conform cover ok=0 detail
+    conform="$(trace_run "rec-$label-conform" "$module.tla" RecoveryTrace_conform.cfg)"
+    cover="$(trace_run "rec-$label-cover" "$module.tla" RecoveryTrace_cover.cfg)"
+    if [[ $conform == error || $cover == error ]]; then
+        echo "  FAIL   recovery-trace:$label: TLC did not finish cleanly (conform=$conform cover=$cover)"
+        fail=1
+        return
+    fi
+    case "$expect" in
+        accept)
+            [[ $conform == pass && $cover == "inv:NoRedeliver" ]] && ok=1
+            detail="conforms to Recovery.tla and witnesses the crash redelivery" ;;
+        reject-conform)
+            [[ $conform == temporal ]] && ok=1
+            detail="correctly rejected -- diverges from Recovery.tla (TraceAccepted stalled)" ;;
+        reject-cover)
+            [[ $conform == pass && $cover == pass ]] && ok=1
+            detail="correctly rejected -- no crash redelivery, under-covered" ;;
+    esac
+    if [[ $ok -eq 1 ]]; then
+        echo "  PASS   recovery-trace:$label: $detail"
+    else
+        echo "  FAIL   recovery-trace:$label: expected $expect (conform=$conform cover=$cover)"
+        fail=1
+    fi
+}
+
+# record_recovery_trace <out.jsonl>: record a fresh recovery trace. Same exit-status
+# contract as record_trace (0 written, 1 errored, 3 no interpreter with protean).
+record_recovery_trace() {
+    local out="$1"
+    if command -v uv >/dev/null 2>&1 \
+       && (cd "$REPO_ROOT" && uv run python -c "import protean") >/dev/null 2>&1; then
+        (cd "$REPO_ROOT" && uv run python "$SPECS_DIR/recovery_trace.py" \
+            record --out "$out") >/dev/null 2>&1 && return 0
+        return 1
+    fi
+    if [[ -n "$PY3" ]] && "$PY3" -c "import protean" >/dev/null 2>&1; then
+        "$PY3" "$SPECS_DIR/recovery_trace.py" record --out "$out" \
+            >/dev/null 2>&1 && return 0
+        return 1
+    fi
+    return 3
+}
+
 echo "Checkpoint protocol (\$all gap-safe checkpointing, ADR-0025):"
 run Checkpoint.tla Checkpoint.cfg          pass
 run Checkpoint.tla Checkpoint_timeout.cfg  pass
@@ -298,6 +365,32 @@ else
     check_trace "$SPECS_DIR/checkpoint_trace.py" CheckpointTrace \
         CheckpointTrace_conform.cfg CheckpointTrace_cover.cfg CoverGap \
         nogap "$SPECS_DIR/traces/checkpoint_no_gap.jsonl" reject-cover
+fi
+
+echo ""
+echo "Recovery trace validation (real code vs Recovery.tla, #1385):"
+if [[ -z "$PY3" ]]; then
+    echo "  SKIP   python3 not found; cannot convert recovery logs to TLA+"
+else
+    mkdir -p "$TDIR"
+    cp "$SPECS_DIR/Recovery.tla" "$SPECS_DIR/RecoveryTrace.tla" \
+       "$SPECS_DIR/RecoveryTrace_conform.cfg" "$SPECS_DIR/RecoveryTrace_cover.cfg" \
+       "$TDIR/"
+    rreal="$WORKDIR/recovery_real.jsonl"
+    record_recovery_trace "$rreal"
+    case $? in
+        0) check_recovery_trace real "$rreal" accept ;;
+        3) echo "  SKIP   real trace: no interpreter with 'protean' available to record one" ;;
+        *) echo "  FAIL   real trace: 'protean' is importable but recording errored"
+           fail=1 ;;
+    esac
+    # Negative checks (fixtures under specs/traces/): a green run must mean
+    # something, so a seeded advance-without-record must fail conformance and a log
+    # with no crash redelivery must fail coverage. These need only python3 + java.
+    check_recovery_trace divergence "$SPECS_DIR/traces/recovery_divergence.jsonl" \
+        reject-conform
+    check_recovery_trace nocrash "$SPECS_DIR/traces/recovery_no_crash.jsonl" \
+        reject-cover
 fi
 
 echo ""
