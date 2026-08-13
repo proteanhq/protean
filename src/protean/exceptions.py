@@ -2,14 +2,19 @@
 Custom Protean exception classes
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 # Re-exported here as the public, stable category users filter on to promote
 # Protean deprecations to errors in CI (see ADR-0004). The emission machinery
 # and per-version subclasses live in ``protean._deprecation``.
 from protean._deprecation import ProteanDeprecationWarning
+
+if TYPE_CHECKING:
+    from protean.ir.diagnostics import CodeMeta, DiagnosticCode
 
 __all__ = [
     "CommandExpiredError",
@@ -68,21 +73,79 @@ def _emit_security_event(event_type: str, args: tuple[Any, ...]) -> None:
 
 
 class ProteanException(Exception):
-    """Base class for all Exceptions raised within Protean"""
+    """Base class for all Exceptions raised within Protean.
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    A raise site may pass ``code`` (a :class:`~protean.ir.diagnostics.DiagnosticCode`)
+    and ``location`` to carry a stable, machine-readable diagnostic alongside the
+    prose message. ``rationale`` and ``fix`` then resolve from the registry, so an
+    agent or operator catching the exception gets the same coded rationale/fix an
+    IR-build diagnostic carries. Both default to ``None`` when no code is given,
+    so every existing raise keeps working unchanged.
+    """
+
+    def __init__(
+        self,
+        *args: Any,
+        code: DiagnosticCode | None = None,
+        location: str | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args)
 
         self.extra_info = kwargs.get("extra_info")
+        # Stored as the plain string value so it pickles without dragging the
+        # enum (and the ``protean.ir`` import) across the wire.
+        self.code: str | None = code.value if code is not None else None
+        self.location: str | None = location
 
-    def __reduce__(self) -> tuple[Any, tuple[Any]]:
-        return (self.__class__, (self.args[0],))
+    @property
+    def rationale(self) -> str | None:
+        """The registry rationale for this exception's ``code``, or ``None``."""
+        meta = self._resolved()
+        return meta.rationale if meta is not None else None
+
+    @property
+    def fix(self) -> str | None:
+        """The registry fix for this exception's ``code``, or ``None``."""
+        meta = self._resolved()
+        return meta.fix if meta is not None else None
+
+    def _resolved(self) -> CodeMeta | None:
+        # ``None`` when there is no code, or when the code does not resolve in
+        # this Protean version — a code renamed or removed since the exception
+        # was pickled still deserializes and keeps its ``code`` string; only
+        # ``rationale``/``fix`` read as ``None``, so reading a coded exception
+        # never raises. Imported lazily because ``protean.ir`` imports back from
+        # this module, and only on read, never on the raise path.
+        if self.code is None:
+            return None
+        from protean.ir.diagnostics import (  # noqa: PLC0415
+            DiagnosticCode,
+            resolve,
+        )
+
+        try:
+            return resolve(DiagnosticCode(self.code))
+        except (ValueError, KeyError):
+            return None
+
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
+        # Carry ONLY the diagnostic attributes as state. Serializing the whole
+        # ``__dict__`` would drag subclass payloads across the wire — e.g.
+        # ``DatabaseError.original_exception``, often a live, unpicklable driver
+        # error — and break pickling on the very outbox/broker boundary the code
+        # is meant to survive. The positional arg reconstructs the message as
+        # before; other subclass attributes stay dropped, exactly as they were.
+        return (self.__class__, self.args[:1], self._diagnostic_state())
+
+    def _diagnostic_state(self) -> dict[str, Any]:
+        return {"code": self.code, "location": self.location}
 
 
 class ProteanExceptionWithMessage(ProteanException):
     def __init__(
         self,
-        messages: "dict[str, list[str]] | list[str] | str",
+        messages: dict[str, list[str]] | list[str] | str,
         traceback: str | None = None,
         **kwargs: Any,
     ) -> None:
@@ -98,8 +161,13 @@ class ProteanExceptionWithMessage(ProteanException):
             return f"{dict(self.messages)}"
         return f"{self.messages}"
 
-    def __reduce__(self) -> tuple[Any, tuple[Any]]:
-        return (ProteanExceptionWithMessage, (self.messages,))
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
+        # ``messages`` reconstructs the payload; state restores the diagnostic
+        # attributes. Reconstruct as ``self.__class__`` so a coded
+        # ``ValidationError`` round-trips as a ``ValidationError`` (an
+        # ``except ValidationError`` past the broker still catches it), not as a
+        # bare ``ProteanExceptionWithMessage``.
+        return (self.__class__, (self.messages,), self._diagnostic_state())
 
 
 class NoDomainException(ProteanException):

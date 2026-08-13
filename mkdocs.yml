@@ -348,6 +348,8 @@ nav:
         - reference/cli/data/idempotency.md
     - Fitness Functions:
       - reference/fitness-functions.md
+    - Init & Runtime Diagnostics:
+      - reference/init-diagnostics.md
     - Server:
       - reference/server/index.md
       - reference/server/subscription-types.md

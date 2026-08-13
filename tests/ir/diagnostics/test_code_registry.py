@@ -33,10 +33,13 @@ ALLOWED_CATEGORIES = frozenset(
     {
         "aggregate_design",
         "bounded_context",
+        "configuration",
         "deprecation",
         "handler_completeness",
         "naming_conventions",
         "persistence",
+        "unsupported",
+        "usage",
         "versioning",
     }
 )
@@ -44,10 +47,18 @@ ALLOWED_CATEGORIES = frozenset(
 # The schema's diagnostic ``level`` enum (schema.json).
 ALLOWED_LEVELS = frozenset({"error", "warning", "info"})
 
+# How a code reaches a user: a static ``protean check`` rule, or a code carried
+# on an exception raised at init/runtime.
+ALLOWED_KINDS = frozenset({"lint", "raise"})
+
 # The producers that reference diagnostic codes, relative to the source root.
+# ``domain/__init__.py`` and ``domain/config.py`` reference the init/runtime
+# ``kind="raise"`` codes; the rest reference the ``kind="lint"`` rules.
 PRODUCER_FILES = (
     "ir/builder.py",
     "domain/validation.py",
+    "domain/__init__.py",
+    "domain/config.py",
     "_deprecation.py",
 )
 
@@ -82,6 +93,7 @@ class TestRegistryCompleteness:
             assert isinstance(meta, CodeMeta), code
             assert meta.category in ALLOWED_CATEGORIES, (code, meta.category)
             assert meta.level in ALLOWED_LEVELS, (code, meta.level)
+            assert meta.kind in ALLOWED_KINDS, (code, meta.kind)
             assert meta.meaning.strip(), f"{code} has an empty meaning"
             assert meta.rationale.strip(), f"{code} has an empty rationale"
             assert meta.fix.strip(), f"{code} has an empty fix"
@@ -112,6 +124,10 @@ class TestGoldenSnapshot:
             "CIRCULAR_CLUSTER_DEPENDENCY",
             "COMMAND_HANDLER_CROSS_CLUSTER",
             "COMMAND_NOT_IMPERATIVE",
+            "CONFIG_AMBIGUOUS_ELEMENT_NAME",
+            "CONFIG_ELEMENT_NOT_REGISTERED",
+            "CONFIG_EVENT_STORE_NOT_INITIALIZED",
+            "CONFIG_UNRESOLVED_ENV_VAR",
             "CROSS_AGGREGATE_REFERENCE",
             "DEPRECATED_CONFIG",
             "DEPRECATED_ELEMENT",
@@ -137,9 +153,37 @@ class TestGoldenSnapshot:
             "UNBOUNDED_INDEXED_STRING",
             "UNHANDLED_EVENT",
             "UNINDEXED_FILTER_PATH",
+            "UNSUPPORTED_ELEMENT_CLASS",
             "UNUSED_COMMAND",
             "UPCASTER_GAP",
+            "USAGE_CACHE_BACKED_NO_REPOSITORY",
+            "USAGE_DUPLICATE_DATABASE_MODEL",
+            "USAGE_ELEMENT_NOT_REGISTERED",
+            "USAGE_ENRICHER_NOT_CALLABLE",
+            "USAGE_NOT_A_PROJECTION",
+            "USAGE_UNKNOWN_ELEMENT_TYPE",
             "VALUE_OBJECT_MUTABLE_FIELD",
+        }
+    )
+
+    # The codes carried on init/runtime exceptions (``kind="raise"``) rather than
+    # emitted by ``protean check`` (``kind="lint"``). The metadata digest below
+    # does not cover ``kind``, so this freezes the lint/raise split on its own: a
+    # code flipped between the two surfaces fails here, deliberately, because it
+    # changes whether the code is documented in the check catalog.
+    EXPECTED_RAISE_CODES = frozenset(
+        {
+            "CONFIG_AMBIGUOUS_ELEMENT_NAME",
+            "CONFIG_ELEMENT_NOT_REGISTERED",
+            "CONFIG_EVENT_STORE_NOT_INITIALIZED",
+            "CONFIG_UNRESOLVED_ENV_VAR",
+            "UNSUPPORTED_ELEMENT_CLASS",
+            "USAGE_CACHE_BACKED_NO_REPOSITORY",
+            "USAGE_DUPLICATE_DATABASE_MODEL",
+            "USAGE_ELEMENT_NOT_REGISTERED",
+            "USAGE_ENRICHER_NOT_CALLABLE",
+            "USAGE_NOT_A_PROJECTION",
+            "USAGE_UNKNOWN_ELEMENT_TYPE",
         }
     )
 
@@ -148,6 +192,15 @@ class TestGoldenSnapshot:
         assert actual == self.EXPECTED_CODES, {
             "added (breaking if a rename)": sorted(actual - self.EXPECTED_CODES),
             "removed (breaking)": sorted(self.EXPECTED_CODES - actual),
+        }
+
+    def test_raise_kind_split_is_frozen(self):
+        actual = {c.value for c, meta in REGISTRY.items() if meta.kind == "raise"}
+        assert actual == self.EXPECTED_RAISE_CODES, {
+            "newly raise (or wrongly flipped)": sorted(
+                actual - self.EXPECTED_RAISE_CODES
+            ),
+            "no longer raise": sorted(self.EXPECTED_RAISE_CODES - actual),
         }
 
 
@@ -180,6 +233,10 @@ class TestMetadataSnapshot:
         "CIRCULAR_CLUSTER_DEPENDENCY": "88531b85d6e29964",
         "COMMAND_HANDLER_CROSS_CLUSTER": "4f576d68764bd53c",
         "COMMAND_NOT_IMPERATIVE": "baf655f1128a527f",
+        "CONFIG_AMBIGUOUS_ELEMENT_NAME": "c4d36c1d4683f4f8",
+        "CONFIG_ELEMENT_NOT_REGISTERED": "eb3cd52052ab9f28",
+        "CONFIG_EVENT_STORE_NOT_INITIALIZED": "c836c803ad0225f1",
+        "CONFIG_UNRESOLVED_ENV_VAR": "de62569dadbc3090",
         "CROSS_AGGREGATE_REFERENCE": "dac1046534ebd07a",
         "DEPRECATED_CONFIG": "3adabed0433fa534",
         "DEPRECATED_ELEMENT": "5ae99f3b24d74d4b",
@@ -205,8 +262,15 @@ class TestMetadataSnapshot:
         "UNBOUNDED_INDEXED_STRING": "088562cdce47c001",
         "UNHANDLED_EVENT": "27be7a540757fc9e",
         "UNINDEXED_FILTER_PATH": "9addf817d45187a5",
+        "UNSUPPORTED_ELEMENT_CLASS": "8e29c9598a8468e5",
         "UNUSED_COMMAND": "8783ef193a40845a",
         "UPCASTER_GAP": "000698e8cb76386a",
+        "USAGE_CACHE_BACKED_NO_REPOSITORY": "95b3e4a196988166",
+        "USAGE_DUPLICATE_DATABASE_MODEL": "88a73bad6dba0529",
+        "USAGE_ELEMENT_NOT_REGISTERED": "e84da23137dfaa03",
+        "USAGE_ENRICHER_NOT_CALLABLE": "5c96e4c23003e66c",
+        "USAGE_NOT_A_PROJECTION": "854b5708a5ec40a5",
+        "USAGE_UNKNOWN_ELEMENT_TYPE": "840400ec794f376d",
         "VALUE_OBJECT_MUTABLE_FIELD": "1e01dfac9ba9bf00",
     }
 
@@ -311,3 +375,18 @@ class TestBuildDiagnostic:
         )
         assert set(Diagnostic.__required_keys__) == set(d)
         assert "field" in Diagnostic.__optional_keys__
+        assert "location" in Diagnostic.__optional_keys__
+
+    def test_location_included_only_when_given(self):
+        without = build_diagnostic(
+            DiagnosticCode.CONFIG_UNRESOLVED_ENV_VAR, element="d", message="m"
+        )
+        assert "location" not in without
+
+        withloc = build_diagnostic(
+            DiagnosticCode.CONFIG_UNRESOLVED_ENV_VAR,
+            element="d",
+            message="m",
+            location="Config2._replace_env_var",
+        )
+        assert withloc["location"] == "Config2._replace_env_var"

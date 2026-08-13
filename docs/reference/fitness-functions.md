@@ -25,6 +25,10 @@ is what the tool emits.
 Validator **errors** (malformed domains that cannot build an IR) are a
 separate, always-fatal class and are not listed here. They always exit `1`.
 
+The coded exceptions raised at init and by runtime accessors (the `kind =
+"raise"` codes) are catalogued separately in
+[Init-time and Runtime Diagnostics](init-diagnostics.md).
+
 ---
 
 ## Aggregate Design

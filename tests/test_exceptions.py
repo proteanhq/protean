@@ -4,10 +4,15 @@ import pickle
 import pytest
 
 from protean.exceptions import (
+    ConfigurationError,
+    DatabaseError,
+    IncorrectUsageError,
     ObjectNotFoundError,
     ProteanException,
     ProteanExceptionWithMessage,
+    ValidationError,
 )
+from protean.ir.diagnostics import DiagnosticCode, resolve
 
 
 def test_pickling_of_exceptions():
@@ -17,6 +22,115 @@ def test_pickling_of_exceptions():
     unpickled_exc = pickle.loads(pickled_exc)
 
     assert exc.args[0] == unpickled_exc.args[0]
+
+
+class TestCodedException:
+    """A raise site may attach a DiagnosticCode; the exception then carries the
+    code, its location, and the registry rationale/fix."""
+
+    def test_no_code_leaves_the_diagnostic_attributes_none(self):
+        # Every existing raise passes no code, so nothing changes for it.
+        exc = ConfigurationError("plain")
+        assert exc.code is None
+        assert exc.location is None
+        assert exc.rationale is None
+        assert exc.fix is None
+
+    def test_code_and_location_are_carried(self):
+        exc = IncorrectUsageError(
+            "boom",
+            code=DiagnosticCode.USAGE_NOT_A_PROJECTION,
+            location="Domain.view_for",
+        )
+        assert exc.code == "USAGE_NOT_A_PROJECTION"
+        assert exc.location == "Domain.view_for"
+
+    def test_code_is_stored_as_a_plain_string(self):
+        exc = IncorrectUsageError("boom", code=DiagnosticCode.USAGE_NOT_A_PROJECTION)
+        assert type(exc.code) is str
+
+    def test_rationale_and_fix_resolve_from_the_registry(self):
+        code = DiagnosticCode.USAGE_NOT_A_PROJECTION
+        meta = resolve(code)
+        exc = IncorrectUsageError("boom", code=code)
+        assert exc.rationale == meta.rationale
+        assert exc.fix == meta.fix
+
+    def test_code_and_location_survive_a_pickle_round_trip(self):
+        exc = IncorrectUsageError(
+            "boom",
+            code=DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED,
+            location="Domain.repository_for",
+        )
+        restored = pickle.loads(pickle.dumps(exc))
+
+        assert restored.args[0] == "boom"
+        assert restored.code == "USAGE_ELEMENT_NOT_REGISTERED"
+        assert restored.location == "Domain.repository_for"
+        # rationale/fix recompute from the code, so they survive too.
+        assert restored.fix == resolve(DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED).fix
+
+    def test_code_survives_pickling_on_with_message_exceptions(self):
+        exc = ValidationError(
+            {"field": ["bad"]},
+            code=DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED,
+            location="Domain._get_element_by_name",
+        )
+        restored = pickle.loads(pickle.dumps(exc))
+
+        # The concrete subclass survives, so `except ValidationError` past the
+        # broker still catches it.
+        assert type(restored) is ValidationError
+        assert restored.messages == {"field": ["bad"]}
+        assert restored.code == "CONFIG_ELEMENT_NOT_REGISTERED"
+        assert restored.location == "Domain._get_element_by_name"
+        # rationale/fix still resolve after the round-trip.
+        assert restored.fix == resolve(DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED).fix
+
+    def test_an_unknown_code_reads_as_none_rather_than_raising(self):
+        # A code renamed or removed since the exception was pickled still
+        # deserializes and keeps its `code` string; only rationale/fix read None.
+        exc = ConfigurationError("boom")
+        exc.code = "A_CODE_THIS_VERSION_DOES_NOT_KNOW"
+
+        assert exc.rationale is None
+        assert exc.fix is None
+        assert exc.code == "A_CODE_THIS_VERSION_DOES_NOT_KNOW"
+
+    def test_reduce_does_not_serialize_unpicklable_subclass_state(self):
+        # DatabaseError.original_exception is often a live driver error that does
+        # not pickle. The old whole-__dict__ state broke pickling here; carrying
+        # only the diagnostic attributes keeps it working, code intact.
+        class Unpicklable:
+            def __reduce__(self):
+                raise TypeError("cannot pickle a live driver error")
+
+        exc = DatabaseError(
+            "db down",
+            original_exception=Unpicklable(),  # type: ignore[arg-type]
+            code=DiagnosticCode.CONFIG_EVENT_STORE_NOT_INITIALIZED,
+            location="Domain._require_event_store",
+        )
+        restored = pickle.loads(pickle.dumps(exc))
+
+        assert restored.args[0] == "db down"
+        assert restored.code == "CONFIG_EVENT_STORE_NOT_INITIALIZED"
+        assert restored.location == "Domain._require_event_store"
+        # The unpicklable payload is dropped, as it was before codes existed.
+        assert restored.original_exception is None
+
+    def test_extra_info_is_not_carried_across_pickle(self):
+        # extra_info was dropped on unpickle before codes existed; keep it that
+        # way, so an unpicklable extra_info can never break serialization.
+        exc = IncorrectUsageError(
+            "boom",
+            extra_info={"anything": "here"},
+            code=DiagnosticCode.USAGE_NOT_A_PROJECTION,
+        )
+        restored = pickle.loads(pickle.dumps(exc))
+
+        assert restored.extra_info is None
+        assert restored.code == "USAGE_NOT_A_PROJECTION"
 
 
 class TestProteanException:
