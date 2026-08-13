@@ -203,6 +203,7 @@ specific area.
 - [Type Checking](./reference/type-checking/index.md): Static type checking with the Protean mypy plugin.
 - [Architecture Fitness Functions](./guides/architecture-fitness-functions.md): Enforce DDD architectural decisions on every commit with `protean check`.
 - [Fitness Function Catalog](./reference/fitness-functions.md): Every diagnostic rule, its rationale, and its fix.
+- [Init & Runtime Diagnostics](./reference/init-diagnostics.md): The coded exceptions raised at init and by runtime accessors, each with its rationale and fix.
 
 ### Test Your Application
 

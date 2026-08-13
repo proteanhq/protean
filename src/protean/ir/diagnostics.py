@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 
 class DiagnosticCode(StrEnum):
@@ -42,6 +42,10 @@ class DiagnosticCode(StrEnum):
     CIRCULAR_CLUSTER_DEPENDENCY = "CIRCULAR_CLUSTER_DEPENDENCY"
     COMMAND_HANDLER_CROSS_CLUSTER = "COMMAND_HANDLER_CROSS_CLUSTER"
     COMMAND_NOT_IMPERATIVE = "COMMAND_NOT_IMPERATIVE"
+    CONFIG_AMBIGUOUS_ELEMENT_NAME = "CONFIG_AMBIGUOUS_ELEMENT_NAME"
+    CONFIG_ELEMENT_NOT_REGISTERED = "CONFIG_ELEMENT_NOT_REGISTERED"
+    CONFIG_EVENT_STORE_NOT_INITIALIZED = "CONFIG_EVENT_STORE_NOT_INITIALIZED"
+    CONFIG_UNRESOLVED_ENV_VAR = "CONFIG_UNRESOLVED_ENV_VAR"
     CROSS_AGGREGATE_REFERENCE = "CROSS_AGGREGATE_REFERENCE"
     DEPRECATED_CONFIG = "DEPRECATED_CONFIG"
     DEPRECATED_ELEMENT = "DEPRECATED_ELEMENT"
@@ -67,8 +71,15 @@ class DiagnosticCode(StrEnum):
     UNBOUNDED_INDEXED_STRING = "UNBOUNDED_INDEXED_STRING"
     UNHANDLED_EVENT = "UNHANDLED_EVENT"
     UNINDEXED_FILTER_PATH = "UNINDEXED_FILTER_PATH"
+    UNSUPPORTED_ELEMENT_CLASS = "UNSUPPORTED_ELEMENT_CLASS"
     UNUSED_COMMAND = "UNUSED_COMMAND"
     UPCASTER_GAP = "UPCASTER_GAP"
+    USAGE_CACHE_BACKED_NO_REPOSITORY = "USAGE_CACHE_BACKED_NO_REPOSITORY"
+    USAGE_DUPLICATE_DATABASE_MODEL = "USAGE_DUPLICATE_DATABASE_MODEL"
+    USAGE_ELEMENT_NOT_REGISTERED = "USAGE_ELEMENT_NOT_REGISTERED"
+    USAGE_ENRICHER_NOT_CALLABLE = "USAGE_ENRICHER_NOT_CALLABLE"
+    USAGE_NOT_A_PROJECTION = "USAGE_NOT_A_PROJECTION"
+    USAGE_UNKNOWN_ELEMENT_TYPE = "USAGE_UNKNOWN_ELEMENT_TYPE"
     VALUE_OBJECT_MUTABLE_FIELD = "VALUE_OBJECT_MUTABLE_FIELD"
 
 
@@ -92,8 +103,12 @@ class _DiagnosticRequired(TypedDict):
 class Diagnostic(_DiagnosticRequired, total=False):
     """The wire shape of a diagnostic built by :func:`build_diagnostic`.
 
-    ``field`` is present only on field-scoped diagnostics; every other key is
-    always present on diagnostics built through :func:`build_diagnostic`.
+    ``field`` is present only on field-scoped diagnostics. ``location`` is
+    provisioned on the wire shape but no ``build_diagnostic`` caller sets it
+    today; it is currently carried on the exception attribute path
+    (``ProteanException.location``), not on any IR/``check`` diagnostic. Every
+    other key is always present on diagnostics built through
+    :func:`build_diagnostic`.
     This does not describe every entry in ``ir["diagnostics"]``: custom lint
     rules (``ir.builder._run_custom_lint_rules``) contribute dicts that only
     require ``code``/``element``/``level``/``message``, with ``rule`` and
@@ -102,6 +117,7 @@ class Diagnostic(_DiagnosticRequired, total=False):
     """
 
     field: str
+    location: str
 
 
 @dataclass(frozen=True)
@@ -115,6 +131,13 @@ class CodeMeta:
     built from per-instance context, as ``DEPRECATED_FIELD``'s `pickled=`
     diagnostic and ``DEPRECATED_OPTION`` do). ``meaning`` is a one-line human
     summary.
+
+    ``kind`` says how the code reaches a user: ``"lint"`` for a static rule
+    surfaced by ``protean check`` over the IR, ``"raise"`` for a code carried on
+    an exception raised at init or runtime. Most ``"raise"`` codes describe
+    runtime accessor misuse that static analysis cannot see, so they stay off
+    the ``protean check`` catalog; a few could later grow a lint rule that emits
+    the same code at design time.
     """
 
     category: str
@@ -122,6 +145,7 @@ class CodeMeta:
     meaning: str
     rationale: str
     fix: str
+    kind: Literal["lint", "raise"] = "lint"
 
 
 REGISTRY: dict[DiagnosticCode, CodeMeta] = {
@@ -237,6 +261,60 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         ),
         fix=(
             "Rename the command to a verb-first imperative phrase (e.g. `PlaceOrder`)."
+        ),
+    ),
+    DiagnosticCode.CONFIG_AMBIGUOUS_ELEMENT_NAME: CodeMeta(
+        category="configuration",
+        level="error",
+        kind="raise",
+        meaning="A short element name matches more than one registered element.",
+        rationale=(
+            "A short element name that matches more than one registered element "
+            "cannot be resolved to a single element, so the lookup is ambiguous."
+        ),
+        fix=(
+            "Look the element up by its fully qualified name to disambiguate, or "
+            "rename one of the colliding elements."
+        ),
+    ),
+    DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED: CodeMeta(
+        category="configuration",
+        level="error",
+        kind="raise",
+        meaning="A lookup names an element the domain has not registered.",
+        rationale=(
+            "Resolving an element by name requires it to be registered with the "
+            "domain; an unregistered name has nothing to resolve to."
+        ),
+        fix=(
+            "Register the element with the domain before it is looked up, or "
+            "correct the name to one that is registered."
+        ),
+    ),
+    DiagnosticCode.CONFIG_EVENT_STORE_NOT_INITIALIZED: CodeMeta(
+        category="configuration",
+        level="error",
+        kind="raise",
+        meaning="The event store is used before the domain is initialized.",
+        rationale=(
+            "The event store is wired during `domain.init()`; using it before "
+            "then leaves the store unset."
+        ),
+        fix="Call `domain.init()` before using the event store.",
+    ),
+    DiagnosticCode.CONFIG_UNRESOLVED_ENV_VAR: CodeMeta(
+        category="configuration",
+        level="error",
+        kind="raise",
+        meaning="A `${VAR}` reference in configuration resolves to no value.",
+        rationale=(
+            "A `${VAR}` placeholder in configuration is substituted from the "
+            "environment at load time; with the variable unset and no default "
+            "given, it resolves to nothing."
+        ),
+        fix=(
+            "Set the environment variable in the runtime environment, or give "
+            "the placeholder a default with `${VAR|default}`."
         ),
     ),
     DiagnosticCode.CROSS_AGGREGATE_REFERENCE: CodeMeta(
@@ -584,6 +662,20 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "table is small or the query is a one-off (admin/reporting)."
         ),
     ),
+    DiagnosticCode.UNSUPPORTED_ELEMENT_CLASS: CodeMeta(
+        category="unsupported",
+        level="error",
+        kind="raise",
+        meaning="Registration was given a class that is not a domain element.",
+        rationale=(
+            "Only classes carrying a domain `element_type` can be registered; a "
+            "plain class has no element type for the domain to register."
+        ),
+        fix=(
+            "Decorate the class as a domain element (e.g. `@domain.aggregate`) "
+            "before registering it, or register a valid element class."
+        ),
+    ),
     DiagnosticCode.UNUSED_COMMAND: CodeMeta(
         category="handler_completeness",
         level="warning",
@@ -606,6 +698,86 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "current version fail to deserialize at read time."
         ),
         fix="Add upcasters covering the missing source versions.",
+    ),
+    DiagnosticCode.USAGE_CACHE_BACKED_NO_REPOSITORY: CodeMeta(
+        category="usage",
+        level="error",
+        kind="raise",
+        meaning="A repository was requested for a cache-backed projection.",
+        rationale=(
+            "A cache-backed projection is served from a cache, not a provider, "
+            "so it has no repository."
+        ),
+        fix=(
+            "Use `cache_for()` to write and `view_for()` to read a cache-backed "
+            "projection; `repository_for()` is for provider-backed elements."
+        ),
+    ),
+    DiagnosticCode.USAGE_DUPLICATE_DATABASE_MODEL: CodeMeta(
+        category="usage",
+        level="error",
+        kind="raise",
+        meaning="Two database models target the same aggregate and database.",
+        rationale=(
+            "An aggregate maps to one database model per database; registering a "
+            "second model for the same aggregate and database makes the mapping "
+            "ambiguous."
+        ),
+        fix=(
+            "Register one database model per aggregate per database, or target a "
+            "different database on the duplicate model."
+        ),
+    ),
+    DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED: CodeMeta(
+        category="usage",
+        level="error",
+        kind="raise",
+        meaning="An accessor was asked for an element the domain has not registered.",
+        rationale=(
+            "A runtime accessor resolves the element it is given against the "
+            "registry; an unregistered element, or a name string instead of the "
+            "class, has no entry to resolve."
+        ),
+        fix=(
+            "Pass a registered element class to the accessor, and register the "
+            "element with the domain first."
+        ),
+    ),
+    DiagnosticCode.USAGE_ENRICHER_NOT_CALLABLE: CodeMeta(
+        category="usage",
+        level="error",
+        kind="raise",
+        meaning="A registered enricher is not callable.",
+        rationale=(
+            "An enricher is invoked to augment a message or aggregate, so it has "
+            "to be callable; a non-callable value cannot be invoked."
+        ),
+        fix="Register a callable (a function or a callable object) as the enricher.",
+    ),
+    DiagnosticCode.USAGE_NOT_A_PROJECTION: CodeMeta(
+        category="usage",
+        level="error",
+        kind="raise",
+        meaning="A projection-only accessor was given a non-projection element.",
+        rationale=(
+            "`view_for` and `connection_for` operate on projections; an element "
+            "of another type has no read view or projection connection."
+        ),
+        fix=(
+            "Call the accessor with a projection, or use the accessor that "
+            "matches the element's type."
+        ),
+    ),
+    DiagnosticCode.USAGE_UNKNOWN_ELEMENT_TYPE: CodeMeta(
+        category="usage",
+        level="error",
+        kind="raise",
+        meaning="An element factory was requested for an unknown element type.",
+        rationale=(
+            "The domain builds elements through a fixed set of type factories; a "
+            "type outside that set has no factory to build it."
+        ),
+        fix="Use one of the supported domain element types.",
     ),
     DiagnosticCode.VALUE_OBJECT_MUTABLE_FIELD: CodeMeta(
         category="aggregate_design",
@@ -643,6 +815,7 @@ def build_diagnostic(
     message: str,
     level: str | None = None,
     field: str | None = None,
+    location: str | None = None,
     rationale: str | None = None,
     fix: str | None = None,
     suggestion: str | None = None,
@@ -652,8 +825,11 @@ def build_diagnostic(
     Resolves ``category``/``level``/``rationale``/``fix`` from the registry;
     pass ``level``/``rationale``/``fix`` to override the canonical default at
     a site that diverges. ``suggestion`` defaults to the resolved ``fix``.
-    The returned dict carries exactly the wire keys (plus ``field`` when
-    given) — the shape the IR, SARIF, and ``check`` output already emit.
+    ``location`` names where the diagnostic came from; it is included only when
+    given (no lint producer sets it today — it is carried on the exception path
+    instead). The returned dict carries exactly the wire keys (plus
+    ``field``/``location`` when given) — the shape the IR, SARIF, and ``check``
+    output already emit.
     """
     meta = REGISTRY[code]
     resolved_rationale = rationale if rationale is not None else meta.rationale
@@ -669,4 +845,6 @@ def build_diagnostic(
     }
     if field is not None:
         diagnostic["field"] = field
+    if location is not None:
+        diagnostic["location"] = location
     return diagnostic

@@ -7,6 +7,7 @@ from typing import Any
 
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import DEFAULT_REDACT_KEYS
+from protean.ir.diagnostics import DiagnosticCode
 from protean.utils import IdentityStrategy, IdentityType, Processing
 
 logger = logging.getLogger(__name__)
@@ -440,7 +441,9 @@ class Config2(dict[str, Any]):
 
             if env_value is None:
                 raise ConfigurationError(
-                    f"Environment variable {matched_string} is not set"
+                    f"Environment variable {matched_string} is not set",
+                    code=DiagnosticCode.CONFIG_UNRESOLVED_ENV_VAR,
+                    location=f"Config2._replace_env_var (${{{matched_string}}})",
                 )
 
             value = value.replace(f"${{{matched_string}}}", env_value)

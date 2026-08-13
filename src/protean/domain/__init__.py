@@ -141,6 +141,7 @@ from protean.integrations.logging import (
     protean_otel_processor,
 )
 from protean.ir.builder import IRBuilder
+from protean.ir.diagnostics import DiagnosticCode
 from protean.port.event_store import CausationNode
 from protean.server.tracing import TraceEmitter
 from protean.utils import (
@@ -1031,7 +1032,9 @@ class Domain:
 
         if domain_object_type.value not in factories:
             raise IncorrectUsageError(
-                f"Unknown Element Type `{domain_object_type.value}`"
+                f"Unknown Element Type `{domain_object_type.value}`",
+                code=DiagnosticCode.USAGE_UNKNOWN_ELEMENT_TYPE,
+                location="Domain.factory_for",
             )
 
         return factories[domain_object_type.value]
@@ -1079,7 +1082,9 @@ class Domain:
             if db_key in self._database_models[entity_key]:
                 raise IncorrectUsageError(
                     f"A database model for `{new_cls.meta_.part_of.__name__}` "
-                    f"targeting database `{db_key}` is already registered"
+                    f"targeting database `{db_key}` is already registered",
+                    code=DiagnosticCode.USAGE_DUPLICATE_DATABASE_MODEL,
+                    location="Domain._register_element",
                 )
             self._database_models[entity_key][db_key] = new_cls
 
@@ -1216,7 +1221,9 @@ class Domain:
         # Reject unknown Domain Elements, identified by the absence of `element_type` class var
         if getattr(element_cls, "element_type", None) not in list(DomainObjects):
             raise NotSupportedError(
-                f"Element `{element_cls.__name__}` is not a valid element class"
+                f"Element `{element_cls.__name__}` is not a valid element class",
+                code=DiagnosticCode.UNSUPPORTED_ELEMENT_CLASS,
+                location="Domain.register",
             )
 
         return self._register_element(
@@ -1268,19 +1275,25 @@ class Domain:
                             f"domain {self.name}: {fq_names}. "
                             "Use the fully qualified name to disambiguate."
                         )
-                    }
+                    },
+                    code=DiagnosticCode.CONFIG_AMBIGUOUS_ELEMENT_NAME,
+                    location="Domain._get_element_by_name",
                 )
             else:
                 raise ConfigurationError(
                     {
                         "element": f"Element {element_name} not registered in domain {self.name}"
-                    }
+                    },
+                    code=DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED,
+                    location="Domain._get_element_by_name",
                 )
         except KeyError as e:
             raise ConfigurationError(
                 {
                     "element": f"Element {element_name} not registered in domain {self.name}"
-                }
+                },
+                code=DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED,
+                location="Domain._get_element_by_name",
             ) from e
 
     def _get_element_by_fully_qualified_name(
@@ -1296,7 +1309,9 @@ class Domain:
             raise ConfigurationError(
                 {
                     "element": f"Element {element_fq_name} not registered in domain {self.name}"
-                }
+                },
+                code=DiagnosticCode.CONFIG_ELEMENT_NOT_REGISTERED,
+                location="Domain._get_element_by_fully_qualified_name",
             )
 
     def _get_element_by_class(
@@ -2056,7 +2071,11 @@ class Domain:
             domain.register_event_enricher(add_user_context)
         """
         if not callable(fn):
-            raise IncorrectUsageError("Event enricher must be callable")
+            raise IncorrectUsageError(
+                "Event enricher must be callable",
+                code=DiagnosticCode.USAGE_ENRICHER_NOT_CALLABLE,
+                location="Domain.register_event_enricher",
+            )
         self._event_enrichers.append(fn)
 
     @property
@@ -2098,7 +2117,11 @@ class Domain:
             domain.register_command_enricher(add_request_context)
         """
         if not callable(fn):
-            raise IncorrectUsageError("Command enricher must be callable")
+            raise IncorrectUsageError(
+                "Command enricher must be callable",
+                code=DiagnosticCode.USAGE_ENRICHER_NOT_CALLABLE,
+                location="Domain.register_command_enricher",
+            )
         self._command_enrichers.append(fn)
 
     @property
@@ -2153,7 +2176,11 @@ class Domain:
                     aggregate.created_by = user
         """
         if not callable(fn):
-            raise IncorrectUsageError("Aggregate enricher must be callable")
+            raise IncorrectUsageError(
+                "Aggregate enricher must be callable",
+                code=DiagnosticCode.USAGE_ENRICHER_NOT_CALLABLE,
+                location="Domain.register_aggregate_enricher",
+            )
         self._aggregate_enrichers.append(fn)
 
     @property
@@ -2279,7 +2306,9 @@ class Domain:
     def repository_for(self, element_cls: Any) -> BaseRepository:
         if isinstance(element_cls, str):
             raise IncorrectUsageError(
-                f"Element {element_cls} is not registered in domain {self.name}"
+                f"Element {element_cls} is not registered in domain {self.name}",
+                code=DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED,
+                location="Domain.repository_for",
             )
 
         repository: BaseRepository
@@ -2307,7 +2336,9 @@ class Domain:
                     f"(cache={element_cls.meta_.cache!r}), so it has no "
                     f"repository. Use `domain.cache_for({element_cls.__name__})` "
                     f"to write and `domain.view_for({element_cls.__name__})` to "
-                    f"read. `repository_for()` is for provider-backed elements."
+                    f"read. `repository_for()` is for provider-backed elements.",
+                    code=DiagnosticCode.USAGE_CACHE_BACKED_NO_REPOSITORY,
+                    location="Domain.repository_for",
                 )
 
             # This is a regular aggregate or a projection
@@ -2344,7 +2375,9 @@ class Domain:
         """
         if isinstance(projection_cls, str):
             raise IncorrectUsageError(
-                f"Element {projection_cls} is not registered in domain {self.name}"
+                f"Element {projection_cls} is not registered in domain {self.name}",
+                code=DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED,
+                location="Domain.view_for",
             )
 
         # ``element_type`` is a class var injected onto element classes at
@@ -2354,7 +2387,9 @@ class Domain:
             raise IncorrectUsageError(
                 f"`view_for` is only available for projections. "
                 f"Received {projection.__name__} "
-                f"({projection.element_type})."
+                f"({projection.element_type}).",
+                code=DiagnosticCode.USAGE_NOT_A_PROJECTION,
+                location="Domain.view_for",
             )
 
         return ReadView(self, projection_cls)
@@ -2407,7 +2442,9 @@ class Domain:
         """
         if isinstance(projection_cls, str):
             raise IncorrectUsageError(
-                f"Element {projection_cls} is not registered in domain {self.name}"
+                f"Element {projection_cls} is not registered in domain {self.name}",
+                code=DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED,
+                location="Domain.connection_for",
             )
 
         # ``element_type`` / ``meta_`` are injected onto element classes at
@@ -2417,7 +2454,9 @@ class Domain:
             raise IncorrectUsageError(
                 f"`connection_for` is only available for projections. "
                 f"Received {projection.__name__} "
-                f"({projection.element_type})."
+                f"({projection.element_type}).",
+                code=DiagnosticCode.USAGE_NOT_A_PROJECTION,
+                location="Domain.connection_for",
             )
 
         if projection.meta_.cache:
@@ -2438,7 +2477,9 @@ class Domain:
         store = self.event_store.store
         if store is None:
             raise ConfigurationError(
-                "Event store is not initialized. Call `domain.init()` first."
+                "Event store is not initialized. Call `domain.init()` first.",
+                code=DiagnosticCode.CONFIG_EVENT_STORE_NOT_INITIALIZED,
+                location="Domain._require_event_store",
             )
         return store
 
@@ -2463,7 +2504,9 @@ class Domain:
             not in self.registry._elements[DomainObjects.AGGREGATE.value]
         ):
             raise IncorrectUsageError(
-                f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
+                f"`{aggregate_cls.__name__}` is not registered in domain {self.name}",
+                code=DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED,
+                location="Domain.create_snapshot",
             )
 
         created: bool = self._require_event_store().create_snapshot(
@@ -2490,7 +2533,9 @@ class Domain:
             not in self.registry._elements[DomainObjects.AGGREGATE.value]
         ):
             raise IncorrectUsageError(
-                f"`{aggregate_cls.__name__}` is not registered in domain {self.name}"
+                f"`{aggregate_cls.__name__}` is not registered in domain {self.name}",
+                code=DiagnosticCode.USAGE_ELEMENT_NOT_REGISTERED,
+                location="Domain.create_snapshots",
             )
 
         count: int = self._require_event_store().create_snapshots(aggregate_cls)
