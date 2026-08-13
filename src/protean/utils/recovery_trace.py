@@ -70,7 +70,7 @@ _events: list[RecoveryEvent] | None = None
 
 
 def is_active() -> bool:
-    """Whether a capture is in progress. The subscription tests this before work."""
+    """Whether a capture is in progress."""
     return _events is not None
 
 
