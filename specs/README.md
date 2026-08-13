@@ -86,8 +86,9 @@ The runs are small (a few thousand states each) and finish in about a second.
 The model checks above verify the *design*. Trace validation verifies the
 *shipped code*: it records what the real commit paths actually do, then asks TLC
 whether that recording is a behaviour the spec permits. OCC is the first protocol
-wired up (#1382); the harness (`OCCTrace.tla`, the two cfgs, `occ_trace.py`, and
-the `check.sh` plumbing) is built to be reused by the others.
+wired up (#1382), and the `$all` gap-safe checkpoint is the second (#1384); the
+harness (`OCCTrace.tla`, the two cfgs, `occ_trace.py`, and the `check.sh` plumbing)
+is built to be reused by the others, and the checkpoint check reuses it verbatim.
 
 How it works, end to end:
 
@@ -134,6 +135,27 @@ rather than in `_update` (the SQL emits are gated on the standalone path for tha
 reason); capturing that deferred outcome is left for a follow-up, and `check.sh`
 uses the deterministic Memory trace as its conformance source.
 
+**Checkpoint trace validation (#1384).** The same harness, pointed at the `$all`
+gap-safe checkpoint. `src/protean/utils/checkpoint_trace.py` records, per
+`_gap_safe_batch` call, the raw state the walk observed: the cursor it started
+from, the `global_position` values it saw present, the holes it abandoned, and the
+watermark it settled on. `specs/checkpoint_trace.py record` drives the real
+`_gap_safe_batch` through a scripted out-of-order gap (reusing the #1251 model's
+subscription via `tests/verification/strategies.py`, so no store is re-driven) with
+the recorder active. `to-tla` expands each raw batch into the atomic transitions
+`CheckpointTrace.tla` replays: a `commit` the first time a position is seen
+present, an `abandon` per stepped-over hole, and an `advance` per real cursor move
+(no-progress holds are dropped). `CheckpointTrace.tla` replays each through
+`Checkpoint.tla`'s own `Commit` / `AgeGap` / `Tick` actions, requiring the recorded
+watermark to equal the one `Tick` computes; if the code advanced past a held gap
+(the #1088 bug), `Tick` holds where the recording claims it advanced, the replay
+stalls, and `TraceAccepted` fails. The two negative fixtures mirror OCC's: a
+gap-skip log (`traces/checkpoint_bug.jsonl`) is rejected on conformance, and an
+in-order log (`traces/checkpoint_no_gap.jsonl`) leaves `CoverGap` holding and is
+rejected as under-covered. The coverage probe `CoverGap == SafeWatermark = Frontier`
+must be *violated* by a real log — that violation is a visible position stranded
+above the watermark, the witness that the log actually exercised a gap.
+
 ### Adding a protocol
 
 The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
@@ -175,7 +197,13 @@ The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
 | `occ_trace.py` | Records a real Memory-adapter OCC trace, and converts a JSON-lines log into a runnable `OCCTrace_*.tla`. |
 | `traces/occ_bug.jsonl` | Negative fixture: a seeded lost update (two commits from one base); conformance must reject it. |
 | `traces/occ_no_conflict.jsonl` | Negative fixture: an uncontended log; the coverage check must reject it as under-covered. |
-| `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC trace validation. |
+| `CheckpointTrace.tla` | Trace validation for the checkpoint: replays a recorded log through `Checkpoint!Commit` / `AgeGap` / `Tick` and checks it is a behaviour `Checkpoint.tla` permits (#1384). |
+| `CheckpointTrace_conform.cfg` | Conformance check: `TraceAccepted` holds iff the whole recorded log matched a Checkpoint action. Also checks `NoSilentSkip`. |
+| `CheckpointTrace_cover.cfg` | Coverage check: `CoverGap` must be *violated*, witnessing the log stranded a visible position above the watermark behind a gap. |
+| `checkpoint_trace.py` | Records a real `_gap_safe_batch` trace, and converts a JSON-lines log into a runnable `CheckpointTrace_*.tla`. |
+| `traces/checkpoint_bug.jsonl` | Negative fixture: a gap-skip advance past a still-open gap; conformance must reject it. |
+| `traces/checkpoint_no_gap.jsonl` | Negative fixture: an in-order (gapless) log; the coverage check must reject it as under-covered. |
+| `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC and checkpoint trace validation. |
 
 ## What is modeled
 

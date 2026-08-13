@@ -12,7 +12,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
-from protean.utils import fqn
+from protean.utils import checkpoint_trace, fqn
 from protean.utils.eventing import Message, MessageType
 
 from . import BaseSubscription
@@ -519,8 +519,10 @@ class EventStoreSubscription(BaseSubscription):
             return messages
 
         now = time.monotonic()
+        entry_cursor = self.current_position
         present = {position for position, _ in positioned}
         highest = max(present)
+        abandoned: list[int] = []  # holes stepped over this batch (Checkpoint trace)
         # ``global_position`` is 1-based, so a fresh subscription (current == -1)
         # expects position 1, not 0 — clamp to the sequence floor so the first
         # real position is not mistaken for a gap.
@@ -540,8 +542,25 @@ class EventStoreSubscription(BaseSubscription):
                     f"(assumed rolled back)"
                 )
                 self._gap_first_seen.pop(expected, None)
+                abandoned.append(expected)
                 safe = expected
             expected += 1
+
+        if checkpoint_trace.is_active():
+            # Raw observation of this batch's gap-safe advance for spec-conformance
+            # checking (specs/Checkpoint.tla): the cursor it started from, the
+            # positions it saw present, the holes it abandoned, and the watermark it
+            # settled on. Emitting is a no-op unless a capture is running, so the
+            # shipped path's return value is unchanged. A fresh subscription starts
+            # both watermarks at -1; Checkpoint.tla's cursor domain starts at 0, so
+            # clamp them to the 0 floor (the same "before position 1" the -1 means)
+            # instead of emitting a -1 the converter would reject.
+            checkpoint_trace.record(
+                cursor=max(entry_cursor, 0),
+                present=list(present),
+                abandoned=abandoned,
+                safe=max(safe, 0),
+            )
 
         # Record the settled watermark. ``tick`` advances ``current_position`` to
         # it *after* ``process_batch`` completes, which is what keeps this
