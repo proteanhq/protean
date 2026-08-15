@@ -170,7 +170,7 @@ built for, and the shapes of systems it is not.
     ---
 
     Pluggable infrastructure across databases, brokers, event stores, and
-    caches, tested on four Python versions.
+    caches, tested on five Python versions.
 
 </div>
 

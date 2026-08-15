@@ -189,6 +189,13 @@ runs:
     - uses: actions/setup-python@v7
       with:
         python-version: ${{ inputs.python-version }}
+        # Only the prerelease line needs this, so "3.15" resolves to its newest
+        # rc/beta. setup-python already keeps a GA line like "3.14" on its stable
+        # release (it considers prereleases only when no GA version matches), so
+        # scoping this to 3.15 changes nothing for the stable legs and keeps
+        # prerelease resolution off them entirely. Widen when a newer prerelease
+        # becomes the target.
+        allow-prereleases: ${{ inputs.python-version == '3.15' }}
 
     - name: Install Microsoft ODBC Driver 18 and tools
       if: inputs.full == 'true'
@@ -210,14 +217,33 @@ runs:
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
         echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
 
+    - name: Install unixODBC headers (prerelease CORE leg)
+      # The mssql extra pulls pyodbc, which has no cp315 wheel yet, so the 3.15
+      # CORE sync builds it from source and that build needs the unixODBC headers
+      # (sql.h). The FULL leg already gets them from the MSSQL driver step above,
+      # and the stable Pythons pull a prebuilt pyodbc wheel and never compile it,
+      # so this is only needed on the non-FULL 3.15 leg. Widen the version check
+      # when a newer prerelease lands, or drop it once pyodbc ships a cp315 wheel.
+      if: inputs.full != 'true' && inputs.python-version == '3.15'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unixodbc-dev
+
     - name: Install dependencies
       # A lowest-direct leg re-resolves declared deps to their floor (installing
       # all extras so a floor without a wheel for the newest Python fails here);
       # every other leg uses the locked latest-compatible resolution.
+      #
+      # The `mutation` group is excluded on purpose: it pulls `mutmut` and its
+      # `libcst` (a PyO3 extension whose pinned pyo3 caps at 3.14 and won't build
+      # on a newer prerelease like 3.15). Nothing in the test suite imports it;
+      # `make mutation` builds its own env. Keeping it here would break the newest
+      # leg and only slow the others down.
       shell: bash
       env:
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (inputs.python-version == '3.13' || inputs.python-version == '3.14') && '1' || '' }}
-      run: uv sync --all-extras --all-groups ${{ inputs.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
+      run: uv sync --all-extras --all-groups --no-group mutation ${{ inputs.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
 
     - name: Mypy Plugin Tests
       shell: bash

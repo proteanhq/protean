@@ -40,15 +40,17 @@ This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLI
 
 ## Multi-Version Testing with Nox
 
-Protean supports Python 3.11, 3.12, 3.13, and 3.14. To run tests across all supported versions locally, Protean uses [Nox](https://nox.thea.codes/) with a `noxfile.py` at the repository root.
+Protean supports Python 3.11, 3.12, 3.13, and 3.14, and tests against the 3.15 prerelease. To run tests across all supported versions locally, Protean uses [Nox](https://nox.thea.codes/) with a `noxfile.py` at the repository root.
 
 ### Prerequisites
 
-Install all four Python versions via [pyenv](https://github.com/pyenv/pyenv) and ensure they are listed in `.python-version` so that `python3.11`, `python3.12`, `python3.13`, and `python3.14` are available on `$PATH`:
+Install the four stable Python versions via [pyenv](https://github.com/pyenv/pyenv) and ensure they are listed in `.python-version` so that `python3.11`, `python3.12`, `python3.13`, and `python3.14` are available on `$PATH`:
 
 ```shell
 pyenv install 3.11 3.12 3.13 3.14
 ```
+
+Nox also has a `3.15` session. It runs only if a `python3.15` is on your `$PATH`, and Nox skips it otherwise. To exercise it locally, install the current 3.15 prerelease as well (for example `pyenv install 3.15.0rc1`).
 
 ### Running
 
@@ -415,12 +417,11 @@ jobs:
 The CI pipeline:
 
 - Runs on each pull request and push to main
-- Tests against multiple Python versions (3.11, 3.12, 3.13, 3.14)
-- Sets up all required services (PostgreSQL, Redis, Elasticsearch, Message-DB, ...)
-- Runs the full test suite with coverage
-- Reports coverage to Codecov
+- Runs the in-memory core suite on every Python version (3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease; the 3.15 leg is experimental and non-blocking while 3.15 is a prerelease)
+- Runs the full adapter suite (PostgreSQL, Redis, Elasticsearch, Message-DB, MSSQL) on the newest stable Python per PR, and across every version in the nightly run
+- Enforces the coverage floor and reports coverage to Codecov
 
-Pull requests cannot be merged until tests pass. This ensures:
+Pull requests cannot be merged until the required checks pass. This ensures:
 
 - All features work as expected
 - No regressions are introduced

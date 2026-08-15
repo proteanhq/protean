@@ -23,6 +23,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # The prerelease leg (3.15) is allowed to fail without failing the run or
+    # tripping the notify job below; it depends on upstream cp315 wheels that are
+    # outside Protean's control. Stable legs leave `experimental` unset and gate
+    # normally.
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,8 +36,10 @@ jobs:
           - { python-version: "3.12", resolution: highest }
           - { python-version: "3.13", resolution: highest }
           - { python-version: "3.14", resolution: highest }
-          # Adapter floors against real services, on the newest Python.
+          # Adapter floors against real services, on the newest stable Python.
           - { python-version: "3.14", resolution: lowest-direct }
+          # Prerelease: run the full adapter suite on 3.15, non-blocking.
+          - { python-version: "3.15", resolution: highest, experimental: true }
     name: ${{ matrix.resolution == 'lowest-direct' && format('Python {0} Full (lowest-direct)', matrix.python-version) || format('Python {0} Full', matrix.python-version) }}
     steps:
       - uses: actions/checkout@v7
