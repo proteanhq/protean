@@ -189,11 +189,13 @@ runs:
     - uses: actions/setup-python@v7
       with:
         python-version: ${{ inputs.python-version }}
-        # Let a prerelease line (e.g. "3.15" before 3.15.0 ships) resolve to its
-        # newest rc/beta. This only matters when no stable release matches the
-        # spec; for a GA line like "3.14" setup-python still picks the stable
-        # release, so it is safe to leave on for every leg.
-        allow-prereleases: true
+        # Only the prerelease line needs this, so "3.15" resolves to its newest
+        # rc/beta. setup-python already keeps a GA line like "3.14" on its stable
+        # release (it considers prereleases only when no GA version matches), so
+        # scoping this to 3.15 changes nothing for the stable legs and keeps
+        # prerelease resolution off them entirely. Widen when a newer prerelease
+        # becomes the target.
+        allow-prereleases: ${{ inputs.python-version == '3.15' }}
 
     - name: Install Microsoft ODBC Driver 18 and tools
       if: inputs.full == 'true'
