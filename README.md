@@ -94,7 +94,7 @@ for the full contract.
 
 ## Quality
 
-Protean is tested against 5 backing services across 5 Python versions on every commit.
+Every commit runs the in-memory core suite across 5 Python versions and all 5 backing services on the newest stable Python; the full adapter matrix across every version runs nightly.
 
 | Metric | Value |
 |---|---|
@@ -102,7 +102,7 @@ Protean is tested against 5 backing services across 5 Python versions on every c
 | Linting | Zero violations (Ruff) |
 | Complexity | Avg 3.38 cyclomatic (A grade) |
 | Maintainability | A rank (95% of files) |
-| CI Matrix | Python 3.11-3.14 (plus the 3.15 prerelease) x PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL |
+| CI Matrix | Python 3.11-3.14 + 3.15 prerelease; PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL on the newest stable per PR, full matrix nightly |
 
 See the full [Quality Report](https://docs.proteanhq.com/community/quality/) for details.
 

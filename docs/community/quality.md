@@ -158,18 +158,22 @@ Protean's source is organized into 10 top-level packages:
 
 ### Test Matrix
 
-Every pull request and push to `main` triggers the full CI pipeline:
+Protean tests across five Python versions and five backing services, split
+between per-PR CI and a nightly run:
 
 - **5 Python versions**: 3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease
-- **5 backing services** (started as Docker containers):
+- **5 backing services** (started as Docker containers for the adapter suite):
     - PostgreSQL 11
     - Redis
     - Elasticsearch 7.12
     - MessageDB 1.2.6
     - MSSQL Server 2022
 
-This means **every change is validated against 5 Python versions with
-all infrastructure adapters exercised**.
+Each pull request runs the in-memory core suite on every version and the full
+adapter suite on the newest stable Python. The nightly run exercises the full
+adapter suite across all five versions. This means **every change is checked on
+all five Python versions, with every adapter exercised against its real backing
+service**.
 
 ### Pipeline Steps
 
@@ -179,8 +183,10 @@ missing pre-commit hook, a `--no-verify`, or a web edit:
 1. **Lint**: `ruff check` and `ruff format --check`, the same checks as the
    pre-commit hook.
 2. **Type check**: `mypy --strict` over `src/protean`.
-3. **Full test suite**: `protean test -c FULL` across 5 Python versions with all
-   5 backing service containers running.
+3. **Test suite**: the in-memory core suite (`protean test`) on every Python
+   version, and the full adapter suite (`protean test -c FULL`) with all 5
+   backing service containers on the newest stable Python. The nightly run
+   extends the full adapter suite to every version.
 4. **Coverage floor**: Overall coverage must stay at or above 94%
    (`coverage report --fail-under=94`); patch coverage is enforced separately by
    Codecov, and results are uploaded to Codecov on every run.

@@ -417,10 +417,9 @@ jobs:
 The CI pipeline:
 
 - Runs on each pull request and push to main
-- Tests against multiple Python versions (3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease)
-- Sets up all required services (PostgreSQL, Redis, Elasticsearch, Message-DB, ...)
-- Runs the full test suite with coverage
-- Reports coverage to Codecov
+- Runs the in-memory core suite on every Python version (3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease)
+- Runs the full adapter suite (PostgreSQL, Redis, Elasticsearch, Message-DB, MSSQL) on the newest stable Python per PR, and across every version in the nightly run
+- Enforces the coverage floor and reports coverage to Codecov
 
 Pull requests cannot be merged until tests pass. This ensures:
 
