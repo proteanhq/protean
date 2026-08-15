@@ -215,6 +215,19 @@ runs:
         sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
         echo "/opt/mssql-tools18/bin" >> $GITHUB_PATH
 
+    - name: Install unixODBC headers (non-FULL legs)
+      # The mssql extra pulls pyodbc. On a brand-new prerelease Python (3.15)
+      # pyodbc has no wheel yet, so `uv sync --all-extras` builds it from source,
+      # and that build needs the unixODBC headers (sql.h). The FULL leg already
+      # gets them from the MSSQL driver step above; install them here for the
+      # non-FULL legs so the prerelease sync succeeds. Older stable Pythons pull a
+      # pyodbc wheel and skip the build, so this apt step is a cheap no-op there.
+      if: inputs.full != 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unixodbc-dev
+
     - name: Install dependencies
       # A lowest-direct leg re-resolves declared deps to their floor (installing
       # all extras so a floor without a wheel for the newest Python fails here);
