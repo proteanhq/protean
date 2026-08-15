@@ -15,7 +15,7 @@ practices and metrics behind the framework.
 | **Linting Violations** | 0 (Ruff) |
 | **Avg Cyclomatic Complexity** | 3.38 (A grade) |
 | **Maintainability Index** | A rank (95% of files) |
-| **Python Versions** | 3.11, 3.12, 3.13, 3.14 |
+| **Python Versions** | 3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease |
 | **CI Backing Services** | PostgreSQL, Redis, Elasticsearch, MessageDB, MSSQL |
 | **Releases** | 46 |
 | **Project Age** | Since July 2018 |
@@ -160,7 +160,7 @@ Protean's source is organized into 10 top-level packages:
 
 Every pull request and push to `main` triggers the full CI pipeline:
 
-- **4 Python versions**: 3.11, 3.12, 3.13, 3.14
+- **5 Python versions**: 3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease
 - **5 backing services** (started as Docker containers):
     - PostgreSQL 11
     - Redis
@@ -168,7 +168,7 @@ Every pull request and push to `main` triggers the full CI pipeline:
     - MessageDB 1.2.6
     - MSSQL Server 2022
 
-This means **every change is validated against 4 Python versions with
+This means **every change is validated against 5 Python versions with
 all infrastructure adapters exercised**.
 
 ### Pipeline Steps
@@ -179,7 +179,7 @@ missing pre-commit hook, a `--no-verify`, or a web edit:
 1. **Lint**: `ruff check` and `ruff format --check`, the same checks as the
    pre-commit hook.
 2. **Type check**: `mypy --strict` over `src/protean`.
-3. **Full test suite**: `protean test -c FULL` across 4 Python versions with all
+3. **Full test suite**: `protean test -c FULL` across 5 Python versions with all
    5 backing service containers running.
 4. **Coverage floor**: Overall coverage must stay at or above 94%
    (`coverage report --fail-under=94`); patch coverage is enforced separately by

@@ -189,6 +189,11 @@ runs:
     - uses: actions/setup-python@v7
       with:
         python-version: ${{ inputs.python-version }}
+        # Let a prerelease line (e.g. "3.15" before 3.15.0 ships) resolve to its
+        # newest rc/beta. This only matters when no stable release matches the
+        # spec; for a GA line like "3.14" setup-python still picks the stable
+        # release, so it is safe to leave on for every leg.
+        allow-prereleases: true
 
     - name: Install Microsoft ODBC Driver 18 and tools
       if: inputs.full == 'true'
@@ -214,10 +219,16 @@ runs:
       # A lowest-direct leg re-resolves declared deps to their floor (installing
       # all extras so a floor without a wheel for the newest Python fails here);
       # every other leg uses the locked latest-compatible resolution.
+      #
+      # The `mutation` group is excluded on purpose: it pulls `mutmut` and its
+      # `libcst` (a PyO3 extension whose pinned pyo3 caps at 3.14 and won't build
+      # on a newer prerelease like 3.15). Nothing in the test suite imports it;
+      # `make mutation` builds its own env. Keeping it here would break the newest
+      # leg and only slow the others down.
       shell: bash
       env:
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (inputs.python-version == '3.13' || inputs.python-version == '3.14') && '1' || '' }}
-      run: uv sync --all-extras --all-groups ${{ inputs.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
+      run: uv sync --all-extras --all-groups --no-group mutation ${{ inputs.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
 
     - name: Mypy Plugin Tests
       shell: bash

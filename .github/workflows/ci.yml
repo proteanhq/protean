@@ -17,27 +17,45 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # A prerelease leg is allowed to fail. The 3.15 line depends on upstream
+    # packages shipping cp315 wheels (or building from source against a moving
+    # prerelease C-API), which is out of Protean's control; a red 3.15 leg should
+    # surface as an early warning, not block a merge. `matrix.experimental` is
+    # unset (falsy) on every stable leg, so those still gate normally.
+    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
         # Per-PR cost control. The FULL adapter suite (`-c FULL`, which starts
         # Postgres/Redis/Elasticsearch/MSSQL/MessageDB) is the expensive part, so
-        # only the newest Python runs it (check `Python 3.14 Full`); the older
-        # versions run the fast in-memory CORE suite with no Docker. The
-        # lowest-direct leg (`Python 3.14 Tests`) re-resolves the dependencies to
-        # their floor and runs CORE, proving the floors resolve/install on the
-        # newest Python without a Docker spin-up. The full `-c FULL` matrix across
-        # every Python runs nightly on `main` (nightly.yml), which is where a
-        # version-specific adapter regression on 3.11-3.13 is caught. See ADR-0020.
+        # only the newest stable Python runs it (check `Python 3.14 Full`); the
+        # other stable versions run the fast in-memory CORE suite with no Docker.
+        # The lowest-direct leg (`Python 3.14 Tests`) re-resolves the dependencies
+        # to their floor and runs CORE, proving the floors resolve/install on the
+        # newest stable Python without a Docker spin-up. The full `-c FULL` matrix
+        # across every Python runs nightly on `main` (nightly.yml), which is where
+        # a version-specific adapter regression on 3.11-3.13 is caught. See
+        # ADR-0020.
+        #
+        # 3.15 is a prerelease: setup-python resolves it to the newest rc/beta
+        # (allow-prereleases in the composite action). It runs CORE only and is
+        # marked experimental (non-blocking) until 3.15 reaches GA and the
+        # ecosystem ships cp315 wheels; promote it to a stable CORE leg then, and
+        # move the FULL/lowest-direct roles to it once it is the newest stable.
+        # The floor leg stays on 3.14 for now: the floors are pinned to
+        # first-cp314-wheel versions and need not have a cp315 wheel yet.
         include:
           - { python-version: "3.11", full: false, resolution: highest }
           - { python-version: "3.12", full: false, resolution: highest }
           - { python-version: "3.13", full: false, resolution: highest }
           - { python-version: "3.14", full: true, resolution: highest }
           - { python-version: "3.14", full: false, resolution: lowest-direct }
+          - { python-version: "3.15", full: false, resolution: highest, experimental: true }
     # Check names are branch-protection contexts. The CORE legs and the
     # lowest-direct leg on 3.14 are `Python X Tests`; the FULL adapter leg is
-    # `Python 3.14 Full` (add it to the required checks so it gates merges).
+    # `Python 3.14 Full` (add it to the required checks so it gates merges). The
+    # prerelease leg is `Python 3.15 Tests`; leave it out of the required set
+    # while it is experimental.
     name: ${{ matrix.full && 'Python 3.14 Full' || (matrix.resolution == 'lowest-direct' && 'Python 3.14 Tests') || format('Python {0} Tests', matrix.python-version) }}
 
     steps:
