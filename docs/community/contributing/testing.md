@@ -421,7 +421,7 @@ The CI pipeline:
 - Runs the full adapter suite (PostgreSQL, Redis, Elasticsearch, Message-DB, MSSQL) on the newest stable Python per PR, and across every version in the nightly run
 - Enforces the coverage floor and reports coverage to Codecov
 
-Pull requests cannot be merged until tests pass. This ensures:
+Pull requests cannot be merged until the required checks pass. This ensures:
 
 - All features work as expected
 - No regressions are introduced
