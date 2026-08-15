@@ -1,5 +1,12 @@
 import nox
 
+# Skip a version whose interpreter is not installed instead of failing the run.
+# 3.15 is a prerelease many contributors will not have locally, and Nox otherwise
+# errors on a missing interpreter when it detects a CI environment. Protean's CI
+# does not run Nox (it uses the GitHub Actions matrix directly), so this only
+# affects local `make test-matrix`, which should skip what is not installed.
+nox.options.error_on_missing_interpreters = False
+
 PYTHON_VERSIONS = ["3.11", "3.12", "3.13", "3.14", "3.15"]
 
 # Packages with C extensions that must be rebuilt per Python version.
