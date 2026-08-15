@@ -30,6 +30,7 @@ from protean.fields.embedded import ValueObject as ValueObjectDescriptor
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import ResolvedField, convert_pydantic_errors
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
+from protean.ir.diagnostics import DiagnosticCode
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
@@ -222,9 +223,14 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
 
         self.defaults()
 
-        errors = self._run_invariants("post")
+        fired_codes: list[str] = []
+        errors = self._run_invariants("post", fired_codes=fired_codes)
         if errors:
-            raise ValidationError(errors)
+            raise ValidationError(
+                errors,
+                codes=fired_codes,
+                location=type(self).__qualname__,
+            )
 
         object.__setattr__(self, "_initialized", True)
 
@@ -247,14 +253,30 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         """Placeholder for defaults. Override in subclass when
         an attribute's default depends on other attribute values."""
 
-    def _run_invariants(self, stage: str) -> dict[str, list[str]]:
-        """Run invariants for a given stage. Return errors dict or empty."""
+    def _run_invariants(
+        self, stage: str, fired_codes: list[str] | None = None
+    ) -> dict[str, list[str]]:
+        """Run invariants for a given stage. Return errors dict or empty.
+
+        ``fired_codes``, when given, accumulates the diagnostic code of every
+        invariant that fails so the caller can attach them to the raised
+        ``ValidationError``. A value object validates only post-invariants, so a
+        failure without an author-supplied ``code=`` carries the default
+        ``VALUE_OBJECT_INVARIANT_FAILED``.
+        """
         errors: dict[str, list[str]] = defaultdict(list)
+        codes = fired_codes if fired_codes is not None else []
 
         for invariant_method in self._invariants.get(stage, {}).values():
             try:
                 invariant_method(self)
             except ValidationError as err:
+                custom = getattr(invariant_method, "_invariant_code", None)
+                codes.append(
+                    str(custom)
+                    if custom is not None
+                    else DiagnosticCode.VALUE_OBJECT_INVARIANT_FAILED.value
+                )
                 # Invariant failures always carry a field-keyed message dict;
                 # narrow from the exception's broader ``str | list | dict`` type.
                 err_messages = cast("dict[str, list[str]]", err.messages)

@@ -61,6 +61,8 @@ class DiagnosticCode(StrEnum):
     HANDLER_TOO_BROAD = "HANDLER_TOO_BROAD"
     HANDLER_PERSISTS_AND_CALLS_OUT = "HANDLER_PERSISTS_AND_CALLS_OUT"
     INFRA_IMPORT_IN_DOMAIN = "INFRA_IMPORT_IN_DOMAIN"
+    INVARIANT_POST_FAILED = "INVARIANT_POST_FAILED"
+    INVARIANT_PRE_FAILED = "INVARIANT_PRE_FAILED"
     LOW_POOL_SIZE = "LOW_POOL_SIZE"
     PROCESS_MANAGER_UNCLOSED = "PROCESS_MANAGER_UNCLOSED"
     PROJECTION_WITHOUT_PROJECTOR = "PROJECTION_WITHOUT_PROJECTOR"
@@ -80,6 +82,7 @@ class DiagnosticCode(StrEnum):
     USAGE_ENRICHER_NOT_CALLABLE = "USAGE_ENRICHER_NOT_CALLABLE"
     USAGE_NOT_A_PROJECTION = "USAGE_NOT_A_PROJECTION"
     USAGE_UNKNOWN_ELEMENT_TYPE = "USAGE_UNKNOWN_ELEMENT_TYPE"
+    VALUE_OBJECT_INVARIANT_FAILED = "VALUE_OBJECT_INVARIANT_FAILED"
     VALUE_OBJECT_MUTABLE_FIELD = "VALUE_OBJECT_MUTABLE_FIELD"
 
 
@@ -523,6 +526,42 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "through the domain's provider configuration instead."
         ),
     ),
+    DiagnosticCode.INVARIANT_POST_FAILED: CodeMeta(
+        category="invariants",
+        level="error",
+        kind="raise",
+        meaning=(
+            "A post-condition invariant on an aggregate, entity, or domain "
+            "service did not hold."
+        ),
+        rationale=(
+            "An `@invariant.post` states a condition that must hold once an "
+            "aggregate, entity, or domain service is built, changed, or run; the "
+            "resulting state broke that condition."
+        ),
+        fix=(
+            "Correct the state so the post-condition holds, or catch the "
+            "`ValidationError`. The error messages name what failed."
+        ),
+    ),
+    DiagnosticCode.INVARIANT_PRE_FAILED: CodeMeta(
+        category="invariants",
+        level="error",
+        kind="raise",
+        meaning=(
+            "A pre-condition invariant on an aggregate, entity, or domain "
+            "service did not hold."
+        ),
+        rationale=(
+            "An `@invariant.pre` guards the state required before an aggregate, "
+            "entity, or domain service is changed or run; the change was "
+            "attempted while that guard did not hold."
+        ),
+        fix=(
+            "Satisfy the pre-condition first, or catch the `ValidationError` and "
+            "correct the input. The error messages name what failed."
+        ),
+    ),
     DiagnosticCode.LOW_POOL_SIZE: CodeMeta(
         category="persistence",
         level="warning",
@@ -778,6 +817,21 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "type outside that set has no factory to build it."
         ),
         fix="Use one of the supported domain element types.",
+    ),
+    DiagnosticCode.VALUE_OBJECT_INVARIANT_FAILED: CodeMeta(
+        category="invariants",
+        level="error",
+        kind="raise",
+        meaning="An invariant on a value object did not hold when it was built.",
+        rationale=(
+            "A value object validates its invariants at construction and is "
+            "immutable afterward; the values it was built from broke one of those "
+            "invariants."
+        ),
+        fix=(
+            "Build the value object from values that satisfy its invariants, or "
+            "catch the `ValidationError`. The error messages name what failed."
+        ),
     ),
     DiagnosticCode.VALUE_OBJECT_MUTABLE_FIELD: CodeMeta(
         category="aggregate_design",

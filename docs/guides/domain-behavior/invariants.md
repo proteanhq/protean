@@ -268,6 +268,45 @@ The `_entity` key is a convention for errors that apply to the entity as a
 whole rather than a specific field. Multiple invariant violations are collected
 and reported together.
 
+### Coded diagnostics
+
+The raised `ValidationError` also carries a stable **code** you can act on
+without reading the messages. On an aggregate, entity, or domain service, a
+failed `@invariant.post` carries `INVARIANT_POST_FAILED` and a failed
+`@invariant.pre` carries `INVARIANT_PRE_FAILED`; a failed value object invariant
+carries `VALUE_OBJECT_INVARIANT_FAILED`. The exception's `rationale` and `fix`
+resolve from that code.
+
+```python
+from protean.exceptions import ValidationError
+
+try:
+    order.total_amount = 140.0
+except ValidationError as exc:
+    print(exc.code)   # "INVARIANT_POST_FAILED"
+    print(exc.codes)  # ["INVARIANT_POST_FAILED"]
+    print(exc.fix)    # how to fix it, from the registry
+```
+
+When several invariants fail together, every code rides on `exc.codes`, and
+`exc.code` is `None` because no single one names the failure. The errors dict is
+the same either way.
+
+Pass `code` to stamp a specific code on an invariant:
+
+```python
+@invariant.post(code="ORDER_TOTAL_MISMATCH")
+def total_matches_items(self):
+    if self.total_amount != sum(item.subtotal for item in self.items):
+        raise ValidationError({"_entity": ["Total should be sum of item prices"]})
+```
+
+The failure then carries `"ORDER_TOTAL_MISMATCH"` in `code` and `codes`. A code
+you define yourself is carried as given; `rationale` and `fix` resolve only for
+codes in Protean's registry. See the
+[init-time and runtime diagnostics reference](../../reference/init-diagnostics.md#invariants)
+for the built-in codes.
+
 ---
 
 !!! tip "See also"

@@ -19,7 +19,7 @@ design time under the same code.
 
 ## Reading a coded exception
 
-Every coded exception exposes four attributes:
+A coded exception exposes these attributes:
 
 ```python
 from protean.exceptions import IncorrectUsageError
@@ -28,14 +28,21 @@ try:
     domain.view_for(SomeAggregate)
 except IncorrectUsageError as exc:
     print(exc.code)       # "USAGE_NOT_A_PROJECTION"
+    print(exc.codes)      # ["USAGE_NOT_A_PROJECTION"]
     print(exc.location)   # "Domain.view_for"
     print(exc.rationale)  # why it fired, from the registry
     print(exc.fix)        # how to fix it, from the registry
 ```
 
-`code` and `location` survive a pickle round-trip, so the code is intact when an
-exception crosses the outbox or broker boundary. An exception raised without a
-code leaves all four attributes `None`, so existing `raise` sites are unaffected.
+`code`, `codes`, and `location` survive a pickle round-trip, so the code is
+intact when an exception crosses the outbox or broker boundary. An exception
+raised without a code leaves `code`, `location`, `rationale`, and `fix` as
+`None` and `codes` empty, so existing `raise` sites are unaffected.
+
+One raise can carry more than one code. When several invariants fail together,
+the single `ValidationError` carries every code in `codes`, and `code` is `None`
+because no single one names the failure. With exactly one code, `code` holds it
+and `rationale`/`fix` resolve from it.
 
 ## Severity levels
 
@@ -221,3 +228,57 @@ has no element type for the domain to register.
 
 **Fix.** Decorate the class as a domain element (e.g. `@domain.aggregate`) before
 registering it, or register a valid element class.
+
+## Invariants
+
+A business rule declared with `@invariant.pre` or `@invariant.post` did not hold
+at runtime. The `ValidationError` still carries its errors dict; it also carries
+the code below, or the code you passed as `@invariant.post(code=...)`. When
+several invariants fail together, every code rides on `codes`.
+
+### INVARIANT_PRE_FAILED { #invariant-pre-failed }
+
+| | |
+|---|---|
+| **Category** | `invariants` |
+| **Level** | `error` |
+| **Exception** | `ValidationError` |
+| **Raised by** | an aggregate, entity, or domain service `@invariant.pre` check |
+
+**Why.** An `@invariant.pre` guards the state required before an aggregate, entity,
+or domain service is changed or run; the change was attempted while that guard did
+not hold.
+
+**Fix.** Satisfy the pre-condition first, or catch the `ValidationError` and correct
+the input. The error messages name what failed.
+
+### INVARIANT_POST_FAILED { #invariant-post-failed }
+
+| | |
+|---|---|
+| **Category** | `invariants` |
+| **Level** | `error` |
+| **Exception** | `ValidationError` |
+| **Raised by** | an aggregate, entity, or domain service `@invariant.post` check |
+
+**Why.** An `@invariant.post` states a condition that must hold once an aggregate,
+entity, or domain service is built, changed, or run; the resulting state broke that
+condition.
+
+**Fix.** Correct the state so the post-condition holds, or catch the
+`ValidationError`. The error messages name what failed.
+
+### VALUE_OBJECT_INVARIANT_FAILED { #value-object-invariant-failed }
+
+| | |
+|---|---|
+| **Category** | `invariants` |
+| **Level** | `error` |
+| **Exception** | `ValidationError` |
+| **Raised by** | a value object invariant check at construction |
+
+**Why.** A value object validates its invariants at construction and is immutable
+afterward; the values it was built from broke one of those invariants.
+
+**Fix.** Build the value object from values that satisfy its invariants, or catch the
+`ValidationError`. The error messages name what failed.
