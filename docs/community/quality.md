@@ -171,9 +171,9 @@ between per-PR CI and a nightly run:
 
 Each pull request runs the in-memory core suite on every version and the full
 adapter suite on the newest stable Python. The nightly run exercises the full
-adapter suite across all five versions. This means **every change runs on all
-five Python versions, and every adapter runs against its real backing service
-before merge**.
+adapter suite across all five versions. The stable versions gate every merge;
+the 3.15 prerelease leg runs alongside them as a non-blocking early-warning
+check while 3.15 is a prerelease.
 
 ### Pipeline Steps
 

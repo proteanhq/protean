@@ -417,7 +417,7 @@ jobs:
 The CI pipeline:
 
 - Runs on each pull request and push to main
-- Runs the in-memory core suite on every Python version (3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease)
+- Runs the in-memory core suite on every Python version (3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease; the 3.15 leg is experimental and non-blocking while 3.15 is a prerelease)
 - Runs the full adapter suite (PostgreSQL, Redis, Elasticsearch, Message-DB, MSSQL) on the newest stable Python per PR, and across every version in the nightly run
 - Enforces the coverage floor and reports coverage to Codecov
 
