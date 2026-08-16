@@ -15,7 +15,11 @@ from typing import Any
 
 import pytest
 
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import (
+    BaseEventStore,
+    IntegrityReport,
+    IntegrityViolation,
+)
 
 
 class _ListStore(BaseEventStore):
@@ -100,7 +104,7 @@ def test_clean_store_reports_no_violations():
     report = store.verify()
 
     assert report.ok is True
-    assert report.violations == []
+    assert report.violations == ()
     assert report.message_count == 3
     assert report.stream_count == 2
 
@@ -388,3 +392,33 @@ def test_messages_missing_required_field_are_flagged_malformed():
     ]
     assert "position" in report.violations[0].detail
     assert "stream_name" in report.violations[1].detail
+
+
+def test_malformed_row_still_reports_non_monotonic_global_position():
+    # A malformed row (missing stream_name) that also duplicates a
+    # global_position must report BOTH the missing field and the monotonicity
+    # break; global_position is always present, so that check runs first.
+    store = _ListStore(
+        [
+            _msg(2, "test::user-abc", 0),
+            {"global_position": 2, "position": 1, "id": "b"},  # missing stream, dup gp
+        ]
+    )
+
+    report = store.verify()
+
+    assert report.ok is False
+    kinds = sorted(v.kind for v in report.violations)
+    assert kinds == [
+        BaseEventStore.VERIFY_MALFORMED_MESSAGE,
+        BaseEventStore.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
+    ]
+
+
+def test_report_violations_is_an_immutable_tuple():
+    violation = IntegrityViolation(kind="x", stream=None, position=None, detail="d")
+    # A list passed at construction is stored as a tuple, so a caller cannot
+    # append to a report after the fact.
+    report = IntegrityReport(message_count=1, stream_count=0, violations=[violation])
+    assert isinstance(report.violations, tuple)
+    assert not hasattr(report.violations, "append")

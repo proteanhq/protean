@@ -37,6 +37,6 @@ class TestMessageDBVerify:
         report = store.verify()
 
         assert report.ok is True
-        assert report.violations == []
+        assert report.violations == ()
         assert report.message_count == 3
         assert report.stream_count == 2

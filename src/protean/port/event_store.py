@@ -65,7 +65,14 @@ class IntegrityReport:
 
     message_count: int
     stream_count: int
-    violations: list[IntegrityViolation] = dc_field(default_factory=list)
+    violations: tuple[IntegrityViolation, ...] = ()
+
+    def __post_init__(self) -> None:
+        # Accept any iterable at construction but store a tuple, so a caller
+        # cannot ``append`` to a report after the fact. ``frozen=True`` seals the
+        # attributes; this seals the collection they point at.
+        if not isinstance(self.violations, tuple):
+            object.__setattr__(self, "violations", tuple(self.violations))
 
     @property
     def ok(self) -> bool:
@@ -982,6 +989,15 @@ class BaseEventStore(metaclass=ABCMeta):
     def _iter_all_messages(self, batch_size: int = 1000) -> Iterator[dict[str, Any]]:
         """Yield every raw message in the store, ordered by ``global_position``.
 
+        This is the raw-dict sibling of the public
+        [`read_all`][protean.port.event_store.BaseEventStore.read_all], and
+        ``verify`` cannot use ``read_all`` in its place. ``read_all`` yields
+        deserialized `Message` objects, and two kinds of row ``verify`` must scan
+        do not deserialize: a snapshot row is written with no metadata, and a
+        corrupt row may be missing fields, so `Message.deserialize` raises on both.
+        Scanning the raw dict lets ``verify`` inspect a snapshot's ``_version``
+        and report a malformed row instead of crashing on it.
+
         Pages through ``$all`` so the raw rows are read in bounded batches rather
         than one unbounded slurp. The read contract (ADR-0024) is an inclusive,
         ``global_position``-ordered page, so the next page starts one past the
@@ -1053,49 +1069,11 @@ class BaseEventStore(metaclass=ABCMeta):
             global_position = msg.get("global_position")
             message_id = msg.get("id")
 
-            # A row missing any required field is itself a corruption. Flag it
-            # and move on: the per-invariant checks below need those values, and
-            # running them on a half-populated row would either crash or invent a
-            # spurious gap.
-            missing = [f for f in self._REQUIRED_FIELDS if msg.get(f) is None]
-            if missing:
-                violations.append(
-                    IntegrityViolation(
-                        kind=self.VERIFY_MALFORMED_MESSAGE,
-                        stream=stream,
-                        position=position,
-                        detail=(
-                            "Message is missing required field(s): "
-                            f"{', '.join(missing)}."
-                        ),
-                    )
-                )
-                continue
-
-            # Past the guard the three required fields are present, and a row
-            # read from ``$all`` always carries a ``global_position`` (the read
-            # filters ``>= position``). Narrow all four for the checks below
-            # (the raw dict values are ``Any | None``).
-            assert (
-                message_id is not None
-                and stream is not None
-                and position is not None
-                and global_position is not None
-            )
-
-            # Duplicate message id (the store's own message identity)
-            if message_id in seen_ids:
-                violations.append(
-                    IntegrityViolation(
-                        kind=self.VERIFY_DUPLICATE_MESSAGE_ID,
-                        stream=stream,
-                        position=position,
-                        detail=f"Message id '{message_id}' appears more than once.",
-                    )
-                )
-            seen_ids.add(message_id)
-
-            # Strictly increasing global_position store-wide
+            # A row read from ``$all`` always carries a ``global_position`` (the
+            # read filters ``>= position``), so check monotonicity FIRST, before
+            # the malformed guard can ``continue``. A row can be malformed and
+            # break monotonicity at once, and verify reports every violation.
+            assert global_position is not None  # read-contract guarantee (mypy)
             if (
                 prev_global_position is not None
                 and global_position <= prev_global_position
@@ -1112,6 +1090,43 @@ class BaseEventStore(metaclass=ABCMeta):
                     )
                 )
             prev_global_position = global_position
+
+            # A row missing any required field is itself a corruption. Flag it
+            # and move on: the remaining checks need those values, and running
+            # them on a half-populated row would either crash or invent a
+            # spurious gap.
+            missing = [f for f in self._REQUIRED_FIELDS if msg.get(f) is None]
+            if missing:
+                violations.append(
+                    IntegrityViolation(
+                        kind=self.VERIFY_MALFORMED_MESSAGE,
+                        stream=stream,
+                        position=position,
+                        detail=(
+                            "Message is missing required field(s): "
+                            f"{', '.join(missing)}."
+                        ),
+                    )
+                )
+                continue
+
+            # Past the guard the three required fields are present. Narrow them
+            # for the checks below (the raw dict values are ``Any | None``).
+            assert (
+                message_id is not None and stream is not None and position is not None
+            )
+
+            # Duplicate message id (the store's own message identity)
+            if message_id in seen_ids:
+                violations.append(
+                    IntegrityViolation(
+                        kind=self.VERIFY_DUPLICATE_MESSAGE_ID,
+                        stream=stream,
+                        position=position,
+                        detail=f"Message id '{message_id}' appears more than once.",
+                    )
+                )
+            seen_ids.add(message_id)
 
             # Per-stream gapless position from base 0
             expected = last_position.get(stream, -1) + 1
@@ -1173,7 +1188,7 @@ class BaseEventStore(metaclass=ABCMeta):
         return IntegrityReport(
             message_count=message_count,
             stream_count=len(stream_head),
-            violations=violations,
+            violations=tuple(violations),
         )
 
     @abstractmethod
