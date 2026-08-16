@@ -200,6 +200,7 @@ specific area.
 - [`protean snapshot`](./reference/cli/data/snapshot.md): Create snapshots for event-sourced aggregates.
 - [`protean projection`](./reference/cli/data/projection.md): Rebuild projections by replaying events from the event store.
 - [`protean events`](./reference/cli/data/events.md): Inspect the event store: read streams, view stats, search events, trace aggregate history, and follow causal chains as a tree or flat table.
+- [`protean eventstore`](./reference/cli/data/eventstore.md): Run a read-only integrity check over the event store, reporting gaps, non-monotonic positions, duplicate ids, and snapshots ahead of their stream.
 - [Type Checking](./reference/type-checking/index.md): Static type checking with the Protean mypy plugin.
 - [Architecture Fitness Functions](./guides/architecture-fitness-functions.md): Enforce DDD architectural decisions on every commit with `protean check`.
 - [Fitness Function Catalog](./reference/fitness-functions.md): Every diagnostic rule, its rationale, and its fix.
