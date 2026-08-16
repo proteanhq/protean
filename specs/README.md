@@ -89,7 +89,8 @@ whether that recording is a behaviour the spec permits. OCC is the first protoco
 wired up (#1382); the harness (`OCCTrace.tla`, the two cfgs, `occ_trace.py`, and
 the `check.sh` plumbing) is built to be reused by the others. The `$all` gap-safe
 checkpoint is the second (#1384) and reuses it verbatim; Recovery is the third
-(#1385). See "Checkpoint trace validation" and "Recovery trace validation" below.
+(#1385); the transactional outbox is the fourth (#1383). See "Checkpoint trace
+validation", "Recovery trace validation", and "Outbox trace validation" below.
 
 How it works, end to end:
 
@@ -194,9 +195,45 @@ log with no such crash leaves `NoRedeliver` holding and is rejected as under-cov
 divergence.jsonl` rejected on conformance, `traces/recovery_no_crash.jsonl` rejected
 on coverage.
 
+### Outbox trace validation
+
+The same harness, applied to the transactional outbox (#1383). The recorder
+`src/protean/utils/outbox_trace.py` is a sibling of `occ_trace.py`, inactive by
+default. When a capture is active, the real outbox path emits the transitions
+`Outbox.tla` talks about, in order: `claim` (a row atomically claimed and marked
+PROCESSING under a lock, from the production `OutboxRepository.claim_batch`),
+`publish` (the broker publish, carrying `ok`/`fail`), and `mark` (the terminal status
+set in the commit, carrying `published`/`failed`/`abandoned`). A `crash` (a worker
+dropping a message before the mark) and a `lock_expire` (a crashed row's lock
+lapsing) are process and time events, not code branches, so the harness records them.
+
+`OutboxTrace.tla` (`EXTENDS Outbox`) replays each entry through `Outbox.tla`'s own
+`Claim` / `Publish` / `MarkPublished` / `MarkFailed` / `Crash` / `LockExpire`
+actions, advancing a pointer. The config binds the shipped constants
+(`AckBeforePublish = FALSE`, `ClaimSafe = TRUE`), so the replay uses the shipped
+actions: the ack-before-publish bug actions (`MarkFirst`/`PublishAfter`) are
+disabled, and `ClaimSafe = TRUE` keeps the `Claim` guard exclusive. Two
+recorded outcomes are cross-checked, pinning the branch the real code took: `publish`
+pins the `Publish` disjunction (`ok` reaches `pubok`, `fail` reaches `pubfail`), and a
+failing `mark` pins the `MarkFailed` terminal (`abandoned` reaches ABANDONED,
+`failed` does not) — exactly as OCC's trace validation pins the commit verdict.
+
+The conformance catch is free from the real spec: `MarkPublished` is gated on the
+worker being in `pubok`, so a log that marks a row PUBLISHED without a preceding
+successful publish leaves it in `claimed`, the action is disabled, the replay stalls,
+and `TraceAccepted` fails — the phantom-delivery divergence `PublishedImpliesDelivered`
+forbids. The coverage check is `NoDuplicateDelivery` (the same probe `Outbox_dup.cfg`
+uses), which TLC must *violate*: a real trace has to witness a crash after the broker
+publish but before the mark, then a reclaim and republish (the at-least-once window
+the protocol exists for). A log with no such redelivery leaves `NoDuplicateDelivery`
+holding and is rejected as under-covered. `check.sh` runs all three — a fresh recorded
+trace accepted, `traces/outbox_divergence.jsonl` rejected on conformance,
+`traces/outbox_no_redelivery.jsonl` rejected on coverage.
+
 ### Adding a protocol
 
-The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
+The harness generalizes. All four current protocol specs (OCC, Checkpoint,
+Recovery, Outbox) now have one; to trace-validate a spec added later:
 
 1. Add the raw fields the spec talks about to the recorder (or a sibling
    recorder), and emit them from the real path under its lock/transaction.
@@ -247,7 +284,13 @@ The harness generalizes. To trace-validate another spec (e.g. `Outbox.tla`):
 | `recovery_trace.py` | Records a real recovery trace, and converts a JSON-lines log into a runnable `RecoveryTrace_*.tla`. |
 | `traces/recovery_divergence.jsonl` | Negative fixture: an advance past a failed position with no durable record; conformance must reject it. |
 | `traces/recovery_no_crash.jsonl` | Negative fixture: a log with a durable flush but no crash redelivery; conformance (including `Flush`) holds, so the coverage check must reject it as under-covered. |
-| `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC, checkpoint, and recovery trace validation. |
+| `OutboxTrace.tla` | Trace validation for the outbox: replays a recorded log through `Outbox.tla`'s `Claim` / `Publish` / `MarkPublished` / `MarkFailed` / `Crash` / `LockExpire` actions and checks it is a behaviour `Outbox.tla` permits (#1383). |
+| `OutboxTrace_conform.cfg` | Conformance check: `TraceAccepted` holds iff the whole recorded log matched an Outbox action. |
+| `OutboxTrace_cover.cfg` | Coverage check: `NoDuplicateDelivery` must be *violated*, witnessing the log re-published a message after a crash. |
+| `outbox_trace.py` | Records a real OutboxProcessor crash-redelivery trace, and converts a JSON-lines log into a runnable `OutboxTrace_*.tla`. |
+| `traces/outbox_divergence.jsonl` | Negative fixture: a row marked published with no preceding successful publish; conformance must reject it. |
+| `traces/outbox_no_redelivery.jsonl` | Negative fixture: a single publish-then-mark with no crash redelivery; the coverage check must reject it as under-covered. |
+| `check.sh` | Runs every config, asserts the expected pass/violation, and runs OCC, checkpoint, recovery, and outbox trace validation. |
 
 ## What is modeled
 

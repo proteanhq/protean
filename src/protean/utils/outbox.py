@@ -12,7 +12,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.fields import Auto
-from protean.utils import ensure_utc_aware
+from protean.utils import ensure_utc_aware, outbox_trace
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now
 from protean.utils.query import F, Q
@@ -629,7 +629,7 @@ class OutboxRepository(BaseRepository):
 
         now = self._dao.domain.clock.now()
 
-        return cast(
+        claimed = cast(
             list[Outbox],
             self._dao._claim(
                 criteria=self._eligibility_criteria(now, target_broker),
@@ -643,6 +643,17 @@ class OutboxRepository(BaseRepository):
                 order_by="-priority",
             ),
         )
+
+        # Trace-validation seam (inactive by default): each claimed row is now
+        # PROCESSING under this worker's lock — the spec's Claim transition. Guarded
+        # so the poll loop does no per-row work unless a capture is running.
+        if outbox_trace.is_active():
+            for row in claimed:
+                outbox_trace.record(
+                    action="claim", worker=worker_id, message=str(row.id)
+                )
+
+        return claimed
 
     def find_failed(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have failed processing.
