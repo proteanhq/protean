@@ -167,6 +167,16 @@ event are independent reactions too: under asynchronous processing each has its
 own subscription, and under synchronous (`event_processing="sync"`) processing one
 failing no longer stops the other.
 
+A separate handler class also gets its own subscription and its own checkpoint,
+which is what makes it fully independent when it touches a different aggregate.
+When two classes both mutate the *same* aggregate, that independence turns into
+contention: they run concurrently and collide on the aggregate's version, driving
+version-conflict retries. Keep those reactions as sibling methods on one class,
+where they run in sequence and each sees the previous commit. For that recipe,
+and for splitting a method that both persists and calls out, see [Calling
+External Systems from
+Handlers](../../patterns/calling-external-systems-from-handlers.md).
+
 !!! note "One event class per method"
     Each `@handle` method accepts exactly one event class. To handle multiple
     event types, define multiple methods in the same handler class. The one
@@ -432,6 +442,7 @@ def handle_error(cls, exc: Exception, message):
 
     **Patterns:**
 
+    - [Calling External Systems from Handlers](../../patterns/calling-external-systems-from-handlers.md): Splitting a method that persists from one that calls out, and the multi-facet fan-out recipe.
     - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md): Ensuring handlers produce correct results even with duplicate delivery.
     - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by delegating to domain logic.
     - [Testing Event-Driven Flows](../../patterns/testing-event-driven-flows.md): Strategies for testing event handlers with pytest.

@@ -90,6 +90,7 @@ need by what you're trying to accomplish.
 | I want to...                                    | Guide |
 |-------------------------------------------------|-------|
 | Run side effects when an event fires            | [Event Handlers](./guides/consume-state/event-handlers.md) |
+| Call an external system from a handler without holding the transaction | [Calling External Systems from Handlers](./patterns/calling-external-systems-from-handlers.md) |
 | Coordinate a multi-step process across aggregates | [Process Managers](./guides/consume-state/process-managers.md) |
 | Correlate events to a running process           | [Process Managers](./guides/consume-state/process-managers.md) |
 | Design a PM for production (idempotency, compensation, timeouts) | [Coordinating Long-Running Processes](./patterns/coordinating-long-running-processes.md) |

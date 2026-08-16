@@ -43,6 +43,9 @@ the call in a method that persists nothing, and it costs only wall-clock time.
 A method that calls out *after* touching a repository holds row locks and a
 connection for the length of the call, and `protean check` reports it as
 [HANDLER_PERSISTS_AND_CALLS_OUT](../../reference/fitness-functions.md#handler-persists-and-calls-out).
+For how to split such a method, and the recipe for a multi-facet sync, see
+[Calling External Systems from
+Handlers](../../patterns/calling-external-systems-from-handlers.md).
 
 The guarantee is about the invocation rather than the method body. A handler
 carrying `idempotent=True` reads its processed-message marker before the body
