@@ -1023,9 +1023,12 @@ class BaseEventStore(metaclass=ABCMeta):
 
         A corrupt row is reported, never silently skipped: that is the whole
         point of the check, so a row missing a required field or a snapshot with
-        a non-integer ``_version`` becomes a violation rather than a pass. The
-        checks that need a value are still guarded so a corrupt row cannot crash
-        the scan.
+        a non-integer ``_version`` becomes a violation rather than a pass, and
+        the missing-field guard runs first so those checks never touch an absent
+        value. This handles the corruption a store can actually hold: every
+        adapter types its columns (MessageDB by SQL column type, the memory
+        adapter by its pydantic model), so a present-but-wrongly-typed field
+        (a list ``id``, a string ``position``) does not arise from a read.
 
         This asserts the store's *internal* consistency, not a schema version
         (none is stored today). It is read-only: a clean store yields a report

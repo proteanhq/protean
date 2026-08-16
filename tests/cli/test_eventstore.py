@@ -218,8 +218,13 @@ class TestEventStoreVerify:
         assert payload["status"] == "error"
 
 
+@pytest.mark.no_test_domain
 class TestEventStoreVerifyEndToEnd:
-    """Run the command against a real domain, exercising verify -> envelope -> exit."""
+    """Run the command against a real domain, exercising verify -> envelope -> exit.
+
+    Marked ``no_test_domain`` so the autouse ``test_domain`` fixture does not
+    activate an unrelated domain around a test that loads its own real one.
+    """
 
     @pytest.fixture(autouse=True)
     def reset_path(self):
