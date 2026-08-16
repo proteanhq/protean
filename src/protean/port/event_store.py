@@ -973,8 +973,11 @@ class BaseEventStore(metaclass=ABCMeta):
 
     _SNAPSHOT_MARKER = ":snapshot-"
 
-    # Columns every adapter populates on write; a missing one is a malformed row.
-    _REQUIRED_FIELDS = ("id", "stream_name", "position", "global_position")
+    # Fields a message read from ``$all`` must carry; a missing one is a
+    # malformed row. ``global_position`` is not here: the ``$all`` read filters
+    # ``>= position`` and both adapters make it NOT NULL, so a row without one
+    # is never returned to check (see ``_iter_all_messages``).
+    _REQUIRED_FIELDS = ("id", "stream_name", "position")
 
     def _iter_all_messages(self, batch_size: int = 1000) -> Iterator[dict[str, Any]]:
         """Yield every raw message in the store, ordered by ``global_position``.
@@ -1011,7 +1014,7 @@ class BaseEventStore(metaclass=ABCMeta):
         of these invariants:
 
         - every row carries its required fields (``id``, ``stream_name``,
-          ``position``, ``global_position``),
+          ``position``),
         - per-stream ``position`` is gapless from the stream base (0),
         - ``global_position`` is strictly increasing store-wide,
         - message ids are unique,
@@ -1066,8 +1069,10 @@ class BaseEventStore(metaclass=ABCMeta):
                 )
                 continue
 
-            # Past the guard, the four required fields are present. Narrow their
-            # types for the checks below (the raw dict values are ``Any | None``).
+            # Past the guard the three required fields are present, and a row
+            # read from ``$all`` always carries a ``global_position`` (the read
+            # filters ``>= position``). Narrow all four for the checks below
+            # (the raw dict values are ``Any | None``).
             assert (
                 message_id is not None
                 and stream is not None

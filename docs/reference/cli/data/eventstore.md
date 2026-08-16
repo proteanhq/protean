@@ -24,8 +24,8 @@ protean eventstore verify --domain=my_domain
 
 It checks these invariants:
 
-- **Rows are well-formed.** Every message carries its `id`, `stream_name`,
-  `position`, and `global_position`.
+- **Rows are well-formed.** Every message carries its `id`, `stream_name`, and
+  `position`.
 - **Position is gapless.** Each stream's `position` runs from 0 without gaps.
 - **Global position is strictly increasing.** `global_position` increases
   store-wide across every message.
