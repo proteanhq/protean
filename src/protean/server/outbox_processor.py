@@ -466,17 +466,6 @@ class OutboxProcessor(BaseSubscription):
                         # timestamp and the latency measurement below.
                         now = self.engine.domain.clock.now()
                         message.mark_published(now=now)
-                        # Trace-validation seam: the terminal mark. The recorder emits
-                        # this and the publish-failure mark below, the two transitions
-                        # the modeled protocol has. The partition-key backstop abandon
-                        # and the error-recovery fallback re-mark a row outside that
-                        # path, so (like crash/lock_expire) they are not emitted here.
-                        outbox_trace.record(
-                            action="mark",
-                            worker=self.worker_id,
-                            message=str(message.id),
-                            outcome=message.status,
-                        )
                         logger.debug(
                             "outbox.message_published",
                             extra={
@@ -512,12 +501,6 @@ class OutboxProcessor(BaseSubscription):
                         )
                     else:
                         self._mark_message_failed(message, publish_error)
-                        outbox_trace.record(
-                            action="mark",
-                            worker=self.worker_id,
-                            message=str(message.id),
-                            outcome=message.status,
-                        )
                         logger.warning(
                             "outbox.publish_failed",
                             extra={
@@ -536,8 +519,29 @@ class OutboxProcessor(BaseSubscription):
                     # Save the final status
                     self.outbox_repo.add(message)
 
+                    # Capture the terminal status inside the UoW, while the session is
+                    # live, for the trace emit after commit: reading it post-commit
+                    # could touch an expired attribute on a closed session, and the
+                    # record() argument is evaluated even when the recorder is inactive.
+                    marked_id = str(message.id)
+                    marked_status = message.status
+
                     # UnitOfWork commits here - either all operations succeed or all rollback
-                    return publish_success
+
+                # Trace-validation seam: the terminal mark, emitted only after the
+                # UnitOfWork has durably committed, so the recorded status is a
+                # persisted transition and not an intent that could roll back. One
+                # record covers both branches (published, or failed/abandoned). The
+                # partition-key backstop abandon and the error-recovery fallback
+                # re-mark a row outside the modeled protocol path, so (like crash and
+                # lock_expire) they are not emitted.
+                outbox_trace.record(
+                    action="mark",
+                    worker=self.worker_id,
+                    message=marked_id,
+                    outcome=marked_status,
+                )
+                return publish_success
 
             except Exception as exc:
                 set_span_error(span, exc)
