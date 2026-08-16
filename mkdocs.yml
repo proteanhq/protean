@@ -511,6 +511,7 @@ nav:
       - patterns/idempotent-event-handlers.md
       - patterns/event-versioning-and-evolution.md
       - patterns/command-idempotency.md
+      - patterns/calling-external-systems-from-handlers.md
       - patterns/coordinating-long-running-processes.md
       - patterns/process-manager-lifecycle.md
       - patterns/message-tracing.md

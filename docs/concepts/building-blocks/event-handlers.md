@@ -60,10 +60,16 @@ independently and event handlers bridge the gap asynchronously.
 
 ### Event handlers coordinate side effects. { data-toc-label="Side Effects" }
 
-Beyond cross-aggregate state synchronization, event handlers are the right
-place for any work that should happen in response to a domain event:
-sending emails, updating caches, calling external APIs, writing audit logs,
-or publishing messages to downstream systems.
+Beyond cross-aggregate state synchronization, event handlers are where work that
+should follow a domain event goes: sending emails, updating caches, calling
+external APIs, writing audit logs, or publishing messages to downstream systems.
+
+A single handler method either persists or talks to an external system, never
+both. The method runs inside a Unit of Work, so an external call after a
+repository access holds the transaction open for the length of that call. Split
+the two: a persisting method raises an event, and a calling method handles it.
+See [Calling External Systems from
+Handlers](../../patterns/calling-external-systems-from-handlers.md).
 
 ## Event Handlers vs. Related Elements
 

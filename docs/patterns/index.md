@@ -125,6 +125,13 @@ If you are new to these patterns, these sequences build on each other:
   once. Covers Protean's three-layer idempotency model, idempotency keys,
   and handler-level strategies for different operation types.
 
+- **[Calling External Systems from Handlers](calling-external-systems-from-handlers.md)**:
+  A handler method persists or calls out, never both, because the call would
+  otherwise hold the transaction open across the network. Covers splitting a
+  persisting method from a calling one, chaining the call to an event when it
+  needs the write's value, the idempotency-key answer when the two cannot be
+  split, and the multi-facet fan-out recipe.
+
 - **[Coordinating Long-Running Processes](coordinating-long-running-processes.md)**:
   Use a process manager to coordinate multi-step workflows that span
   multiple aggregates. Covers declarative correlation, lifecycle management,
