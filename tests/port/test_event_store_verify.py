@@ -62,13 +62,18 @@ class _ListStore(BaseEventStore):
         raise NotImplementedError
 
 
+# Sentinel so an explicit ``data=None`` (a non-dict corruption) is preserved
+# rather than coerced to ``{}``; omitting ``data`` still defaults to ``{}``.
+_UNSET = object()
+
+
 def _msg(
     global_position: int,
     stream_name: str,
     position: int,
     *,
     id: str | None = None,
-    data: dict[str, Any] | None = None,
+    data: Any = _UNSET,
 ) -> dict[str, Any]:
     return {
         "global_position": global_position,
@@ -76,7 +81,7 @@ def _msg(
         "position": position,
         "id": id if id is not None else f"id-{global_position}",
         "type": "Event",
-        "data": data or {},
+        "data": {} if data is _UNSET else data,
     }
 
 
