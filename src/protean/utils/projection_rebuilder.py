@@ -201,19 +201,16 @@ def _replay_projector(
 
     # Collect all messages from all categories.
     #
-    # A full rebuild replays every event in a category, so we read the whole
-    # category in a single call rather than paginating — it is the simplest
-    # correct pass, and on production stores (MessageDB) a single large read per
-    # category is equally efficient thanks to server-side cursors.
+    # A full rebuild replays every event in a category, so we page through the
+    # whole category with `read_all`. The win over the old single sentinel-capped
+    # read is completeness: a category larger than the read cap is no longer
+    # silently truncated. `batch_size` sets the page size, so each round-trip to
+    # the store is bounded; peak memory is still O(all events), since the merge
+    # below collects every message into one list to sort by `global_position`.
     all_messages: list[Message] = []
     event_store = domain._require_event_store()
     for category in stream_categories:
-        messages = event_store.read(
-            category,
-            position=0,
-            no_of_messages=1_000_000,
-        )
-        all_messages.extend(messages)
+        all_messages.extend(event_store.read_all(category, page_size=batch_size))
 
     # Sort by global_position for correct cross-category ordering
     def _global_position(message: Message) -> int:
