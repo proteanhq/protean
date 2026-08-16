@@ -6,6 +6,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.entity import _invariant_code
 from protean.exceptions import IncorrectUsageError, NotSupportedError, ValidationError
 from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
@@ -91,11 +92,13 @@ def _make_invariant_wrapper(
     @wraps(original_method)
     def wrapped_call(self: "BaseDomainService", *args: Any, **kwargs: Any) -> Any:
         errors: dict[str, list[str]] = {}
+        codes: list[str] = []
 
         for invariant_method in self._invariants["pre"].values():
             try:
                 invariant_method(self)
             except ValidationError as err:
+                codes.append(_invariant_code(invariant_method, "pre"))
                 err_messages = cast("dict[str, list[str]]", err.messages)
                 for field_name in err_messages:
                     if field_name not in errors:
@@ -103,7 +106,7 @@ def _make_invariant_wrapper(
                     errors[field_name].extend(err_messages[field_name])
 
         if errors:
-            raise ValidationError(errors)
+            raise ValidationError(errors, codes=codes, location=type(self).__qualname__)
 
         result = original_method(self, *args, **kwargs)
 
@@ -111,6 +114,7 @@ def _make_invariant_wrapper(
             try:
                 invariant_method(self)
             except ValidationError as err:
+                codes.append(_invariant_code(invariant_method, "post"))
                 err_messages = cast("dict[str, list[str]]", err.messages)
                 for field_name in err_messages:
                     if field_name not in errors:
@@ -118,7 +122,7 @@ def _make_invariant_wrapper(
                     errors[field_name].extend(err_messages[field_name])
 
         if errors:
-            raise ValidationError(errors)
+            raise ValidationError(errors, codes=codes, location=type(self).__qualname__)
 
         return result
 

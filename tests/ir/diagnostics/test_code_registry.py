@@ -36,6 +36,7 @@ ALLOWED_CATEGORIES = frozenset(
         "configuration",
         "deprecation",
         "handler_completeness",
+        "invariants",
         "naming_conventions",
         "persistence",
         "unsupported",
@@ -52,13 +53,16 @@ ALLOWED_LEVELS = frozenset({"error", "warning", "info"})
 ALLOWED_KINDS = frozenset({"lint", "raise"})
 
 # The producers that reference diagnostic codes, relative to the source root.
-# ``domain/__init__.py`` and ``domain/config.py`` reference the init/runtime
-# ``kind="raise"`` codes; the rest reference the ``kind="lint"`` rules.
+# ``domain/__init__.py``, ``domain/config.py``, ``core/entity.py``, and
+# ``core/value_object.py`` reference the init/runtime ``kind="raise"`` codes;
+# the rest reference the ``kind="lint"`` rules.
 PRODUCER_FILES = (
     "ir/builder.py",
     "domain/validation.py",
     "domain/__init__.py",
     "domain/config.py",
+    "core/entity.py",
+    "core/value_object.py",
     "_deprecation.py",
 )
 
@@ -143,6 +147,8 @@ class TestGoldenSnapshot:
             "HANDLER_PERSISTS_AND_CALLS_OUT",
             "HANDLER_TOO_BROAD",
             "INFRA_IMPORT_IN_DOMAIN",
+            "INVARIANT_POST_FAILED",
+            "INVARIANT_PRE_FAILED",
             "LOW_POOL_SIZE",
             "PROCESS_MANAGER_UNCLOSED",
             "PROJECTION_WITHOUT_PROJECTOR",
@@ -162,6 +168,7 @@ class TestGoldenSnapshot:
             "USAGE_ENRICHER_NOT_CALLABLE",
             "USAGE_NOT_A_PROJECTION",
             "USAGE_UNKNOWN_ELEMENT_TYPE",
+            "VALUE_OBJECT_INVARIANT_FAILED",
             "VALUE_OBJECT_MUTABLE_FIELD",
         }
     )
@@ -177,6 +184,8 @@ class TestGoldenSnapshot:
             "CONFIG_ELEMENT_NOT_REGISTERED",
             "CONFIG_EVENT_STORE_NOT_INITIALIZED",
             "CONFIG_UNRESOLVED_ENV_VAR",
+            "INVARIANT_POST_FAILED",
+            "INVARIANT_PRE_FAILED",
             "UNSUPPORTED_ELEMENT_CLASS",
             "USAGE_CACHE_BACKED_NO_REPOSITORY",
             "USAGE_DUPLICATE_DATABASE_MODEL",
@@ -184,6 +193,7 @@ class TestGoldenSnapshot:
             "USAGE_ENRICHER_NOT_CALLABLE",
             "USAGE_NOT_A_PROJECTION",
             "USAGE_UNKNOWN_ELEMENT_TYPE",
+            "VALUE_OBJECT_INVARIANT_FAILED",
         }
     )
 
@@ -252,6 +262,8 @@ class TestMetadataSnapshot:
         "HANDLER_PERSISTS_AND_CALLS_OUT": "ca9b600f8c1d9004",
         "HANDLER_TOO_BROAD": "13aca3a2584e4377",
         "INFRA_IMPORT_IN_DOMAIN": "e9473616069280ed",
+        "INVARIANT_POST_FAILED": "304a59b149aa8f82",
+        "INVARIANT_PRE_FAILED": "7fe9b51b9b73b67e",
         "LOW_POOL_SIZE": "e709be40fa308c30",
         "PROCESS_MANAGER_UNCLOSED": "047584f91a3ef45f",
         "PROJECTION_WITHOUT_PROJECTOR": "a0e32732676a7838",
@@ -271,6 +283,7 @@ class TestMetadataSnapshot:
         "USAGE_ENRICHER_NOT_CALLABLE": "5c96e4c23003e66c",
         "USAGE_NOT_A_PROJECTION": "854b5708a5ec40a5",
         "USAGE_UNKNOWN_ELEMENT_TYPE": "840400ec794f376d",
+        "VALUE_OBJECT_INVARIANT_FAILED": "147df7e5751ce7c2",
         "VALUE_OBJECT_MUTABLE_FIELD": "1e01dfac9ba9bf00",
     }
 

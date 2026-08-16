@@ -48,6 +48,7 @@ from protean.integrations.logging import (
     SECURITY_EVENT_INVARIANT_FAILED,
     log_security_event,
 )
+from protean.ir.diagnostics import DiagnosticCode
 from protean.utils import (
     DomainObjects,
     _coerce_uuid_to_str,
@@ -632,9 +633,17 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 setattr(self, f"filter_{field_name}", partial(assoc_obj.filter, self))
 
         # Run post-invariants after init
-        errors = self._run_invariants("post", return_errors=True) or {}
+        fired_codes: list[str] = []
+        errors = (
+            self._run_invariants("post", return_errors=True, fired_codes=fired_codes)
+            or {}
+        )
         if errors:
-            raise ValidationError(errors)
+            raise ValidationError(
+                errors,
+                codes=fired_codes,
+                location=type(self).__qualname__,
+            )
 
         self._initialized = True
 
@@ -695,24 +704,35 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     # Invariant checks
     # ------------------------------------------------------------------
     def _run_invariants(
-        self, stage: str, return_errors: bool = False
+        self,
+        stage: str,
+        return_errors: bool = False,
+        fired_codes: list[str] | None = None,
     ) -> dict[str, list[str]] | None:
         """Run invariants for a given stage. Collect and return/raise errors.
 
-        Also recursively walks associations (HasMany, HasOne) and ValueObject
-        fields to run child-entity invariants, mirroring the legacy behavior.
+        Also recursively walks associations (HasMany, HasOne) to run child-entity
+        invariants, mirroring the legacy behavior.
+
+        ``fired_codes`` accumulates the diagnostic code of every invariant that
+        fails, at this level and recursively in child entities, so the top-level
+        raise (here or in ``__init__``) can attach them all. A caller aggregating
+        with ``return_errors=True`` passes its own list; the internal raise below
+        builds one when none is given.
         """
         if self._disable_invariant_checks:
             return {} if return_errors else None
 
         errors: dict[str, list[str]] = defaultdict(list)
         failed_invariants: list[str] = []
+        codes = fired_codes if fired_codes is not None else []
 
         for method_name, invariant_method in self._invariants.get(stage, {}).items():
             try:
                 invariant_method(self)
             except ValidationError as err:
                 failed_invariants.append(method_name)
+                codes.append(_invariant_code(invariant_method, stage))
                 # Invariant failures always raise the dict form of ``messages``.
                 err_messages = cast("dict[str, list[str]]", err.messages)
                 for field_name in err_messages:
@@ -726,9 +746,13 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                     items = value if isinstance(value, list) else [value]
                     for item in items:
                         if stage == "pre":
-                            item_errors = item._precheck(return_errors=True)
+                            item_errors = item._precheck(
+                                return_errors=True, fired_codes=codes
+                            )
                         else:
-                            item_errors = item._postcheck(return_errors=True)
+                            item_errors = item._postcheck(
+                                return_errors=True, fired_codes=codes
+                            )
                         if item_errors:
                             for sub_field, error_list in item_errors.items():
                                 errors[sub_field].extend(error_list)
@@ -738,7 +762,11 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         if errors:
             self._emit_invariant_failed(stage, failed_invariants, errors)
-            raise ValidationError(errors)
+            raise ValidationError(
+                errors,
+                codes=codes,
+                location=type(self).__qualname__,
+            )
 
         return None
 
@@ -786,13 +814,21 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 stage=stage,
             )
 
-    def _precheck(self, return_errors: bool = False) -> dict[str, list[str]] | None:
+    def _precheck(
+        self, return_errors: bool = False, fired_codes: list[str] | None = None
+    ) -> dict[str, list[str]] | None:
         """Invariant checks performed before entity changes."""
-        return self._run_invariants("pre", return_errors=return_errors)
+        return self._run_invariants(
+            "pre", return_errors=return_errors, fired_codes=fired_codes
+        )
 
-    def _postcheck(self, return_errors: bool = False) -> dict[str, list[str]] | None:
+    def _postcheck(
+        self, return_errors: bool = False, fired_codes: list[str] | None = None
+    ) -> dict[str, list[str]] | None:
         """Invariant checks performed after initialization and attribute changes."""
-        return self._run_invariants("post", return_errors=return_errors)
+        return self._run_invariants(
+            "post", return_errors=return_errors, fired_codes=fired_codes
+        )
 
     # ------------------------------------------------------------------
     # Status transition validation
@@ -1214,21 +1250,72 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     return element_cls
 
 
+_INVARIANT_STAGE_CODES: dict[str, DiagnosticCode] = {
+    "pre": DiagnosticCode.INVARIANT_PRE_FAILED,
+    "post": DiagnosticCode.INVARIANT_POST_FAILED,
+}
+
+
+def _invariant_code(method: Callable[..., Any], stage: str) -> str:
+    """The diagnostic code for a fired invariant: the author's ``code=`` when
+    the invariant declared one, else the framework default for the stage."""
+    custom = getattr(method, "_invariant_code", None)
+    if custom is not None:
+        return str(custom)
+    return _INVARIANT_STAGE_CODES[stage].value
+
+
+def _mark_invariant(
+    func: Callable[..., Any], stage: str, code: DiagnosticCode | str | None
+) -> Callable[..., Any]:
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        return func(*args, **kwargs)
+
+    setattr(wrapper, "_invariant", stage)
+    # An empty code is treated as none given, so a falsy string falls back to the
+    # stage default instead of masquerading as a real code.
+    if code:
+        setattr(wrapper, "_invariant_code", code)
+    return wrapper
+
+
 class invariant:
     @staticmethod
-    def pre(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return func(*args, **kwargs)
+    def pre(
+        func: Callable[..., Any] | None = None,
+        *,
+        code: DiagnosticCode | str | None = None,
+    ) -> Callable[..., Any]:
+        """Mark a method as a pre-condition invariant.
 
-        setattr(wrapper, "_invariant", "pre")
-        return wrapper
+        Use bare as ``@invariant.pre``, or pass ``code`` to stamp a specific
+        diagnostic code on the failure: ``@invariant.pre(code=...)``. Without
+        it, an aggregate, entity, or domain-service failure carries the default
+        ``INVARIANT_PRE_FAILED``.
+        """
+
+        def decorate(f: Callable[..., Any]) -> Callable[..., Any]:
+            return _mark_invariant(f, "pre", code)
+
+        return decorate(func) if func is not None else decorate
 
     @staticmethod
-    def post(func: Callable[..., Any]) -> Callable[..., Any]:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return func(*args, **kwargs)
+    def post(
+        func: Callable[..., Any] | None = None,
+        *,
+        code: DiagnosticCode | str | None = None,
+    ) -> Callable[..., Any]:
+        """Mark a method as a post-condition invariant.
 
-        setattr(wrapper, "_invariant", "post")
-        return wrapper
+        Use bare as ``@invariant.post``, or pass ``code`` to stamp a specific
+        diagnostic code on the failure: ``@invariant.post(code=...)``. Without
+        it, an aggregate, entity, or domain-service failure carries the default
+        ``INVARIANT_POST_FAILED``, and a value object carries
+        ``VALUE_OBJECT_INVARIANT_FAILED``.
+        """
+
+        def decorate(f: Callable[..., Any]) -> Callable[..., Any]:
+            return _mark_invariant(f, "post", code)
+
+        return decorate(func) if func is not None else decorate

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 from protean._deprecation import ProteanDeprecationWarning
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from protean.ir.diagnostics import CodeMeta, DiagnosticCode
 
 __all__ = [
@@ -72,6 +74,30 @@ def _emit_security_event(event_type: str, args: tuple[Any, ...]) -> None:
     log_security_event(event_type, detail=detail)
 
 
+def _normalize_codes(
+    code: DiagnosticCode | str | None,
+    codes: Sequence[DiagnosticCode | str] | None,
+) -> list[str]:
+    """Flatten ``code``/``codes`` into a de-duplicated list of code strings.
+
+    ``str()`` on a ``DiagnosticCode`` (a ``StrEnum``) yields its plain value, so
+    the result pickles without dragging the enum (and the ``protean.ir`` import)
+    across the wire; an author-supplied string code is carried as given.
+
+    De-duplication (order preserved) lives here, so ``code`` reads as the single
+    distinct code whenever one distinct code is carried, whatever the caller
+    passed. ``codes`` wins when both are given. A lone ``DiagnosticCode`` or
+    string handed to ``codes`` is treated as one code, not split into characters.
+    """
+    if codes is not None:
+        if isinstance(codes, str):
+            return [str(codes)]
+        return list(dict.fromkeys(str(c) for c in codes))
+    if code is not None:
+        return [str(code)]
+    return []
+
+
 class ProteanException(Exception):
     """Base class for all Exceptions raised within Protean.
 
@@ -79,23 +105,31 @@ class ProteanException(Exception):
     and ``location`` to carry a stable, machine-readable diagnostic alongside the
     prose message. ``rationale`` and ``fix`` then resolve from the registry, so an
     agent or operator catching the exception gets the same coded rationale/fix an
-    IR-build diagnostic carries. Both default to ``None`` when no code is given,
-    so every existing raise keeps working unchanged.
+    IR-build diagnostic carries. A raise that merges several failures (invariants
+    failing together) passes ``codes`` with all of them; ``code`` is then the
+    single code when exactly one is carried, and ``None`` otherwise. Everything
+    defaults to empty/``None`` when no code is given, so every existing raise
+    keeps working unchanged.
     """
 
     def __init__(
         self,
         *args: Any,
-        code: DiagnosticCode | None = None,
+        code: DiagnosticCode | str | None = None,
+        codes: Sequence[DiagnosticCode | str] | None = None,
         location: str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args)
 
         self.extra_info = kwargs.get("extra_info")
-        # Stored as the plain string value so it pickles without dragging the
-        # enum (and the ``protean.ir`` import) across the wire.
-        self.code: str | None = code.value if code is not None else None
+        # Stored as plain strings so they pickle without dragging the enum (and
+        # the ``protean.ir`` import) across the wire. ``codes`` carries every
+        # code a raise attaches; ``code`` is the single one when exactly one is
+        # present (the common case, and every init/runtime accessor raise), and
+        # ``None`` when a raise merges several, as invariants failing together do.
+        self.codes: list[str] = _normalize_codes(code, codes)
+        self.code: str | None = self.codes[0] if len(self.codes) == 1 else None
         self.location: str | None = location
 
     @property
@@ -139,7 +173,7 @@ class ProteanException(Exception):
         return (self.__class__, self.args[:1], self._diagnostic_state())
 
     def _diagnostic_state(self) -> dict[str, Any]:
-        return {"code": self.code, "location": self.location}
+        return {"code": self.code, "codes": self.codes, "location": self.location}
 
 
 class ProteanExceptionWithMessage(ProteanException):

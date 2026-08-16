@@ -133,6 +133,78 @@ class TestCodedException:
         assert restored.code == "USAGE_NOT_A_PROJECTION"
 
 
+class TestMultipleCodes:
+    """A single raise may carry several codes (invariants failing together);
+    ``codes`` holds them all, and ``code`` names the single one or ``None``."""
+
+    def test_codes_default_empty_and_code_none(self):
+        exc = ConfigurationError("plain")
+        assert exc.codes == []
+        assert exc.code is None
+
+    def test_a_single_code_populates_both_code_and_codes(self):
+        exc = ValidationError({"f": ["bad"]}, code=DiagnosticCode.INVARIANT_POST_FAILED)
+        assert exc.code == "INVARIANT_POST_FAILED"
+        assert exc.codes == ["INVARIANT_POST_FAILED"]
+
+    def test_several_codes_leave_code_none_and_fill_codes(self):
+        exc = ValidationError(
+            {"f": ["bad"]},
+            codes=[
+                DiagnosticCode.INVARIANT_POST_FAILED,
+                DiagnosticCode.INVARIANT_PRE_FAILED,
+            ],
+        )
+        assert exc.code is None
+        assert exc.codes == ["INVARIANT_POST_FAILED", "INVARIANT_PRE_FAILED"]
+
+    def test_codes_are_stored_as_plain_strings(self):
+        # Both a DiagnosticCode member and a bare string normalize to str.
+        exc = ValidationError(
+            {"f": ["bad"]},
+            codes=[DiagnosticCode.INVARIANT_POST_FAILED, "APP_SPECIFIC_CODE"],
+        )
+        assert exc.codes == ["INVARIANT_POST_FAILED", "APP_SPECIFIC_CODE"]
+        assert all(type(c) is str for c in exc.codes)
+
+    def test_codes_survive_a_pickle_round_trip(self):
+        exc = ValidationError(
+            {"f": ["bad"]},
+            codes=[DiagnosticCode.INVARIANT_POST_FAILED, "APP_SPECIFIC_CODE"],
+            location="Order",
+        )
+        restored = pickle.loads(pickle.dumps(exc))
+
+        assert type(restored) is ValidationError
+        assert restored.codes == ["INVARIANT_POST_FAILED", "APP_SPECIFIC_CODE"]
+        assert restored.code is None
+        assert restored.location == "Order"
+
+    def test_a_scalar_string_code_is_carried(self):
+        # ``code`` widened to accept a plain string, not only a DiagnosticCode.
+        exc = ValidationError({"f": ["bad"]}, code="APP_CODE")
+        assert exc.code == "APP_CODE"
+        assert exc.codes == ["APP_CODE"]
+
+    def test_a_repeated_code_dedupes_so_code_stays_set(self):
+        # Dedup lives in the constructor, so one distinct code keeps ``code`` set.
+        exc = ValidationError({"f": ["bad"]}, codes=["A_CODE", "A_CODE"])
+        assert exc.codes == ["A_CODE"]
+        assert exc.code == "A_CODE"
+
+    def test_a_bare_string_passed_as_codes_is_one_code_not_split(self):
+        # ``str`` is itself a Sequence[str]; a lone string must not split into
+        # per-character codes.
+        exc = ValidationError({"f": ["bad"]}, codes="APP_CODE")
+        assert exc.codes == ["APP_CODE"]
+        assert exc.code == "APP_CODE"
+
+    def test_codes_wins_when_both_code_and_codes_are_given(self):
+        exc = ValidationError({"f": ["bad"]}, code="SCALAR", codes=["A", "B"])
+        assert exc.codes == ["A", "B"]
+        assert exc.code is None
+
+
 class TestProteanException:
     @pytest.fixture
     def exception_instance(self):
