@@ -368,10 +368,10 @@ def test_missing_required_field_is_rejected(tmp_path):
 
 
 @pytest.mark.no_test_domain
-def test_non_scalar_id_is_rejected(tmp_path):
-    # Workers/messages are mapped by identity, so a non-scalar id (list, dict, bool,
-    # float, null) is malformed rather than stringified.
-    for bad in ([1], {"a": 1}, True, 1.5, None):
+def test_non_string_id_is_rejected(tmp_path):
+    # Ids are mapped by identity and must be strings; an int (5), bool, float, null,
+    # list, or dict is malformed. Rejecting int too keeps 5 and "5" from colliding.
+    for bad in (5, [1], {"a": 1}, True, 1.5, None):
         log = _write(
             tmp_path / "id.jsonl",
             [{"action": "claim", "worker": bad, "message": "m"}],

@@ -250,23 +250,25 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _identity(value: object, name: str) -> str:
-    """Return an opaque identifier as a string, or raise :class:`ValueError`.
+    """Return an opaque string identifier, or raise :class:`ValueError`.
 
-    Workers and messages are mapped to small integers by identity, so their exact
-    form does not matter, but they must be a scalar (a string or an integer). A
-    bool, float, ``None``, or container is malformed input, rejected rather than
-    stringified into a value that would surface later as a confusing TLC failure.
+    Workers and messages are mapped to small integers by identity. The recorder
+    always emits them as strings (``str(row.id)`` / ``worker_id``), so the converter
+    requires a string here: accepting an int as well would let ``1`` and ``"1"`` map
+    to the same id, an ambiguity a string-only contract removes. A non-string is
+    malformed input, rejected rather than coerced into a value that would surface
+    later as a confusing TLC failure.
     """
-    if isinstance(value, bool) or not isinstance(value, (str, int)):
-        raise ValueError(f"{name} must be a string or integer id")
-    return str(value)
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string id")
+    return value
 
 
 def _parse_event(event: object) -> tuple[str, str, str, str | None]:
     """Validate one recorded event and return ``(action, worker, message, outcome)``.
 
     Raises :class:`ValueError` with a readable message on any malformed input (not a
-    JSON object, a missing field, an unknown action, a non-scalar id, or a publish /
+    JSON object, a missing field, an unknown action, a non-string id, or a publish /
     mark whose outcome is missing or out of range), so the caller can reject the
     whole log cleanly instead of crashing on a raw ``KeyError``/``ValueError``.
     """
