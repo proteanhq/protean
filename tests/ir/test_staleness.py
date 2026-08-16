@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from importlib.metadata import entry_points
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from protean.ir.staleness import (
     StalenessStatus,
     check_staleness,
     load_stored_ir,
+    staleness_diagnostic,
 )
 from tests.shared import change_working_directory_to
 
@@ -969,3 +971,111 @@ class TestPrintCheckTextBranches:
         captured = capsys.readouterr()
         assert "0.0.9" in captured.out
         assert "0.1.0" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# TestStalenessDiagnostic
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.no_test_domain
+class TestStalenessDiagnostic:
+    """staleness_diagnostic() surfaces the IR_STALE coded diagnostic with its
+    resolving operation, and the named command clears it end to end."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self, tmp_path):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._protean_dir = tmp_path / ".protean"
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def _write_stale_ir(self) -> None:
+        _write_ir(self._protean_dir, {"checksum": "sha256:outdated0000000000000000"})
+
+    def test_fresh_result_has_no_diagnostic(self):
+        # Negative: a fresh baseline has nothing to report.
+        result = StalenessResult(
+            status=StalenessStatus.FRESH,
+            domain_checksum="sha256:same",
+            stored_checksum="sha256:same",
+            ir_file=None,
+        )
+        assert staleness_diagnostic(result, domain_module="publishing7.py") is None
+
+    def test_non_stale_statuses_have_no_diagnostic(self):
+        # Negative: IR_STALE is scoped to STALE only. Iterate every other status
+        # so a status added later is covered automatically (NO_IR and
+        # VERSION_MISMATCH are distinct outcomes and must not surface IR_STALE).
+        non_stale = [s for s in StalenessStatus if s != StalenessStatus.STALE]
+        assert non_stale
+        for status in non_stale:
+            result = StalenessResult(
+                status=status,
+                domain_checksum=None,
+                stored_checksum=None,
+                ir_file=None,
+            )
+            assert (
+                staleness_diagnostic(result, domain_module="publishing7.py") is None
+            ), status
+
+    def test_stale_result_carries_ir_stale_and_resolving_operation(self):
+        self._write_stale_ir()
+
+        result = check_staleness("publishing7.py", self._protean_dir)
+        assert result.status == StalenessStatus.STALE
+
+        diag = staleness_diagnostic(result, domain_module="publishing7.py")
+        assert diag is not None
+        assert diag["code"] == "IR_STALE"
+        assert diag["element"] == "publishing7.py"
+        assert "publishing7.py" in diag["message"]
+        assert diag["resolving_operation"] == {
+            "command": "protean-check-staleness",
+            "args": ["--fix"],
+            "display": "protean-check-staleness --fix",
+        }
+
+    def test_dispatching_the_named_command_clears_the_diagnostic(self, monkeypatch):
+        # End to end: emit → dispatch the resolving command the diagnostic names
+        # → re-check → the diagnostic is gone.
+        self._write_stale_ir()
+
+        stale = check_staleness("publishing7.py", self._protean_dir)
+        diag = staleness_diagnostic(stale, domain_module="publishing7.py")
+        assert diag is not None
+        op = diag["resolving_operation"]
+
+        # Resolve the named command through the console-script table, so the
+        # dispatched callable is whatever `op["command"]` actually maps to (not a
+        # hook imported by name). A wrong command string fails the lookup here.
+        scripts = {ep.name: ep for ep in entry_points(group="console_scripts")}
+        assert op["command"] in scripts
+        entry = scripts[op["command"]].load()
+
+        # The staleness hook stages the regenerated file with `git add`; the tmp
+        # baseline is outside any work tree, so stub the staging out. The fix's
+        # file write is what clears staleness, not the staging.
+        monkeypatch.setattr("protean.cli.hooks._git_add", lambda path: None)
+        # Dispatch exactly what the diagnostic names (`protean-check-staleness
+        # --fix`), plus the --domain/--dir context an agent supplies.
+        argv = [
+            op["command"],
+            *op["args"],
+            "--domain",
+            "publishing7.py",
+            "--dir",
+            str(self._protean_dir),
+        ]
+        monkeypatch.setattr(sys, "argv", argv)
+        with pytest.raises(SystemExit) as exc:
+            entry()
+        assert exc.value.code == 0
+
+        after = check_staleness("publishing7.py", self._protean_dir)
+        assert after.status == StalenessStatus.FRESH
+        assert staleness_diagnostic(after, domain_module="publishing7.py") is None

@@ -137,6 +137,37 @@ repos:
         always_run: true
 ```
 
+#### The `IR_STALE` diagnostic
+
+`protean.ir.staleness.staleness_diagnostic()` turns a stale `StalenessResult`
+into a coded diagnostic in Protean's shared shape. Alongside the stable code,
+rationale, and prose fix, the `IR_STALE` diagnostic names the command that
+clears it, its **resolving operation** (the `rule` and `suggestion` text is
+abbreviated below):
+
+```json
+{
+  "code": "IR_STALE",
+  "category": "versioning",
+  "level": "warning",
+  "element": "myapp.domain",
+  "message": "Materialized IR for myapp.domain is stale. The domain has changed since it was last generated.",
+  "rule": { "rationale": "...", "fix": "Regenerate the baseline with `protean-check-staleness --fix` ..." },
+  "suggestion": "Regenerate the baseline with `protean-check-staleness --fix` ...",
+  "resolving_operation": {
+    "command": "protean-check-staleness",
+    "args": ["--fix"],
+    "display": "protean-check-staleness --fix"
+  }
+}
+```
+
+`resolving_operation` is the structured form an agent runs directly: `command`
+plus `args`, supplying its own `--domain`/`--dir` context, with `display` the
+same command as a human would read it. Running it regenerates the baseline and
+clears the diagnostic. A diagnostic whose failure no command resolves omits the
+field, and the prose fix stands.
+
 ### `protean-check-compat`
 
 Blocks the commit if breaking IR changes are detected against the baseline

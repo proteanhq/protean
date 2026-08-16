@@ -63,6 +63,7 @@ class DiagnosticCode(StrEnum):
     INFRA_IMPORT_IN_DOMAIN = "INFRA_IMPORT_IN_DOMAIN"
     INVARIANT_POST_FAILED = "INVARIANT_POST_FAILED"
     INVARIANT_PRE_FAILED = "INVARIANT_PRE_FAILED"
+    IR_STALE = "IR_STALE"
     LOW_POOL_SIZE = "LOW_POOL_SIZE"
     PROCESS_MANAGER_UNCLOSED = "PROCESS_MANAGER_UNCLOSED"
     PROJECTION_WITHOUT_PROJECTOR = "PROJECTION_WITHOUT_PROJECTOR"
@@ -93,6 +94,20 @@ class DiagnosticRule(TypedDict):
     fix: str
 
 
+class ResolvingOperationDict(TypedDict):
+    """The ``resolving_operation`` block on a diagnostic: the command that clears it.
+
+    ``command`` is the console script to run and ``args`` its fixed arguments:
+    the structured form an agent dispatches directly. ``display`` is the same
+    command rendered as one string for a human to read. ``display`` is for
+    reading, not shell-safe quoting.
+    """
+
+    command: str
+    args: list[str]
+    display: str
+
+
 class _DiagnosticRequired(TypedDict):
     code: str
     category: str
@@ -109,9 +124,11 @@ class Diagnostic(_DiagnosticRequired, total=False):
     ``field`` is present only on field-scoped diagnostics. ``location`` is
     provisioned on the wire shape but no core IR/``protean check`` producer sets
     it today; it is currently carried on the exception attribute path
-    (``ProteanException.location``), not on any IR/``check`` diagnostic. Every
-    other key is always present on diagnostics built through
-    :func:`build_diagnostic`.
+    (``ProteanException.location``), not on any IR/``check`` diagnostic.
+    ``resolving_operation`` is present only for a code whose failure a
+    deterministic ``protean`` command clears (the registry holds the mapping);
+    a code with no such command omits the key. Every other key is always
+    present on diagnostics built through :func:`build_diagnostic`.
     This does not describe every entry in ``ir["diagnostics"]``: custom lint
     rules (``ir.builder._run_custom_lint_rules``) contribute dicts that only
     require ``code``/``element``/``level``/``message``, with ``rule`` and
@@ -121,6 +138,36 @@ class Diagnostic(_DiagnosticRequired, total=False):
 
     field: str
     location: str
+    resolving_operation: ResolvingOperationDict
+
+
+@dataclass(frozen=True)
+class ResolvingOperation:
+    """A deterministic command that clears a diagnostic.
+
+    ``command`` is the console script an agent invokes (e.g.
+    ``"protean-check-staleness"``); ``args`` are the fixed arguments that make it
+    resolve the failure (e.g. ``("--fix",)``). An agent runs ``command`` with
+    ``args`` directly, supplying its own context (``--domain``, ``--dir``); a
+    human reads :meth:`render`.
+    """
+
+    command: str
+    args: tuple[str, ...] = ()
+
+    def render(self) -> str:
+        """The command as a human would read it: ``command`` and ``args`` joined
+        by spaces. For display only, not shell-quoted."""
+        return " ".join((self.command, *self.args))
+
+    def as_wire(self) -> ResolvingOperationDict:
+        """The wire record: structured ``command``/``args`` plus the rendered
+        ``display`` string."""
+        return {
+            "command": self.command,
+            "args": list(self.args),
+            "display": self.render(),
+        }
 
 
 @dataclass(frozen=True)
@@ -137,10 +184,19 @@ class CodeMeta:
 
     ``kind`` says how the code reaches a user: ``"lint"`` for a static rule
     surfaced by ``protean check`` over the IR, ``"raise"`` for a code carried on
-    an exception raised at init or runtime. Most ``"raise"`` codes describe
-    runtime accessor misuse that static analysis cannot see, so they stay off
-    the ``protean check`` catalog; a few could later grow a lint rule that emits
-    the same code at design time.
+    an exception raised at init or runtime, ``"staleness"`` for a code produced
+    by :func:`~protean.ir.staleness.staleness_diagnostic` from a
+    ``StalenessResult``. Most ``"raise"`` codes describe runtime accessor misuse
+    that static analysis cannot see, so they stay off the ``protean check``
+    catalog; a few could later grow a lint rule that emits the same code at
+    design time.
+
+    ``resolution`` names the deterministic command that clears the failure, when
+    one exists; :func:`build_diagnostic` renders it onto the wire as
+    ``resolving_operation``. Most codes have no such command and leave it
+    ``None``, so the fix stays prose. The code to command map lives in one place,
+    here in the registry. ``kind`` and ``resolution`` are independent: a lint
+    code could grow a resolution, and a staleness code need not have one.
     """
 
     category: str
@@ -148,7 +204,8 @@ class CodeMeta:
     meaning: str
     rationale: str
     fix: str
-    kind: Literal["lint", "raise"] = "lint"
+    kind: Literal["lint", "raise", "staleness"] = "lint"
+    resolution: ResolvingOperation | None = None
 
 
 REGISTRY: dict[DiagnosticCode, CodeMeta] = {
@@ -562,6 +619,23 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "correct the input. The error messages name what failed."
         ),
     ),
+    DiagnosticCode.IR_STALE: CodeMeta(
+        category="versioning",
+        level="warning",
+        kind="staleness",
+        meaning="The materialized IR baseline is out of date with the live domain.",
+        rationale=(
+            "The materialized `.protean/ir.json` baseline no longer matches the "
+            "live domain's checksum, so anything reading the baseline (a "
+            "compatibility diff, or an agent inspecting the contract) sees a "
+            "stale view of the domain."
+        ),
+        fix=(
+            "Regenerate the baseline with `protean-check-staleness --fix` (or "
+            "`protean ir show --canonical`) and commit the updated file."
+        ),
+        resolution=ResolvingOperation("protean-check-staleness", ("--fix",)),
+    ),
     DiagnosticCode.LOW_POOL_SIZE: CodeMeta(
         category="persistence",
         level="warning",
@@ -881,9 +955,11 @@ def build_diagnostic(
     a site that diverges. ``suggestion`` defaults to the resolved ``fix``.
     ``location`` names where the diagnostic came from; it is included only when
     given (no lint producer sets it today — it is carried on the exception path
-    instead). The returned dict carries exactly the wire keys (plus
-    ``field``/``location`` when given) — the shape the IR, SARIF, and ``check``
-    output already emit.
+    instead). ``resolving_operation`` is attached automatically from the
+    registry for a code that maps to a resolving command, and omitted for one
+    that does not. The returned dict carries exactly the wire keys the IR,
+    SARIF, and ``check`` output already emit, plus
+    ``field``/``location``/``resolving_operation`` when they apply.
     """
     meta = REGISTRY[code]
     resolved_rationale = rationale if rationale is not None else meta.rationale
@@ -901,4 +977,6 @@ def build_diagnostic(
         diagnostic["field"] = field
     if location is not None:
         diagnostic["location"] = location
+    if meta.resolution is not None:
+        diagnostic["resolving_operation"] = meta.resolution.as_wire()
     return diagnostic

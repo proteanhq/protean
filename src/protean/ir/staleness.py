@@ -26,6 +26,7 @@ from protean.exceptions import NoDomainException
 from protean.ir import SCHEMA_VERSION
 from protean.ir.builder import IRBuilder
 from protean.ir.config import load_config
+from protean.ir.diagnostics import Diagnostic, DiagnosticCode, build_diagnostic
 from protean.utils.domain_discovery import derive_domain
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ __all__ = [
     "StalenessStatus",
     "check_staleness",
     "load_stored_ir",
+    "staleness_diagnostic",
 ]
 
 _IR_FILENAME = "ir.json"
@@ -216,4 +218,32 @@ def check_staleness(
         domain_checksum=domain_checksum,
         stored_checksum=stored_checksum,
         ir_file=ir_path.resolve(),
+    )
+
+
+def staleness_diagnostic(
+    result: StalenessResult, *, domain_module: str
+) -> Diagnostic | None:
+    """Return the ``IR_STALE`` coded diagnostic for a stale result, else ``None``.
+
+    Surfaces a :class:`StalenessResult` in the shared Diagnostic shape, so a
+    caller gets the stable ``IR_STALE`` code plus the resolving operation that
+    clears it (``protean-check-staleness --fix``), carried on the diagnostic's
+    ``resolving_operation``. Only the ``STALE`` status is coded, the
+    "domain changed since it was materialized" case.
+
+    A ``None`` return means the result is not ``STALE``. It does not mean the
+    baseline is healthy: ``NO_IR`` and ``VERSION_MISMATCH`` also call for
+    ``protean-check-staleness --fix``, but they are distinct outcomes with their
+    own reporting, and a caller handles them from ``result.status``.
+    """
+    if result.status != StalenessStatus.STALE:
+        return None
+    return build_diagnostic(
+        DiagnosticCode.IR_STALE,
+        element=domain_module,
+        message=(
+            f"Materialized IR for {domain_module} is stale. The domain has "
+            "changed since it was last generated."
+        ),
     )
