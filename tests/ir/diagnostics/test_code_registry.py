@@ -15,7 +15,11 @@ code and its metadata. These tests hold three promises:
 
 import ast
 import hashlib
+import tomllib
+from dataclasses import FrozenInstanceError
 from pathlib import Path
+
+import pytest
 
 import protean
 from protean.ir.diagnostics import (
@@ -23,6 +27,7 @@ from protean.ir.diagnostics import (
     CodeMeta,
     Diagnostic,
     DiagnosticCode,
+    ResolvingOperation,
     build_diagnostic,
     resolve,
 )
@@ -48,14 +53,15 @@ ALLOWED_CATEGORIES = frozenset(
 # The schema's diagnostic ``level`` enum (schema.json).
 ALLOWED_LEVELS = frozenset({"error", "warning", "info"})
 
-# How a code reaches a user: a static ``protean check`` rule, or a code carried
-# on an exception raised at init/runtime.
-ALLOWED_KINDS = frozenset({"lint", "raise"})
+# How a code reaches a user: a static ``protean check`` rule, a code carried on
+# an exception raised at init/runtime, or a code the staleness check surfaces.
+ALLOWED_KINDS = frozenset({"lint", "raise", "staleness"})
 
 # The producers that reference diagnostic codes, relative to the source root.
 # ``domain/__init__.py``, ``domain/config.py``, ``core/entity.py``, and
 # ``core/value_object.py`` reference the init/runtime ``kind="raise"`` codes;
-# the rest reference the ``kind="lint"`` rules.
+# ``ir/staleness.py`` references the ``kind="staleness"`` code; the rest
+# reference the ``kind="lint"`` rules.
 PRODUCER_FILES = (
     "ir/builder.py",
     "domain/validation.py",
@@ -63,6 +69,7 @@ PRODUCER_FILES = (
     "domain/config.py",
     "core/entity.py",
     "core/value_object.py",
+    "ir/staleness.py",
     "_deprecation.py",
 )
 
@@ -149,6 +156,7 @@ class TestGoldenSnapshot:
             "INFRA_IMPORT_IN_DOMAIN",
             "INVARIANT_POST_FAILED",
             "INVARIANT_PRE_FAILED",
+            "IR_STALE",
             "LOW_POOL_SIZE",
             "PROCESS_MANAGER_UNCLOSED",
             "PROJECTION_WITHOUT_PROJECTOR",
@@ -213,6 +221,39 @@ class TestGoldenSnapshot:
             "no longer raise": sorted(self.EXPECTED_RAISE_CODES - actual),
         }
 
+    # The codes produced by staleness_diagnostic (``kind="staleness"``), neither
+    # a ``protean check`` lint rule nor an exception-carried code. Frozen on its
+    # own so a code added to (or flipped into) this surface is a reviewed change.
+    EXPECTED_STALENESS_CODES = frozenset({"IR_STALE"})
+
+    def test_staleness_kind_split_is_frozen(self):
+        actual = {c.value for c, meta in REGISTRY.items() if meta.kind == "staleness"}
+        assert actual == self.EXPECTED_STALENESS_CODES, {
+            "newly staleness": sorted(actual - self.EXPECTED_STALENESS_CODES),
+            "no longer staleness": sorted(self.EXPECTED_STALENESS_CODES - actual),
+        }
+
+    # The code to command map: which codes carry a resolving operation and the
+    # exact command each dispatches to. Populated only where a real command
+    # clears the failure, with no invented commands. Freezing it here means
+    # adding a pairing (or changing a command/args) is a reviewed change.
+    EXPECTED_RESOLUTIONS = {
+        "IR_STALE": ("protean-check-staleness", ("--fix",)),
+    }
+
+    def test_resolution_map_is_frozen(self):
+        actual = {
+            code.value: (meta.resolution.command, meta.resolution.args)
+            for code, meta in REGISTRY.items()
+            if meta.resolution is not None
+        }
+        assert actual == self.EXPECTED_RESOLUTIONS, {
+            "added or changed": {
+                k: v for k, v in actual.items() if self.EXPECTED_RESOLUTIONS.get(k) != v
+            },
+            "removed": sorted(set(self.EXPECTED_RESOLUTIONS) - set(actual)),
+        }
+
 
 def _meta_digest(meta: CodeMeta) -> str:
     """A stable short hash over a code's full metadata text."""
@@ -264,6 +305,7 @@ class TestMetadataSnapshot:
         "INFRA_IMPORT_IN_DOMAIN": "e9473616069280ed",
         "INVARIANT_POST_FAILED": "304a59b149aa8f82",
         "INVARIANT_PRE_FAILED": "7fe9b51b9b73b67e",
+        "IR_STALE": "773e8d3ab35252da",
         "LOW_POOL_SIZE": "e709be40fa308c30",
         "PROCESS_MANAGER_UNCLOSED": "047584f91a3ef45f",
         "PROJECTION_WITHOUT_PROJECTOR": "a0e32732676a7838",
@@ -389,6 +431,25 @@ class TestBuildDiagnostic:
         assert set(Diagnostic.__required_keys__) == set(d)
         assert "field" in Diagnostic.__optional_keys__
         assert "location" in Diagnostic.__optional_keys__
+        assert "resolving_operation" in Diagnostic.__optional_keys__
+
+    def test_resolving_operation_attached_from_registry(self):
+        # A code that maps to a resolving command carries the operation as a
+        # structured {command, args, display} block, resolved from the registry.
+        d = build_diagnostic(DiagnosticCode.IR_STALE, element="app.domain", message="m")
+        assert d["resolving_operation"] == {
+            "command": "protean-check-staleness",
+            "args": ["--fix"],
+            "display": "protean-check-staleness --fix",
+        }
+
+    def test_resolving_operation_omitted_when_code_has_no_command(self):
+        # Negative: a code with no resolving command carries no field, and no
+        # command is invented.
+        d = build_diagnostic(
+            DiagnosticCode.UNHANDLED_EVENT, element="app.Thing", message="m"
+        )
+        assert "resolving_operation" not in d
 
     def test_location_included_only_when_given(self):
         without = build_diagnostic(
@@ -403,3 +464,64 @@ class TestBuildDiagnostic:
             location="Config2._replace_env_var",
         )
         assert withloc["location"] == "Config2._replace_env_var"
+
+
+class TestResolvingOperation:
+    def test_render_joins_command_and_args(self):
+        op = ResolvingOperation("protean-check-staleness", ("--fix",))
+        assert op.render() == "protean-check-staleness --fix"
+
+    def test_render_with_no_args_is_the_bare_command(self):
+        op = ResolvingOperation("protean-check-staleness")
+        assert op.render() == "protean-check-staleness"
+
+    def test_as_wire_carries_structure_and_display(self):
+        op = ResolvingOperation("protean-check-staleness", ("--fix", "--dir=.protean"))
+        assert op.as_wire() == {
+            "command": "protean-check-staleness",
+            "args": ["--fix", "--dir=.protean"],
+            "display": "protean-check-staleness --fix --dir=.protean",
+        }
+
+    def test_is_frozen(self):
+        op = ResolvingOperation("protean-check-staleness", ("--fix",))
+        with pytest.raises(FrozenInstanceError):
+            op.command = "other"  # type: ignore[misc]
+
+
+class TestResolutionCommandsAreReal:
+    """The command a diagnostic names must be a command that actually exists.
+
+    A resolving operation's whole promise is "an agent can run this directly."
+    The command is a bare string in the registry; the console script that makes
+    it runnable is declared separately in ``pyproject.toml``. Tie the two
+    together so a rename or typo on either side fails here, instead of handing an
+    agent a "command not found". This is the same guard shape the docs-code
+    catalogs use (`tests/test_diagnostic_codes_are_documented.py`).
+    """
+
+    def _declared_scripts(self) -> set[str]:
+        pyproject = Path(__file__).resolve().parents[3] / "pyproject.toml"
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        return set(data["project"]["scripts"])
+
+    def test_there_are_resolution_commands_to_check(self):
+        # Guards against a vacuous pass if the resolution map ever empties out.
+        commands = {
+            m.resolution.command for m in REGISTRY.values() if m.resolution is not None
+        }
+        assert commands
+
+    def test_every_resolution_command_is_a_declared_console_script(self):
+        scripts = self._declared_scripts()
+        missing = {
+            m.resolution.command
+            for m in REGISTRY.values()
+            if m.resolution is not None and m.resolution.command not in scripts
+        }
+        assert not missing, (
+            f"resolution commands not declared in [project.scripts]: "
+            f"{sorted(missing)}. Add the console script to pyproject.toml, or fix "
+            "the command string in the diagnostics registry so it names a real "
+            "command."
+        )
