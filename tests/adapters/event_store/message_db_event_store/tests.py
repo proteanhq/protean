@@ -199,3 +199,55 @@ class TestMessageDBEventStore:
         assert head_a >= 0
         assert head_b >= 0
         assert head_a != head_b
+
+    def test_read_all_paging_covers_whole_store(self, test_domain):
+        """read_all pages `$all` past a small page_size, in global order."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        for i in range(12):
+            store._write("testStream-123", "Event1", {"n": i}, metadata)
+
+        paged = list(store.read_all("$all", page_size=5))
+        gpos = [m.metadata.event_store.global_position for m in paged]
+
+        assert len(gpos) == 12  # nothing truncated across page boundaries
+        assert gpos == sorted(gpos)  # global_position order
+        assert len(set(gpos)) == 12  # no duplicates at the boundaries
+
+    def test_read_all_paging_exact_multiple_of_page_size(self, test_domain):
+        """A store sized to an exact multiple of page_size returns every row once.
+
+        The final full page is followed by an empty page: the boundary a
+        partial-page test never exercises.
+        """
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        for i in range(10):
+            store._write("testStream-123", "Event1", {"n": i}, metadata)
+
+        paged = list(store.read_all("$all", page_size=5))
+        gpos = [m.metadata.event_store.global_position for m in paged]
+
+        assert len(gpos) == 10
+        assert gpos == sorted(gpos)
+        assert len(set(gpos)) == 10
+
+    def test_read_all_paging_specific_stream_by_position(self, test_domain):
+        """A specific stream pages by its per-stream position, no leak."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        for i in range(7):
+            store._write("testStream-123", "Event1", {"n": i}, metadata)
+        # A sibling stream in the same category must not leak into the read.
+        for i in range(4):
+            store._write("testStream-456", "Event1", {"n": i}, metadata)
+
+        paged = list(store.read_all("testStream-123", page_size=3))
+        positions = [m.metadata.event_store.position for m in paged]
+
+        assert positions == list(range(7))
+
+    def test_read_all_paging_empty_store_yields_nothing(self, test_domain):
+        """An empty store yields nothing."""
+        store = test_domain.event_store.store
+        assert list(store.read_all("$all", page_size=5)) == []

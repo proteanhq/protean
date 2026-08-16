@@ -116,6 +116,12 @@ messages = store.read("myapp::account-acc-001", position=5)
 
 # Read last message
 last = store.read_last_message("myapp::account-acc-001")
+
+# Page through a whole stream without a size cap. `read_all` is a generator
+# that reads in `page_size` batches until the stream is exhausted, so it is
+# safe to iterate a store larger than a single `read` returns.
+for message in store.read_all("myapp::account", page_size=1000):
+    ...  # handle each message
 ```
 
 ---

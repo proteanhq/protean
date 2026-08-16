@@ -74,6 +74,40 @@ class TestLargeEventCount:
         assert balance is not None
         assert balance.balance == 25.0
 
+    def test_paged_rebuild_matches_single_page_rebuild(self, test_domain):
+        """A rebuild that pages (small batch_size) yields the same projection
+        state as one that reads every event in a single page.
+
+        The rebuilder reads each category through ``read_all``; a small page
+        size forces many page boundaries. If paging dropped or double-counted an
+        event across a boundary, the balance would drift from the single-page
+        result.
+        """
+        user = User.register(email="pager@example.com", name="Pager")
+        current_domain.repository_for(User).add(user)
+
+        count = 25
+        for _i in range(count):
+            txn = Transaction.transact(user_id=user.id, amount=1.0)
+            current_domain.repository_for(Transaction).add(txn)
+
+        # One page holds every event.
+        test_domain.rebuild_projection(Balances, batch_size=1_000)
+        single_page = current_domain.repository_for(Balances).get(user.id).balance
+
+        # A small page forces read_all across many page boundaries. Pin the
+        # premise so a future change to `count` cannot quietly collapse this to
+        # a single page and prove nothing.
+        paged_batch = 4
+        assert count > paged_batch
+        result = test_domain.rebuild_projection(Balances, batch_size=paged_batch)
+        paged = current_domain.repository_for(Balances).get(user.id).balance
+
+        assert result.success
+        # 1 Registered + `count` Transacted, dispatched exactly once each.
+        assert result.events_dispatched == count + 1
+        assert paged == single_page == float(count)
+
 
 class TestCacheBackedProjectionTruncation:
     def test_truncate_uses_cache_when_cache_backed(self):

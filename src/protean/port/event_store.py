@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict, deque
+from collections.abc import Iterator
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import datetime
@@ -113,6 +114,86 @@ class BaseEventStore(metaclass=ABCMeta):
         messages = [Message.deserialize(raw_message) for raw_message in raw_messages]
 
         return messages
+
+    def read_all(
+        self, stream: str = "$all", *, page_size: int = 1000
+    ) -> Iterator[Message]:
+        """Yield every message in ``stream``, paging through the store in bounded batches.
+
+        A cold-load read that must be complete (a full projection rebuild, a
+        backup, an integrity check) cannot rely on a single large ``read`` with a
+        sentinel ``no_of_messages``: past the cap it silently truncates. This
+        iterator loops ``read`` in ``page_size`` batches and advances a cursor
+        until a short page signals the end, so it reads the whole stream at a
+        bounded memory cost regardless of size.
+
+        The cursor field follows the stream shape (ADR-0024): ``$all`` and a bare
+        category page by ``global_position``; a specific stream (``category-id``)
+        pages by its own per-stream ``position``. Reads are inclusive
+        (``>= position``), so each next page resumes one past the last row seen,
+        which avoids re-emitting the boundary row.
+
+        Args:
+            stream: The stream to read. ``$all`` (default), a category, or a
+                specific ``category-id`` stream.
+            page_size: Number of messages to read per underlying ``read`` call.
+
+        Yields:
+            Every `Message` in ``stream``, in read order, with no gaps and
+            no duplicates across page boundaries.
+
+        Raises:
+            IncorrectUsageError: If ``page_size`` is not a positive integer.
+        """
+        # Check the type before the value: a float or ``None`` slipping through
+        # would flow into the adapter's row limit and either page oddly or raise
+        # a bare ``TypeError`` far from the cause. ``bool`` is an ``int``, and
+        # ``True`` (== 1) is harmless, so it is not special-cased.
+        if not isinstance(page_size, int) or page_size < 1:
+            raise IncorrectUsageError(
+                f"`page_size` must be a positive integer, got {page_size!r}"
+            )
+
+        # A category read (`$all` or a bare category) pages by `global_position`;
+        # a specific stream pages by its per-stream `position`. `category(stream)`
+        # strips the `-id` suffix, so it equals `stream` only for a category/$all.
+        pages_by_global_position = stream == self.category(stream)
+
+        cursor = 0
+        while True:
+            page = self.read(stream, position=cursor, no_of_messages=page_size)
+            yield from page
+
+            # A short page is the last page: the store had no more rows to fill
+            # it. This also terminates the empty-stream case after one read.
+            if len(page) < page_size:
+                return
+
+            cursor = self._next_cursor(page[-1], pages_by_global_position)
+
+    @staticmethod
+    def _next_cursor(message: Message, by_global_position: bool) -> int:
+        """The ``position`` to resume a paged read after ``message``.
+
+        Reads are inclusive, so resume one past the last row seen. A persisted
+        message always carries the relevant position; a missing one is a corrupt
+        row that would otherwise loop or truncate the read silently, so raise.
+        ``EventStoreMeta`` is attached when *either* position is present, so a row
+        can carry an ``event_store`` whose chosen field is still ``None``.
+        """
+        event_store = message.metadata.event_store if message.metadata else None
+        last: int | None = None
+        if event_store is not None:
+            last = (
+                event_store.global_position
+                if by_global_position
+                else event_store.position
+            )
+        if last is None:
+            raise IncorrectUsageError(
+                "Cannot page the event store: a message is missing its position."
+            )
+        return last + 1
 
     def read_last_message(self, stream: str) -> Message | None:
         raw_message = self._read_last_message(stream)
