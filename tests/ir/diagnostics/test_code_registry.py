@@ -305,7 +305,7 @@ class TestMetadataSnapshot:
         "INFRA_IMPORT_IN_DOMAIN": "e9473616069280ed",
         "INVARIANT_POST_FAILED": "304a59b149aa8f82",
         "INVARIANT_PRE_FAILED": "7fe9b51b9b73b67e",
-        "IR_STALE": "cf5190103ea9490c",
+        "IR_STALE": "773e8d3ab35252da",
         "LOW_POOL_SIZE": "e709be40fa308c30",
         "PROCESS_MANAGER_UNCLOSED": "047584f91a3ef45f",
         "PROJECTION_WITHOUT_PROJECTOR": "a0e32732676a7838",

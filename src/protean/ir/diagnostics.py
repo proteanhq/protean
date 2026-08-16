@@ -632,7 +632,8 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         ),
         fix=(
             "Regenerate the baseline with `protean-check-staleness --fix` (or "
-            "`protean ir show --canonical`) and commit the updated file."
+            "`protean ir show --domain <domain> --canonical`) and commit the "
+            "updated file."
         ),
         resolution=ResolvingOperation("protean-check-staleness", ("--fix",)),
     ),
