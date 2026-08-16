@@ -37,8 +37,8 @@ from protean.server.subscription_status import (
     _classify_status,
     _collect_event_store_status,
     _collect_stream_status,
+    _parse_time,
 )
-from protean.utils import ensure_utc_aware
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -214,16 +214,3 @@ def _row_count(domain: Domain, projection_cls: type) -> int | None:
             exc,
         )
         return None
-
-
-def _parse_time(iso_value: str | None) -> datetime | None:
-    """Parse an ISO timestamp into an aware UTC datetime, or ``None``."""
-    if not iso_value:
-        return None
-    try:
-        # ``fromisoformat`` does not reliably accept a trailing ``Z``; normalize
-        # to ``+00:00`` so timestamps from any adapter parse consistently.
-        parsed = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return None
-    return ensure_utc_aware(parsed)

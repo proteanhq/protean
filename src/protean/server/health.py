@@ -300,6 +300,7 @@ def _collect_subscription_health(
                     "subscription_type": "unknown",
                     "stream_category": None,
                     "lag": None,
+                    "lag_seconds": None,
                     "pending": None,
                     "dlq_depth": None,
                     "status": "unknown",

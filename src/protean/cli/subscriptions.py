@@ -90,6 +90,7 @@ def status(
     table.add_column("Type")
     table.add_column("Stream")
     table.add_column("Lag", justify="right", style="cyan")
+    table.add_column("Lag (s)", justify="right", style="cyan")
     table.add_column("Pending", justify="right")
     table.add_column("DLQ", justify="right")
     table.add_column("Consumers", justify="right")
@@ -97,6 +98,7 @@ def status(
 
     for s in statuses:
         lag_str = str(s.lag) if s.lag is not None else "-"
+        lag_seconds_str = f"{s.lag_seconds:.1f}" if s.lag_seconds is not None else "-"
         dlq_str = str(s.dlq_depth) if s.dlq_depth else "-"
         consumers_str = str(s.consumer_count) if s.consumer_count else "-"
 
@@ -105,6 +107,7 @@ def status(
             s.subscription_type,
             s.stream_category,
             lag_str,
+            lag_seconds_str,
             str(s.pending),
             dlq_str,
             consumers_str,

@@ -16,7 +16,8 @@ Verifies that:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, Mock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -31,10 +32,17 @@ from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector, on
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Processing
 from protean.fields import Identifier, String
 from protean.server import Engine
+from protean.server.observatory.metrics import (
+    _hand_rolled_metrics,
+    _register_infrastructure_gauges,
+    _scrape_cache,
+)
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import fqn
 from protean.utils.eventing import Message
@@ -760,3 +768,97 @@ class TestNoOpSubscriptionMetrics:
         metrics.subscription_retries.add(1, attrs)
         metrics.subscription_dlq_routed.add(1, attrs)
         metrics.subscription_processing_duration.record(0.5, attrs)
+
+
+# ---------------------------------------------------------------------------
+# Subscription lag-seconds gauge (infrastructure gauge + hand-rolled fallback)
+# ---------------------------------------------------------------------------
+
+
+class LagProjection(BaseProjection):
+    user_id = Identifier(identifier=True)
+    name = String()
+
+
+class LagProjector(BaseProjector):
+    @on(Registered)
+    def on_registered(self, event: Registered):
+        pass
+
+
+def _seed_lagging(test_domain, seconds_behind: int = 120) -> None:
+    """Write events and a position that trails head by a fixed wall-clock gap.
+
+    The position message carries a timestamp ``seconds_behind`` in the past and
+    a position below head, so the event-store subscription reports a positive
+    ``lag`` and a positive ``lag_seconds``.
+    """
+    with test_domain.domain_context():
+        store = test_domain.event_store.store
+        category = LagProjector.meta_.stream_categories[0]
+        for i in range(3):
+            store._write(f"{category}-{i}", "Registered", {"user_id": str(i)})
+        old = (datetime.now(UTC) - timedelta(seconds=seconds_behind)).isoformat()
+        store._write(
+            f"position-{fqn(LagProjector)}-{category}",
+            "Read",
+            {"position": 0},
+            metadata={"headers": {"time": old}},
+        )
+
+
+class TestSubscriptionLagSecondsGauge:
+    """``protean.subscription.lag_seconds`` emits through both metric paths."""
+
+    @pytest.fixture(autouse=True)
+    def _elements(self, test_domain):
+        test_domain.register(User)
+        test_domain.register(Registered, part_of=User)
+        test_domain.register(LagProjection)
+        test_domain.register(
+            LagProjector, projector_for=LagProjection, aggregates=[User]
+        )
+        test_domain.init(traverse=False)
+
+    @pytest.fixture(autouse=True)
+    def _clear_scrape_cache(self):
+        _scrape_cache.clear()
+        yield
+        _scrape_cache.clear()
+
+    def test_gauge_emits_seconds_behind_on_scrape(self, test_domain):
+        """The OTel gauge is registered and reports the projector's seconds behind.
+
+        The real store stamps the position record at write time, so seconds-behind
+        is measured against the collection clock. Advancing that clock 300s past
+        the write makes the reported value a controlled, non-trivial number rather
+        than the sub-millisecond gap of a just-written record.
+        """
+        _seed_lagging(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
+
+        _register_infrastructure_gauges([test_domain])
+
+        future = datetime.now(UTC) + timedelta(seconds=300)
+        with patch.object(test_domain.clock, "now", return_value=future):
+            metric = _get_metric(metric_reader, "protean.subscription.lag_seconds")
+            assert metric is not None
+
+            points = list(metric.data.data_points)
+            point = next(
+                p for p in points if p.attributes.get("handler") == "LagProjector"
+            )
+        # The position trails head (lag > 0), so this is the elapsed-time branch,
+        # not the caught-up 0.0 short-circuit.
+        assert point.value >= 300
+
+    def test_hand_rolled_fallback_emits_seconds_behind(self, test_domain):
+        """The hand-rolled text carries the seconds-behind line for the projector."""
+        _seed_lagging(test_domain, seconds_behind=120)
+
+        text = _hand_rolled_metrics([test_domain])
+
+        assert "# HELP protean_subscription_lag_seconds" in text
+        assert "# TYPE protean_subscription_lag_seconds gauge" in text
+        assert "protean_subscription_lag_seconds{" in text
+        assert 'handler="LagProjector"' in text
