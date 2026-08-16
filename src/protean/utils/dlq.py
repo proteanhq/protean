@@ -26,6 +26,31 @@ class SubscriptionInfo:
     dlq_stream: str
     backfill_dlq_stream: str | None
     is_broker: bool = False
+    is_command_handler: bool = False
+
+
+# Module and name the engine gives the CommandDispatcher it wraps a command
+# stream's handlers in. The dispatcher lives in ``protean.server.engine``; that
+# module imports the two helpers below to build its identity, so the name the
+# subscription writes to and the name the CLI reads from stay one string.
+COMMAND_DISPATCHER_MODULE = "protean.server.engine"
+
+
+def command_dispatcher_name(stream_category: str) -> str:
+    """Return the CommandDispatcher's short name for a command stream category."""
+    return f"Commands:{stream_category}"
+
+
+def command_dispatcher_fqn(stream_category: str) -> str:
+    """Return the fully qualified name of the CommandDispatcher for a stream.
+
+    The engine fans every command handler on a stream category into one
+    ``CommandDispatcher`` subscription, so that subscription's failed-positions
+    stream is keyed by the dispatcher's ``fqn``, not by any single handler
+    class. ``collect_failed_streams`` uses this so the CLI reads the same stream
+    the subscription writes to.
+    """
+    return f"{COMMAND_DISPATCHER_MODULE}.{command_dispatcher_name(stream_category)}"
 
 
 def failed_positions_stream(handler_fqn: str, stream_category: str) -> str:
@@ -77,7 +102,9 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     seen_streams: dict[str, SubscriptionInfo] = {}
     infos: list[SubscriptionInfo] = []
 
-    def _add(handler_cls: type, stream_cat: str) -> None:
+    def _add(
+        handler_cls: type, stream_cat: str, *, is_command_handler: bool = False
+    ) -> None:
         key = f"{fqn(handler_cls)}:{stream_cat}"
         if key in seen_streams:
             return
@@ -89,6 +116,7 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
             stream_category=stream_cat,
             dlq_stream=f"{stream_cat}:dlq",
             backfill_dlq_stream=backfill_dlq,
+            is_command_handler=is_command_handler,
         )
         seen_streams[key] = info
         infos.append(info)
@@ -109,7 +137,7 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
         handler_cls = record.cls
         stream_cat = _infer_stream_category(handler_cls)
         if stream_cat:
-            _add(handler_cls, stream_cat)
+            _add(handler_cls, stream_cat, is_command_handler=True)
 
     # Projectors (may subscribe to multiple stream categories)
     for record in domain.registry._elements.get(
@@ -166,12 +194,26 @@ def collect_failed_streams(domain: Domain) -> list[tuple[SubscriptionInfo, str]]
     excluded. A projector subscribing to several stream categories yields one
     pair per category, matching how the engine creates one subscription per
     (handler, category).
+
+    Command handlers are the exception: the engine fans every command handler on
+    a stream category into a single ``CommandDispatcher`` subscription, so their
+    failed-positions stream is keyed by the dispatcher's name, not the handler
+    class. Those handlers therefore collapse to one pair per stream category,
+    keyed by ``command_dispatcher_fqn`` so the CLI reads the stream the
+    subscription actually wrote to.
     """
     pairs: list[tuple[SubscriptionInfo, str]] = []
+    seen: set[str] = set()
     for info in discover_subscriptions(domain):
         if info.is_broker:
             continue
-        pairs.append(
-            (info, failed_positions_stream(info.handler_fqn, info.stream_category))
-        )
+        if info.is_command_handler:
+            handler_fqn = command_dispatcher_fqn(info.stream_category)
+        else:
+            handler_fqn = info.handler_fqn
+        failed_stream = failed_positions_stream(handler_fqn, info.stream_category)
+        if failed_stream in seen:
+            continue
+        seen.add(failed_stream)
+        pairs.append((info, failed_stream))
     return pairs
