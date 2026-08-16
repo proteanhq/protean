@@ -1,0 +1,3 @@
+{"action": "claim", "worker": "w1", "message": "m1", "outcome": null}
+{"action": "publish", "worker": "w1", "message": "m1", "outcome": "ok"}
+{"action": "mark", "worker": "w1", "message": "m1", "outcome": "published"}

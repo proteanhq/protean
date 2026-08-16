@@ -394,6 +394,36 @@ else
 fi
 
 echo ""
+echo "Outbox trace validation (real code vs Outbox.tla, #1383):"
+if [[ -z "$PY3" ]]; then
+    echo "  SKIP   python3 not found; cannot convert outbox logs to TLA+"
+else
+    mkdir -p "$TDIR"
+    cp "$SPECS_DIR/Outbox.tla" "$SPECS_DIR/OutboxTrace.tla" \
+       "$SPECS_DIR/OutboxTrace_conform.cfg" "$SPECS_DIR/OutboxTrace_cover.cfg" \
+       "$TDIR/"
+    outbox_real="$WORKDIR/outbox_real.jsonl"
+    record_trace "$SPECS_DIR/outbox_trace.py" "$outbox_real"
+    case $? in
+        0) check_trace "$SPECS_DIR/outbox_trace.py" OutboxTrace \
+               OutboxTrace_conform.cfg OutboxTrace_cover.cfg NoDuplicateDelivery \
+               real "$outbox_real" accept ;;
+        3) echo "  SKIP   real trace: no interpreter with 'protean' available to record one" ;;
+        *) echo "  FAIL   real trace: 'protean' is importable but recording errored"
+           fail=1 ;;
+    esac
+    # Negative checks (fixtures under specs/traces/): a seeded mark-without-publish
+    # must fail conformance and a log with no redelivery must fail coverage. These
+    # need only python3 + java.
+    check_trace "$SPECS_DIR/outbox_trace.py" OutboxTrace \
+        OutboxTrace_conform.cfg OutboxTrace_cover.cfg NoDuplicateDelivery \
+        divergence "$SPECS_DIR/traces/outbox_divergence.jsonl" reject-conform
+    check_trace "$SPECS_DIR/outbox_trace.py" OutboxTrace \
+        OutboxTrace_conform.cfg OutboxTrace_cover.cfg NoDuplicateDelivery \
+        noredelivery "$SPECS_DIR/traces/outbox_no_redelivery.jsonl" reject-cover
+fi
+
+echo ""
 if [[ "$fail" -eq 0 ]]; then
     echo "All checks met their expected outcome."
 else

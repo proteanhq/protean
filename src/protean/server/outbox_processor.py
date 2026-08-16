@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker, BrokerCapabilities
-from protean.utils import ensure_utc_aware
+from protean.utils import ensure_utc_aware, outbox_trace
 from protean.utils.eventing import Message
 from protean.utils.outbox import (
     Outbox,
@@ -519,8 +519,29 @@ class OutboxProcessor(BaseSubscription):
                     # Save the final status
                     self.outbox_repo.add(message)
 
+                    # Capture the terminal status inside the UoW, while the session is
+                    # live, for the trace emit after commit: reading it post-commit
+                    # could touch an expired attribute on a closed session, and the
+                    # record() argument is evaluated even when the recorder is inactive.
+                    marked_id = str(message.id)
+                    marked_status = message.status
+
                     # UnitOfWork commits here - either all operations succeed or all rollback
-                    return publish_success
+
+                # Trace-validation seam: the terminal mark, emitted only after the
+                # UnitOfWork has durably committed, so the recorded status is a
+                # persisted transition and not an intent that could roll back. One
+                # record covers both branches (published, or failed/abandoned). The
+                # partition-key backstop abandon and the error-recovery fallback
+                # re-mark a row outside the modeled protocol path, so (like crash and
+                # lock_expire) they are not emitted.
+                outbox_trace.record(
+                    action="mark",
+                    worker=self.worker_id,
+                    message=marked_id,
+                    outcome=marked_status,
+                )
+                return publish_success
 
             except Exception as exc:
                 set_span_error(span, exc)
@@ -640,12 +661,28 @@ class OutboxProcessor(BaseSubscription):
                     "broker_message_id": str(broker_message_id),
                 },
             )
+            # Trace-validation seam (inactive by default): the broker received the
+            # message — the spec's Publish success branch.
+            outbox_trace.record(
+                action="publish",
+                worker=self.worker_id,
+                message=str(message.id),
+                outcome="ok",
+            )
             return True, None
 
         except Exception as exc:
             logger.exception(
                 "outbox.broker_publish_failed",
                 extra={"message_id": message.message_id[:8]},
+            )
+            # Trace-validation seam: the publish attempt did not reach the broker —
+            # the spec's Publish failure branch.
+            outbox_trace.record(
+                action="publish",
+                worker=self.worker_id,
+                message=str(message.id),
+                outcome="fail",
             )
             return False, exc
 
