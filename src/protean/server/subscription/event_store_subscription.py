@@ -13,6 +13,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
 from protean.utils import checkpoint_trace, fqn, recovery_trace
+from protean.utils.dlq import failed_positions_stream
 from protean.utils.eventing import Message, MessageType
 
 from . import BaseSubscription
@@ -215,8 +216,8 @@ class EventStoreSubscription(BaseSubscription):
         self._gap_watermark: int = -1
 
         # Failed position tracking
-        self.failed_positions_stream = (
-            f"failed-{self.subscriber_name}-{stream_category}"
+        self.failed_positions_stream = failed_positions_stream(
+            self.subscriber_name, stream_category
         )
         self.recovery_checkpoint_stream = (
             f"recovery-checkpoint-{self.subscriber_name}-{stream_category}"
@@ -814,8 +815,17 @@ class EventStoreSubscription(BaseSubscription):
         retry_count: int,
         message_type: str = "unknown",
         message_id: str = "unknown",
+        stream_name: str | None = None,
+        stream_position: int | None = None,
     ) -> None:
         """Write a recovery status record (Resolved or Exhausted) to the failed-positions stream.
+
+        The ``stream_name``/``stream_position`` fields mirror the ``Failed``
+        record (``_record_failed_position``) so an ``Exhausted`` record carries
+        enough to locate the failing event in the store. ``protean eventstore
+        dlq inspect`` re-reads the event from ``stream_name`` at
+        ``stream_position``; older records without them fall back to the origin
+        category stream by ``position``.
 
         Args:
             position: The global position of the message.
@@ -823,6 +833,8 @@ class EventStoreSubscription(BaseSubscription):
             retry_count: The current retry count.
             message_type: The type string of the message.
             message_id: The ID of the message.
+            stream_name: The specific stream name (e.g., ``user-123``).
+            stream_position: The per-stream position of the message.
         """
         await asyncio.to_thread(
             self.store._write,
@@ -833,6 +845,8 @@ class EventStoreSubscription(BaseSubscription):
                 "message_type": message_type,
                 "message_id": message_id,
                 "retry_count": retry_count,
+                "stream_name": stream_name,
+                "stream_position": stream_position,
             },
             metadata={
                 "headers": {
@@ -1029,7 +1043,11 @@ class EventStoreSubscription(BaseSubscription):
                     f"after {self.max_retries} retries"
                 )
                 await self._write_recovery_status(
-                    position, FailedPositionStatus.EXHAUSTED, new_retry_count
+                    position,
+                    FailedPositionStatus.EXHAUSTED,
+                    new_retry_count,
+                    stream_name=stream_name,
+                    stream_position=stream_position,
                 )
                 # Remove from in-memory tracking
                 self._failed_positions.pop(position, None)
@@ -1111,6 +1129,8 @@ class EventStoreSubscription(BaseSubscription):
                     new_retry_count,
                     message_type=recovered_message_type,
                     message_id=recovered_message_id,
+                    stream_name=stream_name,
+                    stream_position=stream_position,
                 )
                 self._failed_positions.pop(position, None)
                 recovered_count += 1

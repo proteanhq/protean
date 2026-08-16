@@ -5,6 +5,7 @@ Commands for managing databases, event stores, and data inspection.
 - [`protean db`](./database.md): Database setup, teardown, and migrations
 - [`protean events`](./events.md): Inspect event store contents
 - [`protean eventstore`](./eventstore.md): Check event-store integrity
+- [`protean eventstore dlq`](./eventstore-dlq.md): Inspect exhausted event-store positions
 - [`protean snapshot`](./snapshot.md): Manage aggregate snapshots
 - [`protean projection`](./projection.md): Rebuild and manage projections
 - [`protean outbox`](./outbox.md): Reconcile the outbox with the event store

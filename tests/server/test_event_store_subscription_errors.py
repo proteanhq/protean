@@ -486,6 +486,21 @@ class TestRecoveryPass:
         statuses = [m.metadata.headers.type for m in failed_msgs]
         assert FailedPositionStatus.EXHAUSTED.value in statuses
 
+        # The Exhausted record carries the failing event's stream location so
+        # `eventstore dlq inspect` can re-read it. The message was created with
+        # stream_position=0 and the default stream name; assert the real values,
+        # not None (pre-enrichment records had neither).
+        exhausted = [
+            m
+            for m in failed_msgs
+            if m.metadata.headers.type == FailedPositionStatus.EXHAUSTED.value
+        ]
+        assert len(exhausted) == 1
+        exhausted_data = exhausted[0].data
+        assert exhausted_data["stream_name"] == msg.metadata.headers.stream
+        assert exhausted_data["stream_name"] is not None
+        assert exhausted_data["stream_position"] == 0
+
         # No more unresolved positions
         assert len(sub._get_unresolved_positions()) == 0
 

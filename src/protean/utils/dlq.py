@@ -25,6 +25,18 @@ class SubscriptionInfo:
     stream_category: str
     dlq_stream: str
     backfill_dlq_stream: str | None
+    is_broker: bool = False
+
+
+def failed_positions_stream(handler_fqn: str, stream_category: str) -> str:
+    """Return the event-store failed-positions stream name for a subscription.
+
+    This is the single source of the name the ``EventStoreSubscription`` writes
+    its ``Failed``/``Exhausted`` records to (see the subscription's
+    ``failed_positions_stream`` attribute). The CLI and the subscription both
+    call this so the name cannot drift between the writer and the reader.
+    """
+    return f"failed-{handler_fqn}-{stream_category}"
 
 
 def _infer_stream_category(handler_cls: type) -> str | None:
@@ -127,6 +139,7 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
                     stream_category=stream,
                     dlq_stream=f"{stream}:dlq",
                     backfill_dlq_stream=None,  # Broker subscriptions don't use priority lanes
+                    is_broker=True,
                 )
                 seen_streams[key] = info
                 infos.append(info)
@@ -143,3 +156,22 @@ def collect_dlq_streams(domain: Domain) -> list[str]:
             streams.append(info.backfill_dlq_stream)
     # Deduplicate while preserving order
     return list(dict.fromkeys(streams))
+
+
+def collect_failed_streams(domain: Domain) -> list[tuple[SubscriptionInfo, str]]:
+    """Return each event-store subscription paired with its failed-positions stream.
+
+    Only event-store subscriptions (event handlers, command handlers, projectors)
+    have a failed-positions stream; broker subscribers do not, so they are
+    excluded. A projector subscribing to several stream categories yields one
+    pair per category, matching how the engine creates one subscription per
+    (handler, category).
+    """
+    pairs: list[tuple[SubscriptionInfo, str]] = []
+    for info in discover_subscriptions(domain):
+        if info.is_broker:
+            continue
+        pairs.append(
+            (info, failed_positions_stream(info.handler_fqn, info.stream_category))
+        )
+    return pairs

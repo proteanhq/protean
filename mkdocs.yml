@@ -345,6 +345,7 @@ nav:
         - reference/cli/data/dlq.md
         - reference/cli/data/events.md
         - reference/cli/data/eventstore.md
+        - reference/cli/data/eventstore-dlq.md
         - reference/cli/data/snapshot.md
         - reference/cli/data/projection.md
         - reference/cli/data/outbox.md
