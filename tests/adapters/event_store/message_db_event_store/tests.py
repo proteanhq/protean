@@ -251,3 +251,35 @@ class TestMessageDBEventStore:
         """An empty store yields nothing."""
         store = test_domain.event_store.store
         assert list(store.read_all("$all", page_size=5)) == []
+
+    def test_read_over_store_with_snapshot_does_not_raise(self, test_domain):
+        """`read("$all")` skips snapshot rows (type SNAPSHOT, no metadata)
+        instead of raising a TypeError on their `None` metadata (issue #1437)."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        for i in range(3):
+            store._write("testStream-123", "Event1", {"n": i}, metadata)
+        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+
+        messages = store.read("$all")
+
+        assert len(messages) == 3
+        assert [m.data["n"] for m in messages] == [0, 1, 2]
+        assert all(m.metadata.headers.type != "SNAPSHOT" for m in messages)
+
+    def test_read_all_snapshot_on_page_boundary_drops_no_events(self, test_domain):
+        """A snapshot as the last raw row of a full page must not truncate the
+        read nor desync the cursor: read_all pages on raw rows (issue #1437)."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        store._write("testStream-123", "Event1", {"n": 0}, metadata)
+        # Second (last) raw row of page 1 under page_size=2.
+        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+        store._write("testStream-123", "Event1", {"n": 1}, metadata)
+        store._write("testStream-123", "Event1", {"n": 2}, metadata)
+        store._write("testStream-123", "Event1", {"n": 3}, metadata)
+
+        paged = list(store.read_all("$all", page_size=2))
+
+        assert [m.data["n"] for m in paged] == [0, 1, 2, 3]
+        assert all(m.metadata.headers.type != "SNAPSHOT" for m in paged)

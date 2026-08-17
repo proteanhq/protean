@@ -124,6 +124,10 @@ for message in store.read_all("myapp::account", page_size=1000):
     ...  # handle each message
 ```
 
+Both `read` and `read_all` return events and commands only. A read whose scope
+spans snapshot streams (`$all`, or a `:snapshot-` stream) skips the snapshot
+rows, so you never get a snapshot back where an event is expected.
+
 ---
 
 ## Stream naming conventions

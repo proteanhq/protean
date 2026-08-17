@@ -18,6 +18,13 @@ from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
 from protean.utils.eventing import Message
 from protean.utils.telemetry import set_span_error
 
+# Snapshot rows are written with ``message_type="SNAPSHOT"`` and no metadata
+# (see ``_load_aggregate_current`` and ``create_snapshot``). They hold an
+# aggregate's serialized state, not an event or command, so the read layer
+# skips them: ``Message.deserialize`` would raise on their ``None`` metadata,
+# and callers of ``read``/``read_all`` expect events and commands only.
+SNAPSHOT_TYPE = "SNAPSHOT"
+
 
 @dataclass
 class CausationNode:
@@ -100,6 +107,16 @@ class BaseEventStore(metaclass=ABCMeta):
         stream_category, _, _ = stream.partition("-")
         return stream_category
 
+    @staticmethod
+    def _is_snapshot_row(raw_message: dict[str, Any]) -> bool:
+        """Whether a raw store row is a snapshot rather than an event/command.
+
+        Keys strictly on ``type == "SNAPSHOT"``: a row with genuinely missing or
+        ``None`` metadata that is *not* a snapshot still flows to
+        ``Message.deserialize`` and raises, so real corruption is not swallowed.
+        """
+        return raw_message.get("type") == SNAPSHOT_TYPE
+
     def read(
         self,
         stream: str,
@@ -111,9 +128,15 @@ class BaseEventStore(metaclass=ABCMeta):
             stream, sql=sql, position=position, no_of_messages=no_of_messages
         )
 
-        messages = [Message.deserialize(raw_message) for raw_message in raw_messages]
-
-        return messages
+        # Skip snapshot rows: they carry an aggregate's state with no metadata,
+        # so they are neither events nor commands and would raise on deserialize.
+        # A scope that spans snapshot streams (``$all``, a ``:snapshot-`` stream)
+        # would otherwise fail the whole read.
+        return [
+            Message.deserialize(raw_message)
+            for raw_message in raw_messages
+            if not self._is_snapshot_row(raw_message)
+        ]
 
     def read_all(
         self, stream: str = "$all", *, page_size: int = 1000
@@ -123,9 +146,18 @@ class BaseEventStore(metaclass=ABCMeta):
         A cold-load read that must be complete (a full projection rebuild, a
         backup, an integrity check) cannot rely on a single large ``read`` with a
         sentinel ``no_of_messages``: past the cap it silently truncates. This
-        iterator loops ``read`` in ``page_size`` batches and advances a cursor
+        iterator pages the store in ``page_size`` batches and advances a cursor
         until a short page signals the end, so it reads the whole stream at a
         bounded memory cost regardless of size.
+
+        Paging is done on the *raw* store rows, not on deserialized messages, so
+        that interleaved snapshot rows (``type == "SNAPSHOT"``, no metadata) do
+        not distort it. Snapshots are skipped from the output — the iterator
+        yields events and commands only — but they still count toward the raw
+        page, so a page carrying a snapshot neither ends the read early nor
+        desyncs the cursor. The cursor advances from the last *raw* row of each
+        page, which may itself be a snapshot; its top-level position is read
+        directly, never through ``Message.deserialize``.
 
         The cursor field follows the stream shape (ADR-0024): ``$all`` and a bare
         category page by ``global_position``; a specific stream (``category-id``)
@@ -161,34 +193,33 @@ class BaseEventStore(metaclass=ABCMeta):
 
         cursor = 0
         while True:
-            page = self.read(stream, position=cursor, no_of_messages=page_size)
-            yield from page
+            raw_page = self._read(stream, position=cursor, no_of_messages=page_size)
+            for raw_message in raw_page:
+                if self._is_snapshot_row(raw_message):
+                    continue
+                yield Message.deserialize(raw_message)
 
-            # A short page is the last page: the store had no more rows to fill
-            # it. This also terminates the empty-stream case after one read.
-            if len(page) < page_size:
+            # A short raw page is the last page: the store had no more rows to
+            # fill it. Terminate on the *raw* count, not the yielded count, so a
+            # page whose rows include snapshots is not mistaken for the end. This
+            # also terminates the empty-stream case after one read.
+            if len(raw_page) < page_size:
                 return
 
-            cursor = self._next_cursor(page[-1], pages_by_global_position)
+            cursor = self._next_cursor(raw_page[-1], pages_by_global_position)
 
     @staticmethod
-    def _next_cursor(message: Message, by_global_position: bool) -> int:
-        """The ``position`` to resume a paged read after ``message``.
+    def _next_cursor(raw_message: dict[str, Any], by_global_position: bool) -> int:
+        """The ``position`` to resume a paged read after ``raw_message``.
 
-        Reads are inclusive, so resume one past the last row seen. A persisted
-        message always carries the relevant position; a missing one is a corrupt
-        row that would otherwise loop or truncate the read silently, so raise.
-        ``EventStoreMeta`` is attached when *either* position is present, so a row
-        can carry an ``event_store`` whose chosen field is still ``None``.
+        Reads are inclusive, so resume one past the last raw row seen. The row's
+        top-level position is read directly (never through ``Message.deserialize``,
+        which would raise on a snapshot's ``None`` metadata). A persisted row
+        always carries the relevant position; a missing one is a corrupt row that
+        would otherwise loop or truncate the read silently, so raise.
         """
-        event_store = message.metadata.event_store if message.metadata else None
-        last: int | None = None
-        if event_store is not None:
-            last = (
-                event_store.global_position
-                if by_global_position
-                else event_store.position
-            )
+        key = "global_position" if by_global_position else "position"
+        last: int | None = raw_message.get(key)
         if last is None:
             raise IncorrectUsageError(
                 "Cannot page the event store: a message is missing its position."

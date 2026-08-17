@@ -12,7 +12,6 @@ import pytest
 
 from protean.exceptions import IncorrectUsageError
 from protean.port.event_store import BaseEventStore
-from protean.utils.eventing import Message
 
 
 def _metadata(stream_name, message_type, message_id):
@@ -66,7 +65,7 @@ def test_read_all_exact_multiple_of_page_size(test_domain):
     page_size = 5
     _write_n(store, "counter-1", page_size * 2)
 
-    with patch.object(store, "read", wraps=store.read) as spy:
+    with patch.object(store, "_read", wraps=store._read) as spy:
         paged = list(store.read_all("$all", page_size=page_size))
 
     gpos = _global_positions(paged)
@@ -98,7 +97,7 @@ def test_read_all_empty_stream_yields_nothing_in_one_read(test_domain):
     """An empty stream yields nothing and issues a single underlying read."""
     store = test_domain.event_store.store
 
-    with patch.object(store, "read", wraps=store.read) as spy:
+    with patch.object(store, "_read", wraps=store._read) as spy:
         result = list(store.read_all("$all", page_size=10))
 
     assert result == []
@@ -185,31 +184,29 @@ def test_read_all_rejects_non_positive_page_size(test_domain, bad):
         list(store.read_all("$all", page_size=bad))
 
 
-def test_next_cursor_raises_when_event_store_meta_absent():
-    """A row with no event-store metadata raises instead of looping.
+def test_next_cursor_raises_when_position_absent():
+    """A raw row with no position field raises instead of looping.
 
     The paging cursor cannot advance without a position, so a corrupt/missing
     one is a loud error rather than a silent infinite loop or truncated read.
     """
-    message = Message.deserialize(
-        {"type": "X", "data": {}, "metadata": {"headers": {"id": "1"}}}
-    )
-    assert message.metadata.event_store is None  # no position -> no meta
+    raw_message = {"type": "X", "data": {}, "metadata": {"headers": {"id": "1"}}}
 
     with pytest.raises(IncorrectUsageError, match="missing its position"):
-        BaseEventStore._next_cursor(message, by_global_position=True)
+        BaseEventStore._next_cursor(raw_message, by_global_position=True)
 
 
 def test_next_cursor_raises_when_chosen_position_is_none():
-    """Metadata attaches when *either* position is present, so a row can carry
-    an ``event_store`` whose requested field is still ``None`` — that raises."""
-    # `position` is set, so event_store meta is attached, but global_position
-    # is absent. Asking for the global cursor must still raise.
-    message = Message.deserialize(
-        {"type": "X", "data": {}, "position": 3, "metadata": {"headers": {"id": "1"}}}
-    )
-    assert message.metadata.event_store is not None
-    assert message.metadata.event_store.global_position is None
+    """A raw row can carry one position field and not the other — asking for the
+    absent one still raises rather than advancing on ``None``."""
+    # `position` is set but `global_position` is absent. Asking for the global
+    # cursor must still raise.
+    raw_message = {
+        "type": "X",
+        "data": {},
+        "position": 3,
+        "metadata": {"headers": {"id": "1"}},
+    }
 
     with pytest.raises(IncorrectUsageError, match="missing its position"):
-        BaseEventStore._next_cursor(message, by_global_position=True)
+        BaseEventStore._next_cursor(raw_message, by_global_position=True)
