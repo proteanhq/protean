@@ -431,6 +431,7 @@ nav:
       - adr/0029-runtime-dependency-boundary-and-extras.md
       - adr/0030-canonical-project-layout.md
       - adr/0031-handlers-persist-or-call-out.md
+      - adr/0032-annotation-file-for-the-event-model.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

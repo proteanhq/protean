@@ -103,3 +103,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0029](0029-runtime-dependency-boundary-and-extras.md) | Runtime Dependency Boundary and Feature Extras |
 | [0030](0030-canonical-project-layout.md) | Canonical Generated Project Layout |
 | [0031](0031-handlers-persist-or-call-out.md) | A Handler Method Persists or Calls Out, Never Both |
+| [0032](0032-annotation-file-for-the-event-model.md) | Annotation File for the Event Model Renderer |
