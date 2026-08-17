@@ -22,6 +22,7 @@ from protean.ir.analysis.element_index import (
     MethodRole,
 )
 from protean.ir.analysis.facts import (
+    RAISE_METHOD,
     AttributeFact,
     CallFact,
     ConstructionFact,
@@ -35,6 +36,7 @@ from protean.ir.analysis.symbols import SymbolResolver
 from protean.ir.analysis.view import BehavioralView, FilterCallSite
 
 __all__ = [
+    "RAISE_METHOD",
     "AttributeFact",
     "BehavioralView",
     "BlockCoverage",

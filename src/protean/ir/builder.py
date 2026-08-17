@@ -38,7 +38,7 @@ from protean.ir.analysis import (
     ReceiverRole,
     SourceProvider,
 )
-from protean.ir.analysis.facts import _RAISE_METHOD
+from protean.ir.analysis.facts import RAISE_METHOD
 from protean.ir.constants import (
     VOLATILE_IR_KEYS,
     is_external_io_call,
@@ -1701,7 +1701,7 @@ class IRBuilder:
         """
         edges: dict[str, dict[str, list[str]]] = {}
         for method_name, facts in self.view.element_facts(cls).items():
-            if not any(call.method == _RAISE_METHOD for call in facts.calls):
+            if not any(call.method == RAISE_METHOD for call in facts.calls):
                 continue
             raised = sorted({c.fqn for c in facts.constructions if c.fqn in event_fqns})
             if raised:

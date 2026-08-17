@@ -123,8 +123,9 @@ if TYPE_CHECKING:
 _QUERY_METHODS = frozenset({"add", "get", "find_by", "find", "filter", "exclude"})
 
 #: The method name Protean raises a domain event through (``self.raise_(...)``,
-#: on both aggregates and entities).
-_RAISE_METHOD = "raise_"
+#: on both aggregates and entities). Public because the builder matches on it
+#: too, when deriving ``raises`` edges; one name, one definition.
+RAISE_METHOD = "raise_"
 
 #: The FQN of the Unit of Work, so a call on a recognizable Unit-of-Work
 #: receiver is tagged even before dataflow lands.
@@ -427,7 +428,7 @@ class FactCatalog:
 
         if self._is_unit_of_work(module, receiver, receiver_fqn):
             return ReceiverRole.UNIT_OF_WORK, receiver_fqn
-        if method == _RAISE_METHOD:
+        if method == RAISE_METHOD:
             return ReceiverRole.RAISE_, receiver_fqn
         if method in _QUERY_METHODS:
             return ReceiverRole.REPOSITORY_QUERY, receiver_fqn

@@ -200,7 +200,8 @@
         },
         "minProperties": 1,
         "additionalProperties": false
-      }
+      },
+      "minProperties": 1
     },
 
     "apply_handler_map": {

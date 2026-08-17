@@ -271,3 +271,13 @@ class TestSchemaConformance:
 
     def test_built_ir_validates(self, ir):
         jsonschema.validate(ir, load_schema())
+
+    def test_empty_method_edges_is_rejected(self, ir):
+        """Sparsity is a schema rule, not just a builder habit.
+
+        The builder only ever writes a non-empty map, so an element carrying
+        ``method_edges: {}`` came from somewhere else and should not validate.
+        """
+        ir["clusters"][_fq("Catalog")]["aggregate"]["method_edges"] = {}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(ir, load_schema())
