@@ -369,6 +369,128 @@ class TestConsumerClassification:
 
 
 # ------------------------------------------------------------------
+# Consumers that exist but do not handle the slice's events
+# ------------------------------------------------------------------
+
+
+class TestNonMatchingConsumers:
+    def test_projector_not_handling_the_event_is_skipped(self):
+        """A projector whose handlers miss the event is not drawn."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        projections = {
+            "app.OtherSummary": _projection(
+                "app.OtherSummary",
+                {
+                    "app.OtherProjector": _projector(
+                        "app.OtherProjector",
+                        "app.OtherSummary",
+                        {"App.SomethingElse.v1": ["on_something_else"]},
+                    ),
+                },
+            ),
+        }
+        result = generate_event_model_slice(
+            _ir(clusters=clusters, projections=projections), "app.Order"
+        )
+        assert "agg_app_Order --> evt_app_OrderPlaced" in result
+        assert "OtherProjector" not in result
+        assert "rm_app_Order" not in result
+
+    def test_event_handler_and_pm_not_handling_the_event_are_skipped(self):
+        """An event handler and a PM whose handlers miss the event are not drawn."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OtherHandler": _event_handler(
+                        "app.OtherHandler",
+                        {"App.SomethingElse.v1": ["react"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.OtherPM": _process_manager(
+                    "app.OtherPM",
+                    {"App.SomethingElse.v1": ["react"]},
+                ),
+            },
+            "subscribers": {},
+        }
+        result = generate_event_model_slice(
+            _ir(clusters=clusters, flows=flows), "app.Order"
+        )
+        assert "agg_app_Order --> evt_app_OrderPlaced" in result
+        assert "OtherHandler" not in result
+        assert "OtherPM" not in result
+        assert "auto_app_Order" not in result
+
+    def test_event_without_type_matches_no_consumers(self):
+        """An event with an empty ``__type__`` renders but matches nothing.
+
+        Guards the early-return branches in both consumer lookups: with a
+        falsy event type there is nothing to match, so no projector, event
+        handler, or process manager is drawn even when all three are present.
+        """
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", ""),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        projections = {
+            "app.OrderSummary": _projection(
+                "app.OrderSummary",
+                {
+                    "app.OrderSummaryProjector": _projector(
+                        "app.OrderSummaryProjector",
+                        "app.OrderSummary",
+                        {"App.OrderPlaced.v1": ["on_order_placed"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": _process_manager(
+                    "app.FulfillmentPM",
+                    {"App.OrderPlaced.v1": ["on_order_placed"]},
+                ),
+            },
+            "subscribers": {},
+        }
+        result = generate_event_model_slice(
+            _ir(clusters=clusters, flows=flows, projections=projections), "app.Order"
+        )
+        # The event node still renders...
+        assert "evt_app_OrderPlaced([OrderPlaced])" in result
+        # ...but no consumer is matched.
+        assert "rm_app_Order" not in result
+        assert "auto_app_Order" not in result
+
+
+# ------------------------------------------------------------------
 # Fact events excluded
 # ------------------------------------------------------------------
 

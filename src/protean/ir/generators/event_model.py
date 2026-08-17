@@ -70,12 +70,11 @@ def _read_models_for(
 
     Returns ``(node_id, node_line)`` pairs for every projector whose
     ``handlers`` map contains *evt_type*, labelled with the projection the
-    projector is ``projector_for``.
+    projector is ``projector_for``. An empty *evt_type* matches nothing: it
+    is never a key in any ``handlers`` map, so the membership check below
+    skips every projector.
     """
     results: list[tuple[str, str]] = []
-    if not evt_type:
-        return results
-
     for _proj_group_fqn, proj_group in sorted(ir.get("projections", {}).items()):
         for proj_fqn, projector in sorted(proj_group.get("projectors", {}).items()):
             if evt_type not in projector.get("handlers", {}):
@@ -102,12 +101,11 @@ def _automations_for(
     Scans event handlers across every cluster and process managers under
     ``flows``, matching by the event ``__type__`` string exactly as the
     event-flow generator does, so a cross-cluster consumer is found too.
-    Returns ``(node_id, node_line)`` pairs.
+    Returns ``(node_id, node_line)`` pairs. An empty *evt_type* matches
+    nothing: it is never a key in any ``handlers`` map, so the membership
+    checks below skip every event handler and process manager.
     """
     results: list[tuple[str, str]] = []
-    if not evt_type:
-        return results
-
     for _c_fqn, cluster in sorted(ir.get("clusters", {}).items()):
         for eh_fqn, event_handler in sorted(cluster.get("event_handlers", {}).items()):
             if evt_type not in event_handler.get("handlers", {}):
