@@ -360,11 +360,14 @@ def _generate_event_model(ir_data: dict[str, Any], output_format: str) -> str:
         raw = generate_event_model_slice(ir_data, cfqn)
         if raw != "flowchart LR":
             name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
-            section = [f"## Event Model: {name}"]
-            gwt = generate_slice_gwt(ir_data, cfqn)
-            if gwt:
-                section.append(gwt)
-            section.append(mermaid_fence(raw))
+            # generate_slice_gwt always returns a non-empty block for a
+            # cluster that exists, and this loop only visits existing
+            # clusters, so no empty-GWT guard is needed here.
+            section = [
+                f"## Event Model: {name}",
+                generate_slice_gwt(ir_data, cfqn),
+                mermaid_fence(raw),
+            ]
             parts.append("\n\n".join(section))
 
     return "\n\n".join(parts) or mermaid_fence("flowchart LR", title="Event Model")
