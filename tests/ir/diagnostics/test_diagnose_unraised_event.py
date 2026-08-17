@@ -70,6 +70,24 @@ class TestUnraisedEventIsFlagged:
 
         assert [d["element"] for d in findings] == [fqn(m.Shipped)]
 
+    def test_a_constructed_but_unraised_event_is_flagged(self):
+        """``Workflow.draft`` constructs ``Drafted`` but never raises it, while a
+        sibling method raises ``Prepared``. Construction alone is not a raise, so
+        ``Drafted`` is flagged and ``Prepared`` is not. This makes the ``raise_``
+        guard the deciding factor: without it, bare construction would count as a
+        raise and clear ``Drafted``. It also pins the correlation to the method,
+        not the class: a class-level check would see the raise in ``prepare`` and
+        the construction in ``draft`` and wrongly clear ``Drafted``."""
+        domain = _domain("UnraisedConstructOnly")
+        domain.register(m.Workflow)
+        domain.register(m.Prepared, part_of=m.Workflow)
+        domain.register(m.Drafted, part_of=m.Workflow)
+        domain.init(traverse=False)
+
+        findings = _findings(IRBuilder(domain).build(), CODE)
+
+        assert [d["element"] for d in findings] == [fqn(m.Drafted)]
+
     def test_it_is_advisory_rather_than_a_warning(self):
         assert REGISTRY[DiagnosticCode.UNRAISED_EVENT].level == "info"
 

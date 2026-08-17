@@ -782,8 +782,11 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         level="info",
         meaning="An event is raised by no aggregate or entity method.",
         rationale=(
-            "An event that no method raises is declared and wired but never "
-            "produced, so the state change it names never happens."
+            "An event that no aggregate or entity method raises is declared and "
+            "wired but produced by none of them. The check reads only aggregate "
+            "and entity method bodies, so an event raised from a command "
+            "handler, subscriber, or module-level factory is outside its scope "
+            "and still shows here."
         ),
         fix=(
             "Raise the event from the aggregate or entity method that makes the "

@@ -122,5 +122,31 @@ class Ledger(BaseAggregate):
     balance = String(max_length=50)
 
 
+class Prepared(BaseEvent):
+    workflow_id = Identifier()
+
+
+class Drafted(BaseEvent):
+    workflow_id = Identifier()
+
+
+class Workflow(BaseAggregate):
+    """``prepare`` raises ``Prepared`` through ``self.raise_``. ``draft``
+    constructs ``Drafted`` but never raises it. Construction alone is not a
+    raise, so ``Drafted`` is flagged and ``Prepared`` is not. This is what makes
+    the ``raise_`` guard the deciding factor, and it pins the correlation to the
+    method: a class-level check would see the ``raise_`` in ``prepare`` and the
+    construction in ``draft`` and wrongly clear ``Drafted``."""
+
+    name = String(max_length=50)
+
+    def prepare(self):
+        self.raise_(Prepared(workflow_id=self.id))
+
+    def draft(self):
+        event = Drafted(workflow_id=self.id)
+        return event
+
+
 class Vanished(BaseEvent):
     ghost_id = Identifier()

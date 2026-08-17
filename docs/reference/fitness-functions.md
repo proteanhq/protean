@@ -227,11 +227,19 @@ or mark it `published=True` if it is intentionally external.
 | **Category** | `handler_completeness` |
 | **Level** | `info` |
 
-**Why.** An event that no method raises is declared and wired but never
-produced, so the state change it names never happens.
+**Why.** An event that no aggregate or entity method raises is declared and
+wired but produced by none of them. The check reads only aggregate and entity
+method bodies, so an event raised from a command handler, subscriber, or
+module-level factory is outside its scope and still shows here.
 
 **Fix.** Raise the event from the aggregate or entity method that makes the
 change it records, or remove the event if nothing produces it.
+
+This is an advisory. It correlates a raise to a construction inside one method,
+so an event raised through a helper (`self._emit(Placed(...))` calling
+`self.raise_(e)`) or from caller code such as a command handler or subscriber is
+still reported. Suppress the code where a documented pattern raises the event
+outside an aggregate or entity method.
 
 ### UNUSED_COMMAND { #unused-command }
 
