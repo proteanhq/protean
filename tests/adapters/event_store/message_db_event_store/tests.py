@@ -269,7 +269,7 @@ class TestMessageDBEventStore:
 
     def test_read_all_snapshot_on_page_boundary_drops_no_events(self, test_domain):
         """A snapshot as the last raw row of a full page must not truncate the
-        read nor desync the cursor: read_all pages on raw rows (issue #1437)."""
+        read nor desync the cursor: read_all pages on raw rows."""
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         store._write("testStream-123", "Event1", {"n": 0}, metadata)
@@ -283,3 +283,63 @@ class TestMessageDBEventStore:
 
         assert [m.data["n"] for m in paged] == [0, 1, 2, 3]
         assert all(m.metadata.headers.type != "SNAPSHOT" for m in paged)
+
+    def test_read_all_full_page_of_only_snapshots_still_advances(self, test_domain):
+        """A full page of only snapshots must still advance the cursor and read
+        the event after it, not stop on a zero yielded count."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        store._write("testStream:snapshot-1", "SNAPSHOT", {"_version": 0})
+        store._write("testStream:snapshot-2", "SNAPSHOT", {"_version": 0})
+        store._write("testStream-123", "Event1", {"n": 0}, metadata)
+
+        paged = list(store.read_all("$all", page_size=2))
+
+        assert [m.data["n"] for m in paged] == [0]
+        assert all(m.metadata.headers.type != "SNAPSHOT" for m in paged)
+
+    def test_read_all_page_size_one_with_snapshot(self, test_domain):
+        """`page_size=1` walks one raw row at a time; a snapshot row yields
+        nothing for its page but must not stop or re-loop the read."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        store._write("testStream-123", "Event1", {"n": 0}, metadata)
+        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+        store._write("testStream-123", "Event1", {"n": 1}, metadata)
+
+        paged = list(store.read_all("$all", page_size=1))
+
+        assert [m.data["n"] for m in paged] == [0, 1]
+        assert all(m.metadata.headers.type != "SNAPSHOT" for m in paged)
+
+    def test_category_read_over_store_with_snapshot_unchanged(self, test_domain):
+        """A category read returns the category's events and never a snapshot
+        row, matching pre-snapshot behaviour."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        for i in range(3):
+            store._write("testStream-123", "Event1", {"n": i}, metadata)
+        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+
+        paged = list(store.read_all("testStream", page_size=2))
+        direct = store.read("testStream")
+
+        assert [m.data["n"] for m in paged] == [0, 1, 2]
+        assert [m.data["n"] for m in direct] == [0, 1, 2]
+        assert all(m.metadata.headers.type != "SNAPSHOT" for m in paged)
+        assert all(m.metadata.headers.type != "SNAPSHOT" for m in direct)
+
+    def test_read_last_message_skips_a_trailing_snapshot(self, test_domain):
+        """`read_last_message("$all")` returns the newest event, not the trailing
+        snapshot row, so outbox reconciliation does not crash on it."""
+        store = test_domain.event_store.store
+        metadata = {"domain": {"kind": "EVENT"}}
+        for i in range(3):
+            store._write("testStream-123", "Event1", {"n": i}, metadata)
+        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+
+        last = store.read_last_message("$all")
+
+        assert last is not None
+        assert last.metadata.headers.type != "SNAPSHOT"
+        assert last.data["n"] == 2

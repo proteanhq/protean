@@ -228,10 +228,38 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def read_last_message(self, stream: str) -> Message | None:
         raw_message = self._read_last_message(stream)
-        if raw_message:
-            return Message.deserialize(raw_message)
+        if raw_message is None:
+            return None
 
-        return None
+        # The newest row can be a snapshot (aggregate state, no metadata), which
+        # is neither an event nor a command and would raise on deserialize. This
+        # only arises for `$all`, where snapshot streams interleave with event
+        # streams (a bare category read filters on `{category}-`, so it never
+        # sees a `{category}:snapshot-` row). Skip back to the newest actual
+        # message so callers such as outbox reconciliation do not crash.
+        if self._is_snapshot_row(raw_message):
+            raw_message = self._last_non_snapshot_message(stream)
+            if raw_message is None:
+                return None
+
+        return Message.deserialize(raw_message)
+
+    def _last_non_snapshot_message(self, stream: str) -> dict[str, Any] | None:
+        """The newest event/command row in ``stream``, skipping snapshot rows.
+
+        Consulted only when ``_read_last_message`` returns a snapshot as the
+        tail row. Picks the highest ``global_position`` among non-snapshot rows,
+        never trusting row order, since some adapters read ``$all`` with no
+        ``ORDER BY``.
+        """
+        candidates = [
+            raw_message
+            for raw_message in self._read(stream, no_of_messages=1_000_000)
+            if not self._is_snapshot_row(raw_message)
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda m: m.get("global_position", -1))
 
     def append(self, object: BaseEvent | BaseCommand) -> int:
         tracer = self.domain.tracer

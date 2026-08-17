@@ -6,6 +6,7 @@ must skip them: deserializing a snapshot's ``None`` metadata raises, and both
 readers are contracted to yield events and commands only. ``read_all`` pages on
 raw rows, so a snapshot interleaved in ``$all`` must neither truncate the read
 nor desync the paging cursor.
+"""
 
 from protean.utils.eventing import Message
 
@@ -125,6 +126,36 @@ def test_read_all_page_size_one_with_snapshot(test_domain):
 
     assert _ns(messages) == [0, 1]
     assert "SNAPSHOT" not in _types(messages)
+
+
+def test_read_last_message_skips_a_trailing_snapshot(test_domain):
+    """``read_last_message("$all")`` must return the newest event, not raise,
+    when a snapshot is the newest raw row.
+
+    Outbox reconciliation reads ``$all`` this way. A snapshot written after the
+    last event would otherwise be the tail row, and deserializing its ``None``
+    metadata would crash the reconcile sweep.
+    """
+    store = test_domain.event_store.store
+    for i in range(3):
+        _write_event(store, "user-1", i)
+    _write_snapshot(store, "user", "1")  # newest raw row in `$all`
+
+    last = store.read_last_message("$all")
+
+    assert last is not None
+    assert last.metadata.headers.type != "SNAPSHOT"
+    assert last.data["n"] == 2
+
+
+def test_read_last_message_none_when_only_snapshots(test_domain):
+    """A store holding only snapshot rows has no event to return, so
+    ``read_last_message`` yields ``None`` rather than raising."""
+    store = test_domain.event_store.store
+    _write_snapshot(store, "user", "1")
+    _write_snapshot(store, "user", "2")
+
+    assert store.read_last_message("$all") is None
 
 
 def test_category_read_over_store_with_snapshot_unchanged(test_domain):
