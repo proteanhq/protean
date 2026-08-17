@@ -354,15 +354,19 @@ reading method bodies:
 
 - **`raises`** (aggregates and entities) lists the FQNs of events a method
   raises. It is derived by co-location: every registered event constructed in a
-  method that also calls `raise_`. It over-reports, since a method that builds
-  two events and raises one records both.
+  method that also calls `raise_`. It can over-report (a method that builds two
+  events and raises one records both) and under-report (an event built in a
+  helper and raised through it is missed).
 - **`invokes`** (command handlers, event handlers, projectors, process
   managers) lists the element methods a handler method calls, each an
   `{element, method}` pair. It is derived by matching a call's method name
   against the methods in scope (the handler's cluster, or for a process manager
-  or projector the union of the clusters its handled messages reach). A name
-  that matches more than one method in scope is skipped, so it can be
-  incomplete.
+  or projector the union of the clusters its handled messages reach). The match
+  is receiver-blind: a name that matches more than one method in scope is
+  skipped (so an edge can be missing), and a unique name is recorded even when
+  the real receiver is something else (so an edge can be wrong). A projector or
+  process manager is scoped to aggregate and entity method names, so it rarely
+  carries a real edge.
 
 Both edges are read from the source as written, so they are a guide rather than
 a proven fact. The map is sparse: a method with no edge is absent, an element

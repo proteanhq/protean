@@ -149,6 +149,13 @@ class OrderNotifier(BaseEventHandler):
         order = Order(name="notify")
         order.place()
 
+    @handle(OrderCancelled)
+    def on_cancelled(self, event):
+        # ``adjust`` is defined only on the OrderLine entity, so this invoke
+        # edge names the entity half of the cluster surface, not the aggregate.
+        line = OrderLine(label="revised")
+        line.adjust()
+
 
 class OrderProcess(BaseProcessManager):
     order_id = Identifier()

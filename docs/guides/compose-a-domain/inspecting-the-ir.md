@@ -114,15 +114,19 @@ methods can carry a `method_edges` map, keyed by method name:
 
 - **`raises`** appears on aggregates and entities. It lists the events a method
   raises, derived by co-location: every event built in a method that also calls
-  `raise_`. This over-reports, because a method that builds one event and raises
-  another records both.
+  `raise_`. It can over-report (a method that builds two events and raises one
+  records both) and under-report (an event built in a helper and raised through
+  it is missed).
 - **`invokes`** appears on command handlers, event handlers, projectors, and
   process managers. It lists the element methods a handler method calls, matched
-  by name against the methods in scope. A call whose name matches more than one
-  method in scope is skipped, so this can be incomplete.
+  by name against the methods in scope. The match is receiver-blind: a name
+  shared by more than one method in scope is skipped (so an edge can be
+  missing), and a unique name is recorded even when the real receiver is
+  something else (so an edge can be wrong). A projector or process manager is
+  scoped to aggregate and entity method names, so it rarely carries a real edge.
 
 Both edges are read from the source as written, not proven, so treat them as a
-guide rather than a contract. A method with no edge is absent, and an element
+guide to the domain's behavior. A method with no edge is absent, and an element
 with no edged method carries no `method_edges` key.
 
 ---

@@ -114,9 +114,25 @@ class TestInvokes:
             "invokes": [{"element": _fq("Order"), "method": "place"}]
         }
 
+    def test_invoke_edge_targets_an_entity_method(self, ir):
+        # ``adjust`` is defined only on the OrderLine entity, so the resolved
+        # edge names the entity half of the cluster surface (every other
+        # positive invoke test resolves to the aggregate ``Order.place``).
+        handler = ir["clusters"][_fq("Order")]["event_handlers"][_fq("OrderNotifier")]
+        assert handler["method_edges"]["on_cancelled"] == {
+            "invokes": [{"element": _fq("OrderLine"), "method": "adjust"}]
+        }
+
     def test_ambiguous_name_records_no_invoke(self, ir):
         # ``handle_touch`` calls ``touch``, which both Order and OrderLine
         # define, so no edge is recorded and the method is absent.
+        #
+        # Pin the precondition, so this stays an ambiguity test and does not
+        # silently degrade into a no-match test: ``touch`` genuinely resolves
+        # to two cluster elements. Drop either ``touch`` and the call would
+        # match one element and wrongly record an edge.
+        assert "touch" in m.Order.__dict__
+        assert "touch" in m.OrderLine.__dict__
         handler = ir["clusters"][_fq("Order")]["command_handlers"][
             _fq("OrderCommandHandler")
         ]
@@ -170,6 +186,17 @@ class TestInvokes:
                 order.place()
 
         domain.init(traverse=False)
+
+        # Baseline: wired to OrderPlaced, whose cluster owns Order, ``project``
+        # resolves the ``place`` call and records the edge. Without this the
+        # absence below could not be told apart from a projector that never
+        # records edges at all.
+        ir = IRBuilder(domain).build()
+        projector = ir["projections"][fqn(OrderView)]["projectors"][fqn(GhostProjector)]
+        assert projector["method_edges"]["project"] == {
+            "invokes": [{"element": fqn(Order), "method": "place"}]
+        }
+
         # Rewire the projector to handle only a stale type (a renamed/removed
         # event), the one shape that reaches an empty invoke scope.
         method = next(iter(GhostProjector._handlers[OrderPlaced.__type__]))
@@ -207,9 +234,14 @@ class TestFailOpen:
 
     def test_unreadable_source_yields_no_edges(self):
         # A dynamically-built aggregate has no source file, so the view returns
-        # empty facts for it — the raise in its method is never seen.
+        # empty facts for it. Its method constructs and raises a *registered*
+        # event — the exact shape that earns the on-disk ``Order.place`` an
+        # edge — so an unreadable source is the only remaining reason no edge
+        # is recorded. The on-disk ``Order`` is registered alongside as a
+        # positive control: with the derivation active its ``place`` edge is
+        # present, so the Ghost's empty result cannot be blamed on a dead pass.
         def _raise_method(self):
-            self.raise_(object())
+            self.raise_(m.OrderPlaced(order_id=self.id))
 
         Ghost = type(
             "GhostOrder",
@@ -217,11 +249,17 @@ class TestFailOpen:
             {"name": String(max_length=20), "do_raise": _raise_method},
         )
         domain = Domain(name="GhostEdges", root_path=".")
+        domain.register(m.Order)
+        domain.register(m.OrderPlaced, part_of=m.Order)
         domain.register(Ghost)
         domain.init(traverse=False)
 
         ir = IRBuilder(domain).build()
 
+        # Positive control: the on-disk twin's raise IS materialized.
+        on_disk = ir["clusters"][_fq("Order")]["aggregate"]
+        assert on_disk["method_edges"]["place"] == {"raises": [_fq("OrderPlaced")]}
+        # Fail-open: the source-less Ghost, written the same way, records nothing.
         cluster = ir["clusters"][fqn(Ghost)]
         assert "method_edges" not in cluster["aggregate"]
 

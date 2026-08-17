@@ -967,3 +967,57 @@ class TestDiffMethodEdges:
         edges = result["clusters"]["changed"]["app.Order"]["aggregate"]["method_edges"]
         assert edges["added"] == {"fresh": {"raises": ["app.OrderShipped"]}}
         assert edges["removed"] == {"gone": {"raises": ["app.OrderPlaced"]}}
+
+    def test_changed_invokes_on_a_handler_reported_once(self):
+        # ``_diff_element`` is shared across every subsection, so a changed
+        # ``invokes`` edge on a command handler (a non-aggregate element, an
+        # invoke-shaped value) diffs the same way and stays out of
+        # ``attributes``.
+        def _handler(invokes):
+            return {
+                "element_type": "COMMAND_HANDLER",
+                "fqn": "app.OrderCommandHandler",
+                "module": "app",
+                "name": "OrderCommandHandler",
+                "part_of": "app.Order",
+                "handlers": {},
+                "method_edges": {"handle_place": {"invokes": invokes}},
+            }
+
+        left_cluster = _make_cluster(
+            "Order",
+            command_handlers={
+                "app.OrderCommandHandler": _handler(
+                    [{"element": "app.Order", "method": "place"}]
+                )
+            },
+        )
+        right_cluster = _make_cluster(
+            "Order",
+            command_handlers={
+                "app.OrderCommandHandler": _handler(
+                    [
+                        {"element": "app.Order", "method": "place"},
+                        {"element": "app.OrderLine", "method": "adjust"},
+                    ]
+                )
+            },
+        )
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        handler_delta = result["clusters"]["changed"]["app.Order"]["command_handlers"][
+            "changed"
+        ]["app.OrderCommandHandler"]
+        change = handler_delta["method_edges"]["changed"]["handle_place"]
+        assert change["left"] == {
+            "invokes": [{"element": "app.Order", "method": "place"}]
+        }
+        assert change["right"]["invokes"][-1] == {
+            "element": "app.OrderLine",
+            "method": "adjust",
+        }
+        # The change must not leak into the scalar-attribute pass.
+        assert "attributes" not in handler_delta
