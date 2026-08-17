@@ -239,11 +239,12 @@ class BaseEventStore(metaclass=ABCMeta):
             return None
 
         # The newest row can be a snapshot (aggregate state, no metadata), which
-        # is neither an event nor a command and would raise on deserialize. This
-        # only arises for `$all`, where snapshot streams interleave with event
-        # streams (a bare category read filters on `{category}-`, so it never
-        # sees a `{category}:snapshot-` row). Skip back to the newest actual
-        # message so callers such as outbox reconciliation do not crash.
+        # is neither an event nor a command and would raise on deserialize. In
+        # practice this is the `$all` scan (outbox reconciliation reads it that
+        # way), where snapshot streams interleave with event streams; a specific
+        # or bare-category read filters to `{category}-` and never sees a
+        # `{category}:snapshot-` row, so its tail is already an event. Skip back
+        # to the newest actual message so those callers do not crash.
         if self._is_snapshot_row(raw_message):
             raw_message = self._last_non_snapshot_message(stream, raw_message)
             if raw_message is None:
@@ -256,14 +257,15 @@ class BaseEventStore(metaclass=ABCMeta):
     ) -> dict[str, Any] | None:
         """The newest event/command row in ``stream`` at or before ``tail``.
 
-        Consulted only when ``_read_last_message`` returns a snapshot as the
-        tail row (only ``$all`` interleaves snapshot streams with event streams).
-        Walks backward from the tail in ``_SNAPSHOT_TAIL_WINDOW``-sized windows
-        keyed on ``global_position``, so skipping a trailing snapshot costs a
-        small read near the tail, not a full scan from the start, and a store
-        larger than one window no longer returns a stale non-tail row. Within a
-        window the newest is chosen by ``global_position`` rather than trusting
-        row order, since some adapters read ``$all`` with no ``ORDER BY``.
+        Consulted when ``_read_last_message`` returns a snapshot as the tail
+        row, which is the ``$all`` scan, where snapshot streams interleave with
+        event streams. Walks backward from the tail in
+        ``_SNAPSHOT_TAIL_WINDOW``-sized windows keyed on ``global_position``, so
+        skipping a trailing snapshot costs a small read near the tail, not a
+        full scan from the start, and a store larger than one window no longer
+        returns a stale non-tail row. Within a window the newest is chosen by
+        ``global_position`` rather than trusting row order, since some adapters
+        read ``$all`` with no ``ORDER BY``.
         """
         hi: int = tail.get("global_position", -1)
         while hi >= 0:
