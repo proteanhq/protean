@@ -98,11 +98,19 @@ def _event_handler(fqn: str, handlers: dict) -> dict:
 
 
 def _process_manager(fqn: str, handlers: dict) -> dict:
+    # Real PM IR keys each __type__ to a {methods, start, end, correlate} dict
+    # (unlike event handlers / projectors, which key to a plain method list).
+    # Accept a bare method list for brevity and wrap it in that shape.
+    normalized: dict = {}
+    for type_key, info in handlers.items():
+        if isinstance(info, list):
+            info = {"methods": info, "start": False, "end": False}
+        normalized[type_key] = info
     return {
         "element_type": "PROCESS_MANAGER",
         "fqn": fqn,
         "name": fqn.rsplit(".", 1)[-1],
-        "handlers": handlers,
+        "handlers": normalized,
     }
 
 
@@ -190,9 +198,10 @@ class TestHeadlineSlice:
         assert "cmd_app_PlaceOrder[/PlaceOrder/]" in result
         assert "agg_app_Order[Order]" in result
         assert "evt_app_OrderPlaced([OrderPlaced])" in result
+        # Read model: cylinder shape [(...)]
         assert (
             "rm_app_Order_app_OrderSummaryProjector"
-            "[OrderSummaryProjector → OrderSummary]" in result
+            "[(OrderSummaryProjector → OrderSummary)]" in result
         )
 
     def test_mermaid_edges_left_to_right(self):
@@ -246,8 +255,9 @@ class TestConsumerClassification:
         result = generate_event_model_slice(
             _ir(clusters=clusters, flows=flows), "app.Order"
         )
-        assert "auto_app_Order_app_OrderNotifier[OrderNotifier]" in result
-        assert "auto_app_Order_app_FulfillmentPM[FulfillmentPM]" in result
+        # Automations: hexagon shape {{...}}
+        assert "auto_app_Order_app_OrderNotifier{{OrderNotifier}}" in result
+        assert "auto_app_Order_app_FulfillmentPM{{FulfillmentPM}}" in result
         assert "evt_app_OrderPlaced --> auto_app_Order_app_OrderNotifier" in result
         assert "evt_app_OrderPlaced --> auto_app_Order_app_FulfillmentPM" in result
         # An automation is not a read model
@@ -273,7 +283,7 @@ class TestConsumerClassification:
             ),
         }
         result = generate_event_model_slice(_ir(clusters=clusters), "app.Order")
-        assert "auto_app_Order_app_ShippingHandler[ShippingHandler]" in result
+        assert "auto_app_Order_app_ShippingHandler{{ShippingHandler}}" in result
         assert "evt_app_OrderPlaced --> auto_app_Order_app_ShippingHandler" in result
 
     def test_event_without_consumers_still_renders_the_chain(self):
@@ -328,7 +338,7 @@ class TestConsumerClassification:
         # The read-model node is declared exactly once even though two
         # events feed it.
         node_decls = result.count(
-            "rm_app_Order_app_OrderSummaryProjector[OrderSummaryProjector → OrderSummary]"
+            "rm_app_Order_app_OrderSummaryProjector[(OrderSummaryProjector → OrderSummary)]"
         )
         assert node_decls == 1
         # But both events draw an edge to it.
@@ -364,8 +374,132 @@ class TestConsumerClassification:
         result = generate_event_model_slice(
             _ir(clusters=clusters, projections=projections), "app.Order"
         )
-        assert "rm_app_Order_app_OrphanProjector[OrphanProjector]" in result
+        assert "rm_app_Order_app_OrphanProjector[(OrphanProjector)]" in result
         assert "→" not in result
+
+
+# ------------------------------------------------------------------
+# Consumer shapes and process-manager lifecycle
+# ------------------------------------------------------------------
+
+
+class TestConsumerShapesAndLifecycle:
+    def test_read_model_and_automation_have_distinct_shapes(self):
+        """A read model is a cylinder; an automation is a hexagon."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        projections = {
+            "app.OrderSummary": _projection(
+                "app.OrderSummary",
+                {
+                    "app.OrderSummaryProjector": _projector(
+                        "app.OrderSummaryProjector",
+                        "app.OrderSummary",
+                        {"App.OrderPlaced.v1": ["on_placed"]},
+                    ),
+                },
+            ),
+        }
+        result = generate_event_model_slice(
+            _ir(clusters=clusters, projections=projections), "app.Order"
+        )
+        # Read model: cylinder [(...)]
+        assert (
+            "rm_app_Order_app_OrderSummaryProjector[(OrderSummaryProjector → OrderSummary)]"
+            in result
+        )
+        # Automation: hexagon {{...}} — a different shape from the read model
+        assert "auto_app_Order_app_OrderNotifier{{OrderNotifier}}" in result
+
+    def test_process_manager_start_end_lifecycle_is_rendered(self):
+        """A PM's start/end shows in its label and on the edge from the event."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app.OrderShipped": _event(
+                        "app.OrderShipped", "App.OrderShipped.v1"
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": _process_manager(
+                    "app.FulfillmentPM",
+                    {
+                        "App.OrderPlaced.v1": {
+                            "methods": ["on_order_placed"],
+                            "start": True,
+                            "end": False,
+                        },
+                        "App.OrderShipped.v1": {
+                            "methods": ["on_order_shipped"],
+                            "start": False,
+                            "end": True,
+                        },
+                    },
+                ),
+            },
+            "subscribers": {},
+        }
+        result = generate_event_model_slice(
+            _ir(clusters=clusters, flows=flows), "app.Order"
+        )
+        # The node label carries the whole lifecycle across both handlers.
+        # The parentheses are Mermaid-special, so the label is double-quoted.
+        assert (
+            'auto_app_Order_app_FulfillmentPM{{"FulfillmentPM (start, end)"}}' in result
+        )
+        # Each triggering event edge is labelled with its own lifecycle role.
+        assert (
+            "evt_app_OrderPlaced -->|start| auto_app_Order_app_FulfillmentPM" in result
+        )
+        assert (
+            "evt_app_OrderShipped -->|end| auto_app_Order_app_FulfillmentPM" in result
+        )
+
+    def test_process_manager_without_lifecycle_uses_a_plain_edge(self):
+        """A PM with no start/end draws a bare label and an unlabelled edge."""
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": _process_manager(
+                    "app.FulfillmentPM",
+                    {"App.OrderPlaced.v1": ["on_order_placed"]},
+                ),
+            },
+            "subscribers": {},
+        }
+        result = generate_event_model_slice(
+            _ir(clusters=clusters, flows=flows), "app.Order"
+        )
+        assert "auto_app_Order_app_FulfillmentPM{{FulfillmentPM}}" in result
+        assert "evt_app_OrderPlaced --> auto_app_Order_app_FulfillmentPM" in result
+        # No lifecycle edge label.
+        assert "-->|" not in result
 
 
 # ------------------------------------------------------------------
@@ -440,9 +574,9 @@ class TestNonMatchingConsumers:
     def test_event_without_type_matches_no_consumers(self):
         """An event with an empty ``__type__`` renders but matches nothing.
 
-        Guards the early-return branches in both consumer lookups: with a
-        falsy event type there is nothing to match, so no projector, event
-        handler, or process manager is drawn even when all three are present.
+        An empty event type is never a key in any ``handlers`` map, so the
+        membership check in both consumer lookups skips every projector,
+        event handler, and process manager even when all three are present.
         """
         clusters = {
             "app.Order": _cluster(

@@ -46,8 +46,11 @@ cluster becomes one slice that reads left to right:
 1. **Command(s)** that trigger the aggregate.
 2. **Aggregate (state)** that decides and holds state.
 3. **Event(s)** the aggregate raises (fact events are omitted).
-4. **Read models and automations** that consume those events: projectors are
-   read models, event handlers and process managers are automations.
+4. **Read models and automations** that consume those events. Projectors are
+   read models, drawn as cylinders. Event handlers and process managers are
+   automations, drawn as hexagons, so a read model and an automation are told
+   apart at a glance. A process manager also shows its `start`/`end`
+   lifecycle, both in its node label and on the edge from the event.
 
 Consumers are matched to a slice's events by the event type, so the whole
 diagram is derived from the IR alone.
