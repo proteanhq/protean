@@ -5,8 +5,7 @@ Snapshot rows are written with ``type == "SNAPSHOT"`` and no metadata (see
 must skip them: deserializing a snapshot's ``None`` metadata raises, and both
 readers are contracted to yield events and commands only. ``read_all`` pages on
 raw rows, so a snapshot interleaved in ``$all`` must neither truncate the read
-nor desync the paging cursor (issue #1437).
-"""
+nor desync the paging cursor.
 
 from protean.utils.eventing import Message
 

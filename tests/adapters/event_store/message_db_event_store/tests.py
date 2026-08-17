@@ -254,7 +254,7 @@ class TestMessageDBEventStore:
 
     def test_read_over_store_with_snapshot_does_not_raise(self, test_domain):
         """`read("$all")` skips snapshot rows (type SNAPSHOT, no metadata)
-        instead of raising a TypeError on their `None` metadata (issue #1437)."""
+        instead of raising a TypeError on their `None` metadata."""
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         for i in range(3):
