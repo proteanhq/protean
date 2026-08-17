@@ -107,77 +107,59 @@ def _pm_edge_label(handler_info: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
-def _read_models_for(
-    ir: dict[str, Any],
-    cluster_fqn: str,
-    evt_type: str,
-) -> list[tuple[str, str]]:
-    """Find projectors (read models) that consume an event.
+def _read_model_index(ir: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
+    """Index projectors (read models) by the event ``__type__`` they consume.
 
-    Returns ``(node_id, node_line)`` pairs for every projector whose
-    ``handlers`` map contains *evt_type*, labelled with the projection the
-    projector is ``projector_for``. An empty *evt_type* matches nothing: it
-    is never a key in any ``handlers`` map, so the membership check below
-    skips every projector.
+    Maps each event type to ``(projector_fqn, label)`` pairs, where the label
+    names the projection the projector is ``projector_for``. Built once per
+    render so a slice looks a consumer up instead of rescanning every
+    projection for every event.
     """
-    results: list[tuple[str, str]] = []
+    index: dict[str, list[tuple[str, str]]] = {}
     for _proj_group_fqn, proj_group in sorted(ir.get("projections", {}).items()):
         for proj_fqn, projector in sorted(proj_group.get("projectors", {}).items()):
-            if evt_type not in projector.get("handlers", {}):
-                continue
-            node_id = _read_model_node_id(cluster_fqn, proj_fqn)
             proj_short = short_name(proj_fqn)
             projection_short = short_name(projector.get("projector_for", ""))
             label = proj_short
             if projection_short:
                 label = f"{proj_short} → {projection_short}"
-            node_line = _read_model_node_line(node_id, label)
-            results.append((node_id, node_line))
+            for evt_type in projector.get("handlers", {}):
+                index.setdefault(evt_type, []).append((proj_fqn, label))
 
-    return results
+    return index
 
 
-def _automations_for(
-    ir: dict[str, Any],
-    cluster_fqn: str,
-    evt_type: str,
-) -> list[tuple[str, str, str]]:
-    """Find event handlers and process managers (automations) for an event.
+def _automation_index(ir: dict[str, Any]) -> dict[str, list[tuple[str, str, str]]]:
+    """Index event handlers and process managers (automations) by event type.
 
-    Scans event handlers across every cluster and process managers under
-    ``flows``, matching by the event ``__type__`` string, so a cross-cluster
-    consumer is found too. Returns ``(node_id, node_line, edge_label)``
-    triples; *edge_label* is empty for event handlers and carries the
-    process-manager ``start``/``end`` lifecycle for the matched event. An
-    empty *evt_type* matches nothing: it is never a key in any ``handlers``
-    map, so the membership checks below skip every consumer.
+    Covers event handlers across every cluster and process managers under
+    ``flows``, so a cross-cluster consumer is indexed too. Maps each event
+    type to ``(consumer_fqn, label, edge_label)`` triples; *edge_label* is
+    empty for event handlers and carries the process-manager ``start``/``end``
+    lifecycle for that event. Built once per render, like
+    :func:`_read_model_index`.
     """
-    results: list[tuple[str, str, str]] = []
+    index: dict[str, list[tuple[str, str, str]]] = {}
     for _c_fqn, cluster in sorted(ir.get("clusters", {}).items()):
         for eh_fqn, event_handler in sorted(cluster.get("event_handlers", {}).items()):
-            if evt_type not in event_handler.get("handlers", {}):
-                continue
-            node_id = _automation_node_id(cluster_fqn, eh_fqn)
-            node_line = _automation_node_line(node_id, short_name(eh_fqn))
-            results.append((node_id, node_line, ""))
+            for evt_type in event_handler.get("handlers", {}):
+                index.setdefault(evt_type, []).append((eh_fqn, short_name(eh_fqn), ""))
 
     process_managers = ir.get("flows", {}).get("process_managers", {})
     for pm_fqn, process_manager in sorted(process_managers.items()):
         handlers = process_manager.get("handlers", {})
-        if evt_type not in handlers:
-            continue
-        node_id = _automation_node_id(cluster_fqn, pm_fqn)
-        node_line = _automation_node_line(
-            node_id, _pm_lifecycle_label(pm_fqn, handlers)
-        )
-        edge_label = _pm_edge_label(handlers[evt_type])
-        results.append((node_id, node_line, edge_label))
+        label = _pm_lifecycle_label(pm_fqn, handlers)
+        for evt_type, handler_info in handlers.items():
+            index.setdefault(evt_type, []).append(
+                (pm_fqn, label, _pm_edge_label(handler_info))
+            )
 
-    return results
+    return index
 
 
 def _render_slice(
-    ir: dict[str, Any],
+    read_models: dict[str, list[tuple[str, str]]],
+    automations: dict[str, list[tuple[str, str, str]]],
     cluster_fqn: str,
     cluster: dict[str, Any],
 ) -> tuple[list[str], list[str]]:
@@ -186,6 +168,12 @@ def _render_slice(
     Returns ``(subgraph_lines, edge_lines)``. The subgraph holds the
     command, aggregate, event, and consumer nodes; the edges run left to
     right: command -> aggregate -> event -> consumer.
+
+    *read_models* and *automations* are the shared indexes from
+    :func:`_read_model_index` and :func:`_automation_index`, keyed by event
+    ``__type__``. Consumer node ids are namespaced by *cluster_fqn* here, so
+    the indexes stay slice-independent and are built once for the whole
+    render.
     """
     agg_short = short_name(cluster_fqn)
     subgraph_id = sanitize_mermaid_id(cluster_fqn)
@@ -212,14 +200,16 @@ def _render_slice(
         node_lines.append(f"        {evt_id}([{mermaid_escape(short_name(evt_fqn))}])")
         edge_lines.append(f"    {agg_id} --> {evt_id}")
 
+        # An empty ``__type__`` matches nothing: it is never a key in any
+        # ``handlers`` map, so it is never a key in either index.
         evt_type = evt.get("__type__", "")
-        for node_id, node_line in _read_models_for(ir, cluster_fqn, evt_type):
-            consumer_nodes[node_id] = node_line
+        for proj_fqn, label in read_models.get(evt_type, []):
+            node_id = _read_model_node_id(cluster_fqn, proj_fqn)
+            consumer_nodes[node_id] = _read_model_node_line(node_id, label)
             edge_lines.append(f"    {evt_id} --> {node_id}")
-        for node_id, node_line, edge_label in _automations_for(
-            ir, cluster_fqn, evt_type
-        ):
-            consumer_nodes[node_id] = node_line
+        for consumer_fqn, label, edge_label in automations.get(evt_type, []):
+            node_id = _automation_node_id(cluster_fqn, consumer_fqn)
+            consumer_nodes[node_id] = _automation_node_line(node_id, label)
             if edge_label:
                 edge_lines.append(
                     f"    {evt_id} -->|{mermaid_escape(edge_label)}| {node_id}"
@@ -255,7 +245,9 @@ def generate_event_model_slice(ir: dict[str, Any], cluster_fqn: str) -> str:
     if cluster is None:
         return "flowchart LR"
 
-    subgraph_lines, edge_lines = _render_slice(ir, cluster_fqn, cluster)
+    subgraph_lines, edge_lines = _render_slice(
+        _read_model_index(ir), _automation_index(ir), cluster_fqn, cluster
+    )
     lines: list[str] = ["flowchart LR", *subgraph_lines, *edge_lines]
     return "\n".join(lines)
 
@@ -277,10 +269,15 @@ def generate_event_model_timeline(ir: dict[str, Any]) -> str:
     if not clusters:
         return "flowchart LR"
 
+    read_models = _read_model_index(ir)
+    automations = _automation_index(ir)
+
     lines: list[str] = ["flowchart LR"]
     all_edges: list[str] = []
     for cluster_fqn, cluster in sorted(clusters.items()):
-        subgraph_lines, edge_lines = _render_slice(ir, cluster_fqn, cluster)
+        subgraph_lines, edge_lines = _render_slice(
+            read_models, automations, cluster_fqn, cluster
+        )
         lines.extend(subgraph_lines)
         all_edges.extend(edge_lines)
 

@@ -708,6 +708,107 @@ class TestMultiSlice:
 
 
 # ------------------------------------------------------------------
+# Consumer lookup is indexed, not rescanned per event
+# ------------------------------------------------------------------
+
+
+class _CountingDict(dict):
+    """A dict that counts how many times it is scanned with ``items()``."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scans = 0
+
+    def items(self):
+        self.scans += 1
+        return super().items()
+
+
+def _indexing_ir(event_count: int) -> dict:
+    """One cluster with *event_count* events, plus a projector, EH and PM.
+
+    ``projections`` and ``flows["process_managers"]`` are counting dicts, so
+    a test can see how often the consumer side is scanned.
+    """
+    types = [f"App.OrderEvt{n}.v1" for n in range(event_count)]
+    clusters = {
+        "app.Order": _cluster(
+            "app.Order",
+            events={
+                f"app.OrderEvt{n}": _event(f"app.OrderEvt{n}", types[n])
+                for n in range(event_count)
+            },
+            event_handlers={
+                "app.OrderEH": _event_handler(
+                    "app.OrderEH", {t: ["on_evt"] for t in types}
+                ),
+            },
+        ),
+    }
+    projections = _CountingDict(
+        {
+            "app.OrderView": _projection(
+                "app.OrderView",
+                {
+                    "app.OrderProjector": _projector(
+                        "app.OrderProjector",
+                        "app.OrderView",
+                        {t: ["on_evt"] for t in types},
+                    ),
+                },
+            ),
+        }
+    )
+    process_managers = _CountingDict(
+        {"app.OrderPM": _process_manager("app.OrderPM", {t: ["on_evt"] for t in types})}
+    )
+    return _ir(
+        clusters=clusters,
+        projections=projections,
+        flows={
+            "domain_services": {},
+            "process_managers": process_managers,
+            "subscribers": {},
+        },
+    )
+
+
+class TestConsumerIndexing:
+    """Consumer lookup is indexed once per render, not rescanned per event.
+
+    Without this, every event rescans every projection, cluster and process
+    manager, so a domain with many events and many consumers costs
+    events x consumers work on each `docs generate --type=event-model`.
+    """
+
+    @staticmethod
+    def _scan_counts(ir: dict) -> tuple[int, int]:
+        return (ir["projections"].scans, ir["flows"]["process_managers"].scans)
+
+    @pytest.mark.parametrize(
+        "render",
+        [
+            generate_event_model_timeline,
+            lambda ir: generate_event_model_slice(ir, "app.Order"),
+        ],
+        ids=["timeline", "slice"],
+    )
+    def test_scan_count_does_not_grow_with_event_count(self, render):
+        one, many = _indexing_ir(1), _indexing_ir(8)
+        render(one)
+        render(many)
+        assert self._scan_counts(many) == self._scan_counts(one)
+
+    def test_indexed_lookup_still_finds_every_consumer(self):
+        result = generate_event_model_timeline(_indexing_ir(2))
+        for n in range(2):
+            evt = f"evt_app_OrderEvt{n}"
+            assert f"{evt} --> rm_app_Order_app_OrderProjector" in result
+            assert f"{evt} --> auto_app_Order_app_OrderEH" in result
+            assert f"{evt} --> auto_app_Order_app_OrderPM" in result
+
+
+# ------------------------------------------------------------------
 # Edge clusters: commands-only, events-only
 # ------------------------------------------------------------------
 
