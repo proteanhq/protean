@@ -863,8 +863,10 @@ class TestSliceGwt:
     def test_ac2_one_command_one_event_headline(self):
         """The headline slice pairs the command and event on the When/Then lines."""
         result = generate_slice_gwt(_headline_ir(), "app.Order")
-        assert "> **When** PlaceOrder" in result
-        assert "> **Then** OrderPlaced" in result
+        # Exact block: three lines, one blockquote, in Given/When/Then order.
+        assert (
+            result == "> **Given** Order\n> **When** PlaceOrder\n> **Then** OrderPlaced"
+        )
 
     def test_fact_event_excluded_from_then(self):
         clusters = {
@@ -881,6 +883,23 @@ class TestSliceGwt:
         result = generate_slice_gwt(_ir(clusters=clusters), "app.Order")
         assert "> **Then** OrderPlaced" in result
         assert "_OrderFact" not in result
+
+    def test_only_fact_events_has_no_then_line(self):
+        # events dict is non-empty, but every event is fact-filtered, so the
+        # Then line is dropped: exercises the empty-after-filter branch.
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app._OrderFact": _event(
+                        "app._OrderFact", "App._OrderFact.v1", is_fact_event=True
+                    ),
+                },
+            ),
+        }
+        result = generate_slice_gwt(_ir(clusters=clusters), "app.Order")
+        assert result == "> **Given** Order"
+        assert "**Then**" not in result
 
     def test_commands_only_has_no_then_line(self):
         clusters = {
@@ -947,7 +966,20 @@ class TestSliceGwt:
         assert "> **Then** OrderCancelled, OrderPlaced" in result
 
     def test_output_is_deterministic(self):
-        ir = _headline_ir()
-        assert generate_slice_gwt(ir, "app.Order") == generate_slice_gwt(
-            ir, "app.Order"
-        )
+        # Insert keys in reverse-sorted order so a dropped ``sorted(...)`` would
+        # produce insertion-order text and break the exact-match assertion.
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                    "app.CancelOrder": _command(
+                        "app.CancelOrder", "App.CancelOrder.v1"
+                    ),
+                },
+            ),
+        }
+        ir = _ir(clusters=clusters)
+        first = generate_slice_gwt(ir, "app.Order")
+        assert first == generate_slice_gwt(ir, "app.Order")
+        assert first == "> **Given** Order\n> **When** CancelOrder, PlaceOrder"

@@ -339,8 +339,8 @@ def _generate_event_model(ir_data: dict[str, Any], output_format: str) -> str:
     """Generate the EventModeling slice timeline.
 
     In Markdown mode, each aggregate slice becomes a ``## Event Model:
-    <Aggregate>`` section that leads with the slice's Given-When-Then and then
-    shows the diagram, so it reads like an acceptance test.  In Mermaid mode,
+    <Aggregate>`` section that leads with the slice's structural
+    Given-When-Then and then shows the diagram.  In Mermaid mode,
     emits a single combined ``flowchart LR`` timeline of all slices, with no
     GWT prose (it cannot go inside a raw flowchart).
     """

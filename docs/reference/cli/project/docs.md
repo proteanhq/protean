@@ -55,10 +55,10 @@ cluster becomes one slice that reads left to right:
 Consumers are matched to a slice's events by the event type, so the whole
 diagram is derived from the IR alone.
 
-In Markdown output each slice leads with a Given-When-Then, so the section
-reads like an acceptance test before the diagram:
+In Markdown output each slice leads with a structural Given-When-Then before
+the diagram:
 
-- **Given** the aggregate (its current state).
+- **Given** the aggregate the slice is about.
 - **When** the cluster's commands (the triggers).
 - **Then** the cluster's non-fact events (the results).
 

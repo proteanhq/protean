@@ -231,13 +231,13 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Render the structural Given-When-Then for one aggregate slice.
 
     Returns a Markdown blockquote (``> **Given** ...`` lines) that leads a
-    slice so the model reads like an acceptance test before the diagram. The
-    GWT is derived structurally from the IR, which is always available:
+    slice with a structural Given-When-Then before the diagram. The GWT is
+    derived structurally from the IR, which is always available:
 
-    - **Given:** the aggregate itself (its current state). The IR encodes no
-      temporal order between events, so there is no reliable list of prior
-      events to show yet; the honest structural Given is the aggregate. This
-      is where later scenario metadata would enrich the line.
+    - **Given:** the aggregate the slice is about. The IR encodes no temporal
+      order between events, so there is no reliable list of prior events to
+      show yet; the honest structural Given is the aggregate. This is where
+      later scenario metadata would enrich the line.
     - **When:** the cluster's commands (the triggers), short names, sorted.
       Omitted when the cluster has no commands.
     - **Then:** the cluster's non-fact events (the results), short names,
@@ -269,14 +269,16 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
 
     lines: list[str] = [f"> **Given** {short_name(cluster_fqn)}"]
 
-    commands = sorted(short_name(cmd_fqn) for cmd_fqn in cluster.get("commands", {}))
+    commands = sorted({short_name(cmd_fqn) for cmd_fqn in cluster.get("commands", {})})
     if commands:
         lines.append(f"> **When** {', '.join(commands)}")
 
     events = sorted(
-        short_name(evt_fqn)
-        for evt_fqn, evt in cluster.get("events", {}).items()
-        if not evt.get("is_fact_event")
+        {
+            short_name(evt_fqn)
+            for evt_fqn, evt in cluster.get("events", {}).items()
+            if not evt.get("is_fact_event")
+        }
     )
     if events:
         lines.append(f"> **Then** {', '.join(events)}")
