@@ -18,6 +18,8 @@ from protean.ir.builder import IRBuilder
 from protean.utils import fqn
 from tests.ir.support import method_edges_domain as m
 
+pytestmark = pytest.mark.no_test_domain
+
 
 def _build_domain() -> Domain:
     """Register the whole method-edges fixture cluster onto a fresh domain."""
