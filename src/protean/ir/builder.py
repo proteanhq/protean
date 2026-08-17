@@ -38,6 +38,7 @@ from protean.ir.analysis import (
     ReceiverRole,
     SourceProvider,
 )
+from protean.ir.analysis.facts import _RAISE_METHOD
 from protean.ir.constants import (
     VOLATILE_IR_KEYS,
     is_external_io_call,
@@ -1672,6 +1673,7 @@ class IRBuilder:
         self._diagnose_event_handler_foreign_event(ir)
         # Info-level rules (design smells)
         self._diagnose_handler_persists_and_calls_out(ir)
+        self._diagnose_unraised_event(ir)
         self._diagnose_aggregate_too_large(ir)
         self._diagnose_handler_too_broad(ir)
         self._diagnose_event_without_data(ir)
@@ -2825,6 +2827,83 @@ class IRBuilder:
                         f"`{method_name}` persists, then calls "
                         f"`{io.callee_fqn}` (line {io.location.line}), which "
                         f"can hold the transaction open across the call.",
+                    )
+                )
+
+    def _diagnose_unraised_event(self, ir: dict[str, Any]) -> None:
+        """UNRAISED_EVENT: a cluster event that no aggregate or entity method raises.
+
+        The producer-side mirror of :meth:`_diagnose_unhandled_events`. An event
+        is raised when, in some method of one of the cluster's aggregate or
+        entity classes, the facts hold a ``raise_`` call and the construction of
+        that event. The two facts are separate and unlinked, so the match is at
+        the method level: a method that both calls ``raise_`` and constructs the
+        event counts as raising it. The match keys on the construction FQN and
+        the ``raise_`` method name, never on the receiver role. The factory
+        idiom ``user.raise_(Registered(...))`` leaves the role ``UNKNOWN``, and
+        keying on the role would wrongly flag correct code.
+
+        Fails open on the class entry: a cluster whose aggregate and entity
+        classes all resolve to no indexed source (``element_class_entry`` is
+        ``None`` for every one) is skipped and emits nothing. A class the index
+        *can* reach but that has no methods is still analyzed, so its unraised
+        events are flagged.
+
+        Excludes fact events and auto-generated events, and skips clusters whose
+        aggregate is abstract. Published events stay in scope: unlike the
+        consumer rule, which skips them as intentionally external, a published
+        event is still produced inside the domain and should be raised by some
+        method.
+        """
+        abstract_fqns = self._abstract_aggregate_fqns()
+
+        # Cluster IR carries FQNs, not class objects. Map each aggregate/entity
+        # FQN back to its class through the registry so the view can be asked for
+        # its facts and class entry.
+        registry = self._domain._domain_registry
+        cls_by_fqn: dict[str, type] = {}
+        for element_type in ("AGGREGATE", "ENTITY"):
+            for record in registry._elements.get(element_type, {}).values():
+                cls_by_fqn[fqn(record.cls)] = record.cls
+
+        for _cluster_fqn, cluster in sorted(ir["clusters"].items()):
+            if cluster["aggregate"]["fqn"] in abstract_fqns:
+                continue
+
+            class_fqns = [cluster["aggregate"]["fqn"], *cluster["entities"].keys()]
+            classes = [cls_by_fqn[f] for f in class_fqns if f in cls_by_fqn]
+
+            # Fail open on the class entry: analyze the cluster only when at least
+            # one of its classes resolves to indexed source.
+            analyzed = [
+                cls for cls in classes if self.view.element_class_entry(cls) is not None
+            ]
+            if not analyzed:
+                continue
+
+            # An event is raised when a single method both calls `raise_` and
+            # constructs it. Correlate at the method level, not the argument span.
+            raised_fqns: set[str] = set()
+            for cls in analyzed:
+                for facts in self.view.element_facts(cls).values():
+                    if not any(call.method == _RAISE_METHOD for call in facts.calls):
+                        continue
+                    for construction in facts.constructions:
+                        raised_fqns.add(construction.fqn)
+
+            for _event_fqn, event in sorted(cluster["events"].items()):
+                if event.get("is_fact_event", False) or event.get(
+                    "auto_generated", False
+                ):
+                    continue
+                if event["fqn"] in raised_fqns:
+                    continue
+                self._diagnostics.append(
+                    build_diagnostic(
+                        DiagnosticCode.UNRAISED_EVENT,
+                        element=event["fqn"],
+                        message=f"Event {event['name']} is raised by no "
+                        f"aggregate or entity method",
                     )
                 )
 

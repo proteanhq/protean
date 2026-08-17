@@ -220,6 +220,19 @@ a state change goes unobserved.
 **Fix.** Register an event handler, projector, or process manager for this event,
 or mark it `published=True` if it is intentionally external.
 
+### UNRAISED_EVENT { #unraised-event }
+
+| | |
+|---|---|
+| **Category** | `handler_completeness` |
+| **Level** | `info` |
+
+**Why.** An event that no method raises is declared and wired but never
+produced, so the state change it names never happens.
+
+**Fix.** Raise the event from the aggregate or entity method that makes the
+change it records, or remove the event if nothing produces it.
+
 ### UNUSED_COMMAND { #unused-command }
 
 | | |

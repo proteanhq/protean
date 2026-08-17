@@ -74,6 +74,7 @@ class DiagnosticCode(StrEnum):
     UNBOUNDED_INDEXED_STRING = "UNBOUNDED_INDEXED_STRING"
     UNHANDLED_EVENT = "UNHANDLED_EVENT"
     UNINDEXED_FILTER_PATH = "UNINDEXED_FILTER_PATH"
+    UNRAISED_EVENT = "UNRAISED_EVENT"
     UNSUPPORTED_ELEMENT_CLASS = "UNSUPPORTED_ELEMENT_CLASS"
     UNUSED_COMMAND = "UNUSED_COMMAND"
     UPCASTER_GAP = "UPCASTER_GAP"
@@ -774,6 +775,19 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "Add an index led by this field to the aggregate "
             '(`indexes=[Index("field")]`), or suppress the check when the '
             "table is small or the query is a one-off (admin/reporting)."
+        ),
+    ),
+    DiagnosticCode.UNRAISED_EVENT: CodeMeta(
+        category="handler_completeness",
+        level="info",
+        meaning="An event is raised by no aggregate or entity method.",
+        rationale=(
+            "An event that no method raises is declared and wired but never "
+            "produced, so the state change it names never happens."
+        ),
+        fix=(
+            "Raise the event from the aggregate or entity method that makes the "
+            "change it records, or remove the event if nothing produces it."
         ),
     ),
     DiagnosticCode.UNSUPPORTED_ELEMENT_CLASS: CodeMeta(
