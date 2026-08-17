@@ -227,6 +227,63 @@ def _render_slice(
     return subgraph_lines, edge_lines
 
 
+def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
+    """Render the structural Given-When-Then for one aggregate slice.
+
+    Returns a Markdown blockquote (``> **Given** ...`` lines) that leads a
+    slice so the model reads like an acceptance test before the diagram. The
+    GWT is derived structurally from the IR, which is always available:
+
+    - **Given:** the aggregate itself (its current state). The IR encodes no
+      temporal order between events, so there is no reliable list of prior
+      events to show yet; the honest structural Given is the aggregate. This
+      is where later scenario metadata would enrich the line.
+    - **When:** the cluster's commands (the triggers), short names, sorted.
+      Omitted when the cluster has no commands.
+    - **Then:** the cluster's non-fact events (the results), short names,
+      sorted. Fact events are filtered with the same predicate the diagram
+      uses, so GWT and diagram agree on which events exist. Omitted when the
+      cluster raises no non-fact events.
+
+    This is slice-level pairing: one GWT per slice. A one-command /
+    one-event slice reads ``When PlaceOrder`` / ``Then OrderPlaced``. A
+    multi-command / multi-event slice lists the commands on the When line and
+    the events on the Then line, which is coarse but honest. Precise
+    per-command-to-event pairing (via the command-handler ``invokes`` to
+    aggregate ``raises`` chain) is deliberately left out of this version: it
+    would depend on the optional, fail-open ``method_edges`` field this
+    generator avoids, and it is part of the same "enrich later" growth path
+    as scenario metadata.
+
+    Args:
+        ir: The full IR dict.
+        cluster_fqn: FQN of the cluster to render.
+
+    Returns:
+        The Markdown GWT block for the cluster, or ``""`` when the cluster is
+        absent from the IR.
+    """
+    cluster = ir.get("clusters", {}).get(cluster_fqn)
+    if cluster is None:
+        return ""
+
+    lines: list[str] = [f"> **Given** {short_name(cluster_fqn)}"]
+
+    commands = sorted(short_name(cmd_fqn) for cmd_fqn in cluster.get("commands", {}))
+    if commands:
+        lines.append(f"> **When** {', '.join(commands)}")
+
+    events = sorted(
+        short_name(evt_fqn)
+        for evt_fqn, evt in cluster.get("events", {}).items()
+        if not evt.get("is_fact_event")
+    )
+    if events:
+        lines.append(f"> **Then** {', '.join(events)}")
+
+    return "\n".join(lines)
+
+
 def generate_event_model_slice(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Generate a Mermaid ``flowchart LR`` for a single aggregate's slice.
 

@@ -55,11 +55,24 @@ cluster becomes one slice that reads left to right:
 Consumers are matched to a slice's events by the event type, so the whole
 diagram is derived from the IR alone.
 
+In Markdown output each slice leads with a Given-When-Then, so the section
+reads like an acceptance test before the diagram:
+
+- **Given** the aggregate (its current state).
+- **When** the cluster's commands (the triggers).
+- **Then** the cluster's non-fact events (the results).
+
+The GWT is derived structurally from the IR. It is slice-level: a slice with
+several commands or events lists them all on the When and Then lines rather
+than pairing each command with the event it produces. Commands-only or
+events-only slices drop the line they have nothing for. This GWT is a
+Markdown-only lead; the `--format=mermaid` output stays a bare flowchart.
+
 ```shell
 # One combined flowchart of all slices
 protean docs generate --domain=my_app --type=event-model --format=mermaid
 
-# One titled diagram per slice, as Markdown
+# One GWT-led diagram per slice, as Markdown
 protean docs generate --domain=my_app --type=event-model
 ```
 

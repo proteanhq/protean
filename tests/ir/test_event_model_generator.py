@@ -11,6 +11,7 @@ import pytest
 from protean.ir.generators.event_model import (
     generate_event_model_slice,
     generate_event_model_timeline,
+    generate_slice_gwt,
 )
 
 # ------------------------------------------------------------------
@@ -841,3 +842,112 @@ class TestEdgeClusters:
         assert "agg_app_Order --> evt_app_OrderPlaced" in result
         # No command edges
         assert "--> agg_app_Order" not in result
+
+
+# ------------------------------------------------------------------
+# Slice Given-When-Then (generate_slice_gwt)
+# ------------------------------------------------------------------
+
+
+class TestSliceGwt:
+    def test_ac1_given_when_then_in_order(self):
+        """The GWT block names the aggregate and reads Given, When, Then."""
+        result = generate_slice_gwt(_headline_ir(), "app.Order")
+        assert "> **Given** Order" in result
+        assert "> **When** PlaceOrder" in result
+        assert "> **Then** OrderPlaced" in result
+        # Given leads, When next, Then last.
+        assert result.index("**Given**") < result.index("**When**")
+        assert result.index("**When**") < result.index("**Then**")
+
+    def test_ac2_one_command_one_event_headline(self):
+        """The headline slice pairs the command and event on the When/Then lines."""
+        result = generate_slice_gwt(_headline_ir(), "app.Order")
+        assert "> **When** PlaceOrder" in result
+        assert "> **Then** OrderPlaced" in result
+
+    def test_fact_event_excluded_from_then(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app._OrderFact": _event(
+                        "app._OrderFact", "App._OrderFact.v1", is_fact_event=True
+                    ),
+                },
+            ),
+        }
+        result = generate_slice_gwt(_ir(clusters=clusters), "app.Order")
+        assert "> **Then** OrderPlaced" in result
+        assert "_OrderFact" not in result
+
+    def test_commands_only_has_no_then_line(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                },
+            ),
+        }
+        result = generate_slice_gwt(_ir(clusters=clusters), "app.Order")
+        assert "> **Given** Order" in result
+        assert "> **When** PlaceOrder" in result
+        # Negative: no results, so no Then line.
+        assert "**Then**" not in result
+
+    def test_events_only_has_no_when_line(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+        }
+        result = generate_slice_gwt(_ir(clusters=clusters), "app.Order")
+        assert "> **Given** Order" in result
+        assert "> **Then** OrderPlaced" in result
+        # Negative: no triggers, so no When line.
+        assert "**When**" not in result
+
+    def test_absent_cluster_returns_empty_string(self):
+        assert generate_slice_gwt({}, "app.Order") == ""
+        clusters = {"app.Order": _cluster("app.Order")}
+        assert generate_slice_gwt(_ir(clusters=clusters), "app.Missing") == ""
+
+    def test_empty_cluster_mapping_still_names_the_aggregate(self):
+        # An empty cluster dict is present, not absent: derive the aggregate
+        # name from the FQN and render only the Given line.
+        clusters: dict = {"app.Order": {}}
+        result = generate_slice_gwt(_ir(clusters=clusters), "app.Order")
+        assert result == "> **Given** Order"
+
+    def test_multi_command_multi_event_is_sorted(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.PlaceOrder": _command("app.PlaceOrder", "App.PlaceOrder.v1"),
+                    "app.CancelOrder": _command(
+                        "app.CancelOrder", "App.CancelOrder.v1"
+                    ),
+                },
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app.OrderCancelled": _event(
+                        "app.OrderCancelled", "App.OrderCancelled.v1"
+                    ),
+                },
+            ),
+        }
+        result = generate_slice_gwt(_ir(clusters=clusters), "app.Order")
+        assert "> **When** CancelOrder, PlaceOrder" in result
+        assert "> **Then** OrderCancelled, OrderPlaced" in result
+
+    def test_output_is_deterministic(self):
+        ir = _headline_ir()
+        assert generate_slice_gwt(ir, "app.Order") == generate_slice_gwt(
+            ir, "app.Order"
+        )

@@ -431,6 +431,33 @@ class TestEventModelType:
             in result.output
         )
 
+    def test_markdown_leads_each_slice_with_gwt(self, ir_file):
+        """Markdown emits the GWT block ahead of the diagram fence."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", "--format=markdown"],
+        )
+        assert result.exit_code == 0
+        assert "## Event Model: Order" in result.output
+        assert "> **Given** Order" in result.output
+        assert "> **When** PlaceOrder" in result.output
+        assert "> **Then** OrderPlaced" in result.output
+        # The GWT leads: it appears before the diagram fence for the slice.
+        assert result.output.index("> **Given** Order") < result.output.index(
+            "```mermaid"
+        )
+
+    def test_mermaid_has_no_gwt_prose(self, ir_file):
+        """Mermaid mode is a bare flowchart: GWT is a Markdown-only feature."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", "--format=mermaid"],
+        )
+        assert result.exit_code == 0
+        assert "**Given**" not in result.output
+        assert "**When**" not in result.output
+        assert "**Then**" not in result.output
+
     def test_markdown_is_the_default_format(self, ir_file):
         result = runner.invoke(
             app,
