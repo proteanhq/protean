@@ -245,6 +245,38 @@ def _diff_handlers(
 # ------------------------------------------------------------------
 
 
+def _diff_method_edges(
+    left_edges: dict[str, Any],
+    right_edges: dict[str, Any],
+) -> dict[str, Any]:
+    """Diff ``method_edges`` maps ({method_name: {raises, invokes}}).
+
+    Keyed by the owning method name, each edge value compared whole — a gained,
+    lost or altered producer/consumer edge is reported once under that method.
+    """
+    added: dict[str, Any] = {}
+    removed: dict[str, Any] = {}
+    changed: dict[str, Any] = {}
+
+    left_keys = set(left_edges.keys())
+    right_keys = set(right_edges.keys())
+
+    for key in sorted(right_keys - left_keys):
+        added[key] = right_edges[key]
+
+    for key in sorted(left_keys - right_keys):
+        removed[key] = left_edges[key]
+
+    for key in sorted(left_keys & right_keys):
+        if left_edges[key] != right_edges[key]:
+            changed[key] = {
+                "left": left_edges[key],
+                "right": right_edges[key],
+            }
+
+    return _prune_empty({"added": added, "removed": removed, "changed": changed})
+
+
 def _diff_element(
     left_el: dict[str, Any],
     right_el: dict[str, Any],
@@ -292,6 +324,14 @@ def _diff_element(
         if a_diff:
             delta["apply_handlers"] = a_diff
 
+    # Method edges (raise/invoke derivation)
+    left_edges = left_el.get("method_edges", {})
+    right_edges = right_el.get("method_edges", {})
+    if left_edges != right_edges:
+        edges_diff = _diff_method_edges(left_edges, right_edges)
+        if edges_diff:
+            delta["method_edges"] = edges_diff
+
     # Scalar attributes
     skip = {
         "fields",
@@ -299,6 +339,7 @@ def _diff_element(
         "invariants",
         "handlers",
         "apply_handlers",
+        "method_edges",
         "subscription",
     }
     scalar_diff = _diff_flat_dict(left_el, right_el, skip_keys=skip)

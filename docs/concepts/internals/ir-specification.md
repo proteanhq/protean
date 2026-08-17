@@ -119,8 +119,8 @@ clear it.
 
 ```json
 {
-  "$schema": "https://protean.dev/ir/v0.1.0/schema.json",
-  "ir_version": "0.1.0",
+  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
+  "ir_version": "0.2.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
 
@@ -336,6 +336,38 @@ key means the handler processes all events on its stream.
 `application_services`, `repositories`, and `database_models` carry base
 attributes plus `part_of`. Database models additionally carry `database` and
 `schema_name`.
+
+### Method Edges
+
+Elements that own methods can carry a `method_edges` map (added in v0.2.0),
+keyed by method name. It records two behavioral edges the builder derives by
+reading method bodies:
+
+```json
+"method_edges": {
+  "place_order": { "raises": ["ecommerce.ordering.OrderPlaced"] },
+  "handle_place_order": {
+    "invokes": [{ "element": "ecommerce.ordering.Order", "method": "place_order" }]
+  }
+}
+```
+
+- **`raises`** (aggregates and entities) lists the FQNs of events a method
+  raises. It is derived by co-location: every registered event constructed in a
+  method that also calls `raise_`. It over-reports, since a method that builds
+  two events and raises one records both.
+- **`invokes`** (command handlers, event handlers, projectors, process
+  managers) lists the element methods a handler method calls, each an
+  `{element, method}` pair. It is derived by matching a call's method name
+  against the methods in scope (the handler's cluster, or for a process manager
+  or projector the union of the clusters its handled messages reach). A name
+  that matches more than one method in scope is skipped, so it can be
+  incomplete.
+
+Both edges are read from the source as written, so they are a guide rather than
+a proven fact. The map is sparse: a method with no edge is absent, an element
+with no edged method carries no `method_edges` key, and only the non-empty side
+of an edge appears.
 
 ---
 

@@ -38,6 +38,7 @@ from protean.ir.analysis import (
     ReceiverRole,
     SourceProvider,
 )
+from protean.ir.analysis.facts import _RAISE_METHOD
 from protean.ir.constants import (
     VOLATILE_IR_KEYS,
     is_external_io_call,
@@ -286,6 +287,11 @@ class IRBuilder:
         upcasters = self._build_upcasters()
         if upcasters:
             ir["upcasters"] = upcasters
+
+        # Materialize raise/invoke edges as a post-pass over the assembled
+        # clusters, flows and projections (the per-element extractors do not
+        # hold a cluster's whole element set, which ``invokes`` needs).
+        self._materialize_method_edges(ir)
 
         # Collect diagnostics (must run after clusters are built)
         self._collect_diagnostics(ir)
@@ -1543,6 +1549,194 @@ class IRBuilder:
                 cluster[section] = dict(sorted(cluster[section].items()))
 
         return dict(sorted(clusters.items()))
+
+    # ------------------------------------------------------------------
+    # Method edges (raise / invoke derivation)
+    # ------------------------------------------------------------------
+
+    def _materialize_method_edges(self, ir: dict[str, Any]) -> None:
+        """Write ``method_edges`` onto the elements that own the methods.
+
+        A post-pass over the already-assembled ``clusters``, ``flows`` and
+        ``projections`` sections. ``raises`` is derived for aggregates and
+        entities by co-location (an EVENT constructed in a method that also
+        calls ``raise_``); ``invokes`` is derived for command handlers, event
+        handlers, projectors and process managers by matching a call's method
+        name against exactly one method of the elements in scope. Both derivations
+        fail open: an element whose source cannot be read yields no edges and the
+        build still succeeds.
+        """
+        registry = self._domain._domain_registry
+
+        # ``fqn(cls)`` -> cls for every registered element, to resolve an
+        # assembled section's string keys (which the builder writes as
+        # ``fqn(cls)``) back to a class. The set of registered EVENT names, so
+        # only an event construction counts toward ``raises`` — keyed by the
+        # registry's own ``qualname``, which is what a ``ConstructionFact.fqn``
+        # is matched against (the facts layer recognizes an element by the name
+        # the registry recorded, not by the class's current ``__module__``).
+        fqn_to_cls: dict[str, type] = {}
+        event_fqns: set[str] = set()
+        for element_type, records in registry._elements.items():
+            for record in records.values():
+                fqn_to_cls[fqn(record.cls)] = record.cls
+                if element_type == "EVENT":
+                    event_fqns.add(record.qualname)
+
+        clusters = ir["clusters"]
+
+        # message ``__type__`` -> the aggregate clusters that own it. A command
+        # or event named in more than one cluster maps to each, which only
+        # widens an invoke scope (and so makes an ambiguous name more likely to
+        # be skipped, never wrongly matched).
+        type_to_aggs: dict[str, set[str]] = {}
+        for agg_fqn, cluster in clusters.items():
+            for section in ("commands", "events"):
+                for entry in cluster[section].values():
+                    type_key = entry.get("__type__")
+                    if type_key:
+                        type_to_aggs.setdefault(type_key, set()).add(agg_fqn)
+
+        # A cluster's name surface, cached: method name -> the (element_fqn,
+        # method_name) pairs that define it across the aggregate and its
+        # entities. Body-only methods (via ``element_methods``), so inherited
+        # framework methods (``raise_``/``add``/``get``) are not in the surface.
+        # Every section key resolves through ``fqn_to_cls`` by construction: a
+        # cluster/flow/projection key is the ``fqn`` of a registered element, and
+        # ``fqn_to_cls`` is keyed by that same ``fqn``, so the lookups below index
+        # directly (fail-open lives one layer down, in ``element_facts``).
+        surface_cache: dict[str, dict[str, list[tuple[str, str]]]] = {}
+
+        def cluster_surface(agg_fqn: str) -> dict[str, list[tuple[str, str]]]:
+            cached = surface_cache.get(agg_fqn)
+            if cached is not None:
+                return cached
+            surface: dict[str, list[tuple[str, str]]] = {}
+            cluster = clusters[agg_fqn]
+            for elem_fqn in [agg_fqn, *cluster["entities"].keys()]:
+                elem_cls = fqn_to_cls[elem_fqn]
+                for method in self.view.element_methods(elem_cls):
+                    surface.setdefault(method.name, []).append((elem_fqn, method.name))
+            surface_cache[agg_fqn] = surface
+            return surface
+
+        def union_surface(agg_fqns: set[str]) -> dict[str, list[tuple[str, str]]]:
+            merged: dict[str, list[tuple[str, str]]] = {}
+            for agg_fqn in sorted(agg_fqns):
+                for name, pairs in cluster_surface(agg_fqn).items():
+                    merged.setdefault(name, []).extend(pairs)
+            return merged
+
+        # raises: aggregates and entities.
+        for agg_fqn, cluster in clusters.items():
+            raise_edges = self._raise_edges(fqn_to_cls[agg_fqn], event_fqns)
+            if raise_edges:
+                cluster["aggregate"]["method_edges"] = raise_edges
+            for ent_fqn, ent_entry in cluster["entities"].items():
+                raise_edges = self._raise_edges(fqn_to_cls[ent_fqn], event_fqns)
+                if raise_edges:
+                    ent_entry["method_edges"] = raise_edges
+
+        # invokes: command and event handlers, scoped to their own cluster.
+        for agg_fqn, cluster in clusters.items():
+            surface = cluster_surface(agg_fqn)
+            for section in ("command_handlers", "event_handlers"):
+                for handler_fqn, handler_entry in cluster[section].items():
+                    invoke_edges = self._invoke_edges(fqn_to_cls[handler_fqn], surface)
+                    if invoke_edges:
+                        handler_entry["method_edges"] = invoke_edges
+
+        # invokes: process managers (flows) and projectors (projections), each
+        # scoped to the union of the clusters the messages it handles reach.
+        for pm_fqn, pm_entry in ir["flows"]["process_managers"].items():
+            self._apply_handler_invokes(
+                pm_fqn, pm_entry, fqn_to_cls, type_to_aggs, union_surface
+            )
+        for proj_group in ir["projections"].values():
+            for projector_fqn, projector_entry in proj_group["projectors"].items():
+                self._apply_handler_invokes(
+                    projector_fqn,
+                    projector_entry,
+                    fqn_to_cls,
+                    type_to_aggs,
+                    union_surface,
+                )
+
+    def _apply_handler_invokes(
+        self,
+        element_fqn: str,
+        entry: dict[str, Any],
+        fqn_to_cls: dict[str, type],
+        type_to_aggs: dict[str, set[str]],
+        union_surface: Any,
+    ) -> None:
+        """Derive ``invokes`` for a handler whose scope is its handled messages.
+
+        Shared by process managers and projectors: neither has a ``part_of``
+        cluster, so the scope is the union of the clusters the ``__type__`` keys
+        in its ``handlers`` map resolve to. A handled type that no cluster owns
+        (an external message) contributes nothing; if none resolve, the handler
+        gets no edges.
+        """
+        agg_fqns: set[str] = set()
+        for handled_type in entry.get("handlers", {}):
+            agg_fqns |= type_to_aggs.get(handled_type, set())
+        if not agg_fqns:
+            return
+        edges = self._invoke_edges(fqn_to_cls[element_fqn], union_surface(agg_fqns))
+        if edges:
+            entry["method_edges"] = edges
+
+    def _raise_edges(
+        self, cls: type, event_fqns: set[str]
+    ) -> dict[str, dict[str, list[str]]]:
+        """The ``raises`` edges of an element, method name -> ``{"raises": [...]}``.
+
+        A method contributes only when it calls ``raise_`` (by the called
+        method's name, whatever the receiver role, so the ``user.raise_(...)``
+        factory idiom counts). Every EVENT constructed anywhere in that method is
+        recorded, sorted and de-duplicated — the accepted co-location over-report.
+        A method with no ``raise_`` call, or one that builds no registered event,
+        contributes nothing.
+        """
+        edges: dict[str, dict[str, list[str]]] = {}
+        for method_name, facts in self.view.element_facts(cls).items():
+            if not any(call.method == _RAISE_METHOD for call in facts.calls):
+                continue
+            raised = sorted({c.fqn for c in facts.constructions if c.fqn in event_fqns})
+            if raised:
+                edges[method_name] = {"raises": raised}
+        return dict(sorted(edges.items()))
+
+    def _invoke_edges(
+        self, cls: type, surface: dict[str, list[tuple[str, str]]]
+    ) -> dict[str, dict[str, list[dict[str, str]]]]:
+        """The ``invokes`` edges of a handler, method name -> ``{"invokes": [...]}``.
+
+        For each call written in a handler method, its trailing method name is
+        looked up in the scope's name surface. A name that maps to exactly one
+        ``(element_fqn, method)`` pair records that edge; a name that maps to more
+        than one is ambiguous and records nothing (skip, never guess). Edges are
+        de-duplicated and sorted by ``(element, method)`` for a stable baseline.
+        """
+        edges: dict[str, dict[str, list[dict[str, str]]]] = {}
+        for method_name, facts in self.view.element_facts(cls).items():
+            targets: set[tuple[str, str]] = set()
+            for call in facts.calls:
+                if call.method is None:
+                    continue
+                matches = surface.get(call.method)
+                if not matches or len(matches) != 1:
+                    continue
+                targets.add(matches[0])
+            if targets:
+                edges[method_name] = {
+                    "invokes": [
+                        {"element": elem_fqn, "method": target_method}
+                        for elem_fqn, target_method in sorted(targets)
+                    ]
+                }
+        return dict(sorted(edges.items()))
 
     # ------------------------------------------------------------------
     # Elements index

@@ -22,6 +22,7 @@ from protean.cli.hooks import (
     check_compat_hook,
     check_staleness_hook,
 )
+from protean.ir import SCHEMA_VERSION
 from protean.ir.config import CompatConfig
 from tests.shared import change_working_directory_to
 
@@ -517,8 +518,13 @@ class TestCheckStalenessHookStale:
         assert "--fix" in captured.err
 
     def test_stale_without_stored_checksum(self, capsys):
-        """Stale result where stored IR has no checksum field — covers branch partial."""
-        _write_ir(self._protean_dir, {"ir_version": "0.1.0"})
+        """Stale result where stored IR has no checksum field — covers branch partial.
+
+        Stamped with the current schema version so the staleness check reaches
+        the checksum path (a stale version would short-circuit to
+        VERSION_MISMATCH before comparing checksums).
+        """
+        _write_ir(self._protean_dir, {"ir_version": SCHEMA_VERSION})
 
         with patch(
             "sys.argv",
@@ -680,6 +686,33 @@ class TestCheckStalenessHookVersionMismatch:
         assert "version mismatch" in captured.err.lower()
         assert "0.0.9" in captured.err
         assert "no materialized ir" not in captured.err.lower()
+
+    def test_prior_schema_version_reports_mismatch(self, capsys):
+        # A baseline stamped with the previous schema version (0.1.0, before
+        # method_edges landed) must report a version mismatch after the bump to
+        # 0.2.0, telling the user to regenerate rather than a misleading STALE.
+        _write_ir(
+            self._protean_dir,
+            {"ir_version": "0.1.0", "checksum": "sha256:whatever"},
+        )
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "protean-check-staleness",
+                    "-d",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            ),
+            pytest.raises(SystemExit),
+        ):
+            check_staleness_hook()
+
+        captured = capsys.readouterr()
+        assert "version mismatch" in captured.err.lower()
+        assert "0.1.0" in captured.err
 
 
 # ---------------------------------------------------------------------------

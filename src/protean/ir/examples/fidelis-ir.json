@@ -1,6 +1,6 @@
 {
-  "$schema": "https://protean.dev/ir/v0.1.0/schema.json",
-  "checksum": "sha256:98ff070680f0832bc122de92e44ffe0e4538a8b44c42bc38259ef528e3739e8f",
+  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
+  "checksum": "sha256:3efb381bb5a5018ebe5f06b216bd13303a248252d18cd86754fe7ec22599b6d6",
   "clusters": {
     "banking.accounts.Account": {
       "aggregate": {
@@ -56,6 +56,28 @@
           ],
           "pre": []
         },
+        "method_edges": {
+          "close": {
+            "raises": [
+              "banking.accounts.AccountClosed"
+            ]
+          },
+          "deposit": {
+            "raises": [
+              "banking.accounts.DepositMade"
+            ]
+          },
+          "open": {
+            "raises": [
+              "banking.accounts.AccountOpened"
+            ]
+          },
+          "withdraw": {
+            "raises": [
+              "banking.accounts.WithdrawalMade"
+            ]
+          }
+        },
         "module": "banking.accounts",
         "name": "Account",
         "options": {
@@ -86,6 +108,40 @@
             "Fidelis.OpenAccount.v1": [
               "handle_open_account"
             ]
+          },
+          "method_edges": {
+            "handle_close_account": {
+              "invokes": [
+                {
+                  "element": "banking.accounts.Account",
+                  "method": "close"
+                }
+              ]
+            },
+            "handle_make_deposit": {
+              "invokes": [
+                {
+                  "element": "banking.accounts.Account",
+                  "method": "deposit"
+                }
+              ]
+            },
+            "handle_make_withdrawal": {
+              "invokes": [
+                {
+                  "element": "banking.accounts.Account",
+                  "method": "withdraw"
+                }
+              ]
+            },
+            "handle_open_account": {
+              "invokes": [
+                {
+                  "element": "banking.accounts.Account",
+                  "method": "open"
+                }
+              ]
+            }
           },
           "module": "banking.accounts",
           "name": "AccountCommandHandler",
@@ -471,7 +527,7 @@
     "subscribers": {}
   },
   "generated_at": "2026-03-01T12:00:00Z",
-  "ir_version": "0.1.0",
+  "ir_version": "0.2.0",
   "projections": {
     "banking.reporting.AccountSummary": {
       "projection": {

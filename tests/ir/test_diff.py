@@ -916,3 +916,54 @@ class TestDiffWithRealDomains:
         assert result["summary"]["has_changes"] is True
         # Both have different aggregates, so clusters differ
         assert result["clusters"]
+
+
+# ------------------------------------------------------------------
+# method_edges (raise/invoke derivation) diffing
+# ------------------------------------------------------------------
+
+
+class TestDiffMethodEdges:
+    """A gained, lost or altered method edge is reported once, under the owning
+    element, and not a second time under ``attributes``."""
+
+    def test_changed_raises_reported_once_under_the_element(self):
+        left_cluster = _make_cluster("Order")
+        left_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced"]}
+        }
+        right_cluster = _make_cluster("Order")
+        right_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced", "app.OrderShipped"]}
+        }
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        agg_delta = result["clusters"]["changed"]["app.Order"]["aggregate"]
+        change = agg_delta["method_edges"]["changed"]["place"]
+        assert change == {
+            "left": {"raises": ["app.OrderPlaced"]},
+            "right": {"raises": ["app.OrderPlaced", "app.OrderShipped"]},
+        }
+        # The change must not leak into the scalar-attribute pass.
+        assert "attributes" not in agg_delta
+
+    def test_added_and_removed_method_edges(self):
+        left_cluster = _make_cluster("Order")
+        left_cluster["aggregate"]["method_edges"] = {
+            "gone": {"raises": ["app.OrderPlaced"]}
+        }
+        right_cluster = _make_cluster("Order")
+        right_cluster["aggregate"]["method_edges"] = {
+            "fresh": {"raises": ["app.OrderShipped"]}
+        }
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        edges = result["clusters"]["changed"]["app.Order"]["aggregate"]["method_edges"]
+        assert edges["added"] == {"fresh": {"raises": ["app.OrderShipped"]}}
+        assert edges["removed"] == {"gone": {"raises": ["app.OrderPlaced"]}}
