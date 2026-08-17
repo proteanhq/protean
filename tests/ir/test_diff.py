@@ -968,6 +968,29 @@ class TestDiffMethodEdges:
         assert edges["added"] == {"fresh": {"raises": ["app.OrderShipped"]}}
         assert edges["removed"] == {"gone": {"raises": ["app.OrderPlaced"]}}
 
+    def test_unchanged_method_is_left_out_of_the_delta(self):
+        # A method present on both sides with identical edges is not reported,
+        # so a one-method change on a multi-method element stays readable.
+        left_cluster = _make_cluster("Order")
+        left_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced"]},
+            "ship": {"raises": ["app.OrderShipped"]},
+        }
+        right_cluster = _make_cluster("Order")
+        right_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced"]},
+            "ship": {"raises": ["app.OrderShipped", "app.OrderDelivered"]},
+        }
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        edges = result["clusters"]["changed"]["app.Order"]["aggregate"]["method_edges"]
+        assert set(edges["changed"]) == {"ship"}
+        assert "added" not in edges
+        assert "removed" not in edges
+
     def test_changed_invokes_on_a_handler_reported_once(self):
         # ``_diff_element`` is shared across every subsection, so a changed
         # ``invokes`` edge on a command handler (a non-aggregate element, an

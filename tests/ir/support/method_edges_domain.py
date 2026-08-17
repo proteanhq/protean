@@ -139,6 +139,9 @@ class OrderCommandHandler(BaseCommandHandler):
         # this method carries no edge and is absent from ``method_edges``.
         order = Order(name="x")
         order.touch()
+        # A computed callee has no trailing name to look up, so it contributes
+        # nothing either. Written here so ``handle_touch`` stays edge-free.
+        {"place": order.place}[command.order_id]()
 
 
 class OrderNotifier(BaseEventHandler):

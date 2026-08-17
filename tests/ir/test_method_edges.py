@@ -14,6 +14,7 @@ from protean import Domain, handle
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Identifier, String
 from protean.ir import load_schema
+from protean.ir.analysis import BehavioralView
 from protean.ir.builder import IRBuilder
 from protean.utils import fqn
 from tests.ir.support import method_edges_domain as m
@@ -135,6 +136,19 @@ class TestInvokes:
         # match one element and wrongly record an edge.
         assert "touch" in m.Order.__dict__
         assert "touch" in m.OrderLine.__dict__
+        handler = ir["clusters"][_fq("Order")]["command_handlers"][
+            _fq("OrderCommandHandler")
+        ]
+        assert "handle_touch" not in handler["method_edges"]
+
+    def test_computed_callee_records_no_invoke(self, ir):
+        # ``handle_touch`` also calls through a subscript, which has no trailing
+        # name to look up in the surface. Pin the precondition through the view:
+        # one of its calls really does carry ``method is None``, so this stays a
+        # computed-callee test rather than passing for the ambiguity reason.
+        view = BehavioralView(_build_domain())
+        facts = view.element_facts(m.OrderCommandHandler)["handle_touch"]
+        assert any(call.method is None for call in facts.calls)
         handler = ir["clusters"][_fq("Order")]["command_handlers"][
             _fq("OrderCommandHandler")
         ]
