@@ -156,6 +156,16 @@ class TestEmptyIR:
         result = generate_event_model_slice(_ir(clusters=clusters), "app.Missing")
         assert result == "flowchart LR"
 
+    def test_slice_empty_cluster_still_renders_the_aggregate(self):
+        # An empty cluster mapping is present, not absent, so the slice draws
+        # the aggregate box, the same as the timeline does for that cluster.
+        clusters: dict = {"app.Order": {}}
+        result = generate_event_model_slice(_ir(clusters=clusters), "app.Order")
+        assert result != "flowchart LR"
+        assert "subgraph app_Order[Order]" in result
+        assert "agg_app_Order[Order]" in result
+        assert result == generate_event_model_timeline(_ir(clusters=clusters))
+
 
 # ------------------------------------------------------------------
 # AC1: the headline slice (command -> event -> read model)

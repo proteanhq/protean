@@ -252,7 +252,7 @@ def generate_event_model_slice(ir: dict[str, Any], cluster_fqn: str) -> str:
         A string containing the Mermaid ``flowchart LR`` source.
     """
     cluster = ir.get("clusters", {}).get(cluster_fqn)
-    if not cluster:
+    if cluster is None:
         return "flowchart LR"
 
     subgraph_lines, edge_lines = _render_slice(ir, cluster_fqn, cluster)
