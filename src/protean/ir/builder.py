@@ -33,12 +33,12 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET
 from protean.ir import SCHEMA_VERSION
 from protean.ir.analysis import (
+    RAISE_METHOD,
     BehavioralView,
     ElementIndex,
     ReceiverRole,
     SourceProvider,
 )
-from protean.ir.analysis.facts import RAISE_METHOD
 from protean.ir.constants import (
     VOLATILE_IR_KEYS,
     is_external_io_call,
