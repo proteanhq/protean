@@ -14,6 +14,9 @@ Usage::
     # Generate raw Mermaid (no Markdown fences)
     protean docs generate --domain=my_app --type=events --format=mermaid
 
+    # Generate the EventModeling slice timeline
+    protean docs generate --domain=my_app --type=event-model
+
     # Write output to a file
     protean docs generate --domain=my_app --output=docs/architecture.md
 
@@ -66,7 +69,7 @@ def preview() -> None:
 # ``protean docs generate``
 # ---------------------------------------------------------------------------
 
-_VALID_TYPES = ("clusters", "events", "handlers", "catalog", "all")
+_VALID_TYPES = ("clusters", "events", "handlers", "catalog", "event-model", "all")
 
 
 @app.command()
@@ -91,7 +94,10 @@ def generate(
         typer.Option(
             "--type",
             "-t",
-            help="Generator type: clusters, events, handlers, catalog, or all (default)",
+            help=(
+                "Generator type: clusters, events, handlers, catalog, "
+                "event-model, or all (default)"
+            ),
         ),
     ] = "all",
     format: Annotated[
@@ -200,6 +206,11 @@ def _generate_output(
 
     if doc_type in ("catalog", "all"):
         sections.append(_generate_catalog(ir_data))
+
+    # event-model is deliberately not part of the "all" bundle: it is a
+    # distinct slice-timeline view, not one more section of the combined docs.
+    if doc_type == "event-model":
+        sections.append(_generate_event_model(ir_data, output_format))
 
     return "\n\n".join(sections)
 
@@ -322,6 +333,33 @@ def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
     return "\n\n".join(sections) or mermaid_fence(
         "flowchart TD", title="Handler Wiring"
     )
+
+
+def _generate_event_model(ir_data: dict[str, Any], output_format: str) -> str:
+    """Generate the EventModeling slice timeline.
+
+    In Markdown mode, emits one fenced diagram per aggregate slice with a
+    ``## Event Model: <Aggregate>`` title.  In Mermaid mode, emits a single
+    combined ``flowchart LR`` timeline of all slices.
+    """
+    from protean.ir.generators.event_model import (  # noqa: PLC0415
+        generate_event_model_slice,
+        generate_event_model_timeline,
+    )
+
+    if output_format == "mermaid":
+        return generate_event_model_timeline(ir_data)
+
+    clusters = ir_data.get("clusters", {})
+    parts: list[str] = []
+
+    for cfqn in sorted(clusters):
+        raw = generate_event_model_slice(ir_data, cfqn)
+        if raw != "flowchart LR":
+            name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
+            parts.append(mermaid_fence(raw, title=f"Event Model: {name}"))
+
+    return "\n\n".join(parts) or mermaid_fence("flowchart LR", title="Event Model")
 
 
 def _generate_catalog(ir_data: dict[str, Any]) -> str:

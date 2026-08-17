@@ -354,6 +354,146 @@ class TestGeneratorTypes:
 
 
 # ---------------------------------------------------------------------------
+# Test: Event model slice timeline (--type=event-model)
+# ---------------------------------------------------------------------------
+
+
+def _event_model_ir() -> dict[str, Any]:
+    """One command -> event -> projection slice (the AC1 shape)."""
+    ir = _ir(
+        clusters={
+            "app.Order": _cluster(
+                commands={
+                    "app.PlaceOrder": _command("Ordering.PlaceOrder.v1"),
+                },
+                events={
+                    "app.OrderPlaced": _event("Ordering.OrderPlaced.v1"),
+                },
+            ),
+        },
+        projections={
+            "app.OrderSummary": {
+                "projection": {"fqn": "app.OrderSummary", "name": "OrderSummary"},
+                "projectors": {
+                    "app.OrderSummaryProjector": {
+                        "element_type": "PROJECTOR",
+                        "fqn": "app.OrderSummaryProjector",
+                        "name": "OrderSummaryProjector",
+                        "projector_for": "app.OrderSummary",
+                        "handlers": {"Ordering.OrderPlaced.v1": ["on_placed"]},
+                    }
+                },
+                "queries": {},
+                "query_handlers": {},
+            }
+        },
+    )
+    return ir
+
+
+class TestEventModelType:
+    """Tests for the ``--type=event-model`` slice timeline."""
+
+    @pytest.fixture()
+    def ir_file(self, tmp_path) -> Path:
+        path = tmp_path / "event-model-ir.json"
+        path.write_text(json.dumps(_event_model_ir()), encoding="utf-8")
+        return path
+
+    def test_mermaid_renders_slice(self, ir_file):
+        """AC1: the command -> event -> read-model slice renders as Mermaid."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", "--format=mermaid"],
+        )
+        assert result.exit_code == 0
+        assert "flowchart LR" in result.output
+        assert "cmd_app_PlaceOrder[/PlaceOrder/]" in result.output
+        assert "agg_app_Order --> evt_app_OrderPlaced" in result.output
+        assert (
+            "evt_app_OrderPlaced --> rm_app_Order_app_OrderSummaryProjector"
+            in result.output
+        )
+        # Raw Mermaid: no fences
+        assert "```mermaid" not in result.output
+
+    def test_markdown_renders_same_content_in_a_fence(self, ir_file):
+        """AC2: markdown renders the same slice inside a titled mermaid fence."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", "--format=markdown"],
+        )
+        assert result.exit_code == 0
+        assert "```mermaid" in result.output
+        assert "## Event Model: Order" in result.output
+        assert (
+            "evt_app_OrderPlaced --> rm_app_Order_app_OrderSummaryProjector"
+            in result.output
+        )
+
+    def test_markdown_is_the_default_format(self, ir_file):
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model"],
+        )
+        assert result.exit_code == 0
+        assert "```mermaid" in result.output
+        assert "## Event Model: Order" in result.output
+
+    def test_write_to_file(self, ir_file, tmp_path):
+        out_file = tmp_path / "event-model.md"
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                f"--ir={ir_file}",
+                "--type=event-model",
+                f"--output={out_file}",
+            ],
+        )
+        assert result.exit_code == 0
+        assert out_file.exists()
+        content = out_file.read_text(encoding="utf-8")
+        assert "## Event Model: Order" in content
+
+    def test_empty_ir_renders_sentinel(self, tmp_path):
+        ir_file = tmp_path / "empty.json"
+        ir_file.write_text(json.dumps(_ir()), encoding="utf-8")
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", "--format=mermaid"],
+        )
+        assert result.exit_code == 0
+        assert result.output.strip() == "flowchart LR"
+
+    def test_not_bundled_into_type_all(self, ir_file):
+        """--type=all must not carry the event-model slice section."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=all"],
+        )
+        assert result.exit_code == 0
+        assert "## Event Model:" not in result.output
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_from_domain(self, mock_derive):
+        """The type is reachable through the --domain path too."""
+        mock_domain = mock_derive.return_value
+        mock_domain.init.return_value = None
+        mock_domain.to_ir.return_value = _event_model_ir()
+
+        result = runner.invoke(
+            app,
+            ["generate", "--domain=my_app", "--type=event-model", "--format=mermaid"],
+        )
+        assert result.exit_code == 0
+        assert (
+            "evt_app_OrderPlaced --> rm_app_Order_app_OrderSummaryProjector"
+            in result.output
+        )
+
+
+# ---------------------------------------------------------------------------
 # Test: Output format
 # ---------------------------------------------------------------------------
 
