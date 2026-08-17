@@ -25,6 +25,13 @@ from protean.utils.telemetry import set_span_error
 # and callers of ``read``/``read_all`` expect events and commands only.
 SNAPSHOT_TYPE = "SNAPSHOT"
 
+# Window size for the backward scan that skips a trailing snapshot in
+# ``read_last_message`` (see ``_last_non_snapshot_message``). One window is one
+# ``_read`` of at most this many rows near the tail. Matches the default read
+# page size so the common case (a single snapshot as the last row) resolves in
+# one small read.
+_SNAPSHOT_TAIL_WINDOW = 1000
+
 
 @dataclass
 class CausationNode:
@@ -238,28 +245,47 @@ class BaseEventStore(metaclass=ABCMeta):
         # sees a `{category}:snapshot-` row). Skip back to the newest actual
         # message so callers such as outbox reconciliation do not crash.
         if self._is_snapshot_row(raw_message):
-            raw_message = self._last_non_snapshot_message(stream)
+            raw_message = self._last_non_snapshot_message(stream, raw_message)
             if raw_message is None:
                 return None
 
         return Message.deserialize(raw_message)
 
-    def _last_non_snapshot_message(self, stream: str) -> dict[str, Any] | None:
-        """The newest event/command row in ``stream``, skipping snapshot rows.
+    def _last_non_snapshot_message(
+        self, stream: str, tail: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """The newest event/command row in ``stream`` at or before ``tail``.
 
         Consulted only when ``_read_last_message`` returns a snapshot as the
-        tail row. Picks the highest ``global_position`` among non-snapshot rows,
-        never trusting row order, since some adapters read ``$all`` with no
-        ``ORDER BY``.
+        tail row (only ``$all`` interleaves snapshot streams with event streams).
+        Walks backward from the tail in ``_SNAPSHOT_TAIL_WINDOW``-sized windows
+        keyed on ``global_position``, so skipping a trailing snapshot costs a
+        small read near the tail, not a full scan from the start, and a store
+        larger than one window no longer returns a stale non-tail row. Within a
+        window the newest is chosen by ``global_position`` rather than trusting
+        row order, since some adapters read ``$all`` with no ``ORDER BY``.
         """
-        candidates = [
-            raw_message
-            for raw_message in self._read(stream, no_of_messages=1_000_000)
-            if not self._is_snapshot_row(raw_message)
-        ]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda m: m.get("global_position", -1))
+        hi: int = tail.get("global_position", -1)
+        while hi >= 0:
+            low = max(0, hi - _SNAPSHOT_TAIL_WINDOW + 1)
+            # ``_read`` returns rows with ``global_position >= low`` in ascending
+            # order, so the first ``_SNAPSHOT_TAIL_WINDOW`` of them cover all of
+            # ``[low, hi]`` (that range spans at most that many positions); the
+            # ``<= hi`` filter drops any row past the tail that a gap let in.
+            candidates = [
+                raw_message
+                for raw_message in self._read(
+                    stream, position=low, no_of_messages=_SNAPSHOT_TAIL_WINDOW
+                )
+                if raw_message.get("global_position", -1) <= hi
+                and not self._is_snapshot_row(raw_message)
+            ]
+            if candidates:
+                return max(candidates, key=lambda m: m.get("global_position", -1))
+            if low == 0:
+                return None
+            hi = low - 1
+        return None
 
     def append(self, object: BaseEvent | BaseCommand) -> int:
         tracer = self.domain.tracer

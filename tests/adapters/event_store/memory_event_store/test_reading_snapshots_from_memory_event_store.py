@@ -8,6 +8,9 @@ raw rows, so a snapshot interleaved in ``$all`` must neither truncate the read
 nor desync the paging cursor.
 """
 
+from unittest.mock import patch
+
+import protean.port.event_store as event_store_module
 from protean.utils.eventing import Message
 
 
@@ -146,6 +149,59 @@ def test_read_last_message_skips_a_trailing_snapshot(test_domain):
     assert last is not None
     assert last.metadata.headers.type != "SNAPSHOT"
     assert last.data["n"] == 2
+
+
+def test_read_last_message_walks_back_over_a_run_of_snapshots(test_domain):
+    """When the tail is a run of snapshots longer than one scan window, the
+    backward walk crosses all of them and returns the newest event beneath.
+
+    A single loading batch can snapshot several aggregates in a row, leaving
+    more consecutive snapshot rows at the tail of ``$all`` than one window
+    holds. The window is shrunk here so two events and three trailing snapshots
+    already span more than one window.
+    """
+    store = test_domain.event_store.store
+    _write_event(store, "user-1", 0)
+    _write_event(store, "user-1", 1)
+    _write_snapshot(store, "user", "1")
+    _write_snapshot(store, "user", "2")
+    _write_snapshot(store, "user", "3")  # three trailing snapshots > one window
+
+    with patch.object(event_store_module, "_SNAPSHOT_TAIL_WINDOW", 2):
+        last = store.read_last_message("$all")
+
+    assert last is not None
+    assert last.metadata.headers.type != "SNAPSHOT"
+    assert last.data["n"] == 1
+
+
+def test_read_last_message_scan_is_bounded_near_the_tail(test_domain):
+    """The snapshot-skip scan reads a bounded window near the tail, never a
+    capped scan from the start.
+
+    The old helper read from position 0 with ``no_of_messages=1_000_000`` and
+    took the max, which on a store past that cap returns a stale non-tail row.
+    Here the window is shrunk to 2, so the scan must start at the tail's
+    position and read at most two rows, not from position 0.
+    """
+    store = test_domain.event_store.store
+    for i in range(6):
+        _write_event(store, "user-1", i)  # global positions 1..6
+    _write_snapshot(store, "user", "1")  # tail, global position 7
+
+    with patch.object(event_store_module, "_SNAPSHOT_TAIL_WINDOW", 2):
+        with patch.object(store, "_read", wraps=store._read) as spy:
+            last = store.read_last_message("$all")
+
+    assert last is not None
+    assert last.data["n"] == 5  # the newest event, not a stale one
+
+    # Every scan read stayed a bounded window at the tail: none from position 0,
+    # and none the old 1_000_000-row full scan.
+    assert spy.call_args_list, "the snapshot tail should have triggered a scan"
+    for call in spy.call_args_list:
+        assert call.kwargs["position"] > 0
+        assert call.kwargs["no_of_messages"] == 2
 
 
 def test_read_last_message_none_when_only_snapshots(test_domain):
