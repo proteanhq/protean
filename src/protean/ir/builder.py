@@ -39,7 +39,6 @@ from protean.ir.analysis import (
     ReceiverRole,
     SourceProvider,
 )
-from protean.ir.analysis.facts import _RAISE_METHOD
 from protean.ir.constants import (
     VOLATILE_IR_KEYS,
     is_external_io_call,
@@ -3080,7 +3079,7 @@ class IRBuilder:
             raised_fqns: set[str] = set()
             for cls in analyzed:
                 for facts in self.view.element_facts(cls).values():
-                    if not any(call.method == _RAISE_METHOD for call in facts.calls):
+                    if not any(call.method == RAISE_METHOD for call in facts.calls):
                         continue
                     for construction in facts.constructions:
                         raised_fqns.add(construction.fqn)
