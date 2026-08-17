@@ -295,3 +295,9 @@ class TestSchemaConformance:
         ir["clusters"][_fq("Catalog")]["aggregate"]["method_edges"] = {}
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(ir, load_schema())
+
+    def test_method_with_neither_side_is_rejected(self, ir):
+        """The same rule one level down: an edgeless method is absent, not empty."""
+        ir["clusters"][_fq("Catalog")]["aggregate"]["method_edges"] = {"place": {}}
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(ir, load_schema())
