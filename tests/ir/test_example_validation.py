@@ -54,7 +54,7 @@ class TestExampleStructure:
     @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_ir_version(self, example_path: Path):
         data = json.loads(example_path.read_text(encoding="utf-8"))
-        assert data["ir_version"] == "0.1.0"
+        assert data["ir_version"] == "0.2.0"
 
     @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_checksum_format(self, example_path: Path):

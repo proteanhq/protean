@@ -29,7 +29,7 @@ __all__ = [
     "load_schema",
 ]
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 
 _IR_DIR = Path(__file__).parent
 SCHEMA_PATH = _IR_DIR / "schema" / f"v{SCHEMA_VERSION}" / "schema.json"

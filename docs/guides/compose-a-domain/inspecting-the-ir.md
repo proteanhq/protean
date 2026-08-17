@@ -73,8 +73,8 @@ Every IR document has the same shape:
 
 ```json
 {
-  "$schema": "https://protean.dev/ir/v0.1.0/schema.json",
-  "ir_version": "0.1.0",
+  "$schema": "https://protean.dev/ir/v0.2.0/schema.json",
+  "ir_version": "0.2.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
 
@@ -98,6 +98,39 @@ Every IR document has the same shape:
 
 ---
 
+## Behavioral edges (`method_edges`)
+
+Alongside its structure, the IR records what causes what. An element that owns
+methods can carry a `method_edges` map, keyed by method name:
+
+```json
+"method_edges": {
+  "place_order": { "raises": ["ecommerce.ordering.OrderPlaced"] },
+  "handle_place_order": {
+    "invokes": [{ "element": "ecommerce.ordering.Order", "method": "place_order" }]
+  }
+}
+```
+
+- **`raises`** appears on aggregates and entities. It lists the events a method
+  raises, derived by co-location: every event built in a method that also calls
+  `raise_`. It can over-report (a method that builds two events and raises one
+  records both) and under-report (an event built in a helper and raised through
+  it is missed).
+- **`invokes`** appears on command handlers, event handlers, projectors, and
+  process managers. It lists the element methods a handler method calls, matched
+  by name against the methods in scope. The match is receiver-blind: a name
+  shared by more than one method in scope is skipped (so an edge can be
+  missing), and a unique name is recorded even when the real receiver is
+  something else (so an edge can be wrong). A projector or process manager is
+  scoped to aggregate and entity method names, so it rarely carries a real edge.
+
+Both edges are read from the source as written, not proven, so treat them as a
+guide to the domain's behavior. A method with no edge is absent, and an element
+with no edged method carries no `method_edges` key.
+
+---
+
 ## Determinism and diffing
 
 The same domain always produces **byte-identical** IR JSON (excluding the
@@ -117,7 +150,7 @@ breaking changes automatically.
 ## The `$schema` URI
 
 The `$schema` field contains a logical URI
-(`https://protean.dev/ir/v0.1.0/schema.json`). This URI identifies the
+(`https://protean.dev/ir/v0.2.0/schema.json`). This URI identifies the
 schema version but is **not a network endpoint**, the actual JSON Schema ships
 with the Protean package at `protean.ir.SCHEMA_PATH`.
 

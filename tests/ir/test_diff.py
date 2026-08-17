@@ -916,3 +916,131 @@ class TestDiffWithRealDomains:
         assert result["summary"]["has_changes"] is True
         # Both have different aggregates, so clusters differ
         assert result["clusters"]
+
+
+# ------------------------------------------------------------------
+# method_edges (raise/invoke derivation) diffing
+# ------------------------------------------------------------------
+
+
+class TestDiffMethodEdges:
+    """A gained, lost or altered method edge is reported once, under the owning
+    element, and not a second time under ``attributes``."""
+
+    def test_changed_raises_reported_once_under_the_element(self):
+        left_cluster = _make_cluster("Order")
+        left_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced"]}
+        }
+        right_cluster = _make_cluster("Order")
+        right_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced", "app.OrderShipped"]}
+        }
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        agg_delta = result["clusters"]["changed"]["app.Order"]["aggregate"]
+        change = agg_delta["method_edges"]["changed"]["place"]
+        assert change == {
+            "left": {"raises": ["app.OrderPlaced"]},
+            "right": {"raises": ["app.OrderPlaced", "app.OrderShipped"]},
+        }
+        # The change must not leak into the scalar-attribute pass.
+        assert "attributes" not in agg_delta
+
+    def test_added_and_removed_method_edges(self):
+        left_cluster = _make_cluster("Order")
+        left_cluster["aggregate"]["method_edges"] = {
+            "gone": {"raises": ["app.OrderPlaced"]}
+        }
+        right_cluster = _make_cluster("Order")
+        right_cluster["aggregate"]["method_edges"] = {
+            "fresh": {"raises": ["app.OrderShipped"]}
+        }
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        edges = result["clusters"]["changed"]["app.Order"]["aggregate"]["method_edges"]
+        assert edges["added"] == {"fresh": {"raises": ["app.OrderShipped"]}}
+        assert edges["removed"] == {"gone": {"raises": ["app.OrderPlaced"]}}
+
+    def test_unchanged_method_is_left_out_of_the_delta(self):
+        # A method present on both sides with identical edges is not reported,
+        # so a one-method change on a multi-method element stays readable.
+        left_cluster = _make_cluster("Order")
+        left_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced"]},
+            "ship": {"raises": ["app.OrderShipped"]},
+        }
+        right_cluster = _make_cluster("Order")
+        right_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced"]},
+            "ship": {"raises": ["app.OrderShipped", "app.OrderDelivered"]},
+        }
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        edges = result["clusters"]["changed"]["app.Order"]["aggregate"]["method_edges"]
+        assert set(edges["changed"]) == {"ship"}
+        assert "added" not in edges
+        assert "removed" not in edges
+
+    def test_changed_invokes_on_a_handler_reported_once(self):
+        # ``_diff_element`` is shared across every subsection, so a changed
+        # ``invokes`` edge on a command handler (a non-aggregate element, an
+        # invoke-shaped value) diffs the same way and stays out of
+        # ``attributes``.
+        def _handler(invokes):
+            return {
+                "element_type": "COMMAND_HANDLER",
+                "fqn": "app.OrderCommandHandler",
+                "module": "app",
+                "name": "OrderCommandHandler",
+                "part_of": "app.Order",
+                "handlers": {},
+                "method_edges": {"handle_place": {"invokes": invokes}},
+            }
+
+        left_cluster = _make_cluster(
+            "Order",
+            command_handlers={
+                "app.OrderCommandHandler": _handler(
+                    [{"element": "app.Order", "method": "place"}]
+                )
+            },
+        )
+        right_cluster = _make_cluster(
+            "Order",
+            command_handlers={
+                "app.OrderCommandHandler": _handler(
+                    [
+                        {"element": "app.Order", "method": "place"},
+                        {"element": "app.OrderLine", "method": "adjust"},
+                    ]
+                )
+            },
+        )
+        left = _minimal_ir(clusters={"app.Order": left_cluster})
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+
+        result = diff_ir(left, right)
+
+        handler_delta = result["clusters"]["changed"]["app.Order"]["command_handlers"][
+            "changed"
+        ]["app.OrderCommandHandler"]
+        change = handler_delta["method_edges"]["changed"]["handle_place"]
+        assert change["left"] == {
+            "invokes": [{"element": "app.Order", "method": "place"}]
+        }
+        assert change["right"]["invokes"][-1] == {
+            "element": "app.OrderLine",
+            "method": "adjust",
+        }
+        # The change must not leak into the scalar-attribute pass.
+        assert "attributes" not in handler_delta

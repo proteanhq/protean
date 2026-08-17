@@ -27,8 +27,8 @@ class TestSchemaFile:
     def test_schema_meta_keys(self):
         schema = load_schema()
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-        assert schema["$id"] == "https://protean.dev/ir/v0.1.0/schema.json"
-        assert schema["title"] == "Protean IR v0.1.0"
+        assert schema["$id"] == "https://protean.dev/ir/v0.2.0/schema.json"
+        assert schema["title"] == "Protean IR v0.2.0"
         assert "$defs" in schema
 
 
