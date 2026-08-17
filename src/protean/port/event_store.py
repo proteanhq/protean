@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict, deque
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -33,6 +33,64 @@ class CausationNode:
     handler: str | None = None
     duration_ms: float | None = None
     delta_ms: float | None = None
+
+
+@dataclass(frozen=True)
+class IntegrityViolation:
+    """A single violation of the event store's internal invariants.
+
+    ``kind`` is a stable machine token (one of the ``VERIFY_*`` constants on
+    [`BaseEventStore`][protean.port.event_store.BaseEventStore]); ``stream`` and
+    ``position`` name where the violation was found (either may be ``None`` when
+    it is not stream- or position-specific); ``detail`` is a human-readable
+    explanation.
+    """
+
+    kind: str
+    stream: str | None
+    position: int | None
+    detail: str
+
+
+@dataclass(frozen=True)
+class IntegrityReport:
+    """The result of [`verify`][protean.port.event_store.BaseEventStore.verify].
+
+    ``message_count`` is every message scanned; ``stream_count`` is the number of
+    streams that held at least one positioned message. ``ok`` is derived: a
+    report is ``ok`` exactly when it carries no violations, so the two can never
+    disagree. This shape (with ``ok`` included) is the documented, stable contract
+    behind ``protean eventstore verify --json``.
+    """
+
+    message_count: int
+    stream_count: int
+    violations: tuple[IntegrityViolation, ...] = ()
+
+    def __post_init__(self) -> None:
+        # Accept any iterable at construction but store a tuple, so a caller
+        # cannot ``append`` to a report after the fact. ``frozen=True`` seals the
+        # attributes; this seals the collection they point at.
+        if not isinstance(self.violations, tuple):
+            object.__setattr__(self, "violations", tuple(self.violations))
+
+    @property
+    def ok(self) -> bool:
+        """Whether the scan found no violations."""
+        return not self.violations
+
+    def as_dict(self) -> dict[str, Any]:
+        """Serialize to the ``--json`` ``data`` payload, ``ok`` included.
+
+        ``dataclasses.asdict`` omits the ``ok`` property, so build the wire
+        payload explicitly to keep ``data.ok`` in the contract.
+        """
+        return {
+            "ok": self.ok,
+            "message_count": self.message_count,
+            "stream_count": self.stream_count,
+            "violations": [asdict(v) for v in self.violations],
+        }
 
 
 class BaseEventStore(metaclass=ABCMeta):
@@ -905,6 +963,233 @@ class BaseEventStore(metaclass=ABCMeta):
             stream has no messages.
         """
         return self._stream_head_position(stream_category)
+
+    # ------------------------------------------------------------------
+    # Integrity verification
+    # ------------------------------------------------------------------
+
+    # Stable machine tokens for the ``kind`` of an IntegrityViolation. They are
+    # part of the ``protean eventstore verify --json`` contract, so treat them as
+    # public constants, not free-form strings.
+    VERIFY_DUPLICATE_MESSAGE_ID = "duplicate_message_id"
+    VERIFY_POSITION_GAP = "position_gap"
+    VERIFY_NON_MONOTONIC_GLOBAL_POSITION = "non_monotonic_global_position"
+    VERIFY_SNAPSHOT_AHEAD_OF_STREAM = "snapshot_ahead_of_stream"
+    VERIFY_MALFORMED_MESSAGE = "malformed_message"
+    VERIFY_MALFORMED_SNAPSHOT = "malformed_snapshot"
+
+    _SNAPSHOT_MARKER = ":snapshot-"
+
+    # Fields a message read from ``$all`` must carry; a missing one is a
+    # malformed row. ``global_position`` is not here: the ``$all`` read filters
+    # ``>= position`` and both adapters make it NOT NULL, so a row without one
+    # is never returned to check (see ``_iter_all_messages``).
+    _REQUIRED_FIELDS = ("id", "stream_name", "position")
+
+    def _iter_all_messages(self, batch_size: int = 1000) -> Iterator[dict[str, Any]]:
+        """Yield every raw message in the store, ordered by ``global_position``.
+
+        This is the raw-dict sibling of the public
+        [`read_all`][protean.port.event_store.BaseEventStore.read_all], and
+        ``verify`` cannot use ``read_all`` in its place. ``read_all`` yields
+        deserialized `Message` objects, and two kinds of row ``verify`` must scan
+        do not deserialize: a snapshot row is written with no metadata, and a
+        corrupt row may be missing fields, so `Message.deserialize` raises on both.
+        Scanning the raw dict lets ``verify`` inspect a snapshot's ``_version``
+        and report a malformed row instead of crashing on it.
+
+        Pages through ``$all`` so the raw rows are read in bounded batches rather
+        than one unbounded slurp. The read contract (ADR-0024) is an inclusive,
+        ``global_position``-ordered page, so the next page starts one past the
+        last global_position seen; gaps in ``global_position`` are allowed and
+        skipped over safely. Both shipped adapters make ``global_position`` NOT
+        NULL and their ``$all`` read filters ``>= position``, so a row without a
+        ``global_position`` can neither exist nor be returned here.
+
+        One known limit: paging keys on ``global_position``, which is unique in
+        both shipped adapters. If a corrupt store held two rows with the *same*
+        global_position and that pair straddled an exact batch boundary, the
+        second would be skipped. Detecting that needs a stable unique cursor the
+        read contract does not offer, so it is left uncaught rather than papered
+        over with a dedup that ties break.
+        """
+        position = 0
+        while True:
+            batch = self._read("$all", position=position, no_of_messages=batch_size)
+            if not batch:
+                return
+            yield from batch
+            if len(batch) < batch_size:
+                return
+            position = batch[-1]["global_position"] + 1
+
+    def verify(self) -> IntegrityReport:
+        """Check the store's internal invariants without mutating anything.
+
+        Reads the whole store once through ``$all`` and reports every violation
+        of these invariants:
+
+        - every row carries its required fields (``id``, ``stream_name``,
+          ``position``),
+        - per-stream ``position`` is gapless from the stream base (0),
+        - ``global_position`` is strictly increasing store-wide,
+        - message ids are unique,
+        - each ``:snapshot-`` stream carries a well-formed snapshot whose
+          ``_version`` does not exceed its aggregate stream head.
+
+        A corrupt row is reported, never silently skipped: that is the whole
+        point of the check, so a row missing a required field or a snapshot with
+        a non-integer ``_version`` becomes a violation rather than a pass, and
+        the missing-field guard runs first so those checks never touch an absent
+        value. This handles the corruption a store can actually hold: every
+        adapter types its columns (MessageDB by SQL column type, the memory
+        adapter by its pydantic model), so a present-but-wrongly-typed field
+        (a list ``id``, a string ``position``) does not arise from a read.
+
+        This asserts the store's *internal* consistency, not a schema version
+        (none is stored today). It is read-only: a clean store yields a report
+        with no violations (``ok`` is ``True``).
+        """
+        violations: list[IntegrityViolation] = []
+
+        seen_ids: set[str] = set()
+        prev_global_position: int | None = None
+        # Per-stream: the last position seen (streams appear in position order
+        # within the global_position-ordered scan) and the head (max) position.
+        last_position: dict[str, int] = {}
+        stream_head: dict[str, int] = {}
+        # Per snapshot stream: the ``_version`` of its most recent snapshot.
+        snapshot_version: dict[str, int] = {}
+
+        message_count = 0
+        for msg in self._iter_all_messages():
+            message_count += 1
+            stream = msg.get("stream_name")
+            position = msg.get("position")
+            global_position = msg.get("global_position")
+            message_id = msg.get("id")
+
+            # A row read from ``$all`` always carries a ``global_position`` (the
+            # read filters ``>= position``), so check monotonicity FIRST, before
+            # the malformed guard can ``continue``. A row can be malformed and
+            # break monotonicity at once, and verify reports every violation.
+            assert global_position is not None  # read-contract guarantee (mypy)
+            if (
+                prev_global_position is not None
+                and global_position <= prev_global_position
+            ):
+                violations.append(
+                    IntegrityViolation(
+                        kind=self.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
+                        stream=stream,
+                        position=position,
+                        detail=(
+                            f"global_position {global_position} does not exceed "
+                            f"the previous {prev_global_position}."
+                        ),
+                    )
+                )
+            prev_global_position = global_position
+
+            # A row missing any required field is itself a corruption. Flag it
+            # and move on: the remaining checks need those values, and running
+            # them on a half-populated row would either crash or invent a
+            # spurious gap.
+            missing = [f for f in self._REQUIRED_FIELDS if msg.get(f) is None]
+            if missing:
+                violations.append(
+                    IntegrityViolation(
+                        kind=self.VERIFY_MALFORMED_MESSAGE,
+                        stream=stream,
+                        position=position,
+                        detail=(
+                            "Message is missing required field(s): "
+                            f"{', '.join(missing)}."
+                        ),
+                    )
+                )
+                continue
+
+            # Past the guard the three required fields are present. Narrow them
+            # for the checks below (the raw dict values are ``Any | None``).
+            assert (
+                message_id is not None and stream is not None and position is not None
+            )
+
+            # Duplicate message id (the store's own message identity)
+            if message_id in seen_ids:
+                violations.append(
+                    IntegrityViolation(
+                        kind=self.VERIFY_DUPLICATE_MESSAGE_ID,
+                        stream=stream,
+                        position=position,
+                        detail=f"Message id '{message_id}' appears more than once.",
+                    )
+                )
+            seen_ids.add(message_id)
+
+            # Per-stream gapless position from base 0
+            expected = last_position.get(stream, -1) + 1
+            if position != expected:
+                violations.append(
+                    IntegrityViolation(
+                        kind=self.VERIFY_POSITION_GAP,
+                        stream=stream,
+                        position=position,
+                        detail=(
+                            f"Stream '{stream}' jumps to position {position}; "
+                            f"expected {expected}."
+                        ),
+                    )
+                )
+            last_position[stream] = position
+            stream_head[stream] = max(stream_head.get(stream, -1), position)
+
+            # Track the latest snapshot version per snapshot stream. A snapshot
+            # whose data is not a dict, or whose ``_version`` is missing or not a
+            # plain int (``bool`` is an int subclass, so exclude it), is corrupt:
+            # flag it here rather than silently dropping it from the head check.
+            if self._SNAPSHOT_MARKER in stream:
+                data = msg.get("data")
+                version = data.get("_version") if isinstance(data, dict) else None
+                if isinstance(version, int) and not isinstance(version, bool):
+                    snapshot_version[stream] = version
+                else:
+                    violations.append(
+                        IntegrityViolation(
+                            kind=self.VERIFY_MALFORMED_SNAPSHOT,
+                            stream=stream,
+                            position=position,
+                            detail=(
+                                "Snapshot data is not a dict or its _version is "
+                                "not an integer."
+                            ),
+                        )
+                    )
+
+        # Each snapshot's _version must not exceed its aggregate stream head
+        for snap_stream, version in snapshot_version.items():
+            category, _, identifier = snap_stream.partition(self._SNAPSHOT_MARKER)
+            aggregate_stream = f"{category}-{identifier}"
+            head = stream_head.get(aggregate_stream, -1)
+            if version > head:
+                violations.append(
+                    IntegrityViolation(
+                        kind=self.VERIFY_SNAPSHOT_AHEAD_OF_STREAM,
+                        stream=snap_stream,
+                        position=None,
+                        detail=(
+                            f"Snapshot _version {version} exceeds the head position "
+                            f"{head} of aggregate stream '{aggregate_stream}'."
+                        ),
+                    )
+                )
+
+        return IntegrityReport(
+            message_count=message_count,
+            stream_count=len(stream_head),
+            violations=tuple(violations),
+        )
 
     @abstractmethod
     def _data_reset(self) -> None:

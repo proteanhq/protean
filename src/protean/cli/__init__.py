@@ -34,6 +34,7 @@ from protean.cli.database import app as db_app
 from protean.cli.dlq import app as dlq_app
 from protean.cli.docs import app as docs_app
 from protean.cli.events import app as events_app
+from protean.cli.eventstore import app as eventstore_app
 from protean.cli.idempotency import app as idempotency_app
 from protean.cli.ir import app as ir_app
 from protean.cli.new import new
@@ -70,6 +71,7 @@ app.add_typer(dlq_app, name="dlq")
 app.add_typer(idempotency_app, name="idempotency")
 app.add_typer(outbox_app, name="outbox")
 app.add_typer(events_app, name="events")
+app.add_typer(eventstore_app, name="eventstore")
 app.add_typer(ir_app, name="ir")
 app.add_typer(schema_app, name="schema")
 app.add_typer(docs_app, name="docs")
