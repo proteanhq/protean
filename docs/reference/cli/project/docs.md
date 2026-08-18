@@ -109,10 +109,10 @@ clears, so PaymentConfirmed gates the shipment slice.
 owner = "Fulfillment"
 ```
 
-On render, each note merges into the slice for the element it keys. A note on
-an aggregate, a command, an event, or a consumer drawn in a slice (a projector,
-event handler, or process manager) shows after that slice's Given-When-Then and
-before its diagram. Because the key is the element's FQN, a note stays attached
+On render, each note merges into every slice that draws the element it keys. A
+note on an aggregate, a command, an event, or a consumer (a projector, event
+handler, or process manager) shows after that slice's Given-When-Then and before
+its diagram. A consumer drawn in two slices shows its note in both. Because the key is the element's FQN, a note stays attached
 across a content change (adding a field, reordering elements, regenerating the
 model) and breaks on an identity change (renaming or moving the element), which
 changes the FQN.

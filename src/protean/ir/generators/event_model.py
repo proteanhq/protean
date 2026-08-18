@@ -411,24 +411,32 @@ def unmatched_annotations(
     return sorted(fqn for fqn in annotations if fqn not in matched)
 
 
+def _blockquote_lines(label: str, text: str) -> list[str]:
+    """Render ``**label:** text`` as blockquote lines, one per input line.
+
+    Every line of *text* is ``> ``-prefixed so a multi-line value cannot break
+    out of the quote. A blank continuation line becomes a bare ``>``.
+    """
+    parts = text.split("\n")
+    lines = [f"> **{label}:** {parts[0]}".rstrip()]
+    lines.extend(f"> {extra}".rstrip() if extra.strip() else ">" for extra in parts[1:])
+    return lines
+
+
 def _annotation_block(entry: dict[str, Any]) -> str:
     """Render one annotation entry as a Markdown blockquote.
 
-    The ``note`` leads (``> **Note:** ...``), carrying multi-line text as a
-    single blockquote. An ``owner``, when present, follows as a second
-    paragraph (``> **Owner:** ...``).
+    The ``note`` leads (``> **Note:** ...``). An ``owner``, when present,
+    follows as a second paragraph (``> **Owner:** ...``). Both carry multi-line
+    text safely: every line is ``> ``-prefixed, so a value with embedded
+    newlines stays inside the quote instead of forging a heading below it.
     """
-    note = str(entry.get("note", "")).strip()
-    note_lines = note.split("\n")
-    lines: list[str] = [f"> **Note:** {note_lines[0]}".rstrip()]
-    lines.extend(
-        f"> {extra}".rstrip() if extra.strip() else ">" for extra in note_lines[1:]
-    )
+    lines = _blockquote_lines("Note", str(entry.get("note", "")).strip())
 
     owner = str(entry.get("owner", "")).strip()
     if owner:
         lines.append(">")
-        lines.append(f"> **Owner:** {owner}")
+        lines.extend(_blockquote_lines("Owner", owner))
 
     return "\n".join(lines)
 
@@ -468,8 +476,10 @@ def render_unmatched_annotations(keys: list[str]) -> str:
     """Render the unmatched-annotation report from a list of *keys*.
 
     Returns ``""`` for an empty list so callers append nothing when every
-    annotation matched. The keys are shown verbatim in a Markdown list under
-    an ``## Unmatched annotations`` heading.
+    annotation matched. The keys are shown in a Markdown list under an
+    ``## Unmatched annotations`` heading, each on its own line. Newlines in a
+    key (a valid but pathological TOML key) are collapsed to spaces so a key
+    cannot break the list or forge a heading below it.
 
     Args:
         keys: The sorted unmatched annotation keys.
@@ -485,7 +495,7 @@ def render_unmatched_annotations(keys: list[str]) -> str:
         "These annotation keys match no element in the model:",
         "",
     ]
-    lines.extend(f"- `{key}`" for key in keys)
+    lines.extend(f"- `{' '.join(key.splitlines())}`" for key in keys)
     return "\n".join(lines)
 
 

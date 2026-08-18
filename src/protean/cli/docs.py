@@ -247,9 +247,10 @@ def _load_annotations(path: Path) -> dict[str, Any]:
     """Parse and validate an annotations TOML file.
 
     Returns a mapping of element FQN to its entry (``{"note": str}`` with an
-    optional ``"owner": str``). Raises :exc:`ValueError`, naming *path*, on a
-    parse error or an entry that is not a table with a string ``note`` (and,
-    when present, a string ``owner``).
+    optional ``"owner": str``). Raises :exc:`ValueError`, naming *path*, when
+    the file is unreadable, not valid UTF-8, not valid TOML, or holds an entry
+    that is not a table with a non-empty string ``note`` (and, when present, a
+    string ``owner``).
     """
     try:
         raw = path.read_bytes()
@@ -257,7 +258,12 @@ def _load_annotations(path: Path) -> dict[str, Any]:
         raise ValueError(f"Could not read {path}: {exc}") from exc
 
     try:
-        data = tomllib.loads(raw.decode("utf-8"))
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{path} is not valid UTF-8: {exc}") from exc
+
+    try:
+        data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise ValueError(f"Invalid TOML in {path}: {exc}") from exc
 
@@ -272,9 +278,9 @@ def _load_annotations(path: Path) -> dict[str, Any]:
                 f"Annotation for {fqn!r} in {path} must be a table with a string 'note'"
             )
         note = entry.get("note")
-        if not isinstance(note, str):
+        if not isinstance(note, str) or not note.strip():
             raise ValueError(
-                f"Annotation for {fqn!r} in {path} must have a string 'note'"
+                f"Annotation for {fqn!r} in {path} must have a non-empty string 'note'"
             )
         validated: dict[str, Any] = {"note": note}
         if "owner" in entry:

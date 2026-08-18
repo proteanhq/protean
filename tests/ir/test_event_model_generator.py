@@ -1156,6 +1156,13 @@ class TestUnmatchedAnnotations:
     def test_render_report_empty_for_no_keys(self):
         assert render_unmatched_annotations([]) == ""
 
+    def test_render_report_collapses_newlines_in_a_key(self):
+        # A newline in a key (a valid but pathological TOML key) must not break
+        # the list or forge a heading: it is collapsed to a single line.
+        report = render_unmatched_annotations(["bad\n## Forged\nx"])
+        assert report.endswith("- `bad ## Forged x`")
+        assert "\n## Forged" not in report
+
 
 # ------------------------------------------------------------------
 # Per-slice annotation rendering (generate_slice_annotations)
@@ -1235,3 +1242,27 @@ class TestSliceAnnotations:
         annotations = {"app.Order": {"note": "The fulfillment boundary."}}
         assert generate_slice_annotations(ir, "app.Order", annotations) != ""
         assert generate_slice_annotations(ir, "app.Shipment", annotations) == ""
+
+    def test_note_keyed_by_a_drawn_consumer_renders_in_the_slice(self):
+        # app.OrderSummaryProjector is a consumer drawn in the app.Order slice.
+        annotations = {
+            "app.OrderSummaryProjector": {"note": "Feeds the ops dashboard."}
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** Feeds the ops dashboard."
+
+    def test_owner_with_embedded_newline_stays_quoted(self):
+        # A TOML string may carry newlines. Every owner line must be
+        # `> `-prefixed so it cannot forge a heading below the quote.
+        annotations = {
+            "app.Order": {
+                "note": "The boundary.",
+                "owner": "Alice\n## Forged Heading",
+            }
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == (
+            "> **Note:** The boundary.\n>\n> **Owner:** Alice\n> ## Forged Heading"
+        )
+        # No line escapes the blockquote.
+        assert all(line.startswith(">") for line in result.splitlines())

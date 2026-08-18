@@ -713,6 +713,9 @@ class TestEventModelAnnotations:
         out_file = tmp_path / "out.md"
         result = self._run(ir_file, f"--annotations={ann}", f"--output={out_file}")
         assert result.exit_code != 0
+        # The abort names the reason, not just a non-zero exit: this pins the
+        # parse-abort path rather than any non-zero exit (e.g. an unknown option).
+        assert "Invalid TOML" in result.output
         assert not out_file.exists()
 
     def test_invalid_entry_shape_aborts(self, tmp_path):
@@ -725,6 +728,57 @@ class TestEventModelAnnotations:
         assert result.exit_code != 0
         assert str(ann) in result.output.replace("\n", "")
         assert "string 'note'" in result.output
+
+    def test_non_utf8_file_aborts_naming_the_file(self, tmp_path):
+        """A mis-encoded file aborts with a message naming the file (AC6)."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        # A latin-1 accented byte (0xe9) is not valid UTF-8.
+        ann.write_bytes(b'[annotations."app.Order"]\nnote = "caf\xe9"\n')
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert str(ann) in result.output.replace("\n", "")
+        assert "not valid UTF-8" in result.output
+
+    def test_empty_note_aborts(self, tmp_path):
+        """A whitespace-only note is rejected: note is a required content field."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text('[annotations."app.Order"]\nnote = "   "\n', encoding="utf-8")
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert str(ann) in result.output.replace("\n", "")
+        assert "non-empty string 'note'" in result.output
+
+    def test_note_keyed_by_a_drawn_consumer_renders(self, tmp_path):
+        """A note keyed by a projector FQN renders in the slice that draws it."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.OrderSummaryProjector"]\n'
+            'note = "Feeds the ops dashboard."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "Feeds the ops dashboard." in result.output
+        assert "## Unmatched annotations" not in result.output
+
+    def test_owner_newline_stays_inside_the_blockquote(self, tmp_path):
+        """An owner with an embedded newline cannot forge a top-level heading."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Order"]\n'
+            'note = "The boundary."\n'
+            'owner = "Alice\\n## Forged Heading"\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "> ## Forged Heading" in result.output
+        # The forged heading never appears as a live top-level heading.
+        assert "\n## Forged Heading" not in result.output
 
     def test_invalid_owner_type_aborts(self, tmp_path):
         """An owner that is not a string is rejected, naming the file."""
