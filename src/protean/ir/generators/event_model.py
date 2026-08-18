@@ -291,6 +291,204 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
     return "\n".join(lines)
 
 
+def _slice_consumer_fqns(
+    read_models: dict[str, list[tuple[str, str]]],
+    automations: dict[str, list[tuple[str, str, str]]],
+    cluster: dict[str, Any],
+) -> set[str]:
+    """Return the FQNs of every consumer drawn in a cluster's slice.
+
+    A consumer (projector, event handler, or process manager) is drawn in
+    the slice when it handles one of the cluster's non-fact events. Uses the
+    same shared indexes and the same fact-event / empty-``__type__`` filters
+    as :func:`_render_slice`, so the match set agrees with the diagram.
+    """
+    fqns: set[str] = set()
+    for evt in cluster.get("events", {}).values():
+        if evt.get("is_fact_event"):
+            continue
+        evt_type = evt.get("__type__", "")
+        if not evt_type:
+            continue
+        for proj_fqn, _label in read_models.get(evt_type, []):
+            fqns.add(proj_fqn)
+        for consumer_fqn, _label, _edge in automations.get(evt_type, []):
+            fqns.add(consumer_fqn)
+    return fqns
+
+
+def _cluster_target_fqns(
+    read_models: dict[str, list[tuple[str, str]]],
+    automations: dict[str, list[tuple[str, str, str]]],
+    cluster_fqn: str,
+    cluster: dict[str, Any],
+) -> set[str]:
+    """Return every element FQN a note can attach to in one cluster's slice.
+
+    That is the aggregate, its commands, its non-fact events, and the
+    consumers drawn from those events. This is exactly the set of nodes the
+    slice draws, so a note keyed by any of them renders in the slice, and a
+    note keyed by anything else (including a fact event, which the model
+    filters out) is reported unmatched.
+    """
+    fqns: set[str] = {cluster_fqn}
+    if cluster:
+        fqns.update(cluster.get("commands", {}))
+        fqns.update(
+            evt_fqn
+            for evt_fqn, evt in cluster.get("events", {}).items()
+            if not evt.get("is_fact_event")
+        )
+        fqns.update(_slice_consumer_fqns(read_models, automations, cluster))
+    return fqns
+
+
+def slice_annotation_targets(ir: dict[str, Any], cluster_fqn: str) -> set[str]:
+    """Return the element FQNs a note can attach to in *cluster_fqn*'s slice.
+
+    Returns an empty set when the cluster is absent from the IR. An empty
+    cluster mapping is present, not absent, so its aggregate FQN is still a
+    valid target (the slice still draws the aggregate box).
+
+    Args:
+        ir: The full IR dict.
+        cluster_fqn: FQN of the cluster to inspect.
+
+    Returns:
+        The set of element FQNs drawn in that slice.
+    """
+    cluster = ir.get("clusters", {}).get(cluster_fqn)
+    if cluster is None:
+        return set()
+    return _cluster_target_fqns(
+        _read_model_index(ir), _automation_index(ir), cluster_fqn, cluster
+    )
+
+
+def element_fqns(ir: dict[str, Any]) -> set[str]:
+    """Return the FQN of every element the event model draws, across all slices.
+
+    The union of :func:`slice_annotation_targets` over every cluster, built
+    with the consumer indexes assembled once for the whole IR. This is the
+    match set for annotations: a key in this set attaches to a slice, a key
+    outside it is unmatched.
+
+    Args:
+        ir: The full IR dict.
+
+    Returns:
+        The set of every drawn element FQN.
+    """
+    read_models = _read_model_index(ir)
+    automations = _automation_index(ir)
+    fqns: set[str] = set()
+    for cluster_fqn, cluster in ir.get("clusters", {}).items():
+        fqns |= _cluster_target_fqns(
+            read_models, automations, cluster_fqn, cluster or {}
+        )
+    return fqns
+
+
+def unmatched_annotations(
+    ir: dict[str, Any], annotations: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Return the sorted annotation keys that match no element in the model.
+
+    An unmatched key is a note orphaned by a rename or a typo. It is reported,
+    never dropped in silence (ADR-0032). Returns an empty list when there are
+    no annotations or every key matches.
+
+    Args:
+        ir: The full IR dict.
+        annotations: Mapping of element FQN to its annotation entry.
+
+    Returns:
+        The sorted list of keys present in *annotations* but not in the model.
+    """
+    if not annotations:
+        return []
+    matched = element_fqns(ir)
+    return sorted(fqn for fqn in annotations if fqn not in matched)
+
+
+def _annotation_block(entry: dict[str, Any]) -> str:
+    """Render one annotation entry as a Markdown blockquote.
+
+    The ``note`` leads (``> **Note:** ...``), carrying multi-line text as a
+    single blockquote. An ``owner``, when present, follows as a second
+    paragraph (``> **Owner:** ...``).
+    """
+    note = str(entry.get("note", "")).strip()
+    note_lines = note.split("\n")
+    lines: list[str] = [f"> **Note:** {note_lines[0]}".rstrip()]
+    lines.extend(
+        f"> {extra}".rstrip() if extra.strip() else ">" for extra in note_lines[1:]
+    )
+
+    owner = str(entry.get("owner", "")).strip()
+    if owner:
+        lines.append(">")
+        lines.append(f"> **Owner:** {owner}")
+
+    return "\n".join(lines)
+
+
+def generate_slice_annotations(
+    ir: dict[str, Any],
+    cluster_fqn: str,
+    annotations: dict[str, dict[str, Any]],
+) -> str:
+    """Render the human notes attached to one aggregate slice.
+
+    Returns the Markdown for every annotation whose FQN is drawn in the
+    slice, in sorted FQN order, or ``""`` when the slice carries no notes.
+    An empty *annotations* mapping renders nothing, which keeps the no-file
+    baseline byte-identical to the pre-annotation render.
+
+    Args:
+        ir: The full IR dict.
+        cluster_fqn: FQN of the cluster whose slice is being rendered.
+        annotations: Mapping of element FQN to its annotation entry.
+
+    Returns:
+        The Markdown note block(s) for the slice, or ``""``.
+    """
+    if not annotations:
+        return ""
+    targets = slice_annotation_targets(ir, cluster_fqn)
+    blocks = [
+        _annotation_block(annotations[fqn])
+        for fqn in sorted(targets)
+        if fqn in annotations
+    ]
+    return "\n\n".join(blocks)
+
+
+def render_unmatched_annotations(keys: list[str]) -> str:
+    """Render the unmatched-annotation report from a list of *keys*.
+
+    Returns ``""`` for an empty list so callers append nothing when every
+    annotation matched. The keys are shown verbatim in a Markdown list under
+    an ``## Unmatched annotations`` heading.
+
+    Args:
+        keys: The sorted unmatched annotation keys.
+
+    Returns:
+        The Markdown report, or ``""`` when *keys* is empty.
+    """
+    if not keys:
+        return ""
+    lines = [
+        "## Unmatched annotations",
+        "",
+        "These annotation keys match no element in the model:",
+        "",
+    ]
+    lines.extend(f"- `{key}`" for key in keys)
+    return "\n".join(lines)
+
+
 def generate_event_model_slice(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Generate a Mermaid ``flowchart LR`` for a single aggregate's slice.
 

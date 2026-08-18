@@ -36,6 +36,9 @@ protean docs generate --ir=domain-ir.json --type=event-model
 - `--output`, `-o`: Write to a file instead of stdout.
 - `--cluster`: Filter to a single cluster FQN (only with `--type=clusters` or
   `--type=all`).
+- `--annotations`: Path to an annotations TOML file (only with
+  `--type=event-model`). Defaults to `.protean/annotations.toml` when present.
+  See [Annotating the event model](#annotating-the-event-model).
 
 ### The event model slice timeline
 
@@ -78,6 +81,66 @@ protean docs generate --domain=my_app --type=event-model
 
 Unlike the other diagram types, `event-model` is its own view and is not
 included in `--type=all`.
+
+### Annotating the event model
+
+The event model carries structure, not the business context a person adds: why
+a slice exists, the rule behind it, which team owns it. Those notes live outside
+the generated output, in `.protean/annotations.toml`, and merge back in on
+render. Keeping them out of the diagram means the model stays disposable and the
+notes stay under version control next to the code they describe. The file's
+shape is recorded in [ADR-0032](../../../adr/0032-annotation-file-for-the-event-model.md).
+
+The file has a top-level `[annotations]` map keyed by element FQN. Each entry
+carries a required `note` (free text, the business context) and an optional
+`owner` (the team or person accountable). The FQN is the value
+`protean.utils.fqn` computes, `module.QualifiedName`; in a project generated
+from the canonical layout, an `Order` aggregate in
+`src/myproj/example/aggregate.py` has the FQN `myproj.example.aggregate.Order`.
+The FQN must be quoted, because TOML reads its dots as table separators
+otherwise:
+
+```toml
+[annotations."myproj.example.aggregate.Order"]
+note = """
+Orders are the fulfillment boundary. An order cannot ship until payment
+clears, so PaymentConfirmed gates the shipment slice.
+"""
+owner = "Fulfillment"
+```
+
+On render, each note merges into the slice for the element it keys. A note on
+an aggregate, a command, an event, or a consumer drawn in a slice (a projector,
+event handler, or process manager) shows after that slice's Given-When-Then and
+before its diagram. Because the key is the element's FQN, a note stays attached
+across a content change (adding a field, reordering elements, regenerating the
+model) and breaks on an identity change (renaming or moving the element), which
+changes the FQN.
+
+A key that matches no drawn element is listed in an "Unmatched annotations"
+section at the end of the render, so a note orphaned by a rename or a typo stays
+visible and gets re-keyed. A fact event is filtered from the event model, so it
+draws no node; a note keyed to one is reported unmatched.
+
+`--annotations <path>` reads the file from a non-default location. An explicit
+path that does not exist is an error, as is a malformed file: either aborts the
+command before any output is written. With no annotations file present, the
+default path absent and no `--annotations` given, the render is exactly what it
+is without the feature.
+
+```shell
+# Merge notes from the default .protean/annotations.toml
+protean docs generate --domain=my_app --type=event-model
+
+# Read notes from a non-default path
+protean docs generate --domain=my_app --type=event-model \
+    --annotations=docs/event-model-notes.toml
+```
+
+Notes are Markdown prose and cannot sit inside a raw flowchart, so
+`--format=mermaid` leaves the diagram body unchanged and appends only the
+unmatched-annotation report, the one piece that belongs at the end of the
+render.
 
 ## `protean docs preview`
 

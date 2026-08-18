@@ -9,9 +9,14 @@ multi-slice ordering, and the empty/edge branches.
 import pytest
 
 from protean.ir.generators.event_model import (
+    element_fqns,
     generate_event_model_slice,
     generate_event_model_timeline,
+    generate_slice_annotations,
     generate_slice_gwt,
+    render_unmatched_annotations,
+    slice_annotation_targets,
+    unmatched_annotations,
 )
 
 # ------------------------------------------------------------------
@@ -1017,3 +1022,216 @@ class TestSliceGwt:
         first = generate_slice_gwt(ir, "app.Order")
         assert first == generate_slice_gwt(ir, "app.Order")
         assert first == "> **Given** Order\n> **When** CancelOrder, PlaceOrder"
+
+
+# ------------------------------------------------------------------
+# Annotation match set (element_fqns / slice_annotation_targets)
+# ------------------------------------------------------------------
+
+
+class TestElementFqns:
+    def test_match_set_covers_aggregate_command_event_and_consumers(self):
+        result = element_fqns(_headline_ir())
+        # Aggregate, command, event, and the projector that consumes the event.
+        assert result == {
+            "app.Order",
+            "app.PlaceOrder",
+            "app.OrderPlaced",
+            "app.OrderSummaryProjector",
+        }
+
+    def test_match_set_includes_event_handlers_and_process_managers(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": _process_manager(
+                    "app.FulfillmentPM",
+                    {"App.OrderPlaced.v1": ["on_order_placed"]},
+                ),
+            },
+            "subscribers": {},
+        }
+        result = element_fqns(_ir(clusters=clusters, flows=flows))
+        assert "app.OrderNotifier" in result
+        assert "app.FulfillmentPM" in result
+
+    def test_fact_event_is_not_in_the_match_set(self):
+        # A fact event is filtered from the diagram, so it draws no node and
+        # is not a valid annotation target: a note on it is reported unmatched.
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app._OrderFact": _event(
+                        "app._OrderFact", "App._OrderFact.v1", is_fact_event=True
+                    ),
+                },
+            ),
+        }
+        result = element_fqns(_ir(clusters=clusters))
+        assert "app.OrderPlaced" in result
+        assert "app._OrderFact" not in result
+
+    def test_empty_cluster_contributes_only_its_aggregate(self):
+        result = element_fqns(_ir(clusters={"app.Order": {}}))
+        assert result == {"app.Order"}
+
+    def test_slice_targets_absent_cluster_is_empty(self):
+        assert slice_annotation_targets(_ir(), "app.Missing") == set()
+
+    def test_slice_targets_match_the_slice_nodes(self):
+        targets = slice_annotation_targets(_headline_ir(), "app.Order")
+        assert targets == {
+            "app.Order",
+            "app.PlaceOrder",
+            "app.OrderPlaced",
+            "app.OrderSummaryProjector",
+        }
+
+
+# ------------------------------------------------------------------
+# Unmatched annotations report
+# ------------------------------------------------------------------
+
+
+class TestUnmatchedAnnotations:
+    def test_matched_key_is_not_reported(self):
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        assert unmatched_annotations(_headline_ir(), annotations) == []
+
+    def test_unmatched_key_is_reported(self):
+        annotations = {"app.Ghost": {"note": "Orphaned by a rename."}}
+        assert unmatched_annotations(_headline_ir(), annotations) == ["app.Ghost"]
+
+    def test_unmatched_keys_are_sorted(self):
+        annotations = {
+            "app.Zebra": {"note": "z"},
+            "app.Apple": {"note": "a"},
+        }
+        assert unmatched_annotations(_headline_ir(), annotations) == [
+            "app.Apple",
+            "app.Zebra",
+        ]
+
+    def test_empty_annotations_report_nothing(self):
+        assert unmatched_annotations(_headline_ir(), {}) == []
+
+    def test_fact_event_key_is_reported_unmatched(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app._OrderFact": _event(
+                        "app._OrderFact", "App._OrderFact.v1", is_fact_event=True
+                    ),
+                },
+            ),
+        }
+        annotations = {"app._OrderFact": {"note": "Filtered from the model."}}
+        assert unmatched_annotations(_ir(clusters=clusters), annotations) == [
+            "app._OrderFact"
+        ]
+
+    def test_render_report_lists_every_key(self):
+        report = render_unmatched_annotations(["app.Apple", "app.Zebra"])
+        assert report.startswith("## Unmatched annotations")
+        assert "- `app.Apple`" in report
+        assert "- `app.Zebra`" in report
+
+    def test_render_report_empty_for_no_keys(self):
+        assert render_unmatched_annotations([]) == ""
+
+
+# ------------------------------------------------------------------
+# Per-slice annotation rendering (generate_slice_annotations)
+# ------------------------------------------------------------------
+
+
+class TestSliceAnnotations:
+    def test_empty_annotations_render_nothing(self):
+        # The no-op path: no annotations means an empty string, which keeps
+        # the no-file baseline byte-identical to the pre-annotation render.
+        assert generate_slice_annotations(_headline_ir(), "app.Order", {}) == ""
+
+    def test_aggregate_note_renders_in_its_slice(self):
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** The fulfillment boundary."
+
+    def test_owner_renders_when_present(self):
+        annotations = {
+            "app.Order": {"note": "The fulfillment boundary.", "owner": "Fulfillment"}
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == (
+            "> **Note:** The fulfillment boundary.\n>\n> **Owner:** Fulfillment"
+        )
+
+    def test_multiline_note_is_one_blockquote(self):
+        annotations = {
+            "app.Order": {"note": "First line.\n\nSecond paragraph."},
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == ("> **Note:** First line.\n>\n> Second paragraph.")
+
+    def test_note_keyed_by_command_renders_in_the_slice(self):
+        annotations = {"app.PlaceOrder": {"note": "Triggered by checkout."}}
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** Triggered by checkout."
+
+    def test_note_keyed_by_event_renders_in_the_slice(self):
+        annotations = {"app.OrderPlaced": {"note": "Gates the shipment slice."}}
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** Gates the shipment slice."
+
+    def test_unmatched_key_renders_nothing_in_the_slice(self):
+        annotations = {"app.Ghost": {"note": "Orphaned."}}
+        assert (
+            generate_slice_annotations(_headline_ir(), "app.Order", annotations) == ""
+        )
+
+    def test_multiple_notes_render_in_sorted_fqn_order(self):
+        annotations = {
+            "app.PlaceOrder": {"note": "The command."},
+            "app.Order": {"note": "The aggregate."},
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        # Sorted by FQN: app.Order before app.PlaceOrder.
+        assert result == ("> **Note:** The aggregate.\n\n> **Note:** The command.")
+
+    def test_note_does_not_leak_into_a_sibling_slice(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+            "app.Shipment": _cluster(
+                "app.Shipment",
+                events={
+                    "app.OrderShipped": _event(
+                        "app.OrderShipped", "App.OrderShipped.v1"
+                    ),
+                },
+            ),
+        }
+        ir = _ir(clusters=clusters)
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        assert generate_slice_annotations(ir, "app.Order", annotations) != ""
+        assert generate_slice_annotations(ir, "app.Shipment", annotations) == ""
