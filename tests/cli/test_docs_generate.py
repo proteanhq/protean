@@ -431,6 +431,83 @@ class TestEventModelType:
             in result.output
         )
 
+    def test_markdown_leads_each_slice_with_gwt(self, ir_file):
+        """Markdown emits the GWT block ahead of the diagram fence."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", "--format=markdown"],
+        )
+        assert result.exit_code == 0
+        assert "## Event Model: Order" in result.output
+        assert "> **Given** Order" in result.output
+        assert "> **When** PlaceOrder" in result.output
+        assert "> **Then** OrderPlaced" in result.output
+        # The GWT leads: it appears before the diagram fence for the slice.
+        assert result.output.index("> **Given** Order") < result.output.index(
+            "```mermaid"
+        )
+
+    def test_markdown_interleaves_gwt_and_fence_per_slice(self, tmp_path):
+        """Each slice leads with its own GWT then its own fence, in order."""
+        ir = _ir(
+            clusters={
+                "app.Order": _cluster(
+                    aggregate_name="Order",
+                    commands={"app.PlaceOrder": _command("Ordering.PlaceOrder.v1")},
+                    events={"app.OrderPlaced": _event("Ordering.OrderPlaced.v1")},
+                ),
+                "app.Shipment": _cluster(
+                    aggregate_name="Shipment",
+                    commands={"app.ShipOrder": _command("Shipping.ShipOrder.v1")},
+                    events={"app.OrderShipped": _event("Shipping.OrderShipped.v1")},
+                ),
+            },
+        )
+        ir_path = tmp_path / "two-cluster-ir.json"
+        ir_path.write_text(json.dumps(ir), encoding="utf-8")
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_path}", "--type=event-model", "--format=markdown"],
+        )
+        assert result.exit_code == 0
+        out = result.output
+        # Slices render in sorted FQN order: Order then Shipment. Each heading
+        # is followed by its own GWT and then its own fence, before the next
+        # heading, so no GWT block is orphaned or attached to the wrong slice.
+        order_head = out.index("## Event Model: Order")
+        order_given = out.index("> **Given** Order")
+        order_when = out.index("> **When** PlaceOrder")
+        order_fence = out.index("```mermaid", order_head)
+        ship_head = out.index("## Event Model: Shipment")
+        ship_given = out.index("> **Given** Shipment")
+        ship_when = out.index("> **When** ShipOrder")
+        ship_fence = out.index("```mermaid", ship_head)
+        assert (
+            order_head
+            < order_given
+            < order_when
+            < order_fence
+            < ship_head
+            < ship_given
+            < ship_when
+            < ship_fence
+        )
+
+    def test_mermaid_has_no_gwt_prose(self, ir_file):
+        """Mermaid mode is a bare flowchart: GWT is a Markdown-only feature."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", "--format=mermaid"],
+        )
+        assert result.exit_code == 0
+        # The slice actually rendered (not empty or garbage output)...
+        assert "flowchart LR" in result.output
+        assert "agg_app_Order --> evt_app_OrderPlaced" in result.output
+        # ...and it carries no GWT prose.
+        assert "**Given**" not in result.output
+        assert "**When**" not in result.output
+        assert "**Then**" not in result.output
+
     def test_markdown_is_the_default_format(self, ir_file):
         result = runner.invoke(
             app,

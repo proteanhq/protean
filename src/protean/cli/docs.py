@@ -338,13 +338,16 @@ def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
 def _generate_event_model(ir_data: dict[str, Any], output_format: str) -> str:
     """Generate the EventModeling slice timeline.
 
-    In Markdown mode, emits one fenced diagram per aggregate slice with a
-    ``## Event Model: <Aggregate>`` title.  In Mermaid mode, emits a single
-    combined ``flowchart LR`` timeline of all slices.
+    In Markdown mode, each aggregate slice becomes a ``## Event Model:
+    <Aggregate>`` section that leads with the slice's structural
+    Given-When-Then and then shows the diagram.  In Mermaid mode,
+    emits a single combined ``flowchart LR`` timeline of all slices, with no
+    GWT prose (it cannot go inside a raw flowchart).
     """
     from protean.ir.generators.event_model import (  # noqa: PLC0415
         generate_event_model_slice,
         generate_event_model_timeline,
+        generate_slice_gwt,
     )
 
     if output_format == "mermaid":
@@ -357,7 +360,15 @@ def _generate_event_model(ir_data: dict[str, Any], output_format: str) -> str:
         raw = generate_event_model_slice(ir_data, cfqn)
         if raw != "flowchart LR":
             name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
-            parts.append(mermaid_fence(raw, title=f"Event Model: {name}"))
+            # generate_slice_gwt always returns a non-empty block for a
+            # cluster that exists, and this loop only visits existing
+            # clusters, so no empty-GWT guard is needed here.
+            section = [
+                f"## Event Model: {name}",
+                generate_slice_gwt(ir_data, cfqn),
+                mermaid_fence(raw),
+            ]
+            parts.append("\n\n".join(section))
 
     return "\n\n".join(parts) or mermaid_fence("flowchart LR", title="Event Model")
 
