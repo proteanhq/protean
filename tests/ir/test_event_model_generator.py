@@ -1091,6 +1091,25 @@ class TestElementFqns:
         result = element_fqns(_ir(clusters={"app.Order": {}}))
         assert result == {"app.Order"}
 
+    def test_event_without_type_adds_no_consumers_to_the_match_set(self):
+        # An empty event type is never a key in a handlers map, so the event
+        # itself is a target but no consumer is pulled into the slice, the
+        # same skip the diagram makes.
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={"app.OrderPlaced": _event("app.OrderPlaced", "")},
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        result = element_fqns(_ir(clusters=clusters))
+        assert result == {"app.Order", "app.OrderPlaced"}
+
     def test_slice_targets_absent_cluster_is_empty(self):
         assert slice_annotation_targets(_ir(), "app.Missing") == set()
 

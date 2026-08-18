@@ -793,6 +793,16 @@ class TestEventModelAnnotations:
         assert str(ann) in result.output.replace("\n", "")
         assert "'owner'" in result.output
 
+    def test_annotations_key_not_a_table_aborts(self, tmp_path):
+        """A top-level `annotations` that is not a table is rejected."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text('annotations = "just a string"\n', encoding="utf-8")
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert "'annotations'" in result.output
+        assert "must be a table" in result.output
+
     def test_entry_not_a_table_aborts(self, tmp_path):
         """An annotation value that is not a table is rejected."""
         ir_file = _write_ir(tmp_path)
