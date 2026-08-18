@@ -41,6 +41,7 @@ from protean.cli.new import new
 from protean.cli.observatory import observatory
 from protean.cli.outbox import app as outbox_app
 from protean.cli.projection import app as projection_app
+from protean.cli.recover import recover
 from protean.cli.schema import app as schema_app
 from protean.cli.shell import shell
 from protean.cli.snapshot import app as snapshot_app
@@ -62,6 +63,7 @@ app = typer.Typer(no_args_is_help=True)
 
 app.command()(check)
 app.command()(verify)
+app.command()(recover)
 app.command()(upgrade_check)
 app.command()(new)
 app.command()(observatory)

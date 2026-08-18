@@ -333,6 +333,7 @@ nav:
         - reference/cli/runtime/server.md
         - reference/cli/runtime/observatory.md
         - reference/cli/runtime/subscriptions.md
+        - reference/cli/runtime/recover.md
       - IR:
         - reference/cli/ir.md
       - Schema:
