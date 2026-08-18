@@ -377,9 +377,9 @@ class TestRecoverJson:
 
 
 class TestBeyondHead:
-    """Unit tests for the core comparison, at the int/str boundary the live
-    store crosses (positions are read as ints, then ``str()``-ified onto
-    ``SubscriptionStatus``, then re-parsed here)."""
+    """Unit tests for the core comparison. Collectors read positions as ints and
+    ``str()``-ify them onto ``SubscriptionStatus``, so what arrives here is a
+    numeric string, ``None``, or something unparseable from a foreign store."""
 
     @pytest.mark.parametrize(
         "current, head, expected",
@@ -389,8 +389,6 @@ class TestBeyondHead:
             ("3", "9", False),  # behind
             ("-1", "7", False),  # fresh subscription against a real head
             ("-1", "-1", False),  # fresh against an empty stream
-            (10, 5, True),  # ints straight off the store, not yet str()-ified
-            (5, 5, False),
             (None, "5", None),  # unreachable store
             ("5", None, None),
             ("5.0", "3", None),  # foreign store: non-numeric, not a crash
