@@ -965,6 +965,40 @@ class TestSliceGwt:
         assert "> **When** CancelOrder, PlaceOrder" in result
         assert "> **Then** OrderCancelled, OrderPlaced" in result
 
+    def test_same_short_name_from_two_modules_is_listed_twice(self):
+        # The diagram draws one node per FQN, so the GWT must list both
+        # entries too. Collapsing them by short name would leave the prose
+        # saying "one command, one event" while the diagram shows two nodes.
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                commands={
+                    "app.sales.PlaceOrder": _command(
+                        "app.sales.PlaceOrder", "App.Sales.PlaceOrder.v1"
+                    ),
+                    "app.trade.PlaceOrder": _command(
+                        "app.trade.PlaceOrder", "App.Trade.PlaceOrder.v1"
+                    ),
+                },
+                events={
+                    "app.sales.OrderPlaced": _event(
+                        "app.sales.OrderPlaced", "App.Sales.OrderPlaced.v1"
+                    ),
+                    "app.trade.OrderPlaced": _event(
+                        "app.trade.OrderPlaced", "App.Trade.OrderPlaced.v1"
+                    ),
+                },
+            ),
+        }
+        ir = _ir(clusters=clusters)
+        result = generate_slice_gwt(ir, "app.Order")
+        assert "> **When** PlaceOrder, PlaceOrder" in result
+        assert "> **Then** OrderPlaced, OrderPlaced" in result
+        # The GWT counts match the diagram's node counts.
+        diagram = generate_event_model_slice(ir, "app.Order")
+        assert diagram.count("[/PlaceOrder/]") == 2
+        assert diagram.count("([OrderPlaced])") == 2
+
     def test_output_is_deterministic(self):
         # Insert keys in reverse-sorted order so a dropped ``sorted(...)`` would
         # produce insertion-order text and break the exact-match assertion.

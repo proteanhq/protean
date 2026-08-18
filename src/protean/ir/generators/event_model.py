@@ -238,12 +238,16 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
       order between events, so there is no reliable list of prior events to
       show yet; the honest structural Given is the aggregate. This is where
       later scenario metadata would enrich the line.
-    - **When:** the cluster's commands (the triggers), short names, sorted.
-      Omitted when the cluster has no commands.
+    - **When:** the cluster's commands (the triggers), short names, ordered by
+      FQN. Omitted when the cluster has no commands.
     - **Then:** the cluster's non-fact events (the results), short names,
-      sorted. Fact events are filtered with the same predicate the diagram
-      uses, so GWT and diagram agree on which events exist. Omitted when the
-      cluster raises no non-fact events.
+      ordered by FQN. Fact events are filtered with the same predicate the
+      diagram uses, so GWT and diagram agree on which events exist. Omitted
+      when the cluster raises no non-fact events.
+
+    Both lines list one entry per FQN, matching the diagram, which draws one
+    node per FQN. Two elements from different modules that share a short name
+    are listed twice rather than collapsed, so the two views never disagree.
 
     This is slice-level pairing: one GWT per slice. A one-command /
     one-event slice reads ``When PlaceOrder`` / ``Then OrderPlaced``. A
@@ -269,17 +273,18 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
 
     lines: list[str] = [f"> **Given** {short_name(cluster_fqn)}"]
 
-    commands = sorted({short_name(cmd_fqn) for cmd_fqn in cluster.get("commands", {})})
+    # Sorted by FQN and not deduped by short name: the diagram draws one node
+    # per FQN, so two elements from different modules that share a short name
+    # must appear twice here too, or the GWT would disagree with the diagram.
+    commands = [short_name(cmd_fqn) for cmd_fqn in sorted(cluster.get("commands", {}))]
     if commands:
         lines.append(f"> **When** {', '.join(commands)}")
 
-    events = sorted(
-        {
-            short_name(evt_fqn)
-            for evt_fqn, evt in cluster.get("events", {}).items()
-            if not evt.get("is_fact_event")
-        }
-    )
+    events = [
+        short_name(evt_fqn)
+        for evt_fqn, evt in sorted(cluster.get("events", {}).items())
+        if not evt.get("is_fact_event")
+    ]
     if events:
         lines.append(f"> **Then** {', '.join(events)}")
 
