@@ -86,10 +86,14 @@ class TestRecoverVerifyCheckpoints:
         result = _invoke(statuses)
 
         assert result.exit_code == 1
-        assert "OrderHandler" in result.output
-        assert "10" in result.output
-        assert "5" in result.output
         assert "beyond head" in result.output
+        # Pin the values to their columns (Checkpoint before Head before
+        # Verdict), so a swapped-column bug would fail rather than pass on the
+        # bare presence of the digits.
+        row = next(
+            line for line in result.output.splitlines() if "OrderHandler" in line
+        )
+        assert row.index("10") < row.index("5") < row.index("beyond head")
 
     def test_all_consistent_exits_zero(self):
         """Criterion 2: every checkpoint at or behind the head exits 0."""
@@ -149,6 +153,49 @@ class TestRecoverVerifyCheckpoints:
         assert result.exit_code == 0
         assert "unknown" in result.output
         assert "beyond head" not in result.output
+        # An unverified row is not "consistent"; the summary must say so.
+        assert "could not be verified" in result.output
+        assert "All " not in result.output
+
+    def test_non_numeric_position_does_not_crash(self):
+        """A foreign store can hold a non-numeric position ("5.0", "abc"); it is
+        treated as unknown, not a crash or a false verdict."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Floaty", current_position="5.0", head_position="3"),
+            _make_status("Texty", current_position="abc", head_position="3"),
+        ]
+        result = _invoke(statuses)
+
+        assert result.exit_code == 0
+        assert "beyond head" not in result.output
+        assert "could not be verified" in result.output
+
+    def test_mixed_beyond_and_unknown(self):
+        """One beyond-head plus one unknown in the same run: fails on the
+        beyond-head one and still surfaces the unverified one."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Bad", current_position="10", head_position="5"),
+            _make_status("Offline", current_position=None, head_position=None),
+        ]
+        result = _invoke(statuses)
+
+        assert result.exit_code == 1
+        assert "1 of 2 checkpoint(s) point past" in result.output
+        assert "could not be verified" in result.output
+
+    def test_empty_list_reports_none_found(self):
+        """No event-store subscriptions at all: the empty-list branch reports it
+        and exits 0."""
+        change_working_directory_to("test7")
+
+        result = _invoke([])
+
+        assert result.exit_code == 0
+        assert "No event-store subscriptions found" in result.output
 
     def test_no_flag_prints_hint_and_exits_zero(self):
         """Without --verify-checkpoints the command prints its hint and exits 0
@@ -205,7 +252,13 @@ class TestRecoverJson:
         assert subs[0]["checkpoint_position"] == "10"
         assert subs[0]["head_position"] == "5"
         assert subs[0]["beyond_head"] is True
-        assert env["data"]["summary"] == {"checked": 1, "beyond_head": 1}
+        assert subs[0]["verdict"] == "beyond_head"
+        assert env["data"]["summary"] == {
+            "checked": 1,
+            "consistent": 0,
+            "beyond_head": 1,
+            "unknown": 0,
+        }
 
     def test_json_pass_when_consistent(self):
         """--json passes (status=pass, exit 0) when no checkpoint is beyond head."""
@@ -220,7 +273,54 @@ class TestRecoverJson:
         env = assert_envelope(result.stdout)
         assert env["status"] == "pass"
         assert env["data"]["subscriptions"][0]["beyond_head"] is False
-        assert env["data"]["summary"] == {"checked": 1, "beyond_head": 0}
+        assert env["data"]["subscriptions"][0]["verdict"] == "consistent"
+        assert env["data"]["summary"] == {
+            "checked": 1,
+            "consistent": 1,
+            "beyond_head": 0,
+            "unknown": 0,
+        }
+
+    def test_json_unknown_is_reported_not_clear(self):
+        """--json on an unreachable store passes (unknown is not a violation) but
+        marks the subscription unknown and counts it, so a machine consumer can
+        tell "could not read" from "checked and fine"."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Offline", current_position=None, head_position=None),
+        ]
+        result = _invoke(statuses, ["--json"])
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["subscriptions"][0]["verdict"] == "unknown"
+        assert env["data"]["subscriptions"][0]["beyond_head"] is False
+        assert env["data"]["summary"] == {
+            "checked": 1,
+            "consistent": 0,
+            "beyond_head": 0,
+            "unknown": 1,
+        }
+
+    def test_json_zero_event_store_subscriptions(self):
+        """--json with no event-store subscriptions is a pass with an empty list
+        and checked=0."""
+        change_working_directory_to("test7")
+
+        result = _invoke([], ["--json"])
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["subscriptions"] == []
+        assert env["data"]["summary"] == {
+            "checked": 0,
+            "consistent": 0,
+            "beyond_head": 0,
+            "unknown": 0,
+        }
 
     def test_json_only_event_store_in_payload(self):
         """--json lists only event-store subscriptions; a broker one is excluded."""
@@ -269,3 +369,47 @@ class TestRecoverJson:
         assert env["status"] == "error"
         assert "Error loading Protean domain" in env["data"]["error"]
         assert "[red]" not in result.stdout
+
+
+class TestBeyondHead:
+    """Unit tests for the core comparison, at the int/str boundary the live
+    store crosses (positions are read as ints, then ``str()``-ified onto
+    ``SubscriptionStatus``, then re-parsed here)."""
+
+    @pytest.mark.parametrize(
+        "current, head, expected",
+        [
+            ("10", "5", True),  # strictly ahead: the case the command exists for
+            ("5", "5", False),  # caught up
+            ("3", "9", False),  # behind
+            ("-1", "7", False),  # fresh subscription against a real head
+            ("-1", "-1", False),  # fresh against an empty stream
+            (10, 5, True),  # ints straight off the store, not yet str()-ified
+            (5, 5, False),
+            (None, "5", None),  # unreachable store
+            ("5", None, None),
+            ("5.0", "3", None),  # foreign store: non-numeric, not a crash
+            ("abc", "3", None),
+            ("", "3", None),
+        ],
+    )
+    def test_beyond_head(self, current, head, expected):
+        from protean.cli.recover import _beyond_head
+
+        status = _make_status(current_position=current, head_position=head)
+        assert _beyond_head(status) is expected
+
+    def test_verdict_tokens(self):
+        from protean.cli.recover import _verdict
+
+        assert _verdict(_make_status(current_position="10", head_position="5")) == (
+            "beyond_head"
+        )
+        assert (
+            _verdict(_make_status(current_position="5", head_position="5"))
+            == "consistent"
+        )
+        assert (
+            _verdict(_make_status(current_position=None, head_position=None))
+            == "unknown"
+        )

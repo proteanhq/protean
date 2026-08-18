@@ -36,8 +36,10 @@ Only event-store subscriptions track checkpoints, so broker and stream
 subscriptions are not examined. A fresh subscription (checkpoint `-1`, nothing
 processed yet) and a caught-up one (checkpoint at or behind the head) both read
 as consistent; only a checkpoint strictly ahead of the head is flagged. A
-subscription whose store is unreachable is reported as `unknown` and is not
-counted as a violation.
+subscription whose store is unreachable, or whose position is not a number, is
+reported as `unknown`: it could not be verified, so it is counted and reported
+apart from the consistent ones rather than folded in as "consistent". Unknown is
+not a violation (the store may be offline), so it does not change the exit code.
 
 Without `--verify-checkpoints` the command prints a hint and exits `0`;
 `--verify-checkpoints` is the only supported action today.
@@ -56,7 +58,10 @@ Without `--verify-checkpoints` the command prints a hint and exits `0`;
 |------|---------|
 | `0` | All checkpoints are consistent (or no flag / no event-store subscriptions) |
 | `1` | At least one checkpoint points past the restored head |
-| `2` | Usage or environment error (no or unloadable domain) |
+| `2` | Usage or environment error (no or unloadable domain), **under `--json`** |
+
+A domain that cannot be loaded exits `2` under `--json` (with the error
+envelope). On the default human path the same failure aborts with exit `1`.
 
 ### JSON output
 
@@ -69,29 +74,36 @@ protean recover --verify-checkpoints --domain=my_app --json
 The output is the shared [result envelope](../conventions.md). `status` is
 `fail` (exit `1`) when any checkpoint is beyond head and `pass` (exit `0`)
 otherwise. The per-subscription list is under `data.subscriptions` and the
-counts are under `data.summary`:
+counts are under `data.summary`. Each subscription carries a `verdict` token
+(`beyond_head`, `consistent`, or `unknown`) alongside the `beyond_head` boolean,
+and the summary breaks the total into `consistent`, `beyond_head`, and `unknown`
+so a consumer can tell "checked and fine" from "could not read". Keys are
+emitted sorted (the code uses `json.dumps(sort_keys=True)`):
 
 ```json
 {
-  "version": "0.1.0",
-  "status": "fail",
   "data": {
     "subscriptions": [
       {
-        "name": "order-projector",
-        "handler_name": "OrderProjector",
-        "stream_category": "order",
+        "beyond_head": true,
         "checkpoint_position": "10",
+        "handler_name": "OrderProjector",
         "head_position": "5",
-        "beyond_head": true
+        "name": "order-projector",
+        "stream_category": "order",
+        "verdict": "beyond_head"
       }
     ],
     "summary": {
+      "beyond_head": 1,
       "checked": 1,
-      "beyond_head": 1
+      "consistent": 0,
+      "unknown": 0
     }
   },
-  "diagnostics": []
+  "diagnostics": [],
+  "status": "fail",
+  "version": "0.1.0"
 }
 ```
 
