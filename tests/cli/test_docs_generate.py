@@ -571,6 +571,408 @@ class TestEventModelType:
 
 
 # ---------------------------------------------------------------------------
+# Test: Event-model annotations (--annotations)
+# ---------------------------------------------------------------------------
+
+
+def _write_ir(tmp_path: Path, name: str = "event-model-ir.json") -> Path:
+    path = tmp_path / name
+    path.write_text(json.dumps(_event_model_ir()), encoding="utf-8")
+    return path
+
+
+class TestEventModelAnnotations:
+    """Tests for the ``--annotations`` layer on ``--type=event-model``."""
+
+    def _run(self, ir_file: Path, *extra: str):
+        return runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=event-model", *extra],
+        )
+
+    def test_ac1_aggregate_note_merges_into_its_slice(self, tmp_path):
+        """A note keyed by the aggregate FQN renders in that slice section."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Order"]\n'
+            'note = "Orders are the fulfillment boundary."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "## Event Model: Order" in result.output
+        assert "Orders are the fulfillment boundary." in result.output
+        # The note leads the diagram fence, sitting after the GWT.
+        assert result.output.index("Orders are the fulfillment boundary.") < (
+            result.output.index("```mermaid")
+        )
+
+    def test_ac1_note_absent_from_other_slices(self, tmp_path):
+        """A note keyed to one aggregate does not appear in a sibling slice."""
+        ir = _ir(
+            clusters={
+                "app.Order": _cluster(
+                    aggregate_name="Order",
+                    events={"app.OrderPlaced": _event("Ordering.OrderPlaced.v1")},
+                ),
+                "app.Shipment": _cluster(
+                    aggregate_name="Shipment",
+                    events={"app.OrderShipped": _event("Shipping.OrderShipped.v1")},
+                ),
+            },
+        )
+        ir_file = tmp_path / "two.json"
+        ir_file.write_text(json.dumps(ir), encoding="utf-8")
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Order"]\nnote = "Only for Order."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        order_section = result.output.index("## Event Model: Order")
+        shipment_section = result.output.index("## Event Model: Shipment")
+        note_at = result.output.index("Only for Order.")
+        # The note sits inside the Order section, before the Shipment heading.
+        assert order_section < note_at < shipment_section
+
+    def test_note_renders_owner_when_present(self, tmp_path):
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Order"]\n'
+            'note = "The boundary."\n'
+            'owner = "Fulfillment"\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "> **Note:** The boundary." in result.output
+        assert "> **Owner:** Fulfillment" in result.output
+
+    def test_ac4_unmatched_annotation_is_reported(self, tmp_path):
+        """A key matching no element lands in the unmatched report."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Ghost"]\nnote = "Orphaned by a rename."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "## Unmatched annotations" in result.output
+        assert "- `app.Ghost`" in result.output
+
+    def test_ac4_unmatched_report_does_not_disturb_matched_slices(self, tmp_path):
+        """A stray key adds only the report; the slices match the no-key render."""
+        ir_file = _write_ir(tmp_path)
+        baseline = self._run(ir_file)
+        assert baseline.exit_code == 0
+
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Ghost"]\nnote = "Orphaned."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        # Everything up to the appended report is byte-identical to the
+        # no-annotation render.
+        head = result.output[: result.output.index("## Unmatched annotations")]
+        assert head.rstrip("\n") == baseline.output.rstrip("\n")
+
+    def test_ac5_no_annotations_render_is_byte_identical(self, tmp_path):
+        """With no annotations file, the render carries no annotation artifacts."""
+        ir_file = _write_ir(tmp_path)
+        no_file = self._run(ir_file)
+        empty_file = tmp_path / "empty.toml"
+        empty_file.write_text("[annotations]\n", encoding="utf-8")
+        with_empty = self._run(ir_file, f"--annotations={empty_file}")
+        assert no_file.exit_code == 0
+        assert with_empty.exit_code == 0
+        assert no_file.output == with_empty.output
+        assert "**Note:**" not in no_file.output
+        assert "Unmatched annotations" not in no_file.output
+
+    def test_ac6_malformed_file_aborts_naming_the_file(self, tmp_path):
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text("this is = = not valid toml", encoding="utf-8")
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        # rich wraps the path across lines; join before checking.
+        assert str(ann) in result.output.replace("\n", "")
+        assert "Invalid TOML" in result.output
+
+    def test_ac6_malformed_file_writes_no_output(self, tmp_path):
+        """A parse error aborts before the --output target is written."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text("broken = = toml", encoding="utf-8")
+        out_file = tmp_path / "out.md"
+        result = self._run(ir_file, f"--annotations={ann}", f"--output={out_file}")
+        assert result.exit_code != 0
+        # The abort names the reason, not just a non-zero exit: this pins the
+        # parse-abort path rather than any non-zero exit (e.g. an unknown option).
+        assert "Invalid TOML" in result.output
+        assert not out_file.exists()
+
+    def test_invalid_entry_shape_aborts(self, tmp_path):
+        """An entry without a string note is rejected, naming the file."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        # note is a number, not a string.
+        ann.write_text('[annotations."app.Order"]\nnote = 42\n', encoding="utf-8")
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert str(ann) in result.output.replace("\n", "")
+        assert "string 'note'" in result.output
+
+    def test_non_utf8_file_aborts_naming_the_file(self, tmp_path):
+        """A mis-encoded file aborts with a message naming the file (AC6)."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        # A latin-1 accented byte (0xe9) is not valid UTF-8.
+        ann.write_bytes(b'[annotations."app.Order"]\nnote = "caf\xe9"\n')
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert str(ann) in result.output.replace("\n", "")
+        assert "not valid UTF-8" in result.output
+
+    def test_empty_note_aborts(self, tmp_path):
+        """A whitespace-only note is rejected: note is a required content field."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text('[annotations."app.Order"]\nnote = "   "\n', encoding="utf-8")
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert str(ann) in result.output.replace("\n", "")
+        assert "non-empty string 'note'" in result.output
+
+    def test_note_keyed_by_a_drawn_consumer_renders(self, tmp_path):
+        """A note keyed by a projector FQN renders in the slice that draws it."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.OrderSummaryProjector"]\n'
+            'note = "Feeds the ops dashboard."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "Feeds the ops dashboard." in result.output
+        assert "## Unmatched annotations" not in result.output
+
+    def test_owner_newline_stays_inside_the_blockquote(self, tmp_path):
+        """An owner with an embedded newline cannot forge a top-level heading."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Order"]\n'
+            'note = "The boundary."\n'
+            'owner = "Alice\\n## Forged Heading"\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "> ## Forged Heading" in result.output
+        # The forged heading never appears as a live top-level heading.
+        assert "\n## Forged Heading" not in result.output
+
+    def test_invalid_owner_type_aborts(self, tmp_path):
+        """An owner that is not a string is rejected, naming the file."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Order"]\nnote = "x"\nowner = 7\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert str(ann) in result.output.replace("\n", "")
+        assert "'owner'" in result.output
+
+    def test_annotations_key_not_a_table_aborts(self, tmp_path):
+        """A top-level `annotations` that is not a table is rejected."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text('annotations = "just a string"\n', encoding="utf-8")
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert "'annotations'" in result.output
+        assert "must be a table" in result.output
+
+    def test_entry_not_a_table_aborts(self, tmp_path):
+        """An annotation value that is not a table is rejected."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        # A bare key under [annotations] parses to a string value, not a table.
+        ann.write_text(
+            '[annotations]\n"app.Order" = "just a string"\n', encoding="utf-8"
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code != 0
+        assert "must be a table" in result.output
+
+    def test_unreadable_path_aborts(self, tmp_path):
+        """A path that exists but cannot be read as a file aborts cleanly."""
+        ir_file = _write_ir(tmp_path)
+        # A directory passes the exists() check but fails read_bytes().
+        ann_dir = tmp_path / "annotations.toml"
+        ann_dir.mkdir()
+        result = self._run(ir_file, f"--annotations={ann_dir}")
+        assert result.exit_code != 0
+        assert "Could not read" in result.output
+
+    def test_missing_explicit_path_aborts(self, tmp_path):
+        """An explicit --annotations path that does not exist is an error."""
+        ir_file = _write_ir(tmp_path)
+        missing = tmp_path / "nope.toml"
+        result = self._run(ir_file, f"--annotations={missing}")
+        assert result.exit_code != 0
+        assert str(missing) in result.output.replace("\n", "")
+        assert "not found" in result.output
+
+    def test_ac7_override_reads_the_given_path(self, tmp_path):
+        """--annotations at a non-default path renders its notes."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "custom" / "notes.toml"
+        ann.parent.mkdir()
+        ann.write_text(
+            '[annotations."app.Order"]\nnote = "From a custom path."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "From a custom path." in result.output
+
+    def test_default_path_is_read_when_present(self, tmp_path, monkeypatch):
+        """.protean/annotations.toml is read without --annotations."""
+        monkeypatch.chdir(tmp_path)
+        ir_file = Path("ir.json")
+        ir_file.write_text(json.dumps(_event_model_ir()), encoding="utf-8")
+        protean_dir = Path(".protean")
+        protean_dir.mkdir()
+        (protean_dir / "annotations.toml").write_text(
+            '[annotations."app.Order"]\nnote = "From the default path."\n',
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app,
+            ["generate", "--ir=ir.json", "--type=event-model"],
+        )
+        assert result.exit_code == 0
+        assert "From the default path." in result.output
+
+    def test_default_path_absent_is_the_silent_no_annotations_case(
+        self, tmp_path, monkeypatch
+    ):
+        """With no .protean/annotations.toml and no override, nothing is read."""
+        monkeypatch.chdir(tmp_path)
+        ir_file = Path("ir.json")
+        ir_file.write_text(json.dumps(_event_model_ir()), encoding="utf-8")
+        assert not Path(".protean").exists()
+        result = runner.invoke(
+            app,
+            ["generate", "--ir=ir.json", "--type=event-model"],
+        )
+        assert result.exit_code == 0
+        assert "**Note:**" not in result.output
+        assert "Unmatched annotations" not in result.output
+
+    def test_override_wins_over_the_default_path(self, tmp_path, monkeypatch):
+        """When --annotations is given, the default path is not read."""
+        monkeypatch.chdir(tmp_path)
+        ir_file = Path("ir.json")
+        ir_file.write_text(json.dumps(_event_model_ir()), encoding="utf-8")
+        protean_dir = Path(".protean")
+        protean_dir.mkdir()
+        (protean_dir / "annotations.toml").write_text(
+            '[annotations."app.Order"]\nnote = "DEFAULT PATH NOTE."\n',
+            encoding="utf-8",
+        )
+        override = Path("override.toml")
+        override.write_text(
+            '[annotations."app.Order"]\nnote = "OVERRIDE NOTE."\n',
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--ir=ir.json",
+                "--type=event-model",
+                "--annotations=override.toml",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "OVERRIDE NOTE." in result.output
+        assert "DEFAULT PATH NOTE." not in result.output
+
+    def test_annotations_rejected_for_other_types(self, tmp_path):
+        """--annotations only applies to --type=event-model."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text('[annotations."app.Order"]\nnote = "x"\n', encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                f"--ir={ir_file}",
+                "--type=clusters",
+                f"--annotations={ann}",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--annotations can only be used with --type=event-model" in result.output
+
+    def test_dotted_fqn_key_matches(self, tmp_path):
+        """A realistic dotted, quoted FQN key attaches to its element."""
+        ir = _ir(
+            clusters={
+                "myproj.example.aggregate.Order": _cluster(
+                    aggregate_name="Order",
+                    events={"app.OrderPlaced": _event("Ordering.OrderPlaced.v1")},
+                ),
+            },
+        )
+        ir_file = tmp_path / "dotted.json"
+        ir_file.write_text(json.dumps(ir), encoding="utf-8")
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."myproj.example.aggregate.Order"]\n'
+            'note = "Keyed by the full dotted FQN."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, f"--annotations={ann}")
+        assert result.exit_code == 0
+        assert "Keyed by the full dotted FQN." in result.output
+        assert "Unmatched annotations" not in result.output
+
+    def test_mermaid_mode_keeps_flowchart_and_appends_report(self, tmp_path):
+        """Mermaid mode leaves the flowchart body and appends only the report."""
+        ir_file = _write_ir(tmp_path)
+        ann = tmp_path / "annotations.toml"
+        ann.write_text(
+            '[annotations."app.Order"]\nnote = "Matched note."\n'
+            '[annotations."app.Ghost"]\nnote = "Stray note."\n',
+            encoding="utf-8",
+        )
+        result = self._run(ir_file, "--format=mermaid", f"--annotations={ann}")
+        assert result.exit_code == 0
+        # The flowchart body is unchanged: no note prose inside it.
+        assert "flowchart LR" in result.output
+        assert "Matched note." not in result.output
+        # Only the unmatched report is appended, after the flowchart.
+        assert "## Unmatched annotations" in result.output
+        assert "- `app.Ghost`" in result.output
+        assert result.output.index("flowchart LR") < result.output.index(
+            "## Unmatched annotations"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Test: Output format
 # ---------------------------------------------------------------------------
 

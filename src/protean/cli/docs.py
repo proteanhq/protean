@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -123,6 +124,16 @@ def generate(
             help="Filter to a specific cluster FQN (for --type=clusters or --type=all)",
         ),
     ] = "",
+    annotations: Annotated[
+        str,
+        typer.Option(
+            "--annotations",
+            help=(
+                "Path to an annotations TOML file (for --type=event-model). "
+                "Defaults to .protean/annotations.toml when present."
+            ),
+        ),
+    ] = "",
 ) -> None:
     """Generate architecture documentation from a Protean domain or IR file."""
     # --- Validate inputs --------------------------------------------------
@@ -154,6 +165,12 @@ def generate(
         )
         raise typer.Abort()
 
+    if annotations and type != "event-model":
+        print(
+            "[red]Error:[/red] --annotations can only be used with --type=event-model"
+        )
+        raise typer.Abort()
+
     if format == "mermaid" and type == "catalog":
         print(
             "[red]Error:[/red] --format=mermaid is not supported for --type=catalog "
@@ -164,12 +181,18 @@ def generate(
     # --- Load IR ----------------------------------------------------------
     ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
 
+    # --- Load annotations (event-model only) ------------------------------
+    # Loaded and validated here, before any generation or file write, so a
+    # malformed file aborts the command without leaving partial output.
+    annotations_map = _resolve_annotations(type, annotations)
+
     # --- Generate output --------------------------------------------------
     content = _generate_output(
         ir_data,
         doc_type=type,
         output_format=format,
         cluster_fqn=cluster,
+        annotations=annotations_map,
     )
 
     # --- Emit output ------------------------------------------------------
@@ -185,12 +208,98 @@ def generate(
 # ---------------------------------------------------------------------------
 
 
+_ANNOTATIONS_FILENAME = "annotations.toml"
+_DEFAULT_ANNOTATIONS_PATH = Path(".protean") / _ANNOTATIONS_FILENAME
+
+
+def _resolve_annotations(doc_type: str, annotations_option: str) -> dict[str, Any]:
+    """Load the annotations file that applies to this run.
+
+    Only ``--type=event-model`` reads annotations. An explicit
+    ``--annotations`` path must exist (a missing explicit path is a user
+    error). Without the option, the default ``.protean/annotations.toml`` is
+    read when it exists and silently skipped when it does not.
+
+    Aborts the command with a message naming the file on a missing explicit
+    path, a parse error, or an invalid entry shape.
+    """
+    if doc_type != "event-model":
+        return {}
+
+    if annotations_option:
+        path = Path(annotations_option)
+        if not path.exists():
+            print(f"[red]Error:[/red] annotations file not found: {annotations_option}")
+            raise typer.Abort()
+    else:
+        path = _DEFAULT_ANNOTATIONS_PATH
+        if not path.exists():
+            return {}
+
+    try:
+        return _load_annotations(path)
+    except ValueError as exc:
+        print(f"[red]Error:[/red] {exc}")
+        raise typer.Abort() from exc
+
+
+def _load_annotations(path: Path) -> dict[str, Any]:
+    """Parse and validate an annotations TOML file.
+
+    Returns a mapping of element FQN to its entry (``{"note": str}`` with an
+    optional ``"owner": str``). Raises :exc:`ValueError`, naming *path*, when
+    the file is unreadable, not valid UTF-8, not valid TOML, or holds an entry
+    that is not a table with a non-empty string ``note`` (and, when present, a
+    string ``owner``).
+    """
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"Could not read {path}: {exc}") from exc
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{path} is not valid UTF-8: {exc}") from exc
+
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"Invalid TOML in {path}: {exc}") from exc
+
+    raw_annotations = data.get("annotations", {})
+    if not isinstance(raw_annotations, dict):
+        raise ValueError(f"'annotations' in {path} must be a table")
+
+    result: dict[str, Any] = {}
+    for fqn, entry in raw_annotations.items():
+        if not isinstance(entry, dict):
+            raise ValueError(
+                f"Annotation for {fqn!r} in {path} must be a table with a string 'note'"
+            )
+        note = entry.get("note")
+        if not isinstance(note, str) or not note.strip():
+            raise ValueError(
+                f"Annotation for {fqn!r} in {path} must have a non-empty string 'note'"
+            )
+        validated: dict[str, Any] = {"note": note}
+        if "owner" in entry:
+            owner = entry["owner"]
+            if not isinstance(owner, str):
+                raise ValueError(f"'owner' for {fqn!r} in {path} must be a string")
+            validated["owner"] = owner
+        result[fqn] = validated
+
+    return result
+
+
 def _generate_output(
     ir_data: dict[str, Any],
     *,
     doc_type: str,
     output_format: str,
     cluster_fqn: str,
+    annotations: dict[str, Any] | None = None,
 ) -> str:
     """Dispatch to the appropriate generator(s) and assemble the result."""
     sections: list[str] = []
@@ -210,7 +319,9 @@ def _generate_output(
     # event-model is deliberately not part of the "all" bundle: it is a
     # distinct slice-timeline view, not one more section of the combined docs.
     if doc_type == "event-model":
-        sections.append(_generate_event_model(ir_data, output_format))
+        sections.append(
+            _generate_event_model(ir_data, output_format, annotations or {})
+        )
 
     return "\n\n".join(sections)
 
@@ -335,42 +446,57 @@ def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
     )
 
 
-def _generate_event_model(ir_data: dict[str, Any], output_format: str) -> str:
+def _generate_event_model(
+    ir_data: dict[str, Any],
+    output_format: str,
+    annotations: dict[str, Any],
+) -> str:
     """Generate the EventModeling slice timeline.
 
     In Markdown mode, each aggregate slice becomes a ``## Event Model:
     <Aggregate>`` section that leads with the slice's structural
-    Given-When-Then and then shows the diagram.  In Mermaid mode,
-    emits a single combined ``flowchart LR`` timeline of all slices, with no
-    GWT prose (it cannot go inside a raw flowchart).
+    Given-When-Then, then shows any human notes keyed to the slice's
+    elements, then the diagram.  In Mermaid mode, emits a single combined
+    ``flowchart LR`` timeline of all slices, with no GWT or note prose (it
+    cannot go inside a raw flowchart).
+
+    In both modes, annotations whose FQN matches no drawn element are appended
+    as an "Unmatched annotations" report. An empty *annotations* mapping adds
+    nothing, so the render stays byte-identical to the pre-annotation output.
     """
     from protean.ir.generators.event_model import (  # noqa: PLC0415
-        generate_event_model_slice,
+        generate_event_model_sections,
         generate_event_model_timeline,
-        generate_slice_gwt,
+        render_unmatched_annotations,
+        unmatched_annotations,
+    )
+
+    unmatched = render_unmatched_annotations(
+        unmatched_annotations(ir_data, annotations)
     )
 
     if output_format == "mermaid":
-        return generate_event_model_timeline(ir_data)
+        diagram = generate_event_model_timeline(ir_data)
+        return f"{diagram}\n\n{unmatched}" if unmatched else diagram
 
-    clusters = ir_data.get("clusters", {})
     parts: list[str] = []
 
-    for cfqn in sorted(clusters):
-        raw = generate_event_model_slice(ir_data, cfqn)
-        if raw != "flowchart LR":
-            name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
-            # generate_slice_gwt always returns a non-empty block for a
-            # cluster that exists, and this loop only visits existing
-            # clusters, so no empty-GWT guard is needed here.
-            section = [
-                f"## Event Model: {name}",
-                generate_slice_gwt(ir_data, cfqn),
-                mermaid_fence(raw),
-            ]
-            parts.append("\n\n".join(section))
+    # One pass over the IR: the section renderer builds the consumer indexes
+    # once for the whole model instead of once per slice.
+    for section in generate_event_model_sections(ir_data, annotations):
+        cfqn = section.cluster_fqn
+        name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
+        # The GWT is always a non-empty block for a cluster that exists, and
+        # a section is only produced for an existing cluster, so no empty-GWT
+        # guard is needed here.
+        block = [f"## Event Model: {name}", section.gwt]
+        if section.notes:
+            block.append(section.notes)
+        block.append(mermaid_fence(section.diagram))
+        parts.append("\n\n".join(block))
 
-    return "\n\n".join(parts) or mermaid_fence("flowchart LR", title="Event Model")
+    body = "\n\n".join(parts) or mermaid_fence("flowchart LR", title="Event Model")
+    return f"{body}\n\n{unmatched}" if unmatched else body
 
 
 def _generate_catalog(ir_data: dict[str, Any]) -> str:

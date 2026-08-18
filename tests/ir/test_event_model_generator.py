@@ -9,9 +9,15 @@ multi-slice ordering, and the empty/edge branches.
 import pytest
 
 from protean.ir.generators.event_model import (
+    element_fqns,
+    generate_event_model_sections,
     generate_event_model_slice,
     generate_event_model_timeline,
+    generate_slice_annotations,
     generate_slice_gwt,
+    render_unmatched_annotations,
+    slice_annotation_targets,
+    unmatched_annotations,
 )
 
 # ------------------------------------------------------------------
@@ -1017,3 +1023,365 @@ class TestSliceGwt:
         first = generate_slice_gwt(ir, "app.Order")
         assert first == generate_slice_gwt(ir, "app.Order")
         assert first == "> **Given** Order\n> **When** CancelOrder, PlaceOrder"
+
+
+# ------------------------------------------------------------------
+# Annotation match set (element_fqns / slice_annotation_targets)
+# ------------------------------------------------------------------
+
+
+class TestElementFqns:
+    def test_match_set_covers_aggregate_command_event_and_consumers(self):
+        result = element_fqns(_headline_ir())
+        # Aggregate, command, event, and the projector that consumes the event.
+        assert result == {
+            "app.Order",
+            "app.PlaceOrder",
+            "app.OrderPlaced",
+            "app.OrderSummaryProjector",
+        }
+
+    def test_match_set_includes_event_handlers_and_process_managers(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        flows = {
+            "domain_services": {},
+            "process_managers": {
+                "app.FulfillmentPM": _process_manager(
+                    "app.FulfillmentPM",
+                    {"App.OrderPlaced.v1": ["on_order_placed"]},
+                ),
+            },
+            "subscribers": {},
+        }
+        result = element_fqns(_ir(clusters=clusters, flows=flows))
+        assert "app.OrderNotifier" in result
+        assert "app.FulfillmentPM" in result
+
+    def test_fact_event_is_not_in_the_match_set(self):
+        # A fact event is filtered from the diagram, so it draws no node and
+        # is not a valid annotation target: a note on it is reported unmatched.
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                    "app._OrderFact": _event(
+                        "app._OrderFact", "App._OrderFact.v1", is_fact_event=True
+                    ),
+                },
+            ),
+        }
+        result = element_fqns(_ir(clusters=clusters))
+        assert "app.OrderPlaced" in result
+        assert "app._OrderFact" not in result
+
+    def test_empty_cluster_contributes_only_its_aggregate(self):
+        result = element_fqns(_ir(clusters={"app.Order": {}}))
+        assert result == {"app.Order"}
+
+    def test_event_without_type_adds_no_consumers_to_the_match_set(self):
+        # An empty event type is never a key in a handlers map, so the event
+        # itself is a target but no consumer is pulled into the slice, the
+        # same skip the diagram makes.
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={"app.OrderPlaced": _event("app.OrderPlaced", "")},
+                event_handlers={
+                    "app.OrderNotifier": _event_handler(
+                        "app.OrderNotifier",
+                        {"App.OrderPlaced.v1": ["send_email"]},
+                    ),
+                },
+            ),
+        }
+        result = element_fqns(_ir(clusters=clusters))
+        assert result == {"app.Order", "app.OrderPlaced"}
+
+    def test_slice_targets_absent_cluster_is_empty(self):
+        assert slice_annotation_targets(_ir(), "app.Missing") == set()
+
+    def test_slice_targets_match_the_slice_nodes(self):
+        targets = slice_annotation_targets(_headline_ir(), "app.Order")
+        assert targets == {
+            "app.Order",
+            "app.PlaceOrder",
+            "app.OrderPlaced",
+            "app.OrderSummaryProjector",
+        }
+
+
+# ------------------------------------------------------------------
+# Unmatched annotations report
+# ------------------------------------------------------------------
+
+
+class TestUnmatchedAnnotations:
+    def test_matched_key_is_not_reported(self):
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        assert unmatched_annotations(_headline_ir(), annotations) == []
+
+    def test_unmatched_key_is_reported(self):
+        annotations = {"app.Ghost": {"note": "Orphaned by a rename."}}
+        assert unmatched_annotations(_headline_ir(), annotations) == ["app.Ghost"]
+
+    def test_unmatched_keys_are_sorted(self):
+        annotations = {
+            "app.Zebra": {"note": "z"},
+            "app.Apple": {"note": "a"},
+        }
+        assert unmatched_annotations(_headline_ir(), annotations) == [
+            "app.Apple",
+            "app.Zebra",
+        ]
+
+    def test_empty_annotations_report_nothing(self):
+        assert unmatched_annotations(_headline_ir(), {}) == []
+
+    def test_fact_event_key_is_reported_unmatched(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app._OrderFact": _event(
+                        "app._OrderFact", "App._OrderFact.v1", is_fact_event=True
+                    ),
+                },
+            ),
+        }
+        annotations = {"app._OrderFact": {"note": "Filtered from the model."}}
+        assert unmatched_annotations(_ir(clusters=clusters), annotations) == [
+            "app._OrderFact"
+        ]
+
+    def test_render_report_lists_every_key(self):
+        report = render_unmatched_annotations(["app.Apple", "app.Zebra"])
+        assert report.startswith("## Unmatched annotations")
+        assert "- `app.Apple`" in report
+        assert "- `app.Zebra`" in report
+
+    def test_render_report_empty_for_no_keys(self):
+        assert render_unmatched_annotations([]) == ""
+
+    def test_render_report_collapses_newlines_in_a_key(self):
+        # A newline in a key (a valid but pathological TOML key) must not break
+        # the list or forge a heading: it is collapsed to a single line.
+        report = render_unmatched_annotations(["bad\n## Forged\nx"])
+        assert report.endswith("- `bad ## Forged x`")
+        assert "\n## Forged" not in report
+
+    def test_render_report_fences_backticks_in_a_key(self):
+        # A backtick in a key (valid in a TOML quoted key) must not cut the
+        # code span short: the fence grows past the longest run inside.
+        report = render_unmatched_annotations(["app.`Odd`"])
+        assert report.endswith("- `` app.`Odd` ``")
+
+    def test_render_report_fences_a_backtick_run_in_a_key(self):
+        # The fence is one backtick longer than the longest run in the key.
+        report = render_unmatched_annotations(["a``b```c"])
+        assert report.endswith("- ````a``b```c````")
+
+    def test_render_report_renders_an_empty_key(self):
+        # An empty key still needs a well-formed span, so it is padded.
+        report = render_unmatched_annotations([""])
+        assert report.endswith("- `  `")
+
+
+# ------------------------------------------------------------------
+# Per-slice annotation rendering (generate_slice_annotations)
+# ------------------------------------------------------------------
+
+
+class TestSliceAnnotations:
+    def test_empty_annotations_render_nothing(self):
+        # The no-op path: no annotations means an empty string, which keeps
+        # the no-file baseline byte-identical to the pre-annotation render.
+        assert generate_slice_annotations(_headline_ir(), "app.Order", {}) == ""
+
+    def test_aggregate_note_renders_in_its_slice(self):
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** The fulfillment boundary."
+
+    def test_owner_renders_when_present(self):
+        annotations = {
+            "app.Order": {"note": "The fulfillment boundary.", "owner": "Fulfillment"}
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == (
+            "> **Note:** The fulfillment boundary.\n>\n> **Owner:** Fulfillment"
+        )
+
+    def test_multiline_note_is_one_blockquote(self):
+        annotations = {
+            "app.Order": {"note": "First line.\n\nSecond paragraph."},
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == ("> **Note:** First line.\n>\n> Second paragraph.")
+
+    def test_note_keyed_by_command_renders_in_the_slice(self):
+        annotations = {"app.PlaceOrder": {"note": "Triggered by checkout."}}
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** Triggered by checkout."
+
+    def test_note_keyed_by_event_renders_in_the_slice(self):
+        annotations = {"app.OrderPlaced": {"note": "Gates the shipment slice."}}
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** Gates the shipment slice."
+
+    def test_unmatched_key_renders_nothing_in_the_slice(self):
+        annotations = {"app.Ghost": {"note": "Orphaned."}}
+        assert (
+            generate_slice_annotations(_headline_ir(), "app.Order", annotations) == ""
+        )
+
+    def test_multiple_notes_render_in_sorted_fqn_order(self):
+        annotations = {
+            "app.PlaceOrder": {"note": "The command."},
+            "app.Order": {"note": "The aggregate."},
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        # Sorted by FQN: app.Order before app.PlaceOrder.
+        assert result == ("> **Note:** The aggregate.\n\n> **Note:** The command.")
+
+    def test_note_does_not_leak_into_a_sibling_slice(self):
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+            "app.Shipment": _cluster(
+                "app.Shipment",
+                events={
+                    "app.OrderShipped": _event(
+                        "app.OrderShipped", "App.OrderShipped.v1"
+                    ),
+                },
+            ),
+        }
+        ir = _ir(clusters=clusters)
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        assert generate_slice_annotations(ir, "app.Order", annotations) != ""
+        assert generate_slice_annotations(ir, "app.Shipment", annotations) == ""
+
+    def test_note_keyed_by_a_drawn_consumer_renders_in_the_slice(self):
+        # app.OrderSummaryProjector is a consumer drawn in the app.Order slice.
+        annotations = {
+            "app.OrderSummaryProjector": {"note": "Feeds the ops dashboard."}
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == "> **Note:** Feeds the ops dashboard."
+
+    def test_owner_with_embedded_newline_stays_quoted(self):
+        # A TOML string may carry newlines. Every owner line must be
+        # `> `-prefixed so it cannot forge a heading below the quote.
+        annotations = {
+            "app.Order": {
+                "note": "The boundary.",
+                "owner": "Alice\n## Forged Heading",
+            }
+        }
+        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
+        assert result == (
+            "> **Note:** The boundary.\n>\n> **Owner:** Alice\n> ## Forged Heading"
+        )
+        # No line escapes the blockquote.
+        assert all(line.startswith(">") for line in result.splitlines())
+
+
+# ------------------------------------------------------------------
+# Whole-model rendering (generate_event_model_sections)
+# ------------------------------------------------------------------
+
+
+class TestEventModelSections:
+    def test_sections_match_the_per_slice_functions(self):
+        ir = _headline_ir()
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        sections = generate_event_model_sections(ir, annotations)
+        assert [section.cluster_fqn for section in sections] == ["app.Order"]
+        section = sections[0]
+        assert section.diagram == generate_event_model_slice(ir, "app.Order")
+        assert section.gwt == generate_slice_gwt(ir, "app.Order")
+        assert section.notes == generate_slice_annotations(ir, "app.Order", annotations)
+
+    def test_sections_are_sorted_by_cluster_fqn(self):
+        clusters = {
+            "app.Shipment": _cluster("app.Shipment"),
+            "app.Order": _cluster("app.Order"),
+        }
+        sections = generate_event_model_sections(_ir(clusters=clusters), {})
+        assert [section.cluster_fqn for section in sections] == [
+            "app.Order",
+            "app.Shipment",
+        ]
+
+    def test_no_clusters_renders_no_sections(self):
+        assert generate_event_model_sections(_ir(), {}) == []
+
+    def test_empty_cluster_still_gets_a_section(self):
+        # An empty cluster is present, not absent: the slice still draws the
+        # aggregate box, so it still gets a section.
+        sections = generate_event_model_sections(_ir(clusters={"app.Order": {}}), {})
+        assert [section.cluster_fqn for section in sections] == ["app.Order"]
+        assert sections[0].diagram == generate_event_model_slice(
+            _ir(clusters={"app.Order": {}}), "app.Order"
+        )
+
+    def test_no_annotations_leaves_every_section_noteless(self):
+        sections = generate_event_model_sections(_headline_ir(), {})
+        assert [section.notes for section in sections] == [""]
+
+    def test_consumer_indexes_are_built_once_for_the_whole_render(self, monkeypatch):
+        # The point of this entry point: a render costs one pass over the
+        # projections and flows, not one per slice.
+        from protean.ir.generators import event_model
+
+        calls = {"read_models": 0, "automations": 0}
+
+        real_read_model_index = event_model._read_model_index
+        real_automation_index = event_model._automation_index
+
+        def counted_read_model_index(ir):
+            calls["read_models"] += 1
+            return real_read_model_index(ir)
+
+        def counted_automation_index(ir):
+            calls["automations"] += 1
+            return real_automation_index(ir)
+
+        monkeypatch.setattr(event_model, "_read_model_index", counted_read_model_index)
+        monkeypatch.setattr(event_model, "_automation_index", counted_automation_index)
+
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+            "app.Shipment": _cluster("app.Shipment"),
+            "app.Payment": _cluster("app.Payment"),
+        }
+        annotations = {"app.Order": {"note": "The boundary."}}
+        sections = event_model.generate_event_model_sections(
+            _ir(clusters=clusters), annotations
+        )
+
+        assert len(sections) == 3
+        assert calls == {"read_models": 1, "automations": 1}

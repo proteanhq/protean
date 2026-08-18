@@ -27,16 +27,21 @@ event rather than folding ``__type__`` collisions into one edge.
 Usage::
 
     from protean.ir.generators.event_model import (
+        generate_event_model_sections,
         generate_event_model_slice,
         generate_event_model_timeline,
     )
 
     diagram = generate_event_model_timeline(ir)
+
+    # Markdown: one section per slice, consumer indexes built once.
+    sections = generate_event_model_sections(ir, annotations)
 """
 
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, NamedTuple
 
 from protean.ir.generators.base import (
     mermaid_escape,
@@ -227,6 +232,19 @@ def _render_slice(
     return subgraph_lines, edge_lines
 
 
+def _slice_diagram(
+    read_models: dict[str, list[tuple[str, str]]],
+    automations: dict[str, list[tuple[str, str, str]]],
+    cluster_fqn: str,
+    cluster: dict[str, Any],
+) -> str:
+    """Render one cluster's slice as a standalone ``flowchart LR``."""
+    subgraph_lines, edge_lines = _render_slice(
+        read_models, automations, cluster_fqn, cluster
+    )
+    return "\n".join(["flowchart LR", *subgraph_lines, *edge_lines])
+
+
 def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Render the structural Given-When-Then for one aggregate slice.
 
@@ -291,6 +309,247 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
     return "\n".join(lines)
 
 
+def _slice_consumer_fqns(
+    read_models: dict[str, list[tuple[str, str]]],
+    automations: dict[str, list[tuple[str, str, str]]],
+    cluster: dict[str, Any],
+) -> set[str]:
+    """Return the FQNs of every consumer drawn in a cluster's slice.
+
+    A consumer (projector, event handler, or process manager) is drawn in
+    the slice when it handles one of the cluster's non-fact events. Uses the
+    same shared indexes and the same fact-event / empty-``__type__`` filters
+    as :func:`_render_slice`, so the match set agrees with the diagram.
+    """
+    fqns: set[str] = set()
+    for evt in cluster.get("events", {}).values():
+        if evt.get("is_fact_event"):
+            continue
+        evt_type = evt.get("__type__", "")
+        if not evt_type:
+            continue
+        for proj_fqn, _label in read_models.get(evt_type, []):
+            fqns.add(proj_fqn)
+        for consumer_fqn, _label, _edge in automations.get(evt_type, []):
+            fqns.add(consumer_fqn)
+    return fqns
+
+
+def _cluster_target_fqns(
+    read_models: dict[str, list[tuple[str, str]]],
+    automations: dict[str, list[tuple[str, str, str]]],
+    cluster_fqn: str,
+    cluster: dict[str, Any],
+) -> set[str]:
+    """Return every element FQN a note can attach to in one cluster's slice.
+
+    That is the aggregate, its commands, its non-fact events, and the
+    consumers drawn from those events. This is exactly the set of nodes the
+    slice draws, so a note keyed by any of them renders in the slice, and a
+    note keyed by anything else (including a fact event, which the model
+    filters out) is reported unmatched.
+    """
+    fqns: set[str] = {cluster_fqn}
+    if cluster:
+        fqns.update(cluster.get("commands", {}))
+        fqns.update(
+            evt_fqn
+            for evt_fqn, evt in cluster.get("events", {}).items()
+            if not evt.get("is_fact_event")
+        )
+        fqns.update(_slice_consumer_fqns(read_models, automations, cluster))
+    return fqns
+
+
+def slice_annotation_targets(ir: dict[str, Any], cluster_fqn: str) -> set[str]:
+    """Return the element FQNs a note can attach to in *cluster_fqn*'s slice.
+
+    Returns an empty set when the cluster is absent from the IR. An empty
+    cluster mapping is present, not absent, so its aggregate FQN is still a
+    valid target (the slice still draws the aggregate box).
+
+    Args:
+        ir: The full IR dict.
+        cluster_fqn: FQN of the cluster to inspect.
+
+    Returns:
+        The set of element FQNs drawn in that slice.
+    """
+    cluster = ir.get("clusters", {}).get(cluster_fqn)
+    if cluster is None:
+        return set()
+    return _cluster_target_fqns(
+        _read_model_index(ir), _automation_index(ir), cluster_fqn, cluster
+    )
+
+
+def element_fqns(ir: dict[str, Any]) -> set[str]:
+    """Return the FQN of every element the event model draws, across all slices.
+
+    The union of :func:`slice_annotation_targets` over every cluster, built
+    with the consumer indexes assembled once for the whole IR. This is the
+    match set for annotations: a key in this set attaches to a slice, a key
+    outside it is unmatched.
+
+    Args:
+        ir: The full IR dict.
+
+    Returns:
+        The set of every drawn element FQN.
+    """
+    read_models = _read_model_index(ir)
+    automations = _automation_index(ir)
+    fqns: set[str] = set()
+    for cluster_fqn, cluster in ir.get("clusters", {}).items():
+        fqns |= _cluster_target_fqns(
+            read_models, automations, cluster_fqn, cluster or {}
+        )
+    return fqns
+
+
+def unmatched_annotations(
+    ir: dict[str, Any], annotations: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Return the sorted annotation keys that match no element in the model.
+
+    An unmatched key is a note orphaned by a rename or a typo. It is reported,
+    never dropped in silence (ADR-0032). Returns an empty list when there are
+    no annotations or every key matches.
+
+    Args:
+        ir: The full IR dict.
+        annotations: Mapping of element FQN to its annotation entry.
+
+    Returns:
+        The sorted list of keys present in *annotations* but not in the model.
+    """
+    if not annotations:
+        return []
+    matched = element_fqns(ir)
+    return sorted(fqn for fqn in annotations if fqn not in matched)
+
+
+def _blockquote_lines(label: str, text: str) -> list[str]:
+    """Render ``**label:** text`` as blockquote lines, one per input line.
+
+    Every line of *text* is ``> ``-prefixed so a multi-line value cannot break
+    out of the quote. A blank continuation line becomes a bare ``>``.
+    """
+    parts = text.split("\n")
+    lines = [f"> **{label}:** {parts[0]}".rstrip()]
+    lines.extend(f"> {extra}".rstrip() if extra.strip() else ">" for extra in parts[1:])
+    return lines
+
+
+def _annotation_block(entry: dict[str, Any]) -> str:
+    """Render one annotation entry as a Markdown blockquote.
+
+    The ``note`` leads (``> **Note:** ...``). An ``owner``, when present,
+    follows as a second paragraph (``> **Owner:** ...``). Both carry multi-line
+    text safely: every line is ``> ``-prefixed, so a value with embedded
+    newlines stays inside the quote instead of forging a heading below it.
+    """
+    lines = _blockquote_lines("Note", str(entry.get("note", "")).strip())
+
+    owner = str(entry.get("owner", "")).strip()
+    if owner:
+        lines.append(">")
+        lines.extend(_blockquote_lines("Owner", owner))
+
+    return "\n".join(lines)
+
+
+def _render_annotations(
+    targets: set[str], annotations: dict[str, dict[str, Any]]
+) -> str:
+    """Render the annotations keyed to *targets*, in sorted FQN order."""
+    if not annotations:
+        return ""
+    blocks = [
+        _annotation_block(annotations[fqn])
+        for fqn in sorted(targets)
+        if fqn in annotations
+    ]
+    return "\n\n".join(blocks)
+
+
+def generate_slice_annotations(
+    ir: dict[str, Any],
+    cluster_fqn: str,
+    annotations: dict[str, dict[str, Any]],
+) -> str:
+    """Render the human notes attached to one aggregate slice.
+
+    Returns the Markdown for every annotation whose FQN is drawn in the
+    slice, in sorted FQN order, or ``""`` when the slice carries no notes.
+    An empty *annotations* mapping renders nothing, which keeps the no-file
+    baseline byte-identical to the pre-annotation render.
+
+    Renders one slice, so it builds the consumer indexes itself. To render
+    every slice, use :func:`generate_event_model_sections`, which builds them
+    once for the whole model.
+
+    Args:
+        ir: The full IR dict.
+        cluster_fqn: FQN of the cluster whose slice is being rendered.
+        annotations: Mapping of element FQN to its annotation entry.
+
+    Returns:
+        The Markdown note block(s) for the slice, or ``""``.
+    """
+    if not annotations:
+        return ""
+    return _render_annotations(slice_annotation_targets(ir, cluster_fqn), annotations)
+
+
+def _inline_code(text: str) -> str:
+    """Wrap *text* in a Markdown code span that survives any content.
+
+    The fence is one backtick longer than the longest backtick run inside
+    *text*, which is how CommonMark keeps a code span open, so a key carrying
+    backticks cannot terminate the span early. Text that starts or ends with
+    a backtick is padded with a space, which the renderer strips back off.
+
+    Args:
+        text: The literal text to show as code.
+
+    Returns:
+        The code span.
+    """
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * (longest + 1)
+    pad = " " if not text or text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
+
+
+def render_unmatched_annotations(keys: list[str]) -> str:
+    """Render the unmatched-annotation report from a list of *keys*.
+
+    Returns ``""`` for an empty list so callers append nothing when every
+    annotation matched. The keys are shown in a Markdown list under an
+    ``## Unmatched annotations`` heading, each on its own line. Newlines in a
+    key (a valid but pathological TOML key) are collapsed to spaces so a key
+    cannot break the list or forge a heading below it, and backticks in a key
+    are held inside a longer fence so they cannot cut the code span short.
+
+    Args:
+        keys: The sorted unmatched annotation keys.
+
+    Returns:
+        The Markdown report, or ``""`` when *keys* is empty.
+    """
+    if not keys:
+        return ""
+    lines = [
+        "## Unmatched annotations",
+        "",
+        "These annotation keys match no element in the model:",
+        "",
+    ]
+    lines.extend(f"- {_inline_code(' '.join(key.splitlines()))}" for key in keys)
+    return "\n".join(lines)
+
+
 def generate_event_model_slice(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Generate a Mermaid ``flowchart LR`` for a single aggregate's slice.
 
@@ -309,11 +568,61 @@ def generate_event_model_slice(ir: dict[str, Any], cluster_fqn: str) -> str:
     if cluster is None:
         return "flowchart LR"
 
-    subgraph_lines, edge_lines = _render_slice(
+    return _slice_diagram(
         _read_model_index(ir), _automation_index(ir), cluster_fqn, cluster
     )
-    lines: list[str] = ["flowchart LR", *subgraph_lines, *edge_lines]
-    return "\n".join(lines)
+
+
+class EventModelSection(NamedTuple):
+    """One rendered slice of the event model, ready to place in a document.
+
+    ``cluster_fqn`` names the aggregate the slice is about, ``gwt`` and
+    ``notes`` are the Markdown blocks that lead it (``notes`` is ``""`` when
+    the slice carries none), and ``diagram`` is the bare Mermaid source, with
+    no fence around it, so a caller can wrap it however it likes.
+    """
+
+    cluster_fqn: str
+    gwt: str
+    notes: str
+    diagram: str
+
+
+def generate_event_model_sections(
+    ir: dict[str, Any],
+    annotations: dict[str, dict[str, Any]],
+) -> list[EventModelSection]:
+    """Render every aggregate slice, in sorted cluster order.
+
+    This is the whole-document counterpart to the per-slice functions. It
+    builds the projector and automation indexes once and reuses them for every
+    slice, so a render costs one pass over the projections and flows rather
+    than one per slice. Calling :func:`generate_event_model_slice` and
+    :func:`generate_slice_annotations` in a loop rebuilds both indexes on each
+    call; prefer this when rendering the full model.
+
+    Args:
+        ir: The full IR dict.
+        annotations: Mapping of element FQN to its annotation entry.
+
+    Returns:
+        One :class:`EventModelSection` per cluster, sorted by cluster FQN.
+    """
+    read_models = _read_model_index(ir)
+    automations = _automation_index(ir)
+
+    sections: list[EventModelSection] = []
+    for cluster_fqn, cluster in sorted(ir.get("clusters", {}).items()):
+        targets = _cluster_target_fqns(read_models, automations, cluster_fqn, cluster)
+        sections.append(
+            EventModelSection(
+                cluster_fqn=cluster_fqn,
+                gwt=generate_slice_gwt(ir, cluster_fqn),
+                notes=_render_annotations(targets, annotations),
+                diagram=_slice_diagram(read_models, automations, cluster_fqn, cluster),
+            )
+        )
+    return sections
 
 
 def generate_event_model_timeline(ir: dict[str, Any]) -> str:

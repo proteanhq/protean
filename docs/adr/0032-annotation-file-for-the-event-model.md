@@ -77,7 +77,7 @@ worst behavior available.
 ## Consequences
 
 The renderer reads a written contract instead of an ad-hoc shape. #1338 loads
-`.protean/annotations.toml` by FQN, merges each note into the slice for its element,
+`.protean/annotations.toml` by FQN, merges each note into every slice that draws its element,
 and appends the unmatched-annotation report. A reviewer of that PR, or of a project's
 committed annotations file, has this ADR to check the shape against.
 
