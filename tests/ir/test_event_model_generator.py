@@ -10,6 +10,7 @@ import pytest
 
 from protean.ir.generators.event_model import (
     element_fqns,
+    generate_event_model_sections,
     generate_event_model_slice,
     generate_event_model_timeline,
     generate_slice_annotations,
@@ -1301,3 +1302,86 @@ class TestSliceAnnotations:
         )
         # No line escapes the blockquote.
         assert all(line.startswith(">") for line in result.splitlines())
+
+
+# ------------------------------------------------------------------
+# Whole-model rendering (generate_event_model_sections)
+# ------------------------------------------------------------------
+
+
+class TestEventModelSections:
+    def test_sections_match_the_per_slice_functions(self):
+        ir = _headline_ir()
+        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+        sections = generate_event_model_sections(ir, annotations)
+        assert [section.cluster_fqn for section in sections] == ["app.Order"]
+        section = sections[0]
+        assert section.diagram == generate_event_model_slice(ir, "app.Order")
+        assert section.gwt == generate_slice_gwt(ir, "app.Order")
+        assert section.notes == generate_slice_annotations(ir, "app.Order", annotations)
+
+    def test_sections_are_sorted_by_cluster_fqn(self):
+        clusters = {
+            "app.Shipment": _cluster("app.Shipment"),
+            "app.Order": _cluster("app.Order"),
+        }
+        sections = generate_event_model_sections(_ir(clusters=clusters), {})
+        assert [section.cluster_fqn for section in sections] == [
+            "app.Order",
+            "app.Shipment",
+        ]
+
+    def test_no_clusters_renders_no_sections(self):
+        assert generate_event_model_sections(_ir(), {}) == []
+
+    def test_empty_cluster_still_gets_a_section(self):
+        # An empty cluster is present, not absent: the slice still draws the
+        # aggregate box, so it still gets a section.
+        sections = generate_event_model_sections(_ir(clusters={"app.Order": {}}), {})
+        assert [section.cluster_fqn for section in sections] == ["app.Order"]
+        assert sections[0].diagram == generate_event_model_slice(
+            _ir(clusters={"app.Order": {}}), "app.Order"
+        )
+
+    def test_no_annotations_leaves_every_section_noteless(self):
+        sections = generate_event_model_sections(_headline_ir(), {})
+        assert [section.notes for section in sections] == [""]
+
+    def test_consumer_indexes_are_built_once_for_the_whole_render(self, monkeypatch):
+        # The point of this entry point: a render costs one pass over the
+        # projections and flows, not one per slice.
+        from protean.ir.generators import event_model
+
+        calls = {"read_models": 0, "automations": 0}
+
+        real_read_model_index = event_model._read_model_index
+        real_automation_index = event_model._automation_index
+
+        def counted_read_model_index(ir):
+            calls["read_models"] += 1
+            return real_read_model_index(ir)
+
+        def counted_automation_index(ir):
+            calls["automations"] += 1
+            return real_automation_index(ir)
+
+        monkeypatch.setattr(event_model, "_read_model_index", counted_read_model_index)
+        monkeypatch.setattr(event_model, "_automation_index", counted_automation_index)
+
+        clusters = {
+            "app.Order": _cluster(
+                "app.Order",
+                events={
+                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
+                },
+            ),
+            "app.Shipment": _cluster("app.Shipment"),
+            "app.Payment": _cluster("app.Payment"),
+        }
+        annotations = {"app.Order": {"note": "The boundary."}}
+        sections = event_model.generate_event_model_sections(
+            _ir(clusters=clusters), annotations
+        )
+
+        assert len(sections) == 3
+        assert calls == {"read_models": 1, "automations": 1}

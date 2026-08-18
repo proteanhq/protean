@@ -27,17 +27,21 @@ event rather than folding ``__type__`` collisions into one edge.
 Usage::
 
     from protean.ir.generators.event_model import (
+        generate_event_model_sections,
         generate_event_model_slice,
         generate_event_model_timeline,
     )
 
     diagram = generate_event_model_timeline(ir)
+
+    # Markdown: one section per slice, consumer indexes built once.
+    sections = generate_event_model_sections(ir, annotations)
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, NamedTuple
 
 from protean.ir.generators.base import (
     mermaid_escape,
@@ -226,6 +230,19 @@ def _render_slice(
         "    end",
     ]
     return subgraph_lines, edge_lines
+
+
+def _slice_diagram(
+    read_models: dict[str, list[tuple[str, str]]],
+    automations: dict[str, list[tuple[str, str, str]]],
+    cluster_fqn: str,
+    cluster: dict[str, Any],
+) -> str:
+    """Render one cluster's slice as a standalone ``flowchart LR``."""
+    subgraph_lines, edge_lines = _render_slice(
+        read_models, automations, cluster_fqn, cluster
+    )
+    return "\n".join(["flowchart LR", *subgraph_lines, *edge_lines])
 
 
 def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
@@ -442,6 +459,20 @@ def _annotation_block(entry: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _render_annotations(
+    targets: set[str], annotations: dict[str, dict[str, Any]]
+) -> str:
+    """Render the annotations keyed to *targets*, in sorted FQN order."""
+    if not annotations:
+        return ""
+    blocks = [
+        _annotation_block(annotations[fqn])
+        for fqn in sorted(targets)
+        if fqn in annotations
+    ]
+    return "\n\n".join(blocks)
+
+
 def generate_slice_annotations(
     ir: dict[str, Any],
     cluster_fqn: str,
@@ -454,6 +485,10 @@ def generate_slice_annotations(
     An empty *annotations* mapping renders nothing, which keeps the no-file
     baseline byte-identical to the pre-annotation render.
 
+    Renders one slice, so it builds the consumer indexes itself. To render
+    every slice, use :func:`generate_event_model_sections`, which builds them
+    once for the whole model.
+
     Args:
         ir: The full IR dict.
         cluster_fqn: FQN of the cluster whose slice is being rendered.
@@ -464,13 +499,7 @@ def generate_slice_annotations(
     """
     if not annotations:
         return ""
-    targets = slice_annotation_targets(ir, cluster_fqn)
-    blocks = [
-        _annotation_block(annotations[fqn])
-        for fqn in sorted(targets)
-        if fqn in annotations
-    ]
-    return "\n\n".join(blocks)
+    return _render_annotations(slice_annotation_targets(ir, cluster_fqn), annotations)
 
 
 def _inline_code(text: str) -> str:
@@ -539,11 +568,61 @@ def generate_event_model_slice(ir: dict[str, Any], cluster_fqn: str) -> str:
     if cluster is None:
         return "flowchart LR"
 
-    subgraph_lines, edge_lines = _render_slice(
+    return _slice_diagram(
         _read_model_index(ir), _automation_index(ir), cluster_fqn, cluster
     )
-    lines: list[str] = ["flowchart LR", *subgraph_lines, *edge_lines]
-    return "\n".join(lines)
+
+
+class EventModelSection(NamedTuple):
+    """One rendered slice of the event model, ready to place in a document.
+
+    ``cluster_fqn`` names the aggregate the slice is about, ``gwt`` and
+    ``notes`` are the Markdown blocks that lead it (``notes`` is ``""`` when
+    the slice carries none), and ``diagram`` is the bare Mermaid source, with
+    no fence around it, so a caller can wrap it however it likes.
+    """
+
+    cluster_fqn: str
+    gwt: str
+    notes: str
+    diagram: str
+
+
+def generate_event_model_sections(
+    ir: dict[str, Any],
+    annotations: dict[str, dict[str, Any]],
+) -> list[EventModelSection]:
+    """Render every aggregate slice, in sorted cluster order.
+
+    This is the whole-document counterpart to the per-slice functions. It
+    builds the projector and automation indexes once and reuses them for every
+    slice, so a render costs one pass over the projections and flows rather
+    than one per slice. Calling :func:`generate_event_model_slice` and
+    :func:`generate_slice_annotations` in a loop rebuilds both indexes on each
+    call; prefer this when rendering the full model.
+
+    Args:
+        ir: The full IR dict.
+        annotations: Mapping of element FQN to its annotation entry.
+
+    Returns:
+        One :class:`EventModelSection` per cluster, sorted by cluster FQN.
+    """
+    read_models = _read_model_index(ir)
+    automations = _automation_index(ir)
+
+    sections: list[EventModelSection] = []
+    for cluster_fqn, cluster in sorted(ir.get("clusters", {}).items()):
+        targets = _cluster_target_fqns(read_models, automations, cluster_fqn, cluster)
+        sections.append(
+            EventModelSection(
+                cluster_fqn=cluster_fqn,
+                gwt=generate_slice_gwt(ir, cluster_fqn),
+                notes=_render_annotations(targets, annotations),
+                diagram=_slice_diagram(read_models, automations, cluster_fqn, cluster),
+            )
+        )
+    return sections
 
 
 def generate_event_model_timeline(ir: dict[str, Any]) -> str:

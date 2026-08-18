@@ -465,10 +465,8 @@ def _generate_event_model(
     nothing, so the render stays byte-identical to the pre-annotation output.
     """
     from protean.ir.generators.event_model import (  # noqa: PLC0415
-        generate_event_model_slice,
+        generate_event_model_sections,
         generate_event_model_timeline,
-        generate_slice_annotations,
-        generate_slice_gwt,
         render_unmatched_annotations,
         unmatched_annotations,
     )
@@ -481,25 +479,21 @@ def _generate_event_model(
         diagram = generate_event_model_timeline(ir_data)
         return f"{diagram}\n\n{unmatched}" if unmatched else diagram
 
-    clusters = ir_data.get("clusters", {})
     parts: list[str] = []
 
-    for cfqn in sorted(clusters):
-        raw = generate_event_model_slice(ir_data, cfqn)
-        if raw != "flowchart LR":
-            name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
-            # generate_slice_gwt always returns a non-empty block for a
-            # cluster that exists, and this loop only visits existing
-            # clusters, so no empty-GWT guard is needed here.
-            section = [
-                f"## Event Model: {name}",
-                generate_slice_gwt(ir_data, cfqn),
-            ]
-            notes = generate_slice_annotations(ir_data, cfqn, annotations)
-            if notes:
-                section.append(notes)
-            section.append(mermaid_fence(raw))
-            parts.append("\n\n".join(section))
+    # One pass over the IR: the section renderer builds the consumer indexes
+    # once for the whole model instead of once per slice.
+    for section in generate_event_model_sections(ir_data, annotations):
+        cfqn = section.cluster_fqn
+        name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
+        # The GWT is always a non-empty block for a cluster that exists, and
+        # a section is only produced for an existing cluster, so no empty-GWT
+        # guard is needed here.
+        block = [f"## Event Model: {name}", section.gwt]
+        if section.notes:
+            block.append(section.notes)
+        block.append(mermaid_fence(section.diagram))
+        parts.append("\n\n".join(block))
 
     body = "\n\n".join(parts) or mermaid_fence("flowchart LR", title="Event Model")
     return f"{body}\n\n{unmatched}" if unmatched else body
