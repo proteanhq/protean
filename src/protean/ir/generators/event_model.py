@@ -36,6 +36,7 @@ Usage::
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from protean.ir.generators.base import (
@@ -472,6 +473,26 @@ def generate_slice_annotations(
     return "\n\n".join(blocks)
 
 
+def _inline_code(text: str) -> str:
+    """Wrap *text* in a Markdown code span that survives any content.
+
+    The fence is one backtick longer than the longest backtick run inside
+    *text*, which is how CommonMark keeps a code span open, so a key carrying
+    backticks cannot terminate the span early. Text that starts or ends with
+    a backtick is padded with a space, which the renderer strips back off.
+
+    Args:
+        text: The literal text to show as code.
+
+    Returns:
+        The code span.
+    """
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * (longest + 1)
+    pad = " " if not text or text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
+
+
 def render_unmatched_annotations(keys: list[str]) -> str:
     """Render the unmatched-annotation report from a list of *keys*.
 
@@ -479,7 +500,8 @@ def render_unmatched_annotations(keys: list[str]) -> str:
     annotation matched. The keys are shown in a Markdown list under an
     ``## Unmatched annotations`` heading, each on its own line. Newlines in a
     key (a valid but pathological TOML key) are collapsed to spaces so a key
-    cannot break the list or forge a heading below it.
+    cannot break the list or forge a heading below it, and backticks in a key
+    are held inside a longer fence so they cannot cut the code span short.
 
     Args:
         keys: The sorted unmatched annotation keys.
@@ -495,7 +517,7 @@ def render_unmatched_annotations(keys: list[str]) -> str:
         "These annotation keys match no element in the model:",
         "",
     ]
-    lines.extend(f"- `{' '.join(key.splitlines())}`" for key in keys)
+    lines.extend(f"- {_inline_code(' '.join(key.splitlines()))}" for key in keys)
     return "\n".join(lines)
 
 

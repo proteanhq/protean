@@ -1182,6 +1182,22 @@ class TestUnmatchedAnnotations:
         assert report.endswith("- `bad ## Forged x`")
         assert "\n## Forged" not in report
 
+    def test_render_report_fences_backticks_in_a_key(self):
+        # A backtick in a key (valid in a TOML quoted key) must not cut the
+        # code span short: the fence grows past the longest run inside.
+        report = render_unmatched_annotations(["app.`Odd`"])
+        assert report.endswith("- `` app.`Odd` ``")
+
+    def test_render_report_fences_a_backtick_run_in_a_key(self):
+        # The fence is one backtick longer than the longest run in the key.
+        report = render_unmatched_annotations(["a``b```c"])
+        assert report.endswith("- ````a``b```c````")
+
+    def test_render_report_renders_an_empty_key(self):
+        # An empty key still needs a well-formed span, so it is padded.
+        report = render_unmatched_annotations([""])
+        assert report.endswith("- `  `")
+
 
 # ------------------------------------------------------------------
 # Per-slice annotation rendering (generate_slice_annotations)
