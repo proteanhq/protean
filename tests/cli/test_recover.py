@@ -171,6 +171,11 @@ class TestRecoverVerifyCheckpoints:
         assert result.exit_code == 0
         assert "beyond head" not in result.output
         assert "could not be verified" in result.output
+        # The rows here are unknown because the positions do not parse, not
+        # because the store is offline, so the summary must not name only one
+        # cause. Rich wraps the line, so compare on collapsed whitespace.
+        collapsed = " ".join(result.output.split())
+        assert "the position is not a number" in collapsed
 
     def test_mixed_beyond_and_unknown(self):
         """One beyond-head plus one unknown in the same run: fails on the

@@ -214,10 +214,12 @@ def recover(
 
     # An unknown row was never actually verified, so a summary that folds it into
     # "consistent" would state a falsehood in the exact scenario this command
-    # guards. Report the counts apart. Unknown is not a violation (the store may
-    # simply be offline), so it does not change the exit code.
+    # guards. Report the counts apart, and name both causes: the store may be
+    # offline (no position recorded) or the stored position may not be numeric.
+    # Unknown is not a violation, so it does not change the exit code.
     unverified = (
-        f" [yellow]{unknown} could not be verified (store unreachable).[/yellow]"
+        f" [yellow]{unknown} could not be verified (no position recorded, "
+        f"or the position is not a number).[/yellow]"
         if unknown
         else ""
     )
