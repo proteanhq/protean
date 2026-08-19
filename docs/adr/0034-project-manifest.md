@@ -42,10 +42,12 @@ mislead, because nothing consults it as truth.
 - `package_name`: the single `src/*/` directory that contains `domain.py`. Exactly
   one is expected. Zero or more than one is an error, since ADR-0030 fixes one
   composition root per project.
-- `domain_name`: the string-literal `name=` of the `Domain(...)` call in that
-  `domain.py`, parsed with `ast`. It is `null` when the name is not a string literal
-  (for example a variable), so an unusual composition root degrades to "underivable"
-  instead of crashing.
+- `domain_name`: the string-literal `name=` of the module-level `Domain(...)`
+  assignment in that `domain.py`, parsed with `ast`. Only module-level assignments
+  count, since ADR-0030 puts the composition root at module level; a `Domain(...)`
+  call inside a function or class body is not it. It is `null` when the name is not
+  a string literal (for example a variable) or when there is no such assignment, so
+  an unusual composition root degrades to "underivable" instead of crashing.
 - `layout`: the ADR-0030 invariants, stored project-root-relative and
   POSIX-normalised so the JSON is stable across operating systems. It holds
   `composition_root` (`src/<package>/domain.py`), `config_file`

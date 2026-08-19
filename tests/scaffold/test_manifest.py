@@ -179,6 +179,57 @@ def test_reconcile_skips_domain_keyword_that_is_not_name(tmp_path: Path) -> None
     assert reconcile_manifest(tmp_path).domain_name == "Named"
 
 
+def test_reconcile_ignores_domain_call_nested_in_a_function(tmp_path: Path) -> None:
+    # The only Domain(name=...) literal sits inside a factory function, so it is
+    # not the composition root. domain_name degrades to None rather than
+    # reporting the nested name.
+    _make_project(
+        tmp_path,
+        domain_py=(
+            "from protean.domain import Domain\n\n"
+            "def build():\n"
+            '    return Domain(name="Nested")\n\n'
+            "myproj = build()\n"
+        ),
+    )
+
+    manifest = reconcile_manifest(tmp_path)
+
+    assert manifest.domain_name is None
+    assert manifest.package_name == "myproj"
+
+
+def test_reconcile_prefers_module_level_domain_over_nested_one(tmp_path: Path) -> None:
+    # A nested Domain(name=...) appears first in the file; the module-level
+    # composition root still wins.
+    _make_project(
+        tmp_path,
+        domain_py=(
+            "from protean.domain import Domain\n\n"
+            "class Factory:\n"
+            '    fallback = Domain(name="Nested")\n\n'
+            'myproj = Domain(name="Real")\n'
+        ),
+    )
+
+    assert reconcile_manifest(tmp_path).domain_name == "Real"
+
+
+def test_reconcile_derives_domain_name_from_annotated_assignment(
+    tmp_path: Path,
+) -> None:
+    # An annotated module-level assignment is still the composition root.
+    _make_project(
+        tmp_path,
+        domain_py=(
+            "from protean.domain import Domain\n\n"
+            'myproj: Domain = Domain(name="Annotated")\n'
+        ),
+    )
+
+    assert reconcile_manifest(tmp_path).domain_name == "Annotated"
+
+
 def test_reconcile_domain_name_underivable_on_syntax_error(tmp_path: Path) -> None:
     _make_project(
         tmp_path,

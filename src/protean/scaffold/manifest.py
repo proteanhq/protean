@@ -189,13 +189,19 @@ def _resolve_package_name(project_root: Path) -> str:
 
 
 def _derive_domain_name(domain_file: Path) -> str | None:
-    """Parse the ``name=`` of the ``Domain(...)`` call in *domain_file*.
+    """Parse the ``name=`` of the module-level ``Domain(...)`` call in *domain_file*.
 
-    Returns the string-literal ``name`` of the first ``Domain(...)`` call that
-    carries one. Returns ``None`` when the file has no such call, when the
-    ``name`` is not a string literal (computed or aliased), or when the file
-    cannot be parsed. It never raises, so an unusual composition root degrades
-    to "underivable" rather than crashing the reconcile.
+    Only module-level assignments are considered, because ADR-0030 puts the
+    composition root at module level: ``<domain> = Domain(name="...")``. A
+    ``Domain(...)`` call nested inside a function or class body is not the
+    composition root, so it is never read as the domain name.
+
+    Returns the string-literal ``name`` of the first such assignment that
+    carries one. Returns ``None`` when the file has no module-level
+    ``Domain(...)`` assignment, when the ``name`` is not a string literal
+    (computed or aliased), or when the file cannot be parsed. It never raises,
+    so an unusual composition root degrades to "underivable" rather than
+    crashing the reconcile.
     """
     try:
         source = domain_file.read_text(encoding="utf-8")
@@ -206,7 +212,10 @@ def _derive_domain_name(domain_file: Path) -> str | None:
     except SyntaxError:
         return None
 
-    for node in ast.walk(tree):
+    for statement in tree.body:
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            continue
+        node = statement.value
         if not isinstance(node, ast.Call):
             continue
         func = node.func
