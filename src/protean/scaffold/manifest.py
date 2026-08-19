@@ -51,6 +51,24 @@ _DOMAIN_FILENAME = "domain.py"
 _CONFIG_FILENAME = "domain.toml"
 
 
+def _require_str(data: dict[str, Any], key: str, context: str) -> str:
+    """Return ``data[key]`` as a string, or raise a clear :exc:`ValueError`.
+
+    Checks both presence and type, so a malformed manifest fails loud instead of
+    being coerced into a valid-looking string. A missing key or a non-string
+    value (``null``, a number, a nested object) is rejected here rather than
+    silently passed through ``str()``.
+    """
+    if key not in data:
+        raise ValueError(f"{context} is missing required field {key!r}")
+    value = data[key]
+    if not isinstance(value, str):
+        raise ValueError(
+            f"{context} field {key!r} must be a string, got {type(value).__name__}"
+        )
+    return value
+
+
 @dataclass(frozen=True)
 class ProjectLayout:
     """The ADR-0030 layout invariants, as project-root-relative POSIX paths.
@@ -78,11 +96,18 @@ class ProjectLayout:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectLayout:
-        """Rebuild a :class:`ProjectLayout` from its :meth:`to_dict` form."""
+        """Rebuild a :class:`ProjectLayout` from its :meth:`to_dict` form.
+
+        Validates the shape and field types, so a malformed layout (a non-object,
+        a missing field, or a non-string value) fails loud rather than being
+        coerced into a valid-looking layout.
+        """
+        if not isinstance(data, dict):
+            raise ValueError(f"'layout' must be an object, got {type(data).__name__}")
         return cls(
-            composition_root=str(data["composition_root"]),
-            config_file=str(data["config_file"]),
-            tests_dir=str(data["tests_dir"]),
+            composition_root=_require_str(data, "composition_root", "layout"),
+            config_file=_require_str(data, "config_file", "layout"),
+            tests_dir=_require_str(data, "tests_dir", "layout"),
         )
 
 
@@ -110,12 +135,32 @@ class ProjectManifest:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectManifest:
-        """Rebuild a :class:`ProjectManifest` from its :meth:`to_dict` form."""
+        """Rebuild a :class:`ProjectManifest` from its :meth:`to_dict` form.
+
+        Validates the JSON shape and field types, so a malformed manifest (a
+        non-object, a missing field, or a wrong-typed value) fails loud rather
+        than being coerced into a valid-looking manifest that a later drift check
+        would compare against.
+        """
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"A serialized ProjectManifest must be a mapping, "
+                f"got {type(data).__name__}"
+            )
+        if "domain_name" not in data:
+            raise ValueError("manifest is missing required field 'domain_name'")
         raw_domain = data["domain_name"]
+        if raw_domain is not None and not isinstance(raw_domain, str):
+            raise ValueError(
+                f"manifest field 'domain_name' must be a string or null, "
+                f"got {type(raw_domain).__name__}"
+            )
+        if "layout" not in data:
+            raise ValueError("manifest is missing required field 'layout'")
         return cls(
-            manifest_version=str(data["manifest_version"]),
-            package_name=str(data["package_name"]),
-            domain_name=None if raw_domain is None else str(raw_domain),
+            manifest_version=_require_str(data, "manifest_version", "manifest"),
+            package_name=_require_str(data, "package_name", "manifest"),
+            domain_name=raw_domain,
             layout=ProjectLayout.from_dict(data["layout"]),
         )
 
@@ -306,7 +351,7 @@ def load_stored_manifest(
         raise ValueError(f"Invalid JSON in {manifest_path}: {exc}") from exc
     try:
         return ProjectManifest.from_dict(data), manifest_path
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"Malformed manifest in {manifest_path}: {exc}") from exc
 
 

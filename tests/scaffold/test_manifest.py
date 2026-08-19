@@ -366,6 +366,80 @@ def test_load_stored_manifest_malformed_shape_raises(tmp_path: Path) -> None:
         load_stored_manifest(protean_dir)
 
 
+def _valid_manifest_dict() -> dict:
+    """A well-formed serialized manifest, for tampering in the tests below."""
+    return {
+        "manifest_version": "1.0",
+        "package_name": "acme",
+        "domain_name": "Acme",
+        "layout": {
+            "composition_root": "src/acme/domain.py",
+            "config_file": "src/acme/domain.toml",
+            "tests_dir": "tests",
+        },
+    }
+
+
+def test_manifest_from_dict_rejects_non_mapping_payload() -> None:
+    with pytest.raises(ValueError, match="must be a mapping"):
+        ProjectManifest.from_dict(["not", "a", "mapping"])  # type: ignore[arg-type]
+
+
+def test_manifest_from_dict_rejects_non_string_field() -> None:
+    # A numeric manifest_version is malformed; it must not be coerced to "1.0".
+    data = _valid_manifest_dict()
+    data["manifest_version"] = 1.0
+
+    with pytest.raises(ValueError, match="'manifest_version' must be a string"):
+        ProjectManifest.from_dict(data)
+
+
+def test_manifest_from_dict_rejects_non_string_domain_name() -> None:
+    # domain_name is str | None; a number is neither and must be rejected.
+    data = _valid_manifest_dict()
+    data["domain_name"] = 123
+
+    with pytest.raises(ValueError, match="'domain_name' must be a string or null"):
+        ProjectManifest.from_dict(data)
+
+
+def test_manifest_from_dict_rejects_missing_layout() -> None:
+    data = _valid_manifest_dict()
+    del data["layout"]
+
+    with pytest.raises(ValueError, match="missing required field 'layout'"):
+        ProjectManifest.from_dict(data)
+
+
+def test_layout_from_dict_rejects_missing_field() -> None:
+    with pytest.raises(ValueError, match="missing required field 'tests_dir'"):
+        ProjectLayout.from_dict({"composition_root": "x", "config_file": "y"})
+
+
+def test_layout_from_dict_rejects_non_object() -> None:
+    with pytest.raises(ValueError, match="'layout' must be an object"):
+        ProjectLayout.from_dict("not-an-object")  # type: ignore[arg-type]
+
+
+def test_layout_from_dict_rejects_non_string_field() -> None:
+    with pytest.raises(ValueError, match="'composition_root' must be a string"):
+        ProjectLayout.from_dict(
+            {"composition_root": 1, "config_file": "x", "tests_dir": "tests"}
+        )
+
+
+def test_load_stored_manifest_wrong_typed_field_raises(tmp_path: Path) -> None:
+    # A field with the wrong JSON type is surfaced as malformed, not coerced.
+    protean_dir = tmp_path / ".protean"
+    protean_dir.mkdir()
+    data = _valid_manifest_dict()
+    data["package_name"] = 42
+    (protean_dir / "project.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Malformed manifest"):
+        load_stored_manifest(protean_dir)
+
+
 # --------------------------------------------------------------------------- #
 # check_manifest_drift — derived, verifiable, never authoritative             #
 # --------------------------------------------------------------------------- #
