@@ -29,6 +29,7 @@ from protean.cli._helpers import (
     cli_exception_handler,
     handle_cli_exceptions,  # noqa: F401 — re-exported
 )
+from protean.cli.add import add
 from protean.cli.check import check
 from protean.cli.database import app as db_app
 from protean.cli.dlq import app as dlq_app
@@ -61,6 +62,7 @@ logger = get_logger(__name__)
 #   `no_args_is_help=True` will show the help message when no arguments are passed
 app = typer.Typer(no_args_is_help=True)
 
+app.command()(add)
 app.command()(check)
 app.command()(verify)
 app.command()(recover)

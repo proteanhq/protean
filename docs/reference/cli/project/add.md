@@ -1,0 +1,70 @@
+# `protean add`
+
+The `protean add` command previews the files a new element slice would add to
+your project. It computes a change plan and prints it. It writes nothing: this is
+a read-only preview.
+
+## Usage
+
+```shell
+protean add [OPTIONS] ELEMENT_TYPE NAME
+```
+
+## Arguments
+
+| Argument       | Description                                        | Default | Required |
+|----------------|----------------------------------------------------|---------|----------|
+| `ELEMENT_TYPE` | The element type to add. Only `aggregate` for now. | None    | Yes      |
+| `NAME`         | The aggregate name, e.g. `Order`.                  | None    | Yes      |
+
+## Options
+
+- `--path`, `-p`: Project directory to plan against. Defaults to the current
+  directory.
+- `--help`: Show the help message and exit.
+
+## What it plans
+
+For `aggregate`, `add` plans one complete write-side vertical slice under
+`src/<package>/<name-lowercased>/`, one concept per module:
+
+- `__init__.py`: a docstring only, so the package initializer stays side-effect
+  free (see [ADR-0030](../../../adr/0030-canonical-project-layout.md)).
+- `aggregate.py`: the aggregate with a `create` factory that raises the created
+  event.
+- `commands.py`: the `Create<Name>` command.
+- `events.py`: the `<Name>Created` event.
+- `command_handlers.py`: the handler that creates the aggregate and adds it to
+  its repository.
+
+The slice sits exactly one directory below the domain root, so
+`domain.init(traverse=True)` discovers and registers it.
+
+The project is resolved from `src/<package>/domain.py`. `add` reads the package
+name and the domain variable (the name your `@domain.aggregate` decorators use)
+straight from that file, without importing it.
+
+## Examples
+
+Preview the `Order` aggregate slice in the current project:
+
+```shell
+protean add aggregate Order
+```
+
+Point at another project directory:
+
+```shell
+protean add aggregate Order --path ./my-project
+```
+
+## Exit codes
+
+- `0`: the plan was computed and printed.
+- `2`: a usage error. An unsupported element type, an invalid name, or a project
+  the planner could not resolve (no `src/<package>/domain.py`, or more than one).
+
+## What it does not do
+
+`add` writes nothing. It only previews the plan. Applying the plan (creating the
+files on disk) is a separate step, added in a later release.

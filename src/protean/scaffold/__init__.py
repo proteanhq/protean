@@ -16,6 +16,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from protean.scaffold.add_plan import (
+    SUPPORTED_ELEMENT_TYPES,
+    AddPlanError,
+    plan_add_slice,
+)
 from protean.scaffold.change_plan import (
     PLAN_VERSION,
     ChangePlan,
@@ -30,12 +35,15 @@ __all__ = [
     "PLAN_VERSION",
     "SCHEMA_PATH",
     "SCHEMA_VERSION",
+    "SUPPORTED_ELEMENT_TYPES",
+    "AddPlanError",
     "ChangePlan",
     "ConfigOperation",
     "CreateFileOperation",
     "EditFileOperation",
     "Operation",
     "load_schema",
+    "plan_add_slice",
     "render_preview",
 ]
 
