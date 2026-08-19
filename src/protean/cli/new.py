@@ -9,6 +9,7 @@ from rich.console import Console
 
 import protean
 from protean.cli._helpers import abort_for_missing_dependency
+from protean.scaffold.manifest import write_manifest
 
 console = Console()
 
@@ -213,6 +214,12 @@ def new(
         defaults=defaults,
         pretend=pretend,
     )
+
+    # Write the derived project manifest (.protean/project.json). This is the
+    # first thing to create .protean/. Skip it under --pretend so a dry run
+    # touches nothing.
+    if not pretend:
+        write_manifest(project_directory or ".")
 
     # Run post-generation setup unless skipped or in pretend mode
     if not skip_setup and not pretend:

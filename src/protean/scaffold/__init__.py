@@ -8,6 +8,10 @@ filesystem. A plan is inert; a separate applier (a later epic) executes it.
 The schema is versioned as a structural contract. ``SCHEMA_VERSION``,
 ``SCHEMA_PATH``, and :func:`load_schema` expose the JSON Schema the serialized
 plan validates against, the same way ``protean.ir`` does.
+
+This package also holds the tooling that reasons about a generated project's
+shape on disk, starting with the derived project manifest
+(:mod:`protean.scaffold.manifest`). It is side-effect free on import.
 """
 
 from __future__ import annotations
