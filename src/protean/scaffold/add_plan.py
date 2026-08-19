@@ -1,0 +1,397 @@
+"""Plan a new element slice as a :class:`~protean.scaffold.ChangePlan`.
+
+``protean add <element-type> <name>`` computes what it *would* write and previews
+it, without touching the filesystem. This module is the pure planner behind that
+command: given a project directory and a name, it returns a
+:class:`~protean.scaffold.ChangePlan` of :class:`CreateFileOperation`\\ s in the
+ADR-0030 canonical layout. It writes nothing; the CLI renders the plan.
+
+For this first cut the only supported element type is ``aggregate``, which emits
+one complete write-side vertical slice: the aggregate, its create command, its
+created event, and the command handler that ties them together.
+
+The project is resolved from the ADR-0030 layout, without importing anything:
+locate the single ``src/<package>/domain.py``, then AST-parse it to read the
+package directory name (the import root) and the variable bound to the
+``Domain(...)`` call (the name the generated decorators reference). This is not
+the same mechanism as runtime discovery (``derive_domain`` honors
+``PROTEAN_DOMAIN`` and a ``path:instance`` selector and imports the domain); the
+planner only needs the package and the domain variable, and AST-reading them
+keeps it deterministic and unit-testable against a directory of files, and correct
+even when a project's domain variable differs from its package name.
+"""
+
+from __future__ import annotations
+
+import ast
+import keyword
+from collections.abc import Callable
+from pathlib import Path
+
+from protean.scaffold.change_plan import ChangePlan, CreateFileOperation
+
+# A renderer turns a slice's parameters into one file's whole content.
+_Renderer = Callable[["_SliceContext"], str]
+
+__all__ = ["SUPPORTED_ELEMENT_TYPES", "AddPlanError", "plan_add_slice"]
+
+# The element types ``add`` can plan today. The POC ships the write-side
+# aggregate slice; more types come in later issues.
+SUPPORTED_ELEMENT_TYPES = ("aggregate",)
+
+
+class AddPlanError(Exception):
+    """A user-facing planning failure: an unsupported type, a bad name, or a
+    project the planner cannot resolve. The CLI turns this into a clear message
+    and a usage exit code, so the message is written to be read by a human."""
+
+
+def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePlan:
+    """Compute a create-only :class:`ChangePlan` for one element slice.
+
+    *project_path* is the project root (the directory that holds ``src/``).
+    *element_type* must be ``"aggregate"`` for now. *name* is the aggregate name
+    (e.g. ``"Order"``); it must be a valid Python identifier. It is normalized:
+    the class name is the PascalCase form and the slug the snake_case one, so
+    ``OrderItem``, ``orderItem`` and ``order_item`` all plan the same slice.
+
+    Returns a plan whose operations are all :class:`CreateFileOperation`\\ s at the
+    canonical ADR-0030 paths under ``src/<package>/<slug>/``. Touches no files.
+
+    Raises :class:`AddPlanError` on an unsupported element type, a name that is
+    not a valid identifier or that derives no valid class name and slug, or a
+    project the planner cannot resolve (no ``src/<package>/domain.py``, more than
+    one candidate, or a ``domain.py`` that does not construct a ``Domain``).
+    """
+    normalized_type = element_type.lower()
+    if normalized_type not in SUPPORTED_ELEMENT_TYPES:
+        supported = ", ".join(SUPPORTED_ELEMENT_TYPES)
+        raise AddPlanError(
+            f"Unsupported element type {element_type!r}. Supported: {supported}."
+        )
+
+    if not name.isidentifier():
+        raise AddPlanError(
+            f"Invalid name {name!r}: an element name must be a valid Python "
+            "identifier (letters, digits, and underscores; not starting with a "
+            "digit)."
+        )
+
+    # Class names follow the Example slice: Order / CreateOrder / OrderCreated /
+    # OrderCommandHandler. The slug (the directory and the id-field prefix) is the
+    # snake_case form, so ``Order`` lands in ``order/`` (ADR-0030) and
+    # ``OrderItem`` in ``order_item/``. Both are derived from the same word split,
+    # so ``order_item``, ``orderItem`` and ``OrderItem`` all plan the same slice.
+    words = _split_words(name)
+    if not words:
+        raise AddPlanError(
+            f"Invalid name {name!r}: an element name must contain at least one "
+            "letter or digit."
+        )
+    class_name = "".join(word[:1].upper() + word[1:] for word in words)
+    slug = "_".join(word.lower() for word in words)
+
+    # A name like ``_2fa`` is a valid identifier but its words are not: the class
+    # would be ``2fa`` and the variable ``2fa``, neither of which compiles.
+    if not class_name.isidentifier() or not slug.isidentifier():
+        raise AddPlanError(
+            f"Invalid name {name!r}: it derives the class {class_name!r} and the "
+            f"module variable {slug!r}, which are not valid Python names. Start "
+            "each word with a letter or an underscore."
+        )
+
+    # A Python keyword is a valid identifier to ``str.isidentifier`` but cannot be
+    # a class name or a variable name, so it would emit code that does not compile
+    # (``class None:``, ``for = cls(...)``). Both derived names matter: ``None``
+    # gives class ``None``; ``class`` gives slug ``class``. Reject either.
+    if keyword.iskeyword(class_name) or keyword.iskeyword(slug):
+        raise AddPlanError(
+            f"Invalid name {name!r}: it derives a Python keyword "
+            f"(class {class_name!r}, module variable {slug!r}), so the generated "
+            "slice would not compile. Choose a name that is not a keyword."
+        )
+
+    package, domain_var = _resolve_project(project_path)
+
+    context = _SliceContext(
+        package=package,
+        domain_var=domain_var,
+        name=class_name,
+        slug=slug,
+    )
+
+    base = f"src/{package}/{slug}"
+    operations = tuple(
+        CreateFileOperation(path=f"{base}/{filename}", content=render(context))
+        for filename, render in _SLICE_FILES
+    )
+
+    return ChangePlan(
+        operations=operations,
+        description=(
+            f"Add the {class_name} aggregate slice "
+            f"(aggregate, command, event, command handler)"
+        ),
+    )
+
+
+def _split_words(name: str) -> list[str]:
+    """Split an identifier into the words its generated names are built from.
+
+    Underscores separate words, and so does a case change, so ``order_item``,
+    ``orderItem`` and ``OrderItem`` all split into two words and render the same
+    class ``OrderItem`` and the same slug ``order_item``. A run of capitals stays
+    one word except for the last capital, which starts the next one (``XMLHttp``
+    gives ``["XML", "Http"]``). The rest of each word keeps its original casing,
+    which is what keeps ``HTTPServer`` from becoming ``HttpServer``.
+    """
+    words: list[str] = []
+    current = ""
+    for index, char in enumerate(name):
+        if char == "_":
+            if current:
+                words.append(current)
+                current = ""
+            continue
+        if char.isupper() and current:
+            follows_lower = not current[-1].isupper()
+            starts_word = index + 1 < len(name) and name[index + 1].islower()
+            if follows_lower or starts_word:
+                words.append(current)
+                current = ""
+        current += char
+    if current:
+        words.append(current)
+    return words
+
+
+def _resolve_project(project_path: str) -> tuple[str, str]:
+    """Resolve ``(package, domain_var)`` from a project's ``src/`` tree.
+
+    Locates the single ``src/<package>/domain.py``, then AST-parses it to read the
+    variable bound to a ``Domain(...)`` call. No import, no installed deps.
+
+    Raises :class:`AddPlanError` when ``src/`` is missing, when there is not
+    exactly one ``domain.py`` candidate, or when ``domain.py`` binds no ``Domain``.
+    """
+    src = Path(project_path) / "src"
+    if not src.is_dir():
+        raise AddPlanError(
+            f"No 'src' directory under {project_path!r}. Run 'add' from a project "
+            "root generated by 'protean new'."
+        )
+
+    candidates = sorted(
+        child
+        for child in src.iterdir()
+        if child.is_dir() and (child / "domain.py").is_file()
+    )
+    if not candidates:
+        raise AddPlanError(
+            f"No 'src/<package>/domain.py' found under {project_path!r}. "
+            "The project must have a composition root (see ADR-0030)."
+        )
+    if len(candidates) > 1:
+        names = ", ".join(candidate.name for candidate in candidates)
+        raise AddPlanError(
+            f"Found more than one 'src/<package>/domain.py' under {project_path!r} "
+            f"({names}). 'add' targets a single composition root."
+        )
+
+    package_dir = candidates[0]
+    package = package_dir.name
+    domain_var = _read_domain_variable(package_dir / "domain.py")
+    return package, domain_var
+
+
+def _read_domain_variable(domain_py: Path) -> str:
+    """Return the name of the top-level variable bound to a ``Domain(...)`` call.
+
+    Reads the module with :mod:`ast` only, so a ``domain.py`` that imports heavy
+    or uninstalled dependencies still resolves. Raises :class:`AddPlanError` when
+    the file cannot be read or parsed, or binds no ``Domain`` at module level.
+    """
+    try:
+        tree = ast.parse(domain_py.read_text(encoding="utf-8"), filename=str(domain_py))
+    # A file that is not valid UTF-8 raises UnicodeDecodeError from read_text;
+    # catch it here so a bad encoding is a usage error, not a traceback.
+    except (OSError, SyntaxError, UnicodeError) as exc:
+        raise AddPlanError(f"Could not read {domain_py}: {exc}") from exc
+
+    for node in tree.body:
+        # Only plain ``name = Domain(...)`` assignments name the composition root.
+        # Annotated assignments (``name: T = Domain(...)``) are handled too.
+        target_name: str | None = None
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name):
+                target_name = target.id
+                value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            target_name = node.target.id
+            value = node.value
+
+        if target_name is not None and value is not None and _is_domain_call(value):
+            return target_name
+
+    raise AddPlanError(
+        f"{domain_py} does not construct a Domain at module level. "
+        "Expected a line like `<name> = Domain(name=...)`."
+    )
+
+
+def _is_domain_call(value: ast.expr) -> bool:
+    """Whether *value* is a call to ``Domain(...)`` (bare or attribute form).
+
+    Matches on the name ``Domain``, so an import alias (``from protean import
+    Domain as D`` then ``D(...)``) is not recognized. A ``protean new`` project
+    always writes the bare ``Domain(...)`` form, so this only limits hand-written
+    composition roots; resolving aliases is left for when that need is real.
+    """
+    if not isinstance(value, ast.Call):
+        return False
+    func = value.func
+    if isinstance(func, ast.Name):
+        return func.id == "Domain"
+    if isinstance(func, ast.Attribute):
+        return func.attr == "Domain"
+    return False
+
+
+class _SliceContext:
+    """The parameters that fill in one slice's file contents."""
+
+    __slots__ = ("domain_var", "name", "package", "slug")
+
+    def __init__(self, package: str, domain_var: str, name: str, slug: str) -> None:
+        self.package = package
+        self.domain_var = domain_var
+        self.name = name
+        self.slug = slug
+
+
+def _render_init(ctx: _SliceContext) -> str:
+    # ADR-0030 rule 4: the package initializer is side-effect free (docstring
+    # only). A re-export here would run during traversal and risk the
+    # partially-initialized-module cycle that broke init(traverse=True) in #1316.
+    return (
+        f'"""The {ctx.name} slice.\n\n'
+        "Modules are discovered independently by ``domain.init()``. Keep this\n"
+        "package initializer side-effect free so relative imports during\n"
+        "traversal cannot create partially initialized-module cycles.\n"
+        '"""\n'
+    )
+
+
+def _render_aggregate(ctx: _SliceContext) -> str:
+    return f'''"""The {ctx.name} aggregate."""
+
+from typing import Annotated
+
+from pydantic import Field
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+from .events import {ctx.name}Created
+
+
+@{ctx.domain_var}.aggregate
+class {ctx.name}:
+    """The {ctx.name} aggregate root."""
+
+    name: Annotated[str, Field(max_length=100)]
+
+    @classmethod
+    def create(cls, name: str) -> "{ctx.name}":
+        """Create a new {ctx.name} and raise {ctx.name}Created."""
+        {ctx.slug} = cls(name=name)
+
+        {ctx.slug}.raise_(
+            {ctx.name}Created(
+                {ctx.slug}_id={ctx.slug}.id,
+                name={ctx.slug}.name,
+            )
+        )
+
+        return {ctx.slug}
+'''
+
+
+def _render_commands(ctx: _SliceContext) -> str:
+    return f'''"""Commands for the {ctx.name} aggregate."""
+
+from typing import Annotated
+
+from pydantic import Field
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+
+@{ctx.domain_var}.command(part_of="{ctx.name}")
+class Create{ctx.name}:
+    """Command to create a new {ctx.name}."""
+
+    name: Annotated[str, Field(max_length=100)]
+'''
+
+
+def _render_events(ctx: _SliceContext) -> str:
+    return f'''"""Events emitted by the {ctx.name} aggregate."""
+
+from typing import Annotated
+
+from pydantic import Field
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+
+@{ctx.domain_var}.event(part_of="{ctx.name}")
+class {ctx.name}Created:
+    """Event emitted when a {ctx.name} is created."""
+
+    {ctx.slug}_id: str
+    name: Annotated[str, Field(max_length=100)]
+'''
+
+
+def _render_command_handlers(ctx: _SliceContext) -> str:
+    return f'''"""Command handlers for the {ctx.name} aggregate."""
+
+from protean import handle
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+from .aggregate import {ctx.name}
+from .commands import Create{ctx.name}
+
+
+@{ctx.domain_var}.command_handler(part_of="{ctx.name}")
+class {ctx.name}CommandHandler:
+    """Handle commands for the {ctx.name} aggregate."""
+
+    @handle(Create{ctx.name})
+    def handle_create_{ctx.slug}(self, command: Create{ctx.name}) -> str:
+        """Create a {ctx.name} from the command and persist it.
+
+        Returns the new aggregate's id so a synchronous caller can look it up
+        right after ``domain.process``.
+        """
+        {ctx.slug} = {ctx.name}.create(name=command.name)
+
+        repo = {ctx.domain_var}.repository_for({ctx.name})
+        repo.add({ctx.slug})
+
+        return {ctx.slug}.id
+'''
+
+
+# The slice's files, in the order they render into the plan. Each entry is
+# ``(filename, renderer)``; every renderer returns the file's whole content.
+_SLICE_FILES: tuple[tuple[str, _Renderer], ...] = (
+    ("__init__.py", _render_init),
+    ("aggregate.py", _render_aggregate),
+    ("commands.py", _render_commands),
+    ("events.py", _render_events),
+    ("command_handlers.py", _render_command_handlers),
+)

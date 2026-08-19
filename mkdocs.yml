@@ -325,6 +325,7 @@ nav:
       - Project:
         - reference/cli/project/index.md
         - reference/cli/project/new.md
+        - reference/cli/project/add.md
         - reference/cli/project/discovery.md
         - reference/cli/project/shell.md
         - reference/cli/project/docs.md
