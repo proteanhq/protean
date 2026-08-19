@@ -362,3 +362,11 @@ def test_from_json_rejects_invalid_json():
 def test_from_json_rejects_a_non_object_payload():
     with pytest.raises(ValueError, match="must be a JSON object"):
         ChangePlan.from_json("[1, 2, 3]")
+
+
+@pytest.mark.parametrize("payload", [None, [], "plan", 3])
+def test_from_dict_rejects_a_non_mapping_payload(payload):
+    # from_dict promises ValueError on malformed input; a non-mapping payload
+    # must fail loud the same way from_json does, not blow up as AttributeError.
+    with pytest.raises(ValueError, match="must be a mapping"):
+        ChangePlan.from_dict(payload)

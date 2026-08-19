@@ -242,11 +242,14 @@ class ChangePlan:
     def from_dict(cls, data: dict[str, Any]) -> ChangePlan:
         """Reconstruct a :class:`ChangePlan` from its serialized dict.
 
-        Raises :exc:`ValueError` on a ``plan_version`` the code does not
-        understand, on a missing ``operations`` list, on an unknown operation
-        ``kind``, or on a missing required field. A corrupt or newer plan fails
-        loud rather than parsing best-effort.
+        Raises :exc:`ValueError` on a non-object payload, on a ``plan_version``
+        the code does not understand, on a missing ``operations`` list, on an
+        unknown operation ``kind``, or on a missing required field. A corrupt or
+        newer plan fails loud rather than parsing best-effort.
         """
+        if not isinstance(data, dict):
+            raise ValueError("A serialized ChangePlan must be a mapping")
+
         version = data.get("plan_version")
         if version != PLAN_VERSION:
             raise ValueError(
