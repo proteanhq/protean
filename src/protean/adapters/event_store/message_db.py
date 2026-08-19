@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 import psycopg2
 from message_db.client import MessageDB
@@ -23,11 +23,10 @@ def _truncate_message_store(database_uri: str) -> None:
     both ``MessageDBStore._data_reset`` and the test-suite reset go through.
     """
     parsed = urlparse(database_uri)
-    query_params = (
-        dict(param.split("=") for param in parsed.query.split("&"))
-        if parsed.query
-        else {}
-    )
+    # ``parse_qsl`` tolerates odd query strings (a trailing ``&``, an empty
+    # segment, a segment with no ``=``) that a hand-rolled ``split`` would choke
+    # on, so a slightly different ``database_uri`` cannot break truncation.
+    query_params = dict(parse_qsl(parsed.query))
     conn = psycopg2.connect(
         dbname=parsed.path[1:],
         user="postgres",
