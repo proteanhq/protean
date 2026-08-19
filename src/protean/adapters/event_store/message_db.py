@@ -13,6 +13,37 @@ if TYPE_CHECKING:
     from protean.domain import Domain
 
 
+def _truncate_message_store(database_uri: str) -> None:
+    """Empty the Message-DB store at ``database_uri``. Test-harness use only.
+
+    Works only against the Postgres instance in the configured Docker container:
+    it connects as the ``postgres`` superuser, which is assumed to have no
+    password. Neither holds in production, so this must never run there. Any
+    change to the connection convention has to be made here, the single place
+    both ``MessageDBStore._data_reset`` and the test-suite reset go through.
+    """
+    parsed = urlparse(database_uri)
+    query_params = (
+        dict(param.split("=") for param in parsed.query.split("&"))
+        if parsed.query
+        else {}
+    )
+    conn = psycopg2.connect(
+        dbname=parsed.path[1:],
+        user="postgres",
+        port=parsed.port,
+        host=parsed.hostname,
+        sslmode=query_params.get("sslmode", "disable"),
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute("TRUNCATE message_store.messages RESTART IDENTITY;")
+        conn.commit()  # psycopg2 requires a commit even for a TRUNCATE
+        cursor.close()
+    finally:
+        conn.close()
+
+
 class MessageDBStore(BaseEventStore):
     """MessageDB event store adapter.
 
@@ -142,32 +173,9 @@ class MessageDBStore(BaseEventStore):
             self._client = None
 
     def _data_reset(self) -> None:
-        """Utility function to empty messages, to be used only by test harness.
+        """Empty the store's messages. Test-harness use only.
 
-        This method is designed to work only with the postgres instance running in the configured docker container:
-        User is locked to `postgres` and it is assumed that the default user does not have a password, both of which
-        should not be the configuration in production.
-
-        Any changes to configuration will need to updated here.
+        Delegates to :func:`_truncate_message_store`; see its docstring for the
+        Docker-only connection convention.
         """
-        parsed = urlparse(self.domain.config["event_store"]["database_uri"])
-        query_params = (
-            dict(param.split("=") for param in parsed.query.split("&"))
-            if parsed.query
-            else {}
-        )
-        conn = psycopg2.connect(
-            dbname=parsed.path[1:],
-            user="postgres",
-            port=parsed.port,
-            host=parsed.hostname,
-            sslmode=query_params.get("sslmode", "disable"),
-        )
-
-        cursor = conn.cursor()
-        cursor.execute("TRUNCATE message_store.messages RESTART IDENTITY;")
-
-        conn.commit()  # Apparently, psycopg2 requires a `commit` even if its a `TRUNCATE` command
-        cursor.close()
-
-        conn.close()
+        _truncate_message_store(self.domain.config["event_store"]["database_uri"])

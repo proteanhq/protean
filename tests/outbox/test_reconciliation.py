@@ -182,22 +182,22 @@ class TestOutboxReconciliationOnMessageDB:
 
     @pytest.fixture
     def domain_and_repo(self, tmp_path):
+        # The autouse ``_isolate_message_db`` fixture (keyed on the ``message_db``
+        # marker) gives this test a clean store, so the "$all" tail read below
+        # sees only this test's writes. ``no_test_domain`` skips the store
+        # cleanup in ``run_around_tests``, so close the store here to avoid a
+        # connection-pool leak.
         domain = _make_domain(
             tmp_path,
             event_store={"provider": "message_db", "database_uri": MESSAGE_DB_URI},
         )
         with domain.domain_context():
-            # Isolate from other Message-DB tests sharing this database: reconcile
-            # reads the global "$all" tail, so stray messages would skew it.
-            domain.event_store.store._data_reset()
             provider = domain.providers["default"]
             domain.repository_for(Account)._dao
             domain._get_outbox_repo("default")._dao
             provider._metadata.create_all(provider._engine)
             yield domain, domain._get_outbox_repo("default")
-            # Leave the shared Message-DB clean for the next test: the "$all"
-            # tail read makes this class ordering-sensitive.
-            domain.event_store.store._data_reset()
+            domain.event_store.store.close()
 
     def test_reconcile_recreates_missing_row_from_message_db(self, domain_and_repo):
         domain, outbox_repo = domain_and_repo
