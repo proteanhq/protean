@@ -160,11 +160,13 @@ def _read_domain_variable(domain_py: Path) -> str:
 
     Reads the module with :mod:`ast` only, so a ``domain.py`` that imports heavy
     or uninstalled dependencies still resolves. Raises :class:`AddPlanError` when
-    the file cannot be parsed or binds no ``Domain`` at module level.
+    the file cannot be read or parsed, or binds no ``Domain`` at module level.
     """
     try:
         tree = ast.parse(domain_py.read_text(encoding="utf-8"), filename=str(domain_py))
-    except (OSError, SyntaxError) as exc:
+    # A file that is not valid UTF-8 raises UnicodeDecodeError from read_text;
+    # catch it here so a bad encoding is a usage error, not a traceback.
+    except (OSError, SyntaxError, UnicodeError) as exc:
         raise AddPlanError(f"Could not read {domain_py}: {exc}") from exc
 
     for node in tree.body:

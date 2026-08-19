@@ -260,6 +260,20 @@ def test_unparseable_domain_py_raises(tmp_path):
     assert "domain.py" in str(exc_info.value)
 
 
+def test_domain_py_that_is_not_utf8_raises(tmp_path):
+    """A domain.py in some other encoding fails as a usage error, not a traceback."""
+    package_dir = tmp_path / "proj" / "src" / "myproj"
+    package_dir.mkdir(parents=True)
+    (package_dir / "domain.py").write_bytes(
+        'myproj = Domain(name="caf\u00e9")\n'.encode("latin-1")
+    )
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(tmp_path / "proj"), "aggregate", "Order")
+
+    assert "domain.py" in str(exc_info.value)
+
+
 def test_more_than_one_package_raises(tmp_path):
     project = _write_project(tmp_path / "proj", "alpha", "alpha")
     # A second composition root under src/ makes the target ambiguous.
