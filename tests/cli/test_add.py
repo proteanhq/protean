@@ -74,12 +74,22 @@ def _subprocess_env(project: Path) -> dict[str, str]:
     return env
 
 
-_INIT_AND_LIST = (
+_INIT_AND_EXERCISE = (
     "import sys; sys.path.insert(0, 'src')\n"
     "from scaffolded.domain import scaffolded as domain\n"
     "domain.init()\n"
     "names = sorted(domain.registry._elements_by_name.keys())\n"
     "print('NAMES:' + ','.join(names))\n"
+    # Drive the slice end to end: process the command through the generated
+    # handler (which calls the generated `create` factory), then fetch the
+    # persisted aggregate back. command_processing is sync in the scaffold, so
+    # process runs the handler inline and returns the aggregate id.
+    "from scaffolded.order.commands import CreateOrder\n"
+    "from scaffolded.order.aggregate import Order\n"
+    "with domain.domain_context():\n"
+    "    order_id = domain.process(CreateOrder(name='Widget'))\n"
+    "    fetched = domain.repository_for(Order).get(order_id)\n"
+    "    print('PERSISTED:' + fetched.name)\n"
 )
 
 
@@ -118,14 +128,20 @@ def test_add_writes_nothing(tmp_path):
 
 def test_planned_slice_loads_and_registers_under_traversal(tmp_path):
     """Acceptance #3: the planned files register when the domain inits with
-    traversal on. Materialize the plan, init the real domain, and require the new
-    elements to be in the registry by name."""
+    traversal on, and the slice actually works. Materialize the plan, init the
+    real domain, require all four elements in the registry by name, then process a
+    command through the generated handler and assert the aggregate persists.
+
+    Asserting only the registry names is not enough: a broken `create` factory or
+    a handler missing its decorator can still leave the names present. Running the
+    command exercises the factory and the handler body, so those regressions fail
+    here."""
     project = _generate(tmp_path)
     plan = plan_add_slice(str(project), "aggregate", "Order")
     _materialize(project, plan)
 
     completed = subprocess.run(
-        [sys.executable, "-c", _INIT_AND_LIST],
+        [sys.executable, "-c", _INIT_AND_EXERCISE],
         cwd=project,
         env=_subprocess_env(project),
         capture_output=True,
@@ -133,7 +149,7 @@ def test_planned_slice_loads_and_registers_under_traversal(tmp_path):
     )
 
     assert completed.returncode == 0, (
-        "the domain must init with the planned slice in place:\n"
+        "the domain must init and process the planned slice's command:\n"
         f"{completed.stdout}\n{completed.stderr}"
     )
     line = next(
@@ -141,11 +157,16 @@ def test_planned_slice_loads_and_registers_under_traversal(tmp_path):
         "",
     )
     registered = set(line[len("NAMES:") :].split(","))
-    for element in ("Order", "CreateOrder", "OrderCreated"):
+    for element in ("Order", "CreateOrder", "OrderCreated", "OrderCommandHandler"):
         assert element in registered, (
             f"{element} did not register under traversal; registered: "
             f"{sorted(registered)}"
         )
+    # The command ran through the generated handler and the aggregate came back.
+    assert "PERSISTED:Widget" in completed.stdout, (
+        "the generated handler did not create and persist the aggregate:\n"
+        f"{completed.stdout}\n{completed.stderr}"
+    )
 
 
 def test_unsupported_type_exits_nonzero_and_writes_nothing(tmp_path):
@@ -155,8 +176,27 @@ def test_unsupported_type_exits_nonzero_and_writes_nothing(tmp_path):
     result = CliRunner().invoke(app, ["add", "widget", "Foo", "--path", str(project)])
     after = _snapshot(project)
 
-    assert result.exit_code != 0
+    # 2 is the documented usage exit code; pin it, not just "non-zero".
+    assert result.exit_code == 2, result.output
     assert "aggregate" in result.output, (
         f"the error should name aggregate as the supported type:\n{result.output}"
+    )
+    assert before == after, "a rejected add must not touch the project tree"
+
+
+def test_keyword_name_exits_two_and_writes_nothing(tmp_path):
+    """A Python keyword would produce a slice that does not compile, so the
+    command must reject it with the usage exit code and write nothing."""
+    project = _generate(tmp_path)
+
+    before = _snapshot(project)
+    result = CliRunner().invoke(
+        app, ["add", "aggregate", "class", "--path", str(project)]
+    )
+    after = _snapshot(project)
+
+    assert result.exit_code == 2, result.output
+    assert "keyword" in result.output, (
+        f"the error should explain the name is a Python keyword:\n{result.output}"
     )
     assert before == after, "a rejected add must not touch the project tree"

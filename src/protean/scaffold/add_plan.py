@@ -10,18 +10,21 @@ For this first cut the only supported element type is ``aggregate``, which emits
 one complete write-side vertical slice: the aggregate, its create command, its
 created event, and the command handler that ties them together.
 
-The project is resolved the same way discovery resolves it, but independently and
-without importing anything: locate the single ``src/<package>/domain.py``, then
-AST-parse it to read the package directory name (the import root) and the variable
-bound to the ``Domain(...)`` call (the name the generated decorators reference).
-AST-parsing keeps the planner deterministic and unit-testable against a directory
-of files, and correct even when a project's domain variable differs from its
-package name.
+The project is resolved from the ADR-0030 layout, without importing anything:
+locate the single ``src/<package>/domain.py``, then AST-parse it to read the
+package directory name (the import root) and the variable bound to the
+``Domain(...)`` call (the name the generated decorators reference). This is not
+the same mechanism as runtime discovery (``derive_domain`` honors
+``PROTEAN_DOMAIN`` and a ``path:instance`` selector and imports the domain); the
+planner only needs the package and the domain variable, and AST-reading them
+keeps it deterministic and unit-testable against a directory of files, and correct
+even when a project's domain variable differs from its package name.
 """
 
 from __future__ import annotations
 
 import ast
+import keyword
 from collections.abc import Callable
 from pathlib import Path
 
@@ -72,13 +75,24 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
             "digit)."
         )
 
-    package, domain_var = _resolve_project(project_path)
-
     # Class names follow the Example slice: Order / CreateOrder / OrderCreated /
     # OrderCommandHandler. The slug (the directory and the id-field prefix) is the
     # name lower-cased, so ``Order`` lands in ``order/`` (ADR-0030).
     class_name = name[:1].upper() + name[1:]
     slug = name.lower()
+
+    # A Python keyword is a valid identifier to ``str.isidentifier`` but cannot be
+    # a class name or a variable name, so it would emit code that does not compile
+    # (``class None:``, ``for = cls(...)``). Both derived names matter: ``None``
+    # gives class ``None``; ``class`` gives slug ``class``. Reject either.
+    if keyword.iskeyword(class_name) or keyword.iskeyword(slug):
+        raise AddPlanError(
+            f"Invalid name {name!r}: it derives a Python keyword "
+            f"(class {class_name!r}, module variable {slug!r}), so the generated "
+            "slice would not compile. Choose a name that is not a keyword."
+        )
+
+    package, domain_var = _resolve_project(project_path)
 
     context = _SliceContext(
         package=package,
@@ -177,7 +191,13 @@ def _read_domain_variable(domain_py: Path) -> str:
 
 
 def _is_domain_call(value: ast.expr) -> bool:
-    """Whether *value* is a call to ``Domain(...)`` (bare or attribute form)."""
+    """Whether *value* is a call to ``Domain(...)`` (bare or attribute form).
+
+    Matches on the name ``Domain``, so an import alias (``from protean import
+    Domain as D`` then ``D(...)``) is not recognized. A ``protean new`` project
+    always writes the bare ``Domain(...)`` form, so this only limits hand-written
+    composition roots; resolving aliases is left for when that need is real.
+    """
     if not isinstance(value, ast.Call):
         return False
     func = value.func

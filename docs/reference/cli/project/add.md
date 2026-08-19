@@ -61,8 +61,13 @@ protean add aggregate Order --path ./my-project
 ## Exit codes
 
 - `0`: the plan was computed and printed.
-- `2`: a usage error. An unsupported element type, an invalid name, or a project
-  the planner could not resolve (no `src/<package>/domain.py`, or more than one).
+- `2`: a usage error. Any of:
+  - an unsupported element type (only `aggregate` is supported today);
+  - an invalid name: not a Python identifier, or a Python keyword (which would
+    produce a slice that does not compile);
+  - a project the planner could not resolve: no `src/` directory, no
+    `src/<package>/domain.py`, more than one such file, a `domain.py` that does
+    not parse, or a `domain.py` that constructs no `Domain`.
 
 ## What it does not do
 

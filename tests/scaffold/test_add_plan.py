@@ -184,8 +184,52 @@ def test_unsupported_element_type_raises(tmp_path):
 def test_invalid_name_raises(tmp_path):
     project = _write_project(tmp_path / "proj", "myproj", "myproj")
 
-    with pytest.raises(AddPlanError):
+    with pytest.raises(AddPlanError) as exc_info:
         plan_add_slice(str(project), "aggregate", "not a name")
+
+    # The message must name the input and explain what a valid name is.
+    message = str(exc_info.value)
+    assert "not a name" in message
+    assert "identifier" in message
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "class",  # slug `class` -> `class = cls(...)` does not compile
+        "for",
+        "import",
+        "return",
+        "lambda",
+        "None",  # class `None` -> `class None:` does not compile
+        "True",
+        "none",  # PascalCase is `None`, still a keyword
+    ],
+)
+def test_keyword_name_raises(tmp_path, name):
+    """A Python keyword passes ``str.isidentifier`` but cannot be a class or
+    variable name, so the guard must reject it before it emits code that does not
+    compile (acceptance #3: the planned content is valid Python)."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(project), "aggregate", name)
+
+    assert "keyword" in str(exc_info.value)
+
+
+def test_every_planned_file_compiles_for_an_awkward_name(tmp_path):
+    """Guards the keyword class directly: any name the planner accepts produces
+    content that compiles. ``match`` is a soft keyword and a legitimate name, so
+    it is planned; its files must still be valid Python."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    plan = plan_add_slice(str(project), "aggregate", "match")
+
+    assert len(plan.operations) > 0
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
 
 
 def test_no_src_directory_raises(tmp_path):
@@ -232,6 +276,19 @@ def test_domain_py_without_domain_call_raises(tmp_path):
     package_dir = tmp_path / "proj" / "src" / "myproj"
     package_dir.mkdir(parents=True)
     (package_dir / "domain.py").write_text("x = 1\n")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(tmp_path / "proj"), "aggregate", "Order")
+
+    assert "Domain" in str(exc_info.value)
+
+
+def test_domain_py_with_non_name_call_target_raises(tmp_path):
+    """A call whose function is itself a call (neither a Name nor an Attribute) is
+    not a Domain construction; the resolver rejects it rather than crashing."""
+    package_dir = tmp_path / "proj" / "src" / "myproj"
+    package_dir.mkdir(parents=True)
+    (package_dir / "domain.py").write_text("app = make_factory()(name='x')\n")
 
     with pytest.raises(AddPlanError) as exc_info:
         plan_add_slice(str(tmp_path / "proj"), "aggregate", "Order")
