@@ -433,6 +433,7 @@ nav:
       - adr/0030-canonical-project-layout.md
       - adr/0031-handlers-persist-or-call-out.md
       - adr/0032-annotation-file-for-the-event-model.md
+      - adr/0033-change-plan-versioned-structural-contract.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

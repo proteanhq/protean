@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://protean.dev/scaffold/v0.1.0/schema.json",
+  "title": "Protean ChangePlan v0.1.0",
+  "description": "A serializable, previewable description of a change: an ordered list of operations (create a file, edit a file, patch config) that a command like `add` or an upgrade would apply.",
+
+  "type": "object",
+  "properties": {
+    "plan_version": {
+      "const": "0.1.0",
+      "description": "Semantic version of the ChangePlan format. Pinned so a plan written for a different version fails validation here instead of being read against the wrong schema."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human-readable summary of the plan"
+    },
+    "operations": {
+      "type": "array",
+      "description": "The operations to apply, in order; position is semantic",
+      "items": {
+        "$ref": "#/$defs/operation"
+      }
+    }
+  },
+  "required": ["plan_version", "operations"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "operation": {
+      "oneOf": [
+        { "$ref": "#/$defs/create_operation" },
+        { "$ref": "#/$defs/edit_operation" },
+        { "$ref": "#/$defs/config_operation" }
+      ]
+    },
+
+    "create_operation": {
+      "type": "object",
+      "description": "Create a new file carrying its whole content",
+      "properties": {
+        "kind": { "const": "create" },
+        "path": {
+          "type": "string",
+          "description": "Target path of the file to create"
+        },
+        "content": {
+          "type": "string",
+          "description": "Full content of the new file"
+        }
+      },
+      "required": ["kind", "path", "content"],
+      "additionalProperties": false
+    },
+
+    "edit_operation": {
+      "type": "object",
+      "description": "Edit an existing file, carried as a unified-diff string",
+      "properties": {
+        "kind": { "const": "edit" },
+        "path": {
+          "type": "string",
+          "description": "Target path of the file to edit"
+        },
+        "diff": {
+          "type": "string",
+          "description": "Unified diff describing the edit"
+        }
+      },
+      "required": ["kind", "path", "diff"],
+      "additionalProperties": false
+    },
+
+    "config_operation": {
+      "type": "object",
+      "description": "A structured set/merge over a key path in domain.toml (never a text diff)",
+      "properties": {
+        "kind": { "const": "config" },
+        "key_path": {
+          "type": "array",
+          "description": "Ordered key segments identifying the target, e.g. [\"databases\", \"default\", \"provider\"]",
+          "items": { "type": "string" }
+        },
+        "value": {
+          "description": "The JSON value to set or merge"
+        },
+        "operation": {
+          "type": "string",
+          "enum": ["set", "merge"],
+          "description": "Whether to set (replace) or merge the value; optional, defaults to set"
+        }
+      },
+      "required": ["kind", "key_path", "value"],
+      "additionalProperties": false
+    }
+  }
+}
