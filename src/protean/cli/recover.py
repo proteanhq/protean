@@ -36,8 +36,6 @@ from protean.cli.result import (
 if TYPE_CHECKING:
     from protean.server.subscription_status import SubscriptionStatus
 
-app = typer.Typer(no_args_is_help=True)
-
 
 def _parse_position(position: str | None) -> int | None:
     """Parse a stored position string to an int, or ``None`` if it cannot.
@@ -93,7 +91,6 @@ def _verdict(status: SubscriptionStatus) -> str:
     return "beyond_head" if beyond else "consistent"
 
 
-@app.command()
 @handle_cli_exceptions("recover")
 def recover(
     ctx: typer.Context,
