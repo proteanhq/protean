@@ -26,6 +26,8 @@ from protean.scaffold.manifest import (
 )
 from tests.shared import isolated_filesystem
 
+pytestmark = pytest.mark.no_test_domain
+
 runner = CliRunner()
 
 DOMAIN_PY_TEMPLATE = '''"""Domain composition root."""
@@ -351,6 +353,7 @@ def test_hand_edited_manifest_reads_as_drift_and_disk_wins(tmp_path: Path) -> No
 
     # Hand-edit the stored manifest so every field disagrees with disk.
     tampered = json.loads(manifest_path.read_text(encoding="utf-8"))
+    tampered["manifest_version"] = "0.9"
     tampered["package_name"] = "hacked"
     tampered["domain_name"] = "Hacked"
     tampered["layout"]["composition_root"] = "src/hacked/domain.py"
@@ -365,6 +368,8 @@ def test_hand_edited_manifest_reads_as_drift_and_disk_wins(tmp_path: Path) -> No
     by_field = {d.field: d for d in result.divergences}
     # Every tampered field is reported, and the recomputed value equals disk,
     # proving the stored file is never honoured over the code.
+    assert by_field["manifest_version"].stored == "0.9"
+    assert by_field["manifest_version"].recomputed == MANIFEST_VERSION
     assert by_field["package_name"].stored == "hacked"
     assert by_field["package_name"].recomputed == "myproj"
     assert by_field["domain_name"].stored == "Hacked"
@@ -372,6 +377,25 @@ def test_hand_edited_manifest_reads_as_drift_and_disk_wins(tmp_path: Path) -> No
     assert by_field["layout.composition_root"].recomputed == "src/myproj/domain.py"
     # The check changed nothing on disk.
     assert manifest_path.read_bytes() == before
+
+
+def test_stale_manifest_version_alone_reads_as_drift(tmp_path: Path) -> None:
+    _make_project(tmp_path, package="myproj", domain="myproj")
+    manifest_path = write_manifest(tmp_path)
+
+    # Only the schema version is stale; every other field still matches disk.
+    tampered = json.loads(manifest_path.read_text(encoding="utf-8"))
+    tampered["manifest_version"] = "0.9"
+    manifest_path.write_text(
+        json.dumps(tampered, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    result = check_manifest_drift(tmp_path)
+
+    assert result.status == ManifestDriftStatus.DRIFTED
+    assert [d.field for d in result.divergences] == ["manifest_version"]
+    assert result.divergences[0].stored == "0.9"
+    assert result.divergences[0].recomputed == MANIFEST_VERSION
 
 
 def test_non_literal_domain_name_reads_as_drift_against_stored_literal(

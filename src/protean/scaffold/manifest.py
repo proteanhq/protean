@@ -307,9 +307,11 @@ def check_manifest_drift(
     """Compare the stored manifest against what is recomputed from disk.
 
     Loads ``<project_root>/<protean_dir>/project.json``, recomputes the manifest
-    from disk, and compares field by field. Disk is always authoritative: the
-    stored file is never trusted to override the code, so a hand-edited manifest
-    that disagrees with disk is reported as drift. Mutates nothing.
+    from disk, and compares field by field, ``manifest_version`` included, so a
+    manifest written under an older schema reads as drift. Disk is always
+    authoritative: the stored file is never trusted to override the code, so a
+    hand-edited manifest that disagrees with disk is reported as drift. Mutates
+    nothing.
 
     Returns a :class:`ManifestDriftResult` with status ``NO_MANIFEST`` when no
     stored file exists, ``MATCH`` when every field agrees, or ``DRIFTED`` with a
@@ -328,6 +330,11 @@ def check_manifest_drift(
     recomputed = reconcile_manifest(root)
 
     fields: list[tuple[str, str | None, str | None]] = [
+        (
+            "manifest_version",
+            stored_manifest.manifest_version,
+            recomputed.manifest_version,
+        ),
         ("package_name", stored_manifest.package_name, recomputed.package_name),
         ("domain_name", stored_manifest.domain_name, recomputed.domain_name),
         (
