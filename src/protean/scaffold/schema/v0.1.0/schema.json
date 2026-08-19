@@ -7,8 +7,8 @@
   "type": "object",
   "properties": {
     "plan_version": {
-      "type": "string",
-      "description": "Semantic version of the ChangePlan format"
+      "const": "0.1.0",
+      "description": "Semantic version of the ChangePlan format. Pinned so a plan written for a different version fails validation here instead of being read against the wrong schema."
     },
     "description": {
       "type": "string",

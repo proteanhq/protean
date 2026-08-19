@@ -47,10 +47,14 @@ The plan follows the existing serialization house style, matching `protean.ir`: 
 frozen dataclass serialized by an explicit `to_dict`/`from_dict` JSON dump, not
 pydantic (pydantic is reserved for domain elements). The serialized form carries a
 `plan_version` marker, and a versioned JSON Schema lives at
-`schema/v<version>/schema.json`, starting at `0.1.0`. `from_dict` rejects a
-`plan_version` it does not understand, an unknown operation `kind`, and any
-missing required field with a clear `ValueError`, the same way `load_config` and
-`load_stored_ir` reject malformed input.
+`schema/v<version>/schema.json`, starting at `0.1.0`. The schema pins
+`plan_version` to its own version with `const`, so validating a plan against the
+wrong schema fails there too, not just in `from_dict`. `from_dict` rejects a
+`plan_version` it does not understand, a non-object entry in `operations`, an
+unknown operation `kind`, and any missing or wrongly-typed required field with a
+clear `ValueError`, the same way `load_config` and `load_stored_ir` reject
+malformed input. `to_json` sorts its keys, so the same plan always serializes to
+the same bytes and previews and stored plans diff cleanly.
 
 Preview is read-only and separate from an operation's representation. A
 `render_preview(plan)` function builds a human-readable summary as pure strings: a
@@ -69,8 +73,9 @@ that writes `domain.toml` lands with the config applier, not now.
 - The preview is safe to run anywhere: it is provably read-only, so it needs no
   confirmation and no rollback.
 - Versioning the schema means an old build meeting a newer plan fails loudly
-  instead of silently misapplying it. The cost is that `plan_version` and the
-  JSON Schema must be bumped together whenever the shape changes.
+  instead of silently misapplying it. The cost is that `PLAN_VERSION`, the schema
+  directory name, and the schema's `plan_version` const must all be bumped
+  together whenever the shape changes.
 - Keeping config structured means the applier works against parsed config, not
   text, so a reformatted or commented `domain.toml` cannot break a config edit.
   The cost is that config is not one uniform "diff" with file edits; a renderer

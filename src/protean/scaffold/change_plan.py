@@ -132,11 +132,20 @@ class ConfigOperation:
 Operation = CreateFileOperation | EditFileOperation | ConfigOperation
 
 
-def _operation_from_dict(data: dict[str, Any]) -> Operation:
+def _operation_from_dict(data: Any) -> Operation:
     """Reconstruct one operation from its serialized dict, dispatching on ``kind``.
 
-    Raises :exc:`ValueError` on an unknown ``kind`` or a missing required field.
+    *data* is typed ``Any`` because it arrives straight off ``json.loads``. An
+    entry that is not an object at all is rejected here with a clear
+    :exc:`ValueError` rather than blowing up as a :exc:`TypeError`.
+
+    Raises :exc:`ValueError` on a non-object entry, an unknown ``kind``, or a
+    missing required field.
     """
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Each entry in 'operations' must be an object, got {type(data).__name__}"
+        )
     if "kind" not in data:
         raise ValueError("Operation is missing its 'kind' discriminator")
     kind = data["kind"]
@@ -220,8 +229,14 @@ class ChangePlan:
         return result
 
     def to_json(self, *, indent: int | None = None) -> str:
-        """Serialize to a JSON string."""
-        return json.dumps(self.to_dict(), indent=indent)
+        """Serialize to a JSON string with keys sorted.
+
+        Plans are meant to be previewed and diffed, so the output has to be
+        stable: the same plan always serializes to the same bytes, whatever
+        order the producer happened to build its dicts in. This follows the IR
+        serializers, which all emit with ``sort_keys=True``.
+        """
+        return json.dumps(self.to_dict(), indent=indent, sort_keys=True)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChangePlan:

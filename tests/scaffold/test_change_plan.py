@@ -1,7 +1,7 @@
 """Tests for the ChangePlan type: JSON round-trip, schema, and loud errors."""
 
 import pytest
-from jsonschema import validate
+from jsonschema import ValidationError, validate
 
 from protean.scaffold import (
     PLAN_VERSION,
@@ -102,6 +102,33 @@ def test_empty_plan_round_trips():
     assert ChangePlan.from_json(plan.to_json()) == plan
 
 
+def test_to_json_emits_keys_in_sorted_order():
+    # Plans are previewed and diffed, so serialization must be byte-stable
+    # regardless of the order a producer inserted keys.
+    plan = ChangePlan(
+        operations=(
+            ConfigOperation(key_path=("a",), value={"z": 1, "a": 2}, operation="merge"),
+        ),
+        description="d",
+    )
+
+    payload = plan.to_json()
+
+    assert payload.index('"description"') < payload.index('"operations"')
+    assert payload.index('"operations"') < payload.index('"plan_version"')
+    assert '{"a": 2, "z": 1}' in payload
+
+
+def test_to_json_is_stable_across_differently_ordered_equal_plans():
+    left = ChangePlan(
+        operations=(ConfigOperation(key_path=("a",), value={"x": 1, "y": 2}),)
+    )
+    right = ChangePlan(
+        operations=(ConfigOperation(key_path=("a",), value={"y": 2, "x": 1}),)
+    )
+    assert left.to_json() == right.to_json()
+
+
 def test_description_is_omitted_when_absent():
     plan = ChangePlan(operations=(CreateFileOperation(path="a.py", content="x"),))
     assert "description" not in plan.to_dict()
@@ -148,6 +175,20 @@ def test_schema_version_matches_plan_version():
     assert SCHEMA_VERSION == PLAN_VERSION
 
 
+def test_schema_pins_plan_version_to_the_supported_version(schema):
+    # The schema is versioned by path, so the const has to track PLAN_VERSION.
+    assert schema["properties"]["plan_version"]["const"] == PLAN_VERSION
+
+
+def test_schema_rejects_a_mismatched_plan_version(schema):
+    # A plan written for another version must fail validation here rather than
+    # being read against the wrong schema.
+    data = _sample_plan().to_dict()
+    data["plan_version"] = "9.9.9"
+    with pytest.raises(ValidationError):
+        validate(instance=data, schema=schema)
+
+
 def test_serialized_plan_validates_against_the_schema(schema):
     validate(instance=_sample_plan().to_dict(), schema=schema)
 
@@ -175,6 +216,23 @@ def test_each_op_kind_validates_against_the_schema(operation, schema):
 def test_from_dict_rejects_an_unknown_kind():
     data = {"plan_version": PLAN_VERSION, "operations": [{"kind": "rename"}]}
     with pytest.raises(ValueError, match="Unknown operation kind"):
+        ChangePlan.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    ("entry", "type_name"),
+    [
+        pytest.param(7, "int", id="int"),
+        pytest.param("create", "str", id="str"),
+        pytest.param(["create", "a.py"], "list", id="list"),
+        pytest.param(None, "NoneType", id="null"),
+    ],
+)
+def test_from_dict_rejects_a_non_object_operation_entry(entry, type_name):
+    # from_dict promises ValueError on malformed input; a non-object entry must
+    # not leak a TypeError from the discriminator lookup.
+    data = {"plan_version": PLAN_VERSION, "operations": [entry]}
+    with pytest.raises(ValueError, match=f"must be an object, got {type_name}"):
         ChangePlan.from_dict(data)
 
 

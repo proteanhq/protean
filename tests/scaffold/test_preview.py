@@ -52,6 +52,22 @@ def test_preview_renders_a_config_op_as_key_path_value_with_mode():
     assert 'databases.default.provider = "postgresql"  (merge)' in text
 
 
+def test_preview_sorts_the_keys_of_a_dict_config_value():
+    # Previews get diffed, so a dict value must render the same way whatever
+    # order the producer built it in.
+    def render(value):
+        return render_preview(
+            ChangePlan(
+                operations=(ConfigOperation(key_path=("databases",), value=value),)
+            )
+        )
+
+    text = render({"provider": "postgresql", "database_uri": "postgresql://"})
+
+    assert '{"database_uri": "postgresql://", "provider": "postgresql"}' in text
+    assert text == render({"database_uri": "postgresql://", "provider": "postgresql"})
+
+
 def test_preview_shows_create_content_and_line_count():
     text = render_preview(
         ChangePlan(

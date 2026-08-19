@@ -70,5 +70,7 @@ def _render_edit(index: int, operation: EditFileOperation) -> list[str]:
 
 def _render_config(index: int, operation: ConfigOperation) -> list[str]:
     key = ".".join(operation.key_path)
-    value = json.dumps(operation.value)
+    # sort_keys so a dict-valued config op renders the same way every time,
+    # whatever order the producer built it in. Previews get diffed.
+    value = json.dumps(operation.value, sort_keys=True)
     return [f"{index}. config {key} = {value}  ({operation.operation})"]
