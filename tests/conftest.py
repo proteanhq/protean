@@ -318,7 +318,7 @@ def db(test_domain):
 
 
 @pytest.fixture(autouse=True)
-def run_around_tests(test_domain):
+def run_around_tests(test_domain, request):
     yield
 
     if test_domain:
@@ -341,7 +341,12 @@ def run_around_tests(test_domain):
 
         if test_domain.event_store.store:
             try:
-                test_domain.event_store.store._data_reset()
+                # ``_isolate_message_db`` already truncates the shared Message-DB
+                # store before each ``message_db`` test, so skip the redundant
+                # teardown truncate for those and only release the pool. Other
+                # stores (memory) still reset here.
+                if "message_db" not in request.keywords:
+                    test_domain.event_store.store._data_reset()
             finally:
                 # Always close event store connections to prevent pool exhaustion,
                 # even if _data_reset() fails
