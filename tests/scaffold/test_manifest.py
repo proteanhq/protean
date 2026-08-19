@@ -215,6 +215,21 @@ def test_reconcile_prefers_module_level_domain_over_nested_one(tmp_path: Path) -
     assert reconcile_manifest(tmp_path).domain_name == "Real"
 
 
+def test_reconcile_takes_the_first_of_two_module_level_domains(tmp_path: Path) -> None:
+    # Two module-level Domain(name=...) assignments: the one that appears first
+    # in the source wins, and the result does not depend on traversal order.
+    _make_project(
+        tmp_path,
+        domain_py=(
+            "from protean.domain import Domain\n\n"
+            'myproj = Domain(name="First")\n'
+            'other = Domain(name="Second")\n'
+        ),
+    )
+
+    assert reconcile_manifest(tmp_path).domain_name == "First"
+
+
 def test_reconcile_derives_domain_name_from_annotated_assignment(
     tmp_path: Path,
 ) -> None:

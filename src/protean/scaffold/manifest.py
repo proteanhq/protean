@@ -197,7 +197,8 @@ def _derive_domain_name(domain_file: Path) -> str | None:
     composition root, so it is never read as the domain name.
 
     Returns the string-literal ``name`` of the first such assignment that
-    carries one. Returns ``None`` when the file has no module-level
+    carries one, walking ``tree.body`` so "first" means first in source order.
+    Returns ``None`` when the file has no module-level
     ``Domain(...)`` assignment, when the ``name`` is not a string literal
     (computed or aliased), or when the file cannot be parsed. It never raises,
     so an unusual composition root degrades to "underivable" rather than
