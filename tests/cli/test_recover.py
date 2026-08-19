@@ -14,6 +14,11 @@ from protean.server.subscription_status import SubscriptionStatus
 from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
+# These stub ``derive_domain``/``collect_subscription_statuses`` and never touch
+# a real domain; the autouse ``test_domain`` fixture would build one per test for
+# nothing.
+pytestmark = pytest.mark.no_test_domain
+
 runner = CliRunner()
 
 
