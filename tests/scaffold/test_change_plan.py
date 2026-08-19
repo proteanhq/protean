@@ -202,6 +202,46 @@ def test_from_dict_rejects_an_edit_missing_diff():
         ChangePlan.from_dict(data)
 
 
+def test_from_dict_rejects_a_config_missing_key_path():
+    data = {
+        "plan_version": PLAN_VERSION,
+        "operations": [{"kind": "config", "value": 1, "operation": "set"}],
+    }
+    with pytest.raises(ValueError, match="missing required field 'key_path'"):
+        ChangePlan.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    ("op", "field"),
+    [
+        ({"kind": "create", "path": "a.py", "content": None}, "content"),
+        ({"kind": "create", "path": 123, "content": "x"}, "path"),
+        ({"kind": "edit", "path": "a.py", "diff": None}, "diff"),
+    ],
+)
+def test_from_dict_rejects_a_non_string_field(op, field):
+    # from_dict is the loud gate: a value the schema marks type:string but that
+    # arrives as null/int is rejected here, not surfaced later as an
+    # AttributeError in the preview renderer.
+    data = {"plan_version": PLAN_VERSION, "operations": [op]}
+    with pytest.raises(ValueError, match=f"field {field!r} must be a string"):
+        ChangePlan.from_dict(data)
+
+
+def test_config_operation_is_optional_in_schema_and_from_dict(schema):
+    # The schema and from_dict must agree: operation is optional (it has a "set"
+    # default in the dataclass). A config op with no operation validates against
+    # the schema AND parses, defaulting to "set".
+    data = {
+        "plan_version": PLAN_VERSION,
+        "operations": [{"kind": "config", "key_path": ["a"], "value": 1}],
+    }
+    validate(instance=data, schema=schema)
+    restored = ChangePlan.from_dict(data).operations[0]
+    assert isinstance(restored, ConfigOperation)
+    assert restored.operation == "set"
+
+
 def test_from_dict_rejects_a_config_missing_value():
     data = {
         "plan_version": PLAN_VERSION,

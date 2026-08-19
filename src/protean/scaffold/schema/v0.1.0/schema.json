@@ -86,10 +86,10 @@
         "operation": {
           "type": "string",
           "enum": ["set", "merge"],
-          "description": "Whether to set (replace) or merge the value"
+          "description": "Whether to set (replace) or merge the value; optional, defaults to set"
         }
       },
-      "required": ["kind", "key_path", "value", "operation"],
+      "required": ["kind", "key_path", "value"],
       "additionalProperties": false
     }
   }

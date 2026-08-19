@@ -51,16 +51,14 @@ def _render_operation(index: int, operation: Operation) -> list[str]:
         return _render_create(index, operation)
     if isinstance(operation, EditFileOperation):
         return _render_edit(index, operation)
-    if isinstance(operation, ConfigOperation):
-        return _render_config(index, operation)
-    # The union is closed; a new variant must add a branch here.
-    raise ValueError(f"Cannot render unknown operation: {operation!r}")
+    # The union is closed; mypy narrows the remainder to ConfigOperation, so a new
+    # variant must add a branch above or the type check fails.
+    return _render_config(index, operation)
 
 
 def _render_create(index: int, operation: CreateFileOperation) -> list[str]:
-    line_count = operation.content.count("\n") + 1 if operation.content else 0
-    header = f"{index}. create {operation.path}  ({line_count} lines)"
     body = [f"    {line}" for line in operation.content.splitlines()]
+    header = f"{index}. create {operation.path}  ({len(body)} lines)"
     return [header, *body]
 
 

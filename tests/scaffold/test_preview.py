@@ -63,6 +63,15 @@ def test_preview_shows_create_content_and_line_count():
     assert "three" in text
 
 
+def test_preview_create_line_count_ignores_a_trailing_newline():
+    # A full-content file normally ends in a trailing newline. The reported count
+    # must match the rendered body lines: "a\nb\n" is two lines, not three.
+    text = render_preview(
+        ChangePlan(operations=(CreateFileOperation(path="a.py", content="a\nb\n"),))
+    )
+    assert "create a.py  (2 lines)" in text
+
+
 def test_preview_of_an_empty_plan_renders_without_error():
     text = render_preview(ChangePlan())
     assert "(no operations)" in text

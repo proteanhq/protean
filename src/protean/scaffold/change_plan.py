@@ -143,16 +143,18 @@ def _operation_from_dict(data: dict[str, Any]) -> Operation:
 
     if kind == _KIND_CREATE:
         return CreateFileOperation(
-            path=_require(data, "path", kind),
-            content=_require(data, "content", kind),
+            path=_require_str(data, "path", kind),
+            content=_require_str(data, "content", kind),
         )
     if kind == _KIND_EDIT:
         return EditFileOperation(
-            path=_require(data, "path", kind),
-            diff=_require(data, "diff", kind),
+            path=_require_str(data, "path", kind),
+            diff=_require_str(data, "diff", kind),
         )
     if kind == _KIND_CONFIG:
-        key_path = _require(data, "key_path", kind)
+        if "key_path" not in data:
+            raise ValueError("config operation is missing required field 'key_path'")
+        key_path = data["key_path"]
         if not isinstance(key_path, list) or not all(
             isinstance(seg, str) for seg in key_path
         ):
@@ -172,11 +174,23 @@ def _operation_from_dict(data: dict[str, Any]) -> Operation:
     raise ValueError(f"Unknown operation kind: {kind!r}")
 
 
-def _require(data: dict[str, Any], key: str, kind: str) -> Any:
-    """Return ``data[key]`` or raise a clear :exc:`ValueError` naming *kind*."""
+def _require_str(data: dict[str, Any], key: str, kind: str) -> str:
+    """Return ``data[key]`` as a string, or raise a clear :exc:`ValueError`.
+
+    Checks both presence and type, so ``from_dict`` is at least as strict as the
+    JSON Schema, which marks ``path``/``content``/``diff`` as ``type: string``. A
+    ``None`` or numeric value is rejected here rather than surfacing later as an
+    ``AttributeError`` in the preview renderer.
+    """
     if key not in data:
         raise ValueError(f"{kind!r} operation is missing required field {key!r}")
-    return data[key]
+    value = data[key]
+    if not isinstance(value, str):
+        raise ValueError(
+            f"{kind!r} operation field {key!r} must be a string, "
+            f"got {type(value).__name__}"
+        )
+    return value
 
 
 @dataclass(frozen=True)
