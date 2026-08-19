@@ -74,23 +74,29 @@ def _subprocess_env(project: Path) -> dict[str, str]:
     return env
 
 
-_INIT_AND_EXERCISE = (
-    "import sys; sys.path.insert(0, 'src')\n"
-    "from scaffolded.domain import scaffolded as domain\n"
-    "domain.init()\n"
-    "names = sorted(domain.registry._elements_by_name.keys())\n"
-    "print('NAMES:' + ','.join(names))\n"
-    # Drive the slice end to end: process the command through the generated
-    # handler (which calls the generated `create` factory), then fetch the
-    # persisted aggregate back. command_processing is sync in the scaffold, so
-    # process runs the handler inline and returns the aggregate id.
-    "from scaffolded.order.commands import CreateOrder\n"
-    "from scaffolded.order.aggregate import Order\n"
-    "with domain.domain_context():\n"
-    "    order_id = domain.process(CreateOrder(name='Widget'))\n"
-    "    fetched = domain.repository_for(Order).get(order_id)\n"
-    "    print('PERSISTED:' + fetched.name)\n"
-)
+def _init_and_exercise(class_name: str, slug: str) -> str:
+    """The script the traversal test runs inside the generated project: init the
+    domain, print the registry, then drive the planned slice end to end.
+
+    Takes the slice's class name and slug so a multi-word aggregate is exercised
+    through its own module path (``order_item/``) and class (``OrderItem``)."""
+    return (
+        "import sys; sys.path.insert(0, 'src')\n"
+        "from scaffolded.domain import scaffolded as domain\n"
+        "domain.init()\n"
+        "names = sorted(domain.registry._elements_by_name.keys())\n"
+        "print('NAMES:' + ','.join(names))\n"
+        # Drive the slice end to end: process the command through the generated
+        # handler (which calls the generated `create` factory), then fetch the
+        # persisted aggregate back. command_processing is sync in the scaffold, so
+        # process runs the handler inline and returns the aggregate id.
+        f"from scaffolded.{slug}.commands import Create{class_name}\n"
+        f"from scaffolded.{slug}.aggregate import {class_name}\n"
+        "with domain.domain_context():\n"
+        f"    new_id = domain.process(Create{class_name}(name='Widget'))\n"
+        f"    fetched = domain.repository_for({class_name}).get(new_id)\n"
+        "    print('PERSISTED:' + fetched.name)\n"
+    )
 
 
 def test_add_previews_the_five_create_operations(tmp_path):
@@ -126,7 +132,18 @@ def test_add_writes_nothing(tmp_path):
     assert before == after, "protean add must not touch the project tree"
 
 
-def test_planned_slice_loads_and_registers_under_traversal(tmp_path):
+@pytest.mark.parametrize(
+    ("name", "class_name", "slug"),
+    [
+        ("Order", "Order", "order"),
+        # A multi-word name: the slice lands in `order_item/` and the traversal
+        # has to discover it there under the derived class names.
+        ("order_item", "OrderItem", "order_item"),
+    ],
+)
+def test_planned_slice_loads_and_registers_under_traversal(
+    tmp_path, name, class_name, slug
+):
     """Acceptance #3: the planned files register when the domain inits with
     traversal on, and the slice actually works. Materialize the plan, init the
     real domain, require all four elements in the registry by name, then process a
@@ -137,11 +154,11 @@ def test_planned_slice_loads_and_registers_under_traversal(tmp_path):
     command exercises the factory and the handler body, so those regressions fail
     here."""
     project = _generate(tmp_path)
-    plan = plan_add_slice(str(project), "aggregate", "Order")
+    plan = plan_add_slice(str(project), "aggregate", name)
     _materialize(project, plan)
 
     completed = subprocess.run(
-        [sys.executable, "-c", _INIT_AND_EXERCISE],
+        [sys.executable, "-c", _init_and_exercise(class_name, slug)],
         cwd=project,
         env=_subprocess_env(project),
         capture_output=True,
@@ -157,7 +174,12 @@ def test_planned_slice_loads_and_registers_under_traversal(tmp_path):
         "",
     )
     registered = set(line[len("NAMES:") :].split(","))
-    for element in ("Order", "CreateOrder", "OrderCreated", "OrderCommandHandler"):
+    for element in (
+        class_name,
+        f"Create{class_name}",
+        f"{class_name}Created",
+        f"{class_name}CommandHandler",
+    ):
         assert element in registered, (
             f"{element} did not register under traversal; registered: "
             f"{sorted(registered)}"

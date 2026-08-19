@@ -51,15 +51,17 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
 
     *project_path* is the project root (the directory that holds ``src/``).
     *element_type* must be ``"aggregate"`` for now. *name* is the aggregate name
-    (e.g. ``"Order"``); it must be a valid Python identifier.
+    (e.g. ``"Order"``); it must be a valid Python identifier. It is normalized:
+    the class name is the PascalCase form and the slug the snake_case one, so
+    ``OrderItem``, ``orderItem`` and ``order_item`` all plan the same slice.
 
     Returns a plan whose operations are all :class:`CreateFileOperation`\\ s at the
     canonical ADR-0030 paths under ``src/<package>/<slug>/``. Touches no files.
 
     Raises :class:`AddPlanError` on an unsupported element type, a name that is
-    not a valid identifier, or a project the planner cannot resolve (no
-    ``src/<package>/domain.py``, more than one candidate, or a ``domain.py`` that
-    does not construct a ``Domain``).
+    not a valid identifier or that derives no valid class name and slug, or a
+    project the planner cannot resolve (no ``src/<package>/domain.py``, more than
+    one candidate, or a ``domain.py`` that does not construct a ``Domain``).
     """
     normalized_type = element_type.lower()
     if normalized_type not in SUPPORTED_ELEMENT_TYPES:
@@ -77,9 +79,26 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
 
     # Class names follow the Example slice: Order / CreateOrder / OrderCreated /
     # OrderCommandHandler. The slug (the directory and the id-field prefix) is the
-    # name lower-cased, so ``Order`` lands in ``order/`` (ADR-0030).
-    class_name = name[:1].upper() + name[1:]
-    slug = name.lower()
+    # snake_case form, so ``Order`` lands in ``order/`` (ADR-0030) and
+    # ``OrderItem`` in ``order_item/``. Both are derived from the same word split,
+    # so ``order_item``, ``orderItem`` and ``OrderItem`` all plan the same slice.
+    words = _split_words(name)
+    if not words:
+        raise AddPlanError(
+            f"Invalid name {name!r}: an element name must contain at least one "
+            "letter or digit."
+        )
+    class_name = "".join(word[:1].upper() + word[1:] for word in words)
+    slug = "_".join(word.lower() for word in words)
+
+    # A name like ``_2fa`` is a valid identifier but its words are not: the class
+    # would be ``2fa`` and the variable ``2fa``, neither of which compiles.
+    if not class_name.isidentifier() or not slug.isidentifier():
+        raise AddPlanError(
+            f"Invalid name {name!r}: it derives the class {class_name!r} and the "
+            f"module variable {slug!r}, which are not valid Python names. Start "
+            "each word with a letter or an underscore."
+        )
 
     # A Python keyword is a valid identifier to ``str.isidentifier`` but cannot be
     # a class name or a variable name, so it would emit code that does not compile
@@ -114,6 +133,36 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
             f"(aggregate, command, event, command handler)"
         ),
     )
+
+
+def _split_words(name: str) -> list[str]:
+    """Split an identifier into the words its generated names are built from.
+
+    Underscores separate words, and so does a case change, so ``order_item``,
+    ``orderItem`` and ``OrderItem`` all split into two words and render the same
+    class ``OrderItem`` and the same slug ``order_item``. A run of capitals stays
+    one word except for the last capital, which starts the next one (``XMLHttp``
+    gives ``["XML", "Http"]``). The rest of each word keeps its original casing,
+    which is what keeps ``HTTPServer`` from becoming ``HttpServer``.
+    """
+    words: list[str] = []
+    current = ""
+    for index, char in enumerate(name):
+        if char == "_":
+            if current:
+                words.append(current)
+                current = ""
+            continue
+        if char.isupper() and current:
+            follows_lower = not current[-1].isupper()
+            starts_word = index + 1 < len(name) and name[index + 1].islower()
+            if follows_lower or starts_word:
+                words.append(current)
+                current = ""
+        current += char
+    if current:
+        words.append(current)
+    return words
 
 
 def _resolve_project(project_path: str) -> tuple[str, str]:

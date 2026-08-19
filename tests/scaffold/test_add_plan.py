@@ -140,6 +140,85 @@ def test_lowercase_name_still_yields_pascal_case_class_and_lowercase_slug(tmp_pa
     assert "class Order:" in _content_for(plan, "aggregate.py")
 
 
+@pytest.mark.parametrize("name", ["order_item", "orderItem", "OrderItem"])
+def test_multi_word_name_yields_pascal_case_class_and_snake_case_slug(tmp_path, name):
+    """A multi-word name splits into words, whichever way it is written. The class
+    is the PascalCase join and the slug the snake_case one, so ``order_item`` does
+    not become ``Order_item`` and ``OrderItem`` does not land in ``orderitem/``."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    plan = plan_add_slice(str(project), "aggregate", name)
+
+    paths = [op.path for op in plan.operations]
+    assert paths == [
+        "src/myproj/order_item/__init__.py",
+        "src/myproj/order_item/aggregate.py",
+        "src/myproj/order_item/commands.py",
+        "src/myproj/order_item/events.py",
+        "src/myproj/order_item/command_handlers.py",
+    ]
+
+    assert "class OrderItem:" in _content_for(plan, "aggregate.py")
+    assert "class CreateOrderItem:" in _content_for(plan, "commands.py")
+    assert "class OrderItemCreated:" in _content_for(plan, "events.py")
+    assert "class OrderItemCommandHandler:" in _content_for(plan, "command_handlers.py")
+
+    # The slug is the variable name and the id-field prefix inside the slice.
+    assert "order_item = cls(name=name)" in _content_for(plan, "aggregate.py")
+    assert "order_item_id: str" in _content_for(plan, "events.py")
+    assert "def handle_create_order_item(" in _content_for(plan, "command_handlers.py")
+
+    for op in plan.operations:
+        compile(op.content, op.path, "exec")
+
+
+def test_all_spellings_of_a_multi_word_name_plan_the_same_slice(tmp_path):
+    """The three spellings are the same slice, file for file, so re-running ``add``
+    with a different spelling cannot plan a second copy of it."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    plans = [
+        plan_add_slice(str(project), "aggregate", name)
+        for name in ("order_item", "orderItem", "OrderItem")
+    ]
+
+    rendered = [[(op.path, op.content) for op in plan.operations] for plan in plans]
+    assert rendered[0] == rendered[1] == rendered[2]
+    assert {plan.description for plan in plans} == {plans[0].description}
+
+
+def test_acronym_survives_into_the_class_name(tmp_path):
+    """A run of capitals is one word, so ``HTTPServer`` stays ``HTTPServer`` and
+    only its slug is split."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    plan = plan_add_slice(str(project), "aggregate", "HTTPServer")
+
+    assert plan.operations[0].path == "src/myproj/http_server/__init__.py"
+    assert "class HTTPServer:" in _content_for(plan, "aggregate.py")
+
+
+def test_name_with_no_words_raises(tmp_path):
+    """``_`` is a valid identifier but has no words, so it derives no class name."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(project), "aggregate", "_")
+
+    assert "letter or digit" in str(exc_info.value)
+
+
+def test_name_whose_words_are_not_identifiers_raises(tmp_path):
+    """``_2fa`` is a valid identifier, but dropping the leading underscore leaves
+    ``2fa``, which cannot be a class or a variable name."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(project), "aggregate", "_2fa")
+
+    assert "2fa" in str(exc_info.value)
+
+
 def test_domain_variable_is_read_from_domain_py_not_assumed(tmp_path):
     """When ``domain.py`` binds a variable that is not the package name, the
     decorators and the import use that variable. Proves the AST resolution and
@@ -204,6 +283,7 @@ def test_invalid_name_raises(tmp_path):
         "None",  # class `None` -> `class None:` does not compile
         "True",
         "none",  # PascalCase is `None`, still a keyword
+        "class_",  # a trailing underscore is not a word, so the slug is `class`
     ],
 )
 def test_keyword_name_raises(tmp_path, name):
