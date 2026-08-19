@@ -18,6 +18,7 @@ from protean.scaffold.manifest import (
     ManifestDriftStatus,
     ProjectLayout,
     ProjectManifest,
+    _derive_domain_name,
     check_manifest_drift,
     load_stored_manifest,
     reconcile_manifest,
@@ -121,6 +122,78 @@ def test_reconcile_raises_when_two_composition_roots(tmp_path: Path) -> None:
         reconcile_manifest(tmp_path)
 
 
+def test_reconcile_derives_domain_name_from_attribute_call(tmp_path: Path) -> None:
+    # Domain called as an attribute: protean.Domain(name="X").
+    _make_project(
+        tmp_path,
+        domain_py='import protean\n\nmyproj = protean.Domain(name="Attributed")\n',
+    )
+
+    assert reconcile_manifest(tmp_path).domain_name == "Attributed"
+
+
+def test_reconcile_skips_calls_that_are_not_domain(tmp_path: Path) -> None:
+    # A non-Domain call precedes the real one; it must be skipped, not matched.
+    _make_project(
+        tmp_path,
+        domain_py=(
+            "from protean.domain import Domain\n\n"
+            'print("booting")\n'
+            'myproj = Domain(name="Skipped")\n'
+        ),
+    )
+
+    assert reconcile_manifest(tmp_path).domain_name == "Skipped"
+
+
+def test_reconcile_ignores_domain_call_on_computed_callable(tmp_path: Path) -> None:
+    # The only Domain call is reached through a subscript, so its callable is
+    # neither a Name nor an Attribute node. domain_name degrades to None.
+    _make_project(
+        tmp_path,
+        domain_py=(
+            "from protean.domain import Domain\n\n"
+            "builders = [Domain]\n"
+            'myproj = builders[0](name="Computed")\n'
+        ),
+    )
+
+    manifest = reconcile_manifest(tmp_path)
+
+    assert manifest.domain_name is None
+    assert manifest.package_name == "myproj"
+
+
+def test_reconcile_skips_domain_keyword_that_is_not_name(tmp_path: Path) -> None:
+    # A non-name keyword precedes name=; the loop must skip it and still resolve.
+    _make_project(
+        tmp_path,
+        domain_py=(
+            "from protean.domain import Domain\n\n"
+            'myproj = Domain(identity_type="uuid", name="Named")\n'
+        ),
+    )
+
+    assert reconcile_manifest(tmp_path).domain_name == "Named"
+
+
+def test_reconcile_domain_name_underivable_on_syntax_error(tmp_path: Path) -> None:
+    _make_project(
+        tmp_path,
+        domain_py="from protean.domain import Domain\n\nmyproj = Domain(name=\n",
+    )
+
+    manifest = reconcile_manifest(tmp_path)
+
+    assert manifest.domain_name is None
+    assert manifest.package_name == "myproj"
+
+
+def test_derive_domain_name_returns_none_for_unreadable_file(tmp_path: Path) -> None:
+    # A path that cannot be read (here, missing) degrades to None, never raises.
+    assert _derive_domain_name(tmp_path / "nonexistent.py") is None
+
+
 # --------------------------------------------------------------------------- #
 # write_manifest / load_stored_manifest — persist and round-trip              #
 # --------------------------------------------------------------------------- #
@@ -200,6 +273,17 @@ def test_load_stored_manifest_invalid_json_raises(tmp_path: Path) -> None:
     (protean_dir / "project.json").write_text("{not json", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Invalid JSON"):
+        load_stored_manifest(protean_dir)
+
+
+def test_load_stored_manifest_unreadable_raises(tmp_path: Path) -> None:
+    protean_dir = tmp_path / ".protean"
+    protean_dir.mkdir()
+    # A directory stands where project.json is expected: it exists but reading it
+    # raises OSError, which must surface as a ValueError.
+    (protean_dir / "project.json").mkdir()
+
+    with pytest.raises(ValueError, match="Could not read"):
         load_stored_manifest(protean_dir)
 
 
