@@ -41,6 +41,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 __all__ = [
+    "OWNERSHIP_GENERATED",
+    "OWNERSHIP_HAND_OWNED",
     "PLAN_VERSION",
     "ChangePlan",
     "ConfigOperation",
@@ -64,18 +66,53 @@ _KIND_CONFIG = "config"
 # Valid values for a config op's ``operation`` field.
 _CONFIG_OPERATIONS = frozenset({"set", "merge"})
 
+# The generation-gap seam, carried on a create op. It tells an applier who owns
+# the file, and so what a re-run of ``add`` may do to it:
+#
+# - ``"generated"``: the generator owns the file. A re-run refreshes it, so it
+#   may be overwritten in place. This is where structure and wiring live.
+# - ``"hand_owned"``: the developer owns the file. A re-run must never touch it,
+#   so it is written once and then left alone. This is where invariants and
+#   behavior live.
+#
+# See ADR-0035. The default is ``"hand_owned"``: the safe side, since the cost of
+# wrongly preserving a file is a stale generated file, while the cost of wrongly
+# overwriting one is a developer's lost work. An op opts into being overwritten.
+OWNERSHIP_GENERATED = "generated"
+OWNERSHIP_HAND_OWNED = "hand_owned"
+_OWNERSHIP_VALUES = frozenset({OWNERSHIP_GENERATED, OWNERSHIP_HAND_OWNED})
+
 
 @dataclass(frozen=True)
 class CreateFileOperation:
-    """Create a new file at *path*, carrying its whole *content*."""
+    """Create a new file at *path*, carrying its whole *content*.
+
+    ``ownership`` is the generation-gap seam (ADR-0035): ``"generated"`` for a
+    file the generator owns and may refresh on a re-run, ``"hand_owned"`` for a
+    file the developer owns that a re-run must never overwrite. It defaults to
+    ``"hand_owned"``, the safe side.
+    """
 
     path: str
     content: str
+    ownership: str = OWNERSHIP_HAND_OWNED
     kind: str = field(default=_KIND_CREATE, init=False)
+
+    def __post_init__(self) -> None:
+        if self.ownership not in _OWNERSHIP_VALUES:
+            raise ValueError(
+                f"Invalid ownership: {self.ownership!r}. "
+                f"Must be one of: {', '.join(sorted(_OWNERSHIP_VALUES))}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-ready dict, tagged with ``kind``."""
-        return {"kind": _KIND_CREATE, "path": self.path, "content": self.content}
+        return {
+            "kind": _KIND_CREATE,
+            "path": self.path,
+            "content": self.content,
+            "ownership": self.ownership,
+        }
 
 
 @dataclass(frozen=True)
@@ -151,9 +188,14 @@ def _operation_from_dict(data: Any) -> Operation:
     kind = data["kind"]
 
     if kind == _KIND_CREATE:
+        # ``ownership`` is optional on the wire: a plan written before the seam
+        # existed carries none, and defaults to the safe ``"hand_owned"`` side.
+        # When present it must be a string; ``CreateFileOperation`` then rejects
+        # any value outside the allowed set.
         return CreateFileOperation(
             path=_require_str(data, "path", kind),
             content=_require_str(data, "content", kind),
+            ownership=_optional_str(data, "ownership", kind, OWNERSHIP_HAND_OWNED),
         )
     if kind == _KIND_EDIT:
         return EditFileOperation(
@@ -200,6 +242,18 @@ def _require_str(data: dict[str, Any], key: str, kind: str) -> str:
             f"got {type(value).__name__}"
         )
     return value
+
+
+def _optional_str(data: dict[str, Any], key: str, kind: str, default: str) -> str:
+    """Return ``data[key]`` as a string, or *default* when the key is absent.
+
+    Present-but-not-a-string is still an error, caught here rather than later:
+    the whole point of the type check is that a JSON ``null`` or number does not
+    slip through as a plausible-looking value.
+    """
+    if key not in data:
+        return default
+    return _require_str(data, key, kind)
 
 
 @dataclass(frozen=True)

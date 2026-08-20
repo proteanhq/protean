@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 
 from protean.scaffold.change_plan import (
+    OWNERSHIP_GENERATED,
+    OWNERSHIP_HAND_OWNED,
     ChangePlan,
     ConfigOperation,
     CreateFileOperation,
@@ -21,6 +23,15 @@ from protean.scaffold.change_plan import (
 )
 
 __all__ = ["render_preview"]
+
+# How each ownership value reads in the preview. "generated" files a re-run of
+# ``add`` refreshes; "hand-owned" files it leaves alone (the seam, ADR-0035).
+# Both keys are present, so the lookup is direct: ``CreateFileOperation`` already
+# rejects any other value, so there is no unknown case to fall back on.
+_OWNERSHIP_LABELS = {
+    OWNERSHIP_GENERATED: "generated",
+    OWNERSHIP_HAND_OWNED: "hand-owned",
+}
 
 
 def render_preview(plan: ChangePlan) -> str:
@@ -58,7 +69,8 @@ def _render_operation(index: int, operation: Operation) -> list[str]:
 
 def _render_create(index: int, operation: CreateFileOperation) -> list[str]:
     body = [f"    {line}" for line in operation.content.splitlines()]
-    header = f"{index}. create {operation.path}  ({len(body)} lines)"
+    label = _OWNERSHIP_LABELS[operation.ownership]
+    header = f"{index}. create {operation.path}  ({len(body)} lines, {label})"
     return [header, *body]
 
 

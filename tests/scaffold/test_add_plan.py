@@ -44,7 +44,7 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
-def test_plans_five_create_operations_at_canonical_paths(tmp_path):
+def test_plans_the_slice_at_canonical_paths(tmp_path):
     project = _write_project(tmp_path / "proj", "myproj", "myproj")
 
     plan = plan_add_slice(str(project), "aggregate", "Order")
@@ -57,6 +57,7 @@ def test_plans_five_create_operations_at_canonical_paths(tmp_path):
     paths = [op.path for op in plan.operations]
     assert paths == [
         "src/myproj/order/__init__.py",
+        "src/myproj/order/aggregate_base.py",
         "src/myproj/order/aggregate.py",
         "src/myproj/order/commands.py",
         "src/myproj/order/events.py",
@@ -118,14 +119,73 @@ def test_names_follow_the_example_slice(tmp_path):
 
     plan = plan_add_slice(str(project), "aggregate", "Order")
 
+    # The decorated, hand-owned subclass carries the registration and inherits
+    # the generated base.
     aggregate = _content_for(plan, "aggregate.py")
-    assert "class Order:" in aggregate
+    assert "class Order(OrderBase):" in aggregate
     assert "from myproj.domain import myproj" in aggregate
     assert "@myproj.aggregate" in aggregate
+    assert "from .aggregate_base import OrderBase" in aggregate
+
+    # The generated base carries the structure and wiring.
+    base = _content_for(plan, "aggregate_base.py")
+    assert "class OrderBase(BaseAggregate):" in base
+    assert "name: Annotated[str, Field(max_length=100)]" in base
+    assert "def create(cls, name: str)" in base
+    # The base is undecorated: only the subclass registers.
+    assert "@myproj.aggregate" not in base
 
     assert "class CreateOrder:" in _content_for(plan, "commands.py")
     assert "class OrderCreated:" in _content_for(plan, "events.py")
     assert "class OrderCommandHandler:" in _content_for(plan, "command_handlers.py")
+
+
+def _op_for(plan: ChangePlan, suffix: str) -> CreateFileOperation:
+    op = next(op for op in plan.operations if op.path.endswith(suffix))
+    assert isinstance(op, CreateFileOperation)
+    return op
+
+
+def test_only_the_aggregate_base_is_generated_the_rest_is_hand_owned(tmp_path):
+    """The generation-gap seam (ADR-0035): the generated base is refreshed on a
+    re-run, so it is marked ``generated``; every other file is written once and
+    left alone, so it is marked ``hand_owned`` (the safe default)."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    plan = plan_add_slice(str(project), "aggregate", "Order")
+
+    ownership = {op.path.rsplit("/", 1)[-1]: op.ownership for op in plan.operations}
+    assert ownership == {
+        "__init__.py": "hand_owned",
+        "aggregate_base.py": "generated",
+        "aggregate.py": "hand_owned",
+        "commands.py": "hand_owned",
+        "events.py": "hand_owned",
+        "command_handlers.py": "hand_owned",
+    }
+
+
+def test_generated_base_is_undecorated_and_the_subclass_is_decorated(tmp_path):
+    """The decorator sits on the hand-owned subclass, not the generated base, so
+    the registered aggregate is the one carrying the developer's logic. Decorating
+    the base would register the base and orphan the subclass's invariants."""
+    project = _write_project(tmp_path / "proj", "myproj", "myproj")
+
+    plan = plan_add_slice(str(project), "aggregate", "Order")
+
+    base = _op_for(plan, "aggregate_base.py")
+    subclass = _op_for(plan, "/aggregate.py")
+
+    # The base subclasses BaseAggregate directly and is never decorated.
+    assert "from protean.core.aggregate import BaseAggregate" in base.content
+    assert "@myproj.aggregate" not in base.content
+    assert "class OrderBase(BaseAggregate):" in base.content
+
+    # The subclass is the decorated, registered aggregate; it does not redeclare
+    # the field, it inherits it from the base.
+    assert "@myproj.aggregate" in subclass.content
+    assert "class Order(OrderBase):" in subclass.content
+    assert "Field(max_length=100)" not in subclass.content
 
 
 def test_lowercase_name_still_yields_pascal_case_class_and_lowercase_slug(tmp_path):
@@ -137,7 +197,7 @@ def test_lowercase_name_still_yields_pascal_case_class_and_lowercase_slug(tmp_pa
 
     paths = [op.path for op in plan.operations]
     assert paths[0] == "src/myproj/order/__init__.py"
-    assert "class Order:" in _content_for(plan, "aggregate.py")
+    assert "class Order(OrderBase):" in _content_for(plan, "aggregate.py")
 
 
 @pytest.mark.parametrize("name", ["order_item", "orderItem", "OrderItem"])
@@ -152,19 +212,24 @@ def test_multi_word_name_yields_pascal_case_class_and_snake_case_slug(tmp_path, 
     paths = [op.path for op in plan.operations]
     assert paths == [
         "src/myproj/order_item/__init__.py",
+        "src/myproj/order_item/aggregate_base.py",
         "src/myproj/order_item/aggregate.py",
         "src/myproj/order_item/commands.py",
         "src/myproj/order_item/events.py",
         "src/myproj/order_item/command_handlers.py",
     ]
 
-    assert "class OrderItem:" in _content_for(plan, "aggregate.py")
+    assert "class OrderItemBase(BaseAggregate):" in _content_for(
+        plan, "aggregate_base.py"
+    )
+    assert "class OrderItem(OrderItemBase):" in _content_for(plan, "aggregate.py")
     assert "class CreateOrderItem:" in _content_for(plan, "commands.py")
     assert "class OrderItemCreated:" in _content_for(plan, "events.py")
     assert "class OrderItemCommandHandler:" in _content_for(plan, "command_handlers.py")
 
-    # The slug is the variable name and the id-field prefix inside the slice.
-    assert "order_item = cls(name=name)" in _content_for(plan, "aggregate.py")
+    # The slug is the variable name and the id-field prefix inside the slice. The
+    # create factory (with the slug variable) lives in the generated base now.
+    assert "order_item = cls(name=name)" in _content_for(plan, "aggregate_base.py")
     assert "order_item_id: str" in _content_for(plan, "events.py")
     assert "def handle_create_order_item(" in _content_for(plan, "command_handlers.py")
 
@@ -195,7 +260,10 @@ def test_acronym_survives_into_the_class_name(tmp_path):
     plan = plan_add_slice(str(project), "aggregate", "HTTPServer")
 
     assert plan.operations[0].path == "src/myproj/http_server/__init__.py"
-    assert "class HTTPServer:" in _content_for(plan, "aggregate.py")
+    assert "class HTTPServer(HTTPServerBase):" in _content_for(plan, "aggregate.py")
+    assert "class HTTPServerBase(BaseAggregate):" in _content_for(
+        plan, "aggregate_base.py"
+    )
 
 
 def test_name_with_no_words_raises(tmp_path):

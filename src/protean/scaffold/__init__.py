@@ -26,6 +26,8 @@ from protean.scaffold.add_plan import (
     plan_add_slice,
 )
 from protean.scaffold.change_plan import (
+    OWNERSHIP_GENERATED,
+    OWNERSHIP_HAND_OWNED,
     PLAN_VERSION,
     ChangePlan,
     ConfigOperation,
@@ -36,6 +38,8 @@ from protean.scaffold.change_plan import (
 from protean.scaffold.preview import render_preview
 
 __all__ = [
+    "OWNERSHIP_GENERATED",
+    "OWNERSHIP_HAND_OWNED",
     "PLAN_VERSION",
     "SCHEMA_PATH",
     "SCHEMA_VERSION",

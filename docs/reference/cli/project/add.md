@@ -30,8 +30,11 @@ For `aggregate`, `add` plans one complete write-side vertical slice under
 
 - `__init__.py`: a docstring only, so the package initializer stays side-effect
   free (see [ADR-0030](../../../adr/0030-canonical-project-layout.md)).
-- `aggregate.py`: the aggregate with a `create` factory that raises the created
-  event.
+- `aggregate_base.py`: the generated base, `class <Name>Base(BaseAggregate)`,
+  carrying the fields and a `create` factory that raises the created event.
+- `aggregate.py`: the hand-owned subclass,
+  `@domain.aggregate class <Name>(<Name>Base)`, where you add invariants and
+  behavior.
 - `commands.py`: the `Create<Name>` command.
 - `events.py`: the `<Name>Created` event.
 - `command_handlers.py`: the handler that creates the aggregate and adds it to
@@ -39,6 +42,20 @@ For `aggregate`, `add` plans one complete write-side vertical slice under
 
 The slice sits exactly one directory below the domain root, so
 `domain.init(traverse=True)` discovers and registers it.
+
+### The generation-gap seam
+
+The aggregate is split across two files so a later re-run of `add` cannot clobber
+your own code (see
+[ADR-0035](../../../adr/0035-generation-gap-seam.md)). The generated base
+(`aggregate_base.py`) holds the structure and wiring, and `add` refreshes it on
+every re-run. The hand-owned subclass (`aggregate.py`) holds your invariants and
+behavior, and `add` writes it once and never overwrites it. Every planned file
+records an `ownership` marker, `generated` or `hand_owned`; the preview shows it
+next to each path (as `generated` or `hand-owned`), so you can see which files a
+re-run would refresh and which it would leave alone. `add` still only previews
+the plan today; the applier that honors the marker on disk comes in a later
+release.
 
 ## How the name is used
 
