@@ -2,11 +2,11 @@
 default, previews it with ``--dry-run``, rolls back a failed apply, and the slice
 it writes actually registers under traversal.
 
-The traversal-load test is the sharp edge (issue acceptance #3): a slice that is
-placed wrong, or whose ``__init__.py`` is not side-effect free, or whose imports
-do not resolve, makes ``init(traverse=True)`` crash or silently under-discover.
-Here we materialize the planned files into a real generated project and assert the
-registry holds the new elements after init.
+The traversal-load test is the sharp edge: a slice that is placed wrong, or whose
+``__init__.py`` is not side-effect free, or whose imports do not resolve, makes
+``init(traverse=True)`` crash or silently under-discover. Here we materialize the
+planned files into a real generated project and assert the registry holds the new
+elements after init.
 """
 
 from __future__ import annotations
