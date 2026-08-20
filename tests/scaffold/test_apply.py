@@ -316,3 +316,24 @@ def test_duplicate_paths_in_one_plan_are_refused(tmp_path):
     assert "twice" in str(excinfo.value)
     assert not (tmp_path / "src/pkg/thing.py").exists()
     assert _snapshot(tmp_path) == before
+
+
+def test_differently_spelled_duplicate_paths_are_refused(tmp_path):
+    """``a.py``, ``./a.py`` and ``dir/../a.py`` are one file. Comparing raw path
+    strings would miss that and let the second op truncate the first, so the
+    duplicate check compares resolved targets."""
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path="src/pkg/thing.py", content="first\n"),
+            CreateFileOperation(path="./src/pkg/thing.py", content="second\n"),
+            CreateFileOperation(path="src/pkg/sub/../thing.py", content="third\n"),
+        ),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "twice" in str(excinfo.value)
+    assert not (tmp_path / "src/pkg/thing.py").exists()
+    assert _snapshot(tmp_path) == before

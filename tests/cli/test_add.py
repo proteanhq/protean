@@ -139,8 +139,9 @@ def test_dry_run_writes_nothing(tmp_path):
 
 
 def test_default_applies_the_slice_and_a_rerun_conflicts(tmp_path):
-    """Default (no flag) writes the five files and exits 0. A second run hits the
-    conflict pre-flight, exits non-zero, and leaves the files it wrote intact."""
+    """Default (no flag) writes every file in the slice and exits 0. A second run
+    hits the conflict pre-flight, exits non-zero, and leaves the files it wrote
+    intact."""
     project = _generate(tmp_path)
 
     result = CliRunner().invoke(
@@ -166,7 +167,7 @@ def test_default_applies_the_slice_and_a_rerun_conflicts(tmp_path):
 
 
 def test_apply_flag_applies_the_slice(tmp_path):
-    """The explicit ``--apply`` flag writes the same five files as the default."""
+    """The explicit ``--apply`` flag writes the same slice files as the default."""
     project = _generate(tmp_path)
 
     result = CliRunner().invoke(

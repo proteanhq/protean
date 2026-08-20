@@ -60,7 +60,7 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     #    atomic write below; anything else is refused here so nothing lands on
     #    disk. Editing files and patching config are separate later work.
     creates: list[CreateFileOperation] = []
-    seen_paths: set[str] = set()
+    seen_targets: set[Path] = set()
     for op in plan.operations:
         if not isinstance(op, CreateFileOperation):
             raise ApplyError(
@@ -82,16 +82,19 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
             )
         # Keep every write inside the project root. An absolute path or one that
         # climbs out with ``..`` would otherwise write anywhere on the filesystem.
-        if not (root / op.path).resolve().is_relative_to(root_resolved):
+        target = (root / op.path).resolve()
+        if not target.is_relative_to(root_resolved):
             raise ApplyError(
                 f"apply refuses a path outside the project root: {op.path!r}. "
                 "Operation paths must be relative and stay under the project."
             )
         # Two ops writing the same path would both clear pre-flight (neither is on
         # disk yet) and the second would silently truncate the first. Refuse it.
-        if op.path in seen_paths:
+        # Compare resolved targets, so spellings of one file (``a.py``, ``./a.py``,
+        # ``dir/../a.py``) count as the duplicate they are.
+        if target in seen_targets:
             raise ApplyError(f"apply refuses a plan that writes {op.path!r} twice.")
-        seen_paths.add(op.path)
+        seen_targets.add(target)
         creates.append(op)
 
     # 2. Pre-flight: refuse if any target already exists, before writing anything.
