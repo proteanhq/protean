@@ -241,7 +241,7 @@ To start the live preview server for your project's documentation, run
 the command without any additional options:
 
 ```shell
-protean docs preview`
+protean docs preview
 ```
 
 This will start a local server, usually accessible via a web browser at a URL

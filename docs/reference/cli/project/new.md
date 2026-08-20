@@ -54,8 +54,8 @@ The command creates a complete project structure with the following components:
 - `README.md`: Project documentation
 - `AGENTS.md`: Hard rules for an agent working on the project, one per
   error-level Protean diagnostic. Generated from the diagnostics registry, so
-  regenerate it after upgrading Protean with `protean docs generate
-  --type=agents --output=AGENTS.md`.
+  regenerate it after upgrading Protean with
+  `protean docs generate --type=agents --output=AGENTS.md`.
 - `Makefile`: Common development tasks
 - `.gitignore`: Git ignore patterns
 - `.pre-commit-config.yaml`: Pre-commit hooks configuration
