@@ -623,6 +623,29 @@ class TestLlmsType:
         assert "## Project: test" in result.output
         assert "_No aggregate clusters._" in result.output
 
+    def test_bare_empty_ir_file_still_renders_overlay(self, tmp_path):
+        """An IR file holding just `{}` is a valid source, so the overlay
+        renders with its sentinel instead of being silently skipped."""
+        ir_file = tmp_path / "bare.json"
+        ir_file.write_text("{}", encoding="utf-8")
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "--type=llms"])
+        assert result.exit_code == 0
+        # No domain name in the IR -> bare heading, but the overlay is there.
+        assert "## Project\n" in result.output
+        assert "_No aggregate clusters._" in result.output
+
+    def test_empty_dict_ir_differs_from_no_source(self):
+        """`{}` (a source that happens to be empty) and None (no source at all)
+        are different inputs: only the former gets a project overlay."""
+        with_source = generate_llms_txt({}, version="9.9.9")
+        no_source = generate_llms_txt(None, version="9.9.9")
+        assert "## Project" in with_source
+        assert "_No aggregate clusters._" in with_source
+        assert "## Project" not in no_source
+        # Both still carry the framework layer.
+        assert "# Protean 9.9.9" in with_source
+        assert "# Protean 9.9.9" in no_source
+
 
 # ---------------------------------------------------------------------------
 # Test: Event model slice timeline (--type=event-model)

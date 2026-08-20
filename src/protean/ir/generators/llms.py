@@ -157,7 +157,9 @@ def generate_llms_txt(ir_data: dict[str, Any] | None, *, version: str) -> str:
 
     Always renders the framework layer: an H1 naming Protean and *version*, a
     one-line summary blockquote, and the curated core-documentation links. When
-    *ir_data* is truthy, appends a project overlay derived from the IR.
+    *ir_data* is not ``None``, appends a project overlay derived from the IR.
+    An empty dict counts as an IR source, so it renders the overlay with its
+    empty-section sentinel instead of being skipped.
 
     The output is deterministic: the framework layer is constant per version,
     and the overlay sorts every traversal and reads no volatile IR field
@@ -172,6 +174,6 @@ def generate_llms_txt(ir_data: dict[str, Any] | None, *, version: str) -> str:
         The ``llms.txt`` content as a single string.
     """
     lines = _framework_layer(version)
-    if ir_data:
+    if ir_data is not None:
         lines.extend(_project_overlay(ir_data))
     return "\n".join(lines) + "\n"
