@@ -582,6 +582,12 @@ class TestLlmsType:
         assert result.exit_code != 0
         assert "--annotations can only be used with --type=event-model" in result.output
 
+    def test_mermaid_format_rejected(self):
+        """llms emits a Markdown context pack, so --format=mermaid is refused."""
+        result = runner.invoke(app, ["generate", "--type=llms", "--format=mermaid"])
+        assert result.exit_code != 0
+        assert "--format=mermaid is not supported for --type=llms" in result.output
+
     def test_no_source_relaxation_is_scoped_to_llms(self):
         """A non-llms type with no source still aborts: the relaxation is llms-only."""
         result = runner.invoke(app, ["generate", "--type=catalog"])

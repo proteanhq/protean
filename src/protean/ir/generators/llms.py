@@ -12,9 +12,8 @@ The pack has two layers:
   so it is byte-stable by construction.
 - **Project overlay** (present only when an IR is passed): a section derived
   from the loaded IR listing the project's own aggregate clusters, their
-  commands and events, their command and event handlers, and its projections.
-  So an agent sees
-  the actual shape of the project alongside the framework docs.
+  commands and events, their command and event handlers, and its projections,
+  so an agent sees the actual shape of the project alongside the framework docs.
 
 The overlay is keyed only on stable, structural parts of the IR. It never reads
 ``generated_at`` or ``checksum`` (both fold in a timestamp), and it sorts every

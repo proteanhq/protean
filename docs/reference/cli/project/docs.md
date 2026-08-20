@@ -33,7 +33,7 @@ protean docs generate --ir=domain-ir.json --type=event-model
     - `llms`: a versioned `llms.txt` context pack (see below).
     - `all` (default): every section except `event-model` and `llms`.
 - `--format`, `-f`: `markdown` (fenced code blocks, the default) or `mermaid`
-  (raw diagram source). `mermaid` is not supported for `catalog`.
+  (raw diagram source). `mermaid` is not supported for `catalog` or `llms`.
 - `--output`, `-o`: Write to a file instead of stdout.
 - `--cluster`: Filter to a single cluster FQN (only with `--type=clusters` or
   `--type=all`).

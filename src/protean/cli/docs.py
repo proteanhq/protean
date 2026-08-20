@@ -188,10 +188,14 @@ def generate(
         )
         raise typer.Abort()
 
-    if format == "mermaid" and type == "catalog":
+    if format == "mermaid" and type in ("catalog", "llms"):
+        _reason = {
+            "catalog": "catalog outputs Markdown tables, not Mermaid diagrams",
+            "llms": "llms outputs a Markdown context pack, not Mermaid diagrams",
+        }[type]
         print(
-            "[red]Error:[/red] --format=mermaid is not supported for --type=catalog "
-            "(catalog outputs Markdown tables, not Mermaid diagrams)"
+            f"[red]Error:[/red] --format=mermaid is not supported for --type={type} "
+            f"({_reason})"
         )
         raise typer.Abort()
 
