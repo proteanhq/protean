@@ -105,3 +105,5 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0031](0031-handlers-persist-or-call-out.md) | A Handler Method Persists or Calls Out, Never Both |
 | [0032](0032-annotation-file-for-the-event-model.md) | Annotation File for the Event Model Renderer |
 | [0033](0033-change-plan-versioned-structural-contract.md) | ChangePlan is a Versioned Structural Contract |
+| [0034](0034-project-manifest.md) | Derived Project Manifest |
+| [0035](0035-generation-gap-seam.md) | Generation-Gap Seam Between Generated Wiring and Hand-Owned Logic |
