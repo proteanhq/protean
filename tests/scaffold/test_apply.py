@@ -299,6 +299,20 @@ def test_non_string_path_is_refused(tmp_path):
     assert _snapshot(tmp_path) == {}
 
 
+def test_non_string_content_is_refused(tmp_path):
+    """A hand-built op with non-string content is rejected with a clear ApplyError
+    rather than a raw TypeError escaping the applier mid-write."""
+    plan = ChangePlan(
+        operations=(CreateFileOperation(path="src/pkg/thing.py", content=None),),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "string content" in str(excinfo.value)
+    assert _snapshot(tmp_path) == {}
+
+
 def test_duplicate_paths_in_one_plan_are_refused(tmp_path):
     """Two ops writing the same path would both clear pre-flight and the second
     would truncate the first; refuse the plan instead of silently overwriting."""
