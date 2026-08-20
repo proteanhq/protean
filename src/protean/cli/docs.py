@@ -206,11 +206,13 @@ def generate(
         raise typer.Abort()
 
     # --- Load IR ----------------------------------------------------------
-    # --type=llms and --type=agents run with no source: llms then emits the
-    # framework layer alone and agents the registry-derived pack. With a source,
-    # the IR is loaded (llms adds a project overlay; agents ignores it).
+    # --type=llms and --type=agents run with no source. agents is derived only
+    # from the diagnostics registry, so its source is truly ignored: skip the
+    # IR load entirely, otherwise a broken --domain/--ir would abort the command
+    # before the registry-only pack is printed. llms loads a source when given
+    # (it adds a project overlay) and emits the framework layer alone without one.
     ir_data: dict[str, Any] | None
-    if not domain and not ir:
+    if type == "agents" or (not domain and not ir):
         ir_data = None
     else:
         ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)

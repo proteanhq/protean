@@ -127,9 +127,13 @@ from that code's registered `meaning`, `rationale`, and `fix`, and it ends with
 the code so a reader can trace it back:
 
 ```
-- **Do not** write code that causes this error: <meaning>. <rationale> To
-  comply: <fix>. (`CODE`)
+- **Do not** write code that causes this error: <meaning> <rationale> To
+  comply: <fix> (`CODE`)
 ```
+
+The generator joins the fields with single spaces and inserts no punctuation of
+its own. The rule reads as full sentences because each registry field already
+ends with a period.
 
 Only error-level codes appear: advisory `warning` and `info` codes are style and
 design nudges, not hard rules, so they are excluded. The set of rules is coupled

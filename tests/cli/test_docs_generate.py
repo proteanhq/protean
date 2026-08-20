@@ -701,6 +701,30 @@ class TestAgentsType:
         content = out_file.read_text(encoding="utf-8")
         assert content == generate_agents_md(version=protean.__version__)
 
+    def test_broken_source_is_ignored(self):
+        """A broken --domain does not abort agents: the source is truly ignored.
+
+        agents derives only from the registry, so a bad source must not be
+        loaded. Uses a real nonexistent module (no mock) so the load path is
+        exercised: without the skip, load_domain_ir would raise and abort here.
+        """
+        result = runner.invoke(
+            app, ["generate", "--type=agents", "--domain=nonexistent_module_xyz"]
+        )
+        assert result.exit_code == 0
+        assert f"# Protean {protean.__version__}" in result.output
+        assert "(`CONFIG_EVENT_STORE_NOT_INITIALIZED`)" in result.output
+
+    def test_source_is_not_loaded_when_given(self, ir_file):
+        """A valid --ir source is not loaded: agents skips the IR load entirely."""
+        with patch("protean.cli.docs.load_ir_file") as mock_load:
+            result = runner.invoke(
+                app, ["generate", "--type=agents", f"--ir={ir_file}"]
+            )
+        assert result.exit_code == 0
+        mock_load.assert_not_called()
+        assert generate_agents_md(version=protean.__version__).strip() in result.output
+
     def test_mermaid_format_rejected(self):
         """agents emits a Markdown constraint pack, so --format=mermaid is refused."""
         result = runner.invoke(app, ["generate", "--type=agents", "--format=mermaid"])

@@ -87,12 +87,16 @@ def test_every_rule_carries_its_registry_meaning_rationale_and_fix():
     """
     out = generate_agents_md(version="9.9.9")
 
+    checked = 0
     for code, meta in REGISTRY.items():
         if meta.level != "error":
             continue
+        checked += 1
         assert meta.meaning in out, f"{code.value} meaning missing"
         assert meta.rationale in out, f"{code.value} rationale missing"
         assert meta.fix in out, f"{code.value} fix missing"
+    # Non-vacuous: an all-advisory registry would skip the loop body entirely.
+    assert checked, "expected at least one error-level diagnostic code"
 
 
 def test_version_is_stamped_in_the_header():
