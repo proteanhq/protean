@@ -61,9 +61,10 @@ class ApplyError(Exception):
 def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     """Apply *plan* under *project_path*, atomically and create-only.
 
-    *project_path* is the project root (the directory that holds ``src/``). It must
-    already exist; the applier writes into a project, it does not create one. Every
-    operation's ``path`` is relative to it.
+    *project_path* is the project root, an existing directory. The applier writes
+    into it, it does not create it, and it makes any missing directory on the way
+    to a target (a ``src/<package>/`` a create needs, say). Every operation's
+    ``path`` is relative to this root.
 
     Returns the tuple of relative paths written, in plan order. An empty plan
     writes nothing and returns an empty tuple.
