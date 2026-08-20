@@ -20,10 +20,12 @@ package ``__init__.py``, the aggregate, its create command, its created event, t
 command handler that drives it, and a projector plus read-model projection that
 consume the created event (so ``protean verify`` on the applied slice is green).
 
-Apply is create-only and all-or-nothing: if any target file already exists, or a
-write fails partway, the command changes nothing and exits ``1``. An unsupported
-element type, an invalid name, a project the planner cannot resolve, or the
-contradictory ``--dry-run --apply`` combination exits ``2`` (a usage error).
+Apply is create-only: it never overwrites an existing file. If any target already
+exists, or a write fails partway, it exits ``1``. On a partway failure it rolls
+back what it wrote; if it cannot remove something (a permission error, say) the
+error names what is left on disk. An unsupported element type, an invalid name, a
+project the planner cannot resolve, or the contradictory ``--dry-run --apply``
+combination exits ``2`` (a usage error).
 """
 
 from typing import Annotated
@@ -106,7 +108,7 @@ def add(
     except ApplyError as exc:
         # An apply failure (a conflict or an I/O error) is a different class from
         # a usage error, so it exits 1. On a mid-write failure the applier has
-        # already rolled the tree back to its pre-apply state.
+        # rolled back what it wrote; its error names anything it could not remove.
         typer.echo(f"Error: {exc}")
         raise typer.Exit(code=_EXIT_FAILURE) from exc
 

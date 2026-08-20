@@ -4,8 +4,9 @@ The `protean add` command scaffolds a new element slice into your project. It
 computes a change plan and, by default, writes the files. Pass `--dry-run` to
 preview the plan without writing anything.
 
-Apply is create-only and all-or-nothing. If any target file already exists, or a
-write fails partway, `add` changes nothing and exits `1`.
+Apply is create-only: it never overwrites an existing file. If any target already
+exists, or a write fails partway, `add` exits `1`. On a partway failure it rolls
+back what it wrote, and names anything it could not remove.
 
 ## Usage
 
@@ -108,9 +109,9 @@ protean add aggregate Order --path ./my-project
 - `0`: the slice was applied (or, with `--dry-run`, the plan was printed).
 - `1`: an apply failure. Either a target file already exists (`add` refuses to
   overwrite it), or a write failed partway. On a partway failure the applier
-  rolls the tree back to its pre-apply state, so a failed `add` never leaves a
-  half-written slice. To re-apply into a project that already has the slice,
-  remove the existing files first.
+  rolls back what it wrote; if it cannot remove something (a permission error,
+  say) the error names what is left on disk. To re-apply into a project that
+  already has the slice, remove the existing files first.
 - `2`: a usage error. Any of:
   - `--dry-run` and `--apply` together (they contradict each other);
   - an unsupported element type (only `aggregate` is supported today);
@@ -127,6 +128,7 @@ protean add aggregate Order --path ./my-project
 `add` only creates files; it never edits an existing one. Before writing, it
 checks every target: if any already exists, it writes nothing and exits `1`,
 rather than overwrite your code. If a write fails partway through, it deletes the
-files it wrote and removes the directories it created, then exits `1`, leaving the
-project exactly as it was. So after a successful `add`, `protean verify` is
-green; after a failed one, nothing changed.
+files it wrote and removes the directories it created, then exits `1`. Removal is
+best-effort: if it cannot remove something (a permission error, say), the error
+names what is left on disk. So after a successful `add`, `protean verify` is
+green; a failed one rolls back what it wrote, and tells you if anything remained.

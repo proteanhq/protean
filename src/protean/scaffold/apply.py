@@ -28,6 +28,7 @@ plan order) so the caller can report what it wrote.
 from __future__ import annotations
 
 import contextlib
+import os
 from pathlib import Path
 
 from protean.scaffold.change_plan import ChangePlan, CreateFileOperation
@@ -91,7 +92,7 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     #    atomic write below; anything else is refused here so nothing lands on
     #    disk. Editing files and patching config are separate later work.
     creates: list[CreateFileOperation] = []
-    seen_targets: set[Path] = set()
+    seen_targets: set[str] = set()
     for op in plan.operations:
         if not isinstance(op, CreateFileOperation):
             raise ApplyError(
@@ -133,11 +134,15 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
             )
         # Two ops writing the same path would both clear pre-flight (neither is on
         # disk yet) and the second would silently truncate the first. Refuse it.
-        # Compare resolved targets, so spellings of one file (``a.py``, ``./a.py``,
-        # ``dir/../a.py``) count as the duplicate they are.
-        if target in seen_targets:
+        # Key on the resolved target, run through ``normcase``, so spellings of one
+        # file (``a.py``, ``./a.py``, ``dir/../a.py``) count as the duplicate they
+        # are, and so do case variants on the platforms where the filesystem folds
+        # case (``normcase`` lowercases on Windows and is a no-op on POSIX, where
+        # ``a.py`` and ``A.py`` really are two files).
+        key = os.path.normcase(str(target))
+        if key in seen_targets:
             raise ApplyError(f"apply refuses a plan that writes {op.path!r} twice.")
-        seen_targets.add(target)
+        seen_targets.add(key)
         creates.append(op)
 
     # 2. Pre-flight: refuse if any target already exists, before writing anything.

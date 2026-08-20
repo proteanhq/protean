@@ -9,6 +9,7 @@ that was already on disk.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -428,6 +429,50 @@ def test_differently_spelled_duplicate_paths_are_refused(tmp_path):
 
     assert "twice" in str(excinfo.value)
     assert not (tmp_path / "src/pkg/thing.py").exists()
+    assert _snapshot(tmp_path) == before
+
+
+def test_case_variant_paths_on_a_case_sensitive_filesystem_are_distinct(tmp_path):
+    """Where the platform's ``os.path.normcase`` does not fold case (POSIX),
+    ``Thing.py`` and ``thing.py`` are two files, not a duplicate, so both are
+    written. On Windows, where ``normcase`` lowercases, the same plan is refused
+    as a duplicate instead (the next test)."""
+    if os.path.normcase("A") == os.path.normcase("a"):
+        pytest.skip("platform folds path case (e.g. Windows)")
+
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path="src/pkg/Thing.py", content="upper\n"),
+            CreateFileOperation(path="src/pkg/thing.py", content="lower\n"),
+        ),
+    )
+
+    written = apply_plan(str(tmp_path), plan)
+
+    assert written == ("src/pkg/Thing.py", "src/pkg/thing.py")
+    assert (tmp_path / "src/pkg/Thing.py").read_text() == "upper\n"
+    assert (tmp_path / "src/pkg/thing.py").read_text() == "lower\n"
+
+
+def test_case_variant_paths_where_the_platform_folds_case_are_refused(tmp_path):
+    """Where ``os.path.normcase`` folds case (Windows), ``Thing.py`` and
+    ``thing.py`` are one file, so the second op is refused as the duplicate it is
+    rather than silently truncating the first."""
+    if os.path.normcase("A") != os.path.normcase("a"):
+        pytest.skip("platform is case-sensitive per os.path.normcase (POSIX)")
+
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path="src/pkg/Thing.py", content="upper\n"),
+            CreateFileOperation(path="src/pkg/thing.py", content="lower\n"),
+        ),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "twice" in str(excinfo.value)
     assert _snapshot(tmp_path) == before
 
 
