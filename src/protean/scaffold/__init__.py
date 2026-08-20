@@ -3,7 +3,8 @@
 Homes the shape a command like ``add`` or an upgrade uses to describe a proposed
 change: a :class:`ChangePlan` of ordered operations (create a file, edit a file,
 patch config), serializable to JSON, previewable without touching the
-filesystem. A plan is inert; a separate applier (a later epic) executes it.
+filesystem. A plan is inert; :func:`~protean.scaffold.apply.apply_plan` executes
+one atomically (create-only for now).
 
 The schema is versioned as a structural contract. ``SCHEMA_VERSION``,
 ``SCHEMA_PATH``, and :func:`load_schema` expose the JSON Schema the serialized
@@ -25,6 +26,7 @@ from protean.scaffold.add_plan import (
     AddPlanError,
     plan_add_slice,
 )
+from protean.scaffold.apply import ApplyError, apply_plan
 from protean.scaffold.change_plan import (
     OWNERSHIP_GENERATED,
     OWNERSHIP_HAND_OWNED,
@@ -45,11 +47,13 @@ __all__ = [
     "SCHEMA_VERSION",
     "SUPPORTED_ELEMENT_TYPES",
     "AddPlanError",
+    "ApplyError",
     "ChangePlan",
     "ConfigOperation",
     "CreateFileOperation",
     "EditFileOperation",
     "Operation",
+    "apply_plan",
     "load_schema",
     "plan_add_slice",
     "render_preview",

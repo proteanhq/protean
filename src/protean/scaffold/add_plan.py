@@ -1,14 +1,16 @@
 """Plan a new element slice as a :class:`~protean.scaffold.ChangePlan`.
 
-``protean add <element-type> <name>`` computes what it *would* write and previews
-it, without touching the filesystem. This module is the pure planner behind that
-command: given a project directory and a name, it returns a
+This module is the pure planner behind ``protean add <element-type> <name>``:
+given a project directory and a name, it returns a
 :class:`~protean.scaffold.ChangePlan` of :class:`CreateFileOperation`\\ s in the
-ADR-0030 canonical layout. It writes nothing; the CLI renders the plan.
+ADR-0030 canonical layout. It writes nothing itself; the CLI applies the plan, or
+renders it under ``--dry-run``.
 
 For this first cut the only supported element type is ``aggregate``, which emits
-one complete write-side vertical slice: the aggregate, its create command, its
-created event, and the command handler that ties them together.
+one complete vertical slice: the aggregate, its create command, its created
+event, the command handler that drives it, and a projector plus read-model
+projection that consume the event. The projector is what makes the created event
+a handled event, so ``protean verify`` on the applied slice is green.
 
 The aggregate is split by a generation-gap seam (ADR-0035) so a later re-run of
 ``add`` never clobbers hand-written logic: a generated base (``aggregate_base.py``,
@@ -146,7 +148,7 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
         operations=operations,
         description=(
             f"Add the {class_name} aggregate slice "
-            f"(aggregate, command, event, command handler)"
+            f"(aggregate, command, event, command handler, projector, projection)"
         ),
     )
 
@@ -435,12 +437,71 @@ class {ctx.name}CommandHandler:
 '''
 
 
+def _render_projection(ctx: _SliceContext) -> str:
+    return f'''"""Read-model projection for the {ctx.name} aggregate."""
+
+from typing import Annotated
+
+from protean.fields import Identifier
+from pydantic import Field
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+
+@{ctx.domain_var}.projection
+class {ctx.name}Summary:
+    """A read-optimized view of {ctx.name} aggregates."""
+
+    {ctx.slug}_id: Identifier(identifier=True)
+    name: Annotated[str, Field(max_length=100)]
+
+    class Meta:
+        stream_name = "{ctx.slug}"
+'''
+
+
+def _render_projectors(ctx: _SliceContext) -> str:
+    return f'''"""Projector that keeps {ctx.name}Summary up to date."""
+
+from protean.core.projector import on
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+from .aggregate import {ctx.name}
+from .events import {ctx.name}Created
+from .projection import {ctx.name}Summary
+
+
+@{ctx.domain_var}.projector(projector_for={ctx.name}Summary, aggregates=[{ctx.name}])
+class {ctx.name}Projector:
+    """Update the {ctx.name}Summary projection from {ctx.name} events."""
+
+    @on({ctx.name}Created)
+    def on_{ctx.slug}_created(self, event: {ctx.name}Created) -> None:
+        """Create a {ctx.name}Summary when a {ctx.name} is created."""
+        summary = {ctx.name}Summary(
+            {ctx.slug}_id=event.{ctx.slug}_id,
+            name=event.name,
+        )
+
+        repo = {ctx.domain_var}.repository_for({ctx.name}Summary)
+        repo.add(summary)
+'''
+
+
 # The slice's files, in the order they render into the plan. Each entry is
 # ``(filename, renderer, ownership)``; the renderer returns the file's whole
 # content and the ownership marks the generation-gap seam (ADR-0035). Only the
 # aggregate is split by the seam (its base is generated, its subclass hand-owned);
 # every other file is a single, hand-owned file a re-run creates once and leaves
 # alone. The per-renderer comments explain each side.
+#
+# The slice is a complete write-then-read vertical: the aggregate raises its
+# created event, the command handler drives the aggregate, and the projector
+# consumes the event into a read-model projection. The projector is what makes
+# the created event a *handled* event, so ``protean verify`` on the applied slice
+# is green (an unconsumed event trips the UNHANDLED_EVENT check). This mirrors the
+# canonical Example slice that ``protean new`` scaffolds.
 _SLICE_FILES: tuple[tuple[str, _Renderer, str], ...] = (
     ("__init__.py", _render_init, OWNERSHIP_HAND_OWNED),
     ("aggregate_base.py", _render_aggregate_base, OWNERSHIP_GENERATED),
@@ -448,4 +509,6 @@ _SLICE_FILES: tuple[tuple[str, _Renderer, str], ...] = (
     ("commands.py", _render_commands, OWNERSHIP_HAND_OWNED),
     ("events.py", _render_events, OWNERSHIP_HAND_OWNED),
     ("command_handlers.py", _render_command_handlers, OWNERSHIP_HAND_OWNED),
+    ("projection.py", _render_projection, OWNERSHIP_HAND_OWNED),
+    ("projectors.py", _render_projectors, OWNERSHIP_HAND_OWNED),
 )

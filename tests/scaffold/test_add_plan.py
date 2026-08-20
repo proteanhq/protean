@@ -62,6 +62,8 @@ def test_plans_the_slice_at_canonical_paths(tmp_path):
         "src/myproj/order/commands.py",
         "src/myproj/order/events.py",
         "src/myproj/order/command_handlers.py",
+        "src/myproj/order/projection.py",
+        "src/myproj/order/projectors.py",
     ]
 
 
@@ -138,6 +140,8 @@ def test_names_follow_the_example_slice(tmp_path):
     assert "class CreateOrder:" in _content_for(plan, "commands.py")
     assert "class OrderCreated:" in _content_for(plan, "events.py")
     assert "class OrderCommandHandler:" in _content_for(plan, "command_handlers.py")
+    assert "class OrderSummary:" in _content_for(plan, "projection.py")
+    assert "class OrderProjector:" in _content_for(plan, "projectors.py")
 
 
 def _op_for(plan: ChangePlan, suffix: str) -> CreateFileOperation:
@@ -162,6 +166,8 @@ def test_only_the_aggregate_base_is_generated_the_rest_is_hand_owned(tmp_path):
         "commands.py": "hand_owned",
         "events.py": "hand_owned",
         "command_handlers.py": "hand_owned",
+        "projection.py": "hand_owned",
+        "projectors.py": "hand_owned",
     }
 
 
@@ -217,6 +223,8 @@ def test_multi_word_name_yields_pascal_case_class_and_snake_case_slug(tmp_path, 
         "src/myproj/order_item/commands.py",
         "src/myproj/order_item/events.py",
         "src/myproj/order_item/command_handlers.py",
+        "src/myproj/order_item/projection.py",
+        "src/myproj/order_item/projectors.py",
     ]
 
     assert "class OrderItemBase(BaseAggregate):" in _content_for(
@@ -226,12 +234,15 @@ def test_multi_word_name_yields_pascal_case_class_and_snake_case_slug(tmp_path, 
     assert "class CreateOrderItem:" in _content_for(plan, "commands.py")
     assert "class OrderItemCreated:" in _content_for(plan, "events.py")
     assert "class OrderItemCommandHandler:" in _content_for(plan, "command_handlers.py")
+    assert "class OrderItemSummary:" in _content_for(plan, "projection.py")
+    assert "class OrderItemProjector:" in _content_for(plan, "projectors.py")
 
     # The slug is the variable name and the id-field prefix inside the slice. The
     # create factory (with the slug variable) lives in the generated base now.
     assert "order_item = cls(name=name)" in _content_for(plan, "aggregate_base.py")
     assert "order_item_id: str" in _content_for(plan, "events.py")
     assert "def handle_create_order_item(" in _content_for(plan, "command_handlers.py")
+    assert "def on_order_item_created(" in _content_for(plan, "projectors.py")
 
     for op in plan.operations:
         compile(op.content, op.path, "exec")
