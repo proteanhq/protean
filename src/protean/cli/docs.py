@@ -17,6 +17,12 @@ Usage::
     # Generate the EventModeling slice timeline
     protean docs generate --domain=my_app --type=event-model
 
+    # Generate the versioned llms.txt context pack (framework layer only)
+    protean docs generate --type=llms
+
+    # ...with the project overlay from a domain or IR file
+    protean docs generate --domain=my_app --type=llms
+
     # Write output to a file
     protean docs generate --domain=my_app --output=docs/architecture.md
 
@@ -39,6 +45,7 @@ from typing import Annotated, Any
 import typer
 from rich import print
 
+import protean
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.ir.generators.base import mermaid_fence
 
@@ -70,7 +77,15 @@ def preview() -> None:
 # ``protean docs generate``
 # ---------------------------------------------------------------------------
 
-_VALID_TYPES = ("clusters", "events", "handlers", "catalog", "event-model", "all")
+_VALID_TYPES = (
+    "clusters",
+    "events",
+    "handlers",
+    "catalog",
+    "event-model",
+    "llms",
+    "all",
+)
 
 
 @app.command()
@@ -97,7 +112,7 @@ def generate(
             "-t",
             help=(
                 "Generator type: clusters, events, handlers, catalog, "
-                "event-model, or all (default)"
+                "event-model, llms, or all (default)"
             ),
         ),
     ] = "all",
@@ -137,7 +152,9 @@ def generate(
 ) -> None:
     """Generate architecture documentation from a Protean domain or IR file."""
     # --- Validate inputs --------------------------------------------------
-    if not domain and not ir:
+    # --type=llms is the one type that runs with no source: it emits the
+    # framework layer alone. Every other type still requires --domain or --ir.
+    if not domain and not ir and type != "llms":
         print("[red]Error:[/red] provide either --domain or --ir")
         raise typer.Abort()
 
@@ -171,15 +188,25 @@ def generate(
         )
         raise typer.Abort()
 
-    if format == "mermaid" and type == "catalog":
+    if format == "mermaid" and type in ("catalog", "llms"):
+        _reason = {
+            "catalog": "catalog outputs Markdown tables, not Mermaid diagrams",
+            "llms": "llms outputs a Markdown context pack, not Mermaid diagrams",
+        }[type]
         print(
-            "[red]Error:[/red] --format=mermaid is not supported for --type=catalog "
-            "(catalog outputs Markdown tables, not Mermaid diagrams)"
+            f"[red]Error:[/red] --format=mermaid is not supported for --type={type} "
+            f"({_reason})"
         )
         raise typer.Abort()
 
     # --- Load IR ----------------------------------------------------------
-    ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
+    # --type=llms with no source skips IR loading and emits the framework
+    # layer alone; with a source it loads the IR and adds the project overlay.
+    ir_data: dict[str, Any] | None
+    if not domain and not ir:
+        ir_data = None
+    else:
+        ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
 
     # --- Load annotations (event-model only) ------------------------------
     # Loaded and validated here, before any generation or file write, so a
@@ -294,15 +321,29 @@ def _load_annotations(path: Path) -> dict[str, Any]:
 
 
 def _generate_output(
-    ir_data: dict[str, Any],
+    ir_data: dict[str, Any] | None,
     *,
     doc_type: str,
     output_format: str,
     cluster_fqn: str,
     annotations: dict[str, Any] | None = None,
 ) -> str:
-    """Dispatch to the appropriate generator(s) and assemble the result."""
+    """Dispatch to the appropriate generator(s) and assemble the result.
+
+    ``ir_data`` is ``None`` only for ``--type=llms`` run with no source, which
+    emits the framework layer alone. Every other type requires a source, so
+    ``ir_data`` is a dict on their paths.
+    """
     sections: list[str] = []
+
+    # llms is deliberately not part of the "all" bundle: it is a distinct
+    # context-pack view (and the only type that runs with no IR at all).
+    if doc_type == "llms":
+        return _generate_llms(ir_data)
+
+    # From here every type requires an IR; the guard above and the source
+    # validation in ``generate`` guarantee ir_data is a dict on these paths.
+    assert ir_data is not None
 
     if doc_type in ("clusters", "all"):
         sections.append(_generate_clusters(ir_data, output_format, cluster_fqn))
@@ -504,6 +545,19 @@ def _generate_catalog(ir_data: dict[str, Any]) -> str:
     from protean.ir.generators.catalog import generate_catalog  # noqa: PLC0415
 
     return generate_catalog(ir_data)
+
+
+def _generate_llms(ir_data: dict[str, Any] | None) -> str:
+    """Generate the versioned ``llms.txt`` context pack.
+
+    The framework layer is stamped with the installed Protean version. When an
+    IR was loaded (``--domain``/``--ir``), the project overlay is appended;
+    with no source, ``ir_data`` is ``None`` and only the framework layer is
+    emitted.
+    """
+    from protean.ir.generators.llms import generate_llms_txt  # noqa: PLC0415
+
+    return generate_llms_txt(ir_data, version=protean.__version__)
 
 
 def _write_output(path: str, content: str) -> None:
