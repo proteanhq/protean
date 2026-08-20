@@ -337,3 +337,48 @@ def test_differently_spelled_duplicate_paths_are_refused(tmp_path):
     assert "twice" in str(excinfo.value)
     assert not (tmp_path / "src/pkg/thing.py").exists()
     assert _snapshot(tmp_path) == before
+
+
+def test_missing_project_directory_is_refused_and_creates_nothing(tmp_path):
+    """The applier writes into a project, it never creates one. A mistyped path
+    is refused instead of having parent creation conjure the whole tree."""
+    missing = tmp_path / "typo-project"
+    plan = ChangePlan(
+        operations=(CreateFileOperation(path="src/pkg/thing.py", content="x\n"),),
+    )
+
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(missing), plan)
+
+    assert "existing project directory" in str(excinfo.value)
+    assert not missing.exists()
+    assert _snapshot(tmp_path) == {}
+
+
+def test_project_path_that_is_a_file_is_refused(tmp_path):
+    """A path that names a file is not a project root either; refuse it up front
+    rather than failing later with a raw ``NotADirectoryError``."""
+    not_a_dir = tmp_path / "domain.py"
+    not_a_dir.write_text("handwritten\n")
+    plan = ChangePlan(
+        operations=(CreateFileOperation(path="thing.py", content="x\n"),),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(not_a_dir), plan)
+
+    assert "not a directory" in str(excinfo.value)
+    assert _snapshot(tmp_path) == before
+
+
+def test_empty_plan_on_a_missing_project_is_refused(tmp_path):
+    """The check runs before the plan is looked at, so even an empty plan does
+    not quietly accept a path that is not a project."""
+    missing = tmp_path / "typo-project"
+
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(missing), ChangePlan())
+
+    assert "existing project directory" in str(excinfo.value)
+    assert not missing.exists()

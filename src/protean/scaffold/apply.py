@@ -7,6 +7,8 @@ rejects any other operation up front.
 
 The contract is that a failed apply leaves the tree exactly as it found it:
 
+- **Require an existing project.** A *project_path* that is not a directory is
+  refused, so a mistyped path never has a project tree created for it.
 - **Reject non-creates.** A plan with an edit or a config op is refused before
   anything is written.
 - **Pre-flight conflicts.** Every target is checked first. If any target already
@@ -32,27 +34,38 @@ __all__ = ["ApplyError", "apply_plan"]
 
 
 class ApplyError(Exception):
-    """A user-facing apply failure: an unsupported operation, a target that
-    already exists, or an I/O error mid-write. The CLI turns this into a clear
-    message and a failure exit code, so the message is written to be read by a
-    human. When it wraps a mid-write error, the tree has already been rolled
-    back to its pre-apply state."""
+    """A user-facing apply failure: a project directory that does not exist, an
+    unsupported operation, a target that already exists, or an I/O error
+    mid-write. The CLI turns this into a clear message and a failure exit code,
+    so the message is written to be read by a human. When it wraps a mid-write
+    error, the tree has already been rolled back to its pre-apply state."""
 
 
 def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     """Apply *plan* under *project_path*, atomically and create-only.
 
-    *project_path* is the project root (the directory that holds ``src/``). Every
+    *project_path* is the project root (the directory that holds ``src/``). It must
+    already exist; the applier writes into a project, it does not create one. Every
     operation's ``path`` is relative to it.
 
     Returns the tuple of relative paths written, in plan order. An empty plan
     writes nothing and returns an empty tuple.
 
-    Raises :class:`ApplyError` when the plan contains a non-create operation,
-    when any target file already exists (checked before any write), or when a
-    write fails partway (after rolling the tree back to its pre-apply state).
+    Raises :class:`ApplyError` when *project_path* is not an existing directory,
+    when the plan contains a non-create operation, when any target file already
+    exists (checked before any write), or when a write fails partway (after
+    rolling the tree back to its pre-apply state).
     """
     root = Path(project_path)
+    # The applier writes into a project that already exists; it never creates one.
+    # Parent creation below makes any missing directory on the way to a target, so
+    # without this check a mistyped path would have the whole tree conjured up
+    # somewhere the caller never meant to write.
+    if not root.is_dir():
+        raise ApplyError(
+            f"apply needs an existing project directory, but {project_path!r} is "
+            "not a directory."
+        )
     root_resolved = root.resolve()
 
     # 1. Validate every operation up front, before any write. A create-only,
