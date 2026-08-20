@@ -49,6 +49,24 @@ def _exists(path: Path) -> bool:
     return path.exists() or path.is_symlink()
 
 
+def _fs_folds_case(root: Path) -> bool:
+    """Does the filesystem holding *root* fold path case?
+
+    True on a case-insensitive filesystem (default macOS APFS, Windows, a
+    case-insensitive mount), False on a case-sensitive one (typical Linux). It
+    asks the filesystem directly, without touching disk: whether a case-flipped
+    spelling of *root* reaches the same directory. ``samefile`` is true only when
+    both spellings resolve to one directory, which is what case folding means; on
+    a case-sensitive filesystem the flipped spelling does not exist and it raises.
+    An absolute project root always carries a cased character to flip.
+    """
+    swapped = str(root).swapcase()
+    try:
+        return os.path.samefile(root, swapped)
+    except OSError:
+        return False
+
+
 class ApplyError(Exception):
     """A user-facing apply failure: a project directory that does not exist, an
     unsupported operation, a target that already exists, or an I/O error
@@ -86,6 +104,12 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
             "not a directory."
         )
     root_resolved = root.resolve()
+
+    # Whether two case-variant targets (``Thing.py`` / ``thing.py``) are one file
+    # depends on the filesystem, not the platform, so probe the actual one holding
+    # the project. On a case-insensitive filesystem the second create would
+    # truncate the first past a duplicate check that keyed on the raw string.
+    fold_case = _fs_folds_case(root_resolved)
 
     # 1. Validate every operation up front, before any write. A create-only,
     #    within-root, well-typed, duplicate-free plan is the precondition for the
@@ -134,12 +158,12 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
             )
         # Two ops writing the same path would both clear pre-flight (neither is on
         # disk yet) and the second would silently truncate the first. Refuse it.
-        # Key on the resolved target, run through ``normcase``, so spellings of one
-        # file (``a.py``, ``./a.py``, ``dir/../a.py``) count as the duplicate they
-        # are, and so do case variants on the platforms where the filesystem folds
-        # case (``normcase`` lowercases on Windows and is a no-op on POSIX, where
-        # ``a.py`` and ``A.py`` really are two files).
-        key = os.path.normcase(str(target))
+        # Key on the resolved target, so spellings of one file (``a.py``,
+        # ``./a.py``, ``dir/../a.py``) count as the duplicate they are; casefold
+        # the key where the filesystem folds case, so ``Thing.py`` and ``thing.py``
+        # do too there while staying distinct on a case-sensitive filesystem.
+        resolved = str(target)
+        key = resolved.casefold() if fold_case else resolved
         if key in seen_targets:
             raise ApplyError(f"apply refuses a plan that writes {op.path!r} twice.")
         seen_targets.add(key)
