@@ -92,7 +92,7 @@ Protean project. It has two layers:
 - **Framework layer** (always present): an H1 naming Protean and the installed
   version, a one-line summary, and a "Core documentation" section of links to
   the published docs site for the core areas: aggregate clusters, events,
-  command and event handlers, projections, and the message catalog.
+  command and event handlers, projections, and event evolution.
 - **Project overlay** (present only with a source): a section derived from the
   IR listing the project's own aggregate clusters (with their commands, events,
   and handlers) and its projections.

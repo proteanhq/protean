@@ -12,7 +12,8 @@ The pack has two layers:
   so it is byte-stable by construction.
 - **Project overlay** (present only when an IR is passed): a section derived
   from the loaded IR listing the project's own aggregate clusters, their
-  commands and events, their handlers, and its projections. So an agent sees
+  commands and events, their command and event handlers, and its projections.
+  So an agent sees
   the actual shape of the project alongside the framework docs.
 
 The overlay is keyed only on stable, structural parts of the IR. It never reads
@@ -44,16 +45,17 @@ _SUMMARY = (
     "applications that can evolve without a rewrite."
 )
 
-# Curated links to the core areas that ``--type=all`` documents: aggregate
-# clusters, events, handlers, and the message catalog. Each entry is a
-# (label, docs-site path) pair; paths use mkdocs directory URLs.
+# Curated links to the core documentation the pack points an agent at:
+# aggregate clusters, events, command and event handlers, projections, and
+# event evolution. Each entry is a (label, docs-site path) pair; paths use
+# mkdocs directory URLs.
 _CORE_DOCS: tuple[tuple[str, str], ...] = (
     ("Aggregate clusters", "guides/domain-definition/aggregates/"),
     ("Events", "guides/domain-definition/events/"),
     ("Commands and command handlers", "guides/change-state/command-handlers/"),
     ("Event handlers", "guides/consume-state/event-handlers/"),
     ("Projections", "guides/consume-state/projections/"),
-    ("Message catalog and event evolution", "guides/evolving-events/"),
+    ("Event evolution", "guides/evolving-events/"),
 )
 
 

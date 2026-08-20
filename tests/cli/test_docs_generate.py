@@ -130,6 +130,52 @@ def _minimal_ir() -> dict[str, Any]:
     )
 
 
+def _multi_element_ir(*, swap: bool = False) -> dict[str, Any]:
+    """An IR with multiple clusters, commands, events, handlers, and
+    projections, all inserted out of sorted order.
+
+    ``swap`` reverses every dict's insertion order. Because the generator sorts
+    every traversal, both orderings must render byte-identical output, so this
+    fixture is what actually exercises the sorting.
+    """
+
+    def _d(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        return dict(reversed(items) if swap else items)
+
+    zebra = _cluster(
+        aggregate_name="Zebra",
+        commands=_d(
+            [
+                ("app.ShipZebra", _command("Z.ShipZebra.v1")),
+                ("app.CancelZebra", _command("Z.CancelZebra.v1")),
+            ]
+        ),
+        events=_d(
+            [
+                ("app.ZebraShipped", _event("Z.ZebraShipped.v1")),
+                ("app.ZebraCancelled", _event("Z.ZebraCancelled.v1")),
+            ]
+        ),
+        command_handlers=_d(
+            [("app.ZebraCommandHandler", _command_handler("Z.ShipZebra.v1"))]
+        ),
+        event_handlers=_d([("app.ZebraEventHandler", {})]),
+    )
+    apple = _cluster(
+        aggregate_name="Apple",
+        commands=_d([("app.PickApple", _command("A.PickApple.v1"))]),
+    )
+    return _ir(
+        clusters=_d([("app.Zebra", zebra), ("app.Apple", apple)]),
+        projections=_d(
+            [
+                ("app.ZSummary", {"projection": {"name": "ZSummary"}}),
+                ("app.ASummary", {"projection": {"name": "ASummary"}}),
+            ]
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Test: Input validation
 # ---------------------------------------------------------------------------
@@ -413,6 +459,8 @@ class TestLlmsType:
         assert "Commands: PlaceOrder" in result.output
         assert "Events: OrderPlaced" in result.output
         assert "Handlers: OrderCommandHandler" in result.output
+        # The minimal IR has no projections, so the subsection is absent.
+        assert "### Projections" not in result.output
 
     def test_overlay_lists_projections(self, tmp_path):
         """A projection in the IR renders under a Projections subsection."""
@@ -429,27 +477,86 @@ class TestLlmsType:
         assert result.exit_code == 0
         assert protean.__version__ in result.output
 
-    def test_byte_stable_ignoring_volatile_ir_fields(self):
-        """Two IRs differing only in generated_at/checksum yield identical bytes."""
-        ir_a = _minimal_ir()
+    def test_overlay_renders_elements_in_sorted_order(self):
+        """Clusters, commands, events, handlers, and projections render in
+        sorted order regardless of the IR's insertion order.
+
+        The fixture inserts every element out of order, so this fails if any
+        traversal drops its ``sorted()``.
+        """
+        out = generate_llms_txt(_multi_element_ir(), version="9.9.9")
+        # Non-empty guard: both clusters actually rendered.
+        assert "app.Apple" in out and "app.Zebra" in out
+        # Clusters sorted by FQN: Apple before Zebra despite Zebra inserted first.
+        assert out.index("app.Apple") < out.index("app.Zebra")
+        # Commands sorted within the Zebra cluster.
+        assert out.index("CancelZebra") < out.index("ShipZebra")
+        # Events sorted within the Zebra cluster.
+        assert out.index("ZebraCancelled") < out.index("ZebraShipped")
+        # Command and event handlers merged and sorted (exercises event_handlers).
+        assert "Handlers: ZebraCommandHandler, ZebraEventHandler" in out
+        # Projections sorted by FQN.
+        assert out.index("ASummary") < out.index("ZSummary")
+
+    def test_byte_stable_across_insertion_order_and_volatile_fields(self):
+        """The same project renders identical bytes no matter the IR dict's
+        insertion order or its volatile top-level fields."""
+        ir_a = _multi_element_ir(swap=False)
         ir_a["generated_at"] = "2020-01-01T00:00:00Z"
         ir_a["checksum"] = "aaaa"
-        ir_b = _minimal_ir()
+        ir_b = _multi_element_ir(swap=True)
         ir_b["generated_at"] = "2099-12-31T23:59:59Z"
         ir_b["checksum"] = "zzzz"
 
         out_a = generate_llms_txt(ir_a, version="9.9.9")
         out_b = generate_llms_txt(ir_b, version="9.9.9")
+        # Non-empty guard: the overlay actually rendered content.
+        assert "app.Zebra" in out_a and "app.Apple" in out_a
+        # Same content, different insertion order and volatile fields -> same bytes.
         assert out_a == out_b
-        # And the timestamps never leaked into the render.
+        # Volatile timestamps never leak into the render.
         assert "2020-01-01" not in out_a
-        assert "2099-12-31" not in out_a
+        assert "2099-12-31" not in out_b
 
     def test_byte_stable_no_source(self):
-        """Generating the framework layer twice yields byte-identical output."""
+        """The framework layer renders identical, non-empty bytes each time."""
         first = generate_llms_txt(None, version="9.9.9")
         second = generate_llms_txt(None, version="9.9.9")
         assert first == second
+        # Non-vacuous: the framework layer actually carries the version and a link.
+        assert "# Protean 9.9.9" in first
+        assert (
+            "https://docs.proteanhq.com/guides/domain-definition/aggregates/" in first
+        )
+
+    def test_overlay_falls_back_to_fqn_and_renders_bare_project_heading(self):
+        """No domain name renders a bare '## Project'; an unnamed aggregate and
+        projection fall back to their FQN short name, and empty element lines
+        are omitted."""
+        ir = _ir(
+            clusters={
+                "app.Widget": {
+                    "aggregate": {},  # no name -> fall back to short_name
+                    "commands": {},
+                    "events": {},
+                    "command_handlers": {},
+                    "event_handlers": {},
+                },
+            },
+            projections={
+                "app.WidgetView": {"projection": {}},  # no name -> fall back
+            },
+        )
+        ir["domain"] = {}  # no name -> bare heading
+        out = generate_llms_txt(ir, version="9.9.9")
+        assert "## Project\n" in out
+        assert "## Project:" not in out
+        assert "**Widget** (`app.Widget`)" in out
+        assert "**WidgetView** (`app.WidgetView`)" in out
+        # No commands/events/handlers on the cluster -> those lines are omitted.
+        assert "Commands:" not in out
+        assert "Events:" not in out
+        assert "Handlers:" not in out
 
     def test_both_domain_and_ir_still_aborts(self, ir_file):
         """--type=llms keeps --domain and --ir mutually exclusive."""
