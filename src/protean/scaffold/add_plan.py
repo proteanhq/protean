@@ -1,10 +1,10 @@
 """Plan a new element slice as a :class:`~protean.scaffold.ChangePlan`.
 
-``protean add <element-type> <name>`` computes what it *would* write and previews
-it, without touching the filesystem. This module is the pure planner behind that
-command: given a project directory and a name, it returns a
+This module is the pure planner behind ``protean add <element-type> <name>``:
+given a project directory and a name, it returns a
 :class:`~protean.scaffold.ChangePlan` of :class:`CreateFileOperation`\\ s in the
-ADR-0030 canonical layout. It writes nothing; the CLI renders the plan.
+ADR-0030 canonical layout. It writes nothing itself; the CLI applies the plan, or
+renders it under ``--dry-run``.
 
 For this first cut the only supported element type is ``aggregate``, which emits
 one complete vertical slice: the aggregate, its create command, its created

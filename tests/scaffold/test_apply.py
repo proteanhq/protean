@@ -124,9 +124,10 @@ def test_config_operation_is_rejected_and_writes_nothing(tmp_path):
     )
 
     before = _snapshot(tmp_path)
-    with pytest.raises(ApplyError):
+    with pytest.raises(ApplyError) as excinfo:
         apply_plan(str(tmp_path), plan)
 
+    assert "create operations only" in str(excinfo.value)
     assert not (tmp_path / "src/pkg/aggregate.py").exists()
     assert _snapshot(tmp_path) == before
 
@@ -183,4 +184,135 @@ def test_rollback_leaves_a_preexisting_directory_intact(tmp_path):
     assert not (package_dir / "thing.py").exists()
     assert package_dir.is_dir()
     assert (package_dir / "domain.py").read_text() == "existing module\n"
+    assert _snapshot(tmp_path) == before
+
+
+def test_rollback_undoes_many_files_and_deep_dirs_on_a_non_last_failure(tmp_path):
+    """Exercise the deletion machinery, not just its zero/one case: two files
+    already written across three new directory levels, and the op that fails is
+    not the last op in the plan. Rollback must unlink both files, remove all
+    three directories it created (deepest-first), leave the pre-existing root
+    file alone, and never reach the op after the failing one."""
+    (tmp_path / "keep.txt").write_text("pre-existing\n")
+
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path="src/pkg/order/__init__.py", content="one\n"),
+            CreateFileOperation(path="src/pkg/order/aggregate.py", content="two\n"),
+            # aggregate.py is a file, so writing under it fails. This is op 3 of 4:
+            # the failure is not the last op.
+            CreateFileOperation(
+                path="src/pkg/order/aggregate.py/nested.py", content="three\n"
+            ),
+            CreateFileOperation(path="src/pkg/other.py", content="never reached\n"),
+        ),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError):
+        apply_plan(str(tmp_path), plan)
+
+    # Both already-written files are unlinked and all three created directories
+    # are removed, so the whole src/ tree this call built is gone.
+    assert not (tmp_path / "src/pkg/order/__init__.py").exists()
+    assert not (tmp_path / "src/pkg/order/aggregate.py").exists()
+    assert not (tmp_path / "src").exists()
+    # The op after the failing one never ran.
+    assert not (tmp_path / "src/pkg/other.py").exists()
+    # The pre-existing root file survives, and the tree is exactly as it was.
+    assert (tmp_path / "keep.txt").read_text() == "pre-existing\n"
+    assert _snapshot(tmp_path) == before
+
+
+def test_rollback_unlinks_a_partial_file_from_a_failed_write(tmp_path):
+    """A write that fails after the file is opened (here, content that cannot be
+    UTF-8 encoded) leaves a partial file on disk. Rollback must unlink it, so the
+    ``ApplyError`` "the project is unchanged" claim holds. Guards the regression
+    where the target was tracked only after a successful write."""
+    (tmp_path / "keep.txt").write_text("pre-existing\n")
+
+    plan = ChangePlan(
+        operations=(
+            # A lone surrogate cannot encode to UTF-8; write_text opens (creates)
+            # the file, then raises while encoding, leaving an empty file behind.
+            CreateFileOperation(path="src/pkg/broken.py", content="a\ud800b"),
+        ),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "rolled back" in str(excinfo.value)
+    # No orphan file and no orphan directory: the partial write was undone.
+    assert not (tmp_path / "src/pkg/broken.py").exists()
+    assert not (tmp_path / "src").exists()
+    assert _snapshot(tmp_path) == before
+
+
+def test_absolute_path_is_refused_and_writes_nothing(tmp_path):
+    """An absolute op.path would escape the project root (root / '/abs' == '/abs').
+    Refuse it up front, before any write."""
+    outside = tmp_path.parent / "escaped.py"
+    plan = ChangePlan(
+        operations=(CreateFileOperation(path=str(outside), content="nope\n"),),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "outside the project root" in str(excinfo.value)
+    assert not outside.exists()
+    assert _snapshot(tmp_path) == before
+
+
+def test_parent_escaping_path_is_refused_and_writes_nothing(tmp_path):
+    """A path that climbs out with ``..`` is refused, so a create never lands
+    above the project root."""
+    root = tmp_path / "project"
+    root.mkdir()
+    plan = ChangePlan(
+        operations=(CreateFileOperation(path="../escaped.py", content="nope\n"),),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(root), plan)
+
+    assert "outside the project root" in str(excinfo.value)
+    assert not (tmp_path / "escaped.py").exists()
+    assert _snapshot(tmp_path) == before
+
+
+def test_non_string_path_is_refused(tmp_path):
+    """A hand-built op with a non-string path is rejected with a clear ApplyError
+    rather than a raw TypeError escaping the applier."""
+    plan = ChangePlan(
+        operations=(CreateFileOperation(path=None, content="x\n"),),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "string path" in str(excinfo.value)
+    assert _snapshot(tmp_path) == {}
+
+
+def test_duplicate_paths_in_one_plan_are_refused(tmp_path):
+    """Two ops writing the same path would both clear pre-flight and the second
+    would truncate the first; refuse the plan instead of silently overwriting."""
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path="src/pkg/thing.py", content="first\n"),
+            CreateFileOperation(path="src/pkg/thing.py", content="second\n"),
+        ),
+    )
+
+    before = _snapshot(tmp_path)
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "twice" in str(excinfo.value)
+    assert not (tmp_path / "src/pkg/thing.py").exists()
     assert _snapshot(tmp_path) == before

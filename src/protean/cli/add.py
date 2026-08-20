@@ -15,8 +15,10 @@ Usage::
     # Point at a project directory other than the current one
     protean add aggregate Order --path ./my-project
 
-Only ``aggregate`` is supported for now; it emits one write-side vertical slice
-(the aggregate, its create command, its created event, and the command handler).
+Only ``aggregate`` is supported for now; it emits one complete vertical slice: the
+package ``__init__.py``, the aggregate, its create command, its created event, the
+command handler that drives it, and a projector plus read-model projection that
+consume the created event (so ``protean verify`` on the applied slice is green).
 
 Apply is create-only and all-or-nothing: if any target file already exists, or a
 write fails partway, the command changes nothing and exits ``1``. An unsupported

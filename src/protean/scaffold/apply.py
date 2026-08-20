@@ -53,10 +53,14 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     write fails partway (after rolling the tree back to its pre-apply state).
     """
     root = Path(project_path)
+    root_resolved = root.resolve()
 
-    # 1. Reject non-create operations up front. Editing files and patching config
-    #    are separate later work; this applier only creates files.
+    # 1. Validate every operation up front, before any write. A create-only,
+    #    within-root, well-typed, duplicate-free plan is the precondition for the
+    #    atomic write below; anything else is refused here so nothing lands on
+    #    disk. Editing files and patching config are separate later work.
     creates: list[CreateFileOperation] = []
+    seen_paths: set[str] = set()
     for op in plan.operations:
         if not isinstance(op, CreateFileOperation):
             raise ApplyError(
@@ -64,6 +68,30 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
                 f"{op.kind!r} operation. Editing files and patching config are "
                 "not applied yet."
             )
+        # A hand-built or JSON-loaded op can carry a non-string path/content that
+        # would blow up as a raw TypeError mid-apply (outside the rollback). Reject
+        # it here with a clear message instead.
+        if not isinstance(op.path, str):
+            raise ApplyError(
+                f"apply needs a string path, got {type(op.path).__name__}."
+            )
+        if not isinstance(op.content, str):
+            raise ApplyError(
+                f"apply needs string content for {op.path!r}, got "
+                f"{type(op.content).__name__}."
+            )
+        # Keep every write inside the project root. An absolute path or one that
+        # climbs out with ``..`` would otherwise write anywhere on the filesystem.
+        if not (root / op.path).resolve().is_relative_to(root_resolved):
+            raise ApplyError(
+                f"apply refuses a path outside the project root: {op.path!r}. "
+                "Operation paths must be relative and stay under the project."
+            )
+        # Two ops writing the same path would both clear pre-flight (neither is on
+        # disk yet) and the second would silently truncate the first. Refuse it.
+        if op.path in seen_paths:
+            raise ApplyError(f"apply refuses a plan that writes {op.path!r} twice.")
+        seen_paths.add(op.path)
         creates.append(op)
 
     # 2. Pre-flight: refuse if any target already exists, before writing anything.
@@ -85,8 +113,13 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
         for op in creates:
             target = root / op.path
             _ensure_parents(target.parent, created_dirs)
-            target.write_text(op.content, encoding="utf-8")
+            # Track the target *before* the write. ``write_text`` opens the file
+            # (creating it) before it encodes and writes the content, so a failure
+            # mid-write can leave an empty file behind. Recording it first is what
+            # lets rollback unlink that partial file. A recorded path that never
+            # got created is a no-op for rollback (the unlink is suppressed).
             written.append(target)
+            target.write_text(op.content, encoding="utf-8")
     except Exception as exc:
         _rollback(written, created_dirs)
         raise ApplyError(
