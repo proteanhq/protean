@@ -30,7 +30,8 @@ protean docs generate --ir=domain-ir.json --type=event-model
     - `handlers`: handler wiring diagrams.
     - `catalog`: an event and command catalog (Markdown tables).
     - `event-model`: the EventModeling slice timeline (see below).
-    - `all` (default): every section except `event-model`.
+    - `llms`: a versioned `llms.txt` context pack (see below).
+    - `all` (default): every section except `event-model` and `llms`.
 - `--format`, `-f`: `markdown` (fenced code blocks, the default) or `mermaid`
   (raw diagram source). `mermaid` is not supported for `catalog`.
 - `--output`, `-o`: Write to a file instead of stdout.
@@ -81,6 +82,37 @@ protean docs generate --domain=my_app --type=event-model
 
 Unlike the other diagram types, `event-model` is its own view and is not
 included in `--type=all`.
+
+### The llms.txt context pack
+
+`--type=llms` renders a versioned context pack in the
+[llms.txt](https://llmstxt.org) convention, aimed at an LLM agent working on a
+Protean project. It has two layers:
+
+- **Framework layer** (always present): an H1 naming Protean and the installed
+  version, a one-line summary, and a "Core documentation" section of links to
+  the published docs site for the core areas: aggregate clusters, events,
+  command and event handlers, projections, and the message catalog.
+- **Project overlay** (present only with a source): a section derived from the
+  IR listing the project's own aggregate clusters (with their commands, events,
+  and handlers) and its projections.
+
+`--type=llms` is the one type that runs with no `--domain` and no `--ir`: with
+no source it emits the framework layer alone; with a source it adds the project
+overlay. Like `event-model`, it is its own view and is not part of `--type=all`.
+
+The output is byte-stable: for a given Protean version and project structure,
+generating twice yields identical bytes. The overlay reads only structural parts
+of the IR, never volatile fields like the build timestamp, so it does not churn
+between runs.
+
+```shell
+# Framework layer only (no source needed)
+protean docs generate --type=llms
+
+# Framework layer plus the project overlay
+protean docs generate --domain=my_app --type=llms --output=llms.txt
+```
 
 ### Annotating the event model
 

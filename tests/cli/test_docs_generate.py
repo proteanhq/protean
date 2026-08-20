@@ -14,7 +14,9 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
+import protean
 from protean.cli.docs import app
+from protean.ir.generators.llms import generate_llms_txt
 
 runner = CliRunner()
 
@@ -351,6 +353,162 @@ class TestGeneratorTypes:
         assert "flowchart TD" in result.output
         # Catalog section (Markdown tables)
         assert "PlaceOrder" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Test: llms.txt context pack (--type=llms)
+# ---------------------------------------------------------------------------
+
+
+class TestLlmsType:
+    """Tests for the ``--type=llms`` versioned context pack."""
+
+    @pytest.fixture()
+    def ir_file(self, tmp_path) -> Path:
+        path = tmp_path / "test-ir.json"
+        path.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
+        return path
+
+    def test_framework_layer_runs_with_no_source(self):
+        """--type=llms needs neither --domain nor --ir: it emits the framework layer."""
+        result = runner.invoke(app, ["generate", "--type=llms"])
+        assert result.exit_code == 0
+        # H1 names Protean and carries the installed version.
+        assert f"# Protean {protean.__version__}" in result.output
+        # Core-documentation links to the areas --type=all covers.
+        assert "## Core documentation" in result.output
+        assert (
+            "https://docs.proteanhq.com/guides/domain-definition/aggregates/"
+            in result.output
+        )
+        assert (
+            "https://docs.proteanhq.com/guides/domain-definition/events/"
+            in result.output
+        )
+        assert (
+            "https://docs.proteanhq.com/guides/change-state/command-handlers/"
+            in result.output
+        )
+        assert (
+            "https://docs.proteanhq.com/guides/consume-state/event-handlers/"
+            in result.output
+        )
+        assert "https://docs.proteanhq.com/guides/evolving-events/" in result.output
+
+    def test_no_source_run_has_no_project_overlay(self):
+        """With no source, only the framework layer renders: no project overlay."""
+        result = runner.invoke(app, ["generate", "--type=llms"])
+        assert result.exit_code == 0
+        assert "## Project" not in result.output
+
+    def test_project_overlay_lists_ir_elements(self, ir_file):
+        """With an IR, the overlay names the project's aggregate, command, event, handler."""
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "--type=llms"])
+        assert result.exit_code == 0
+        # Framework layer is still present...
+        assert f"# Protean {protean.__version__}" in result.output
+        # ...and the overlay names the project and its elements.
+        assert "## Project: test" in result.output
+        assert "**Order** (`app.Order`)" in result.output
+        assert "Commands: PlaceOrder" in result.output
+        assert "Events: OrderPlaced" in result.output
+        assert "Handlers: OrderCommandHandler" in result.output
+
+    def test_overlay_lists_projections(self, tmp_path):
+        """A projection in the IR renders under a Projections subsection."""
+        ir_file = tmp_path / "em-ir.json"
+        ir_file.write_text(json.dumps(_event_model_ir()), encoding="utf-8")
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "--type=llms"])
+        assert result.exit_code == 0
+        assert "### Projections" in result.output
+        assert "**OrderSummary** (`app.OrderSummary`)" in result.output
+
+    def test_version_string_is_named(self):
+        """The literal installed version substring appears in the output."""
+        result = runner.invoke(app, ["generate", "--type=llms"])
+        assert result.exit_code == 0
+        assert protean.__version__ in result.output
+
+    def test_byte_stable_ignoring_volatile_ir_fields(self):
+        """Two IRs differing only in generated_at/checksum yield identical bytes."""
+        ir_a = _minimal_ir()
+        ir_a["generated_at"] = "2020-01-01T00:00:00Z"
+        ir_a["checksum"] = "aaaa"
+        ir_b = _minimal_ir()
+        ir_b["generated_at"] = "2099-12-31T23:59:59Z"
+        ir_b["checksum"] = "zzzz"
+
+        out_a = generate_llms_txt(ir_a, version="9.9.9")
+        out_b = generate_llms_txt(ir_b, version="9.9.9")
+        assert out_a == out_b
+        # And the timestamps never leaked into the render.
+        assert "2020-01-01" not in out_a
+        assert "2099-12-31" not in out_a
+
+    def test_byte_stable_no_source(self):
+        """Generating the framework layer twice yields byte-identical output."""
+        first = generate_llms_txt(None, version="9.9.9")
+        second = generate_llms_txt(None, version="9.9.9")
+        assert first == second
+
+    def test_both_domain_and_ir_still_aborts(self, ir_file):
+        """--type=llms keeps --domain and --ir mutually exclusive."""
+        result = runner.invoke(
+            app,
+            ["generate", "--type=llms", "--domain=my_app", f"--ir={ir_file}"],
+        )
+        assert result.exit_code != 0
+        assert "--domain and --ir are mutually exclusive" in result.output
+
+    def test_cluster_option_rejected(self):
+        """--cluster is not valid for --type=llms."""
+        result = runner.invoke(app, ["generate", "--type=llms", "--cluster=app.Order"])
+        assert result.exit_code != 0
+        assert "--cluster can only be used with" in result.output
+
+    def test_annotations_option_rejected(self, ir_file):
+        """--annotations is only valid for --type=event-model."""
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=llms", "--annotations=x.toml"],
+        )
+        assert result.exit_code != 0
+        assert "--annotations can only be used with --type=event-model" in result.output
+
+    def test_no_source_relaxation_is_scoped_to_llms(self):
+        """A non-llms type with no source still aborts: the relaxation is llms-only."""
+        result = runner.invoke(app, ["generate", "--type=catalog"])
+        assert result.exit_code != 0
+        assert "provide either --domain or --ir" in result.output
+
+    def test_llms_not_bundled_into_type_all(self, ir_file):
+        """--type=all must not carry the llms framework layer."""
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "--type=all"])
+        assert result.exit_code == 0
+        assert "## Core documentation" not in result.output
+        assert f"# Protean {protean.__version__}" not in result.output
+
+    def test_write_to_file(self, ir_file, tmp_path):
+        """--type=llms honors --output."""
+        out_file = tmp_path / "llms.txt"
+        result = runner.invoke(
+            app,
+            ["generate", f"--ir={ir_file}", "--type=llms", f"--output={out_file}"],
+        )
+        assert result.exit_code == 0
+        assert out_file.exists()
+        content = out_file.read_text(encoding="utf-8")
+        assert f"# Protean {protean.__version__}" in content
+        assert "## Project: test" in content
+
+    def test_empty_ir_overlay_reports_no_clusters(self, tmp_path):
+        """An IR with no clusters still renders the overlay with a sentinel."""
+        ir_file = tmp_path / "empty.json"
+        ir_file.write_text(json.dumps(_ir()), encoding="utf-8")
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "--type=llms"])
+        assert result.exit_code == 0
+        assert "## Project: test" in result.output
+        assert "_No aggregate clusters._" in result.output
 
 
 # ---------------------------------------------------------------------------
