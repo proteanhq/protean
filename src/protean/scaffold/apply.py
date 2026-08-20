@@ -18,6 +18,8 @@ The contract is that a failed apply leaves the tree exactly as it found it:
   are deleted and the directories this call created are removed (deepest-first,
   only if empty), then an :class:`ApplyError` is raised. Rollback touches only
   paths this call created, so a pre-existing ``src/<package>/`` is left alone.
+  Removal itself is best-effort, so anything rollback could not remove (a
+  permission error, say) is named in the error rather than glossed over.
 
 On success it returns the tuple of written paths (the plan's relative paths, in
 plan order) so the caller can report what it wrote.
@@ -38,7 +40,9 @@ class ApplyError(Exception):
     unsupported operation, a target that already exists, or an I/O error
     mid-write. The CLI turns this into a clear message and a failure exit code,
     so the message is written to be read by a human. When it wraps a mid-write
-    error, the tree has already been rolled back to its pre-apply state."""
+    error, rollback has already run: the message says the project is unchanged
+    when rollback removed everything, and otherwise lists what is still on
+    disk."""
 
 
 def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
@@ -54,7 +58,7 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     Raises :class:`ApplyError` when *project_path* is not an existing directory,
     when the plan contains a non-create operation, when any target file already
     exists (checked before any write), or when a write fails partway (after
-    rolling the tree back to its pre-apply state).
+    rolling the tree back to its pre-apply state, as far as removal succeeds).
     """
     root = Path(project_path)
     # The applier writes into a project that already exists; it never creates one.
@@ -93,13 +97,25 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
                 f"apply needs string content for {op.path!r}, got "
                 f"{type(op.content).__name__}."
             )
-        # Keep every write inside the project root. An absolute path or one that
-        # climbs out with ``..`` would otherwise write anywhere on the filesystem.
+        # Operation paths are relative to the project root, so an absolute path
+        # is refused here. ``root / "/abs"`` discards the root, so the containment
+        # check below cannot catch an absolute path that happens to point inside
+        # the project; only this check enforces the relative-path contract.
+        # ``drive`` also covers the Windows drive-relative form (``C:file.py``),
+        # which is not absolute but is not root-relative either.
+        candidate = Path(op.path)
+        if candidate.is_absolute() or candidate.drive:
+            raise ApplyError(
+                f"apply refuses an absolute path: {op.path!r}. Operation paths "
+                "must be relative to the project root."
+            )
+        # Keep every write inside the project root. A path that climbs out with
+        # ``..`` would otherwise write anywhere on the filesystem.
         target = (root / op.path).resolve()
         if not target.is_relative_to(root_resolved):
             raise ApplyError(
                 f"apply refuses a path outside the project root: {op.path!r}. "
-                "Operation paths must be relative and stay under the project."
+                "Operation paths must stay under the project."
             )
         # Two ops writing the same path would both clear pre-flight (neither is on
         # disk yet) and the second would silently truncate the first. Refuse it.
@@ -137,7 +153,16 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
             written.append(target)
             target.write_text(op.content, encoding="utf-8")
     except Exception as exc:
-        _rollback(written, created_dirs)
+        # Rollback is best-effort, so it reports what it could not remove and
+        # the error names those paths instead of claiming an unchanged project.
+        leftover = _rollback(written, created_dirs)
+        if leftover:
+            paths = ", ".join(str(path) for path in leftover)
+            raise ApplyError(
+                f"apply failed, and rollback could not remove everything it had "
+                f"written. Still on disk: {paths}. Remove them before retrying. "
+                f"Cause: {exc}"
+            ) from exc
         raise ApplyError(
             f"apply failed and was rolled back; the project is unchanged. Cause: {exc}"
         ) from exc
@@ -173,22 +198,33 @@ def _ensure_parents(directory: Path, created_dirs: list[Path]) -> None:
         created_dirs.append(dir_path)
 
 
-def _rollback(written: list[Path], created_dirs: list[Path]) -> None:
+def _rollback(written: list[Path], created_dirs: list[Path]) -> tuple[Path, ...]:
     """Undo a partial apply: delete the files written, then remove the directories
-    this call created.
+    this call created. Returns the paths still on disk afterwards.
 
     Files go first (reverse order), then directories deepest-first and only if
     empty, so a directory this call made is removed once its files are gone but a
-    directory that already held other content is left intact. Best-effort: a
-    failure to remove one path never masks the original error the caller is about
-    to raise.
+    directory that already held other content is left intact. Removal is
+    best-effort: a failure to remove one path (a permission error, say) never
+    masks the original error the caller is about to raise. Those paths come back
+    in the return value instead, so the caller can name them rather than claim a
+    clean tree. A recorded path that was never created is not leftover: removing
+    it raises ``FileNotFoundError`` and it is not on disk.
     """
+    leftover: list[Path] = []
+
     for file_path in reversed(written):
         with contextlib.suppress(OSError):
             file_path.unlink()
+        if file_path.exists():
+            leftover.append(file_path)
 
     # ``created_dirs`` was appended shallowest-first as directories were made;
     # remove deepest-first so a child directory is gone before its parent.
     for dir_path in reversed(created_dirs):
         with contextlib.suppress(OSError):
             dir_path.rmdir()
+        if dir_path.exists():
+            leftover.append(dir_path)
+
+    return tuple(leftover)

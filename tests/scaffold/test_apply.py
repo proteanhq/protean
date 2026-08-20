@@ -262,9 +262,27 @@ def test_absolute_path_is_refused_and_writes_nothing(tmp_path):
     with pytest.raises(ApplyError) as excinfo:
         apply_plan(str(tmp_path), plan)
 
-    assert "outside the project root" in str(excinfo.value)
+    assert "absolute path" in str(excinfo.value)
     assert not outside.exists()
     assert _snapshot(tmp_path) == before
+
+
+def test_absolute_path_inside_the_root_is_still_refused(tmp_path):
+    """Operation paths are relative, and an absolute path that happens to point
+    inside the project is no exception. The containment check alone would wave it
+    through, because ``root / '/root/src/a.py'`` resolves back under the root."""
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path=str(tmp_path / "src/a.py"), content="nope\n"),
+        ),
+    )
+
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "absolute path" in str(excinfo.value)
+    assert "must be relative" in str(excinfo.value)
+    assert _snapshot(tmp_path) == {}
 
 
 def test_parent_escaping_path_is_refused_and_writes_nothing(tmp_path):
@@ -283,6 +301,42 @@ def test_parent_escaping_path_is_refused_and_writes_nothing(tmp_path):
     assert "outside the project root" in str(excinfo.value)
     assert not (tmp_path / "escaped.py").exists()
     assert _snapshot(tmp_path) == before
+
+
+def test_a_rollback_that_cannot_remove_a_file_says_so(tmp_path):
+    """Rollback is best-effort, so the error must not promise an unchanged tree
+    it did not deliver. Here the unlink fails the way a read-only parent
+    directory makes it fail, which also leaves the directory non-empty so its
+    rmdir fails too: the message names both instead of claiming "unchanged"."""
+    real_unlink = Path.unlink
+
+    def refuse_unlink(self, *args, **kwargs):
+        if self.name == "one.py":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_unlink(self, *args, **kwargs)
+
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path="pkg/one.py", content="op one\n"),
+            # pkg/one.py is a file, so writing under it fails and trips rollback.
+            CreateFileOperation(path="pkg/one.py/nested.py", content="op two\n"),
+        ),
+    )
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "unlink", refuse_unlink)
+        with pytest.raises(ApplyError) as excinfo:
+            apply_plan(str(tmp_path), plan)
+
+    message = str(excinfo.value)
+    assert "could not remove everything" in message
+    assert "the project is unchanged" not in message
+    # Both leftovers are named, files first: the file it could not unlink and the
+    # directory it could not empty. The user knows exactly what to clean up.
+    assert f"{tmp_path / 'pkg/one.py'}, {tmp_path / 'pkg'}" in message
+    # And they really are still there.
+    assert (tmp_path / "pkg/one.py").read_text() == "op one\n"
+    assert (tmp_path / "pkg").is_dir()
 
 
 def test_non_string_path_is_refused(tmp_path):

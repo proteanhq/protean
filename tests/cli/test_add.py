@@ -32,6 +32,7 @@ _PACKAGE = "scaffolded"
 # The files an `aggregate` slice writes, relative to the project root.
 _SLICE_FILES = (
     "src/scaffolded/order/__init__.py",
+    "src/scaffolded/order/aggregate_base.py",
     "src/scaffolded/order/aggregate.py",
     "src/scaffolded/order/commands.py",
     "src/scaffolded/order/events.py",
