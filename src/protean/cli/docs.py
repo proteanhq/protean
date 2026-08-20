@@ -339,9 +339,11 @@ def _generate_output(
 ) -> str:
     """Dispatch to the appropriate generator(s) and assemble the result.
 
-    ``ir_data`` is ``None`` for ``--type=llms`` and ``--type=agents`` run with
-    no source; both emit without an IR. Every other type requires a source, so
-    ``ir_data`` is a dict on their paths.
+    ``ir_data`` is always ``None`` for ``--type=agents``: it is derived from the
+    diagnostics registry alone, so ``generate`` skips the IR load even when a
+    source is given. It is ``None`` for ``--type=llms`` only when run with no
+    source. Every other type requires a source, so ``ir_data`` is a dict on
+    their paths.
     """
     sections: list[str] = []
 

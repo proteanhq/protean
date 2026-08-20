@@ -131,9 +131,10 @@ the code so a reader can trace it back:
   comply: <fix> (`CODE`)
 ```
 
-The generator joins the fields with single spaces and inserts no punctuation of
-its own. The rule reads as full sentences because each registry field already
-ends with a period.
+Beyond the fixed wording in that template (the lead-in, `To comply:`, and the
+code in backticks at the end), the generator adds nothing: it drops the three
+registry fields in as they are written, joined with single spaces. The rule
+reads as full sentences because each registry field already ends with a period.
 
 Only error-level codes appear: advisory `warning` and `info` codes are style and
 design nudges, not hard rules, so they are excluded. The set of rules is coupled

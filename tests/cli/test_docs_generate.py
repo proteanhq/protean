@@ -678,9 +678,9 @@ class TestAgentsType:
         result = runner.invoke(app, ["generate", "--type=agents"])
         assert result.exit_code == 0
         expected = generate_agents_md(version=protean.__version__)
-        # CliRunner appends a trailing newline via typer.echo; compare on the
-        # stripped body so a known error-code rule is asserted end to end.
-        assert expected.strip() in result.output
+        # The generator's output already ends with a newline; typer.echo adds
+        # one more. Compare the whole stream so any extra output is caught.
+        assert result.output == expected + "\n"
 
     def test_excludes_advisory_codes(self):
         """An info/warning code is never rendered as a hard rule."""
