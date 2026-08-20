@@ -97,6 +97,30 @@ def test_conflict_preflight_refuses_and_writes_nothing(tmp_path):
     assert _snapshot(tmp_path) == before
 
 
+def test_conflict_preflight_refuses_a_broken_symlink_target(tmp_path):
+    """A dangling symlink at a target counts as a conflict. ``Path.exists()``
+    follows the link and reads ``False`` for a broken one, so without the
+    symlink-aware check the pre-flight would treat the path as free and write
+    through the link, past the create-only guarantee."""
+    link = tmp_path / "src/pkg/aggregate.py"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(tmp_path / "does-not-exist")
+    assert link.is_symlink() and not link.exists()
+
+    plan = ChangePlan(
+        operations=(
+            CreateFileOperation(path="src/pkg/aggregate.py", content="new file\n"),
+        ),
+    )
+
+    with pytest.raises(ApplyError) as excinfo:
+        apply_plan(str(tmp_path), plan)
+
+    assert "aggregate.py" in str(excinfo.value)
+    # The link is left exactly as found: still a dangling symlink, not a file.
+    assert link.is_symlink() and not link.exists()
+
+
 def test_edit_operation_is_rejected_and_writes_nothing(tmp_path):
     plan = ChangePlan(
         operations=(

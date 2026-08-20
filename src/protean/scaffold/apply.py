@@ -35,6 +35,19 @@ from protean.scaffold.change_plan import ChangePlan, CreateFileOperation
 __all__ = ["ApplyError", "apply_plan"]
 
 
+def _exists(path: Path) -> bool:
+    """True if something is on disk at *path*, a broken symlink included.
+
+    ``Path.exists()`` follows the link and returns ``False`` for a symlink whose
+    target is missing, so a dangling link reads as a free path. That would let
+    the pre-flight write through it and let rollback under-report one left
+    behind. ``is_symlink()`` is ``True`` for a broken link, so the two together
+    mean "a path is here", which is what the conflict pre-flight, the parent
+    walk, and rollback all need.
+    """
+    return path.exists() or path.is_symlink()
+
+
 class ApplyError(Exception):
     """A user-facing apply failure: a project directory that does not exist, an
     unsupported operation, a target that already exists, or an I/O error
@@ -130,7 +143,7 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     #    Checking every op before any write is what keeps a later conflict from
     #    leaving an earlier file half-applied on disk.
     for op in creates:
-        if (root / op.path).exists():
+        if _exists(root / op.path):
             raise ApplyError(
                 f"apply would overwrite an existing path: {op.path!r}. Refusing "
                 "to clobber it; apply is create-only and all-or-nothing. Remove "
@@ -182,7 +195,7 @@ def _ensure_parents(directory: Path, created_dirs: list[Path]) -> None:
     """
     missing: list[Path] = []
     current = directory
-    while not current.exists():
+    while not _exists(current):
         missing.append(current)
         parent = current.parent
         if parent == current:  # pragma: no cover - the filesystem root always
@@ -216,7 +229,7 @@ def _rollback(written: list[Path], created_dirs: list[Path]) -> tuple[Path, ...]
     for file_path in reversed(written):
         with contextlib.suppress(OSError):
             file_path.unlink()
-        if file_path.exists():
+        if _exists(file_path):
             leftover.append(file_path)
 
     # ``created_dirs`` was appended shallowest-first as directories were made;
@@ -224,7 +237,7 @@ def _rollback(written: list[Path], created_dirs: list[Path]) -> tuple[Path, ...]
     for dir_path in reversed(created_dirs):
         with contextlib.suppress(OSError):
             dir_path.rmdir()
-        if dir_path.exists():
+        if _exists(dir_path):
             leftover.append(dir_path)
 
     return tuple(leftover)
