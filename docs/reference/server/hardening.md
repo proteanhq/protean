@@ -257,8 +257,17 @@ Content-Type: application/json
 While draining:
 
 - New messages are no longer fetched: the subscription poll loops stop pulling
-  batches, and `handle_message` / `handle_broker_message` reject anything
-  dispatched after the flip. Handlers already running finish normally.
+  new batches. A batch already read keeps running to completion, so no in-flight
+  message is dropped; the loop exits once that batch finishes. The message
+  handlers themselves are not gated on `draining`, only on `shutting_down`, so a
+  message already dispatched is never failed just because a drain began.
+- The outbox keeps flushing while draining: it holds already-committed rows, not
+  new inbound work, so it publishes what it has rather than freezing until the
+  next process starts. It stops on the `SIGTERM` shutdown.
+- Partitioned subscriptions stop processing and stop taking on new partitions,
+  but the discovery loop keeps renewing the leases they already hold, so those
+  partitions are not abandoned to lapse mid-drain. The leases are released on the
+  `SIGTERM` shutdown.
 - `/readyz` reports not-ready so a load balancer stops routing to the pod. The
   body carries a `draining` marker, kept separate from `shutting_down` so you
   can tell a draining pod from one tearing down:
@@ -280,6 +289,14 @@ stop it. This matches Kubernetes `preStop` semantics: drain in the hook, then
 let the termination grace period run the real shutdown. Only `POST /drainz`
 drains; a `GET` to the path is an unknown path (`404`) and any other non-`GET`
 method still returns `405`.
+
+Draining is a one-way latch. There is no un-drain endpoint: once flipped, the
+poll loops exit and the worker processes nothing more, while `/healthz` and
+`/livez` stay `200` (draining is not a restart signal), so Kubernetes keeps the
+pod but pulls it from rotation. Send `SIGTERM` to finish stopping it. Because
+the trigger is unauthenticated, keep the health server on `127.0.0.1` (the
+default) unless you have a reason to expose it; a stray `POST /drainz` from any
+reachable client takes a worker out of service until it is stopped.
 
 `/drainz` lives on the engine health server only. The FastAPI health router
 has no engine handle and runs in a separate process, so draining in-flight
@@ -499,11 +516,15 @@ drain_timeout = 10  # seconds
 ```
 
 The default of `10` preserves the previous fixed behaviour. Keep the drain
-window below the multi-worker Supervisor kill timeout
-(`_SHUTDOWN_TIMEOUT_SECONDS`, 30 seconds): if `drain_timeout` reaches that
-value the Supervisor can `SIGKILL` a worker before it finishes draining, so
-the engine logs a warning at startup when you set it that high. Single-worker
-runs have no supervisor, so a longer window there is fine.
+window comfortably below the multi-worker Supervisor kill timeout
+(`_SHUTDOWN_TIMEOUT_SECONDS`, 30 seconds). The worker's shutdown also spends
+time closing the domain and cleaning up signal handlers inside that same 30
+second budget, so a window close to 30 (say 29) can still push total shutdown
+past the deadline and get the worker `SIGKILL`ed mid position-persist. The
+engine logs a warning at startup when `drain_timeout` reaches the kill timeout,
+but leave headroom well under 30 to be safe. A zero or negative value is
+rejected and falls back to `10`, since it would give in-flight work no grace at
+all. Single-worker runs have no supervisor, so a longer window there is fine.
 
 ## Optimistic locking
 

@@ -26,6 +26,13 @@ class BaseSubscription(ABC):
     # base class reads it for structured logging.
     subscriber_name: str
 
+    # Whether this subscription pauses when the engine is draining. Message
+    # subscriptions pause: draining means "stop pulling new batches so in-flight
+    # work finishes". The outbox processor overrides this to False so it keeps
+    # flushing already-committed rows during the drain window instead of
+    # freezing them until the replacement process starts.
+    pauses_on_drain: bool = True
+
     def __init__(
         self,
         engine: "Engine",
@@ -69,6 +76,18 @@ class BaseSubscription(ABC):
         # Start the polling loop
         self.loop.create_task(self.poll())
 
+    def _quiescing(self) -> bool:
+        """Whether the poll loop should stop pulling new work.
+
+        ``shutting_down`` always stops every loop. ``draining`` stops the
+        message subscriptions that pause on drain (so in-flight work finishes),
+        but not the outbox, which keeps flushing committed rows during the drain
+        window (``pauses_on_drain = False``).
+        """
+        if self.engine.shutting_down:
+            return True
+        return self.engine.draining and self.pauses_on_drain
+
     async def poll(self) -> None:
         """
         Polling loop for processing messages.
@@ -81,9 +100,7 @@ class BaseSubscription(ABC):
         """
         consecutive_errors = 0
 
-        while self.keep_going and not (
-            self.engine.shutting_down or self.engine.draining
-        ):
+        while self.keep_going and not self._quiescing():
             try:
                 with self.engine.domain.domain_context():
                     # Process messages

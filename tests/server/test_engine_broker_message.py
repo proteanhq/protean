@@ -93,18 +93,26 @@ class TestShuttingDown:
 
 
 # ---------------------------------------------------------------------------
-# 1b. Returns False when draining is True (new work rejected while draining)
+# 1b. Draining does NOT reject at the handler: an in-flight message must finish
 # ---------------------------------------------------------------------------
 class TestDraining:
     @pytest.mark.asyncio
-    async def test_returns_false_when_draining(self, test_domain):
+    async def test_processes_inflight_message_while_draining(self, test_domain):
+        """A message already dispatched must run to completion while draining.
+
+        Draining gates only the poll loops (they stop fetching new batches). The
+        handler guard is gated on shutting_down alone, so a message already read
+        into an in-flight batch is processed, not failed. If draining rejected
+        here, the False return would travel the NACK/retry/DLQ failure path and
+        drop the message, violating the "no in-flight message is dropped" rule.
+        """
         _register_and_init(test_domain, SuccessSubscriber)
         engine = Engine(domain=test_domain, test_mode=True)
         engine.draining = True
 
         result = await engine.handle_broker_message(SuccessSubscriber, {"key": "value"})
-        assert result is False
-        assert len(_call_log) == 0
+        assert result is True
+        assert _call_log == [{"key": "value"}]
 
     @pytest.mark.asyncio
     async def test_processes_when_not_draining(self, test_domain):

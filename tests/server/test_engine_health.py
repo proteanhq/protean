@@ -370,25 +370,29 @@ class TestHealthServerIntegration:
 
     def test_healthz_200_while_draining(self, health_server):
         """Liveness stays green while draining: healthy, just not taking work."""
-        _, _, loop, port = health_server
+        engine, _, loop, port = health_server
         _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+        # Prove the engine is actually draining before asserting liveness stays
+        # green: otherwise a 405 no-op on /drainz would make this pass vacuously.
+        assert engine.draining is True
         status, body = _parse_http(_fetch_health(loop, port, path="/healthz"))
         assert "200 OK" in status
         assert body["status"] == "ok"
 
     def test_livez_200_while_draining(self, health_server):
-        _, _, loop, port = health_server
+        engine, _, loop, port = health_server
         _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+        assert engine.draining is True
         status, body = _parse_http(_fetch_health(loop, port, path="/livez"))
         assert "200 OK" in status
         assert body["status"] == "ok"
 
-    def test_get_drainz_still_405(self, health_server):
-        """Only POST /drainz drains; a GET to it falls through to 405."""
+    def test_get_drainz_returns_404(self, health_server):
+        """Only POST /drainz drains; a GET to it is an unknown path (404)."""
         engine, _, loop, port = health_server
         status, _ = _parse_http(_fetch_health(loop, port, method="GET", path="/drainz"))
-        # GET is not POST-and-/drainz, so it takes the 404 branch (unknown GET
-        # path), never flipping draining.
+        # GET is not POST-and-/drainz, so it misses the drain branch and the
+        # non-GET 405 branch, landing on the unknown-path 404. Draining unchanged.
         assert "404" in status
         assert engine.draining is False
 

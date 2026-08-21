@@ -1153,9 +1153,7 @@ class EventStoreSubscription(BaseSubscription):
         """
         consecutive_errors = 0
 
-        while self.keep_going and not (
-            self.engine.shutting_down or self.engine.draining
-        ):
+        while self.keep_going and not self._quiescing():
             try:
                 with self.engine.domain.domain_context():
                     # Process new messages

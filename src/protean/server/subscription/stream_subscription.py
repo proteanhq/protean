@@ -349,9 +349,7 @@ class StreamSubscription(BaseSubscription):
         batches_processed = 0
         consecutive_errors = 0
 
-        while self.keep_going and not (
-            self.engine.shutting_down or self.engine.draining
-        ):
+        while self.keep_going and not self._quiescing():
             try:
                 # Circuit breaker gate: an OPEN breaker pauses reads (shared by
                 # both lanes-mode and standard-mode) so pending messages stay in

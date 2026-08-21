@@ -234,9 +234,16 @@ class Engine:
         self.exit_code = 0
         self.shutting_down = False  # Flag to indicate the engine is shutting down
         # Advisory drain flag, flipped by POST /drainz. Distinct from
-        # shutting_down: draining means "reject new work, let in-flight work
-        # finish, stay alive" so an orchestrator can quiesce the process before
-        # sending SIGTERM. shutting_down means "tear everything down".
+        # shutting_down: draining means "stop fetching new work, let in-flight
+        # work finish, stay alive" so an orchestrator can quiesce the process
+        # before sending SIGTERM. shutting_down means "tear everything down".
+        #
+        # Draining only gates the subscription poll loops (they stop pulling new
+        # batches); it deliberately does NOT gate handle_message /
+        # handle_broker_message. A message already read into an in-flight batch
+        # must run to completion, since a False return from those guards travels
+        # the failure path (NACK/retry/DLQ) and would drop the message. The
+        # loop-top check then exits once the current batch finishes.
         self.draining = False
 
         # Graceful drain window (seconds): how long shutdown() waits for
@@ -248,6 +255,18 @@ class Engine:
             drain_timeout_raw = domain.config.get("server", {}).get("drain_timeout", 10)
             self.drain_timeout = float(drain_timeout_raw)
         except (AttributeError, TypeError, ValueError):
+            self.drain_timeout = 10.0
+        # A zero or negative window gives no grace at all: asyncio.wait returns
+        # on the next loop step and every unfinished task is cancelled
+        # immediately. That is almost never intended (a TOML bool `false`
+        # coerces to 0.0, garbage falls back to 10), so treat it as invalid and
+        # restore the default rather than silently force-cancelling in-flight
+        # work.
+        if self.drain_timeout <= 0:
+            logger.warning(
+                "engine.drain_timeout_not_positive_using_default",
+                extra={"drain_timeout": self.drain_timeout, "default": 10},
+            )
             self.drain_timeout = 10.0
 
         # Warn if the drain window is at or above the multi-worker Supervisor
@@ -678,8 +697,8 @@ class Engine:
             bool: True if the message was processed successfully, False otherwise
         """
 
-        if self.shutting_down or self.draining:
-            return False  # Skip handling while shutting down or draining
+        if self.shutting_down:
+            return False  # Skip handling while shutting down
 
         with self.domain.domain_context():
             # Set message context so subscribers (and any commands they
@@ -752,8 +771,8 @@ class Engine:
         Returns:
             bool: True if the message was processed successfully, False otherwise
         """
-        if self.shutting_down or self.draining:
-            return False  # Skip handling while shutting down or draining
+        if self.shutting_down:
+            return False  # Skip handling while shutting down
 
         # Propagate metadata extensions into g so that handlers see the
         # same context (tenant_id, user_id, etc.) that enrichers injected

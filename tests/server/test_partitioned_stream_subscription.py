@@ -782,6 +782,58 @@ async def test_poll_runs_a_pass_then_stops(domain: Domain, monkeypatch) -> None:
     assert calls == [1]
 
 
+async def test_discovery_keeps_running_while_draining(
+    domain: Domain, monkeypatch
+) -> None:
+    """The discovery/heartbeat loop keeps running while draining (so it keeps
+    renewing held leases); only shutdown stops it."""
+    sub = await _make_sub(domain)
+    sub.engine.draining = True
+    calls: list[int] = []
+
+    async def _once() -> None:
+        calls.append(1)
+        sub.keep_going = False
+
+    monkeypatch.setattr(sub, "_discovery_pass", _once)
+    await sub.poll()
+    assert calls == [1]  # draining did not stop the loop
+
+    # Negative: shutting down does stop it before any pass runs.
+    sub2 = await _make_sub(domain)
+    sub2.engine.shutting_down = True
+    calls2: list[int] = []
+
+    async def _never() -> None:
+        calls2.append(1)
+
+    monkeypatch.setattr(sub2, "_discovery_pass", _never)
+    await sub2.poll()
+    assert calls2 == []
+
+
+async def test_acquire_new_skips_partitions_while_draining(
+    domain: Domain, category: str
+) -> None:
+    """While draining, a held lease keeps being renewed but no new partition is
+    acquired, so leases are not abandoned and no fresh work is taken on."""
+    _publish(domain, category, _order_event("A", 0), "A")
+    sub = await _make_sub(domain)
+    await sub._discovery_pass()
+    assert "A" in sub._owned
+    fence_before = sub._owned["A"].fence_token
+
+    # A new partition appears and the operator drains the worker.
+    _publish(domain, category, _order_event("B", 0), "B")
+    sub.engine.draining = True
+    await sub._discovery_pass()
+
+    # A is still owned (renewed, not dropped); B was not acquired.
+    assert "A" in sub._owned
+    assert sub._owned["A"].fence_token == fence_before
+    assert "B" not in sub._owned
+
+
 async def test_poll_breaks_on_cancel(domain: Domain, monkeypatch) -> None:
     sub = await _make_sub(domain)
 

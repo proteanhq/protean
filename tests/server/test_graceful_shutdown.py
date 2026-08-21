@@ -268,9 +268,23 @@ class TestConfigurableDrainWindow:
     def test_generous_window_lets_inflight_finish(self):
         """A 2s window lets a 0.05s in-flight handler run to completion."""
         engine = self._engine(drain_timeout=2.0)
+        # Assert the configured window is what governs the wait, so this does
+        # not pass vacuously under the old hardcoded 10.0 (a 0.05s handler
+        # finishes under any window, so completion alone proves nothing).
+        assert engine.drain_timeout == 2.0
         state = self._drain_with_inflight(engine, sleep_for=0.05)
         assert state["completed"] is True
         assert state["cancelled"] is False
+
+    def test_zero_window_falls_back_to_ten(self):
+        """A zero window would give no grace at all, so it is rejected."""
+        engine = self._engine(drain_timeout=0)
+        assert engine.drain_timeout == 10.0
+
+    def test_negative_window_falls_back_to_ten(self):
+        """A negative window is invalid and falls back to the default."""
+        engine = self._engine(drain_timeout=-5)
+        assert engine.drain_timeout == 10.0
 
     def test_warns_when_window_at_or_above_supervisor_kill_timeout(self, caplog):
         """A drain window >= the Supervisor kill timeout logs a warning so an
