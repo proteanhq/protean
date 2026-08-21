@@ -190,6 +190,32 @@ def test_symlinked_target_outside_the_output_folder_is_refused():
             assert handle.read() == "precious"
 
 
+def test_symlinked_target_is_allowed_only_when_it_resolves_directly_inside():
+    """The target's resolved parent must be the output folder itself.
+
+    A symlink to a sibling directly inside the output folder is accepted, because
+    the clear and the render both stay inside it. A symlink pointing deeper into
+    the output folder is refused all the same: the check compares the resolved
+    parent with the resolved output folder, so only a direct child passes.
+    """
+    with isolated_filesystem() as workspace:
+        output_folder = os.path.join(workspace, "out")
+        sibling = os.path.join(output_folder, "sibling")
+        nested = os.path.join(output_folder, "nested", "deep")
+        os.makedirs(sibling)
+        os.makedirs(nested)
+
+        os.symlink(sibling, os.path.join(output_folder, PROJECT_NAME))
+        create_project(PROJECT_NAME, output_folder, ANSWERS, defaults=True)
+        assert os.path.isfile(os.path.join(sibling, "README.md"))
+
+        os.remove(os.path.join(output_folder, PROJECT_NAME))
+        os.symlink(nested, os.path.join(output_folder, PROJECT_NAME))
+        with pytest.raises(ValueError, match="resolves outside output folder"):
+            create_project(PROJECT_NAME, output_folder, ANSWERS, defaults=True)
+        assert not os.path.exists(os.path.join(nested, "README.md"))
+
+
 def test_copier_absent_raises_import_error_before_clearing():
     """With copier absent the core raises ImportError before it clears the target.
 

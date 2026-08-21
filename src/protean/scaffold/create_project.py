@@ -36,14 +36,16 @@ from protean.scaffold.manifest import write_manifest
 
 __all__ = ["create_project"]
 
-# Characters a project name may not contain, so the name is a safe directory
-# name across Mac, Linux, and Windows. Whitespace (``\s``) is included, which
-# also rejects spaces, tabs, and newlines.
+# Characters a project name may not contain: the ones Windows rejects in a path
+# segment, plus whitespace (``\s``), which also rejects spaces, tabs, and
+# newlines. This is a character check only. Windows also reserves device names
+# (``CON``, ``NUL``) and rejects a trailing dot; those are left to the
+# filesystem to refuse.
 _FORBIDDEN_NAME_CHARACTERS = re.compile(r'[<>:"/\\|?*\s]')
 
 
 def _is_valid_project_name(project_name: object) -> bool:
-    """Return whether *project_name* is a portable, single-segment directory name.
+    """Return whether *project_name* is usable as a single-segment directory name.
 
     The parameter is typed ``object`` because the runtime contract is wider than
     the public :func:`create_project` signature: a programmatic caller (the MCP
@@ -112,9 +114,9 @@ def create_project(
 
     Args:
         project_name: The new project's name. Used as the target directory name
-            and injected into the template answers, so it must be a portable
-            single-segment directory name: a non-empty string, not ``.`` or
-            ``..``, with no ``<>:"/\\|?*`` or whitespace.
+            and injected into the template answers, so it must be a single
+            directory segment: a non-empty string, not ``.`` or ``..``, with no
+            ``<>:"/\\|?*`` or whitespace.
         output_folder: Existing directory the project directory is created in.
             Defaults to the current directory.
         data: Template answers (for example ``author_name``, ``author_email``).
