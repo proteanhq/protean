@@ -931,10 +931,6 @@ def _lag_seconds(
     (``lag == 0``) is ``0.0``. Otherwise the seconds are the wall-clock gap
     since ``last_updated``, clamped to ``0.0`` for clock skew; if
     ``last_updated`` is missing or unparseable the result is ``None``.
-
-    The ``lag == 0`` and missing-``last_updated`` branches return without any
-    datetime arithmetic, so ``now`` is only touched when a real timestamp is
-    present.
     """
     if lag is None:
         return None
