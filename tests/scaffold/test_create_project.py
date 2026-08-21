@@ -7,6 +7,7 @@ exceptions the command raises.
 """
 
 import os
+import tempfile
 
 import pytest
 
@@ -176,3 +177,21 @@ def test_copier_absent_raises_import_error_before_clearing():
         assert os.path.isfile(sentinel), "guard must fire before clearing the target"
         with open(sentinel, encoding="utf-8") as handle:
             assert handle.read() == "precious"
+
+
+def test_dry_run_does_not_log_the_temp_render(capsys):
+    """A dry run stays silent about the temp directory it rendered into.
+
+    Copier logs a ``create <path>`` line per file. Under dry-run those writes
+    happen in a temp directory the caller never sees, so the log would name
+    paths that do not exist by the time the call returns. The returned list is
+    the answer; copier's log is silenced.
+    """
+    with isolated_filesystem() as output_folder:
+        create_project(
+            PROJECT_NAME, output_folder, ANSWERS, dry_run=True, defaults=True
+        )
+
+    captured = capsys.readouterr()
+    assert "create" not in captured.out + captured.err
+    assert tempfile.gettempdir() not in captured.out + captured.err

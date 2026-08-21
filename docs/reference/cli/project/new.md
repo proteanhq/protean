@@ -15,6 +15,11 @@ protean new [OPTIONS] PROJECT_NAME
 |----------------|-------------------------|---------|----------|
 | `PROJECT_NAME` | Name of the new project | None    | Yes      |
 
+The project name doubles as the name of the directory that gets created, so it
+has to be a single directory segment: not empty, not `.` or `..`, and without
+`<>:"/\|?*` or whitespace. Anything else is rejected before a single file is
+touched.
+
 ## Options
 
 - `--output-dir`, `-o`: Specifies the directory where the project should be
@@ -39,8 +44,10 @@ the project's configuration. Available configuration options include:
 
 ### Behavior Modifiers
 
-- `--pretend`, `-p`: Runs the command in a "dry run" mode, showing what
-would be done without making any changes.
+- `--pretend`, `-p`: Dry run. Prints the project-relative path of every file
+the command would create, one per line, and writes nothing. The target
+directory is left alone whether or not it already has files in it, and
+`--force` does not clear it under a dry run.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
 existing files.
 

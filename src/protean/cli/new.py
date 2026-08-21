@@ -174,6 +174,6 @@ def new(
         return
 
     # Run post-generation setup unless skipped.
+    project_directory = os.path.join(output_folder, project_name)
     if not skip_setup:
-        project_directory = os.path.join(output_folder, project_name)
         run_project_setup(project_directory)  # pragma: no cover

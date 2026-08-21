@@ -154,8 +154,14 @@ def create_project(
     data_dict = dict(data or {})
     data_dict["project_name"] = project_name
 
-    def render_into(destination: str) -> list[str]:
-        """Render the template plus manifest and AGENTS.md into *destination*."""
+    def render_into(destination: str, quiet: bool = False) -> list[str]:
+        """Render the template plus manifest and AGENTS.md into *destination*.
+
+        *quiet* silences copier's own ``create <path>`` log. A dry run renders
+        into a temp directory the caller never sees, so that log would announce
+        writes at a path that means nothing to them; the returned list is the
+        answer instead.
+        """
         run_copy(
             f"{protean.__path__[0]}/template",
             destination or ".",
@@ -163,6 +169,7 @@ def create_project(
             unsafe=True,  # Trust our own template implicitly.
             defaults=defaults,
             pretend=False,
+            quiet=quiet,
         )
         # The manifest is the first thing to create ``.protean/``. AGENTS.md is
         # generated from the diagnostics registry and the installed version (not
@@ -180,7 +187,7 @@ def create_project(
         # existing-target handling below is deliberately skipped: a preview must
         # neither clear the target nor raise on a non-empty one.
         with tempfile.TemporaryDirectory() as temp_dir:
-            return render_into(temp_dir)
+            return render_into(temp_dir, quiet=True)
 
     # Apply only: a non-empty target is cleared with force, or refused without
     # it. This runs after the dry_run branch so a preview touches nothing.
