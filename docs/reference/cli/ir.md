@@ -111,6 +111,43 @@ protean ir diff --domain my_app.domain --base HEAD
 protean ir diff --left baseline.json --right current.json
 ```
 
+**Model diff (`--format=event-model`).** The default `text` and `json` formats
+report changes in IR vocabulary: elements, fields, handlers, contracts.
+`--format=event-model` renders the same diff in EventModeling slice vocabulary
+instead, so a pull-request reviewer reads it as slices: an added command is a
+new slice, a removed projection is a removed read model, a projection that
+gained a field is a changed slice. It reports only the participants the event
+model draws (commands, the aggregate, non-fact events, read models and
+automations); a change confined to anything else prints `No model changes.`.
+
+Each side is judged against the snapshot it lives in. A removed event counts
+only if it was a non-fact event on the left, and a consumer (a projector, event
+handler, or process manager) counts only where its handlers match a non-fact
+event, so a handler wired to nothing or to a fact event is left out the same way
+the diagram leaves its node out. An event that gains or loses its fact flag is
+drawn on one side only, so it reads as added or removed with the reason in
+parentheses.
+
+A consumer's node comes and goes with the events around it. When the event a
+projector or a handler matches is removed, or turns into a fact event, that
+consumer's node goes with it, and the diff reports it as removed even though
+the consumer itself never changed. The reverse reads as added. The same rule
+runs the other way: adding or dropping a route to an event no slice draws (a
+fact event, or a type no cluster raises) leaves the diagram as it was, so it is
+not a model change.
+
+The exit code is the same as `--format=text` for the same inputs, so a CI gate
+can switch format without changing what it blocks on. The exit code always
+reflects the full IR diff, not the slice view. A real change to an element the
+model does not draw (a contract, entity, value object, or domain setting) still
+exits 1 or 2, even though the slice view prints `No model changes.`. So `No
+model changes.` means the model view found nothing to show, not that the diff
+is empty.
+
+```bash
+protean ir diff --left baseline.json --right current.json --format=event-model
+```
+
 **Options**
 
 | Option | Description | Default |
@@ -120,7 +157,7 @@ protean ir diff --left baseline.json --right current.json
 | `--right`, `-r` | Path to current IR JSON file | |
 | `--base`, `-b` | Git commit/branch/tag for baseline | |
 | `--dir` | Path to `.protean/` directory | `.protean` |
-| `--format`, `-f` | Output format: `text` or `json` | `text` |
+| `--format`, `-f` | Output format: `text`, `json`, or `event-model` | `text` |
 
 **Exit codes (CI-friendly)**
 
