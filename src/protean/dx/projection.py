@@ -20,10 +20,11 @@ Two merge modes cover the file shapes ``protean dx`` ships:
 
 A lockfile at ``.protean/dx.lock`` records, per target path, the pack version
 stamp and two hashes: the hash of the whole file the engine last wrote and the
-hash of the managed slice it last wrote. The two hashes are what let the engine
-tell a user edit apart from a version change: the whole-file hash detects any
-drift, the managed-slice hash localizes it to inside or outside the framework's
-territory. The slice hash drives the diff decision:
+hash of the managed slice it last wrote. The slice hash drives the diff decision
+below (does the user's on-disk region still match what the engine wrote). The
+whole-file hash is not consulted by that decision; it feeds only
+``outside_modified``, the signal that the file drifted around an untouched region.
+The diff decision:
 
 - ``CREATE``: the target is absent.
 - ``NO_CHANGE``: the on-disk slice equals the newly rendered slice and the
@@ -200,6 +201,17 @@ class ManagedRegionProjection:
         ):
             if "\n" in value:
                 raise ValueError(f"{name} must not contain a newline")
+        # A body line identical to a marker line would frame a second, phantom
+        # region and poison every later re-projection (the parse would count two
+        # markers). Reject it at construction rather than write a self-poisoning
+        # file.
+        marker_lines = {self.begin_marker, self.end_marker}
+        for line in self.body.split("\n"):
+            if line in marker_lines:
+                raise ValueError(
+                    "body must not contain a line identical to a region marker "
+                    f"({line!r}); it would frame a phantom region."
+                )
 
     @property
     def mode(self) -> ProjectionMode:
@@ -234,6 +246,16 @@ class StructuredJsonProjection:
     def __post_init__(self) -> None:
         if not self.data:
             raise ValueError("data must name at least one managed key")
+        # The managed values are hashed and written as JSON, so they must be
+        # JSON-serializable with string keys. Catch a non-serializable value
+        # (a ``set``, ``bytes``) or a bad key here rather than raise a raw
+        # ``TypeError`` deep in the diff path.
+        try:
+            _canonical_json(dict(self.data))
+        except TypeError as exc:
+            raise ValueError(
+                f"data must be JSON-serializable with string keys: {exc}"
+            ) from exc
 
     @property
     def mode(self) -> ProjectionMode:
@@ -341,9 +363,11 @@ class ProjectionResult:
     write (``UPDATE``); it is ``None`` for ``NO_CHANGE`` and ``CONFLICT``.
     ``file_hash`` is the hash of that content, ``None`` when ``content`` is.
     ``slice_hash`` is the hash of the newly rendered managed slice.
-    ``outside_modified`` is ``True`` when the whole file drifted from the lock's
-    recorded file hash outside the managed region; it is informational and does
-    not by itself trigger a write.
+    ``outside_modified`` is ``True`` when the file drifted from the lock's
+    recorded file hash while the managed slice stayed the same, so the drift is
+    entirely outside the managed region. It is informational (a ``check`` or
+    ``diff`` verb can report a user edit around the region) and does not by itself
+    trigger a write.
     """
 
     target: str
@@ -389,25 +413,51 @@ def _canonical_json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"))
 
 
+def _marker_line_positions(text: str, marker: str) -> list[int]:
+    """Return the start offsets where *marker* occupies a whole line of *text*.
+
+    The match is line-anchored: *marker* must start at the beginning of the file
+    or just after a newline, and end at the end of the file or just before a
+    newline. A plain substring (a marker keyword mentioned mid-line, or a shorter
+    region id that is a prefix of a longer one) is not counted.
+    """
+    positions: list[int] = []
+    start = 0
+    while True:
+        idx = text.find(marker, start)
+        if idx == -1:
+            break
+        at_line_start = idx == 0 or text[idx - 1] == "\n"
+        line_end = idx + len(marker)
+        at_line_end = line_end == len(text) or text[line_end] == "\n"
+        if at_line_start and at_line_end:
+            positions.append(idx)
+        start = idx + 1
+    return positions
+
+
 def _find_unique_marker(text: str, marker: str, target: str) -> int:
-    """Return the start index of the single occurrence of *marker* in *text*.
+    """Return the start index of the single whole-line occurrence of *marker*.
 
     Raises :exc:`ProjectionError` when the marker is absent or appears more than
     once, so a malformed managed-region target is refused rather than silently
-    overwritten. v1 supports exactly one region per file.
+    overwritten. Matching is line-anchored (see :func:`_marker_line_positions`),
+    so a shorter region id that is a prefix of a longer one does not mismatch.
+    v1 supports exactly one region per file.
     """
-    count = text.count(marker)
-    if count == 0:
+    positions = _marker_line_positions(text, marker)
+    if len(positions) == 0:
         raise ProjectionError(
             f"Managed-region target {target!r} is missing its marker {marker!r}. "
             "Refusing to overwrite the file."
         )
-    if count > 1:
+    if len(positions) > 1:
         raise ProjectionError(
-            f"Managed-region target {target!r} carries {count} copies of the marker "
-            f"{marker!r}; exactly one is supported. Refusing to overwrite the file."
+            f"Managed-region target {target!r} carries {len(positions)} copies of "
+            f"the marker {marker!r}; exactly one is supported. Refusing to overwrite "
+            "the file."
         )
-    return text.index(marker)
+    return positions[0]
 
 
 def _region_bounds(text: str, projection: ManagedRegionProjection) -> tuple[int, int]:
@@ -575,7 +625,13 @@ def diff_projection(
             outside_modified=False,
         )
 
-    disk_content = target_path.read_text(encoding="utf-8")
+    try:
+        disk_content = target_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ProjectionError(
+            f"Target {projection.target!r} is not valid utf-8: {exc}. "
+            "Refusing to overwrite it."
+        ) from exc
     if isinstance(projection, ManagedRegionProjection):
         disk_slice = _extract_region_body(disk_content, projection)
         merged = _merge_region(disk_content, projection)
@@ -587,7 +643,13 @@ def diff_projection(
     disk_slice_hash = _hash_text(disk_slice)
     version_match = entry is not None and entry.version == projection.version
     lock_slice_hash = entry.slice_hash if entry is not None else None
-    outside_modified = entry is not None and entry.file_hash != _hash_text(disk_content)
+    # The file drifted from what the engine wrote, but the managed slice is
+    # untouched, so the drift is entirely outside the managed region.
+    outside_modified = (
+        entry is not None
+        and entry.file_hash != _hash_text(disk_content)
+        and disk_slice_hash == entry.slice_hash
+    )
 
     status = _decide(disk_slice_hash, lock_slice_hash, new_slice_hash, version_match)
     writes = status is ProjectionStatus.UPDATE
@@ -669,8 +731,13 @@ def _atomic_write(path: Path, content: str) -> None:
     prior file intact rather than a half-written one.
     """
     tmp = path.with_name(f"{path.name}.dx-tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        # A failed write (or a failed replace) must not leave a stale temp
+        # sibling behind. The successful replace already consumed ``tmp``.
+        tmp.unlink(missing_ok=True)
 
 
 def load_lock(project_root: Path | str) -> ProjectionLock:
@@ -686,6 +753,8 @@ def load_lock(project_root: Path | str) -> ProjectionLock:
         return ProjectionLock()
     try:
         content = lock_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Lockfile {lock_path} is not valid utf-8: {exc}") from exc
     except OSError as exc:
         raise ValueError(f"Could not read {lock_path}: {exc}") from exc
     try:
@@ -708,7 +777,9 @@ def _record_lock(project_root: Path, target: str, entry: ProjectionEntry) -> Non
     protean_dir = project_root / _LOCK_DIR
     protean_dir.mkdir(parents=True, exist_ok=True)
     lock_path = protean_dir / _LOCK_FILENAME
-    lock_path.write_text(
+    # Write the lock atomically too, so a crash mid-write cannot corrupt it and
+    # make every later projection fail to load it.
+    _atomic_write(
+        lock_path,
         json.dumps(lock.to_dict(), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
     )

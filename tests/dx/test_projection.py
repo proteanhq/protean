@@ -121,6 +121,8 @@ def test_conflict_on_user_edit_inside_region_writes_nothing(tmp_path: Path) -> N
     diff = diff_projection(tmp_path, proj)
     assert diff.status is ProjectionStatus.CONFLICT
     assert diff.content is None
+    # The edit is inside the region, so the drift is not "outside".
+    assert diff.outside_modified is False
 
     with pytest.raises(ProjectionConflict) as excinfo:
         apply_projection(tmp_path, proj)
@@ -197,6 +199,87 @@ def test_reversed_markers_raise(tmp_path: Path) -> None:
         diff_projection(tmp_path, region("AGENTS.md", "1", "new"))
 
 
+def test_prefix_region_id_does_not_false_match(tmp_path: Path) -> None:
+    """A region id that is a prefix of another does not match the longer one.
+
+    With an empty comment suffix, ``protean`` is a plain substring of
+    ``protean-extra``. Line-anchored marker matching must not treat the
+    ``protean-extra`` region as the ``protean`` region.
+    """
+    target = tmp_path / "config.ini"
+    target.write_text(
+        "# PROTEAN:BEGIN protean-extra\nother tool block\n# PROTEAN:END protean-extra\n",
+        encoding="utf-8",
+    )
+    proj = ManagedRegionProjection(
+        target="config.ini",
+        version="1",
+        region_id="protean",
+        body="framework block",
+        comment_prefix="# ",
+    )
+    with pytest.raises(ProjectionError, match="missing its marker"):
+        diff_projection(tmp_path, proj)
+    # The other tool's block is left untouched.
+    assert target.read_text(encoding="utf-8") == (
+        "# PROTEAN:BEGIN protean-extra\nother tool block\n# PROTEAN:END protean-extra\n"
+    )
+
+
+def test_prefix_region_id_updates_only_its_own_region(tmp_path: Path) -> None:
+    """Two regions whose ids share a prefix are told apart; only the named one moves."""
+    v1 = ManagedRegionProjection(
+        target="config.ini",
+        version="1",
+        region_id="protean",
+        body="framework v1",
+        comment_prefix="# ",
+    )
+    apply_projection(tmp_path, v1)  # establishes the lock for the protean region
+    target = tmp_path / "config.ini"
+    # A second tool appends its own region whose id starts with "protean".
+    target.write_text(
+        target.read_text(encoding="utf-8")
+        + "# PROTEAN:BEGIN protean-extra\nother tool block\n"
+        "# PROTEAN:END protean-extra\n",
+        encoding="utf-8",
+    )
+
+    v2 = ManagedRegionProjection(
+        target="config.ini",
+        version="2",
+        region_id="protean",
+        body="framework v2",
+        comment_prefix="# ",
+    )
+    merged = diff_projection(tmp_path, v2)
+    assert merged.status is ProjectionStatus.UPDATE
+    assert merged.content == (
+        "# PROTEAN:BEGIN protean\nframework v2\n# PROTEAN:END protean\n"
+        "# PROTEAN:BEGIN protean-extra\nother tool block\n# PROTEAN:END protean-extra\n"
+    )
+
+
+def test_body_containing_a_marker_line_is_rejected() -> None:
+    """A body line identical to a marker would frame a phantom region: reject it."""
+    with pytest.raises(ValueError, match="identical to a region marker"):
+        ManagedRegionProjection(
+            target="config.ini",
+            version="1",
+            region_id="protean",
+            body="# PROTEAN:END protean",
+            comment_prefix="# ",
+        )
+
+
+def test_non_utf8_target_raises_projection_error(tmp_path: Path) -> None:
+    """A non-utf-8 managed-region target fails as a ProjectionError, not a raw decode."""
+    target = tmp_path / "AGENTS.md"
+    target.write_bytes(b"\xff\xfe not utf-8 at all")
+    with pytest.raises(ProjectionError, match="not valid utf-8"):
+        diff_projection(tmp_path, region("AGENTS.md", "1", "new"))
+
+
 def test_hash_mode_uses_comment_syntax_config(tmp_path: Path) -> None:
     """A ``#``-comment config target projects and re-projects idempotently."""
     proj = ManagedRegionProjection(
@@ -211,6 +294,80 @@ def test_hash_mode_uses_comment_syntax_config(tmp_path: Path) -> None:
     assert (tmp_path / "config.ini").read_text(encoding="utf-8") == (
         "# PROTEAN:BEGIN protean\nkey = value\n# PROTEAN:END protean\n"
     )
+
+
+def test_version_bump_with_identical_body_updates_and_advances_lock(
+    tmp_path: Path,
+) -> None:
+    """A re-install (version bumped, same body, untouched file) is a safe UPDATE.
+
+    The region is untouched, so the write is safe; the lock must advance to the
+    new version so the next identical re-run reads as a no-op.
+    """
+    apply_projection(tmp_path, region("AGENTS.md", "1", "same body"))
+
+    result = apply_projection(tmp_path, region("AGENTS.md", "2", "same body"))
+    assert result.status is ProjectionStatus.UPDATE
+
+    rerun = apply_projection(tmp_path, region("AGENTS.md", "2", "same body"))
+    assert rerun.status is ProjectionStatus.NO_CHANGE
+
+
+def test_no_change_leaves_the_lockfile_untouched(tmp_path: Path) -> None:
+    """A NO_CHANGE re-run must not rewrite the lockfile."""
+    apply_projection(tmp_path, region("AGENTS.md", "1", "block"))
+    lock_before = lock_path(tmp_path).read_text(encoding="utf-8")
+
+    result = apply_projection(tmp_path, region("AGENTS.md", "1", "block"))
+    assert result.status is ProjectionStatus.NO_CHANGE
+    assert lock_path(tmp_path).read_text(encoding="utf-8") == lock_before
+
+
+def test_outside_modified_flags_only_edits_around_the_region(tmp_path: Path) -> None:
+    """``outside_modified`` is True for an edit around the region, False for one inside."""
+    apply_projection(tmp_path, region("OUT.md", "1", "v1"))
+    out = tmp_path / "OUT.md"
+    out.write_text("HEADER\n" + out.read_text(encoding="utf-8"), encoding="utf-8")
+    around = diff_projection(tmp_path, region("OUT.md", "2", "v2"))
+    assert around.status is ProjectionStatus.UPDATE
+    assert around.outside_modified is True
+
+    apply_projection(tmp_path, region("IN.md", "1", "v1"))
+    inside = tmp_path / "IN.md"
+    inside.write_text(
+        "<!-- PROTEAN:BEGIN protean -->\nhand edit\n<!-- PROTEAN:END protean -->\n",
+        encoding="utf-8",
+    )
+    within = diff_projection(tmp_path, region("IN.md", "1", "v1"))
+    assert within.outside_modified is False
+
+
+def test_preexisting_file_without_lock_entry_conflicts(tmp_path: Path) -> None:
+    """A hand-written target with valid markers but no lock entry is a CONFLICT.
+
+    With no lock the engine cannot prove it wrote the on-disk content, so it
+    refuses to overwrite a file it did not author.
+    """
+    target = tmp_path / "AGENTS.md"
+    target.write_text(
+        "<!-- PROTEAN:BEGIN protean -->\nhand written\n<!-- PROTEAN:END protean -->\n",
+        encoding="utf-8",
+    )
+    proj = region("AGENTS.md", "1", "framework block")
+
+    assert diff_projection(tmp_path, proj).status is ProjectionStatus.CONFLICT
+    with pytest.raises(ProjectionConflict):
+        apply_projection(tmp_path, proj)
+    assert target.read_text(encoding="utf-8") == (
+        "<!-- PROTEAN:BEGIN protean -->\nhand written\n<!-- PROTEAN:END protean -->\n"
+    )
+
+
+def test_apply_leaves_no_temp_sibling(tmp_path: Path) -> None:
+    """The atomic writes clean up after themselves: no ``.dx-tmp`` file is left."""
+    apply_projection(tmp_path, region("AGENTS.md", "1", "v1"))  # create + lock write
+    apply_projection(tmp_path, region("AGENTS.md", "2", "v2"))  # in-place update write
+    assert list(tmp_path.rglob("*.dx-tmp")) == []
 
 
 # --- structured JSON -------------------------------------------------------
@@ -254,11 +411,14 @@ def test_json_conflict_on_hand_edited_managed_key(tmp_path: Path) -> None:
     target.write_text(json.dumps({"servers": {"a": 99}}) + "\n", encoding="utf-8")
     before = target.read_text(encoding="utf-8")
 
+    lock_before = lock_path(tmp_path).read_text(encoding="utf-8")
+
     proj = structured(".mcp.json", "2", {"servers": {"a": 2}})
     assert diff_projection(tmp_path, proj).status is ProjectionStatus.CONFLICT
     with pytest.raises(ProjectionConflict):
         apply_projection(tmp_path, proj)
     assert target.read_text(encoding="utf-8") == before
+    assert lock_path(tmp_path).read_text(encoding="utf-8") == lock_before
 
 
 def test_json_non_object_target_raises(tmp_path: Path) -> None:
@@ -266,6 +426,14 @@ def test_json_non_object_target_raises(tmp_path: Path) -> None:
     target.write_text("[1, 2, 3]\n", encoding="utf-8")
     with pytest.raises(ProjectionError, match="must be a JSON object"):
         diff_projection(tmp_path, structured(".mcp.json", "1", {"servers": {}}))
+
+
+def test_non_serializable_structured_data_is_rejected() -> None:
+    """A non-JSON-serializable managed value fails at construction, not at hash time."""
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        StructuredJsonProjection(
+            target=".mcp.json", version="1", data={"servers": {1, 2}}
+        )
 
 
 # --- lockfile --------------------------------------------------------------
@@ -287,6 +455,14 @@ def test_malformed_lockfile_raises_loudly(tmp_path: Path) -> None:
     (tmp_path / ".protean").mkdir()
     lock_path(tmp_path).write_text("{ not valid json", encoding="utf-8")
     with pytest.raises(ValueError, match="Invalid JSON"):
+        load_lock(tmp_path)
+
+
+def test_non_utf8_lockfile_raises_value_error(tmp_path: Path) -> None:
+    """A lockfile that is not valid utf-8 fails loud as a ValueError."""
+    (tmp_path / ".protean").mkdir()
+    lock_path(tmp_path).write_bytes(b"\xff\xfe\x00")
+    with pytest.raises(ValueError, match="not valid utf-8"):
         load_lock(tmp_path)
 
 
