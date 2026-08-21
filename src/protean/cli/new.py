@@ -1,17 +1,13 @@
 import os
-import re
 import shutil
 import subprocess
-from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
 
-import protean
 from protean.cli._helpers import abort_for_missing_dependency
-from protean.ir.generators.agents import generate_agents_md
-from protean.scaffold.manifest import write_manifest
+from protean.scaffold.create_project import create_project
 
 console = Console()
 
@@ -146,92 +142,38 @@ def new(
     if data is None:
         data = []
 
-    # `copier` is optional (protean[scaffold]). Import it before any filesystem
-    # work so a missing extra fails with an install hint rather than after we
-    # have already cleared the target directory.
-    try:
-        from copier import run_copy  # noqa: PLC0415
-    except ImportError as exc:
-        abort_for_missing_dependency("scaffold", "'protean new'", exc)
-
-    def is_valid_project_name(project_name: str) -> bool:
-        """
-        Validates the project name against criteria that ensure compatibility across
-        Mac, Linux, and Windows systems, and also disallows spaces.
-        """
-        # Define a regex pattern that disallows the specified special characters
-        # and spaces. This pattern also disallows leading and trailing spaces.
-        forbidden_characters = re.compile(r'[<>:"/\\|?*\s]')
-
-        return not (forbidden_characters.search(project_name) or not project_name)
-
-    def clear_directory_contents(dir_path: str) -> None:
-        """
-        Removes all contents of a specified directory without deleting the directory itself.
-
-        Parameters:
-            dir_path (str): The path to the directory whose contents are to be cleared.
-        """
-        for item in os.listdir(dir_path):
-            item_path = os.path.join(dir_path, item)
-            if os.path.isfile(item_path) or os.path.islink(item_path):
-                os.unlink(item_path)  # Remove files and links
-            elif os.path.isdir(item_path):
-                shutil.rmtree(item_path)  # Remove subdirectories and their contents
-
-    if not is_valid_project_name(project_name):
-        raise ValueError("Invalid project name")
-
-    # Ensure the output folder exists
-    if not os.path.isdir(output_folder):
-        raise FileNotFoundError(f'Output folder "{output_folder}" does not exist')
-
-    # The output folder is named after the project, and placed in the target folder
-    project_directory = os.path.join(output_folder, project_name)
-
-    # If the project folder already exists, and --force is not set, raise an error
-    if os.path.isdir(project_directory) and os.listdir(project_directory):
-        if not force:
-            raise FileExistsError(
-                f'Folder "{project_name}" is not empty. Use --force to overwrite.'
-            )
-        # Clear the directory contents if --force is set
-        clear_directory_contents(project_directory)
-
-    # Convert data tuples to a dictionary, if provided
+    # Parse the CLI's ``-d key=value`` strings into the plain dict the core
+    # takes. The core injects ``project_name`` itself.
     data_dict = {}
     for value in data:
         k, v = value.split("=", 1)
         data_dict[k] = v
 
-    # Add the project name to answers
-    data_dict["project_name"] = project_name
-
-    # Create project from repo template
-    run_copy(
-        f"{protean.__path__[0]}/template",
-        project_directory or ".",
-        data=data_dict,
-        unsafe=True,  # Trust our own template implicitly,
-        defaults=defaults,
-        pretend=pretend,
-    )
-
-    # Write the derived project manifest (.protean/project.json). This is the
-    # first thing to create .protean/. Skip it under --pretend so a dry run
-    # touches nothing.
-    if not pretend:
-        write_manifest(project_directory or ".")
-
-        # Write the negative-constraint AGENTS.md at the project root so the
-        # fresh project ships the hard rules an agent must not break. It is
-        # generated from the diagnostics registry and the installed version
-        # (not a static template file, which would rot as the registry evolves),
-        # so it stays byte-identical to `protean docs generate --type=agents`.
-        (Path(project_directory or ".") / "AGENTS.md").write_text(
-            generate_agents_md(version=protean.__version__), encoding="utf-8"
+    # The core owns the file-producing work (name validation, target resolution,
+    # --force clear, copier render, manifest, AGENTS.md) and imports copier as
+    # its first statement. Translate an absent [scaffold] extra into an install
+    # hint here; the core raises before it clears any directory, so a lean
+    # install never wipes an existing target.
+    try:
+        planned = create_project(
+            project_name,
+            output_folder,
+            data_dict,
+            dry_run=pretend,
+            force=force,
+            defaults=defaults,
         )
+    except ImportError as exc:
+        abort_for_missing_dependency("scaffold", "'protean new'", exc)
 
-    # Run post-generation setup unless skipped or in pretend mode
-    if not skip_setup and not pretend:
+    # Under --pretend nothing was written; echo the files that would be created
+    # so the user still sees the plan.
+    if pretend:
+        for path in planned:
+            typer.echo(path)
+        return
+
+    # Run post-generation setup unless skipped.
+    if not skip_setup:
+        project_directory = os.path.join(output_folder, project_name)
         run_project_setup(project_directory)  # pragma: no cover
