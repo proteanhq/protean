@@ -267,10 +267,12 @@ def diff(
         result["compatibility"] = _compatibility_block(report)
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     elif format == "event-model":
-        # Render the same diff in slice vocabulary. current_ir is the right
-        # (current) snapshot for every loader mode, so the slice topology the
-        # diff collapses away is available here.
-        typer.echo(generate_event_model_diff(result, current_ir))
+        # Render the same diff in slice vocabulary. Every loader mode above
+        # sets baseline_ir and current_ir, so both snapshots are available and
+        # the renderer can judge each side by the side it lives on.
+        typer.echo(
+            generate_event_model_diff(result, left_ir=baseline_ir, right_ir=current_ir)
+        )
     else:
         _print_diff_text(result)
         # Only when the (exclusion-filtered) report has classified changes — a

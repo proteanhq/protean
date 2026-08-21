@@ -120,6 +120,14 @@ gained a field is a changed slice. It reports only the participants the event
 model draws (commands, the aggregate, non-fact events, read models and
 automations); a change confined to anything else prints `No model changes.`.
 
+Each side is judged against the snapshot it lives in. A removed event counts
+only if it was a non-fact event on the left, and a consumer (a projector, event
+handler, or process manager) counts only where its handlers match a non-fact
+event, so a handler wired to nothing or to a fact event is left out the same way
+the diagram leaves its node out. An event that gains or loses its fact flag is
+drawn on one side only, so it reads as added or removed with the reason in
+parentheses.
+
 The exit code is the same as `--format=text` for the same inputs, so a CI gate
 can switch format without changing what it blocks on. The exit code always
 reflects the full IR diff, not the slice view. A real change to an element the

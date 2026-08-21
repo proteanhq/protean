@@ -1,5 +1,6 @@
 """Tests for CLI `protean ir diff` command."""
 
+import copy
 import json
 import os
 import sys
@@ -1135,13 +1136,24 @@ def _em_command_handler(name):
     }
 
 
-def _em_event(name, fields=None, is_fact_event=False):
+def _em_type(name, version=1):
+    """The `__type__` a consumer's handler map keys on for event *name*.
+
+    Consumers are matched to events by `__type__`, not by FQN, so a fixture
+    whose handler map keys on anything else describes a consumer no slice
+    draws.
+    """
+    return f"Test.{name}.v{version}"
+
+
+def _em_event(name, fields=None, is_fact_event=False, version=1):
     """Minimal event element for a cluster."""
     return {
         "element_type": "EVENT",
         "fqn": f"app.{name}",
         "module": "app",
         "name": name,
+        "__type__": _em_type(name, version),
         "fields": fields or {},
         "is_fact_event": is_fact_event,
     }
@@ -1596,6 +1608,182 @@ class TestDiffEventModelClusterChanges:
         assert "FactShipped" not in result.output
         assert "FactOrder" not in result.output
 
+    def test_a_removed_fact_event_is_not_reported(self, tmp_path):
+        # A removed event's fact flag can only be read from the left snapshot.
+        # The diagram never drew the fact event, so losing it is not a model
+        # change; losing the non-fact event beside it is.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={
+                        "app.FactOrder": _em_event("FactOrder", is_fact_event=True),
+                        "app.OrderShipped": _em_event("OrderShipped"),
+                    },
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={},
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        changed = "\n".join(_changed_lines(result.output))
+        assert "slice Order: event OrderShipped removed" in changed
+        assert "FactOrder" not in result.output
+
+    def test_an_event_turning_into_a_fact_event_leaves_the_model(self, tmp_path):
+        # The event still exists, so the diff calls it changed. The model draws
+        # it on the left and not on the right, so the slice loses a node, which
+        # reads as removed, with the reason.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={
+                        "app.OrderPlaced": _em_event("OrderPlaced", is_fact_event=True)
+                    },
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        changed = "\n".join(_changed_lines(result.output))
+        assert "slice Order: event OrderPlaced removed (now a fact event)" in changed
+
+    def test_a_fact_event_turning_into_an_event_joins_the_model(self, tmp_path):
+        # The mirror image: the slice gains a node it did not draw before.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={
+                        "app.OrderPlaced": _em_event("OrderPlaced", is_fact_event=True)
+                    },
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        changed = "\n".join(_changed_lines(result.output))
+        assert (
+            "slice Order: event OrderPlaced added (no longer a fact event)" in changed
+        )
+
+    def test_an_event_type_change_is_a_changed_event(self, tmp_path):
+        # `__type__` is what every consumer routes on, so a version bump rewires
+        # the slice even though no field moved. It is not a field change, so it
+        # renders as a bare "changed" instead of vanishing.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced", version=2)},
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "slice Order: event OrderPlaced changed" in "\n".join(
+            _changed_lines(result.output)
+        )
+
+    def test_an_aggregate_invariant_or_option_change_is_a_changed_slice(self, tmp_path):
+        # The aggregate is a node the slice draws, so a change to it is a model
+        # change whether or not it touched a field. Reporting only field deltas
+        # printed "No model changes." over a changed invariant.
+        left_cluster = _make_cluster(
+            "Order", commands={"app.PlaceOrder": _em_command("PlaceOrder")}
+        )
+        right_cluster = copy.deepcopy(left_cluster)
+        right_cluster["aggregate"]["invariants"]["post"] = ["total_is_positive"]
+        right_cluster["aggregate"]["options"]["limit"] = 50
+        result = self._run(
+            tmp_path,
+            _minimal_ir(clusters={"app.Order": left_cluster}),
+            _minimal_ir(clusters={"app.Order": right_cluster}),
+        )
+        assert "slice Order: aggregate changed" in "\n".join(
+            _changed_lines(result.output)
+        )
+
+    def test_a_command_option_change_is_a_changed_slice(self, tmp_path):
+        # Same for the command that triggers the slice.
+        left_command = _em_command("PlaceOrder")
+        right_command = dict(left_command, options={"part_of": "app.Order"})
+        result = self._run(
+            tmp_path,
+            _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order", commands={"app.PlaceOrder": left_command}
+                    )
+                }
+            ),
+            _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order", commands={"app.PlaceOrder": right_command}
+                    )
+                }
+            ),
+        )
+        assert "slice Order: command PlaceOrder changed" in "\n".join(
+            _changed_lines(result.output)
+        )
+
+    def test_a_method_edges_only_change_is_not_a_model_change(self, tmp_path):
+        # `method_edges` is the fail-open raise/invoke derivation the event
+        # model generators deliberately do not read, so a delta confined to it
+        # draws nothing different.
+        left_cluster = _make_cluster(
+            "Order", commands={"app.PlaceOrder": _em_command("PlaceOrder")}
+        )
+        left_cluster["aggregate"]["method_edges"] = {"place": {"raises": []}}
+        right_cluster = copy.deepcopy(left_cluster)
+        right_cluster["aggregate"]["method_edges"] = {
+            "place": {"raises": ["app.OrderPlaced"]}
+        }
+        result = self._run(
+            tmp_path,
+            _minimal_ir(clusters={"app.Order": left_cluster}),
+            _minimal_ir(clusters={"app.Order": right_cluster}),
+        )
+        assert result.output.strip() == "No model changes."
+
 
 @pytest.mark.no_test_domain
 class TestDiffEventModelAutomationRouting:
@@ -1610,25 +1798,35 @@ class TestDiffEventModelAutomationRouting:
             env={"COLUMNS": "200"},
         )
 
+    def _order_cluster(self, event_handlers=None):
+        """An Order cluster raising one drawn event, for consumers to match."""
+        return _make_cluster(
+            "Order",
+            commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+            events={"app.OrderPlaced": _em_event("OrderPlaced")},
+            event_handlers=event_handlers or {},
+        )
+
     def test_event_handler_add_and_remove_route_to_added_and_removed(self, tmp_path):
         # An event handler is an automation. Adding one is a new consumer (the
         # Added section), removing one is a lost consumer (the Removed section),
         # not a self-contradictory "~ ... added" line under Changed.
+        handlers = {_em_type("OrderPlaced"): ["on_placed"]}
         left_ir = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order",
-                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
-                    event_handlers={"app.OldHandler": _em_event_handler("OldHandler")},
+                "app.Order": self._order_cluster(
+                    event_handlers={
+                        "app.OldHandler": _em_event_handler("OldHandler", handlers)
+                    }
                 )
             }
         )
         right_ir = _minimal_ir(
             clusters={
-                "app.Order": _make_cluster(
-                    "Order",
-                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
-                    event_handlers={"app.NewHandler": _em_event_handler("NewHandler")},
+                "app.Order": self._order_cluster(
+                    event_handlers={
+                        "app.NewHandler": _em_event_handler("NewHandler", handlers)
+                    }
                 )
             }
         )
@@ -1637,22 +1835,66 @@ class TestDiffEventModelAutomationRouting:
         assert "  - automation OldHandler" in _removed_lines(result.output)
         assert not any("Handler" in ln for ln in _changed_lines(result.output))
 
+    def test_handler_matching_no_drawn_event_is_not_reported(self, tmp_path):
+        # An event handler is a node in a slice only where its handler map
+        # matches a non-fact event. One with an empty map, and one wired to a
+        # fact event, are drawn nowhere, so gaining them is not a model change.
+        left_ir = _minimal_ir(clusters={"app.Order": self._order_cluster()})
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": self._order_cluster(
+                    event_handlers={
+                        "app.Unwired": _em_event_handler("Unwired"),
+                        "app.FactOnly": _em_event_handler(
+                            "FactOnly", {_em_type("OrderArchived"): ["on_archived"]}
+                        ),
+                    }
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert result.output.strip() == "No model changes."
+
     def test_added_process_manager_routes_to_added(self, tmp_path):
         # A brand-new process manager is a new automation, so it lands under
         # Added with a "+" — not under Changed with a "~".
-        left_ir = _minimal_ir()
+        cluster = {"app.Order": self._order_cluster()}
+        left_ir = _minimal_ir(clusters=cluster)
         right_ir = _minimal_ir(
+            clusters=cluster,
             flows={
                 "domain_services": {},
                 "process_managers": {
-                    "app.FulfillmentPM": _em_process_manager("FulfillmentPM")
+                    "app.FulfillmentPM": _em_process_manager(
+                        "FulfillmentPM", {_em_type("OrderPlaced"): {"start": True}}
+                    )
                 },
                 "subscribers": {},
-            }
+            },
         )
         result = self._run(tmp_path, left_ir, right_ir)
         assert "  + automation FulfillmentPM" in _added_lines(result.output)
         assert not any("FulfillmentPM" in ln for ln in _changed_lines(result.output))
+
+    def test_process_manager_matching_no_drawn_event_is_not_reported(self, tmp_path):
+        # Same predicate for a process manager: one that starts on an event no
+        # cluster raises has no node in any slice.
+        cluster = {"app.Order": self._order_cluster()}
+        left_ir = _minimal_ir(clusters=cluster)
+        right_ir = _minimal_ir(
+            clusters=cluster,
+            flows={
+                "domain_services": {},
+                "process_managers": {
+                    "app.OrphanPM": _em_process_manager(
+                        "OrphanPM", {_em_type("NothingRaisesThis"): {"start": True}}
+                    )
+                },
+                "subscribers": {},
+            },
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert result.output.strip() == "No model changes."
 
 
 @pytest.mark.no_test_domain
@@ -1663,7 +1905,18 @@ class TestDiffEventModelProjectors:
         # The projection's own fields are identical on both sides, so the only
         # signal is the projectors. A projector added, removed, or rewired to a
         # different event is a change to the read model — not "No model changes."
+        clusters = {
+            "app.Order": _make_cluster(
+                "Order",
+                commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                events={
+                    "app.OrderPlaced": _em_event("OrderPlaced"),
+                    "app.OrderShipped": _em_event("OrderShipped"),
+                },
+            )
+        }
         left_ir = _minimal_ir(
+            clusters=clusters,
             projections={
                 "app.OrderSummary": _em_projection_group(
                     "OrderSummary",
@@ -1671,14 +1924,19 @@ class TestDiffEventModelProjectors:
                         "app.Proj1": _em_projector(
                             "Proj1",
                             "OrderSummary",
-                            handlers={"app.OrderPlaced": ["on_placed"]},
+                            handlers={_em_type("OrderPlaced"): ["on_placed"]},
                         ),
-                        "app.ProjGone": _em_projector("ProjGone", "OrderSummary"),
+                        "app.ProjGone": _em_projector(
+                            "ProjGone",
+                            "OrderSummary",
+                            handlers={_em_type("OrderPlaced"): ["on_placed"]},
+                        ),
                     },
                 )
-            }
+            },
         )
         right_ir = _minimal_ir(
+            clusters=clusters,
             projections={
                 "app.OrderSummary": _em_projection_group(
                     "OrderSummary",
@@ -1686,12 +1944,16 @@ class TestDiffEventModelProjectors:
                         "app.Proj1": _em_projector(
                             "Proj1",
                             "OrderSummary",
-                            handlers={"app.OrderShipped": ["on_shipped"]},
+                            handlers={_em_type("OrderShipped"): ["on_shipped"]},
                         ),
-                        "app.ProjNew": _em_projector("ProjNew", "OrderSummary"),
+                        "app.ProjNew": _em_projector(
+                            "ProjNew",
+                            "OrderSummary",
+                            handlers={_em_type("OrderShipped"): ["on_shipped"]},
+                        ),
                     },
                 )
-            }
+            },
         )
         left = _write_ir(tmp_path, "left.json", left_ir)
         right = _write_ir(tmp_path, "right.json", right_ir)
@@ -1705,6 +1967,76 @@ class TestDiffEventModelProjectors:
         assert "read model OrderSummary: projector Proj1 changed" in changed
         assert "read model OrderSummary: projector ProjNew added" in changed
         assert "read model OrderSummary: projector ProjGone removed" in changed
+
+    def test_a_projector_matching_no_drawn_event_is_not_reported(self, tmp_path):
+        # A projector is drawn only where it matches a non-fact event, the same
+        # rule as any other consumer. One wired to a fact event, and one wired
+        # to nothing, are nodes in no slice.
+        clusters = {
+            "app.Order": _make_cluster(
+                "Order",
+                commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                events={
+                    "app.OrderPlaced": _em_event("OrderPlaced"),
+                    "app.FactOrder": _em_event("FactOrder", is_fact_event=True),
+                },
+            )
+        }
+        left_ir = _minimal_ir(
+            clusters=clusters,
+            projections={
+                "app.OrderSummary": _em_projection_group(
+                    "OrderSummary",
+                    projectors={
+                        "app.Proj1": _em_projector(
+                            "Proj1",
+                            "OrderSummary",
+                            handlers={_em_type("OrderPlaced"): ["on_placed"]},
+                        )
+                    },
+                )
+            },
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["projections"]["app.OrderSummary"]["projectors"].update(
+            {
+                "app.ProjFactOnly": _em_projector(
+                    "ProjFactOnly",
+                    "OrderSummary",
+                    handlers={_em_type("FactOrder"): ["on_fact"]},
+                ),
+                "app.ProjUnwired": _em_projector("ProjUnwired", "OrderSummary"),
+            }
+        )
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.output.strip() == "No model changes."
+
+    def test_a_read_model_option_change_is_a_changed_read_model(self, tmp_path):
+        # The read model is a participant the slice draws, so a change to it
+        # counts even when no field moved.
+        left_ir = _minimal_ir(
+            projections={"app.OrderSummary": _em_projection_group("OrderSummary")}
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["projections"]["app.OrderSummary"]["projection"]["options"] = {
+            "provider": "memory"
+        }
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert "read model OrderSummary: changed" in "\n".join(
+            _changed_lines(result.output)
+        )
 
 
 @pytest.mark.no_test_domain
