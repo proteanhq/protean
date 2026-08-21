@@ -402,6 +402,29 @@ class TestConstructionFacts:
         assert construction.dynamic_kwargs is True
         assert construction.field_names == ()
 
+    def test_a_template_construction_names_a_positional_argument(self, order_catalog):
+        """``Order(data, status=...)`` passes a template mapping positionally. A
+        container merges that mapping's keys in as fields, and they are not
+        visible here, so ``positional_template`` marks the keyword names as an
+        incomplete field set."""
+        facts = order_catalog.element_facts(behavior.OrderRepository)["seed_template"]
+
+        assert len(facts.constructions) == 1
+        construction = facts.constructions[0]
+
+        assert construction.positional_template is True
+        assert construction.dynamic_kwargs is False
+        assert construction.field_names == ("status",)
+
+    def test_a_keyword_only_construction_names_no_positional_template(
+        self, order_catalog
+    ):
+        """The other side of that flag: ``Order(order_id=..., status=...)`` passes
+        no positional argument, so its keyword names are the whole field set."""
+        facts = order_catalog.element_facts(behavior.OrderRepository)["seed"]
+
+        assert facts.constructions[0].positional_template is False
+
     def test_a_nested_construction_is_recorded(self, order_catalog):
         """``self.raise_(OrderShipped(...))`` records the inner ``OrderShipped``
         construction in its own right, beside the outer ``raise_`` call."""

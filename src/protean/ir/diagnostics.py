@@ -801,13 +801,14 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         rationale=(
             "A projection field that no projector method writes is a dead "
             "column: it renders in the read model and carries a type, but "
-            "nothing ever fills it. The check reads what projector handler "
-            "methods write. A `**kwargs` construction disables it for the whole "
-            "projection, and when no projector write is observed at all the "
-            "whole projection is skipped. It works from observed "
-            "writes, so it is advisory: when the projector writes some fields, a "
-            "sibling field filled only through a path the check cannot follow (a "
-            "helper, a dict splat) can still be flagged."
+            "nothing ever fills it. The check reads what projector methods "
+            "write. A construction whose field set it cannot read disables it "
+            "for the whole projection (a `**kwargs` splat, or a template "
+            "mapping passed positionally), and when no projector write is "
+            "observed at all the whole projection is skipped. It works from "
+            "observed writes, so it is advisory: when the projector writes "
+            "some fields, a sibling field filled only through a path the check "
+            "cannot follow (a helper, a dict splat) can still be flagged."
         ),
         fix=(
             "Write the field from the projector method that handles the event "

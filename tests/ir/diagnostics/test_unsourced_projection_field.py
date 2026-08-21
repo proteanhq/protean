@@ -40,8 +40,10 @@ def flagged_ir() -> dict:
     evidence, the empty-evidence guard, a dynamic ``**kwargs`` construction, the
     identity exemption, the two-projector union, the ``externally_populated``
     opt-out, a fully sourced projection, a write on a handler parameter, a
-    delete, a bulk update, a write delegated to a helper, a write on an
-    unrelated object, and a projector the index cannot resolve.
+    delete, a bulk update, a write delegated to a helper, a helper's write on
+    its own receiver, a static helper's write on the record, a positional
+    template construction, a write on an unrelated object, and a projector the
+    index cannot resolve.
     """
     domain = Domain(name="UnsourcedProjectionField", root_path=CORPUS_ROOT)
     domain.register(catalog.Thing)
@@ -61,6 +63,9 @@ def flagged_ir() -> dict:
         catalog.HelperProjection,
         catalog.UnrelatedProjection,
         catalog.NoSourceProjection,
+        catalog.SelfHelperProjection,
+        catalog.StaticHelperProjection,
+        catalog.TemplateProjection,
     ):
         domain.register(projection)
     domain.register(catalog.ExternalProjection, externally_populated=True)
@@ -137,6 +142,21 @@ def flagged_ir() -> dict:
     domain.register(
         catalog.NoSourceProjector,
         projector_for=catalog.NoSourceProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.SelfHelperProjector,
+        projector_for=catalog.SelfHelperProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.StaticHelperProjector,
+        projector_for=catalog.StaticHelperProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.TemplateProjector,
+        projector_for=catalog.TemplateProjection,
         aggregates=[catalog.Thing],
     )
     domain.init(traverse=False)
@@ -267,10 +287,37 @@ class TestUnsourcedProjectionField:
         """``UnrelatedProjector`` builds its record through a helper the analysis
         cannot follow, and its only visible write is ``trail`` on a plain object.
         ``trail`` names no field of this projection, so it is not evidence and
-        does not clear the evidence guard: count it and ``label`` is reported off
-        a write that has nothing to do with the projection."""
+        does not clear the evidence guard either: no write is observed, so the
+        projection is skipped and nothing is flagged. Count that write and the
+        guard clears, reporting ``label`` off a write that has nothing to do
+        with the projection."""
         assert fqn(catalog.UnrelatedProjection) in flagged_ir["projections"]
         assert _fields_for(flagged_ir, catalog.UnrelatedProjection) == []
+
+    def test_a_helper_write_on_its_own_receiver_is_not_evidence(self, flagged_ir):
+        """``SelfHelperProjector`` sources ``headline`` on the record and hands
+        ``byline`` to a helper that assigns it on ``self``. A helper's receiver
+        is the projector, not a record, so that write is not evidence and
+        ``byline`` is flagged. Drop the receiver exclusion outside handlers and
+        ``byline`` disappears from this list."""
+        assert _fields_for(flagged_ir, catalog.SelfHelperProjection) == ["byline"]
+
+    def test_a_static_helper_has_no_receiver_to_drop(self, flagged_ir):
+        """``StaticHelperProjector`` delegates its ``tagline`` write to a
+        ``@staticmethod`` whose *first* parameter is the record. A static method
+        has no receiver, so the first-parameter exclusion must not apply: drop it
+        anyway and ``tagline`` is reported alongside the genuinely unwritten
+        ``footer``."""
+        assert _fields_for(flagged_ir, catalog.StaticHelperProjection) == ["footer"]
+
+    def test_a_positional_template_construction_flags_nothing(self, flagged_ir):
+        """``TemplateProjector`` builds its record with a template dict passed
+        positionally, which the container merges in as fields. Those keys are
+        invisible to the rule, so the field set is unknowable and the projection
+        is disabled. Read the keyword as the whole field set and the
+        template-filled ``first`` and ``second`` are both reported."""
+        assert fqn(catalog.TemplateProjection) in flagged_ir["projections"]
+        assert _fields_for(flagged_ir, catalog.TemplateProjection) == []
 
     def test_an_unresolvable_projector_fails_open(self, flagged_ir):
         """``NoSourceProjector`` is built by ``type()``, so the element index

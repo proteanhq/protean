@@ -231,6 +231,12 @@ class ConstructionFact:
     field_names: tuple[str, ...]
     #: Whether the construction passes a ``**kwargs`` double-star.
     dynamic_kwargs: bool
+    #: Whether the construction passes a positional argument. A domain element
+    #: reads one as a template mapping (``Projection(data, key=...)``) whose
+    #: keys are filled in alongside the keywords, and those keys are not visible
+    #: here. A rule that reads :attr:`field_names` as the complete field set has
+    #: to treat this the way it treats :attr:`dynamic_kwargs`.
+    positional_template: bool
     location: SourceLocation
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
@@ -383,7 +389,9 @@ class FactCatalog:
         if callee_fqn is not None and self._resolver.is_domain_element(callee_fqn):
             field_names, dynamic = _keyword_fields(node)
             constructions.append(
-                ConstructionFact(callee_fqn, field_names, dynamic, location)
+                ConstructionFact(
+                    callee_fqn, field_names, dynamic, bool(node.args), location
+                )
             )
             return
 

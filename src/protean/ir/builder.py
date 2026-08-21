@@ -2502,10 +2502,14 @@ class IRBuilder:
 
         - ``externally_populated`` projections opt out (filled by a subscriber),
           the same guard the sibling rule uses.
-        - A ``**kwargs`` construction of the projection (``dynamic_kwargs``) means
-          the field set is unknowable, so the projection is disabled and nothing
-          is emitted for it. That is the only disabler, because a construction is
-          the only dynamic write the rule can tie to *this* projection: a
+        - A construction of the projection whose field set is unknowable
+          disables the projection: nothing is emitted for it. Two shapes make it
+          unknowable, a ``**kwargs`` splat (``dynamic_kwargs``) and a positional
+          template (``positional_template``), which a container reads as a
+          mapping whose keys fill fields (``Projection(data, key=...)``) but
+          whose keys the fact cannot see. Construction is the only disabler,
+          because it is the only dynamic write the rule can tie to *this*
+          projection: a
           ``QuerySet`` ``update(**data)`` fills fields from a mapping the same
           way, but ``CallFact`` carries only the callee name, so an
           ``update(...)`` on a query surface is indistinguishable from one on a
@@ -2536,10 +2540,14 @@ class IRBuilder:
           parameters are the projector and the message, never the record.
           Dropping it matters beyond the one field: a projector whose only
           "write" was on ``self`` would otherwise clear the evidence guard and
-          have every real field reported. The exclusion is confined to handlers,
-          because a helper's parameter often *is* the record
-          (``_apply(self, record, event)``) and dropping its writes would report
-          the fields that helper fills.
+          have every real field reported.
+        - In any other method, only the receiver is dropped: the first parameter
+          of a non-static method is the projector, so ``self.city = ...`` in a
+          helper is no more a record write than it is in a handler. The rest of
+          a helper's parameters are kept, because one of them often *is* the
+          record (``_apply(self, record, event)``) and dropping its writes would
+          report the fields that helper fills. A ``@staticmethod`` has no
+          receiver, so nothing is dropped there.
         - A write whose receiver cannot be pinned (a nested attribute, a call
           result) is *kept* as evidence. The rule cannot tell whether it lands on
           the record, and counting it keeps the rule quiet, which is the
@@ -2587,7 +2595,9 @@ class IRBuilder:
                     for construction in facts.constructions:
                         if construction.fqn != proj_fqn:
                             continue
-                        if construction.dynamic_kwargs:
+                        if construction.dynamic_kwargs or (
+                            construction.positional_template
+                        ):
                             dynamic = True
                         written.update(construction.field_names)
                     writes = [
@@ -2597,21 +2607,38 @@ class IRBuilder:
                         and not attribute.is_delete
                         and attribute.name in proj_fields
                     ]
-                    if writes and method.name in handler_names:
-                        # A handler's parameters are the projector and the
-                        # message, never the record, so a write on one is
-                        # provably not a record write. Asking for the flow costs
-                        # a walk, so ask only when there is a write to judge.
-                        parameters = {
-                            definition.name
-                            for definition in self.view.method_flow(
-                                entry.module, method.node
-                            ).parameters
-                        }
+                    if writes:
+                        if method.name in handler_names:
+                            # A handler's parameters are the projector and the
+                            # message, never the record, so a write on one is
+                            # provably not a record write. Asking for the flow
+                            # costs a walk, so ask only when there is a write to
+                            # judge.
+                            excluded = {
+                                definition.name
+                                for definition in self.view.method_flow(
+                                    entry.module, method.node
+                                ).parameters
+                            }
+                        else:
+                            # A helper's parameter often *is* the record
+                            # (``_apply(self, record, event)``), so only its
+                            # receiver is dropped: the first parameter of a
+                            # non-static method is the projector, never a
+                            # record.
+                            positional = (
+                                method.node.args.posonlyargs or method.node.args.args
+                            )
+                            excluded = (
+                                {positional[0].arg}
+                                if positional
+                                and "staticmethod" not in method.decorators
+                                else set()
+                            )
                         writes = [
                             attribute
                             for attribute in writes
-                            if attribute.receiver not in parameters
+                            if attribute.receiver not in excluded
                         ]
                     written.update(attribute.name for attribute in writes)
 

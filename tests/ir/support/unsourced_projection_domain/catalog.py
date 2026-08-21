@@ -6,15 +6,15 @@ projector method's construction of it surfaces as a ``ConstructionFact`` on the
 projection's FQN, exactly as the fact-catalog corpus does. The write shape each
 projector carries, and the branch it drives:
 
-- ``PartialProjector`` constructs ``PartialProjection`` with four of its five
-  data fields as keywords, leaving ``city`` unwritten — the positive case, so
-  ``city`` is flagged by name.
+- ``PartialProjector`` constructs ``PartialProjection`` with every data field
+  except ``city`` as keywords — the positive case, so ``city`` is flagged by
+  name.
 - ``FullProjector`` covers ``FullProjection``'s ``title`` and ``body`` by
   *attribute* write (``record.title = ...``) rather than construction, and
   leaves ``subtitle`` and ``author`` unwritten, so those two are flagged. This
   pins the attribute-evidence branch to a visible outcome: remove that branch
   and the write set empties, tripping the evidence guard so nothing is flagged
-  at all. The two flagged fields also pin emission to sorted field-name order
+  at all. The flagged fields also pin emission to sorted field-name order
   (``author`` before ``subtitle``, though declared the other way round).
 - ``GuardProjector`` builds its record through a module-level helper the
   analysis cannot follow, so its own methods yield no field write at all — the
@@ -55,11 +55,24 @@ projector carries, and the branch it drives:
 - ``UnrelatedProjector`` builds its record through an unfollowable helper and
   writes ``trail`` on a plain object. ``trail`` is no field of
   ``UnrelatedProjection``, so it is not evidence and does not clear the evidence
-  guard: count it and every field of the projection is reported.
+  guard either: the projection is skipped and nothing is flagged. Count that
+  write and the guard clears, so every field of the projection is reported off a
+  write that has nothing to do with it.
 - ``NoSourceProjector`` is assembled by ``type()``, so the element index cannot
   find a class body for it and answers ``None``. The rule fails open on that,
   skipping the projector rather than raising, so ``NoSourceProjection`` is
   reported on nothing.
+- ``SelfHelperProjector`` sources ``headline`` on the record and hands ``byline``
+  to a helper that assigns it on ``self``. A helper's receiver is the projector,
+  so that write is not evidence and ``byline`` stays flagged.
+- ``StaticHelperProjector`` delegates its ``tagline`` write to a
+  ``@staticmethod`` helper whose first parameter is the record. A static method
+  has no receiver, so nothing is dropped there and only ``footer`` is flagged.
+- ``TemplateProjector`` constructs its record with a template dict passed
+  positionally (``TemplateProjection(data, key=...)``). The container merges
+  those keys in as fields and the rule cannot see them, so the field set is
+  unknowable and the projection is disabled — nothing is flagged even though
+  ``first`` and ``second`` are never named.
 """
 
 from protean import current_domain
@@ -410,3 +423,74 @@ class UnrelatedProjector(BaseProjector):
         log = _AuditLog()
         log.trail = event.name
         current_domain.repository_for(UnrelatedProjection).add(record)
+
+
+# ── Negative: a helper's write on ``self`` is not evidence ────────────────
+
+
+class SelfHelperProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    headline = String(max_length=50)
+    byline = String(max_length=50)
+
+
+class SelfHelperProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Source ``headline`` on the record and hand ``byline`` to a helper that
+        stashes it on the projector."""
+        record = SelfHelperProjection(key=event.thing_id, headline=event.name)
+        self._stash(event)
+        current_domain.repository_for(SelfHelperProjection).add(record)
+
+    def _stash(self, event: ThingHappened) -> None:
+        """Assign ``byline`` on the projector itself. ``self`` is this helper's
+        receiver, so the write is no more a record write here than it is in a
+        handler and ``byline`` stays flagged."""
+        self.byline = event.name
+
+
+# ── Negative: a static helper has no receiver to drop ─────────────────────
+
+
+class StaticHelperProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    tagline = String(max_length=50)
+    footer = String(max_length=50)
+
+
+class StaticHelperProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Construct the record with its identity only, then delegate to a static
+        helper."""
+        record = StaticHelperProjection(key=event.thing_id)
+        self._apply(record, event)
+        current_domain.repository_for(StaticHelperProjection).add(record)
+
+    @staticmethod
+    def _apply(record: StaticHelperProjection, event: ThingHappened) -> None:
+        """Write ``tagline`` on the record, this helper's *first* parameter. A
+        ``@staticmethod`` has no receiver, so dropping the first parameter here
+        would report the field the helper fills."""
+        record.tagline = event.name
+
+
+# ── Negative: a positional template mapping disables the check ────────────
+
+
+class TemplateProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    first = String(max_length=50)
+    second = String(max_length=50)
+
+
+class TemplateProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Construct with a template dict passed positionally, which the
+        container merges in as fields. Those keys are invisible to the rule, so
+        the field set is unknowable and the projection is disabled."""
+        data = {"first": event.name, "second": event.email}
+        record = TemplateProjection(data, key=event.thing_id)
+        current_domain.repository_for(TemplateProjection).add(record)
