@@ -795,29 +795,48 @@ def _automation_names(
     diff_result: dict[str, Any],
     category: str,
     drawn: set[str],
+    left_clusters: dict[str, Any],
+    right_clusters: dict[str, Any],
 ) -> list[str]:
     """Collect automation short names in *category* across the whole diff.
 
     Automations are the event-model consumers driven by events: event handlers
     (defined inside a cluster) and process managers (under ``flows``). Both are
     keyed by FQN in the diff's ``{added, removed, changed}`` subsections. This
-    gathers *category* (``"added"``, ``"removed"`` or ``"changed"``) from every
-    changed cluster's event handlers and from the flows' process managers, so
-    the caller renders the two sources uniformly.
+    gathers *category* (``"added"``, ``"removed"`` or ``"changed"``) from three
+    sources, so the caller renders them uniformly: every changed cluster's event
+    handlers, the flows' process managers, and the event handlers of a cluster
+    that was added or removed whole. That last source needs the snapshot: the
+    diff collapses a whole added or removed cluster to a one-line summary, so
+    its handlers are enumerated from the side the cluster lives on (the right
+    snapshot for ``"added"``, the left for ``"removed"``).
 
     *drawn* is the set of consumer FQNs the model draws on the side that
     matters for *category* (see :func:`_drawn_consumer_fqns`). An automation
     that matches no non-fact event has no node in any slice, so a handler with
     an empty or fact-only ``handlers`` map is left out rather than reported as a
     consumer the model gained or lost.
+
+    A changed automation is kept only when its delta touches something the model
+    reads, judged by :func:`_element_change_phrases`. A rewired ``handlers`` map
+    moves the node, so it counts; a delta confined to ``method_edges``, the
+    derivation the renderer never reads, draws nothing different.
     """
-    fqns: list[str] = []
-    changed_clusters = diff_result.get("clusters", {}).get("changed", {})
-    for delta in changed_clusters.values():
-        fqns.extend(delta.get("event_handlers", {}).get(category, {}))
+    entries: dict[str, Any] = {}
+    clusters = diff_result.get("clusters", {})
+    for delta in clusters.get("changed", {}).values():
+        entries.update(delta.get("event_handlers", {}).get(category, {}))
+    snapshot = {"added": right_clusters, "removed": left_clusters}.get(category, {})
+    for cluster_fqn in clusters.get(category, {}):
+        entries.update(snapshot.get(cluster_fqn, {}).get("event_handlers", {}))
     process_managers = diff_result.get("flows", {}).get("process_managers", {})
-    fqns.extend(process_managers.get(category, {}))
-    return [short_name(fqn) for fqn in sorted(fqns) if fqn in drawn]
+    entries.update(process_managers.get(category, {}))
+
+    return [
+        short_name(fqn)
+        for fqn, entry in sorted(entries.items())
+        if fqn in drawn and (category != "changed" or _element_change_phrases(entry))
+    ]
 
 
 def generate_event_model_diff(
@@ -832,8 +851,8 @@ def generate_event_model_diff(
     removed projection is a removed read model, a projection that gained a field
     is a changed slice. It performs no second comparison: the diff says what
     changed, and the snapshots supply the slice topology the diff collapses away
-    (a whole new cluster is one diff entry, so its commands are enumerated from
-    the snapshot).
+    (a whole new cluster is one diff entry, so its commands and its event
+    handlers are enumerated from the snapshot).
 
     Only participants the event model draws are reported — commands, the
     aggregate, non-fact events, projections (read models) and automations
@@ -914,7 +933,9 @@ def generate_event_model_diff(
     # section rather than as a self-contradictory "~ ... added" changed line.
     added.extend(
         f"automation {name}"
-        for name in _automation_names(diff_result, "added", right_drawn)
+        for name in _automation_names(
+            diff_result, "added", right_drawn, left_clusters, right_clusters
+        )
     )
 
     # --- Removed slices and read models --------------------------------
@@ -933,7 +954,9 @@ def generate_event_model_diff(
     )
     removed.extend(
         f"automation {name}"
-        for name in _automation_names(diff_result, "removed", left_drawn)
+        for name in _automation_names(
+            diff_result, "removed", left_drawn, left_clusters, right_clusters
+        )
     )
 
     # --- Changed slices ------------------------------------------------
@@ -955,7 +978,10 @@ def generate_event_model_diff(
             for phrase in _element_change_phrases(delta.get("projection", {}))
         )
         # A projector is a consumer node, so it is reported on the same terms as
-        # an automation: only where the model draws it.
+        # an automation: only where the model draws it, and a changed one only
+        # when its delta touches something the renderer reads. A projector
+        # carries `method_edges` too, and a delta confined to that derivation
+        # moves no node, so it is not a read-model change.
         projectors = delta.get("projectors", {})
         changed.extend(
             f"read model {name}: projector {short_name(p_fqn)} added"
@@ -969,14 +995,16 @@ def generate_event_model_diff(
         )
         changed.extend(
             f"read model {name}: projector {short_name(p_fqn)} changed"
-            for p_fqn in sorted(projectors.get("changed", {}))
-            if p_fqn in either_drawn
+            for p_fqn, p_delta in sorted(projectors.get("changed", {}).items())
+            if p_fqn in either_drawn and _element_change_phrases(p_delta)
         )
 
     # An automation whose wiring changed is a changed consumer.
     changed.extend(
         f"automation {name}"
-        for name in _automation_names(diff_result, "changed", either_drawn)
+        for name in _automation_names(
+            diff_result, "changed", either_drawn, left_clusters, right_clusters
+        )
     )
 
     if not (added or removed or changed):

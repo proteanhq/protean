@@ -1876,6 +1876,91 @@ class TestDiffEventModelAutomationRouting:
         assert "  + automation FulfillmentPM" in _added_lines(result.output)
         assert not any("FulfillmentPM" in ln for ln in _changed_lines(result.output))
 
+    def test_a_rewired_handler_is_a_changed_automation(self, tmp_path):
+        # The node moves to a different event, which is a change the diagram
+        # shows, so the handler belongs under Changed.
+        cluster = self._order_cluster(
+            event_handlers={
+                "app.Notifier": _em_event_handler(
+                    "Notifier", {_em_type("OrderPlaced"): ["on_placed"]}
+                )
+            }
+        )
+        left_ir = _minimal_ir(clusters={"app.Order": cluster})
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["clusters"]["app.Order"]["event_handlers"]["app.Notifier"][
+            "handlers"
+        ] = {_em_type("OrderPlaced", version=2): ["on_placed"]}
+        right_ir["clusters"]["app.Order"]["events"]["app.OrderPlaced"] = _em_event(
+            "OrderPlaced", version=2
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  ~ automation Notifier" in _changed_lines(result.output)
+
+    def test_a_method_edges_only_change_on_a_handler_is_not_a_model_change(
+        self, tmp_path
+    ):
+        # An event handler carries `method_edges` too. The renderer routes a
+        # handler by its `handlers` map and never reads that derivation, so a
+        # delta confined to it moves no node and is not an automation change.
+        cluster = self._order_cluster(
+            event_handlers={
+                "app.Notifier": _em_event_handler(
+                    "Notifier", {_em_type("OrderPlaced"): ["on_placed"]}
+                )
+            }
+        )
+        left_ir = _minimal_ir(clusters={"app.Order": cluster})
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["clusters"]["app.Order"]["event_handlers"]["app.Notifier"][
+            "method_edges"
+        ] = {"on_placed": {"invokes": ["app.Order.ship"]}}
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert result.output.strip() == "No model changes."
+
+    def test_handlers_of_a_whole_new_cluster_are_added_automations(self, tmp_path):
+        # A whole new cluster collapses to one diff entry, so its event
+        # handlers are never in `clusters.changed`. They are drawn nodes all
+        # the same, and are enumerated from the right snapshot.
+        left_ir = _minimal_ir()
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": self._order_cluster(
+                    event_handlers={
+                        "app.Notifier": _em_event_handler(
+                            "Notifier", {_em_type("OrderPlaced"): ["on_placed"]}
+                        ),
+                        "app.Unwired": _em_event_handler("Unwired"),
+                    }
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        added = _added_lines(result.output)
+        assert "  + automation Notifier" in added
+        # The unwired handler is a node in no slice, so it stays out.
+        assert not any("Unwired" in ln for ln in result.output.splitlines())
+
+    def test_handlers_of_a_whole_removed_cluster_are_removed_automations(
+        self, tmp_path
+    ):
+        # The mirror case, read from the left snapshot: the cluster and every
+        # automation it defined are gone from the diagram.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": self._order_cluster(
+                    event_handlers={
+                        "app.Notifier": _em_event_handler(
+                            "Notifier", {_em_type("OrderPlaced"): ["on_placed"]}
+                        )
+                    }
+                )
+            }
+        )
+        right_ir = _minimal_ir()
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  - automation Notifier" in _removed_lines(result.output)
+
     def test_process_manager_matching_no_drawn_event_is_not_reported(self, tmp_path):
         # Same predicate for a process manager: one that starts on an event no
         # cluster raises has no node in any slice.
@@ -2008,6 +2093,46 @@ class TestDiffEventModelProjectors:
                 "app.ProjUnwired": _em_projector("ProjUnwired", "OrderSummary"),
             }
         )
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.output.strip() == "No model changes."
+
+    def test_a_projector_method_edges_only_change_is_not_a_read_model_change(
+        self, tmp_path
+    ):
+        # A projector carries `method_edges` like any other element. The
+        # renderer draws a projector from its `handlers` map alone, so a delta
+        # confined to that derivation is not a change to the read model.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                )
+            },
+            projections={
+                "app.OrderSummary": _em_projection_group(
+                    "OrderSummary",
+                    projectors={
+                        "app.Proj1": _em_projector(
+                            "Proj1",
+                            "OrderSummary",
+                            handlers={_em_type("OrderPlaced"): ["on_placed"]},
+                        )
+                    },
+                )
+            },
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["projections"]["app.OrderSummary"]["projectors"]["app.Proj1"][
+            "method_edges"
+        ] = {"on_placed": {"invokes": ["app.Order.ship"]}}
         left = _write_ir(tmp_path, "left.json", left_ir)
         right = _write_ir(tmp_path, "right.json", right_ir)
         result = runner.invoke(
