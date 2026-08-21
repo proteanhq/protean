@@ -42,8 +42,13 @@ __all__ = ["create_project"]
 _FORBIDDEN_NAME_CHARACTERS = re.compile(r'[<>:"/\\|?*\s]')
 
 
-def _is_valid_project_name(project_name: str) -> bool:
+def _is_valid_project_name(project_name: object) -> bool:
     """Return whether *project_name* is a portable, single-segment directory name.
+
+    The parameter is typed ``object`` because the runtime contract is wider than
+    the public :func:`create_project` signature: a programmatic caller (the MCP
+    ``scaffold`` tool) can hand over whatever JSON decoded to, so a non-string
+    has to be rejected here rather than blowing up further down.
 
     Rejects a non-string, the empty string, the ``.`` and ``..`` path segments,
     and any name carrying a forbidden character (see
@@ -149,7 +154,7 @@ def create_project(
 
     project_directory = os.path.join(output_folder, project_name)
 
-    # The core owns a ready dict; the caller injects the project name so callers
+    # The core injects the project name into the template answers, so callers
     # that already carry answers do not have to remember to add it.
     data_dict = dict(data or {})
     data_dict["project_name"] = project_name
