@@ -473,10 +473,11 @@ def _find_unique_marker(text: str, marker: str, target: str) -> int:
 
 
 def _region_bounds(text: str, projection: ManagedRegionProjection) -> tuple[int, int]:
-    """Return ``(after_begin, end_start)`` byte offsets of the managed body.
+    """Return ``(after_begin, end_start)`` string indices of the managed body.
 
-    ``after_begin`` is the offset just past the begin-marker line; ``end_start``
-    is the offset where the end-marker line starts. Raises
+    ``after_begin`` is the index just past the begin-marker line; ``end_start``
+    is the index where the end-marker line starts. Both index the decoded text,
+    not its utf-8 bytes. Raises
     :exc:`ProjectionError` when either marker is malformed or the end marker
     precedes the begin marker.
     """
@@ -598,6 +599,38 @@ def _decide(
     return ProjectionStatus.CONFLICT
 
 
+def _resolve_target(root: Path, target: str) -> Path:
+    """Return the path *target* names under *root*, refusing anything outside it.
+
+    A target must be a non-empty relative path that stays under the project root
+    once resolved. ``root / "/etc/passwd"`` discards the root, and a ``..``
+    segment or a symlinked parent directory climbs out of it, so without this
+    check an update would read and write anywhere on the filesystem.
+    :func:`~protean.scaffold.apply.apply_plan` runs the same checks on the CREATE
+    path; this one covers UPDATE too, and it runs before anything is read.
+
+    The returned path is the unresolved ``root / target``, so the symlink check in
+    :func:`diff_projection` still sees a final-component symlink as the symlink it
+    is.
+    """
+    if not target:
+        raise ProjectionError("Projection target must be a non-empty path.")
+    candidate = Path(target)
+    # ``drive`` also covers the Windows drive-relative form (``C:file.json``),
+    # which is not absolute but is not root-relative either.
+    if candidate.is_absolute() or candidate.drive:
+        raise ProjectionError(
+            f"Projection refuses an absolute target: {target!r}. A target must be "
+            "relative to the project root."
+        )
+    if not (root / candidate).resolve().is_relative_to(root.resolve()):
+        raise ProjectionError(
+            f"Projection refuses a target outside the project root: {target!r}. "
+            "A target must stay under the project."
+        )
+    return root / candidate
+
+
 def diff_projection(
     project_root: Path | str, projection: Projection
 ) -> ProjectionResult:
@@ -609,12 +642,12 @@ def diff_projection(
     :func:`~protean.scaffold.manifest.check_manifest_drift`: derive and compare,
     mutate nothing.
 
-    Raises :exc:`ProjectionError` when the target is a symlink, when a
-    managed-region target has a malformed marker, when a structured-JSON target is
-    not a JSON object, or when the lockfile is corrupt.
+    Raises :exc:`ProjectionError` when the target escapes the project root, when
+    it is a symlink, when a managed-region target has a malformed marker, when a
+    structured-JSON target is not a JSON object, or when the lockfile is corrupt.
     """
     root = Path(project_root)
-    target_path = root / projection.target
+    target_path = _resolve_target(root, projection.target)
     lock = load_lock(root)
     entry = lock.entries.get(projection.target)
 
@@ -729,7 +762,7 @@ def apply_projection(
         )
         apply_plan(str(root), plan)
     else:  # UPDATE
-        _atomic_write(root / projection.target, result.content)
+        _atomic_write(_resolve_target(root, projection.target), result.content)
 
     _record_lock(
         root,

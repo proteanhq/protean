@@ -691,3 +691,71 @@ def test_symlink_to_a_real_target_is_refused(tmp_path: Path) -> None:
     assert "symlink" in str(excinfo.value)
     assert link.is_symlink()
     assert real.read_bytes() == original
+
+
+# --- targets outside the project root --------------------------------------
+
+
+def test_absolute_target_is_refused(tmp_path: Path) -> None:
+    """An absolute target would discard the root and write anywhere on disk.
+
+    ``root / "/abs/path"`` is ``/abs/path``, so the containment check below cannot
+    catch it; only the absolute-path check does.
+    """
+    outside = tmp_path.parent / "outside.md"
+    outside.write_text("user content\n", encoding="utf-8")
+    proj = region(str(outside), "1", "framework block")
+
+    for call in (diff_projection, apply_projection):
+        with pytest.raises(ProjectionError) as excinfo:
+            call(tmp_path / "project", proj)
+        assert "absolute" in str(excinfo.value)
+
+    assert outside.read_text(encoding="utf-8") == "user content\n"
+
+
+def test_target_climbing_out_with_dotdot_is_refused(tmp_path: Path) -> None:
+    """A ``..`` segment must not carry an update out of the project."""
+    root = tmp_path / "project"
+    root.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"kept": 1}\n', encoding="utf-8")
+    proj = structured("../outside.json", "1", {"servers": {}})
+
+    for call in (diff_projection, apply_projection):
+        with pytest.raises(ProjectionError) as excinfo:
+            call(root, proj)
+        assert "outside the project root" in str(excinfo.value)
+
+    assert outside.read_text(encoding="utf-8") == '{"kept": 1}\n'
+    assert not lock_path(root).exists()
+
+
+def test_target_under_a_symlinked_directory_is_refused(tmp_path: Path) -> None:
+    """A symlinked parent directory climbs out of the root just as ``..`` does.
+
+    The symlink check reads the final component only, so this is caught by
+    resolving the whole path before the containment test.
+    """
+    root = tmp_path / "project"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "AGENTS.md").write_text("user content\n", encoding="utf-8")
+    (root / "link").symlink_to(elsewhere, target_is_directory=True)
+    proj = region("link/AGENTS.md", "1", "framework block")
+
+    for call in (diff_projection, apply_projection):
+        with pytest.raises(ProjectionError) as excinfo:
+            call(root, proj)
+        assert "outside the project root" in str(excinfo.value)
+
+    assert (elsewhere / "AGENTS.md").read_text(encoding="utf-8") == "user content\n"
+
+
+def test_empty_target_is_refused(tmp_path: Path) -> None:
+    """An empty target names the project root itself, which is a directory."""
+    with pytest.raises(ProjectionError) as excinfo:
+        diff_projection(tmp_path, region("", "1", "framework block"))
+
+    assert "non-empty" in str(excinfo.value)
