@@ -93,7 +93,7 @@ enforce `--strict` will fail. Raise `pool_size` or set `PROTEAN_ENV` to
 | `GET /healthz` | Liveness | `200` with `{"status": "ok", "checks": {"event_loop": "responsive"}}` |
 | `GET /livez` | Liveness (alias for `/healthz`) | Same as `/healthz` |
 | `GET /readyz` | Readiness | `200` when all checks pass, `503` otherwise |
-| `POST /drainz` | Drain trigger | `200` with `{"status": "draining"}`; flips the engine to `draining` |
+| `POST /drainz` | Drain trigger | `200` with `{"status": "draining", "pid": <worker pid>}`; flips the engine to `draining` |
 
 Sample responses. Liveness while the engine is running:
 
@@ -251,7 +251,7 @@ $ curl -i -X POST http://localhost:8080/drainz
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"status": "draining"}
+{"status": "draining", "pid": 4021}
 ```
 
 While draining:
@@ -302,6 +302,41 @@ reachable client takes a worker out of service until it is stopped.
 has no engine handle and runs in a separate process, so draining in-flight
 HTTP requests there is the ASGI server's job (for example uvicorn's graceful
 shutdown), not `/drainz`'s.
+
+#### `/drainz` drains one worker
+
+The drain flag lives on the Engine in the process that answered the request, so
+a `POST` drains that worker and no other. With one worker per pod (the usual
+Kubernetes shape) that is the whole process and nothing more is needed.
+
+Under `protean server --workers N` it is not. Each worker runs its own engine
+and its own health server, and workers share no IPC, so there is no way for one
+worker to drain its peers. To quiesce the whole group, POST to every worker's
+health port:
+
+```toml
+[server.health]
+port_auto_increment = true   # worker 0 binds 8080, worker 1 8081, ...
+```
+
+```bash
+$ for port in 8080 8081 8082 8083; do curl -sX POST "http://localhost:$port/drainz"; done
+{"status": "draining", "pid": 4021}
+{"status": "draining", "pid": 4022}
+{"status": "draining", "pid": 4023}
+{"status": "draining", "pid": 4024}
+```
+
+`port_auto_increment` is required here. With the default `false`, only the first
+worker binds the configured port and the rest log a bind failure and run without
+probes, so there is no port to POST for them. The response carries the `pid` of
+the worker that drained, so you can confirm you reached distinct workers rather
+than the same one N times. Ports are assigned in bind order, not worker order,
+so do not assume port `8080` is worker `0`.
+
+A simpler alternative for multi-worker hosts: skip `/drainz` and send `SIGTERM`
+to the supervisor, which propagates it to every worker and runs the real
+shutdown, including the `drain_timeout` window described below.
 
 ### FastAPI router factory
 

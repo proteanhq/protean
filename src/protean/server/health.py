@@ -15,6 +15,14 @@ Endpoints:
                     stays alive; readiness then reports not-ready so a load
                     balancer stops routing. → 200
 
+Every endpoint here answers for the engine in *this* process, ``/drainz``
+included: it drains the worker whose health server took the request, not its
+peers.  Under ``protean server --workers N`` each worker runs its own health
+server and the workers share no IPC, so quiescing the whole group means POSTing
+to each worker's health port.  That needs ``port_auto_increment = true``: with
+the default ``false`` only the first worker binds and the rest run without
+probes.  One worker per pod (the usual Kubernetes shape) has no such gap.
+
 The readiness response also carries a ``subscriptions`` block reporting per-
 subscription lag, status, and circuit-breaker state.  That block is
 **informational and is not one of the gates above**: a lagging subscription or
@@ -40,6 +48,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -469,8 +478,17 @@ class HealthServer:
                 # process stays alive; the orchestrator's later SIGTERM drives
                 # the actual shutdown. Matched before the generic 405 branch so
                 # every other non-GET request still gets 405.
+                #
+                # The flag lives on this process's Engine, so the drain covers
+                # this worker only. Workers have no IPC (see
+                # protean.server.supervisor), so under `--workers N` an
+                # orchestrator must POST every worker's health port to quiesce
+                # the whole group. The response carries the pid so the caller
+                # can tell the workers apart.
                 self.engine.draining = True
-                writer.write(_json_response(200, {"status": "draining"}))
+                pid = os.getpid()
+                logger.info("engine.drain_requested", extra={"pid": pid})
+                writer.write(_json_response(200, {"status": "draining", "pid": pid}))
             elif method != "GET":
                 writer.write(_json_response(405, {"error": "Method Not Allowed"}))
             elif path in ("/healthz", "/livez"):

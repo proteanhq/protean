@@ -372,7 +372,14 @@ class StreamSubscription(BaseSubscription):
                         consecutive_errors = 0
                         continue
 
-                    # Step 2: Primary empty → blocking read on backfill stream
+                    # Step 2: Primary empty → blocking read on backfill stream.
+                    # The primary read above awaits, so a drain (or shutdown)
+                    # can begin while this turn is suspended. Re-check before
+                    # the backfill read: nothing is in flight at this point
+                    # (the primary came back empty), so stopping here drops no
+                    # message and avoids pulling in a new one.
+                    if self._quiescing():
+                        break
                     messages = await self._read_backfill_blocking()
 
                     if messages:

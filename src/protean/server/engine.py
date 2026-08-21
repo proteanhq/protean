@@ -251,15 +251,27 @@ class Engine:
         # [server].drain_timeout, defaulting to 10 to preserve the previous
         # hardcoded behaviour. Defensive read + numeric coercion mirrors the
         # observatory/health config reads elsewhere in __init__.
+        # Pre-seeded so the warning below can name the offending value; it stays
+        # the default only if the config read itself fails.
+        drain_timeout_raw: Any = 10
         try:
             drain_timeout_raw = domain.config.get("server", {}).get("drain_timeout", 10)
+            if isinstance(drain_timeout_raw, bool):
+                # bool is a subclass of int, so float(True) is 1.0: a TOML
+                # `drain_timeout = true` would silently become a one-second
+                # window instead of an invalid value. Reject it like any other
+                # non-numeric setting.
+                raise TypeError("drain_timeout must be a number, not a boolean")
             self.drain_timeout = float(drain_timeout_raw)
         except (AttributeError, TypeError, ValueError):
+            logger.warning(
+                "engine.drain_timeout_invalid_using_default",
+                extra={"drain_timeout": drain_timeout_raw, "default": 10},
+            )
             self.drain_timeout = 10.0
         # A zero or negative window gives no grace at all: asyncio.wait returns
         # on the next loop step and every unfinished task is cancelled
-        # immediately. That is almost never intended (a TOML bool `false`
-        # coerces to 0.0, garbage falls back to 10), so treat it as invalid and
+        # immediately. That is almost never intended, so treat it as invalid and
         # restore the default rather than silently force-cancelling in-flight
         # work.
         if self.drain_timeout <= 0:

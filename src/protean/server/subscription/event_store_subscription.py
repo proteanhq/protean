@@ -1159,8 +1159,13 @@ class EventStoreSubscription(BaseSubscription):
                     # Process new messages
                     await self.tick()
 
-                    # Periodically attempt recovery of failed positions
-                    await self.maybe_run_recovery()
+                    # Periodically attempt recovery of failed positions.
+                    # A recovery pass re-reads failed positions and dispatches
+                    # handlers, so it is fresh intake, not in-flight work: skip
+                    # it if a drain began while the tick above was running,
+                    # rather than fanning out new handlers after the trigger.
+                    if not self._quiescing():
+                        await self.maybe_run_recovery()
 
                     # Reset error counter on successful tick
                     consecutive_errors = 0

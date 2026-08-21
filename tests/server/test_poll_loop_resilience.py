@@ -24,6 +24,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
+from protean.server.outbox_processor import OutboxProcessor
 from protean.server.subscription import BaseSubscription
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
@@ -774,7 +775,60 @@ class TestPollLoopDraining:
 
     def test_real_outbox_opts_out_of_drain_pause(self):
         """The shipped OutboxProcessor sets pauses_on_drain = False."""
-        from protean.server.outbox_processor import OutboxProcessor
-
         assert OutboxProcessor.pauses_on_drain is False
         assert BaseSubscription.pauses_on_drain is True
+
+    @pytest.mark.asyncio
+    async def test_lanes_mode_skips_backfill_read_once_draining(self, domain_setup):
+        """A drain that lands while the primary read is in flight stops the turn
+        before the backfill read, so no new backfill message is pulled in."""
+        sub = _make_stream_subscription(domain_setup)
+        sub._lanes_enabled = True
+        backfill_reads = 0
+
+        async def empty_primary_then_drain():
+            # Primary is empty, and POST /drainz lands while this read is in
+            # flight. Nothing is in flight, so the turn must stop here.
+            sub.engine.draining = True
+            return []
+
+        async def counting_backfill():
+            nonlocal backfill_reads
+            backfill_reads += 1
+            return []
+
+        sub._read_primary_nonblocking = empty_primary_then_drain
+        sub._read_backfill_blocking = counting_backfill
+
+        await sub.poll()
+
+        assert backfill_reads == 0
+
+    @pytest.mark.asyncio
+    async def test_event_store_skips_recovery_once_draining(self, domain_setup):
+        """A recovery pass dispatches handlers for failed positions, so it is new
+        intake: a drain landing during the tick skips it."""
+        engine = Engine(domain=domain_setup, test_mode=True)
+        sub = EventStoreSubscription(
+            engine=engine,
+            stream_category="user",
+            handler=UserEventHandler,
+            tick_interval=0,
+        )
+        recovery_passes = 0
+
+        async def tick_then_drain():
+            # The normal batch finishes, then POST /drainz lands.
+            engine.draining = True
+
+        async def counting_recovery():
+            nonlocal recovery_passes
+            recovery_passes += 1
+            return 0
+
+        sub.tick = tick_then_drain
+        sub.maybe_run_recovery = counting_recovery
+
+        await sub.poll()
+
+        assert recovery_passes == 0

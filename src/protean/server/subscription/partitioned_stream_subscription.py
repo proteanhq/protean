@@ -361,6 +361,13 @@ class PartitionedStreamSubscription(StreamSubscription):
                 generation,
                 fence_token,
             )
+            if self._quiescing():
+                # The acquisition above awaits, so a drain can start while it is
+                # in flight. Registering the partition now would start a worker
+                # that processes nothing and hold the lease away from a healthy
+                # peer for the whole drain window, so hand it straight back.
+                await self._release_lease(owned)
+                return
             self._owned[partition_id] = owned
             logger.info(
                 "partition.acquired",
@@ -534,10 +541,14 @@ class PartitionedStreamSubscription(StreamSubscription):
         assert self.broker is not None, "Broker not initialized"
         processed = 0
         for category, stream in owned.streams:
-            if owned.halted:
+            # Each stream's read and handler awaits, so a drain can begin part
+            # way through a pass. Stop before reading the next stream instead of
+            # only between passes: the message just handled was in flight, the
+            # next one would be new intake.
+            if owned.halted or self._quiescing():
                 break
             head = await self._read_head(owned, stream)
-            if head is None and self._lanes_enabled:
+            if head is None and self._lanes_enabled and not self._quiescing():
                 head = await self._read_head(owned, self._backfill_stream(stream))
             if head is None:
                 continue

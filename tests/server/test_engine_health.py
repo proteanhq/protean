@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -356,6 +357,17 @@ class TestHealthServerIntegration:
         assert "200 OK" in status
         assert body["status"] == "draining"
         assert engine.draining is True
+
+    def test_drainz_reports_the_pid_it_drained(self, health_server):
+        """The response names the process that drained.
+
+        The flag lives on this process's Engine, so a POST drains one worker.
+        Under --workers N the caller has to hit every worker's port, and the pid
+        is how it tells them apart.
+        """
+        _, _, loop, port = health_server
+        _, body = _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+        assert body["pid"] == os.getpid()
 
     def test_readyz_503_when_draining(self, health_server):
         """After /drainz, readiness reports not-ready with a draining marker."""

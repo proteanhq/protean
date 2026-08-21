@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean import Domain
-from protean.server.engine import Engine
+from protean.server.engine import _SHUTDOWN_TIMEOUT_SECONDS, Engine
 
 
 @pytest.mark.no_test_domain
@@ -276,6 +276,26 @@ class TestConfigurableDrainWindow:
         assert state["completed"] is True
         assert state["cancelled"] is False
 
+    def test_garbage_window_warns(self, caplog):
+        """The fallback is announced, so a typo'd value is not silently ignored."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout="not-a-number")
+
+        assert engine.drain_timeout == 10.0
+        assert any(
+            "drain_timeout_invalid_using_default" in r.message for r in caplog.records
+        )
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_boolean_window_falls_back_to_ten(self, value):
+        """A TOML `drain_timeout = true` is not a one-second window.
+
+        bool subclasses int, so plain float() coercion would turn `true` into
+        1.0 and quietly shrink the grace period. Both bools are rejected.
+        """
+        engine = self._engine(drain_timeout=value)
+        assert engine.drain_timeout == 10.0
+
     def test_zero_window_falls_back_to_ten(self):
         """A zero window would give no grace at all, so it is rejected."""
         engine = self._engine(drain_timeout=0)
@@ -286,11 +306,21 @@ class TestConfigurableDrainWindow:
         engine = self._engine(drain_timeout=-5)
         assert engine.drain_timeout == 10.0
 
+    def test_non_positive_window_warns(self, caplog):
+        """The non-positive fallback is announced, so an operator is told the
+        configured window was rejected rather than silently applied."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout=-5)
+
+        assert engine.drain_timeout == 10.0
+        assert any(
+            "drain_timeout_not_positive_using_default" in r.message
+            for r in caplog.records
+        )
+
     def test_warns_when_window_at_or_above_supervisor_kill_timeout(self, caplog):
         """A drain window >= the Supervisor kill timeout logs a warning so an
         operator is told a worker may be SIGKILLed before it drains."""
-        from protean.server.engine import _SHUTDOWN_TIMEOUT_SECONDS
-
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
             engine = self._engine(drain_timeout=_SHUTDOWN_TIMEOUT_SECONDS)
 

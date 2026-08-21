@@ -834,6 +834,70 @@ async def test_acquire_new_skips_partitions_while_draining(
     assert "B" not in sub._owned
 
 
+async def test_acquire_new_releases_a_lease_won_as_draining_began(
+    domain: Domain, category: str, monkeypatch
+) -> None:
+    """Lease acquisition awaits, so a drain can land while it is in flight. The
+    lease is handed straight back instead of being held idle for the whole drain
+    window, where it would block a healthy peer from taking the partition."""
+    _publish(domain, category, _order_event("A", 0), "A")
+    sub = await _make_sub(domain)
+    real_acquire = sub.broker.acquire_partition_lease
+
+    def _acquire_then_drain(*args, **kwargs):
+        generation = real_acquire(*args, **kwargs)
+        sub.engine.draining = True  # POST /drainz lands mid-acquisition
+        return generation
+
+    monkeypatch.setattr(sub.broker, "acquire_partition_lease", _acquire_then_drain)
+    await sub._discovery_pass()
+    assert "A" not in sub._owned
+
+    # The lease was released, not held: a healthy peer can take the partition
+    # straight away rather than waiting for it to lapse.
+    monkeypatch.undo()
+    peer = await _make_sub(domain)
+    await peer._discovery_pass()
+    assert "A" in peer._owned
+
+
+async def test_drain_once_stops_before_reading_the_next_stream() -> None:
+    """A drain that lands while the first stream's handler runs stops the pass
+    before the next stream in the unit is read. Draining gates each read, not
+    just the gap between passes, so the second message stays for the next
+    process."""
+    domain = _build_domain("PmDrain", 11, with_pm=True)
+    with domain.domain_context():
+        broker = domain.brokers["default"]
+        broker._data_reset()
+        order_cat = Order.meta_.stream_category
+        pay_cat = Payment.meta_.stream_category
+        oid = "corr-drain"
+        _pm_publish(broker, order_cat, _pm_order(oid, 0), oid)
+        _pm_publish(broker, pay_cat, _pm_payment(oid, 1), oid)
+
+        sub = await _make_sub(domain, correlated=True, categories=[order_cat, pay_cat])
+        await sub._discovery_pass()
+        owned = sub._owned[oid]
+        assert len(owned.streams) == 2  # both streams are in this unit
+
+        real_process = sub._process_message
+
+        async def _process_then_drain(*args, **kwargs):
+            succeeded = await real_process(*args, **kwargs)
+            sub.engine.draining = True  # POST /drainz lands mid-pass
+            return succeeded
+
+        sub._process_message = _process_then_drain
+        processed = await sub._drain_once(owned)
+
+        # Exactly the one in-flight message ran; the second stream was never read.
+        assert processed == 1
+        assert len(pm_processed[oid]) == 1
+
+        broker._data_reset()
+
+
 async def test_poll_breaks_on_cancel(domain: Domain, monkeypatch) -> None:
     sub = await _make_sub(domain)
 
