@@ -7,6 +7,7 @@ when infrastructure is unavailable.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +20,7 @@ from protean.server.subscription_status import (
     _collect_outbox_statuses,
     _collect_stream_status,
     _infer_stream_category,
+    _lag_seconds,
     _unknown_status,
     collect_subscription_statuses,
 )
@@ -57,6 +59,8 @@ class TestSubscriptionStatusDataclass:
         assert d["dlq_depth"] == 0
         assert "last_updated" in d
         assert d["last_updated"] is None
+        assert "lag_seconds" in d
+        assert d["lag_seconds"] is None
 
     def test_to_dict_with_none_lag(self):
         status = SubscriptionStatus(
@@ -94,6 +98,38 @@ class TestClassifyStatus:
 
     def test_unknown_when_lag_is_none(self):
         assert _classify_status(None) == "unknown"
+
+
+class TestLagSeconds:
+    def test_positive_lag_reports_seconds_behind(self):
+        """A lagging subscription reports wall-clock seconds since last update."""
+        now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        last_updated = (now - timedelta(seconds=42)).isoformat()
+        assert _lag_seconds(5, last_updated, now) == pytest.approx(42.0)
+
+    def test_caught_up_is_zero_without_touching_now(self):
+        """``lag == 0`` is 0.0 and never does datetime arithmetic on ``now``."""
+        assert _lag_seconds(0, None, MagicMock()) == 0.0
+
+    def test_unknown_lag_is_none(self):
+        """``lag is None`` (unreadable) reports ``None`` seconds, not 0.0."""
+        assert _lag_seconds(None, "2026-01-01T12:00:00Z", MagicMock()) is None
+
+    def test_missing_last_updated_is_none_not_zero(self):
+        """Lagging with no timestamp is unavailable (``None``), never 0.0."""
+        assert _lag_seconds(5, None, datetime(2026, 1, 1, tzinfo=UTC)) is None
+
+    def test_unparseable_last_updated_is_none(self):
+        """A timestamp that will not parse yields ``None``, not 0.0."""
+        assert _lag_seconds(5, "not-a-timestamp", datetime(2026, 1, 1, tzinfo=UTC)) is (
+            None
+        )
+
+    def test_clock_skew_clamps_to_zero(self):
+        """A position timestamp slightly ahead of ``now`` clamps to 0.0."""
+        now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        ahead = (now + timedelta(seconds=3)).isoformat()
+        assert _lag_seconds(5, ahead, now) == 0.0
 
 
 class TestUnknownStatus:
@@ -176,6 +212,56 @@ class TestCollectEventStoreStatus:
         assert result.head_position == "10"
         assert result.status == "lagging"
 
+    def test_lag_seconds_from_last_updated_and_clock(self):
+        """A lagging event-store subscription reports seconds behind the clock."""
+        now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        last_updated = (now - timedelta(seconds=30)).isoformat()
+
+        mock_domain = MagicMock()
+        mock_domain.clock.now.return_value = now
+        mock_store = MagicMock()
+        mock_domain.event_store.store = mock_store
+
+        mock_store._read_last_message.return_value = {
+            "data": {"position": 5},
+            "time": last_updated,
+        }
+        mock_store.stream_head_position.return_value = 10
+
+        handler_cls = MagicMock()
+        handler_cls.__name__ = "LaggingHandler"
+        handler_cls.__module__ = "tests.handlers"
+        handler_cls.__qualname__ = "LaggingHandler"
+
+        result = _collect_event_store_status(
+            mock_domain, "lagging", handler_cls, "order"
+        )
+
+        assert result.lag == 5
+        assert result.lag_seconds == pytest.approx(30.0)
+
+    def test_lag_seconds_none_without_last_updated(self):
+        """No ``last_updated`` reports ``lag_seconds is None``, not 0.0."""
+        mock_domain = MagicMock()
+        mock_store = MagicMock()
+        mock_domain.event_store.store = mock_store
+
+        # No "time" key, so last_updated is None even though lag is positive.
+        mock_store._read_last_message.return_value = {"data": {"position": 5}}
+        mock_store.stream_head_position.return_value = 10
+
+        handler_cls = MagicMock()
+        handler_cls.__name__ = "NoTimeHandler"
+        handler_cls.__module__ = "tests.handlers"
+        handler_cls.__qualname__ = "NoTimeHandler"
+
+        result = _collect_event_store_status(
+            mock_domain, "no-time", handler_cls, "order"
+        )
+
+        assert result.lag == 5
+        assert result.lag_seconds is None
+
     def test_lag_zero_when_caught_up(self):
         mock_domain = MagicMock()
         mock_store = MagicMock()
@@ -195,6 +281,7 @@ class TestCollectEventStoreStatus:
 
         assert result.lag == 0
         assert result.status == "ok"
+        assert result.lag_seconds == 0.0
 
     def test_unknown_when_empty_stream(self):
         """When head is -1 (no messages), lag should be None."""

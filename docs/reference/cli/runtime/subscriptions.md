@@ -6,25 +6,31 @@ Monitor subscription lag and health for all handlers in a Protean domain.
 
 ### `protean subscriptions status`
 
-Display a table showing each subscription's lag, pending count, DLQ depth,
-and overall health status.
+Display a table showing each subscription's lag in messages, lag in seconds,
+pending count, DLQ depth, active consumer count, and overall health status.
 
 ```bash
 protean subscriptions status --domain=my_app
 ```
 
 ```
-                     Subscriptions — my_app
-┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━┳━━━━━━━━┓
-┃ Handler            ┃ Type        ┃ Stream ┃ Lag ┃ Pending ┃ DLQ ┃ Consumers ┃ Status ┃
-┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━╇━━━━━━━━┩
-│ OrderProjector     │ event_store │ order  │   0 │       0 │   - │         - │ ok     │
-│ PaymentHandler     │ stream      │ payment│  42 │       3 │   1 │         2 │ lagging│
-│ OutboxProcessor    │ outbox      │ db→brk │   5 │       5 │   - │         - │ lagging│
-└────────────────────┴─────────────┴────────┴─────┴─────────┴─────┴───────────┴────────┘
+                                     Subscriptions — my_app
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Handler         ┃ Type        ┃ Stream  ┃ Lag ┃ Lag (s) ┃ Pending ┃ DLQ ┃ Consumers ┃ Status  ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━╇━━━━━━━━━┩
+│ OrderProjector  │ event_store │ order   │   0 │     0.0 │       0 │   - │         - │ ok      │
+│ SlowProjector   │ event_store │ order   │  12 │     8.4 │       0 │   - │         - │ lagging │
+│ PaymentHandler  │ stream      │ payment │  42 │       - │       3 │   1 │         2 │ lagging │
+│ OutboxProcessor │ outbox      │ db→brk  │   5 │       - │       5 │   - │         - │ lagging │
+└─────────────────┴─────────────┴─────────┴─────┴─────────┴─────────┴─────┴───────────┴─────────┘
 
-3 subscription(s), 1 ok, 2 lagging, total lag: 47
+4 subscription(s), 1 ok, 3 lagging, total lag: 59
 ```
+
+`Lag (s)` is how far behind the subscription is in wall-clock seconds: `0.0`
+when caught up, the time since the last processed position when lagging. Only
+event-store subscriptions track it today, so every other type shows `-`. A `-`
+means the seconds are unavailable, which is not the same as `0.0` (caught up).
 
 ### Options
 
@@ -57,6 +63,7 @@ per-subscription list under `data.subscriptions`:
         "subscription_type": "event_store",
         "stream_category": "order",
         "lag": 0,
+        "lag_seconds": 0.0,
         "pending": 0,
         "current_position": "42",
         "head_position": "42",

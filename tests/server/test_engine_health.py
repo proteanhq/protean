@@ -628,6 +628,31 @@ class TestSubscriptionHealthBlock:
             assert by_name["audit-handler"]["lag"] == 0
             assert by_name["audit-handler"]["status"] == "ok"
 
+    async def test_lag_seconds_survives_position_field_strip(self):
+        """``lag_seconds`` is health data, so it survives the cursor strip while
+        ``last_updated`` (a position field) is dropped."""
+        domain = self._domain()
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status(
+                        "orders-handler",
+                        lag=5,
+                        lag_seconds=12.5,
+                        last_updated="2026-01-01T12:00:00Z",
+                        status="lagging",
+                    )
+                ],
+            ):
+                result = await _readiness(engine)
+
+            detail = result["checks"]["subscriptions"]["details"][0]
+            assert detail["lag_seconds"] == 12.5
+            # The position cursor is stripped; the seconds-behind is kept.
+            assert "last_updated" not in detail
+
     async def test_unknown_lag_is_reported_as_null_not_zero(self):
         """An unreachable backend must not be reported as zero lag."""
         domain = self._domain()
@@ -709,6 +734,7 @@ class TestSubscriptionHealthBlock:
             # Nothing is known about this key, so every count is null. A 0 here
             # would read as "no backlog" rather than "no data".
             assert orphan["lag"] is None
+            assert orphan["lag_seconds"] is None
             assert orphan["pending"] is None
             assert orphan["dlq_depth"] is None
 
