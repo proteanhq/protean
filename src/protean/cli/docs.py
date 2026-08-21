@@ -23,6 +23,9 @@ Usage::
     # ...with the project overlay from a domain or IR file
     protean docs generate --domain=my_app --type=llms
 
+    # Generate the versioned AGENTS.md negative-constraint pack (needs no source)
+    protean docs generate --type=agents
+
     # Write output to a file
     protean docs generate --domain=my_app --output=docs/architecture.md
 
@@ -84,6 +87,7 @@ _VALID_TYPES = (
     "catalog",
     "event-model",
     "llms",
+    "agents",
     "all",
 )
 
@@ -112,7 +116,7 @@ def generate(
             "-t",
             help=(
                 "Generator type: clusters, events, handlers, catalog, "
-                "event-model, llms, or all (default)"
+                "event-model, llms, agents, or all (default)"
             ),
         ),
     ] = "all",
@@ -152,9 +156,10 @@ def generate(
 ) -> None:
     """Generate architecture documentation from a Protean domain or IR file."""
     # --- Validate inputs --------------------------------------------------
-    # --type=llms is the one type that runs with no source: it emits the
-    # framework layer alone. Every other type still requires --domain or --ir.
-    if not domain and not ir and type != "llms":
+    # --type=llms and --type=agents are the types that run with no source: llms
+    # emits the framework layer alone and agents emits the registry-derived
+    # constraint pack. Every other type still requires --domain or --ir.
+    if not domain and not ir and type not in ("llms", "agents"):
         print("[red]Error:[/red] provide either --domain or --ir")
         raise typer.Abort()
 
@@ -188,10 +193,11 @@ def generate(
         )
         raise typer.Abort()
 
-    if format == "mermaid" and type in ("catalog", "llms"):
+    if format == "mermaid" and type in ("catalog", "llms", "agents"):
         _reason = {
             "catalog": "catalog outputs Markdown tables, not Mermaid diagrams",
             "llms": "llms outputs a Markdown context pack, not Mermaid diagrams",
+            "agents": "agents outputs a Markdown constraint pack, not Mermaid diagrams",
         }[type]
         print(
             f"[red]Error:[/red] --format=mermaid is not supported for --type={type} "
@@ -200,10 +206,13 @@ def generate(
         raise typer.Abort()
 
     # --- Load IR ----------------------------------------------------------
-    # --type=llms with no source skips IR loading and emits the framework
-    # layer alone; with a source it loads the IR and adds the project overlay.
+    # --type=llms and --type=agents run with no source. agents is derived only
+    # from the diagnostics registry, so its source is truly ignored: skip the
+    # IR load entirely, otherwise a broken --domain/--ir would abort the command
+    # before the registry-only pack is printed. llms loads a source when given
+    # (it adds a project overlay) and emits the framework layer alone without one.
     ir_data: dict[str, Any] | None
-    if not domain and not ir:
+    if type == "agents" or (not domain and not ir):
         ir_data = None
     else:
         ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
@@ -330,16 +339,21 @@ def _generate_output(
 ) -> str:
     """Dispatch to the appropriate generator(s) and assemble the result.
 
-    ``ir_data`` is ``None`` only for ``--type=llms`` run with no source, which
-    emits the framework layer alone. Every other type requires a source, so
-    ``ir_data`` is a dict on their paths.
+    ``ir_data`` is always ``None`` for ``--type=agents``: it is derived from the
+    diagnostics registry alone, so ``generate`` skips the IR load even when a
+    source is given. It is ``None`` for ``--type=llms`` only when run with no
+    source. Every other type requires a source, so ``ir_data`` is a dict on
+    their paths.
     """
     sections: list[str] = []
 
-    # llms is deliberately not part of the "all" bundle: it is a distinct
-    # context-pack view (and the only type that runs with no IR at all).
+    # llms and agents are deliberately not part of the "all" bundle: each is a
+    # distinct pack view, and agents needs no IR at all.
     if doc_type == "llms":
         return _generate_llms(ir_data)
+
+    if doc_type == "agents":
+        return _generate_agents()
 
     # From here every type requires an IR; the guard above and the source
     # validation in ``generate`` guarantee ir_data is a dict on these paths.
@@ -558,6 +572,18 @@ def _generate_llms(ir_data: dict[str, Any] | None) -> str:
     from protean.ir.generators.llms import generate_llms_txt  # noqa: PLC0415
 
     return generate_llms_txt(ir_data, version=protean.__version__)
+
+
+def _generate_agents() -> str:
+    """Generate the versioned ``AGENTS.md`` negative-constraint pack.
+
+    Derived only from the diagnostics registry and stamped with the installed
+    Protean version. It reads no IR, so it needs no ``--domain``/``--ir``; a
+    source, if given, is ignored.
+    """
+    from protean.ir.generators.agents import generate_agents_md  # noqa: PLC0415
+
+    return generate_agents_md(version=protean.__version__)
 
 
 def _write_output(path: str, content: str) -> None:

@@ -23,7 +23,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+import protean
 from protean.cli import app
+from protean.ir.generators.agents import generate_agents_md
 
 # These generate and start their own projects; the autouse domain fixture would
 # build an unrelated Domain per test for nothing.
@@ -258,6 +260,47 @@ class TestGeneratedProjectStarts:
             "`protean check` must pass on a freshly generated project:\n"
             f"{completed.stdout}\n{completed.stderr}"
         )
+
+
+class TestGeneratedProjectShipsAgentsMd:
+    """A generated project ships the negative-constraint AGENTS.md."""
+
+    def test_agents_md_is_written_and_non_empty(self, tmp_path):
+        """`protean new` writes AGENTS.md at the project root."""
+        project = _generate(tmp_path, [])
+        agents = project / "AGENTS.md"
+        assert agents.exists(), "protean new must write AGENTS.md at the project root"
+        assert agents.read_text(encoding="utf-8").strip(), "AGENTS.md is empty"
+
+    def test_agents_md_matches_the_generator(self, tmp_path):
+        """The new-time write and the generator cannot drift: same bytes.
+
+        Both go through ``generate_agents_md`` at the installed version, so the
+        scaffolded file must equal what `protean docs generate --type=agents`
+        would emit.
+        """
+        project = _generate(tmp_path, [])
+        expected = generate_agents_md(version=protean.__version__)
+        assert (project / "AGENTS.md").read_text(encoding="utf-8") == expected
+
+    def test_pretend_writes_no_agents_md(self, tmp_path):
+        """A --pretend dry run touches nothing, so it writes no AGENTS.md."""
+        out = tmp_path / "out"
+        out.mkdir(parents=True, exist_ok=True)
+        result = CliRunner().invoke(
+            app,
+            [
+                "new",
+                "scaffolded",
+                "-o",
+                str(out),
+                "--defaults",
+                "--skip-setup",
+                "--pretend",
+            ],
+        )
+        assert result.exit_code == 0, f"protean new --pretend failed: {result.output}"
+        assert not (out / "scaffolded" / "AGENTS.md").exists()
 
 
 class TestGeneratedConfigIsValidToml:

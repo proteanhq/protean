@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 
 import protean
 from protean.cli.docs import app
+from protean.ir.generators.agents import generate_agents_md
 from protean.ir.generators.llms import generate_llms_txt
 
 runner = CliRunner()
@@ -645,6 +646,120 @@ class TestLlmsType:
         # Both still carry the framework layer.
         assert "# Protean 9.9.9" in with_source
         assert "# Protean 9.9.9" in no_source
+
+
+# ---------------------------------------------------------------------------
+# Test: AGENTS.md constraint pack (--type=agents)
+# ---------------------------------------------------------------------------
+
+
+class TestAgentsType:
+    """Tests for the ``--type=agents`` negative-constraint pack."""
+
+    @pytest.fixture()
+    def ir_file(self, tmp_path) -> Path:
+        path = tmp_path / "test-ir.json"
+        path.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
+        return path
+
+    def test_runs_with_no_source(self):
+        """--type=agents needs neither --domain nor --ir: it emits the pack."""
+        result = runner.invoke(app, ["generate", "--type=agents"])
+        assert result.exit_code == 0
+        # H1 names Protean and carries the installed version.
+        assert f"# Protean {protean.__version__}" in result.output
+        assert "## Do not break these rules" in result.output
+        # A known error-level code is rendered as a prohibition.
+        assert "**Do not** write code that causes this error:" in result.output
+        assert "(`CONFIG_EVENT_STORE_NOT_INITIALIZED`)" in result.output
+
+    def test_prints_the_generator_output(self):
+        """The command prints exactly what the generator produces."""
+        result = runner.invoke(app, ["generate", "--type=agents"])
+        assert result.exit_code == 0
+        expected = generate_agents_md(version=protean.__version__)
+        # The generator's output already ends with a newline; typer.echo adds
+        # one more. Compare the whole stream so any extra output is caught.
+        assert result.output == expected + "\n"
+
+    def test_excludes_advisory_codes(self):
+        """An info/warning code is never rendered as a hard rule."""
+        result = runner.invoke(app, ["generate", "--type=agents"])
+        assert result.exit_code == 0
+        assert "AGGREGATE_NOT_NOUN" not in result.output
+        assert "ADAPTER_CALL_IN_DOMAIN" not in result.output
+
+    def test_write_to_file(self, tmp_path):
+        """--type=agents honors --output."""
+        out_file = tmp_path / "AGENTS.md"
+        result = runner.invoke(
+            app,
+            ["generate", "--type=agents", f"--output={out_file}"],
+        )
+        assert result.exit_code == 0
+        assert out_file.exists()
+        content = out_file.read_text(encoding="utf-8")
+        assert content == generate_agents_md(version=protean.__version__)
+
+    def test_broken_source_is_ignored(self):
+        """A broken --domain does not abort agents: the source is truly ignored.
+
+        agents derives only from the registry, so a bad source must not be
+        loaded. Uses a real nonexistent module (no mock) so the load path is
+        exercised: without the skip, load_domain_ir would raise and abort here.
+        """
+        result = runner.invoke(
+            app, ["generate", "--type=agents", "--domain=nonexistent_module_xyz"]
+        )
+        assert result.exit_code == 0
+        assert f"# Protean {protean.__version__}" in result.output
+        assert "(`CONFIG_EVENT_STORE_NOT_INITIALIZED`)" in result.output
+
+    def test_source_is_not_loaded_when_given(self, ir_file):
+        """A valid --ir source is not loaded: agents skips the IR load entirely."""
+        with patch("protean.cli.docs.load_ir_file") as mock_load:
+            result = runner.invoke(
+                app, ["generate", "--type=agents", f"--ir={ir_file}"]
+            )
+        assert result.exit_code == 0
+        mock_load.assert_not_called()
+        assert generate_agents_md(version=protean.__version__).strip() in result.output
+
+    def test_mermaid_format_rejected(self):
+        """agents emits a Markdown constraint pack, so --format=mermaid is refused."""
+        result = runner.invoke(app, ["generate", "--type=agents", "--format=mermaid"])
+        assert result.exit_code != 0
+        assert "--format=mermaid is not supported for --type=agents" in result.output
+
+    def test_cluster_option_rejected(self):
+        """--cluster is not valid for --type=agents."""
+        result = runner.invoke(
+            app, ["generate", "--type=agents", "--cluster=app.Order"]
+        )
+        assert result.exit_code != 0
+        assert "--cluster can only be used with" in result.output
+
+    def test_annotations_option_rejected(self):
+        """--annotations is only valid for --type=event-model."""
+        result = runner.invoke(
+            app, ["generate", "--type=agents", "--annotations=x.toml"]
+        )
+        assert result.exit_code != 0
+        assert "--annotations can only be used with --type=event-model" in result.output
+
+    def test_not_bundled_into_type_all(self, ir_file):
+        """--type=all must not carry the agents constraint pack."""
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "--type=all"])
+        assert result.exit_code == 0
+        assert "## Do not break these rules" not in result.output
+        assert "(`CONFIG_EVENT_STORE_NOT_INITIALIZED`)" not in result.output
+
+    def test_invalid_type_message_lists_agents(self, ir_file):
+        """The invalid-type error names the valid set, including agents."""
+        result = runner.invoke(app, ["generate", f"--ir={ir_file}", "--type=bogus"])
+        assert result.exit_code != 0
+        assert "invalid --type" in result.output
+        assert "agents" in result.output
 
 
 # ---------------------------------------------------------------------------

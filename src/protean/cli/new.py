@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -9,6 +10,7 @@ from rich.console import Console
 
 import protean
 from protean.cli._helpers import abort_for_missing_dependency
+from protean.ir.generators.agents import generate_agents_md
 from protean.scaffold.manifest import write_manifest
 
 console = Console()
@@ -220,6 +222,15 @@ def new(
     # touches nothing.
     if not pretend:
         write_manifest(project_directory or ".")
+
+        # Write the negative-constraint AGENTS.md at the project root so the
+        # fresh project ships the hard rules an agent must not break. It is
+        # generated from the diagnostics registry and the installed version
+        # (not a static template file, which would rot as the registry evolves),
+        # so it stays byte-identical to `protean docs generate --type=agents`.
+        (Path(project_directory or ".") / "AGENTS.md").write_text(
+            generate_agents_md(version=protean.__version__), encoding="utf-8"
+        )
 
     # Run post-generation setup unless skipped or in pretend mode
     if not skip_setup and not pretend:
