@@ -75,6 +75,7 @@ class DiagnosticCode(StrEnum):
     UNHANDLED_EVENT = "UNHANDLED_EVENT"
     UNINDEXED_FILTER_PATH = "UNINDEXED_FILTER_PATH"
     UNRAISED_EVENT = "UNRAISED_EVENT"
+    UNSOURCED_PROJECTION_FIELD = "UNSOURCED_PROJECTION_FIELD"
     UNSUPPORTED_ELEMENT_CLASS = "UNSUPPORTED_ELEMENT_CLASS"
     UNUSED_COMMAND = "UNUSED_COMMAND"
     UPCASTER_GAP = "UPCASTER_GAP"
@@ -791,6 +792,28 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         fix=(
             "Raise the event from the aggregate or entity method that makes the "
             "change it records, or remove the event if nothing produces it."
+        ),
+    ),
+    DiagnosticCode.UNSOURCED_PROJECTION_FIELD: CodeMeta(
+        category="handler_completeness",
+        level="info",
+        meaning="A projection field no observed projector write fills.",
+        rationale=(
+            "A projection field that no projector method writes is a dead "
+            "column: it renders in the read model and carries a type, but "
+            "nothing ever fills it. The check reads what projector methods "
+            "write. A construction whose field set it cannot read disables it "
+            "for the whole projection (a `**kwargs` splat, or a template "
+            "mapping passed positionally), and when no projector write is "
+            "observed at all the whole projection is skipped. It works from "
+            "observed writes, so it is advisory: when the projector writes "
+            "some fields, a sibling field filled only through a path the check "
+            "cannot follow (a helper, a dict splat) can still be flagged."
+        ),
+        fix=(
+            "Write the field from the projector method that handles the event "
+            "carrying it, or drop the field from the projection if nothing "
+            "sources it."
         ),
     ),
     DiagnosticCode.UNSUPPORTED_ELEMENT_CLASS: CodeMeta(
