@@ -668,21 +668,74 @@ def _field_change_phrases(fields_diff: dict[str, Any]) -> list[str]:
 _UNDRAWN_DELTA_KEYS = frozenset({"method_edges"})
 
 
+def _handler_lifecycle(handler_entry: Any) -> tuple[bool, bool]:
+    """The ``(start, end)`` lifecycle one handler-map entry contributes.
+
+    A process-manager entry is a dict carrying ``start``/``end``; an event
+    handler or projector entry is a list of method names and carries none. The
+    event model reads a consumer's routing keys and, for a process manager,
+    this lifecycle. It never reads the mapped method names.
+    """
+    if isinstance(handler_entry, dict):
+        return bool(handler_entry.get("start")), bool(handler_entry.get("end"))
+    return False, False
+
+
+def _handlers_delta_is_drawn(handlers_delta: dict[str, Any]) -> bool:
+    """Whether a ``handlers`` diff moves a node the event model draws.
+
+    A consumer attaches to a slice by the event ``__type__`` strings that key
+    its ``handlers`` map, so adding or removing a routing key gains or loses its
+    node. A same-key change is drawn only when a process manager's
+    ``start``/``end`` lifecycle flips; renaming the mapped handler method leaves
+    the diagram unchanged.
+    """
+    if handlers_delta.get("added") or handlers_delta.get("removed"):
+        return True
+    return any(
+        _handler_lifecycle(entry.get("left")) != _handler_lifecycle(entry.get("right"))
+        for entry in handlers_delta.get("changed", {}).values()
+    )
+
+
+def _delta_is_drawn(delta: dict[str, Any]) -> bool:
+    """Whether *delta* touches anything the event model reads.
+
+    ``method_edges`` is never read. A ``handlers`` delta counts only when it
+    changes routing keys or a process manager's lifecycle (see
+    :func:`_handlers_delta_is_drawn`), so a bare method rename does not. Every
+    other key is treated as drawn.
+    """
+    for key, value in delta.items():
+        if key in _UNDRAWN_DELTA_KEYS:
+            continue
+        if key == "handlers":
+            if _handlers_delta_is_drawn(value):
+                return True
+            continue
+        return True
+    return False
+
+
 def _element_change_phrases(delta: dict[str, Any]) -> list[str]:
     """Render one drawn participant's ``_diff_element`` delta as phrases.
 
     Names the fields when fields moved, because that is the detail worth
     reading. A delta that touches anything else the element carries (options,
-    invariants, handlers, scalar attributes such as ``__type__``) still changes
-    a participant the model draws, so it renders as a bare ``changed`` rather
-    than disappearing into ``No model changes.``. Named fields already say the
-    participant changed, so the bare phrase is only added when nothing else was
-    rendered.
+    invariants, routing-key changes, scalar attributes such as ``__type__``)
+    still changes a participant the model draws, so it renders as a bare
+    ``changed`` rather than disappearing into ``No model changes.``. Named
+    fields already say the participant changed, so the bare phrase is only added
+    when nothing else was rendered.
+
+    A ``handlers`` delta is judged by what the diagram draws: a routing-key
+    change or a process manager's lifecycle flip counts, but renaming the mapped
+    handler method (the same event still routes to the same consumer) does not.
     """
     phrases = _field_change_phrases(delta.get("fields", {}))
     if phrases:
         return phrases
-    if any(key not in _UNDRAWN_DELTA_KEYS for key in delta):
+    if _delta_is_drawn(delta):
         return ["changed"]
     return []
 
@@ -939,10 +992,19 @@ def generate_event_model_diff(
     )
 
     # --- Removed slices and read models --------------------------------
-    removed.extend(
-        f"slice {_summary_name(info, cluster_fqn)}"
-        for cluster_fqn, info in sorted(clusters.get("removed", {}).items())
-    )
+    # A whole removed cluster collapses to one diff entry, so enumerate its
+    # commands from the left snapshot: one removed slice per command, mirroring
+    # the added path. A command-less removed cluster is named by its aggregate.
+    for cluster_fqn, info in sorted(clusters.get("removed", {}).items()):
+        cmd_fqns = sorted(left_clusters.get(cluster_fqn, {}).get("commands", {}))
+        agg = _summary_name(info, cluster_fqn)
+        if cmd_fqns:
+            removed.extend(
+                f"slice {short_name(cmd_fqn)} (removed cluster {agg})"
+                for cmd_fqn in cmd_fqns
+            )
+        else:
+            removed.append(f"slice {agg} (removed cluster)")
     for _cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
         removed.extend(
             f"slice {short_name(cmd_fqn)}"

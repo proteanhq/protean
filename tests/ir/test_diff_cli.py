@@ -1305,6 +1305,54 @@ class TestDiffEventModelFormat:
         )
         assert _added_lines(result.output) == ["  + slice Order (new cluster)"]
 
+    def test_removed_cluster_expands_to_one_slice_per_command(self, tmp_path):
+        # The mirror of the new-cluster expansion: a whole removed cluster
+        # collapses to one diff entry, so the renderer reads the left snapshot
+        # and reports every command it had as a removed slice, named. Collapsing
+        # a multi-command cluster to a single aggregate line would lose triggers.
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order",
+                        commands={
+                            "app.PlaceOrder": _em_command("PlaceOrder"),
+                            "app.ShipOrder": _em_command("ShipOrder"),
+                        },
+                    )
+                }
+            ),
+        )
+        right = _write_ir(tmp_path, "right.json", _minimal_ir())
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        removed = _removed_lines(result.output)
+        assert len(removed) == 2, removed
+        assert any("PlaceOrder" in ln for ln in removed)
+        assert any("ShipOrder" in ln for ln in removed)
+        assert all("removed cluster Order" in ln for ln in removed)
+
+    def test_command_less_removed_cluster_names_the_aggregate(self, tmp_path):
+        # A removed cluster with no command has no trigger to name, so the
+        # aggregate is named instead — the removed cluster is never silent.
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
+        )
+        right = _write_ir(tmp_path, "right.json", _minimal_ir())
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert _removed_lines(result.output) == ["  - slice Order (removed cluster)"]
+
     def test_removed_projection_is_removed_read_model(self, tmp_path):
         # AC #3.
         left = _write_ir(
@@ -1490,9 +1538,12 @@ class TestDiffEventModelFormat:
         assert text.exit_code == 0
         assert event_model.exit_code == 0
         # The removed cluster is a removed slice, so the renderer ran and
-        # printed it even though the exit code is 0 under warn strictness.
+        # printed it even though the exit code is 0 under warn strictness. This
+        # cluster has no command, so it is named by its aggregate.
         assert "Model changes:" in event_model.output
-        assert _removed_lines(event_model.output) == ["  - slice Order"]
+        assert _removed_lines(event_model.output) == [
+            "  - slice Order (removed cluster)"
+        ]
 
 
 @pytest.mark.no_test_domain
@@ -1918,6 +1969,74 @@ class TestDiffEventModelAutomationRouting:
         result = self._run(tmp_path, left_ir, right_ir)
         assert result.output.strip() == "No model changes."
 
+    def test_a_renamed_handler_method_is_not_a_model_change(self, tmp_path):
+        # The renderer routes a handler by the event `__type__` keys in its
+        # `handlers` map and never reads the mapped method names. Renaming the
+        # method while the same event still routes to the same handler moves no
+        # node, so it is not an automation change.
+        cluster = self._order_cluster(
+            event_handlers={
+                "app.Notifier": _em_event_handler(
+                    "Notifier", {_em_type("OrderPlaced"): ["on_placed"]}
+                )
+            }
+        )
+        left_ir = _minimal_ir(clusters={"app.Order": cluster})
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["clusters"]["app.Order"]["event_handlers"]["app.Notifier"][
+            "handlers"
+        ] = {_em_type("OrderPlaced"): ["handle_placed"]}
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert result.output.strip() == "No model changes."
+
+    def test_a_process_manager_lifecycle_flip_is_a_changed_automation(self, tmp_path):
+        # A process manager's `start`/`end` lifecycle is drawn (in its node
+        # label and on the edge into it), so flipping it under the same event is
+        # a change the diagram shows.
+        cluster = {"app.Order": self._order_cluster()}
+        left_ir = _minimal_ir(
+            clusters=cluster,
+            flows={
+                "domain_services": {},
+                "process_managers": {
+                    "app.FulfillmentPM": _em_process_manager(
+                        "FulfillmentPM", {_em_type("OrderPlaced"): {"start": True}}
+                    )
+                },
+                "subscribers": {},
+            },
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["flows"]["process_managers"]["app.FulfillmentPM"]["handlers"] = {
+            _em_type("OrderPlaced"): {"start": False, "end": True}
+        }
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  ~ automation FulfillmentPM" in _changed_lines(result.output)
+
+    def test_a_process_manager_method_rename_is_not_a_model_change(self, tmp_path):
+        # The same event, same lifecycle, only the mapped method names differ.
+        # The renderer never reads those names, so the diagram is unchanged.
+        cluster = {"app.Order": self._order_cluster()}
+        left_ir = _minimal_ir(
+            clusters=cluster,
+            flows={
+                "domain_services": {},
+                "process_managers": {
+                    "app.FulfillmentPM": _em_process_manager(
+                        "FulfillmentPM",
+                        {_em_type("OrderPlaced"): {"start": True, "methods": ["on_a"]}},
+                    )
+                },
+                "subscribers": {},
+            },
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["flows"]["process_managers"]["app.FulfillmentPM"]["handlers"] = {
+            _em_type("OrderPlaced"): {"start": True, "methods": ["on_b"]}
+        }
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert result.output.strip() == "No model changes."
+
     def test_handlers_of_a_whole_new_cluster_are_added_automations(self, tmp_path):
         # A whole new cluster collapses to one diff entry, so its event
         # handlers are never in `clusters.changed`. They are drawn nodes all
@@ -2133,6 +2252,44 @@ class TestDiffEventModelProjectors:
         right_ir["projections"]["app.OrderSummary"]["projectors"]["app.Proj1"][
             "method_edges"
         ] = {"on_placed": {"invokes": ["app.Order.ship"]}}
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.output.strip() == "No model changes."
+
+    def test_a_projector_method_rename_is_not_a_read_model_change(self, tmp_path):
+        # A projector is drawn from the event `__type__` keys in its `handlers`
+        # map; the mapped method names are not read. Renaming the method under
+        # the same event leaves the read model's node unchanged.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                )
+            },
+            projections={
+                "app.OrderSummary": _em_projection_group(
+                    "OrderSummary",
+                    projectors={
+                        "app.Proj1": _em_projector(
+                            "Proj1",
+                            "OrderSummary",
+                            handlers={_em_type("OrderPlaced"): ["on_placed"]},
+                        )
+                    },
+                )
+            },
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["projections"]["app.OrderSummary"]["projectors"]["app.Proj1"][
+            "handlers"
+        ] = {_em_type("OrderPlaced"): ["handle_placed"]}
         left = _write_ir(tmp_path, "left.json", left_ir)
         right = _write_ir(tmp_path, "right.json", right_ir)
         result = runner.invoke(
