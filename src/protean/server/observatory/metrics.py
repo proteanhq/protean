@@ -23,7 +23,7 @@ Infrastructure gauges (OTEL instrument name / Prometheus text name):
 
 - protean.outbox.pending_count — Pending outbox messages per domain
 - protean.subscription.consumer_lag — Messages behind stream head per subscription
-- protean.subscription.lag_seconds — Seconds a subscription is behind stream head
+- protean.subscription.lag_seconds — Seconds since a subscription's last processed position
 - protean.subscription.pending_messages — Unacknowledged messages per subscription
 - protean_subscription_dlq_depth — Dead letter queue depth per subscription
 - protean_subscription_status — Subscription health (1=ok, 0=not ok)
@@ -449,7 +449,7 @@ def _register_infrastructure_gauges(domains: list[Domain]) -> None:
     meter.create_observable_gauge(
         "protean.subscription.lag_seconds",
         callbacks=[_make_subscription_callback("lag_seconds")],
-        description="Seconds a subscription is behind stream head",
+        description="Seconds since a subscription's last processed position",
         unit="s",
     )
 
@@ -653,8 +653,8 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
             lines.append("# TYPE protean_subscription_status gauge")
             lines.append("")
             lines.append(
-                "# HELP protean_subscription_lag_seconds Seconds a subscription "
-                "is behind stream head"
+                "# HELP protean_subscription_lag_seconds Seconds since a "
+                "subscription's last processed position"
             )
             lines.append("# TYPE protean_subscription_lag_seconds gauge")
 

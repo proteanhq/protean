@@ -261,6 +261,7 @@ def merge_subscription_status(
                     h["subscription"] = {
                         "status": s.status,
                         "lag": s.lag,
+                        "lag_seconds": s.lag_seconds,
                         "pending": s.pending,
                         "dlq_depth": s.dlq_depth,
                         "consumer_count": s.consumer_count,
@@ -275,12 +276,21 @@ def merge_subscription_status(
                 total_pending = 0
                 total_dlq = 0
                 total_consumers = 0
+                # Seconds-lag aggregates as the worst (max) staleness, not a sum:
+                # it is a wall-clock gap, so the oldest stream is what matters.
+                max_lag_seconds: float | None = None
                 worst_status = "ok"
                 sub_type = statuses[0].subscription_type
 
                 for s in statuses:
                     if s.lag is not None:
                         total_lag += s.lag
+                    if s.lag_seconds is not None:
+                        max_lag_seconds = (
+                            s.lag_seconds
+                            if max_lag_seconds is None
+                            else max(max_lag_seconds, s.lag_seconds)
+                        )
                     total_pending += s.pending
                     total_dlq += s.dlq_depth
                     total_consumers = max(total_consumers, s.consumer_count)
@@ -293,6 +303,7 @@ def merge_subscription_status(
                 h["subscription"] = {
                     "status": worst_status,
                     "lag": total_lag,
+                    "lag_seconds": max_lag_seconds,
                     "pending": total_pending,
                     "dlq_depth": total_dlq,
                     "consumer_count": total_consumers,
@@ -306,6 +317,7 @@ def merge_subscription_status(
                 h["subscription"] = {
                     "status": s.status,
                     "lag": s.lag,
+                    "lag_seconds": s.lag_seconds,
                     "pending": s.pending,
                     "dlq_depth": s.dlq_depth,
                     "consumer_count": s.consumer_count,

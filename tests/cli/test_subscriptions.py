@@ -295,7 +295,7 @@ class TestSubscriptionsStatus:
                 "event_store",
                 "order",
                 lag=5,
-                lag_seconds=30.0,
+                lag_seconds=12.34,
                 status="lagging",
             ),
             _make_status(
@@ -303,6 +303,9 @@ class TestSubscriptionsStatus:
                 "stream",
                 "payment",
                 lag=2,
+                pending=7,
+                dlq_depth=4,
+                consumer_count=6,
                 lag_seconds=None,
                 status="lagging",
             ),
@@ -325,8 +328,16 @@ class TestSubscriptionsStatus:
 
         assert result.exit_code == 0
         assert "Lag (s)" in result.output
-        # The known seconds render formatted to one decimal.
-        assert "30.0" in result.output
+        # A known value renders formatted to one decimal, not its raw repr.
+        assert "12.3" in result.output
+        assert "12.34" not in result.output
+        # The None row shows '-', not '0.0'. Every other cell in that row is a
+        # non-zero number, so the '-' can only be the Lag (s) column.
+        no_seconds_row = next(
+            ln for ln in result.output.splitlines() if "NoSecondsHandler" in ln
+        )
+        assert "-" in no_seconds_row
+        assert "0.0" not in no_seconds_row
 
     def test_summary_counts(self):
         change_working_directory_to("test7")

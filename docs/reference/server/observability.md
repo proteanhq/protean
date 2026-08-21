@@ -521,7 +521,7 @@ Available metrics:
 | `protean_streams_count` | gauge | Number of active streams |
 | `protean_consumer_groups_count` | gauge | Number of consumer groups |
 | `protean_subscription_lag` | gauge | Messages behind stream head (per subscription) |
-| `protean_subscription_lag_seconds` | gauge | Seconds behind stream head (per event-store subscription); not emitted when unavailable |
+| `protean_subscription_lag_seconds` | gauge | Seconds since the last processed position (per event-store subscription); not emitted when unavailable |
 | `protean_subscription_pending` | gauge | Unacknowledged messages (per subscription) |
 | `protean_subscription_dlq_depth` | gauge | Dead letter queue depth (per subscription) |
 | `protean_subscription_status` | gauge | Subscription health: 1=ok, 0=not ok |

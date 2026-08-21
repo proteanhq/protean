@@ -7,22 +7,22 @@ Monitor subscription lag and health for all handlers in a Protean domain.
 ### `protean subscriptions status`
 
 Display a table showing each subscription's lag in messages, lag in seconds,
-pending count, DLQ depth, and overall health status.
+pending count, DLQ depth, active consumer count, and overall health status.
 
 ```bash
 protean subscriptions status --domain=my_app
 ```
 
 ```
-                        Subscriptions — my_app
-┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━┓
-┃ Handler         ┃ Type        ┃ Stream ┃ Lag ┃ Lag (s) ┃ Pending ┃ DLQ ┃ Status ┃
-┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━┩
-│ OrderProjector  │ event_store │ order  │   0 │     0.0 │       0 │   - │ ok     │
-│ SlowProjector   │ event_store │ order  │  12 │    8.4  │       0 │   - │ lagging│
-│ PaymentHandler  │ stream      │ payment│  42 │       - │       3 │   1 │ lagging│
-│ OutboxProcessor │ outbox      │ db→brk │   5 │       - │       5 │   - │ lagging│
-└─────────────────┴─────────────┴────────┴─────┴─────────┴─────────┴─────┴────────┘
+                                     Subscriptions — my_app
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Handler         ┃ Type        ┃ Stream  ┃ Lag ┃ Lag (s) ┃ Pending ┃ DLQ ┃ Consumers ┃ Status  ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━╇━━━━━━━━━┩
+│ OrderProjector  │ event_store │ order   │   0 │     0.0 │       0 │   - │         - │ ok      │
+│ SlowProjector   │ event_store │ order   │  12 │     8.4 │       0 │   - │         - │ lagging │
+│ PaymentHandler  │ stream      │ payment │  42 │       - │       3 │   1 │         2 │ lagging │
+│ OutboxProcessor │ outbox      │ db→brk  │   5 │       - │       5 │   - │         - │ lagging │
+└─────────────────┴─────────────┴─────────┴─────┴─────────┴─────────┴─────┴───────────┴─────────┘
 
 4 subscription(s), 1 ok, 3 lagging, total lag: 59
 ```
