@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
 
 import pytest
@@ -392,6 +393,29 @@ def test_apply_leaves_no_temp_sibling(tmp_path: Path) -> None:
     assert list(tmp_path.rglob("*.dx-tmp")) == []
 
 
+def test_apply_does_not_clobber_an_existing_dx_tmp_sibling(tmp_path: Path) -> None:
+    """A file that already sits at the old fixed temp name survives a projection."""
+    apply_projection(tmp_path, region("AGENTS.md", "1", "v1"))
+    bystander = tmp_path / "AGENTS.md.dx-tmp"
+    bystander.write_text("someone else's file", encoding="utf-8")
+
+    apply_projection(tmp_path, region("AGENTS.md", "2", "v2"))
+
+    assert bystander.read_text(encoding="utf-8") == "someone else's file"
+    assert "v2" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+
+
+def test_apply_preserves_the_target_file_mode(tmp_path: Path) -> None:
+    """An update keeps the file's permissions; the temp file's 0600 must not stick."""
+    apply_projection(tmp_path, region("AGENTS.md", "1", "v1"))
+    target = tmp_path / "AGENTS.md"
+    target.chmod(0o640)
+
+    apply_projection(tmp_path, region("AGENTS.md", "2", "v2"))
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+
 # --- structured JSON -------------------------------------------------------
 
 
@@ -465,6 +489,31 @@ def test_non_serializable_structured_data_is_rejected() -> None:
         StructuredJsonProjection(
             target=".mcp.json", version="1", data={"servers": {1, 2}}
         )
+
+
+def test_non_string_managed_key_is_rejected() -> None:
+    """``json.dumps`` would coerce ``1`` to ``"1"``; construction rejects it instead."""
+    with pytest.raises(ValueError, match="string keys"):
+        StructuredJsonProjection(target=".mcp.json", version="1", data={1: "a"})
+
+
+def test_non_string_nested_key_is_rejected() -> None:
+    """The string-key rule holds all the way down, not just at the managed level."""
+    with pytest.raises(ValueError, match="string keys"):
+        StructuredJsonProjection(
+            target=".mcp.json", version="1", data={"servers": {"a": {2: "b"}}}
+        )
+    with pytest.raises(ValueError, match="string keys"):
+        StructuredJsonProjection(
+            target=".mcp.json", version="1", data={"servers": [{None: "b"}]}
+        )
+
+
+def test_string_keyed_nesting_is_accepted(tmp_path: Path) -> None:
+    """The key check walks lists and nested dicts without rejecting valid data."""
+    data = {"servers": [{"name": "a"}, {"name": "b", "env": {"KEY": "v"}}]}
+    apply_projection(tmp_path, structured(".mcp.json", "1", data))
+    assert json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8")) == data
 
 
 # --- lockfile --------------------------------------------------------------

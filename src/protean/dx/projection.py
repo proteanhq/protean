@@ -82,6 +82,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -246,7 +248,8 @@ class StructuredJsonProjection:
 
     ``data`` is the rendered dict. Its top-level keys are the managed keys: a
     re-projection sets them and preserves every other key on disk. ``data`` must
-    be non-empty, since an empty managed set would manage nothing.
+    be non-empty, since an empty managed set would manage nothing, and every key
+    in it, nested ones included, must be a ``str``.
     """
 
     target: str
@@ -260,6 +263,7 @@ class StructuredJsonProjection:
         # JSON-serializable with string keys. Catch a non-serializable value
         # (a ``set``, ``bytes``) or a bad key here rather than raise a raw
         # ``TypeError`` deep in the diff path.
+        _reject_non_string_keys(dict(self.data), "data")
         try:
             _canonical_json(dict(self.data))
         except TypeError as exc:
@@ -423,6 +427,28 @@ def _canonical_json(obj: Any) -> str:
     serialize to the same bytes whatever order the producer built them in.
     """
     return json.dumps(obj, sort_keys=True, separators=(",", ":"))
+
+
+def _reject_non_string_keys(obj: Any, path: str) -> None:
+    """Raise :exc:`ValueError` when *obj* holds a dict key that is not a ``str``.
+
+    ``json.dumps`` accepts an ``int``, ``float``, ``bool``, or ``None`` key and
+    silently coerces it to its string form, so it cannot enforce this on its own.
+    A coerced managed key is worse than a lost type: the key on disk (``"1"``)
+    never matches the key the caller passed (``1``), so the diff sees the managed
+    value as missing and the target reads as conflicted on every re-projection.
+    """
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if not isinstance(key, str):
+                raise ValueError(
+                    f"data must use string keys: {path} has key {key!r} "
+                    f"of type {type(key).__name__}"
+                )
+            _reject_non_string_keys(value, f"{path}[{key!r}]")
+    elif isinstance(obj, (list, tuple)):
+        for index, item in enumerate(obj):
+            _reject_non_string_keys(item, f"{path}[{index}]")
 
 
 def _marker_line_positions(text: str, marker: str) -> list[int]:
@@ -798,18 +824,29 @@ def _atomic_write(path: Path, content: str) -> None:
     """Write *content* to *path* atomically: a sibling temp file, then a rename.
 
     ``os.replace`` is atomic within a filesystem, so a failed write leaves the
-    prior file intact rather than a half-written one.
+    prior file intact rather than a half-written one. The temp sibling is created
+    by :func:`tempfile.mkstemp`, so it gets a unique name and is created
+    exclusively. A fixed name would overwrite, then delete, any file a user or
+    another tool happened to leave at that path.
 
     *content* carries LF line endings; they are written back in whatever style the
     file already uses, so an update never rewrites a file's line endings. A default
     text write would translate them to the platform's own ending instead, which on
     Windows flips every line in the file, the ones outside the managed region too.
     """
-    tmp = path.with_name(f"{path.name}.dx-tmp")
     newline = _detect_newline(path)
+    mode = path.stat().st_mode if path.exists() else None
+    handle_fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=f"{path.name}.", suffix=".dx-tmp"
+    )
+    tmp = Path(tmp_name)
     try:
-        with tmp.open("w", encoding="utf-8", newline=newline) as handle:
+        with os.fdopen(handle_fd, "w", encoding="utf-8", newline=newline) as handle:
             handle.write(content)
+        # ``mkstemp`` creates at 0600. Carry the target's own permissions over an
+        # update, and use the usual create mode for a new file, so a projection
+        # never silently narrows a file's access.
+        os.chmod(tmp, stat.S_IMODE(mode) if mode is not None else 0o644)
         os.replace(tmp, path)
     finally:
         # A failed write (or a failed replace) must not leave a stale temp
