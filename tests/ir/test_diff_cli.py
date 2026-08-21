@@ -2105,10 +2105,11 @@ class TestDiffEventModelAutomationRouting:
 class TestDiffEventModelProjectors:
     """A read model changes when its projector (consumer node) is rewired."""
 
-    def test_projector_add_remove_and_rewire_are_changed_read_model(self, tmp_path):
+    def test_projector_add_remove_and_rewire_are_reported(self, tmp_path):
         # The projection's own fields are identical on both sides, so the only
-        # signal is the projectors. A projector added, removed, or rewired to a
-        # different event is a change to the read model — not "No model changes."
+        # signal is the projectors. A projector is the read model's node in the
+        # slice, so one that appears or disappears is a node the diagram gained
+        # or lost, and one rewired to a different event is a changed node.
         clusters = {
             "app.Order": _make_cluster(
                 "Order",
@@ -2169,8 +2170,12 @@ class TestDiffEventModelProjectors:
         assert "No model changes." not in result.output
         changed = "\n".join(_changed_lines(result.output))
         assert "read model OrderSummary: projector Proj1 changed" in changed
-        assert "read model OrderSummary: projector ProjNew added" in changed
-        assert "read model OrderSummary: projector ProjGone removed" in changed
+        assert "  + read model OrderSummary: projector ProjNew" in _added_lines(
+            result.output
+        )
+        assert "  - read model OrderSummary: projector ProjGone" in _removed_lines(
+            result.output
+        )
 
     def test_a_projector_matching_no_drawn_event_is_not_reported(self, tmp_path):
         # A projector is drawn only where it matches a non-fact event, the same
@@ -2319,6 +2324,221 @@ class TestDiffEventModelProjectors:
         assert "read model OrderSummary: changed" in "\n".join(
             _changed_lines(result.output)
         )
+
+
+@pytest.mark.no_test_domain
+class TestDiffEventModelConsumerTopology:
+    """A consumer comes and goes with the events around it, not just its own delta."""
+
+    def _run(self, tmp_path, left_ir, right_ir):
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        return runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+
+    def _wired_ir(self, events=None):
+        """An Order cluster plus a handler and a projector wired to OrderPlaced."""
+        handlers = {_em_type("OrderPlaced"): ["on_placed"]}
+        return _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events=events
+                    if events is not None
+                    else {"app.OrderPlaced": _em_event("OrderPlaced")},
+                    event_handlers={
+                        "app.Notifier": _em_event_handler("Notifier", handlers)
+                    },
+                )
+            },
+            projections={
+                "app.OrderSummary": _em_projection_group(
+                    "OrderSummary",
+                    projectors={
+                        "app.Proj1": _em_projector(
+                            "Proj1", "OrderSummary", handlers=handlers
+                        )
+                    },
+                )
+            },
+        )
+
+    def test_an_event_becoming_a_fact_event_removes_its_consumers(self, tmp_path):
+        # The consumers themselves are identical on both sides. The event they
+        # match turns into a fact event, which the diagram does not draw, so
+        # both consumer nodes disappear from the slice.
+        left_ir = self._wired_ir()
+        right_ir = self._wired_ir(
+            events={"app.OrderPlaced": _em_event("OrderPlaced", is_fact_event=True)}
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        removed = _removed_lines(result.output)
+        assert "  - automation Notifier" in removed
+        assert "  - read model OrderSummary: projector Proj1" in removed
+        assert not any("Notifier" in ln for ln in _changed_lines(result.output))
+        assert not any("Proj1" in ln for ln in _changed_lines(result.output))
+
+    def test_an_event_leaving_fact_status_adds_its_consumers(self, tmp_path):
+        # The mirror case: the event becomes drawable, so the consumers that
+        # already matched it gain their nodes.
+        left_ir = self._wired_ir(
+            events={"app.OrderPlaced": _em_event("OrderPlaced", is_fact_event=True)}
+        )
+        right_ir = self._wired_ir()
+        result = self._run(tmp_path, left_ir, right_ir)
+        added = _added_lines(result.output)
+        assert "  + automation Notifier" in added
+        assert "  + read model OrderSummary: projector Proj1" in added
+
+    def test_removing_the_only_matched_event_removes_its_consumers(self, tmp_path):
+        # Nothing about the handler or the projector changed; the event they
+        # both hang off is gone, so their nodes are gone with it.
+        left_ir = self._wired_ir()
+        right_ir = self._wired_ir(events={})
+        result = self._run(tmp_path, left_ir, right_ir)
+        removed = _removed_lines(result.output)
+        assert "  - automation Notifier" in removed
+        assert "  - read model OrderSummary: projector Proj1" in removed
+
+    def test_an_empty_handler_map_gaining_a_live_route_is_an_added_automation(
+        self, tmp_path
+    ):
+        # The handler is drawn nowhere on the left, so its first live route is a
+        # node the diagram gained, not a changed node.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    event_handlers={"app.Notifier": _em_event_handler("Notifier")},
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                    event_handlers={
+                        "app.Notifier": _em_event_handler(
+                            "Notifier", {_em_type("OrderPlaced"): ["on_placed"]}
+                        )
+                    },
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  + automation Notifier" in _added_lines(result.output)
+        assert not any("Notifier" in ln for ln in _changed_lines(result.output))
+
+    def test_a_route_to_an_undrawn_event_is_not_a_model_change(self, tmp_path):
+        # Both consumers keep their live route to OrderPlaced and gain a second
+        # one: to a fact event, and to a type no cluster raises. Neither is
+        # drawn, so no edge and no node moved.
+        left_ir = self._wired_ir(
+            events={
+                "app.OrderPlaced": _em_event("OrderPlaced"),
+                "app.OrderArchived": _em_event("OrderArchived", is_fact_event=True),
+            }
+        )
+        right_ir = copy.deepcopy(left_ir)
+        extra = {
+            _em_type("OrderPlaced"): ["on_placed"],
+            _em_type("OrderArchived"): ["on_archived"],
+            _em_type("NothingRaisesThis"): ["on_nothing"],
+        }
+        right_ir["clusters"]["app.Order"]["event_handlers"]["app.Notifier"][
+            "handlers"
+        ] = extra
+        right_ir["projections"]["app.OrderSummary"]["projectors"]["app.Proj1"][
+            "handlers"
+        ] = extra
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert result.output.strip() == "No model changes."
+
+    def test_dropping_a_route_to_an_undrawn_event_is_not_a_model_change(self, tmp_path):
+        # The mirror case: the route that goes away named a fact event, so the
+        # left-hand diagram never drew it either.
+        right_ir = self._wired_ir(
+            events={
+                "app.OrderPlaced": _em_event("OrderPlaced"),
+                "app.OrderArchived": _em_event("OrderArchived", is_fact_event=True),
+            }
+        )
+        left_ir = copy.deepcopy(right_ir)
+        left_ir["clusters"]["app.Order"]["event_handlers"]["app.Notifier"][
+            "handlers"
+        ] = {
+            _em_type("OrderPlaced"): ["on_placed"],
+            _em_type("OrderArchived"): ["on_archived"],
+        }
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert result.output.strip() == "No model changes."
+
+    def test_dropping_a_drawn_route_is_a_changed_automation(self, tmp_path):
+        # The handler keeps a live route to OrderPlaced, so its node stays, but
+        # it loses the edge from OrderShipped. That edge was drawn, so the
+        # handler is a changed consumer.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={
+                        "app.OrderPlaced": _em_event("OrderPlaced"),
+                        "app.OrderShipped": _em_event("OrderShipped"),
+                    },
+                    event_handlers={
+                        "app.Notifier": _em_event_handler(
+                            "Notifier",
+                            {
+                                _em_type("OrderPlaced"): ["on_placed"],
+                                _em_type("OrderShipped"): ["on_shipped"],
+                            },
+                        )
+                    },
+                )
+            }
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["clusters"]["app.Order"]["event_handlers"]["app.Notifier"][
+            "handlers"
+        ] = {_em_type("OrderPlaced"): ["on_placed"]}
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  ~ automation Notifier" in _changed_lines(result.output)
+
+    def test_a_whole_new_projection_is_reported_once(self, tmp_path):
+        # The "read model OrderSummary" line already says the read model is
+        # new, so its projector does not repeat it.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                )
+            }
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["projections"] = {
+            "app.OrderSummary": _em_projection_group(
+                "OrderSummary",
+                projectors={
+                    "app.Proj1": _em_projector(
+                        "Proj1",
+                        "OrderSummary",
+                        handlers={_em_type("OrderPlaced"): ["on_placed"]},
+                    )
+                },
+            )
+        }
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert _added_lines(result.output) == ["  + read model OrderSummary"]
 
 
 @pytest.mark.no_test_domain

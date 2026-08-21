@@ -128,6 +128,14 @@ the diagram leaves its node out. An event that gains or loses its fact flag is
 drawn on one side only, so it reads as added or removed with the reason in
 parentheses.
 
+A consumer's node comes and goes with the events around it. When the event a
+projector or a handler matches is removed, or turns into a fact event, that
+consumer's node goes with it, and the diff reports it as removed even though
+the consumer itself never changed. The reverse reads as added. The same rule
+runs the other way: adding or dropping a route to an event no slice draws (a
+fact event, or a type no cluster raises) leaves the diagram as it was, so it is
+not a model change.
+
 The exit code is the same as `--format=text` for the same inputs, so a CI gate
 can switch format without changing what it blocks on. The exit code always
 reflects the full IR diff, not the slice view. A real change to an element the
