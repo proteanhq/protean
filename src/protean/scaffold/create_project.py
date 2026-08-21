@@ -43,13 +43,22 @@ _FORBIDDEN_NAME_CHARACTERS = re.compile(r'[<>:"/\\|?*\s]')
 
 
 def _is_valid_project_name(project_name: str) -> bool:
-    """Return whether *project_name* is a portable, non-empty directory name.
+    """Return whether *project_name* is a portable, single-segment directory name.
 
-    Rejects the empty string and any name carrying a forbidden character (see
-    :data:`_FORBIDDEN_NAME_CHARACTERS`), so the name works as a directory across
-    Mac, Linux, and Windows.
+    Rejects a non-string, the empty string, the ``.`` and ``..`` path segments,
+    and any name carrying a forbidden character (see
+    :data:`_FORBIDDEN_NAME_CHARACTERS`). The forbidden set already includes the
+    path separators, so an accepted name is always a single directory segment
+    that resolves under *output_folder* and never at or above it. This matters
+    for the ``force`` clear: a programmatic caller (the MCP ``scaffold`` tool)
+    passing ``"."`` or ``".."`` must not end up clearing the output folder or its
+    parent.
     """
-    return not (_FORBIDDEN_NAME_CHARACTERS.search(project_name) or not project_name)
+    if not isinstance(project_name, str):
+        return False
+    if not project_name or project_name in {".", ".."}:
+        return False
+    return not _FORBIDDEN_NAME_CHARACTERS.search(project_name)
 
 
 def _clear_directory_contents(dir_path: str) -> None:
@@ -99,7 +108,8 @@ def create_project(
     Args:
         project_name: The new project's name. Used as the target directory name
             and injected into the template answers, so it must be a portable
-            directory name (no ``<>:"/\\|?*`` or whitespace).
+            single-segment directory name: a non-empty string, not ``.`` or
+            ``..``, with no ``<>:"/\\|?*`` or whitespace.
         output_folder: Existing directory the project directory is created in.
             Defaults to the current directory.
         data: Template answers (for example ``author_name``, ``author_email``).
@@ -120,7 +130,8 @@ def create_project(
     Raises:
         ImportError: The optional ``copier`` dependency (the ``[scaffold]``
             extra) is not installed. Raised before any directory is cleared.
-        ValueError: *project_name* is empty or carries a forbidden character.
+        ValueError: *project_name* is not a string, is empty, is ``.`` or
+            ``..``, or carries a forbidden character.
         FileNotFoundError: *output_folder* does not exist.
         FileExistsError: The target directory is not empty and *force* is false.
     """
@@ -137,13 +148,6 @@ def create_project(
         raise FileNotFoundError(f'Output folder "{output_folder}" does not exist')
 
     project_directory = os.path.join(output_folder, project_name)
-
-    if os.path.isdir(project_directory) and os.listdir(project_directory):
-        if not force:
-            raise FileExistsError(
-                f'Folder "{project_name}" is not empty. Use --force to overwrite.'
-            )
-        _clear_directory_contents(project_directory)
 
     # The core owns a ready dict; the caller injects the project name so callers
     # that already carry answers do not have to remember to add it.
@@ -172,8 +176,19 @@ def create_project(
 
     if dry_run:
         # Render into an auto-removed system temp dir so the target location is
-        # untouched, while the returned list stays byte-accurate to apply.
+        # untouched, while the returned list stays byte-accurate to apply. The
+        # existing-target handling below is deliberately skipped: a preview must
+        # neither clear the target nor raise on a non-empty one.
         with tempfile.TemporaryDirectory() as temp_dir:
             return render_into(temp_dir)
+
+    # Apply only: a non-empty target is cleared with force, or refused without
+    # it. This runs after the dry_run branch so a preview touches nothing.
+    if os.path.isdir(project_directory) and os.listdir(project_directory):
+        if not force:
+            raise FileExistsError(
+                f'Folder "{project_name}" is not empty. Use --force to overwrite.'
+            )
+        _clear_directory_contents(project_directory)
 
     return render_into(project_directory)

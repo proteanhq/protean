@@ -60,6 +60,59 @@ def test_dry_run_writes_nothing_and_returns_the_same_plan_as_apply():
         assert planned == applied
 
 
+def test_dry_run_on_nonempty_target_previews_without_touching_it():
+    """Dry-run leaves an existing non-empty target intact, with or without force.
+
+    A preview must never clear the target and never refuse on a non-empty one:
+    both the ``force=True`` (would clear on apply) and the default (would raise on
+    apply) paths must return the plan and leave the pre-existing file in place.
+    """
+    for force in (False, True):
+        with isolated_filesystem() as output_folder:
+            project_dir = os.path.join(output_folder, PROJECT_NAME)
+            os.makedirs(project_dir)
+            sentinel = os.path.join(project_dir, "keep.txt")
+            with open(sentinel, "w", encoding="utf-8") as handle:
+                handle.write("precious")
+
+            planned = create_project(
+                PROJECT_NAME,
+                output_folder,
+                ANSWERS,
+                dry_run=True,
+                force=force,
+                defaults=True,
+            )
+
+            assert "README.md" in planned, "preview must still return the plan"
+            assert os.path.isfile(sentinel), "preview must not clear the target"
+            with open(sentinel, encoding="utf-8") as handle:
+                assert handle.read() == "precious"
+            # No project files were written at the target: only the sentinel is
+            # there.
+            assert os.listdir(project_dir) == ["keep.txt"]
+
+
+def test_dot_segment_names_are_rejected():
+    """``.`` and ``..`` are refused so force never clears the folder or its parent."""
+    for bad_name in (".", ".."):
+        with isolated_filesystem() as output_folder:
+            sentinel = os.path.join(output_folder, "keep.txt")
+            with open(sentinel, "w", encoding="utf-8") as handle:
+                handle.write("precious")
+
+            with pytest.raises(ValueError, match="Invalid project name"):
+                create_project(bad_name, output_folder, ANSWERS, force=True)
+            assert os.path.isfile(sentinel), "a rejected name must clear nothing"
+
+
+def test_non_string_name_raises_value_error():
+    """A non-string name raises the documented ValueError, not a bare TypeError."""
+    with isolated_filesystem() as output_folder:
+        with pytest.raises(ValueError, match="Invalid project name"):
+            create_project(None, output_folder, ANSWERS)  # type: ignore[arg-type]
+
+
 def test_invalid_name_raises_value_error_and_writes_nothing():
     """A forbidden character in the name is rejected before anything is written."""
     with isolated_filesystem() as output_folder:
