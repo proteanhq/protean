@@ -124,7 +124,9 @@ def create_project(
             and the returned list is the same set apply produces.
         force: When the target directory already exists and is not empty, clear
             its contents first. Without this a non-empty target raises
-            :exc:`FileExistsError`.
+            :exc:`FileExistsError`. A target that resolves outside
+            *output_folder* is refused either way, so the clear never reaches
+            outside the output folder.
         defaults: Pass copier's ``defaults`` through, so unanswered questions take
             their template default instead of prompting.
 
@@ -136,7 +138,9 @@ def create_project(
         ImportError: The optional ``copier`` dependency (the ``[scaffold]``
             extra) is not installed. Raised before any directory is cleared.
         ValueError: *project_name* is not a string, is empty, is ``.`` or
-            ``..``, or carries a forbidden character.
+            ``..``, or carries a forbidden character; or the target path
+            resolves outside *output_folder*, which is what a symlink left at
+            the target does.
         FileNotFoundError: *output_folder* does not exist.
         FileExistsError: The target directory is not empty and *force* is false.
     """
@@ -153,6 +157,19 @@ def create_project(
         raise FileNotFoundError(f'Output folder "{output_folder}" does not exist')
 
     project_directory = os.path.join(output_folder, project_name)
+
+    # An accepted name is a single segment, so the target sits directly inside
+    # the output folder, unless something already at that path is a symlink.
+    # ``os.path``, ``shutil``, and copier all follow symlinks, so a symlink left
+    # there by an earlier run or by someone else would let the force clear
+    # delete, and the render write, wherever it points. Refuse a target whose
+    # resolved path is not directly inside the resolved output folder, before
+    # anything is cleared or written.
+    if Path(project_directory).resolve().parent != Path(output_folder).resolve():
+        raise ValueError(
+            f'Target "{project_directory}" resolves outside output folder '
+            f'"{output_folder}"'
+        )
 
     # The core injects the project name into the template answers, so callers
     # that already carry answers do not have to remember to add it.

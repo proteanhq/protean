@@ -14,6 +14,8 @@ import pytest
 from protean.scaffold import create_project
 from tests.shared import isolated_filesystem, module_unavailable
 
+pytestmark = pytest.mark.no_test_domain
+
 PROJECT_NAME = "foobar"
 ANSWERS = {"author_name": "John Doe", "author_email": "john@doe.com"}
 
@@ -153,6 +155,39 @@ def test_nonempty_target_needs_force():
         assert not os.path.exists(sentinel), "force must clear the pre-existing file"
         assert not os.path.exists(stale_subdir), "force must clear pre-existing subdirs"
         assert os.path.isfile(os.path.join(project_dir, "README.md"))
+
+
+def test_symlinked_target_outside_the_output_folder_is_refused():
+    """A target symlinked out of the output folder is refused before any clear.
+
+    ``os.path``, ``shutil``, and copier follow symlinks, so without this check
+    ``force`` would delete, and the render would write, wherever the link points.
+    Both apply and dry-run must refuse and leave the linked-to directory intact.
+    """
+    with isolated_filesystem() as workspace:
+        output_folder = os.path.join(workspace, "out")
+        outside = os.path.join(workspace, "outside")
+        os.makedirs(output_folder)
+        os.makedirs(outside)
+        sentinel = os.path.join(outside, "keep.txt")
+        with open(sentinel, "w", encoding="utf-8") as handle:
+            handle.write("precious")
+        os.symlink(outside, os.path.join(output_folder, PROJECT_NAME))
+
+        for dry_run in (False, True):
+            with pytest.raises(ValueError, match="resolves outside output folder"):
+                create_project(
+                    PROJECT_NAME,
+                    output_folder,
+                    ANSWERS,
+                    dry_run=dry_run,
+                    force=True,
+                    defaults=True,
+                )
+
+        assert os.path.isfile(sentinel), "the linked-to directory must be untouched"
+        with open(sentinel, encoding="utf-8") as handle:
+            assert handle.read() == "precious"
 
 
 def test_copier_absent_raises_import_error_before_clearing():

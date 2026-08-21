@@ -49,7 +49,9 @@ the command would create, one per line, and writes nothing. The target
 directory is left alone whether or not it already has files in it, and
 `--force` does not clear it under a dry run.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
-existing files.
+existing files. The target directory has to sit inside the output directory:
+if `<output-dir>/<name>` is a symlink pointing somewhere else, the command
+refuses to run, so the clear never reaches outside the output directory.
 
 ## Generated Project Structure
 
