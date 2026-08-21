@@ -208,6 +208,97 @@ class TestInFlightTaskCompletion:
 
 
 @pytest.mark.no_test_domain
+class TestConfigurableDrainWindow:
+    """The drain window is read from [server].drain_timeout and governs the
+    wait before in-flight tasks are force-cancelled on shutdown."""
+
+    def _engine(self, drain_timeout=None):
+        domain = Domain(name="Test")
+        if drain_timeout is not None:
+            domain.config["server"]["drain_timeout"] = drain_timeout
+        domain.init(traverse=False)
+        with domain.domain_context():
+            return Engine(domain, test_mode=True)
+
+    def _drain_with_inflight(self, engine, sleep_for):
+        """Start an in-flight handler, run shutdown, report its fate."""
+        state = {"completed": False, "cancelled": False}
+
+        async def slow_handler():
+            try:
+                await asyncio.sleep(sleep_for)
+                state["completed"] = True
+            except asyncio.CancelledError:
+                state["cancelled"] = True
+                raise
+
+        async def _run():
+            task = asyncio.ensure_future(slow_handler())
+            await engine.shutdown()
+            return task
+
+        engine.loop.run_until_complete(_run())
+        return state
+
+    def test_default_window_is_ten_seconds(self):
+        """With no key set, the drain window is 10 (unchanged default)."""
+        engine = self._engine()
+        assert engine.drain_timeout == 10.0
+
+    def test_configured_window_is_read(self):
+        engine = self._engine(drain_timeout=3)
+        assert engine.drain_timeout == 3.0
+
+    def test_garbage_window_falls_back_to_ten(self):
+        """An invalid value falls back to 10 without raising."""
+        engine = self._engine(drain_timeout="not-a-number")
+        assert engine.drain_timeout == 10.0
+
+    def test_short_window_cancels_straggler(self):
+        """A configured 0.05s window force-cancels a 1s in-flight handler.
+
+        This also proves the old hardcoded 10.0 literal is gone: under 10s the
+        1s sleep would finish, so the task would complete, not cancel.
+        """
+        engine = self._engine(drain_timeout=0.05)
+        state = self._drain_with_inflight(engine, sleep_for=1.0)
+        assert state["cancelled"] is True
+        assert state["completed"] is False
+
+    def test_generous_window_lets_inflight_finish(self):
+        """A 2s window lets a 0.05s in-flight handler run to completion."""
+        engine = self._engine(drain_timeout=2.0)
+        state = self._drain_with_inflight(engine, sleep_for=0.05)
+        assert state["completed"] is True
+        assert state["cancelled"] is False
+
+    def test_warns_when_window_at_or_above_supervisor_kill_timeout(self, caplog):
+        """A drain window >= the Supervisor kill timeout logs a warning so an
+        operator is told a worker may be SIGKILLed before it drains."""
+        from protean.server.engine import _SHUTDOWN_TIMEOUT_SECONDS
+
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout=_SHUTDOWN_TIMEOUT_SECONDS)
+
+        assert engine.drain_timeout == float(_SHUTDOWN_TIMEOUT_SECONDS)
+        assert any(
+            "drain_timeout_at_or_above_supervisor_kill_timeout" in r.message
+            for r in caplog.records
+        )
+
+    def test_no_warning_for_default_window(self, caplog):
+        """Negative: the default window (below the kill timeout) warns nothing."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine()
+
+        assert engine.drain_timeout == 10.0
+        assert not any(
+            "drain_timeout_at_or_above_supervisor_kill_timeout" in r.message
+            for r in caplog.records
+        )
+
+
+@pytest.mark.no_test_domain
 class TestBrokerClose:
     """Test BaseBroker.close() default behavior."""
 

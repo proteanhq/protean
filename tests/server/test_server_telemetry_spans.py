@@ -120,6 +120,7 @@ class MockEngine:
         self.loop = None
         self.emitter = Mock()
         self.shutting_down = False
+        self.draining = False
 
 
 def _init_telemetry_in_memory(domain):

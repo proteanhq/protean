@@ -93,6 +93,7 @@ enforce `--strict` will fail. Raise `pool_size` or set `PROTEAN_ENV` to
 | `GET /healthz` | Liveness | `200` with `{"status": "ok", "checks": {"event_loop": "responsive"}}` |
 | `GET /livez` | Liveness (alias for `/healthz`) | Same as `/healthz` |
 | `GET /readyz` | Readiness | `200` when all checks pass, `503` otherwise |
+| `POST /drainz` | Drain trigger | `200` with `{"status": "draining"}`; flips the engine to `draining` |
 
 Sample responses. Liveness while the engine is running:
 
@@ -238,6 +239,52 @@ Content-Type: application/json
 `/livez` keeps returning `200` during the drain window; it only fails
 when the event loop itself is blocked. This asymmetry is deliberate:
 liveness triggers a restart, readiness pulls the pod out of rotation.
+
+### Draining: `POST /drainz`
+
+`POST /drainz` asks the engine to stop taking new work while in-flight work
+finishes, without shutting the process down. It flips the engine to a
+`draining` state, distinct from the `shutting_down` state a `SIGTERM` sets:
+
+```bash
+$ curl -i -X POST http://localhost:8080/drainz
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"status": "draining"}
+```
+
+While draining:
+
+- New messages are no longer fetched: the subscription poll loops stop pulling
+  batches, and `handle_message` / `handle_broker_message` reject anything
+  dispatched after the flip. Handlers already running finish normally.
+- `/readyz` reports not-ready so a load balancer stops routing to the pod. The
+  body carries a `draining` marker, kept separate from `shutting_down` so you
+  can tell a draining pod from one tearing down:
+
+```bash
+$ curl -i http://localhost:8080/readyz
+HTTP/1.1 503 Service Unavailable
+Content-Type: application/json
+
+{"status": "unavailable", "checks": {"draining": true}}
+```
+
+- `/healthz` and `/livez` stay `200`: draining means healthy but not taking
+  work, so it is not a restart signal.
+
+`/drainz` is advisory. It does not itself shut the engine down; the process
+stays alive so your orchestrator can send `SIGTERM` afterwards to actually
+stop it. This matches Kubernetes `preStop` semantics: drain in the hook, then
+let the termination grace period run the real shutdown. Only `POST /drainz`
+drains; a `GET` to the path is an unknown path (`404`) and any other non-`GET`
+method still returns `405`.
+
+`/drainz` lives on the engine health server only. The FastAPI health router
+has no engine handle and runs in a separate process, so draining in-flight
+HTTP requests there is the ASGI server's job (for example uvicorn's graceful
+shutdown), not `/drainz`'s.
 
 ### FastAPI router factory
 
@@ -431,7 +478,7 @@ Elasticsearch providers return an empty dict.
 1. Stop the health HTTP server (probes start failing immediately).
 2. Signal every subscription, broker subscription, outbox processor,
    and DLQ maintenance task to stop.
-3. Wait up to **10 seconds** for in-flight handler tasks to complete;
+3. Wait up to the drain window for in-flight handler tasks to complete;
    cancel any that remain.
 4. Call `Domain.close()`, which closes the event store, brokers, caches, and
    providers in reverse initialisation order.
@@ -439,6 +486,24 @@ Elasticsearch providers return an empty dict.
 
 `Domain.close()` is callable from application code for tests and
 tooling that create and tear down domains on demand.
+
+### `server.drain_timeout`
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `drain_timeout` | `10` | Seconds step 3 waits for in-flight handlers before force-cancelling |
+
+```toml
+[server]
+drain_timeout = 10  # seconds
+```
+
+The default of `10` preserves the previous fixed behaviour. Keep the drain
+window below the multi-worker Supervisor kill timeout
+(`_SHUTDOWN_TIMEOUT_SECONDS`, 30 seconds): if `drain_timeout` reaches that
+value the Supervisor can `SIGKILL` a worker before it finishes draining, so
+the engine logs a warning at startup when you set it that high. Single-worker
+runs have no supervisor, so a longer window there is fine.
 
 ## Optimistic locking
 

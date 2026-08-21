@@ -43,6 +43,7 @@ from .subscription.factory import (
     SubscriptionFactory,
     broker_supports_partitioning,
 )
+from .supervisor import _SHUTDOWN_TIMEOUT_SECONDS
 from .tracing import TraceEmitter
 
 if TYPE_CHECKING:
@@ -232,6 +233,36 @@ class Engine:
         self.debug = debug  # Flag to indicate if debug mode is enabled
         self.exit_code = 0
         self.shutting_down = False  # Flag to indicate the engine is shutting down
+        # Advisory drain flag, flipped by POST /drainz. Distinct from
+        # shutting_down: draining means "reject new work, let in-flight work
+        # finish, stay alive" so an orchestrator can quiesce the process before
+        # sending SIGTERM. shutting_down means "tear everything down".
+        self.draining = False
+
+        # Graceful drain window (seconds): how long shutdown() waits for
+        # in-flight handlers to finish before force-cancelling. Read from
+        # [server].drain_timeout, defaulting to 10 to preserve the previous
+        # hardcoded behaviour. Defensive read + numeric coercion mirrors the
+        # observatory/health config reads elsewhere in __init__.
+        try:
+            drain_timeout_raw = domain.config.get("server", {}).get("drain_timeout", 10)
+            self.drain_timeout = float(drain_timeout_raw)
+        except (AttributeError, TypeError, ValueError):
+            self.drain_timeout = 10.0
+
+        # Warn if the drain window is at or above the multi-worker Supervisor
+        # kill timeout: a worker whose drain window reaches the kill timeout can
+        # be SIGKILLed before it finishes draining. Single-worker runs have no
+        # supervisor, so an over-long window there is legitimate — hence a
+        # warning, not an error.
+        if self.drain_timeout >= _SHUTDOWN_TIMEOUT_SECONDS:
+            logger.warning(
+                "engine.drain_timeout_at_or_above_supervisor_kill_timeout",
+                extra={
+                    "drain_timeout": self.drain_timeout,
+                    "supervisor_kill_timeout": _SHUTDOWN_TIMEOUT_SECONDS,
+                },
+            )
 
         # Keep a strong reference to the shutdown task so it isn't garbage
         # collected mid-flight (see RUF006).
@@ -647,8 +678,8 @@ class Engine:
             bool: True if the message was processed successfully, False otherwise
         """
 
-        if self.shutting_down:
-            return False  # Skip handling if shutdown is in progress
+        if self.shutting_down or self.draining:
+            return False  # Skip handling while shutting down or draining
 
         with self.domain.domain_context():
             # Set message context so subscribers (and any commands they
@@ -721,8 +752,8 @@ class Engine:
         Returns:
             bool: True if the message was processed successfully, False otherwise
         """
-        if self.shutting_down:
-            return False  # Skip handling if shutdown is in progress
+        if self.shutting_down or self.draining:
+            return False  # Skip handling while shutting down or draining
 
         # Propagate metadata extensions into g so that handlers see the
         # same context (tenant_id, user_id, etc.) that enrichers injected
@@ -1111,7 +1142,7 @@ class Engine:
             tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
             if tasks:
                 logger.debug("engine.draining_tasks", extra={"count": len(tasks)})
-                done, pending = await asyncio.wait(tasks, timeout=10.0)
+                done, pending = await asyncio.wait(tasks, timeout=self.drain_timeout)
 
                 # Retrieve exceptions from completed tasks so Python doesn't
                 # emit "Task exception was never retrieved" warnings.

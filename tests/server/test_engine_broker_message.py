@@ -93,6 +93,32 @@ class TestShuttingDown:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Returns False when draining is True (new work rejected while draining)
+# ---------------------------------------------------------------------------
+class TestDraining:
+    @pytest.mark.asyncio
+    async def test_returns_false_when_draining(self, test_domain):
+        _register_and_init(test_domain, SuccessSubscriber)
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine.draining = True
+
+        result = await engine.handle_broker_message(SuccessSubscriber, {"key": "value"})
+        assert result is False
+        assert len(_call_log) == 0
+
+    @pytest.mark.asyncio
+    async def test_processes_when_not_draining(self, test_domain):
+        """Negative: with draining False (the default), the message is processed."""
+        _register_and_init(test_domain, SuccessSubscriber)
+        engine = Engine(domain=test_domain, test_mode=True)
+        assert engine.draining is False
+
+        result = await engine.handle_broker_message(SuccessSubscriber, {"key": "value"})
+        assert result is True
+        assert _call_log == [{"key": "value"}]
+
+
+# ---------------------------------------------------------------------------
 # 2. Returns True on successful processing
 # ---------------------------------------------------------------------------
 class TestSuccessfulProcessing:

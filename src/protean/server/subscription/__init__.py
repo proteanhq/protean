@@ -81,7 +81,9 @@ class BaseSubscription(ABC):
         """
         consecutive_errors = 0
 
-        while self.keep_going and not self.engine.shutting_down:
+        while self.keep_going and not (
+            self.engine.shutting_down or self.engine.draining
+        ):
             try:
                 with self.engine.domain.domain_context():
                     # Process messages

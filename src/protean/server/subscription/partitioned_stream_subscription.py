@@ -233,7 +233,9 @@ class PartitionedStreamSubscription(StreamSubscription):
         tasks, so different keys drain in parallel. Runs until shutdown.
         """
         consecutive_errors = 0
-        while self.keep_going and not self.engine.shutting_down:
+        while self.keep_going and not (
+            self.engine.shutting_down or self.engine.draining
+        ):
             try:
                 await self._discovery_pass()
                 consecutive_errors = 0
@@ -435,7 +437,7 @@ class PartitionedStreamSubscription(StreamSubscription):
             await self._reclaim(owned)
             while (
                 self.keep_going
-                and not self.engine.shutting_down
+                and not (self.engine.shutting_down or self.engine.draining)
                 and not owned.halted
                 and owned.partition_id in self._owned
             ):

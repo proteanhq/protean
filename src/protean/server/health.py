@@ -8,7 +8,12 @@ Endpoints:
     GET /healthz  — Liveness: engine running, event loop responsive → 200
     GET /livez    — Alias for /healthz
     GET /readyz   — Readiness: providers alive, broker connected, event store
-                    and caches reachable, not shutting down → 200 / 503
+                    and caches reachable, not shutting down, not draining
+                    → 200 / 503
+    POST /drainz  — Advisory drain: flip the engine to ``draining`` so it stops
+                    taking new work while in-flight handlers finish. The process
+                    stays alive; readiness then reports not-ready so a load
+                    balancer stops routing. → 200
 
 The readiness response also carries a ``subscriptions`` block reporting per-
 subscription lag, status, and circuit-breaker state.  That block is
@@ -378,6 +383,17 @@ async def _check_readiness(
         }
     checks["shutting_down"] = False
 
+    # A draining engine is healthy but should stop receiving new requests, so
+    # readiness reports not-ready and a load balancer pulls the pod out of
+    # rotation. Kept distinct from the shutting_down payload so an operator can
+    # tell a draining pod (finishing in-flight work) from one tearing down.
+    if engine.draining:
+        return {
+            "status": STATUS_UNAVAILABLE,
+            "checks": {"draining": True},
+        }
+    checks["draining"] = False
+
     domain = engine.domain
 
     provider_statuses, providers_ok = check_providers(domain)
@@ -447,7 +463,15 @@ class HealthServer:
 
             method, path = _parse_request_line(data)
 
-            if method != "GET":
+            if method == "POST" and path == "/drainz":
+                # Advisory drain trigger: flip the engine to draining so it
+                # stops taking new work while in-flight handlers finish. The
+                # process stays alive; the orchestrator's later SIGTERM drives
+                # the actual shutdown. Matched before the generic 405 branch so
+                # every other non-GET request still gets 405.
+                self.engine.draining = True
+                writer.write(_json_response(200, {"status": "draining"}))
+            elif method != "GET":
                 writer.write(_json_response(405, {"error": "Method Not Allowed"}))
             elif path in ("/healthz", "/livez"):
                 result = _check_liveness(self.engine)
