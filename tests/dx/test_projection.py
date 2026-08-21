@@ -598,3 +598,96 @@ def test_hash_stability_ignores_benign_repeats(tmp_path: Path) -> None:
     result = apply_projection(tmp_path, region("AGENTS.md", "1", "line one\nline two"))
     assert result.status is ProjectionStatus.NO_CHANGE
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == first
+
+
+# --- line endings ----------------------------------------------------------
+
+
+def test_crlf_target_reads_as_no_change(tmp_path: Path) -> None:
+    """A CRLF checkout of content the engine wrote as LF is not a phantom conflict.
+
+    Reads go through text mode, so both spellings normalize to ``\\n`` before they
+    are hashed and the slice still matches what the lock recorded.
+    """
+    apply_projection(tmp_path, region("AGENTS.md", "1", "line one\nline two"))
+    target = tmp_path / "AGENTS.md"
+    target.write_bytes(target.read_bytes().replace(b"\n", b"\r\n"))
+
+    result = diff_projection(tmp_path, region("AGENTS.md", "1", "line one\nline two"))
+
+    assert result.status is ProjectionStatus.NO_CHANGE
+    assert result.outside_modified is False
+
+
+def test_update_keeps_a_crlf_target_in_crlf(tmp_path: Path) -> None:
+    """An update writes back in the line ending the file already uses.
+
+    The engine renders LF; writing that out untranslated would flip every line
+    outside the managed region too, which the region merge promises not to touch.
+    """
+    apply_projection(tmp_path, region("AGENTS.md", "1", "v1 body"))
+    target = tmp_path / "AGENTS.md"
+    target.write_bytes(
+        target.read_bytes().replace(b"\n", b"\r\n") + b"user tail\r\n",
+    )
+
+    assert apply_projection(tmp_path, region("AGENTS.md", "2", "v2 body")).status is (
+        ProjectionStatus.UPDATE
+    )
+
+    raw = target.read_bytes()
+    assert b"v2 body" in raw and b"user tail" in raw
+    # Every LF is still part of a CRLF pair: no line ending was rewritten.
+    assert raw.count(b"\n") == raw.count(b"\r\n")
+
+
+def test_update_keeps_an_lf_target_in_lf(tmp_path: Path) -> None:
+    """An LF file stays LF, whatever the platform's own line ending is."""
+    apply_projection(tmp_path, region("AGENTS.md", "1", "v1 body"))
+    apply_projection(tmp_path, region("AGENTS.md", "2", "v2 body"))
+
+    assert b"\r" not in (tmp_path / "AGENTS.md").read_bytes()
+    assert b"\r" not in lock_path(tmp_path).read_bytes()
+
+
+# --- symlink targets -------------------------------------------------------
+
+
+def test_dangling_symlink_target_is_refused(tmp_path: Path) -> None:
+    """A dangling symlink is not a free path to create over.
+
+    ``Path.exists()`` follows the link and reads ``False`` for a broken one, so
+    without the symlink-aware check the diff would say CREATE while ``apply_plan``,
+    which is symlink-aware, would then raise from underneath.
+    """
+    link = tmp_path / "AGENTS.md"
+    link.symlink_to(tmp_path / "does-not-exist")
+    proj = region("AGENTS.md", "1", "framework block")
+
+    for call in (diff_projection, apply_projection):
+        with pytest.raises(ProjectionError) as excinfo:
+            call(tmp_path, proj)
+        assert "symlink" in str(excinfo.value)
+
+    assert link.is_symlink() and not link.exists()
+    assert not lock_path(tmp_path).exists()
+
+
+def test_symlink_to_a_real_target_is_refused(tmp_path: Path) -> None:
+    """A live symlink is refused too: the update would swap it for a regular file.
+
+    ``os.replace`` renames over the link itself, so the real file behind it would
+    keep the old content while the link's path silently stopped being a link.
+    """
+    real = tmp_path / "real.md"
+    apply_projection(tmp_path, region("real.md", "1", "v1 body"))
+    original = real.read_bytes()
+    link = tmp_path / "AGENTS.md"
+    link.symlink_to(real)
+
+    with pytest.raises(ProjectionError) as excinfo:
+        apply_projection(tmp_path, region("AGENTS.md", "2", "v2 body"))
+
+    assert "symlink" in str(excinfo.value)
+    assert link.is_symlink()
+    assert real.read_bytes() == original

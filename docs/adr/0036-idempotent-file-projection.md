@@ -75,8 +75,15 @@ and returns the status plus the content it would write. `apply_projection` runs 
 first and then acts. This is the derive-and-compare shape of
 `scaffold/manifest.py:check_manifest_drift`.
 
-**Hashes are taken over exact utf-8 bytes**, with no line-ending rewriting, so a
-platform newline difference never reads as a phantom conflict.
+**Hashes are taken over LF-normalized utf-8 text.** A target is read in text mode,
+so a CRLF file and an LF file with the same content hash the same and a platform
+newline difference never reads as a phantom conflict. A write goes back out in
+whatever line ending the file already uses, so an update never rewrites them.
+
+**A symlink target is refused.** `diff_projection` raises before it reads. An update
+writes through `os.replace`, which would swap the link for a regular file and leave
+the link's target holding the old content. `apply_plan` already refuses to create
+over a symlink, dangling ones included, so both paths say the same thing.
 
 **One named region per file, in v1.** A missing, duplicated, or reversed marker
 raises instead of falling back to overwriting the file. Marker matching is
@@ -101,8 +108,10 @@ the next run re-derives rather than trusting a stamp for content that never land
   that resolving it is manual: the engine reports the conflict and stops, and there is
   no merge-conflict-marker mode or `--force` in v1.
 - The lockfile is a new file in the user's repo. It has to be committed for the
-  conflict check to work across machines, and deleting it turns the next re-projection
-  of an existing file into a conflict, since an unrecorded slice matches no lock.
+  conflict check to work across machines. Delete it and the engine loses the record
+  of what it last wrote: a file whose block still matches the new render is still a
+  safe update, but a block the user edited now reads as a conflict, since an
+  unrecorded slice matches no lock.
 - Managed-region files carry visible marker comments. That is a small cost in the
   file's readability, and it buys a boundary the user can see and work around.
 - The shallow JSON merge cannot manage a nested key on its own. Managing

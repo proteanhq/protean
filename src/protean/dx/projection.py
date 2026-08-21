@@ -40,9 +40,14 @@ Serialization follows the IR house style (see
 :mod:`protean.scaffold.change_plan`): frozen dataclasses, an explicit
 ``to_dict``/``from_dict`` JSON dump with sorted keys and a trailing newline, and
 a ``lock_version`` marker that ``from_dict`` rejects loudly when it does not
-understand it. Hashes are taken over the exact bytes written, utf-8 encoded, with
-no line-ending rewriting, so a benign platform newline difference never reads as
-a phantom conflict.
+understand it.
+
+Line endings: the engine reads a target in text mode, so whatever the file uses
+on disk arrives as ``\\n``, and every hash is taken over that utf-8-encoded,
+LF-normalized text. A CRLF checkout of the same content therefore hashes the same
+as an LF one and a benign platform newline difference never reads as a phantom
+conflict. Writes go back out in whatever line ending the file already uses, so an
+update never rewrites a file's line endings.
 
 See ADR-0036 for the decision record behind the lockfile and the two merge modes.
 
@@ -118,6 +123,9 @@ _LOCK_FILENAME = "dx.lock"
 # The fixed marker keywords. The caller wraps them in its own comment syntax.
 _MARKER_BEGIN = "PROTEAN:BEGIN"
 _MARKER_END = "PROTEAN:END"
+
+# How much of a file to read when sniffing which line ending it uses.
+_NEWLINE_SNIFF_BYTES = 8192
 
 
 class ProjectionError(Exception):
@@ -398,10 +406,12 @@ def _require_str(data: dict[str, Any], key: str, context: str) -> str:
 
 
 def _hash_text(text: str) -> str:
-    """Hash *text* over its exact utf-8 bytes.
+    """Hash *text* over its utf-8 bytes.
 
-    Fixed utf-8, no line-ending rewriting, so the hash is stable across platforms
-    and a benign newline difference never reads as a phantom conflict.
+    *text* always comes from a text-mode read or the engine's own rendering, so its
+    line endings are already LF whatever the file holds on disk. Fixed utf-8 over
+    that, so the hash is stable across platforms and a benign newline difference
+    never reads as a phantom conflict.
     """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -599,9 +609,9 @@ def diff_projection(
     :func:`~protean.scaffold.manifest.check_manifest_drift`: derive and compare,
     mutate nothing.
 
-    Raises :exc:`ProjectionError` when a managed-region target has a malformed
-    marker, when a structured-JSON target is not a JSON object, or when the
-    lockfile is corrupt.
+    Raises :exc:`ProjectionError` when the target is a symlink, when a
+    managed-region target has a malformed marker, when a structured-JSON target is
+    not a JSON object, or when the lockfile is corrupt.
     """
     root = Path(project_root)
     target_path = root / projection.target
@@ -615,6 +625,13 @@ def diff_projection(
         new_slice = _json_new_slice(projection)
         create_content = _create_json(projection)
     new_slice_hash = _hash_text(new_slice)
+
+    if target_path.is_symlink():
+        raise ProjectionError(
+            f"Target {projection.target!r} is a symlink. Refusing to project onto "
+            "it: an update would replace the link with a regular file and leave "
+            "the link's target behind."
+        )
 
     if not target_path.exists():
         return ProjectionResult(
@@ -726,15 +743,40 @@ def apply_projection(
     return result
 
 
+def _detect_newline(path: Path) -> str:
+    """Return the newline sequence *path* already uses, ``"\\n"`` when it has none.
+
+    Only the first line ending is inspected, which is enough for the consistent
+    files the engine projects into. A missing or unreadable file answers ``"\\n"``:
+    the engine's own rendering is LF.
+    """
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(_NEWLINE_SNIFF_BYTES)
+    except OSError:
+        return "\n"
+    index = head.find(b"\n")
+    if index > 0 and head[index - 1 : index] == b"\r":
+        return "\r\n"
+    return "\n"
+
+
 def _atomic_write(path: Path, content: str) -> None:
     """Write *content* to *path* atomically: a sibling temp file, then a rename.
 
     ``os.replace`` is atomic within a filesystem, so a failed write leaves the
     prior file intact rather than a half-written one.
+
+    *content* carries LF line endings; they are written back in whatever style the
+    file already uses, so an update never rewrites a file's line endings. A default
+    text write would translate them to the platform's own ending instead, which on
+    Windows flips every line in the file, the ones outside the managed region too.
     """
     tmp = path.with_name(f"{path.name}.dx-tmp")
+    newline = _detect_newline(path)
     try:
-        tmp.write_text(content, encoding="utf-8")
+        with tmp.open("w", encoding="utf-8", newline=newline) as handle:
+            handle.write(content)
         os.replace(tmp, path)
     finally:
         # A failed write (or a failed replace) must not leave a stale temp
