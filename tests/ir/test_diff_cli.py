@@ -2540,6 +2540,179 @@ class TestDiffEventModelConsumerTopology:
         result = self._run(tmp_path, left_ir, right_ir)
         assert _added_lines(result.output) == ["  + read model OrderSummary"]
 
+    def test_a_handler_moved_to_another_cluster_is_a_changed_automation(self, tmp_path):
+        # The handler keeps its FQN and is drawn on both sides, so it is neither
+        # gained nor lost, but it hangs off a different aggregate's event now.
+        # The diff reports that as a removed handler under Order plus an added
+        # one under Shipment, never as a change, so the node move is only
+        # visible in the slices the two snapshots draw it in.
+        def _ir(order_handlers, shipment_handlers):
+            return _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order",
+                        commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                        events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                        event_handlers=order_handlers,
+                    ),
+                    "app.Shipment": _make_cluster(
+                        "Shipment",
+                        commands={"app.ShipOrder": _em_command("ShipOrder")},
+                        events={"app.OrderShipped": _em_event("OrderShipped")},
+                        event_handlers=shipment_handlers,
+                    ),
+                }
+            )
+
+        notifier_on_order = {
+            "app.Notifier": _em_event_handler(
+                "Notifier", {_em_type("OrderPlaced"): ["on_placed"]}
+            )
+        }
+        notifier_on_shipment = {
+            "app.Notifier": _em_event_handler(
+                "Notifier", {_em_type("OrderShipped"): ["on_shipped"]}
+            )
+        }
+        result = self._run(
+            tmp_path,
+            _ir(notifier_on_order, {}),
+            _ir({}, notifier_on_shipment),
+        )
+        assert "  ~ automation Notifier" in _changed_lines(result.output)
+
+    def test_a_consumer_losing_one_of_its_two_slices_is_reported(self, tmp_path):
+        # Both consumers are wired to an event in each of two clusters, so each
+        # is drawn twice. Order's event goes away, which costs them their node
+        # in that slice while their node in the Shipment slice stays. Nothing in
+        # either consumer's own delta moved, so only the slices they are drawn
+        # in say so.
+        handlers = {
+            _em_type("OrderPlaced"): ["on_placed"],
+            _em_type("OrderShipped"): ["on_shipped"],
+        }
+
+        def _ir(order_events):
+            return _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order",
+                        commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                        events=order_events,
+                        event_handlers={
+                            "app.Notifier": _em_event_handler("Notifier", handlers)
+                        },
+                    ),
+                    "app.Shipment": _make_cluster(
+                        "Shipment",
+                        commands={"app.ShipOrder": _em_command("ShipOrder")},
+                        events={"app.OrderShipped": _em_event("OrderShipped")},
+                    ),
+                },
+                projections={
+                    "app.OrderSummary": _em_projection_group(
+                        "OrderSummary",
+                        projectors={
+                            "app.Proj1": _em_projector(
+                                "Proj1", "OrderSummary", handlers=handlers
+                            )
+                        },
+                    )
+                },
+            )
+
+        result = self._run(
+            tmp_path,
+            _ir({"app.OrderPlaced": _em_event("OrderPlaced")}),
+            _ir({}),
+        )
+        changed = _changed_lines(result.output)
+        assert "  ~ automation Notifier" in changed
+        assert "  ~ read model OrderSummary: projector Proj1 changed" in changed
+
+    def test_a_pm_lifecycle_flip_on_an_undrawn_route_is_a_changed_automation(
+        self, tmp_path
+    ):
+        # A process manager's node label carries the lifecycle across all of its
+        # routes, drawn or not. The flip here is on a route to an event no
+        # cluster raises, so no edge moves, but the label the PM is drawn with
+        # in the Order slice goes from "(start)" to "(start, end)".
+        cluster = {
+            "app.Order": _make_cluster(
+                "Order",
+                commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                events={"app.OrderPlaced": _em_event("OrderPlaced")},
+            )
+        }
+        left_ir = _minimal_ir(
+            clusters=cluster,
+            flows={
+                "domain_services": {},
+                "process_managers": {
+                    "app.FulfillmentPM": _em_process_manager(
+                        "FulfillmentPM",
+                        {
+                            _em_type("OrderPlaced"): {"start": True},
+                            _em_type("NothingRaisesThis"): {"end": False},
+                        },
+                    )
+                },
+                "subscribers": {},
+            },
+        )
+        right_ir = copy.deepcopy(left_ir)
+        right_ir["flows"]["process_managers"]["app.FulfillmentPM"]["handlers"][
+            _em_type("NothingRaisesThis")
+        ] = {"end": True}
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  ~ automation FulfillmentPM" in _changed_lines(result.output)
+
+    def test_a_projector_retargeted_to_another_projection_is_reported(self, tmp_path):
+        # Both read models stay and the projector keeps its route, so it is
+        # drawn in the same slice on both sides. What changed is the projection
+        # it feeds, which the node label carries ("Proj1 → OldView" becomes
+        # "Proj1 → NewView"). The diff reports it as removed from one projection
+        # group and added to the other, so only the label says the node moved.
+        clusters = {
+            "app.Order": _make_cluster(
+                "Order",
+                commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                events={"app.OrderPlaced": _em_event("OrderPlaced")},
+            )
+        }
+
+        def _projector(projection_name):
+            return _em_projector(
+                "Proj1",
+                projection_name,
+                handlers={_em_type("OrderPlaced"): ["on_placed"]},
+            )
+
+        left_ir = _minimal_ir(
+            clusters=clusters,
+            projections={
+                "app.OldView": _em_projection_group(
+                    "OldView", projectors={"app.Proj1": _projector("OldView")}
+                ),
+                "app.NewView": _em_projection_group("NewView"),
+            },
+        )
+        right_ir = _minimal_ir(
+            clusters=clusters,
+            projections={
+                "app.OldView": _em_projection_group("OldView"),
+                "app.NewView": _em_projection_group(
+                    "NewView", projectors={"app.Proj1": _projector("NewView")}
+                ),
+            },
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  ~ read model NewView: projector Proj1 changed" in _changed_lines(
+            result.output
+        )
+        assert not any("Proj1" in ln for ln in _added_lines(result.output))
+        assert not any("Proj1" in ln for ln in _removed_lines(result.output))
+
 
 @pytest.mark.no_test_domain
 class TestDiffFormatValidation:

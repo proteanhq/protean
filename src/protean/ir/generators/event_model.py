@@ -310,16 +310,22 @@ def generate_slice_gwt(ir: dict[str, Any], cluster_fqn: str) -> str:
 
 
 class _DrawnConsumers(NamedTuple):
-    """Drawn consumer FQNs, split by the kind of node the diagram draws.
+    """Drawn consumer nodes, split by the kind of node the diagram draws.
 
     ``read_models`` holds the projectors (cylinders) and ``automations`` the
     event handlers and process managers (hexagons). The two are kept apart
     because the diff names them differently: a projector is reported under the
     read model it feeds, an automation under its own name.
+
+    Each maps a consumer FQN to the label the diagram draws that node with, so
+    a caller can tell a node that moved or was relabelled from one that stayed
+    put. The label is the one :func:`_render_slice` writes: ``Projector →
+    Projection`` for a projector, the short name for an event handler, and the
+    ``start``/``end`` lifecycle annotation for a process manager.
     """
 
-    read_models: set[str]
-    automations: set[str]
+    read_models: dict[str, str]
+    automations: dict[str, str]
 
 
 def _slice_consumers(
@@ -327,26 +333,27 @@ def _slice_consumers(
     automations: dict[str, list[tuple[str, str, str]]],
     cluster: dict[str, Any],
 ) -> _DrawnConsumers:
-    """Return the FQNs of every consumer drawn in a cluster's slice.
+    """Return every consumer drawn in a cluster's slice, mapped to its label.
 
     A consumer (projector, event handler, or process manager) is drawn in
     the slice when it handles one of the cluster's non-fact events. Uses the
     same shared indexes and the same fact-event / empty-``__type__`` filters
     as :func:`_render_slice`, so the match set agrees with the diagram.
     """
-    projector_fqns: set[str] = set()
-    automation_fqns: set[str] = set()
+    projector_labels: dict[str, str] = {}
+    automation_labels: dict[str, str] = {}
     for evt in cluster.get("events", {}).values():
         if evt.get("is_fact_event"):
             continue
         evt_type = evt.get("__type__", "")
         if not evt_type:
             continue
-        for proj_fqn, _label in read_models.get(evt_type, []):
-            projector_fqns.add(proj_fqn)
-        for consumer_fqn, _label, _edge in automations.get(evt_type, []):
-            automation_fqns.add(consumer_fqn)
-    return _DrawnConsumers(projector_fqns, automation_fqns)
+        projector_labels.update(read_models.get(evt_type, []))
+        automation_labels.update(
+            (consumer_fqn, label)
+            for consumer_fqn, label, _edge in automations.get(evt_type, [])
+        )
+    return _DrawnConsumers(projector_labels, automation_labels)
 
 
 def _cluster_target_fqns(
@@ -738,7 +745,9 @@ def _handlers_delta_is_drawn(
     it lands on: an added key against the right snapshot, a removed key against
     the left. A same-key change is drawn only when a process manager's
     ``start``/``end`` lifecycle flips on a drawn route; renaming the mapped
-    handler method leaves the diagram unchanged.
+    handler method leaves the diagram unchanged. A lifecycle flip on an undrawn
+    route still changes the PM's node label, which is why
+    :func:`_consumer_transitions` compares node labels as well as this delta.
     """
     if any(
         evt_type in drawn_types.right for evt_type in handlers_delta.get("added", {})
@@ -811,23 +820,43 @@ def _draws_event(events: dict[str, Any], evt_fqn: str) -> bool:
     return evt_fqn in events and not events[evt_fqn].get("is_fact_event")
 
 
-def _drawn_consumers(ir: dict[str, Any]) -> _DrawnConsumers:
-    """Every consumer FQN the event model draws anywhere in *ir*.
+class _ConsumerNodes(NamedTuple):
+    """Every consumer node a snapshot draws, keyed by consumer FQN.
+
+    The renderer namespaces a consumer node by cluster, so one consumer can be
+    several nodes: a handler wired to events from two aggregates is drawn in
+    both slices. Each entry maps a consumer FQN to ``{cluster_fqn: label}``, the
+    slices that draw it and the label each draws it with, which is the node
+    topology the diff compares side to side.
+    """
+
+    read_models: dict[str, dict[str, str]]
+    automations: dict[str, dict[str, str]]
+
+
+def _drawn_consumer_nodes(ir: dict[str, Any]) -> _ConsumerNodes:
+    """Every consumer node the event model draws anywhere in *ir*.
 
     A projector, event handler or process manager is a node in the diagram only
     when its ``handlers`` map matches the ``__type__`` of some cluster's non-fact
     event. Reuses the same indexes and the same matcher the renderer does, over
     every cluster, so a consumer's presence here means some slice draws it.
+
+    The cluster dimension is kept: a consumer is one node per slice that draws
+    it, so a consumer rewired from one aggregate's events to another's shows up
+    as a different set of slices even though its FQN is drawn on both sides.
     """
     read_models = _read_model_index(ir)
     automations = _automation_index(ir)
-    projector_fqns: set[str] = set()
-    automation_fqns: set[str] = set()
-    for cluster in ir.get("clusters", {}).values():
-        consumers = _slice_consumers(read_models, automations, cluster)
-        projector_fqns |= consumers.read_models
-        automation_fqns |= consumers.automations
-    return _DrawnConsumers(projector_fqns, automation_fqns)
+    projector_nodes: dict[str, dict[str, str]] = {}
+    automation_nodes: dict[str, dict[str, str]] = {}
+    for cluster_fqn, cluster in ir.get("clusters", {}).items():
+        consumers = _slice_consumers(read_models, automations, cluster or {})
+        for proj_fqn, label in consumers.read_models.items():
+            projector_nodes.setdefault(proj_fqn, {})[cluster_fqn] = label
+        for consumer_fqn, label in consumers.automations.items():
+            automation_nodes.setdefault(consumer_fqn, {})[cluster_fqn] = label
+    return _ConsumerNodes(projector_nodes, automation_nodes)
 
 
 def _cluster_change_phrases(
@@ -915,11 +944,13 @@ def _automation_deltas(diff_result: dict[str, Any]) -> dict[str, Any]:
 
     Automations are the event-model consumers driven by events: event handlers
     (defined inside a cluster) and process managers (under ``flows``). Only the
-    changed ones need a delta. An automation that appeared or disappeared is
-    read off the two snapshots' drawn sets instead (see
-    :func:`_consumer_transitions`), which is also what covers the handlers of a
+    changed ones need a delta. An automation that appeared, disappeared or
+    moved is read off the two snapshots' nodes instead (see
+    :func:`_consumer_transitions`). That is what covers the handlers of a
     cluster added or removed whole, since the diff collapses such a cluster to a
-    one-line summary.
+    one-line summary, and the handler rewired to another aggregate's events,
+    which the diff reports as ``event_handlers.removed`` under its old cluster
+    plus ``event_handlers.added`` under its new one rather than as a change.
     """
     deltas: dict[str, Any] = {}
     for delta in diff_result.get("clusters", {}).get("changed", {}).values():
@@ -930,7 +961,13 @@ def _automation_deltas(diff_result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _projector_deltas(diff_result: dict[str, Any]) -> dict[str, Any]:
-    """Every changed projector's delta, keyed by FQN, across all projections."""
+    """Every changed projector's delta, keyed by FQN, across all projections.
+
+    A projector retargeted from one existing projection to another is not here:
+    the diff reports it as removed from the old group and added to the new one.
+    Its node label carries the projection it feeds, so
+    :func:`_consumer_transitions` catches the retarget as a changed node.
+    """
     deltas: dict[str, Any] = {}
     for delta in diff_result.get("projections", {}).get("changed", {}).values():
         deltas.update(delta.get("projectors", {}).get("changed", {}))
@@ -981,8 +1018,8 @@ def _projector_lines(
 
 
 def _consumer_transitions(
-    left_drawn: set[str],
-    right_drawn: set[str],
+    left_nodes: dict[str, dict[str, str]],
+    right_nodes: dict[str, dict[str, str]],
     deltas: dict[str, Any],
     drawn_types: _DrawnEventTypes,
 ) -> tuple[list[str], list[str], list[str]]:
@@ -990,26 +1027,31 @@ def _consumer_transitions(
 
     Whether a consumer is drawn is a property of the side it lives on: it needs
     a routing key that matches a non-fact event of some cluster in that
-    snapshot. So appearance and disappearance are read off the two drawn sets
-    rather than off the diff. That catches the consumer that came or went
+    snapshot. So appearance and disappearance are read off the two snapshots'
+    nodes rather than off the diff. That catches the consumer that came or went
     because the events moved under it (its event was added, removed, or turned
     into a fact event) while the consumer element itself never changed. It also
     puts a consumer whose own delta made it drawn, such as an empty handler map
     that gained a live route, under added rather than changed.
 
-    A consumer drawn on both sides is changed only when its own delta touches
-    something the renderer reads; one drawn on neither side is no node in any
-    slice, so it is left out entirely.
+    A consumer drawn on both sides stayed, so it is changed when the diagram
+    redraws it in any way: when the slices that draw it differ (a handler
+    rewired to another aggregate's events, a consumer that lost one of its two
+    slices), when a node label differs (a process manager whose lifecycle
+    flipped, a projector retargeted to another projection), or when its own
+    delta touches something the renderer reads. A consumer drawn on neither
+    side is no node in any slice, so it is left out entirely.
 
     Returns:
         ``(added, removed, changed)``, each a list of FQNs sorted by FQN.
     """
-    added = sorted(right_drawn - left_drawn)
-    removed = sorted(left_drawn - right_drawn)
+    added = sorted(right_nodes.keys() - left_nodes.keys())
+    removed = sorted(left_nodes.keys() - right_nodes.keys())
     changed = sorted(
         fqn
-        for fqn in left_drawn & right_drawn
-        if _delta_is_drawn(deltas.get(fqn, {}), drawn_types)
+        for fqn in left_nodes.keys() & right_nodes.keys()
+        if left_nodes[fqn] != right_nodes[fqn]
+        or _delta_is_drawn(deltas.get(fqn, {}), drawn_types)
     )
     return added, removed, changed
 
@@ -1035,11 +1077,11 @@ def generate_event_model_diff(
     what the model draws is a property of the side an element lives on. A
     removed event is a fact event or not according to the left snapshot. A
     consumer (a projector, an event handler, a process manager) is drawn on
-    each side by that side's events, so the two drawn sets are compared to
-    decide whether its node appeared or disappeared. That is the one place a
-    comparison is made outside the diff, and it is what catches a consumer that
-    came or went because the events around it moved while the consumer itself
-    stayed put.
+    each side by that side's events, so the nodes the two snapshots draw are
+    compared to decide whether its node appeared, disappeared or was redrawn.
+    That is the one place a comparison is made outside the diff, and it is what
+    catches a consumer that came, went or moved because the events around it
+    moved while the consumer itself stayed put.
 
     A consumer that appears or disappears is routed to the added or removed
     section, like a new or gone slice; a change confined to a slice's intrinsic
@@ -1070,9 +1112,11 @@ def generate_event_model_diff(
     # Consumers (projectors, event handlers, process managers) are drawn only
     # where they match a non-fact event, so each side is judged against its own
     # snapshot: a consumer the right draws and the left does not has appeared,
-    # whether it was the consumer or the events around it that moved.
-    left_drawn = _drawn_consumers(left_ir)
-    right_drawn = _drawn_consumers(right_ir)
+    # whether it was the consumer or the events around it that moved. The nodes
+    # carry the slices that draw them and the label each is drawn with, so a
+    # consumer that moved between slices or was relabelled reads as changed.
+    left_drawn = _drawn_consumer_nodes(left_ir)
+    right_drawn = _drawn_consumer_nodes(right_ir)
     drawn_types = _DrawnEventTypes(
         _drawn_event_types(left_ir), _drawn_event_types(right_ir)
     )
