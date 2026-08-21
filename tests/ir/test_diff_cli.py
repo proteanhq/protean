@@ -1135,7 +1135,53 @@ def _em_command_handler(name):
     }
 
 
-def _em_projection_group(name, fields=None):
+def _em_event(name, fields=None, is_fact_event=False):
+    """Minimal event element for a cluster."""
+    return {
+        "element_type": "EVENT",
+        "fqn": f"app.{name}",
+        "module": "app",
+        "name": name,
+        "fields": fields or {},
+        "is_fact_event": is_fact_event,
+    }
+
+
+def _em_event_handler(name, handlers=None):
+    """Minimal event handler — an automation the event model draws."""
+    return {
+        "element_type": "EVENT_HANDLER",
+        "fqn": f"app.{name}",
+        "module": "app",
+        "name": name,
+        "handlers": handlers or {},
+    }
+
+
+def _em_projector(name, projection_name, handlers=None):
+    """Minimal projector — the read model's consumer node the diagram draws."""
+    return {
+        "element_type": "PROJECTOR",
+        "fqn": f"app.{name}",
+        "module": "app",
+        "name": name,
+        "projector_for": f"app.{projection_name}",
+        "handlers": handlers or {},
+    }
+
+
+def _em_process_manager(name, handlers=None):
+    """Minimal process manager — a cross-cluster automation under flows."""
+    return {
+        "element_type": "PROCESS_MANAGER",
+        "fqn": f"app.{name}",
+        "module": "app",
+        "name": name,
+        "handlers": handlers or {},
+    }
+
+
+def _em_projection_group(name, fields=None, projectors=None):
     """Minimal projection group (a read model)."""
     return {
         "projection": {
@@ -1145,7 +1191,7 @@ def _em_projection_group(name, fields=None):
             "module": "app",
             "name": name,
         },
-        "projectors": {},
+        "projectors": projectors or {},
         "queries": {},
         "query_handlers": {},
     }
@@ -1157,6 +1203,10 @@ def _added_lines(output):
 
 def _removed_lines(output):
     return [ln for ln in output.splitlines() if ln.strip().startswith("-")]
+
+
+def _changed_lines(output):
+    return [ln for ln in output.splitlines() if ln.strip().startswith("~")]
 
 
 @pytest.mark.no_test_domain
@@ -1376,6 +1426,11 @@ class TestDiffEventModelFormat:
             assert text.exit_code == event_model.exit_code, (
                 f"{label}: text={text.exit_code} event-model={event_model.exit_code}"
             )
+            # Witness that the renderer actually ran: every case here is a real
+            # model change, so the event-model output must carry the header. A
+            # bare exit-code check would still pass if the branch fell through
+            # to the text renderer.
+            assert "Model changes:" in event_model.output, label
 
     def test_exit_code_parity_under_warn_strictness(self, tmp_path):
         # AC #6: a breaking change (removed cluster) exits 0 under warn
@@ -1422,6 +1477,234 @@ class TestDiffEventModelFormat:
         )
         assert text.exit_code == 0
         assert event_model.exit_code == 0
+        # The removed cluster is a removed slice, so the renderer ran and
+        # printed it even though the exit code is 0 under warn strictness.
+        assert "Model changes:" in event_model.output
+        assert _removed_lines(event_model.output) == ["  - slice Order"]
+
+
+@pytest.mark.no_test_domain
+class TestDiffEventModelClusterChanges:
+    """The changed-cluster render path: intrinsic participants and the filter."""
+
+    def _run(self, tmp_path, left_ir, right_ir):
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        return runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+
+    def test_changed_cluster_reports_each_intrinsic_participant(self, tmp_path):
+        # An existing cluster whose aggregate, an event, and a command each
+        # change: every moved participant is named under Changed, and the whole
+        # cluster-change path (aggregate/event/command) is exercised.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"status": {"kind": "standard", "type": "String"}},
+                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
+                    commands={
+                        "app.PlaceOrder": _em_command(
+                            "PlaceOrder",
+                            fields={"qty": {"kind": "standard", "type": "Integer"}},
+                        )
+                    },
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={
+                        "status": {"kind": "standard", "type": "String"},
+                        "total": {"kind": "standard", "type": "Integer"},
+                    },
+                    events={
+                        "app.OrderPlaced": _em_event(
+                            "OrderPlaced",
+                            fields={"at": {"kind": "standard", "type": "DateTime"}},
+                        ),
+                        "app.OrderShipped": _em_event("OrderShipped"),
+                    },
+                    commands={
+                        "app.PlaceOrder": _em_command(
+                            "PlaceOrder",
+                            fields={
+                                "qty": {"kind": "standard", "type": "Integer"},
+                                "note": {"kind": "standard", "type": "String"},
+                            },
+                        )
+                    },
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        changed = "\n".join(_changed_lines(result.output))
+        assert "slice Order: aggregate field total added" in changed
+        assert "slice Order: event OrderPlaced field at added" in changed
+        assert "slice Order: event OrderShipped added" in changed
+        assert "slice Order: command PlaceOrder field note added" in changed
+
+    def test_fact_events_are_filtered_non_fact_events_are_reported(self, tmp_path):
+        # Added and changed fact events are dropped (the diagram never draws
+        # them); a non-fact event added alongside them is reported. The cluster
+        # keeps a command on both sides so the change is a cluster change.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={
+                        "app.FactOrder": _em_event(
+                            "FactOrder",
+                            fields={"a": {"kind": "standard", "type": "String"}},
+                            is_fact_event=True,
+                        )
+                    },
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events={
+                        # A changed fact event: its new field must not surface.
+                        "app.FactOrder": _em_event(
+                            "FactOrder",
+                            fields={
+                                "a": {"kind": "standard", "type": "String"},
+                                "b": {"kind": "standard", "type": "String"},
+                            },
+                            is_fact_event=True,
+                        ),
+                        # An added fact event: dropped.
+                        "app.FactShipped": _em_event("FactShipped", is_fact_event=True),
+                        # An added non-fact event: reported.
+                        "app.OrderShipped": _em_event("OrderShipped"),
+                    },
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "event OrderShipped added" in result.output
+        assert "FactShipped" not in result.output
+        assert "FactOrder" not in result.output
+
+
+@pytest.mark.no_test_domain
+class TestDiffEventModelAutomationRouting:
+    """Automations added/removed route to Added/Removed, not to Changed."""
+
+    def _run(self, tmp_path, left_ir, right_ir):
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        return runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+
+    def test_event_handler_add_and_remove_route_to_added_and_removed(self, tmp_path):
+        # An event handler is an automation. Adding one is a new consumer (the
+        # Added section), removing one is a lost consumer (the Removed section),
+        # not a self-contradictory "~ ... added" line under Changed.
+        left_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    event_handlers={"app.OldHandler": _em_event_handler("OldHandler")},
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    event_handlers={"app.NewHandler": _em_event_handler("NewHandler")},
+                )
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  + automation NewHandler" in _added_lines(result.output)
+        assert "  - automation OldHandler" in _removed_lines(result.output)
+        assert not any("Handler" in ln for ln in _changed_lines(result.output))
+
+    def test_added_process_manager_routes_to_added(self, tmp_path):
+        # A brand-new process manager is a new automation, so it lands under
+        # Added with a "+" — not under Changed with a "~".
+        left_ir = _minimal_ir()
+        right_ir = _minimal_ir(
+            flows={
+                "domain_services": {},
+                "process_managers": {
+                    "app.FulfillmentPM": _em_process_manager("FulfillmentPM")
+                },
+                "subscribers": {},
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        assert "  + automation FulfillmentPM" in _added_lines(result.output)
+        assert not any("FulfillmentPM" in ln for ln in _changed_lines(result.output))
+
+
+@pytest.mark.no_test_domain
+class TestDiffEventModelProjectors:
+    """A read model changes when its projector (consumer node) is rewired."""
+
+    def test_projector_add_remove_and_rewire_are_changed_read_model(self, tmp_path):
+        # The projection's own fields are identical on both sides, so the only
+        # signal is the projectors. A projector added, removed, or rewired to a
+        # different event is a change to the read model — not "No model changes."
+        left_ir = _minimal_ir(
+            projections={
+                "app.OrderSummary": _em_projection_group(
+                    "OrderSummary",
+                    projectors={
+                        "app.Proj1": _em_projector(
+                            "Proj1",
+                            "OrderSummary",
+                            handlers={"app.OrderPlaced": ["on_placed"]},
+                        ),
+                        "app.ProjGone": _em_projector("ProjGone", "OrderSummary"),
+                    },
+                )
+            }
+        )
+        right_ir = _minimal_ir(
+            projections={
+                "app.OrderSummary": _em_projection_group(
+                    "OrderSummary",
+                    projectors={
+                        "app.Proj1": _em_projector(
+                            "Proj1",
+                            "OrderSummary",
+                            handlers={"app.OrderShipped": ["on_shipped"]},
+                        ),
+                        "app.ProjNew": _em_projector("ProjNew", "OrderSummary"),
+                    },
+                )
+            }
+        )
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert "No model changes." not in result.output
+        changed = "\n".join(_changed_lines(result.output))
+        assert "read model OrderSummary: projector Proj1 changed" in changed
+        assert "read model OrderSummary: projector ProjNew added" in changed
+        assert "read model OrderSummary: projector ProjGone removed" in changed
 
 
 @pytest.mark.no_test_domain

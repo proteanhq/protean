@@ -119,8 +119,14 @@ new slice, a removed projection is a removed read model, a projection that
 gained a field is a changed slice. It reports only the participants the event
 model draws (commands, the aggregate, non-fact events, read models and
 automations); a change confined to anything else prints `No model changes.`.
+
 The exit code is the same as `--format=text` for the same inputs, so a CI gate
-can switch format without changing what it blocks on.
+can switch format without changing what it blocks on. The exit code always
+reflects the full IR diff, not the slice view. A real change to an element the
+model does not draw (a contract, entity, value object, or domain setting) still
+exits 1 or 2, even though the slice view prints `No model changes.`. So `No
+model changes.` means the model view found nothing to show, not that the diff
+is empty.
 
 ```bash
 protean ir diff --left baseline.json --right current.json --format=event-model

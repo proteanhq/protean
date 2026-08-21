@@ -667,14 +667,16 @@ def _cluster_change_phrases(
     delta: dict[str, Any],
     right_clusters: dict[str, Any],
 ) -> list[str]:
-    """Render one changed cluster's slice-participant changes.
+    """Render one changed cluster's intrinsic slice-participant changes.
 
-    Reports only the participants the event model draws — the aggregate
-    (state), its non-fact events (results), its commands (triggers), and its
-    event handlers (automations). Entities, value objects, repositories,
-    database models, application services, command handlers, queries and query
-    handlers are not slice participants, so a change confined to one of them is
-    not a model change and is intentionally left out.
+    Reports only the intrinsic participants the event model draws inside the
+    slice — the aggregate (state), its non-fact events (results) and its
+    commands (triggers). Consumers (event handlers, read models) are handled by
+    the caller, which routes their appearance and disappearance to the added
+    and removed sections. Entities, value objects, repositories, database
+    models, application services, command handlers, queries and query handlers
+    are not slice participants, so a change confined to one of them is not a
+    model change and is intentionally left out.
 
     The slice is named by the aggregate, read from the right snapshot (a
     changed cluster is present on both sides).
@@ -691,11 +693,12 @@ def _cluster_change_phrases(
         for phrase in _field_change_phrases(agg_delta.get("fields", {}))
     )
 
-    # Events (results): added / removed / field changes. Fact events are
-    # filtered with the same predicate the diagram uses, so the two views agree
-    # on which events exist. A removed event is absent from the right snapshot,
-    # so its fact flag cannot be read here; removals are rare and still a
-    # genuine loss from the model, so they are reported.
+    # Events (results): added / removed / field changes. Added and changed
+    # events are filtered by the diagram's fact-event predicate, so those two
+    # views agree on which events exist. A removed event is absent from the
+    # right snapshot, so its fact flag cannot be read here; removals are rare
+    # and still a genuine loss from the model, so a removed fact event is
+    # reported even though the diagram never draws it.
     right_events = right_cluster.get("events", {})
     events = delta.get("events", {})
     phrases.extend(
@@ -723,22 +726,26 @@ def _cluster_change_phrases(
         for phrase in _field_change_phrases(cmd_delta.get("fields", {}))
     )
 
-    # Event handlers (automations): added / removed / changed.
-    event_handlers = delta.get("event_handlers", {})
-    phrases.extend(
-        f"{prefix}automation {short_name(eh_fqn)} added"
-        for eh_fqn in sorted(event_handlers.get("added", {}))
-    )
-    phrases.extend(
-        f"{prefix}automation {short_name(eh_fqn)} removed"
-        for eh_fqn in sorted(event_handlers.get("removed", {}))
-    )
-    phrases.extend(
-        f"{prefix}automation {short_name(eh_fqn)} changed"
-        for eh_fqn in sorted(event_handlers.get("changed", {}))
-    )
-
     return phrases
+
+
+def _automation_names(diff_result: dict[str, Any], category: str) -> list[str]:
+    """Collect automation short names in *category* across the whole diff.
+
+    Automations are the event-model consumers driven by events: event handlers
+    (defined inside a cluster) and process managers (under ``flows``). Both are
+    keyed by FQN in the diff's ``{added, removed, changed}`` subsections. This
+    gathers *category* (``"added"``, ``"removed"`` or ``"changed"``) from every
+    changed cluster's event handlers and from the flows' process managers, so
+    the caller renders the two sources uniformly.
+    """
+    fqns: list[str] = []
+    changed_clusters = diff_result.get("clusters", {}).get("changed", {})
+    for delta in changed_clusters.values():
+        fqns.extend(delta.get("event_handlers", {}).get(category, {}))
+    process_managers = diff_result.get("flows", {}).get("process_managers", {})
+    fqns.extend(process_managers.get(category, {}))
+    return [short_name(fqn) for fqn in sorted(fqns)]
 
 
 def generate_event_model_diff(
@@ -757,10 +764,14 @@ def generate_event_model_diff(
 
     Only participants the event model draws are reported — commands, the
     aggregate, non-fact events, projections (read models) and automations
-    (event handlers and process managers). A change confined to anything else
-    (entities, repositories, contracts, diagnostics, domain metadata) is not a
-    model change; it does not fabricate a slice. When nothing the model draws
-    moved, returns the single line ``No model changes.``.
+    (event handlers and process managers). A consumer that appears or
+    disappears (a read model, an event handler, a process manager) is routed to
+    the added or removed section, like a new or gone slice; a change confined to
+    a slice's intrinsic body (aggregate, events, command fields) is routed to
+    the changed section under the slice's name. A change confined to anything
+    else (entities, repositories, contracts, diagnostics, domain metadata) is
+    not a model change; it does not fabricate a slice. When nothing the model
+    draws moved, returns the single line ``No model changes.``.
 
     Args:
         diff_result: The dict returned by :func:`protean.ir.diff.diff_ir`.
@@ -773,7 +784,6 @@ def generate_event_model_diff(
     """
     clusters = diff_result.get("clusters", {})
     projections = diff_result.get("projections", {})
-    flows = diff_result.get("flows", {})
 
     right_clusters = right_ir.get("clusters", {})
     right_projections = right_ir.get("projections", {})
@@ -811,6 +821,13 @@ def generate_event_model_diff(
         for proj_fqn, info in sorted(projections.get("added", {}).items())
     )
 
+    # A new automation (event handler in a changed cluster, or a process
+    # manager under flows) is a new consumer, so it belongs in the added
+    # section rather than as a self-contradictory "~ ... added" changed line.
+    added.extend(
+        f"automation {name}" for name in _automation_names(diff_result, "added")
+    )
+
     # --- Removed slices and read models --------------------------------
     removed.extend(
         f"slice {_summary_name(info, cluster_fqn)}"
@@ -825,12 +842,18 @@ def generate_event_model_diff(
         f"read model {_summary_name(info, proj_fqn)}"
         for proj_fqn, info in sorted(projections.get("removed", {}).items())
     )
+    removed.extend(
+        f"automation {name}" for name in _automation_names(diff_result, "removed")
+    )
 
     # --- Changed slices ------------------------------------------------
     for cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
         changed.extend(_cluster_change_phrases(cluster_fqn, delta, right_clusters))
 
-    # A projection that gained, lost or altered a field is a changed read model.
+    # A read model changes when its fields change or when a projector — the
+    # consumer node the diagram draws for it — is added, removed or rewired to
+    # a different event. Queries and query handlers are not drawn, so their
+    # deltas are left out.
     for proj_fqn, delta in sorted(projections.get("changed", {}).items()):
         name = right_projections.get(proj_fqn, {}).get("projection", {}).get(
             "name"
@@ -840,20 +863,23 @@ def generate_event_model_diff(
             f"read model {name}: {phrase}"
             for phrase in _field_change_phrases(proj_delta.get("fields", {}))
         )
+        projectors = delta.get("projectors", {})
+        changed.extend(
+            f"read model {name}: projector {short_name(p_fqn)} added"
+            for p_fqn in sorted(projectors.get("added", {}))
+        )
+        changed.extend(
+            f"read model {name}: projector {short_name(p_fqn)} removed"
+            for p_fqn in sorted(projectors.get("removed", {}))
+        )
+        changed.extend(
+            f"read model {name}: projector {short_name(p_fqn)} changed"
+            for p_fqn in sorted(projectors.get("changed", {}))
+        )
 
-    # Process managers (automations) added, removed or altered under flows.
-    process_managers = flows.get("process_managers", {})
+    # An automation whose wiring changed is a changed consumer.
     changed.extend(
-        f"automation {short_name(pm_fqn)} added"
-        for pm_fqn in sorted(process_managers.get("added", {}))
-    )
-    changed.extend(
-        f"automation {short_name(pm_fqn)} removed"
-        for pm_fqn in sorted(process_managers.get("removed", {}))
-    )
-    changed.extend(
-        f"automation {short_name(pm_fqn)} changed"
-        for pm_fqn in sorted(process_managers.get("changed", {}))
+        f"automation {name}" for name in _automation_names(diff_result, "changed")
     )
 
     if not (added or removed or changed):
