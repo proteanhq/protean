@@ -38,8 +38,9 @@ def flagged_ir() -> dict:
     Every projection and its projector(s) are registered together so a single
     build exercises every branch: the four-of-five positive, attribute-write
     evidence, the empty-evidence guard, a dynamic ``**kwargs`` construction, the
-    identity exemption, the two-projector union, and the ``externally_populated``
-    opt-out.
+    identity exemption, the two-projector union, the ``externally_populated``
+    opt-out, a fully sourced projection, a write on a handler parameter, a
+    delete, a dynamic bulk update, and a projector the index cannot resolve.
     """
     domain = Domain(name="UnsourcedProjectionField", root_path=CORPUS_ROOT)
     domain.register(catalog.Thing)
@@ -52,6 +53,11 @@ def flagged_ir() -> dict:
         catalog.DynamicProjection,
         catalog.IdentityOnlyProjection,
         catalog.MultiProjection,
+        catalog.CompleteProjection,
+        catalog.ReceiverProjection,
+        catalog.DeleteProjection,
+        catalog.BulkProjection,
+        catalog.NoSourceProjection,
     ):
         domain.register(projection)
     domain.register(catalog.ExternalProjection, externally_populated=True)
@@ -93,6 +99,31 @@ def flagged_ir() -> dict:
     domain.register(
         catalog.ExternalProjector,
         projector_for=catalog.ExternalProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.CompleteProjector,
+        projector_for=catalog.CompleteProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.ReceiverProjector,
+        projector_for=catalog.ReceiverProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.DeleteProjector,
+        projector_for=catalog.DeleteProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.BulkProjector,
+        projector_for=catalog.BulkProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.NoSourceProjector,
+        projector_for=catalog.NoSourceProjection,
         aggregates=[catalog.Thing],
     )
     domain.init(traverse=False)
@@ -177,3 +208,42 @@ class TestUnsourcedProjectionField:
         ``beta``; only ``gamma`` (covered by neither) is flagged. A
         per-projector check would wrongly flag ``alpha`` or ``beta`` too."""
         assert _fields_for(flagged_ir, catalog.MultiProjection) == ["gamma"]
+
+    def test_fully_sourced_projection_flags_nothing(self, flagged_ir):
+        """``CompleteProjector`` names every non-identity field of
+        ``CompleteProjection``, so the projection produces no finding. This is
+        the all-covered negative: unlike the identity-only case it does not lean
+        on the identity exemption, so a rule that emitted for a sourced field
+        would fail here."""
+        assert fqn(catalog.CompleteProjection) in flagged_ir["projections"]
+        assert _fields_for(flagged_ir, catalog.CompleteProjection) == []
+
+    def test_a_write_on_a_handler_parameter_is_not_evidence(self, flagged_ir):
+        """``ReceiverProjector`` assigns ``byline`` on ``self``, a parameter of
+        the handler, so the write is provably not a write to the record.
+        ``headline`` is sourced by construction, so the evidence guard does not
+        trip and ``byline`` is reported. Count every ``is_write`` fact and
+        ``byline`` disappears from this list."""
+        assert _fields_for(flagged_ir, catalog.ReceiverProjection) == ["byline"]
+
+    def test_a_delete_is_not_evidence(self, flagged_ir):
+        """``DeleteProjector`` stores ``kept`` and deletes ``marker``. Both are
+        ``is_write`` attribute facts, so a rule that reads ``is_write`` alone
+        would treat the delete as sourcing ``marker``; only ``kept`` fills a
+        value, so ``marker`` is flagged and ``kept`` is not."""
+        assert _fields_for(flagged_ir, catalog.DeleteProjection) == ["marker"]
+
+    def test_dynamic_bulk_update_flags_nothing(self, flagged_ir):
+        """``BulkProjector`` names ``first`` in a construction, then bulk-updates
+        through ``update(**changes)``. The update's field set is unknowable, so
+        the projection is disabled and the unnamed ``second`` is not flagged."""
+        assert fqn(catalog.BulkProjection) in flagged_ir["projections"]
+        assert _fields_for(flagged_ir, catalog.BulkProjection) == []
+
+    def test_an_unresolvable_projector_fails_open(self, flagged_ir):
+        """``NoSourceProjector`` is built by ``type()``, so the element index
+        finds no class body for it. The rule skips it instead of raising, which
+        leaves the projection with no observed write, so nothing is flagged and
+        the build still completes."""
+        assert fqn(catalog.NoSourceProjection) in flagged_ir["projections"]
+        assert _fields_for(flagged_ir, catalog.NoSourceProjection) == []

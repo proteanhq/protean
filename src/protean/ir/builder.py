@@ -157,6 +157,12 @@ NON_SCALAR_FILTER_FIELD_KINDS = frozenset(
     {"value_object", "value_object_list", "has_one", "has_many", "reference"}
 )
 
+# The ``QuerySet``/DAO method that writes fields from a mapping rather than from
+# named keywords. ``UNSOURCED_PROJECTION_FIELD`` reads a ``**kwargs`` call to it
+# the way it reads a ``**kwargs`` construction: the field set is unknowable, so
+# the projection is disabled.
+_BULK_UPDATE_METHOD = "update"
+
 
 def validate_lint_suppressions(suppressions: Any) -> str | None:
     """Return an error message if ``[lint].suppressions`` is malformed, else ``None``.
@@ -2484,13 +2490,19 @@ class IRBuilder:
 
         Where :meth:`_diagnose_projection_without_projector` catches a projection
         with *no* projector, this catches a projector that fills some of a
-        projection's fields but not all. Origin evidence is what the projector's
-        handler methods write, read from the same behavioral view the producer
-        rules use: a field counts as sourced when some projector method either
-        constructs the projection with that field as a keyword
-        (``ConstructionFact.field_names``) or writes it as an attribute
-        (``AttributeFact`` with ``is_write``). Coverage is the union across every
+        projection's fields but not all. Origin evidence is what the projector
+        writes, read from the same behavioral view the producer rules use: a
+        field counts as sourced when some projector method either constructs the
+        projection with that field as a keyword (``ConstructionFact.field_names``)
+        or writes it as an attribute. Coverage is the union across every
         projector of the projection.
+
+        Every method of the projector is read, not only its ``@on`` handlers. A
+        projector that delegates its writes to a helper method is common, and the
+        helper's writes are the same evidence the handler's would be; scoping to
+        handler names would report the fields that helper fills. An unused method
+        can contribute evidence that way, which costs a finding rather than
+        inventing one, and that is the direction this rule errs in throughout.
 
         The rule is deliberately conservative, so its verdict is reproducible:
 
@@ -2498,7 +2510,10 @@ class IRBuilder:
           the same guard the sibling rule uses.
         - A ``**kwargs`` construction of the projection (``dynamic_kwargs``) means
           the field set is unknowable, so the projection is disabled and nothing
-          is emitted for it.
+          is emitted for it. A ``**kwargs`` bulk ``update(...)`` call in a
+          projector method disables it the same way: that is the ``QuerySet``
+          surface that fills fields from a mapping, and which fields it fills is
+          just as unknowable.
         - If the projectors yielded no observable field write at all (indirect
           assignment through a helper, a dict splat, unreadable source), the
           projection is skipped entirely rather than reported field-by-field: the
@@ -2506,6 +2521,22 @@ class IRBuilder:
           missing from a set it failed to build.
         - The ``identity_field`` is exempt: the framework fills it on write, not
           necessarily by a named field assignment.
+
+        Attribute evidence is filtered by what the write can be attributed to:
+
+        - A ``del record.city`` is an ``AttributeFact`` write (``is_write``
+          covers stores and deletes), but it unbinds the attribute rather than
+          filling it, so a delete is not evidence.
+        - A write whose receiver is a parameter of the enclosing method
+          (``self.city = ...``, ``event.city = ...``) is provably not a write to
+          the record, so it is not evidence either. Dropping it matters beyond
+          the one field: a projector whose only "write" was on ``self`` would
+          otherwise clear the evidence guard and have every real field reported.
+        - A write whose receiver cannot be pinned (a nested attribute, a call
+          result) is *kept* as evidence. The rule cannot tell whether it lands on
+          the record, and counting it keeps the rule quiet, which is the
+          direction it errs in everywhere else. The same applies to a write on a
+          local that holds some other record: it is counted.
 
         The evidence guard is scoped to the whole projection, so the rule is
         advisory: once any projector write is observed, a sibling field filled
@@ -2533,21 +2564,45 @@ class IRBuilder:
             dynamic = False
             for projector_fqn in proj_entry["projectors"]:
                 cls = projector_cls_by_fqn.get(projector_fqn)
-                if cls is None:
+                entry = self.view.element_class_entry(cls) if cls is not None else None
+                if entry is None:
                     continue
-                for facts in self.view.element_facts(cls).values():
+                for method in entry.methods:
+                    facts = self.view.method_facts(entry.module, method.node)
                     for construction in facts.constructions:
                         if construction.fqn != proj_fqn:
                             continue
                         if construction.dynamic_kwargs:
                             dynamic = True
                         written.update(construction.field_names)
-                    for attribute in facts.attributes:
-                        if attribute.is_write:
-                            written.add(attribute.name)
+                    for call in facts.calls:
+                        if call.method == _BULK_UPDATE_METHOD and call.dynamic_kwargs:
+                            dynamic = True
+                    writes = [
+                        attribute
+                        for attribute in facts.attributes
+                        if attribute.is_write and not attribute.is_delete
+                    ]
+                    if not writes:
+                        continue
+                    # Only the method's own parameters can be ruled out as the
+                    # record; asking for the flow costs a walk, so ask only when
+                    # there is a write to judge.
+                    parameters = {
+                        definition.name
+                        for definition in self.view.method_flow(
+                            entry.module, method.node
+                        ).parameters
+                    }
+                    written.update(
+                        attribute.name
+                        for attribute in writes
+                        if attribute.receiver not in parameters
+                    )
 
-            # A dynamic construction anywhere in the union makes the field set
-            # unknowable; the evidence guard trips only when the union is empty.
+            # A dynamic construction or bulk update anywhere in the union makes
+            # the field set unknowable; the evidence guard trips only when the
+            # union is empty.
             if dynamic or not written:
                 continue
 

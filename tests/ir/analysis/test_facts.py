@@ -108,6 +108,31 @@ class TestAttributeFacts:
         assert len(stock) == 1
         assert stock[0].is_write is True
 
+    def test_a_delete_is_a_write_and_is_told_apart(self, tmp_path):
+        """``del self.status`` is a write (the grammar models it as a store-side
+        ctx), but it unbinds the attribute rather than filling it. ``is_delete``
+        is how a rule that reads a write as "a value was put here" excludes
+        it."""
+        catalog, index = _walked_catalog(
+            _make_pkg(
+                tmp_path,
+                """
+                class Service:
+                    def run(self):
+                        self.status = "x"
+                        del self.marker
+                """,
+            )
+        )
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        by_name = {a.name: a for a in facts.attributes}
+
+        assert by_name["marker"].is_write is True
+        assert by_name["marker"].is_delete is True
+        assert by_name["status"].is_write is True
+        assert by_name["status"].is_delete is False
+
     def test_a_subscript_write_reads_the_container(self, tmp_path):
         """The documented ctx limitation: ``self.items[0] = 5`` stores into the
         subscript, so the grammar loads ``self.items`` — it shows as a *read* of

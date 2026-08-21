@@ -34,6 +34,23 @@ projector carries, and the branch it drives:
   registered ``externally_populated``. That opt-out skips the projection, so
   ``note`` is not flagged even though no write sources it. Remove the opt-out
   branch and ``note`` would be flagged.
+- ``CompleteProjector`` names every non-identity field of
+  ``CompleteProjection``, so a fully sourced projection produces no finding at
+  all — the negative that fails if the rule ever emits for a covered field.
+- ``ReceiverProjector`` assigns ``byline`` on its own ``self``, a parameter of
+  the handler and so provably not the record. That write is not evidence, so
+  ``byline`` stays flagged even though the name matches.
+- ``DeleteProjector`` writes ``kept`` and only ever deletes ``marker``. A
+  ``del`` unbinds the attribute rather than filling it, so ``marker`` stays
+  flagged.
+- ``BulkProjector`` names ``first`` in a construction and then bulk-updates
+  through ``update(**changes)``, whose field set is unknowable. That disables
+  ``BulkProjection`` the way a dynamic construction does, so ``second`` is not
+  flagged.
+- ``NoSourceProjector`` is assembled by ``type()``, so the element index cannot
+  find a class body for it and answers ``None``. The rule fails open on that,
+  skipping the projector rather than raising, so ``NoSourceProjection`` is
+  reported on nothing.
 """
 
 from protean import current_domain
@@ -212,3 +229,115 @@ class ExternalProjector(BaseProjector):
         is not flagged."""
         record = ExternalProjection(key=event.thing_id, tag=event.name)
         current_domain.repository_for(ExternalProjection).add(record)
+
+
+# ── Negative: every non-identity field sourced ────────────────────────────
+
+
+class CompleteProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    headline = String(max_length=50)
+    summary = String(max_length=200)
+
+
+class CompleteProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Name every non-identity field, so the projection is fully sourced and
+        nothing is flagged."""
+        record = CompleteProjection(
+            key=event.thing_id,
+            headline=event.name,
+            summary=event.email,
+        )
+        current_domain.repository_for(CompleteProjection).add(record)
+
+
+# ── Negative: a write on a parameter is not a write to the record ─────────
+
+
+class ReceiverProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    headline = String(max_length=50)
+    byline = String(max_length=50)
+
+
+class ReceiverProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Source ``headline`` on the record, and stash ``byline`` on the
+        projector itself. ``self`` is a parameter of this handler, so that write
+        is provably not a write to the record and ``byline`` stays flagged."""
+        self.byline = event.name
+        record = ReceiverProjection(key=event.thing_id, headline=event.name)
+        current_domain.repository_for(ReceiverProjection).add(record)
+
+
+# ── Negative: a delete unbinds a field, it does not fill one ──────────────
+
+
+class DeleteProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    kept = String(max_length=50)
+    marker = String(max_length=50)
+
+
+class DeleteProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Write ``kept`` and clear ``marker``. Both are ``is_write`` attribute
+        facts, but only the store fills a value, so ``marker`` stays flagged."""
+        record = current_domain.repository_for(DeleteProjection).get(event.thing_id)
+        record.kept = event.name
+        del record.marker
+        current_domain.repository_for(DeleteProjection).add(record)
+
+
+# ── Negative: a dynamic bulk update disables the check ────────────────────
+
+
+class BulkProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    first = String(max_length=50)
+    second = String(max_length=50)
+
+
+class BulkProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Name ``first`` in a construction, then bulk-update through a
+        ``**kwargs`` splat. Which fields that update fills is unknowable, so the
+        projection is disabled and ``second`` is not flagged."""
+        repository = current_domain.repository_for(BulkProjection)
+        record = BulkProjection(key=event.thing_id, first=event.name)
+        repository.add(record)
+        changes = {"second": event.email}
+        repository._dao.query.filter(key=event.thing_id).update(**changes)
+
+
+# ── Negative: a projector the element index cannot resolve ────────────────
+
+
+class NoSourceProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    label = String(max_length=50)
+    extra = String(max_length=50)
+
+
+def _no_source_handler(self, event: ThingHappened) -> None:
+    """``NoSourceProjector``'s handler body, written as a module-level function
+    so the class below can be assembled without a class body."""
+    record = NoSourceProjection(key=event.thing_id, label=event.name)
+    current_domain.repository_for(NoSourceProjection).add(record)
+
+
+#: Built by ``type()``, so this module's source carries no
+#: ``class NoSourceProjector`` for the element index to find and
+#: ``element_class_entry`` answers ``None``. The rule has to fail open there —
+#: skip the projector rather than raise — which leaves ``NoSourceProjection``
+#: with no observed write and so reported on nothing, ``extra`` included.
+NoSourceProjector = type(
+    "NoSourceProjector",
+    (BaseProjector,),
+    {"on_thing_happened": on(ThingHappened)(_no_source_handler)},
+)
