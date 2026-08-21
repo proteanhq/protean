@@ -160,6 +160,28 @@ def test_user_edit_equal_to_new_content_is_not_a_conflict(tmp_path: Path) -> Non
     )
 
 
+def test_empty_body_round_trips_and_reruns_as_a_no_op(tmp_path: Path) -> None:
+    """An empty managed body writes an empty region and reads back as empty."""
+    projection = region("AGENTS.md", "1", "")
+    assert apply_projection(tmp_path, projection).status is ProjectionStatus.CREATE
+    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == (
+        "<!-- PROTEAN:BEGIN protean -->\n\n<!-- PROTEAN:END protean -->\n"
+    )
+    assert apply_projection(tmp_path, projection).status is ProjectionStatus.NO_CHANGE
+
+
+def test_hand_written_adjacent_markers_read_as_an_empty_region(tmp_path: Path) -> None:
+    """Markers a user wrote on adjacent lines parse as an empty body, not a broken one."""
+    (tmp_path / "AGENTS.md").write_text(
+        "<!-- PROTEAN:BEGIN protean -->\n<!-- PROTEAN:END protean -->\n",
+        encoding="utf-8",
+    )
+    result = diff_projection(tmp_path, region("AGENTS.md", "1", "Framework guidance."))
+    # An empty on-disk region matches neither the lock (there is none) nor the
+    # new body, so it is a conflict rather than a silent overwrite.
+    assert result.status is ProjectionStatus.CONFLICT
+
+
 def test_missing_end_marker_raises_and_does_not_overwrite(tmp_path: Path) -> None:
     target = tmp_path / "AGENTS.md"
     original = "<!-- PROTEAN:BEGIN protean -->\nbody with no end\n"
@@ -428,6 +450,15 @@ def test_json_non_object_target_raises(tmp_path: Path) -> None:
         diff_projection(tmp_path, structured(".mcp.json", "1", {"servers": {}}))
 
 
+def test_json_invalid_target_raises(tmp_path: Path) -> None:
+    """A structured-JSON target that is not valid JSON is refused, not overwritten."""
+    target = tmp_path / ".mcp.json"
+    target.write_text("{ not valid json", encoding="utf-8")
+    with pytest.raises(ProjectionError, match="is not valid JSON"):
+        diff_projection(tmp_path, structured(".mcp.json", "1", {"servers": {}}))
+    assert target.read_text(encoding="utf-8") == "{ not valid json"
+
+
 def test_non_serializable_structured_data_is_rejected() -> None:
     """A non-JSON-serializable managed value fails at construction, not at hash time."""
     with pytest.raises(ValueError, match="JSON-serializable"):
@@ -463,6 +494,32 @@ def test_non_utf8_lockfile_raises_value_error(tmp_path: Path) -> None:
     (tmp_path / ".protean").mkdir()
     lock_path(tmp_path).write_bytes(b"\xff\xfe\x00")
     with pytest.raises(ValueError, match="not valid utf-8"):
+        load_lock(tmp_path)
+
+
+def test_lock_entry_missing_a_required_field_is_rejected(tmp_path: Path) -> None:
+    """A lock entry that omits a field fails loud instead of defaulting."""
+    (tmp_path / ".protean").mkdir()
+    lock_path(tmp_path).write_text(
+        json.dumps(
+            {
+                "lock_version": LOCK_VERSION,
+                "entries": {"AGENTS.md": {"version": "1", "file_hash": "ff"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="missing required field 'slice_hash'"):
+        load_lock(tmp_path)
+
+
+def test_unreadable_lockfile_raises_value_error(tmp_path: Path) -> None:
+    """An OS-level read failure surfaces as a ValueError, not a raw OSError."""
+    (tmp_path / ".protean").mkdir()
+    # A directory where the lockfile belongs: it exists, but reading it raises
+    # IsADirectoryError, an OSError.
+    lock_path(tmp_path).mkdir()
+    with pytest.raises(ValueError, match="Could not read"):
         load_lock(tmp_path)
 
 

@@ -44,6 +44,8 @@ understand it. Hashes are taken over the exact bytes written, utf-8 encoded, wit
 no line-ending rewriting, so a benign platform newline difference never reads as
 a phantom conflict.
 
+See ADR-0036 for the decision record behind the lockfile and the two merge modes.
+
 Design decisions for v1:
 
 - **One named region per file.** A managed-region target carries exactly one
@@ -566,15 +568,15 @@ def _decide(
     """Classify a re-projection over an existing target.
 
     The conflict predicate is ``disk != lock and disk != new`` (a lock hash of
-    ``None`` — no recorded entry — counts as "disk != lock"). Everything that is
-    not that predicate and not the pure no-op is a safe write:
+    ``None``, meaning no recorded entry, counts as "disk != lock"). Everything that
+    is not that predicate and not the pure no-op is a safe write:
 
     - ``NO_CHANGE``: the slice already equals the new slice and the version stamp
       matches. Nothing to do.
     - ``UPDATE``: the region is untouched (``disk == lock``), or the on-disk slice
       already equals the new content while the version advanced. Both are safe to
       write; the second rewrites identical bytes and advances the lock.
-    - ``CONFLICT``: neither — the user edited the slice to something the engine did
+    - ``CONFLICT``: neither. The user edited the slice to something the engine did
       not write and the render does not want.
     """
     if disk_slice_hash == new_slice_hash and version_match:

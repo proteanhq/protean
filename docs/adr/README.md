@@ -107,3 +107,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0033](0033-change-plan-versioned-structural-contract.md) | ChangePlan is a Versioned Structural Contract |
 | [0034](0034-project-manifest.md) | Derived Project Manifest |
 | [0035](0035-generation-gap-seam.md) | Generation-Gap Seam Between Generated Wiring and Hand-Owned Logic |
+| [0036](0036-idempotent-file-projection.md) | Idempotent File Projection and the `dx` Lockfile |
