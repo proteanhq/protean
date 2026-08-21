@@ -157,12 +157,6 @@ NON_SCALAR_FILTER_FIELD_KINDS = frozenset(
     {"value_object", "value_object_list", "has_one", "has_many", "reference"}
 )
 
-# The ``QuerySet``/DAO method that writes fields from a mapping rather than from
-# named keywords. ``UNSOURCED_PROJECTION_FIELD`` reads a ``**kwargs`` call to it
-# the way it reads a ``**kwargs`` construction: the field set is unknowable, so
-# the projection is disabled.
-_BULK_UPDATE_METHOD = "update"
-
 
 def validate_lint_suppressions(suppressions: Any) -> str | None:
     """Return an error message if ``[lint].suppressions`` is malformed, else ``None``.
@@ -2494,8 +2488,8 @@ class IRBuilder:
         writes, read from the same behavioral view the producer rules use: a
         field counts as sourced when some projector method either constructs the
         projection with that field as a keyword (``ConstructionFact.field_names``)
-        or writes it as an attribute. Coverage is the union across every
-        projector of the projection.
+        or writes it as an attribute named after one of the projection's fields.
+        Coverage is the union across every projector of the projection.
 
         Every method of the projector is read, not only its ``@on`` handlers. A
         projector that delegates its writes to a helper method is common, and the
@@ -2510,10 +2504,14 @@ class IRBuilder:
           the same guard the sibling rule uses.
         - A ``**kwargs`` construction of the projection (``dynamic_kwargs``) means
           the field set is unknowable, so the projection is disabled and nothing
-          is emitted for it. A ``**kwargs`` bulk ``update(...)`` call in a
-          projector method disables it the same way: that is the ``QuerySet``
-          surface that fills fields from a mapping, and which fields it fills is
-          just as unknowable.
+          is emitted for it. That is the only disabler, because a construction is
+          the only dynamic write the rule can tie to *this* projection: a
+          ``QuerySet`` ``update(**data)`` fills fields from a mapping the same
+          way, but ``CallFact`` carries only the callee name, so an
+          ``update(...)`` on a query surface is indistinguishable from one on a
+          plain dict. Treating either as a write to the projection would let any
+          ``mapping.update(**changes)`` in any projector method blind the rule,
+          so ``update`` is read as neither evidence nor a disabler.
         - If the projectors yielded no observable field write at all (indirect
           assignment through a helper, a dict splat, unreadable source), the
           projection is skipped entirely rather than reported field-by-field: the
@@ -2524,24 +2522,35 @@ class IRBuilder:
 
         Attribute evidence is filtered by what the write can be attributed to:
 
+        - A write whose attribute name is not a field of this projection is not
+          evidence for it, and does not count towards the evidence guard either.
+          Without that, a projector that only wrote some unrelated object
+          (``audit.trail = ...``) would clear the guard and have every field of
+          the projection reported.
         - A ``del record.city`` is an ``AttributeFact`` write (``is_write``
           covers stores and deletes), but it unbinds the attribute rather than
           filling it, so a delete is not evidence.
-        - A write whose receiver is a parameter of the enclosing method
-          (``self.city = ...``, ``event.city = ...``) is provably not a write to
-          the record, so it is not evidence either. Dropping it matters beyond
-          the one field: a projector whose only "write" was on ``self`` would
-          otherwise clear the evidence guard and have every real field reported.
+        - In an ``@on`` handler, a write whose receiver is one of the method's
+          parameters (``self.city = ...``, ``event.city = ...``) is provably not
+          a write to the record, so it is not evidence either: a handler's
+          parameters are the projector and the message, never the record.
+          Dropping it matters beyond the one field: a projector whose only
+          "write" was on ``self`` would otherwise clear the evidence guard and
+          have every real field reported. The exclusion is confined to handlers,
+          because a helper's parameter often *is* the record
+          (``_apply(self, record, event)``) and dropping its writes would report
+          the fields that helper fills.
         - A write whose receiver cannot be pinned (a nested attribute, a call
           result) is *kept* as evidence. The rule cannot tell whether it lands on
           the record, and counting it keeps the rule quiet, which is the
           direction it errs in everywhere else. The same applies to a write on a
-          local that holds some other record: it is counted.
+          local that holds some other record, when the attribute name matches a
+          field of this projection: it is counted.
 
         The evidence guard is scoped to the whole projection, so the rule is
         advisory: once any projector write is observed, a sibling field filled
-        only through an unfollowable path (a helper, ``setattr``, a dict splat)
-        is still flagged. The ``info`` level reflects that.
+        only through an unfollowable path (a helper, ``setattr``, a dict splat,
+        a bulk ``update``) is still flagged. The ``info`` level reflects that.
 
         Projections are walked in ``ir["projections"]`` key order, projectors in
         entry order, and unsourced fields are emitted in sorted field-name order
@@ -2560,13 +2569,19 @@ class IRBuilder:
                 continue
 
             proj_fqn = proj["fqn"]
+            proj_fields = proj.get("fields", {})
             written: set[str] = set()
             dynamic = False
-            for projector_fqn in proj_entry["projectors"]:
+            for projector_fqn, projector_entry in proj_entry["projectors"].items():
                 cls = projector_cls_by_fqn.get(projector_fqn)
                 entry = self.view.element_class_entry(cls) if cls is not None else None
                 if entry is None:
                     continue
+                handler_names = {
+                    name
+                    for names in projector_entry.get("handlers", {}).values()
+                    for name in names
+                }
                 for method in entry.methods:
                     facts = self.view.method_facts(entry.module, method.node)
                     for construction in facts.constructions:
@@ -2575,34 +2590,33 @@ class IRBuilder:
                         if construction.dynamic_kwargs:
                             dynamic = True
                         written.update(construction.field_names)
-                    for call in facts.calls:
-                        if call.method == _BULK_UPDATE_METHOD and call.dynamic_kwargs:
-                            dynamic = True
                     writes = [
                         attribute
                         for attribute in facts.attributes
-                        if attribute.is_write and not attribute.is_delete
+                        if attribute.is_write
+                        and not attribute.is_delete
+                        and attribute.name in proj_fields
                     ]
-                    if not writes:
-                        continue
-                    # Only the method's own parameters can be ruled out as the
-                    # record; asking for the flow costs a walk, so ask only when
-                    # there is a write to judge.
-                    parameters = {
-                        definition.name
-                        for definition in self.view.method_flow(
-                            entry.module, method.node
-                        ).parameters
-                    }
-                    written.update(
-                        attribute.name
-                        for attribute in writes
-                        if attribute.receiver not in parameters
-                    )
+                    if writes and method.name in handler_names:
+                        # A handler's parameters are the projector and the
+                        # message, never the record, so a write on one is
+                        # provably not a record write. Asking for the flow costs
+                        # a walk, so ask only when there is a write to judge.
+                        parameters = {
+                            definition.name
+                            for definition in self.view.method_flow(
+                                entry.module, method.node
+                            ).parameters
+                        }
+                        writes = [
+                            attribute
+                            for attribute in writes
+                            if attribute.receiver not in parameters
+                        ]
+                    written.update(attribute.name for attribute in writes)
 
-            # A dynamic construction or bulk update anywhere in the union makes
-            # the field set unknowable; the evidence guard trips only when the
-            # union is empty.
+            # A dynamic construction anywhere in the union makes the field set
+            # unknowable; the evidence guard trips only when the union is empty.
             if dynamic or not written:
                 continue
 

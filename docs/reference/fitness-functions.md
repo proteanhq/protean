@@ -317,15 +317,16 @@ renders in the read model and carries a type, but nothing ever fills it. The
 check reads what a projection's projector methods write, either constructing the
 projection with the field as a keyword or writing it as an attribute. It stays
 conservative: a `**kwargs` construction of the projection disables the check for
-the whole projection, a `**kwargs` bulk `update(...)` disables it the same way, a
-projection with no observed write at all is skipped whole, and the
-`identity_field` is exempt because the framework fills it on write. Two kinds of
-attribute write are not counted as filling a field: a `del record.field`, which
-unbinds rather than fills, and a write on one of the handler's own parameters
-(`self.field = ...`, `event.field = ...`), which is not a write to the record.
+the whole projection, a projection with no observed write at all is skipped
+whole, and the `identity_field` is exempt because the framework fills it on
+write. Three kinds of attribute write are not counted as filling a field: a
+`del record.field`, which unbinds rather than fills; a write on one of an `@on`
+handler's own parameters (`self.field = ...`, `event.field = ...`), which is not
+a write to the record; and a write whose name is not a field of this projection.
 The level is `info` because the check works from observed writes: when the
 projector writes some fields, a sibling field filled only through a path it
-cannot follow (a helper, a dict splat) can still be flagged.
+cannot follow (a helper, a dict splat, a bulk `update(...)`) can still be
+flagged.
 
 **Fix.** Write the field from the projector method that handles the event
 carrying it, or drop the field from the projection if nothing sources it.

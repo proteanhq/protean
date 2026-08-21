@@ -40,7 +40,8 @@ def flagged_ir() -> dict:
     evidence, the empty-evidence guard, a dynamic ``**kwargs`` construction, the
     identity exemption, the two-projector union, the ``externally_populated``
     opt-out, a fully sourced projection, a write on a handler parameter, a
-    delete, a dynamic bulk update, and a projector the index cannot resolve.
+    delete, a bulk update, a write delegated to a helper, a write on an
+    unrelated object, and a projector the index cannot resolve.
     """
     domain = Domain(name="UnsourcedProjectionField", root_path=CORPUS_ROOT)
     domain.register(catalog.Thing)
@@ -57,6 +58,8 @@ def flagged_ir() -> dict:
         catalog.ReceiverProjection,
         catalog.DeleteProjection,
         catalog.BulkProjection,
+        catalog.HelperProjection,
+        catalog.UnrelatedProjection,
         catalog.NoSourceProjection,
     ):
         domain.register(projection)
@@ -119,6 +122,16 @@ def flagged_ir() -> dict:
     domain.register(
         catalog.BulkProjector,
         projector_for=catalog.BulkProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.HelperProjector,
+        projector_for=catalog.HelperProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.UnrelatedProjector,
+        projector_for=catalog.UnrelatedProjection,
         aggregates=[catalog.Thing],
     )
     domain.register(
@@ -233,12 +246,31 @@ class TestUnsourcedProjectionField:
         value, so ``marker`` is flagged and ``kept`` is not."""
         assert _fields_for(flagged_ir, catalog.DeleteProjection) == ["marker"]
 
-    def test_dynamic_bulk_update_flags_nothing(self, flagged_ir):
+    def test_a_bulk_update_is_neither_evidence_nor_a_disabler(self, flagged_ir):
         """``BulkProjector`` names ``first`` in a construction, then bulk-updates
-        through ``update(**changes)``. The update's field set is unknowable, so
-        the projection is disabled and the unnamed ``second`` is not flagged."""
-        assert fqn(catalog.BulkProjection) in flagged_ir["projections"]
-        assert _fields_for(flagged_ir, catalog.BulkProjection) == []
+        through ``update(**changes)``. A call fact carries only the callee name,
+        so that ``update`` is indistinguishable from ``dict.update`` and cannot
+        be tied to this projection. Reading it as a write to the projection would
+        disable the check here, and would let any ``mapping.update(**changes)``
+        in any projector method blind the rule; the unnamed ``second`` is flagged
+        instead."""
+        assert _fields_for(flagged_ir, catalog.BulkProjection) == ["second"]
+
+    def test_a_helper_parameter_write_is_evidence(self, flagged_ir):
+        """``HelperProjector`` delegates its ``headline`` write to
+        ``_apply(self, record, event)``, where the record is the helper's own
+        parameter. The handler parameter exclusion must not reach a helper, or
+        ``headline`` is reported alongside the genuinely unwritten ``byline``."""
+        assert _fields_for(flagged_ir, catalog.HelperProjection) == ["byline"]
+
+    def test_a_write_on_an_unrelated_object_is_not_evidence(self, flagged_ir):
+        """``UnrelatedProjector`` builds its record through a helper the analysis
+        cannot follow, and its only visible write is ``trail`` on a plain object.
+        ``trail`` names no field of this projection, so it is not evidence and
+        does not clear the evidence guard: count it and ``label`` is reported off
+        a write that has nothing to do with the projection."""
+        assert fqn(catalog.UnrelatedProjection) in flagged_ir["projections"]
+        assert _fields_for(flagged_ir, catalog.UnrelatedProjection) == []
 
     def test_an_unresolvable_projector_fails_open(self, flagged_ir):
         """``NoSourceProjector`` is built by ``type()``, so the element index

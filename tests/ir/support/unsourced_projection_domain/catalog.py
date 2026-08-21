@@ -44,9 +44,18 @@ projector carries, and the branch it drives:
   ``del`` unbinds the attribute rather than filling it, so ``marker`` stays
   flagged.
 - ``BulkProjector`` names ``first`` in a construction and then bulk-updates
-  through ``update(**changes)``, whose field set is unknowable. That disables
-  ``BulkProjection`` the way a dynamic construction does, so ``second`` is not
-  flagged.
+  through ``update(**changes)``. A call fact carries only the callee name, so
+  that ``update`` cannot be tied to this projection any more than a
+  ``dict.update`` could; it is neither evidence nor a disabler, and ``second``
+  stays flagged.
+- ``HelperProjector`` constructs its record with the identity only and delegates
+  the ``headline`` write to ``_apply(self, record, event)``. ``record`` is a
+  parameter of that helper, so a parameter exclusion applied outside handlers
+  would drop the write and report the field the helper fills.
+- ``UnrelatedProjector`` builds its record through an unfollowable helper and
+  writes ``trail`` on a plain object. ``trail`` is no field of
+  ``UnrelatedProjection``, so it is not evidence and does not clear the evidence
+  guard: count it and every field of the projection is reported.
 - ``NoSourceProjector`` is assembled by ``type()``, so the element index cannot
   find a class body for it and answers ``None``. The rule fails open on that,
   skipping the projector rather than raising, so ``NoSourceProjection`` is
@@ -306,8 +315,9 @@ class BulkProjector(BaseProjector):
     @on(ThingHappened)
     def on_thing_happened(self, event: ThingHappened) -> None:
         """Name ``first`` in a construction, then bulk-update through a
-        ``**kwargs`` splat. Which fields that update fills is unknowable, so the
-        projection is disabled and ``second`` is not flagged."""
+        ``**kwargs`` splat. The rule cannot tell that ``update`` from one on a
+        plain dict, so it reads it as neither evidence nor a disabler and
+        ``second`` stays flagged."""
         repository = current_domain.repository_for(BulkProjection)
         record = BulkProjection(key=event.thing_id, first=event.name)
         repository.add(record)
@@ -341,3 +351,62 @@ NoSourceProjector = type(
     (BaseProjector,),
     {"on_thing_happened": on(ThingHappened)(_no_source_handler)},
 )
+
+
+# ── Negative: a helper's parameter write is evidence ──────────────────────
+
+
+class HelperProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    headline = String(max_length=50)
+    byline = String(max_length=50)
+
+
+class HelperProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Construct the record with its identity only, then delegate the field
+        write to ``_apply``."""
+        record = HelperProjection(key=event.thing_id)
+        self._apply(record, event)
+        current_domain.repository_for(HelperProjection).add(record)
+
+    def _apply(self, record: HelperProjection, event: ThingHappened) -> None:
+        """Write ``headline`` on the record, which is this helper's own
+        parameter. The handler parameter exclusion must not reach here, or the
+        field this helper fills is reported."""
+        record.headline = event.name
+
+
+# ── Negative: a write on something else is not evidence ───────────────────
+
+
+class _AuditLog:
+    """A plain object a projector stashes on. Not a projection, so an attribute
+    write on it names no field of one."""
+
+    trail: str | None = None
+
+
+def _build_unrelated_record(event: ThingHappened) -> "UnrelatedProjection":
+    """A module-level helper the analysis cannot follow, as
+    ``_build_guard_record`` is."""
+    return UnrelatedProjection(key=event.thing_id, label=event.name)
+
+
+class UnrelatedProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    label = String(max_length=50)
+
+
+class UnrelatedProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Build the record through a helper the analysis cannot follow, and
+        write ``trail`` on an unrelated object. ``trail`` is no field of this
+        projection, so it is not evidence and does not clear the evidence guard
+        either."""
+        record = _build_unrelated_record(event)
+        log = _AuditLog()
+        log.trail = event.name
+        current_domain.repository_for(UnrelatedProjection).add(record)
