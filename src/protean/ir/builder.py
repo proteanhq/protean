@@ -1851,6 +1851,7 @@ class IRBuilder:
         self._diagnose_published_no_external_broker(ir)
         self._diagnose_aggregate_without_command_handler(ir)
         self._diagnose_projection_without_projector(ir)
+        self._diagnose_unsourced_projection_field(ir)
         self._diagnose_upcaster_gap(ir)
         self._diagnose_cross_aggregate_reference(ir)
         self._diagnose_es_aggregate_no_events(ir)
@@ -2474,6 +2475,89 @@ class IRBuilder:
                         element=proj["fqn"],
                         message=f"Projection `{proj['name']}` has no projector "
                         f"to populate it",
+                    )
+                )
+
+    def _diagnose_unsourced_projection_field(self, ir: dict[str, Any]) -> None:
+        """UNSOURCED_PROJECTION_FIELD (info): a projection field no observed
+        projector write fills, so it renders as a dead column.
+
+        Where :meth:`_diagnose_projection_without_projector` catches a projection
+        with *no* projector, this catches a projector that fills some of a
+        projection's fields but not all. Origin evidence is what the projector's
+        handler methods write, read from the same behavioral view the producer
+        rules use: a field counts as sourced when some projector method either
+        constructs the projection with that field as a keyword
+        (``ConstructionFact.field_names``) or writes it as an attribute
+        (``AttributeFact`` with ``is_write``). Coverage is the union across every
+        projector of the projection.
+
+        The rule is deliberately conservative, so its verdict is reproducible:
+
+        - ``externally_populated`` projections opt out (filled by a subscriber),
+          the same guard the sibling rule uses.
+        - A ``**kwargs`` construction of the projection (``dynamic_kwargs``) means
+          the field set is unknowable, so the projection is disabled and nothing
+          is emitted for it.
+        - If the projectors yielded no observable field write at all (indirect
+          assignment through a helper, a dict splat, unreadable source), the
+          projection is skipped entirely rather than reported field-by-field: the
+          rule reports a field missing from a set it could see, never a field
+          missing from a set it failed to build.
+        - The ``identity_field`` is exempt: the framework fills it on write, not
+          necessarily by a named field assignment.
+
+        Projections are walked in ``ir["projections"]`` key order, projectors in
+        entry order, and unsourced fields are emitted in ``fields`` declaration
+        order, so the output is stable.
+        """
+        registry = self._domain._domain_registry
+        projector_cls_by_fqn = {
+            fqn(record.cls): record.cls
+            for record in registry._elements.get("PROJECTOR", {}).values()
+        }
+
+        for proj_entry in ir["projections"].values():
+            proj = proj_entry["projection"]
+            if proj.get("options", {}).get("externally_populated"):
+                continue
+
+            proj_fqn = proj["fqn"]
+            written: set[str] = set()
+            dynamic = False
+            for projector_fqn in proj_entry["projectors"]:
+                cls = projector_cls_by_fqn.get(projector_fqn)
+                if cls is None:
+                    continue
+                for facts in self.view.element_facts(cls).values():
+                    for construction in facts.constructions:
+                        if construction.fqn != proj_fqn:
+                            continue
+                        if construction.dynamic_kwargs:
+                            dynamic = True
+                        written.update(construction.field_names)
+                    for attribute in facts.attributes:
+                        if attribute.is_write:
+                            written.add(attribute.name)
+
+            # A dynamic construction anywhere in the union makes the field set
+            # unknowable; the evidence guard trips only when the union is empty.
+            if dynamic or not written:
+                continue
+
+            identity_field = proj.get("identity_field")
+            exempt = {identity_field} if identity_field is not None else set()
+            for field_name in proj.get("fields", {}):
+                if field_name in written or field_name in exempt:
+                    continue
+                self._diagnostics.append(
+                    build_diagnostic(
+                        DiagnosticCode.UNSOURCED_PROJECTION_FIELD,
+                        element=proj_fqn,
+                        message=f"Field `{field_name}` on projection "
+                        f"`{proj['name']}` is filled by no projector write, so "
+                        f"it renders as a dead column.",
+                        field=field_name,
                     )
                 )
 

@@ -305,6 +305,24 @@ will always return empty.
 **Fix.** Add a projector for the projection, or set `externally_populated=True`
 if it is filled by a subscriber.
 
+### UNSOURCED_PROJECTION_FIELD { #unsourced-projection-field }
+
+| | |
+|---|---|
+| **Category** | `handler_completeness` |
+| **Level** | `info` |
+
+**Why.** A projection field that no projector method writes is a dead column: it
+renders in the read model and carries a type, but nothing ever fills it. The
+check reads what a projection's projector methods write, either constructing the
+projection with the field as a keyword or writing it as an attribute. A field
+filled through a path the analysis cannot follow (a helper, a dict splat, a
+`**kwargs` construction) is not reported, and the `identity_field` is exempt
+because the framework fills it on write.
+
+**Fix.** Write the field from the projector method that handles the event
+carrying it, or drop the field from the projection if nothing sources it.
+
 ### QUERY_HANDLER_WITHOUT_QUERY { #query-handler-without-query }
 
 | | |
