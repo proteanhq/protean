@@ -37,6 +37,7 @@ from protean.scaffold.change_plan import (
     EditFileOperation,
     Operation,
 )
+from protean.scaffold.create_project import create_project
 from protean.scaffold.preview import render_preview
 
 __all__ = [
@@ -54,6 +55,7 @@ __all__ = [
     "EditFileOperation",
     "Operation",
     "apply_plan",
+    "create_project",
     "load_schema",
     "plan_add_slice",
     "render_preview",
