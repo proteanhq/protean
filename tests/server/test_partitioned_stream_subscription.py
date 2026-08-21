@@ -782,6 +782,122 @@ async def test_poll_runs_a_pass_then_stops(domain: Domain, monkeypatch) -> None:
     assert calls == [1]
 
 
+async def test_discovery_keeps_running_while_draining(
+    domain: Domain, monkeypatch
+) -> None:
+    """The discovery/heartbeat loop keeps running while draining (so it keeps
+    renewing held leases); only shutdown stops it."""
+    sub = await _make_sub(domain)
+    sub.engine.draining = True
+    calls: list[int] = []
+
+    async def _once() -> None:
+        calls.append(1)
+        sub.keep_going = False
+
+    monkeypatch.setattr(sub, "_discovery_pass", _once)
+    await sub.poll()
+    assert calls == [1]  # draining did not stop the loop
+
+    # Negative: shutting down does stop it before any pass runs.
+    sub2 = await _make_sub(domain)
+    sub2.engine.shutting_down = True
+    calls2: list[int] = []
+
+    async def _never() -> None:
+        calls2.append(1)
+
+    monkeypatch.setattr(sub2, "_discovery_pass", _never)
+    await sub2.poll()
+    assert calls2 == []
+
+
+async def test_acquire_new_skips_partitions_while_draining(
+    domain: Domain, category: str
+) -> None:
+    """While draining, a held lease keeps being renewed but no new partition is
+    acquired, so leases are not abandoned and no fresh work is taken on."""
+    _publish(domain, category, _order_event("A", 0), "A")
+    sub = await _make_sub(domain)
+    await sub._discovery_pass()
+    assert "A" in sub._owned
+    fence_before = sub._owned["A"].fence_token
+
+    # A new partition appears and the operator drains the worker.
+    _publish(domain, category, _order_event("B", 0), "B")
+    sub.engine.draining = True
+    await sub._discovery_pass()
+
+    # A is still owned (renewed, not dropped); B was not acquired.
+    assert "A" in sub._owned
+    assert sub._owned["A"].fence_token == fence_before
+    assert "B" not in sub._owned
+
+
+async def test_acquire_new_releases_a_lease_won_as_draining_began(
+    domain: Domain, category: str, monkeypatch
+) -> None:
+    """Lease acquisition awaits, so a drain can land while it is in flight. The
+    lease is handed straight back instead of being held idle for the whole drain
+    window, where it would block a healthy peer from taking the partition."""
+    _publish(domain, category, _order_event("A", 0), "A")
+    sub = await _make_sub(domain)
+    real_acquire = sub.broker.acquire_partition_lease
+
+    def _acquire_then_drain(*args, **kwargs):
+        generation = real_acquire(*args, **kwargs)
+        sub.engine.draining = True  # POST /drainz lands mid-acquisition
+        return generation
+
+    monkeypatch.setattr(sub.broker, "acquire_partition_lease", _acquire_then_drain)
+    await sub._discovery_pass()
+    assert "A" not in sub._owned
+
+    # The lease was released, not held: a healthy peer can take the partition
+    # straight away rather than waiting for it to lapse.
+    monkeypatch.undo()
+    peer = await _make_sub(domain)
+    await peer._discovery_pass()
+    assert "A" in peer._owned
+
+
+async def test_drain_once_stops_before_reading_the_next_stream() -> None:
+    """A drain that lands while the first stream's handler runs stops the pass
+    before the next stream in the unit is read. Draining gates each read, not
+    just the gap between passes, so the second message stays for the next
+    process."""
+    domain = _build_domain("PmDrain", 11, with_pm=True)
+    with domain.domain_context():
+        broker = domain.brokers["default"]
+        broker._data_reset()
+        order_cat = Order.meta_.stream_category
+        pay_cat = Payment.meta_.stream_category
+        oid = "corr-drain"
+        _pm_publish(broker, order_cat, _pm_order(oid, 0), oid)
+        _pm_publish(broker, pay_cat, _pm_payment(oid, 1), oid)
+
+        sub = await _make_sub(domain, correlated=True, categories=[order_cat, pay_cat])
+        await sub._discovery_pass()
+        owned = sub._owned[oid]
+        assert len(owned.streams) == 2  # both streams are in this unit
+
+        real_process = sub._process_message
+
+        async def _process_then_drain(*args, **kwargs):
+            succeeded = await real_process(*args, **kwargs)
+            sub.engine.draining = True  # POST /drainz lands mid-pass
+            return succeeded
+
+        sub._process_message = _process_then_drain
+        processed = await sub._drain_once(owned)
+
+        # Exactly the one in-flight message ran; the second stream was never read.
+        assert processed == 1
+        assert len(pm_processed[oid]) == 1
+
+        broker._data_reset()
+
+
 async def test_poll_breaks_on_cancel(domain: Domain, monkeypatch) -> None:
     sub = await _make_sub(domain)
 

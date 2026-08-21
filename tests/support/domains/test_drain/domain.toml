@@ -1,0 +1,2 @@
+[server]
+drain_timeout = 3

@@ -160,6 +160,7 @@ class MockEngine:
         self.loop = asyncio.new_event_loop()
         self.emitter = Mock()
         self.shutting_down = False
+        self.draining = False
         # Create a real engine for message handling
         self._real_engine = Engine(domain, test_mode=True)
 
