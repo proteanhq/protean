@@ -111,6 +111,21 @@ protean ir diff --domain my_app.domain --base HEAD
 protean ir diff --left baseline.json --right current.json
 ```
 
+**Model diff (`--format=event-model`).** The default `text` and `json` formats
+report changes in IR vocabulary: elements, fields, handlers, contracts.
+`--format=event-model` renders the same diff in EventModeling slice vocabulary
+instead, so a pull-request reviewer reads it as slices: an added command is a
+new slice, a removed projection is a removed read model, a projection that
+gained a field is a changed slice. It reports only the participants the event
+model draws (commands, the aggregate, non-fact events, read models and
+automations); a change confined to anything else prints `No model changes.`.
+The exit code is the same as `--format=text` for the same inputs, so a CI gate
+can switch format without changing what it blocks on.
+
+```bash
+protean ir diff --left baseline.json --right current.json --format=event-model
+```
+
 **Options**
 
 | Option | Description | Default |
@@ -120,7 +135,7 @@ protean ir diff --left baseline.json --right current.json
 | `--right`, `-r` | Path to current IR JSON file | |
 | `--base`, `-b` | Git commit/branch/tag for baseline | |
 | `--dir` | Path to `.protean/` directory | `.protean` |
-| `--format`, `-f` | Output format: `text` or `json` | `text` |
+| `--format`, `-f` | Output format: `text`, `json`, or `event-model` | `text` |
 
 **Exit codes (CI-friendly)**
 

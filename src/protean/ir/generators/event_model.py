@@ -625,6 +625,253 @@ def generate_event_model_sections(
     return sections
 
 
+# ------------------------------------------------------------------
+# Diff rendering — an IR diff in slice vocabulary
+# ------------------------------------------------------------------
+
+
+def _summary_name(info: dict[str, Any], fqn: str) -> str:
+    """Name an element from its diff summary, falling back to the short FQN.
+
+    ``_element_summary`` (``ir/diff.py``) sets ``name`` to the aggregate name
+    for a cluster and the projection name for a projection group. A removed
+    element is absent from the right snapshot, so its name can only come from
+    the summary; when the summary carries none, the short FQN is the honest
+    fallback.
+    """
+    name = info.get("name")
+    return name if name else short_name(fqn)
+
+
+def _field_change_phrases(fields_diff: dict[str, Any]) -> list[str]:
+    """Render a ``_diff_fields`` result as ``field <name> added/removed/changed``.
+
+    Reuses the ``{added, removed, changed}`` shape ``_diff_fields`` produces, so
+    the model diff names the same fields the IR diff does.
+    """
+    phrases: list[str] = []
+    phrases.extend(
+        f"field {name} added" for name in sorted(fields_diff.get("added", {}))
+    )
+    phrases.extend(
+        f"field {name} removed" for name in sorted(fields_diff.get("removed", {}))
+    )
+    phrases.extend(
+        f"field {name} changed" for name in sorted(fields_diff.get("changed", {}))
+    )
+    return phrases
+
+
+def _cluster_change_phrases(
+    cluster_fqn: str,
+    delta: dict[str, Any],
+    right_clusters: dict[str, Any],
+) -> list[str]:
+    """Render one changed cluster's slice-participant changes.
+
+    Reports only the participants the event model draws — the aggregate
+    (state), its non-fact events (results), its commands (triggers), and its
+    event handlers (automations). Entities, value objects, repositories,
+    database models, application services, command handlers, queries and query
+    handlers are not slice participants, so a change confined to one of them is
+    not a model change and is intentionally left out.
+
+    The slice is named by the aggregate, read from the right snapshot (a
+    changed cluster is present on both sides).
+    """
+    right_cluster = right_clusters.get(cluster_fqn, {})
+    agg = right_cluster.get("aggregate", {}).get("name") or short_name(cluster_fqn)
+    prefix = f"slice {agg}: "
+    phrases: list[str] = []
+
+    # Aggregate (state) field changes.
+    agg_delta = delta.get("aggregate", {})
+    phrases.extend(
+        f"{prefix}aggregate {phrase}"
+        for phrase in _field_change_phrases(agg_delta.get("fields", {}))
+    )
+
+    # Events (results): added / removed / field changes. Fact events are
+    # filtered with the same predicate the diagram uses, so the two views agree
+    # on which events exist. A removed event is absent from the right snapshot,
+    # so its fact flag cannot be read here; removals are rare and still a
+    # genuine loss from the model, so they are reported.
+    right_events = right_cluster.get("events", {})
+    events = delta.get("events", {})
+    phrases.extend(
+        f"{prefix}event {short_name(evt_fqn)} added"
+        for evt_fqn in sorted(events.get("added", {}))
+        if not right_events.get(evt_fqn, {}).get("is_fact_event")
+    )
+    phrases.extend(
+        f"{prefix}event {short_name(evt_fqn)} removed"
+        for evt_fqn in sorted(events.get("removed", {}))
+    )
+    phrases.extend(
+        f"{prefix}event {short_name(evt_fqn)} {phrase}"
+        for evt_fqn, evt_delta in sorted(events.get("changed", {}).items())
+        if not right_events.get(evt_fqn, {}).get("is_fact_event")
+        for phrase in _field_change_phrases(evt_delta.get("fields", {}))
+    )
+
+    # Commands (triggers): field changes only. An added or removed command is a
+    # gained or lost slice, reported as such by the caller.
+    commands_changed = delta.get("commands", {}).get("changed", {})
+    phrases.extend(
+        f"{prefix}command {short_name(cmd_fqn)} {phrase}"
+        for cmd_fqn, cmd_delta in sorted(commands_changed.items())
+        for phrase in _field_change_phrases(cmd_delta.get("fields", {}))
+    )
+
+    # Event handlers (automations): added / removed / changed.
+    event_handlers = delta.get("event_handlers", {})
+    phrases.extend(
+        f"{prefix}automation {short_name(eh_fqn)} added"
+        for eh_fqn in sorted(event_handlers.get("added", {}))
+    )
+    phrases.extend(
+        f"{prefix}automation {short_name(eh_fqn)} removed"
+        for eh_fqn in sorted(event_handlers.get("removed", {}))
+    )
+    phrases.extend(
+        f"{prefix}automation {short_name(eh_fqn)} changed"
+        for eh_fqn in sorted(event_handlers.get("changed", {}))
+    )
+
+    return phrases
+
+
+def generate_event_model_diff(
+    diff_result: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> str:
+    """Render an IR diff in EventModeling slice vocabulary.
+
+    Takes the :func:`protean.ir.diff.diff_ir` result and the right-hand IR
+    snapshot, and rewrites the diff as slice statements: an added command is a
+    new slice, a removed projection is a removed read model, a projection that
+    gained a field is a changed slice. It performs no second comparison — the
+    diff says what changed, and the right snapshot supplies the slice topology
+    the diff collapses away (a whole new cluster is one diff entry, so its
+    commands are enumerated from the snapshot).
+
+    Only participants the event model draws are reported — commands, the
+    aggregate, non-fact events, projections (read models) and automations
+    (event handlers and process managers). A change confined to anything else
+    (entities, repositories, contracts, diagnostics, domain metadata) is not a
+    model change; it does not fabricate a slice. When nothing the model draws
+    moved, returns the single line ``No model changes.``.
+
+    Args:
+        diff_result: The dict returned by :func:`protean.ir.diff.diff_ir`.
+        right_ir: The right-hand (current) IR snapshot the diff was computed
+            against.
+
+    Returns:
+        The rendered diff as plain text, or ``No model changes.`` when nothing
+        the model draws changed.
+    """
+    clusters = diff_result.get("clusters", {})
+    projections = diff_result.get("projections", {})
+    flows = diff_result.get("flows", {})
+
+    right_clusters = right_ir.get("clusters", {})
+    right_projections = right_ir.get("projections", {})
+
+    added: list[str] = []
+    removed: list[str] = []
+    changed: list[str] = []
+
+    # --- Added slices and read models ----------------------------------
+    # A whole new cluster collapses to one diff entry, so enumerate its
+    # commands from the right snapshot: one added slice per command.
+    for cluster_fqn in sorted(clusters.get("added", {})):
+        cmd_fqns = sorted(right_clusters.get(cluster_fqn, {}).get("commands", {}))
+        agg = short_name(cluster_fqn)
+        if cmd_fqns:
+            added.extend(
+                f"slice {short_name(cmd_fqn)} (new cluster {agg})"
+                for cmd_fqn in cmd_fqns
+            )
+        else:
+            # A command-less new cluster has no trigger to name; name the
+            # aggregate so the new cluster is never reported silently.
+            added.append(f"slice {agg} (new cluster)")
+
+    # New commands added to an existing cluster.
+    for _cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
+        added.extend(
+            f"slice {short_name(cmd_fqn)}"
+            for cmd_fqn in sorted(delta.get("commands", {}).get("added", {}))
+        )
+
+    # A new projection is a new read model.
+    added.extend(
+        f"read model {_summary_name(info, proj_fqn)}"
+        for proj_fqn, info in sorted(projections.get("added", {}).items())
+    )
+
+    # --- Removed slices and read models --------------------------------
+    removed.extend(
+        f"slice {_summary_name(info, cluster_fqn)}"
+        for cluster_fqn, info in sorted(clusters.get("removed", {}).items())
+    )
+    for _cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
+        removed.extend(
+            f"slice {short_name(cmd_fqn)}"
+            for cmd_fqn in sorted(delta.get("commands", {}).get("removed", {}))
+        )
+    removed.extend(
+        f"read model {_summary_name(info, proj_fqn)}"
+        for proj_fqn, info in sorted(projections.get("removed", {}).items())
+    )
+
+    # --- Changed slices ------------------------------------------------
+    for cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
+        changed.extend(_cluster_change_phrases(cluster_fqn, delta, right_clusters))
+
+    # A projection that gained, lost or altered a field is a changed read model.
+    for proj_fqn, delta in sorted(projections.get("changed", {}).items()):
+        name = right_projections.get(proj_fqn, {}).get("projection", {}).get(
+            "name"
+        ) or short_name(proj_fqn)
+        proj_delta = delta.get("projection", {})
+        changed.extend(
+            f"read model {name}: {phrase}"
+            for phrase in _field_change_phrases(proj_delta.get("fields", {}))
+        )
+
+    # Process managers (automations) added, removed or altered under flows.
+    process_managers = flows.get("process_managers", {})
+    changed.extend(
+        f"automation {short_name(pm_fqn)} added"
+        for pm_fqn in sorted(process_managers.get("added", {}))
+    )
+    changed.extend(
+        f"automation {short_name(pm_fqn)} removed"
+        for pm_fqn in sorted(process_managers.get("removed", {}))
+    )
+    changed.extend(
+        f"automation {short_name(pm_fqn)} changed"
+        for pm_fqn in sorted(process_managers.get("changed", {}))
+    )
+
+    if not (added or removed or changed):
+        return "No model changes."
+
+    lines: list[str] = ["Model changes:"]
+    for header, sign, entries in (
+        ("Added", "+", added),
+        ("Removed", "-", removed),
+        ("Changed", "~", changed),
+    ):
+        if entries:
+            lines.append("")
+            lines.append(f"{header}:")
+            lines.extend(f"  {sign} {entry}" for entry in entries)
+    return "\n".join(lines)
+
+
 def generate_event_model_timeline(ir: dict[str, Any]) -> str:
     """Generate a Mermaid ``flowchart LR`` for the whole event-model timeline.
 

@@ -928,6 +928,27 @@ class TestDiffGitBaseline:
             call_args = mock_load.call_args
             assert "custom_ir" in call_args[0][1]  # path argument
 
+    def test_base_event_model_format(self):
+        """--base renders the event-model format over the same git loader."""
+        stale_ir = _minimal_ir()  # empty baseline → live domain adds slices
+
+        with patch("protean.ir.git.load_ir_from_commit", return_value=stale_ir):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "-d",
+                    "publishing7.py",
+                    "--base",
+                    "HEAD",
+                    "--format=event-model",
+                ],
+                env={"COLUMNS": "200"},
+            )
+            assert result.exit_code != 0
+            assert "Model changes:" in result.output
+
 
 # ------------------------------------------------------------------
 # Module-level import tests for new exports
@@ -1085,3 +1106,336 @@ class TestAvroVerdictCLI:
         assert "Avro compatibility" in result.output
         assert "FULL" in result.output
         assert "payload-compatible" in result.output
+
+
+# ------------------------------------------------------------------
+# Model diff: --format=event-model
+# ------------------------------------------------------------------
+
+
+def _em_command(name, fields=None):
+    """Minimal command element for a cluster."""
+    return {
+        "element_type": "COMMAND",
+        "fqn": f"app.{name}",
+        "module": "app",
+        "name": name,
+        "fields": fields or {},
+    }
+
+
+def _em_command_handler(name):
+    """Minimal command handler — the wiring the event model does not draw."""
+    return {
+        "element_type": "COMMAND_HANDLER",
+        "fqn": f"app.{name}",
+        "module": "app",
+        "name": name,
+        "handlers": {},
+    }
+
+
+def _em_projection_group(name, fields=None):
+    """Minimal projection group (a read model)."""
+    return {
+        "projection": {
+            "element_type": "PROJECTION",
+            "fields": fields or {},
+            "fqn": f"app.{name}",
+            "module": "app",
+            "name": name,
+        },
+        "projectors": {},
+        "queries": {},
+        "query_handlers": {},
+    }
+
+
+def _added_lines(output):
+    return [ln for ln in output.splitlines() if ln.strip().startswith("+")]
+
+
+def _removed_lines(output):
+    return [ln for ln in output.splitlines() if ln.strip().startswith("-")]
+
+
+@pytest.mark.no_test_domain
+class TestDiffEventModelFormat:
+    """`protean ir diff --format=event-model` renders the diff in slices."""
+
+    def test_added_command_is_one_named_added_slice(self, tmp_path):
+        # AC #1: a new command (and its handler) in an existing cluster is one
+        # added slice, named for the command. The command handler is wiring the
+        # event model never draws, so it must not add a second line.
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
+        )
+        right = _write_ir(
+            tmp_path,
+            "right.json",
+            _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order",
+                        commands={"app.ShipOrder": _em_command("ShipOrder")},
+                        command_handlers={
+                            "app.ShipHandler": _em_command_handler("ShipHandler")
+                        },
+                    )
+                }
+            ),
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code != 0
+        assert _added_lines(result.output) == ["  + slice ShipOrder"]
+        assert "ShipHandler" not in result.output
+
+    def test_new_cluster_expands_to_one_slice_per_command(self, tmp_path):
+        # AC #2: a whole new cluster collapses to one diff entry, so the
+        # renderer reads the right snapshot and reports every command as an
+        # added slice, named.
+        left = _write_ir(tmp_path, "left.json", _minimal_ir())
+        right = _write_ir(
+            tmp_path,
+            "right.json",
+            _minimal_ir(
+                clusters={
+                    "app.Order": _make_cluster(
+                        "Order",
+                        commands={
+                            "app.PlaceOrder": _em_command("PlaceOrder"),
+                            "app.ShipOrder": _em_command("ShipOrder"),
+                        },
+                    )
+                }
+            ),
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        added = _added_lines(result.output)
+        assert len(added) == 2, added
+        assert any("PlaceOrder" in ln for ln in added)
+        assert any("ShipOrder" in ln for ln in added)
+        assert all("new cluster Order" in ln for ln in added)
+
+    def test_command_less_new_cluster_names_the_aggregate(self, tmp_path):
+        # A new cluster with no command has no trigger to name, so the
+        # aggregate is named instead — the new cluster is never silent.
+        left = _write_ir(tmp_path, "left.json", _minimal_ir())
+        right = _write_ir(
+            tmp_path,
+            "right.json",
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert _added_lines(result.output) == ["  + slice Order (new cluster)"]
+
+    def test_removed_projection_is_removed_read_model(self, tmp_path):
+        # AC #3.
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(
+                projections={"app.OrderSummary": _em_projection_group("OrderSummary")}
+            ),
+        )
+        right = _write_ir(tmp_path, "right.json", _minimal_ir())
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert _removed_lines(result.output) == ["  - read model OrderSummary"]
+
+    def test_projection_gains_field_is_changed_read_model(self, tmp_path):
+        # AC #4: names the slice and the field.
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(
+                projections={"app.OrderSummary": _em_projection_group("OrderSummary")}
+            ),
+        )
+        right = _write_ir(
+            tmp_path,
+            "right.json",
+            _minimal_ir(
+                projections={
+                    "app.OrderSummary": _em_projection_group(
+                        "OrderSummary",
+                        fields={"total": {"kind": "standard", "type": "Integer"}},
+                    )
+                }
+            ),
+        )
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert "Changed:" in result.output
+        assert "read model OrderSummary: field total added" in result.output
+
+    def test_identical_snapshots_report_no_model_changes(self, tmp_path):
+        # AC #5.
+        ir = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", commands={"app.PlaceOrder": _em_command("PlaceOrder")}
+                )
+            }
+        )
+        left = _write_ir(tmp_path, "left.json", ir)
+        right = _write_ir(tmp_path, "right.json", ir)
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code == 0
+        assert "No model changes." in result.output
+
+    def test_non_slice_change_does_not_fabricate_a_slice(self, tmp_path):
+        # A domain-metadata attribute is a real IR change (non-zero exit) but
+        # not a model change, so the slice view stays honest: no fabricated
+        # slice, just "No model changes.".
+        left = _write_ir(tmp_path, "left.json", _minimal_ir())
+        right_ir = _minimal_ir()
+        right_ir["domain"]["command_processing"] = "async"
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "--format=event-model"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code != 0
+        assert "No model changes." in result.output
+        assert "slice" not in result.output
+
+    def test_exit_code_parity_with_text_across_change_classes(self, tmp_path):
+        # AC #6: same inputs, same exit code, whichever format.
+        added_cmd_right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", commands={"app.ShipOrder": _em_command("ShipOrder")}
+                )
+            }
+        )
+        cases = {
+            "added_command": (
+                _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
+                added_cmd_right,
+            ),
+            "removed_projection": (
+                _minimal_ir(
+                    projections={
+                        "app.OrderSummary": _em_projection_group("OrderSummary")
+                    }
+                ),
+                _minimal_ir(),
+            ),
+            "changed_field": (
+                _minimal_ir(
+                    projections={
+                        "app.OrderSummary": _em_projection_group("OrderSummary")
+                    }
+                ),
+                _minimal_ir(
+                    projections={
+                        "app.OrderSummary": _em_projection_group(
+                            "OrderSummary",
+                            fields={"total": {"kind": "standard", "type": "Integer"}},
+                        )
+                    }
+                ),
+            ),
+        }
+        assert cases, "Expected parity cases but got none"
+        for label, (left_ir, right_ir) in cases.items():
+            left = _write_ir(tmp_path, f"{label}_left.json", left_ir)
+            right = _write_ir(tmp_path, f"{label}_right.json", right_ir)
+            text = runner.invoke(
+                app, ["ir", "diff", "-l", left, "-r", right, "-f", "text"]
+            )
+            event_model = runner.invoke(
+                app, ["ir", "diff", "-l", left, "-r", right, "--format=event-model"]
+            )
+            assert text.exit_code == event_model.exit_code, (
+                f"{label}: text={text.exit_code} event-model={event_model.exit_code}"
+            )
+
+    def test_exit_code_parity_under_warn_strictness(self, tmp_path):
+        # AC #6: a breaking change (removed cluster) exits 0 under warn
+        # strictness, and both formats agree.
+        protean_dir = tmp_path / ".protean"
+        protean_dir.mkdir()
+        (protean_dir / "config.toml").write_text(
+            '[compatibility]\nstrictness = "warn"\n', encoding="utf-8"
+        )
+        left = _write_ir(
+            tmp_path,
+            "left.json",
+            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
+        )
+        right = _write_ir(tmp_path, "right.json", _minimal_ir())
+        text = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-l",
+                left,
+                "-r",
+                right,
+                "--dir",
+                str(protean_dir),
+                "-f",
+                "text",
+            ],
+        )
+        event_model = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-l",
+                left,
+                "-r",
+                right,
+                "--dir",
+                str(protean_dir),
+                "--format=event-model",
+            ],
+        )
+        assert text.exit_code == 0
+        assert event_model.exit_code == 0
+
+
+@pytest.mark.no_test_domain
+class TestDiffFormatValidation:
+    """`ir diff` rejects an unknown --format instead of falling through."""
+
+    def test_bogus_format_is_rejected(self, tmp_path):
+        left = _write_ir(tmp_path, "left.json", _minimal_ir())
+        right = _write_ir(tmp_path, "right.json", _minimal_ir())
+        result = runner.invoke(
+            app,
+            ["ir", "diff", "-l", left, "-r", right, "-f", "bogus"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code != 0
+        assert "invalid --format" in result.output
+        assert "event-model" in result.output

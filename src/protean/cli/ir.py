@@ -42,6 +42,7 @@ from protean.exceptions import NoDomainException
 from protean.ir.config import load_config
 from protean.ir.constants import canonical_ir_json
 from protean.ir.diff import CompatibilityReport, classify_changes, diff_ir
+from protean.ir.generators.event_model import generate_event_model_diff
 from protean.ir.git import GitError
 from protean.ir.staleness import (
     StalenessResult,
@@ -89,6 +90,13 @@ def show(
     ] = False,
 ) -> None:
     """Show the domain's IR."""
+    if format not in ("json", "summary"):
+        print(
+            f"[red]Error:[/red] invalid --format: {format!r}. "
+            "Choose from: json, summary"
+        )
+        raise typer.Abort()
+
     ir = load_domain_ir(domain)
 
     if format == "summary":
@@ -152,7 +160,7 @@ def diff(
         typer.Option(
             "--format",
             "-f",
-            help="Output format: 'text' (default) or 'json'",
+            help="Output format: 'text' (default), 'json', or 'event-model'",
         ),
     ] = "text",
 ) -> None:
@@ -171,6 +179,16 @@ def diff(
       1 — breaking changes found
       2 — non-breaking changes only
     """
+    # ------------------------------------------------------------------ #
+    # Validate --format before any load or generation                      #
+    # ------------------------------------------------------------------ #
+    if format not in ("text", "json", "event-model"):
+        print(
+            f"[red]Error:[/red] invalid --format: {format!r}. "
+            "Choose from: text, json, event-model"
+        )
+        raise typer.Abort()
+
     # ------------------------------------------------------------------ #
     # Load config                                                          #
     # ------------------------------------------------------------------ #
@@ -248,6 +266,11 @@ def diff(
         # Avro verdict, as an additive `compatibility` block.
         result["compatibility"] = _compatibility_block(report)
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    elif format == "event-model":
+        # Render the same diff in slice vocabulary. current_ir is the right
+        # (current) snapshot for every loader mode, so the slice topology the
+        # diff collapses away is available here.
+        typer.echo(generate_event_model_diff(result, current_ir))
     else:
         _print_diff_text(result)
         # Only when the (exclusion-filtered) report has classified changes — a
@@ -576,6 +599,12 @@ def check(
       2 — No materialized IR found in the given directory
       3 — Schema version mismatch (baseline built against a different schema version)
     """
+    if format not in ("text", "json"):
+        print(
+            f"[red]Error:[/red] invalid --format: {format!r}. Choose from: text, json"
+        )
+        raise typer.Abort()
+
     try:
         config = load_config(dir)
     except ValueError as exc:
