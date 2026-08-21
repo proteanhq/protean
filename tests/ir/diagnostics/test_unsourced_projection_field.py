@@ -36,9 +36,10 @@ def flagged_ir() -> dict:
     """The shared corpus registered as one domain, built once.
 
     Every projection and its projector(s) are registered together so a single
-    build exercises every branch: the four-of-five positive, full coverage by
-    attribute write, the empty-evidence guard, a dynamic ``**kwargs``
-    construction, the identity exemption, and the two-projector union.
+    build exercises every branch: the four-of-five positive, attribute-write
+    evidence, the empty-evidence guard, a dynamic ``**kwargs`` construction, the
+    identity exemption, the two-projector union, and the ``externally_populated``
+    opt-out.
     """
     domain = Domain(name="UnsourcedProjectionField", root_path=CORPUS_ROOT)
     domain.register(catalog.Thing)
@@ -53,6 +54,7 @@ def flagged_ir() -> dict:
         catalog.MultiProjection,
     ):
         domain.register(projection)
+    domain.register(catalog.ExternalProjection, externally_populated=True)
     domain.register(
         catalog.PartialProjector,
         projector_for=catalog.PartialProjection,
@@ -86,6 +88,11 @@ def flagged_ir() -> dict:
     domain.register(
         catalog.MultiProjectorB,
         projector_for=catalog.MultiProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.ExternalProjector,
+        projector_for=catalog.ExternalProjection,
         aggregates=[catalog.Thing],
     )
     domain.init(traverse=False)
@@ -125,10 +132,25 @@ class TestUnsourcedProjectionField:
 
     # ── Negatives ────────────────────────────────────────────────────────
 
-    def test_full_coverage_by_attribute_write_flags_nothing(self, flagged_ir):
-        """``FullProjector`` covers every field by attribute write, so the
-        attribute-evidence branch sources them all and nothing is flagged."""
-        assert _fields_for(flagged_ir, catalog.FullProjection) == []
+    def test_attribute_write_sources_only_written_fields(self, flagged_ir):
+        """``FullProjector`` attribute-writes ``title`` and ``body`` and nothing
+        else, so the attribute-evidence branch sources exactly those two and the
+        unwritten ``subtitle`` and ``author`` are flagged. Emission is in sorted
+        field-name order (``author`` before ``subtitle``), and if the attribute
+        branch were removed the write set would empty and the evidence guard
+        would flag nothing instead, so this pins the branch to a visible
+        outcome."""
+        assert _fields_for(flagged_ir, catalog.FullProjection) == [
+            "author",
+            "subtitle",
+        ]
+
+    def test_externally_populated_projection_opts_out(self, flagged_ir):
+        """``ExternalProjection`` is registered ``externally_populated``, so the
+        opt-out skips it: ``note`` is unwritten yet not flagged. Without the
+        opt-out branch, ``note`` would be flagged."""
+        assert fqn(catalog.ExternalProjection) in flagged_ir["projections"]
+        assert _fields_for(flagged_ir, catalog.ExternalProjection) == []
 
     def test_no_observable_writes_flags_nothing(self, flagged_ir):
         """The evidence guard: ``GuardProjector`` builds its record through a

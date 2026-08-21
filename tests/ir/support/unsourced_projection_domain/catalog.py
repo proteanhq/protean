@@ -9,9 +9,13 @@ projector carries, and the branch it drives:
 - ``PartialProjector`` constructs ``PartialProjection`` with four of its five
   data fields as keywords, leaving ``city`` unwritten — the positive case, so
   ``city`` is flagged by name.
-- ``FullProjector`` covers ``FullProjection`` by *attribute* write
-  (``record.title = ...``) rather than construction, so the attribute-evidence
-  branch is exercised and nothing is flagged.
+- ``FullProjector`` covers ``FullProjection``'s ``title`` and ``body`` by
+  *attribute* write (``record.title = ...``) rather than construction, and
+  leaves ``subtitle`` and ``author`` unwritten, so those two are flagged. This
+  pins the attribute-evidence branch to a visible outcome: remove that branch
+  and the write set empties, tripping the evidence guard so nothing is flagged
+  at all. The two flagged fields also pin emission to sorted field-name order
+  (``author`` before ``subtitle``, though declared the other way round).
 - ``GuardProjector`` builds its record through a module-level helper the
   analysis cannot follow, so its own methods yield no field write at all — the
   evidence guard, so ``GuardProjection`` is skipped rather than reported.
@@ -26,6 +30,10 @@ projector carries, and the branch it drives:
   ``MultiProjection``'s data fields; coverage is the union of the two, so only
   ``gamma`` (covered by neither) is flagged — a per-projector-instead-of-union
   bug would wrongly flag ``alpha`` or ``beta`` too.
+- ``ExternalProjector`` covers only ``tag`` on ``ExternalProjection``, which is
+  registered ``externally_populated``. That opt-out skips the projection, so
+  ``note`` is not flagged even though no write sources it. Remove the opt-out
+  branch and ``note`` would be flagged.
 """
 
 from protean import current_domain
@@ -87,12 +95,15 @@ class FullProjection(BaseProjection):
     key = Identifier(identifier=True)
     title = String(max_length=50)
     body = String(max_length=200)
+    subtitle = String(max_length=50)
+    author = String(max_length=50)
 
 
 class FullProjector(BaseProjector):
     @on(ThingHappened)
     def on_thing_happened(self, event: ThingHappened) -> None:
-        """Cover every data field by attribute write, not construction."""
+        """Source ``title`` and ``body`` by attribute write, not construction;
+        ``subtitle`` and ``author`` stay unwritten and are flagged."""
         record = current_domain.repository_for(FullProjection).get(event.thing_id)
         record.title = event.name
         record.body = event.email
@@ -182,3 +193,22 @@ class MultiProjectorB(BaseProjector):
         ``gamma`` unsourced."""
         record = MultiProjection(key=event.thing_id, beta=event.email)
         current_domain.repository_for(MultiProjection).add(record)
+
+
+# ── Negative: an externally_populated projection opts out ──────────────────
+
+
+class ExternalProjection(BaseProjection):
+    key = Identifier(identifier=True)
+    tag = String(max_length=50)
+    note = String(max_length=50)
+
+
+class ExternalProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Cover ``tag`` only, leaving ``note`` unwritten. The projection is
+        registered ``externally_populated``, so the opt-out skips it and ``note``
+        is not flagged."""
+        record = ExternalProjection(key=event.thing_id, tag=event.name)
+        current_domain.repository_for(ExternalProjection).add(record)

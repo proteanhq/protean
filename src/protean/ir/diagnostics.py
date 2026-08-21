@@ -802,8 +802,12 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "A projection field that no projector method writes is a dead "
             "column: it renders in the read model and carries a type, but "
             "nothing ever fills it. The check reads what projector handler "
-            "methods write, so a field filled through a path the analysis "
-            "cannot follow (a helper, a dict splat) is not reported."
+            "methods write. A `**kwargs` construction disables it for the whole "
+            "projection, and when no projector write is observed at all the "
+            "whole projection is skipped. It works from observed "
+            "writes, so it is advisory: when the projector writes some fields, a "
+            "sibling field filled only through a path the check cannot follow (a "
+            "helper, a dict splat) can still be flagged."
         ),
         fix=(
             "Write the field from the projector method that handles the event "

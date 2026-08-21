@@ -315,10 +315,14 @@ if it is filled by a subscriber.
 **Why.** A projection field that no projector method writes is a dead column: it
 renders in the read model and carries a type, but nothing ever fills it. The
 check reads what a projection's projector methods write, either constructing the
-projection with the field as a keyword or writing it as an attribute. A field
-filled through a path the analysis cannot follow (a helper, a dict splat, a
-`**kwargs` construction) is not reported, and the `identity_field` is exempt
-because the framework fills it on write.
+projection with the field as a keyword or writing it as an attribute. It stays
+conservative: a `**kwargs` construction disables the check for the whole
+projection, a projection with no observed write at all is skipped whole, and the
+`identity_field` is exempt because the framework fills it on write. The level is
+`info` because the check works from
+observed writes: when the projector writes some fields, a sibling field filled
+only through a path it cannot follow (a helper, a dict splat) can still be
+flagged.
 
 **Fix.** Write the field from the projector method that handles the event
 carrying it, or drop the field from the projection if nothing sources it.

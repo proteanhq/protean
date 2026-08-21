@@ -2507,9 +2507,15 @@ class IRBuilder:
         - The ``identity_field`` is exempt: the framework fills it on write, not
           necessarily by a named field assignment.
 
+        The evidence guard is scoped to the whole projection, so the rule is
+        advisory: once any projector write is observed, a sibling field filled
+        only through an unfollowable path (a helper, ``setattr``, a dict splat)
+        is still flagged. The ``info`` level reflects that.
+
         Projections are walked in ``ir["projections"]`` key order, projectors in
-        entry order, and unsourced fields are emitted in ``fields`` declaration
-        order, so the output is stable.
+        entry order, and unsourced fields are emitted in sorted field-name order
+        (``fields`` is already sorted by :meth:`_extract_fields`), so the output
+        is stable.
         """
         registry = self._domain._domain_registry
         projector_cls_by_fqn = {
