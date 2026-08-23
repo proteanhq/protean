@@ -898,6 +898,41 @@ async def test_drain_once_stops_before_reading_the_next_stream() -> None:
         broker._data_reset()
 
 
+async def test_read_head_skips_the_new_read_when_a_drain_lands_between_reads(
+    domain: Domain, category: str, monkeypatch
+) -> None:
+    """``_read_head`` does two reads (pending, then new). A drain that lands
+    between them must not pull in a new message: the pending read came back
+    empty, so nothing is in flight and the `>` read would be fresh intake."""
+    sub = await _make_sub(domain)
+    _publish(domain, category, _order_event("A", 0), "A")
+    await sub._discovery_pass()
+    owned = sub._owned["A"]
+    stream = owned.streams[0][1]
+
+    real_read = sub.broker.read_partition_fenced
+    reads: list[bool] = []
+
+    def _read_then_drain(*args, new_messages=False, **kwargs):
+        reads.append(new_messages)
+        messages = real_read(*args, new_messages=new_messages, **kwargs)
+        if not new_messages:
+            # POST /drainz lands after the pending read comes back empty.
+            sub.engine.draining = True
+        return messages
+
+    monkeypatch.setattr(sub.broker, "read_partition_fenced", _read_then_drain)
+    head = await sub._read_head(owned, stream)
+
+    assert head is None  # the waiting message was left for the next process
+    assert reads == [False]  # the `>` read never ran
+
+    # Negative: with no drain, the same setup does read the new message.
+    monkeypatch.undo()
+    sub.engine.draining = False
+    assert await sub._read_head(owned, stream) is not None
+
+
 async def test_poll_breaks_on_cancel(domain: Domain, monkeypatch) -> None:
     sub = await _make_sub(domain)
 

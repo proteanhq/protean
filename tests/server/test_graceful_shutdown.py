@@ -296,6 +296,35 @@ class TestConfigurableDrainWindow:
         engine = self._engine(drain_timeout=value)
         assert engine.drain_timeout == 10.0
 
+    @pytest.mark.parametrize(
+        "value", [float("nan"), float("inf"), float("-inf"), "nan", "inf"]
+    )
+    def test_non_finite_window_falls_back_to_ten(self, value):
+        """nan and inf survive float() but are not usable windows.
+
+        Every comparison against nan is False, so a nan window slips past the
+        positive/kill-timeout checks and reaches asyncio.wait, which then returns
+        on the next loop step and force-cancels in-flight handlers with no grace.
+        An inf window outlives the supervisor's kill timeout.
+        """
+        engine = self._engine(drain_timeout=value)
+        assert engine.drain_timeout == 10.0
+
+    def test_non_finite_window_warns(self, caplog):
+        """The nan fallback is announced, like any other invalid value."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout=float("nan"))
+
+        assert engine.drain_timeout == 10.0
+        assert any(
+            "drain_timeout_invalid_using_default" in r.message for r in caplog.records
+        )
+
+    def test_overflowing_window_falls_back_to_ten(self):
+        """A value too large for float() (an int beyond float range) is invalid."""
+        engine = self._engine(drain_timeout=10**400)
+        assert engine.drain_timeout == 10.0
+
     def test_zero_window_falls_back_to_ten(self):
         """A zero window would give no grace at all, so it is rejected."""
         engine = self._engine(drain_timeout=0)

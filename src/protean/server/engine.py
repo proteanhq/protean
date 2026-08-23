@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import math
 import platform
 import signal
 import time
@@ -262,8 +263,16 @@ class Engine:
                 # window instead of an invalid value. Reject it like any other
                 # non-numeric setting.
                 raise TypeError("drain_timeout must be a number, not a boolean")
-            self.drain_timeout = float(drain_timeout_raw)
-        except (AttributeError, TypeError, ValueError):
+            drain_timeout = float(drain_timeout_raw)
+            if not math.isfinite(drain_timeout):
+                # nan and inf survive float() and slip past the range checks
+                # below, since every comparison against nan is False. A nan
+                # window makes asyncio.wait return on the next loop step and
+                # force-cancel in-flight handlers with no grace; an inf window
+                # outlives the supervisor's kill timeout. Both are invalid.
+                raise ValueError("drain_timeout must be a finite number")
+            self.drain_timeout = drain_timeout
+        except (AttributeError, TypeError, ValueError, OverflowError):
             logger.warning(
                 "engine.drain_timeout_invalid_using_default",
                 extra={"drain_timeout": drain_timeout_raw, "default": 10},

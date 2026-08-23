@@ -574,6 +574,13 @@ class PartitionedStreamSubscription(StreamSubscription):
         """
         assert self.broker is not None, "Broker not initialized"
         for new_messages in (False, True):  # pending first, then new
+            if new_messages and self._quiescing():
+                # The pending read above awaits, so a drain can land between the
+                # two reads. A pending entry is work already handed to this
+                # consumer, so it still finishes; a `>` read is fresh intake, so
+                # stop here rather than pulling in a new message after the
+                # trigger.
+                return None
             messages = await asyncio.to_thread(
                 self.broker.read_partition_fenced,
                 stream,

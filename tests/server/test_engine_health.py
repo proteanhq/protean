@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import threading
 import time
@@ -368,6 +369,31 @@ class TestHealthServerIntegration:
         _, _, loop, port = health_server
         _, body = _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
         assert body["pid"] == os.getpid()
+
+    def test_drainz_logs_the_drain_request(self, health_server, caplog):
+        """The drain is announced on the operational log with the pid.
+
+        A drain takes a worker out of service, so the record is the audit trail
+        for who went quiet and when.
+        """
+        _, _, loop, port = health_server
+        with caplog.at_level(logging.INFO, logger="protean.server.health"):
+            _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+
+        records = [r for r in caplog.records if r.message == "engine.drain_requested"]
+        assert len(records) == 1
+        assert records[0].pid == os.getpid()
+
+    def test_non_draining_request_logs_nothing(self, health_server, caplog):
+        """Negative: a request that does not drain emits no drain record."""
+        engine, _, loop, port = health_server
+        with caplog.at_level(logging.INFO, logger="protean.server.health"):
+            _parse_http(_fetch_health(loop, port, path="/readyz"))
+            _parse_http(_fetch_health(loop, port, method="POST", path="/readyz"))
+            _parse_http(_fetch_health(loop, port, method="GET", path="/drainz"))
+
+        assert engine.draining is False
+        assert not [r for r in caplog.records if r.message == "engine.drain_requested"]
 
     def test_readyz_503_when_draining(self, health_server):
         """After /drainz, readiness reports not-ready with a draining marker."""

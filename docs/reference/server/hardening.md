@@ -291,7 +291,8 @@ drains; a `GET` to the path is an unknown path (`404`) and any other non-`GET`
 method still returns `405`.
 
 Draining is a one-way latch. There is no un-drain endpoint: once flipped, the
-poll loops exit and the worker processes nothing more, while `/healthz` and
+message-subscription poll loops exit and the worker takes in no new messages
+(the outbox keeps flushing its committed rows, as above), while `/healthz` and
 `/livez` stay `200` (draining is not a restart signal), so Kubernetes keeps the
 pod but pulls it from rotation. Send `SIGTERM` to finish stopping it. Because
 the trigger is unauthenticated, keep the health server on `127.0.0.1` (the
@@ -559,7 +560,13 @@ past the deadline and get the worker `SIGKILL`ed mid position-persist. The
 engine logs a warning at startup when `drain_timeout` reaches the kill timeout,
 but leave headroom well under 30 to be safe. A zero or negative value is
 rejected and falls back to `10`, since it would give in-flight work no grace at
-all. Single-worker runs have no supervisor, so a longer window there is fine.
+all. So is anything that is not a finite number: a non-numeric string, a
+boolean, `nan`, or `inf`. Single-worker runs have no supervisor, so a longer
+window there is fine.
+
+`protean server --reload` reads the same key. The reloader waits for the drain
+window plus a few seconds (never less than 10) before killing the worker it is
+restarting, so a longer window is honoured on that path too.
 
 ## Optimistic locking
 

@@ -13,7 +13,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean.server.reloader import (
+    _DRAIN_MARGIN_SECONDS,
     _EXTRA_IGNORE_DIRS,
+    _SHUTDOWN_TIMEOUT_SECONDS,
     Reloader,
     _display_path,
 )
@@ -187,6 +189,84 @@ class TestReloaderProcessLifecycle:
         reloader._restart_process()
 
         assert reloader.exit_code == 0
+
+
+class TestReloaderTerminationBudget:
+    """The join budget follows the Engine's configured drain window.
+
+    The worker waits ``[server].drain_timeout`` for in-flight handlers before
+    force-cancelling them, so a flat 10-second join would kill it mid-drain
+    whenever that window is longer.
+    """
+
+    def _reloader_with_window(self, window):
+        """A Reloader whose domain reports *window* as its drain_timeout."""
+        reloader = Reloader(domain_path="my.domain")
+        domain = MagicMock()
+        domain.config = {"server": {"drain_timeout": window}}
+        return reloader, patch(
+            "protean.utils.domain_discovery.derive_domain", return_value=domain
+        )
+
+    def test_budget_covers_a_longer_drain_window(self):
+        reloader, patched = self._reloader_with_window(20)
+        with patched:
+            assert reloader._termination_timeout() == 20 + _DRAIN_MARGIN_SECONDS
+
+    def test_budget_never_shrinks_below_the_default(self):
+        """A short window does not shorten the budget below 10 seconds."""
+        reloader, patched = self._reloader_with_window(2)
+        with patched:
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    @pytest.mark.parametrize(
+        "window", ["not-a-number", True, 0, -5, float("nan"), float("inf")]
+    )
+    def test_invalid_window_falls_back_to_the_default(self, window):
+        """Values the Engine rejects do not stretch or shrink the budget."""
+        reloader, patched = self._reloader_with_window(window)
+        with patched:
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    def test_unreadable_domain_falls_back_to_the_default(self):
+        """The domain may not import here; the worker surfaces the real error."""
+        reloader = Reloader(domain_path="my.domain")
+        with patch(
+            "protean.utils.domain_discovery.derive_domain",
+            side_effect=ImportError("no such module"),
+        ):
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    def test_missing_domain_falls_back_to_the_default(self):
+        reloader = Reloader(domain_path="my.domain")
+        with patch("protean.utils.domain_discovery.derive_domain", return_value=None):
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    def test_budget_is_computed_once(self):
+        """The config is read at worker startup and reload watches Python files,
+        so the window is read once, not on every restart."""
+        reloader, patched = self._reloader_with_window(20)
+        with patched as mock_derive:
+            reloader._termination_timeout()
+            reloader._termination_timeout()
+        assert mock_derive.call_count == 1
+
+    def test_stop_process_joins_for_the_configured_budget(self):
+        """The join actually uses the budget, so a 20s drain is not cut at 10."""
+        reloader, patched = self._reloader_with_window(20)
+
+        mock_process = MagicMock()
+        alive_states = iter([True, False, False])
+        mock_process.is_alive.side_effect = lambda: next(alive_states)
+        mock_process.pid = 1234
+        mock_process.exitcode = 0
+        reloader.process = mock_process
+
+        with patched, patch("os.kill"):
+            reloader._stop_process()
+
+        mock_process.join.assert_called_once_with(timeout=20 + _DRAIN_MARGIN_SECONDS)
+        mock_process.kill.assert_not_called()
 
 
 class TestReloaderSignalHandling:

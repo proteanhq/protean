@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import multiprocessing
 import os
 import signal
@@ -46,6 +47,11 @@ from protean.server.supervisor import _worker_entry
 logger = logging.getLogger(__name__)
 
 _SHUTDOWN_TIMEOUT_SECONDS = 10
+
+# Slack added on top of the Engine's drain window when sizing the join budget:
+# the worker still has to cancel stragglers, close brokers and providers, and
+# exit after the window elapses.
+_DRAIN_MARGIN_SECONDS = 5
 
 # Directories ignored in addition to the ``watchfiles`` defaults.
 # ``.protean/`` holds generated IR caches that should never trigger a reload.
@@ -95,6 +101,7 @@ class Reloader:
         self.process: BaseProcess | None = None
         self._ctx = multiprocessing.get_context("spawn")
         self._shutting_down: bool = False
+        self._stop_timeout: float | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -108,6 +115,11 @@ class Reloader:
         startup_msg = f"Started reloader process [{os.getpid()}] watching {dir_list}"
         logger.info(startup_msg)
         print(startup_msg)
+
+        # Size the termination budget now, while the source on disk is the code
+        # the run started with. By the first reload it may be mid-edit, and a
+        # half-written module would read as an unimportable domain.
+        self._termination_timeout()
 
         self._start_process()
 
@@ -156,6 +168,54 @@ class Reloader:
         self.process = process
         logger.info("Started Engine worker (PID %s)", process.pid)
 
+    def _configured_drain_window(self) -> float:
+        """The worker Engine's ``[server].drain_timeout``, or 0 if unreadable.
+
+        Read here in the parent so the join budget below matches the window the
+        worker will actually wait. Deriving the domain can fail (unimportable
+        path, bad config); the worker surfaces the real error when it re-derives,
+        so fall back to 0 and let the default budget apply. Anything that is not
+        a finite positive number is treated the same way: the Engine rejects
+        those values too and uses its own default.
+        """
+        from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
+
+        try:
+            domain = derive_domain(self.domain_path)
+            if domain is None:
+                return 0.0
+            value = domain.config.get("server", {}).get("drain_timeout", 0)
+            if isinstance(value, bool):
+                return 0.0
+            window = float(value)
+        except Exception:
+            logger.debug(
+                "Could not read server.drain_timeout from domain '%s'; "
+                "using the default termination budget",
+                self.domain_path,
+                exc_info=True,
+            )
+            return 0.0
+
+        return window if math.isfinite(window) and window > 0 else 0.0
+
+    def _termination_timeout(self) -> float:
+        """How long to wait for the inner worker to exit before killing it.
+
+        The worker's Engine waits ``[server].drain_timeout`` for in-flight
+        handlers before force-cancelling them, so a flat 10 seconds here would
+        kill a worker mid-drain whenever that window is longer. Take the
+        configured window plus a margin, never less than the 10-second default.
+        Computed once: the config is read at worker startup and reload watches
+        Python files, not ``domain.toml``.
+        """
+        if self._stop_timeout is None:
+            self._stop_timeout = max(
+                float(_SHUTDOWN_TIMEOUT_SECONDS),
+                self._configured_drain_window() + _DRAIN_MARGIN_SECONDS,
+            )
+        return self._stop_timeout
+
     def _stop_process(self) -> None:
         """Terminate and join the current inner Engine process, if any."""
         process = self.process
@@ -166,11 +226,12 @@ class Reloader:
             with contextlib.suppress(ProcessLookupError, OSError):
                 os.kill(process.pid, signal.SIGTERM)
 
-        process.join(timeout=_SHUTDOWN_TIMEOUT_SECONDS)
+        timeout = self._termination_timeout()
+        process.join(timeout=timeout)
         if process.is_alive():
             logger.warning(
-                "Engine worker did not stop within %ds timeout, killing",
-                _SHUTDOWN_TIMEOUT_SECONDS,
+                "Engine worker did not stop within %gs timeout, killing",
+                timeout,
             )
             process.kill()
             process.join(timeout=5)
