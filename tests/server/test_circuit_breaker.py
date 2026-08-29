@@ -95,6 +95,7 @@ class MockEngine:
         self.loop = asyncio.new_event_loop()
         self.emitter = Mock()
         self.shutting_down = False
+        self.draining = False
         self._real_engine = Engine(domain, test_mode=True)
 
     async def handle_message(self, handler_cls, message, worker_id=None):

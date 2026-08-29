@@ -1002,6 +1002,19 @@ class EventStoreSubscription(BaseSubscription):
         recovered_count = 0
 
         for position, info in unresolved.items():
+            if self._quiescing():
+                # Each position below awaits a store read and a handler
+                # dispatch, so a drain can land part way through the pass.
+                # A recovery item is fresh intake, so stop after the item in
+                # flight instead of working through the rest of the snapshot.
+                # The positions left over stay unresolved and are picked up by
+                # the next pass, here or in the replacement process.
+                logger.info(
+                    f"[{self.subscriber_class_name}] Recovery pass stopped: "
+                    f"engine is draining or shutting down"
+                )
+                break
+
             retry_count = info.get("retry_count", 0)
             stream_name = info.get("stream_name")
             stream_position = info.get("stream_position")
@@ -1153,14 +1166,19 @@ class EventStoreSubscription(BaseSubscription):
         """
         consecutive_errors = 0
 
-        while self.keep_going and not self.engine.shutting_down:
+        while self.keep_going and not self._quiescing():
             try:
                 with self.engine.domain.domain_context():
                     # Process new messages
                     await self.tick()
 
-                    # Periodically attempt recovery of failed positions
-                    await self.maybe_run_recovery()
+                    # Periodically attempt recovery of failed positions.
+                    # A recovery pass re-reads failed positions and dispatches
+                    # handlers, so it is fresh intake, not in-flight work: skip
+                    # it if a drain began while the tick above was running,
+                    # rather than fanning out new handlers after the trigger.
+                    if not self._quiescing():
+                        await self.maybe_run_recovery()
 
                     # Reset error counter on successful tick
                     consecutive_errors = 0

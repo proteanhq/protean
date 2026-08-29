@@ -6,6 +6,7 @@ watchfiles integration without spawning real worker processes or
 triggering real filesystem events.
 """
 
+import os
 import signal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,7 +14,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean.server.reloader import (
+    _DRAIN_MARGIN_SECONDS,
     _EXTRA_IGNORE_DIRS,
+    _SHUTDOWN_TIMEOUT_SECONDS,
     Reloader,
     _display_path,
 )
@@ -187,6 +190,159 @@ class TestReloaderProcessLifecycle:
         reloader._restart_process()
 
         assert reloader.exit_code == 0
+
+
+class TestReloaderTerminationBudget:
+    """The join budget follows the Engine's configured drain window.
+
+    The worker waits ``[server].drain_timeout`` for in-flight handlers before
+    force-cancelling them, so a flat 10-second join would kill it mid-drain
+    whenever that window is longer.
+    """
+
+    def _reloader_with_window(self, window):
+        """A Reloader whose on-disk config reports *window* as drain_timeout."""
+        reloader = Reloader(domain_path="my.domain")
+        config = {"server": {"drain_timeout": window}}
+        return reloader, patch(
+            "protean.domain.config.Config2.load_from_path", return_value=config
+        )
+
+    def test_budget_covers_a_longer_drain_window(self):
+        reloader, patched = self._reloader_with_window(20)
+        with patched:
+            assert reloader._termination_timeout() == 20 + _DRAIN_MARGIN_SECONDS
+
+    def test_budget_never_shrinks_below_the_default(self):
+        """A short window does not shorten the budget below 10 seconds."""
+        reloader, patched = self._reloader_with_window(2)
+        with patched:
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    @pytest.mark.parametrize(
+        "window", ["not-a-number", True, 0, -5, float("nan"), float("inf")]
+    )
+    def test_invalid_window_falls_back_to_the_default(self, window):
+        """Values the Engine rejects do not stretch or shrink the budget."""
+        reloader, patched = self._reloader_with_window(window)
+        with patched:
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    def test_unreadable_config_falls_back_to_the_default(self):
+        """The config may not read here; the worker surfaces the real error."""
+        reloader = Reloader(domain_path="my.domain")
+        with patch(
+            "protean.domain.config.Config2.load_from_path",
+            side_effect=ValueError("bad TOML"),
+        ):
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    def test_missing_drain_timeout_falls_back_to_the_default(self):
+        """A config with no server.drain_timeout uses the default budget."""
+        reloader = Reloader(domain_path="my.domain")
+        with patch(
+            "protean.domain.config.Config2.load_from_path", return_value={"server": {}}
+        ):
+            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+
+    def test_budget_is_read_fresh_each_call(self):
+        """A domain.toml edit mid-run must be picked up, so the window is read
+        on every call, not cached."""
+        reloader, patched = self._reloader_with_window(20)
+        with patched as mock_load:
+            reloader._termination_timeout()
+            reloader._termination_timeout()
+        assert mock_load.call_count == 2
+
+    def test_start_process_binds_the_budget_from_current_config(self):
+        """_start_process sizes the join budget from the config as it stands,
+        so the worker it spawns is later joined with its own window."""
+        reloader, patched = self._reloader_with_window(20)
+        reloader._ctx = MagicMock()
+        with patched:
+            reloader._start_process()
+        assert reloader._stop_timeout == 20 + _DRAIN_MARGIN_SECONDS
+
+    def test_budget_refreshes_between_worker_generations(self):
+        """A domain.toml change between restarts binds the new window to the
+        replacement worker, not the value read when the reloader started."""
+        reloader = Reloader(domain_path="my.domain")
+        reloader._ctx = MagicMock()
+        configs = iter(
+            [{"server": {"drain_timeout": 20}}, {"server": {"drain_timeout": 40}}]
+        )
+        with patch(
+            "protean.domain.config.Config2.load_from_path",
+            side_effect=lambda _path: next(configs),
+        ):
+            reloader._start_process()
+            assert reloader._stop_timeout == 20 + _DRAIN_MARGIN_SECONDS
+            reloader._start_process()
+            assert reloader._stop_timeout == 40 + _DRAIN_MARGIN_SECONDS
+
+    def test_stop_process_joins_for_the_bound_budget(self):
+        """The join uses the budget bound when the worker started, so a 20s
+        drain is not cut at 10 and a later config edit cannot shorten it."""
+        reloader = Reloader(domain_path="my.domain")
+        reloader._stop_timeout = 20 + _DRAIN_MARGIN_SECONDS
+
+        mock_process = MagicMock()
+        alive_states = iter([True, False, False])
+        mock_process.is_alive.side_effect = lambda: next(alive_states)
+        mock_process.pid = 1234
+        mock_process.exitcode = 0
+        reloader.process = mock_process
+
+        with patch("os.kill"):
+            reloader._stop_process()
+
+        mock_process.join.assert_called_once_with(timeout=20 + _DRAIN_MARGIN_SECONDS)
+        mock_process.kill.assert_not_called()
+
+
+class TestReloaderConfigSearchRoot:
+    """Where the reloader parent looks for the project config, so its join
+    budget is sized from the same ``domain.toml`` the worker reads."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    def test_domain_file_path_resolves_to_its_directory(self, tmp_path):
+        """A file-path domain reads config from the file's directory, matching
+        the worker's ``Domain.root_path`` even when the CWD differs."""
+        domain_file = tmp_path / "domain.py"
+        domain_file.write_text("domain = object()\n")
+        reloader = Reloader(domain_path=str(domain_file))
+        assert reloader._config_search_root() == os.path.realpath(str(tmp_path))
+
+    def test_domain_path_without_extension_finds_the_py_file(self, tmp_path):
+        """``--domain path/to/domain`` (no ``.py``) resolves to that directory."""
+        (tmp_path / "domain.py").write_text("domain = object()\n")
+        reloader = Reloader(domain_path=str(tmp_path / "domain"))
+        assert reloader._config_search_root() == os.path.realpath(str(tmp_path))
+
+    def test_factory_suffix_is_stripped(self, tmp_path):
+        """A ``path:factory`` domain resolves on the path, ignoring the suffix."""
+        domain_file = tmp_path / "app.py"
+        domain_file.write_text("def create():\n    return object()\n")
+        reloader = Reloader(domain_path=f"{domain_file}:create")
+        assert reloader._config_search_root() == os.path.realpath(str(tmp_path))
+
+    def test_domain_root_path_env_wins(self, tmp_path, monkeypatch):
+        """``DOMAIN_ROOT_PATH`` overrides, exactly as the worker's Domain honours
+        it."""
+        monkeypatch.setenv("DOMAIN_ROOT_PATH", str(tmp_path))
+        reloader = Reloader(domain_path="some/other/domain.py")
+        assert reloader._config_search_root() == str(tmp_path)
+
+    def test_dotted_module_falls_back_to_cwd(self):
+        """A dotted module cannot be resolved to a file without importing it, so
+        the working directory (where ``domain.toml`` conventionally lives) is
+        used."""
+        reloader = Reloader(domain_path="my.package.domain")
+        assert reloader._config_search_root() == os.getcwd()
 
 
 class TestReloaderSignalHandling:

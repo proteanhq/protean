@@ -24,6 +24,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
 from protean.server import Engine
+from protean.server.outbox_processor import OutboxProcessor
 from protean.server.subscription import BaseSubscription
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
@@ -674,3 +675,160 @@ class TestEventStoreSubscriptionPollResilience:
 
         await sub.poll()
         assert not engine.shutting_down
+
+
+class TestPollLoopDraining:
+    """Draining stops the poll loop from fetching new batches, but a batch
+    already read runs to completion, and the outbox keeps flushing."""
+
+    @pytest.mark.asyncio
+    async def test_draining_stops_after_inflight_batch_completes(self, domain_setup):
+        """A batch already read finishes even when draining flips mid-process,
+        and the loop then stops fetching new batches (no in-flight drop)."""
+        engine = Engine(domain=domain_setup, test_mode=True)
+
+        class DrainingSubscription(BaseSubscription):
+            def __init__(self, engine):
+                super().__init__(engine, messages_per_tick=10, tick_interval=0)
+                self.subscriber_name = "test-draining"
+                self.batches_fetched = 0
+                self.messages_completed = []
+
+            async def get_next_batch_of_messages(self):
+                self.batches_fetched += 1
+                if self.batches_fetched == 1:
+                    return ["msg-1"]
+                return []
+
+            async def process_batch(self, messages):
+                # Simulate POST /drainz landing mid-batch, then finish the
+                # in-flight message. It must not be dropped.
+                self.engine.draining = True
+                self.messages_completed.extend(messages)
+                return len(messages)
+
+        sub = DrainingSubscription(engine)
+        await sub.poll()
+
+        # The in-flight message completed ...
+        assert sub.messages_completed == ["msg-1"]
+        # ... and the loop stopped fetching once draining flipped: exactly the
+        # one batch was fetched, never a second.
+        assert sub.batches_fetched == 1
+
+    @pytest.mark.asyncio
+    async def test_draining_subscription_never_enters_loop(self, domain_setup):
+        """A message subscription (pauses_on_drain default True) does not tick
+        while draining."""
+        engine = Engine(domain=domain_setup, test_mode=True)
+        engine.draining = True
+
+        class NormalSubscription(BaseSubscription):
+            def __init__(self, engine):
+                super().__init__(engine, messages_per_tick=10, tick_interval=0)
+                self.subscriber_name = "test-normal"
+                self.ticks = 0
+
+            async def get_next_batch_of_messages(self):
+                return []
+
+            async def process_batch(self, messages):
+                return 0
+
+            async def tick(self):
+                self.ticks += 1
+
+        sub = NormalSubscription(engine)
+        await sub.poll()
+        assert sub.ticks == 0
+
+    @pytest.mark.asyncio
+    async def test_outbox_keeps_flushing_while_draining(self, domain_setup):
+        """pauses_on_drain=False keeps the loop running while draining; only
+        shutdown (keep_going) stops it. The real outbox opts out this way."""
+        engine = Engine(domain=domain_setup, test_mode=True)
+        engine.draining = True
+
+        class FlushingSubscription(BaseSubscription):
+            pauses_on_drain = False
+
+            def __init__(self, engine):
+                super().__init__(engine, messages_per_tick=10, tick_interval=0)
+                self.subscriber_name = "test-flushing"
+                self.ticks = 0
+
+            async def get_next_batch_of_messages(self):
+                return []
+
+            async def process_batch(self, messages):
+                return 0
+
+            async def tick(self):
+                self.ticks += 1
+                if self.ticks >= 3:
+                    self.keep_going = False
+
+        sub = FlushingSubscription(engine)
+        await sub.poll()
+        # Draining did not stop it: it kept ticking until keep_going was cleared.
+        assert sub.ticks == 3
+
+    def test_real_outbox_opts_out_of_drain_pause(self):
+        """The shipped OutboxProcessor sets pauses_on_drain = False."""
+        assert OutboxProcessor.pauses_on_drain is False
+        assert BaseSubscription.pauses_on_drain is True
+
+    @pytest.mark.asyncio
+    async def test_lanes_mode_skips_backfill_read_once_draining(self, domain_setup):
+        """A drain that lands while the primary read is in flight stops the turn
+        before the backfill read, so no new backfill message is pulled in."""
+        sub = _make_stream_subscription(domain_setup)
+        sub._lanes_enabled = True
+        backfill_reads = 0
+
+        async def empty_primary_then_drain():
+            # Primary is empty, and POST /drainz lands while this read is in
+            # flight. Nothing is in flight, so the turn must stop here.
+            sub.engine.draining = True
+            return []
+
+        async def counting_backfill():
+            nonlocal backfill_reads
+            backfill_reads += 1
+            return []
+
+        sub._read_primary_nonblocking = empty_primary_then_drain
+        sub._read_backfill_blocking = counting_backfill
+
+        await sub.poll()
+
+        assert backfill_reads == 0
+
+    @pytest.mark.asyncio
+    async def test_event_store_skips_recovery_once_draining(self, domain_setup):
+        """A recovery pass dispatches handlers for failed positions, so it is new
+        intake: a drain landing during the tick skips it."""
+        engine = Engine(domain=domain_setup, test_mode=True)
+        sub = EventStoreSubscription(
+            engine=engine,
+            stream_category="user",
+            handler=UserEventHandler,
+            tick_interval=0,
+        )
+        recovery_passes = 0
+
+        async def tick_then_drain():
+            # The normal batch finishes, then POST /drainz lands.
+            engine.draining = True
+
+        async def counting_recovery():
+            nonlocal recovery_passes
+            recovery_passes += 1
+            return 0
+
+        sub.tick = tick_then_drain
+        sub.maybe_run_recovery = counting_recovery
+
+        await sub.poll()
+
+        assert recovery_passes == 0

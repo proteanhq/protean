@@ -108,6 +108,31 @@ class TestAttributeFacts:
         assert len(stock) == 1
         assert stock[0].is_write is True
 
+    def test_a_delete_is_a_write_and_is_told_apart(self, tmp_path):
+        """``del self.status`` is a write (the grammar models it as a store-side
+        ctx), but it unbinds the attribute rather than filling it. ``is_delete``
+        is how a rule that reads a write as "a value was put here" excludes
+        it."""
+        catalog, index = _walked_catalog(
+            _make_pkg(
+                tmp_path,
+                """
+                class Service:
+                    def run(self):
+                        self.status = "x"
+                        del self.marker
+                """,
+            )
+        )
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        by_name = {a.name: a for a in facts.attributes}
+
+        assert by_name["marker"].is_write is True
+        assert by_name["marker"].is_delete is True
+        assert by_name["status"].is_write is True
+        assert by_name["status"].is_delete is False
+
     def test_a_subscript_write_reads_the_container(self, tmp_path):
         """The documented ctx limitation: ``self.items[0] = 5`` stores into the
         subscript, so the grammar loads ``self.items`` — it shows as a *read* of
@@ -376,6 +401,29 @@ class TestConstructionFacts:
         assert construction.fqn == f"{BEHAVIOR_MODULE}.Order"
         assert construction.dynamic_kwargs is True
         assert construction.field_names == ()
+
+    def test_a_template_construction_names_a_positional_argument(self, order_catalog):
+        """``Order(data, status=...)`` passes a template mapping positionally. A
+        container merges that mapping's keys in as fields, and they are not
+        visible here, so ``positional_template`` marks the keyword names as an
+        incomplete field set."""
+        facts = order_catalog.element_facts(behavior.OrderRepository)["seed_template"]
+
+        assert len(facts.constructions) == 1
+        construction = facts.constructions[0]
+
+        assert construction.positional_template is True
+        assert construction.dynamic_kwargs is False
+        assert construction.field_names == ("status",)
+
+    def test_a_keyword_only_construction_names_no_positional_template(
+        self, order_catalog
+    ):
+        """The other side of that flag: ``Order(order_id=..., status=...)`` passes
+        no positional argument, so its keyword names are the whole field set."""
+        facts = order_catalog.element_facts(behavior.OrderRepository)["seed"]
+
+        assert facts.constructions[0].positional_template is False
 
     def test_a_nested_construction_is_recorded(self, order_catalog):
         """``self.raise_(OrderShipped(...))`` records the inner ``OrderShipped``
