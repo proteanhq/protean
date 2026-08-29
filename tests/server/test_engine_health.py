@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import logging
+import os
 import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -113,6 +115,32 @@ class TestCheckReadiness:
             result = await _readiness(engine)
             assert result["status"] == "unavailable"
             assert result["checks"]["shutting_down"] is True
+
+    @pytest.mark.no_test_domain
+    async def test_readiness_unavailable_when_draining(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            engine.draining = True
+            result = await _readiness(engine)
+            assert result["status"] == "unavailable"
+            assert result["checks"]["draining"] is True
+            # Distinct from the shutting_down payload: a draining pod is
+            # finishing in-flight work, not tearing down.
+            assert "shutting_down" not in result["checks"]
+
+    @pytest.mark.no_test_domain
+    async def test_readiness_ready_when_not_draining(self):
+        """Negative: with no drain triggered, readiness reports ready."""
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            assert engine.draining is False
+            result = await _readiness(engine)
+            assert result["status"] == "ok"
+            assert result["checks"]["draining"] is False
 
     @pytest.mark.no_test_domain
     async def test_readiness_reports_all_components(self):
@@ -319,6 +347,101 @@ class TestHealthServerIntegration:
             _fetch_health(loop, port, method="POST", path="/healthz")
         )
         assert "405" in status
+
+    def test_drainz_flips_draining_and_returns_200(self, health_server):
+        """POST /drainz flips engine.draining to True and answers 200."""
+        engine, _, loop, port = health_server
+        assert engine.draining is False
+        status, body = _parse_http(
+            _fetch_health(loop, port, method="POST", path="/drainz")
+        )
+        assert "200 OK" in status
+        assert body["status"] == "draining"
+        assert engine.draining is True
+
+    def test_drainz_reports_the_pid_it_drained(self, health_server):
+        """The response names the process that drained.
+
+        The flag lives on this process's Engine, so a POST drains one worker.
+        Under --workers N the caller has to hit every worker's port, and the pid
+        is how it tells them apart.
+        """
+        _, _, loop, port = health_server
+        _, body = _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+        assert body["pid"] == os.getpid()
+
+    def test_drainz_logs_the_drain_request(self, health_server, caplog):
+        """The drain is announced on the operational log with the pid.
+
+        A drain takes a worker out of service, so the record is the audit trail
+        for who went quiet and when.
+        """
+        _, _, loop, port = health_server
+        with caplog.at_level(logging.INFO, logger="protean.server.health"):
+            _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+
+        records = [r for r in caplog.records if r.message == "engine.drain_requested"]
+        assert len(records) == 1
+        assert records[0].pid == os.getpid()
+
+    def test_non_draining_request_logs_nothing(self, health_server, caplog):
+        """Negative: a request that does not drain emits no drain record."""
+        engine, _, loop, port = health_server
+        with caplog.at_level(logging.INFO, logger="protean.server.health"):
+            _parse_http(_fetch_health(loop, port, path="/readyz"))
+            _parse_http(_fetch_health(loop, port, method="POST", path="/readyz"))
+            _parse_http(_fetch_health(loop, port, method="GET", path="/drainz"))
+
+        assert engine.draining is False
+        assert not [r for r in caplog.records if r.message == "engine.drain_requested"]
+
+    def test_readyz_503_when_draining(self, health_server):
+        """After /drainz, readiness reports not-ready with a draining marker."""
+        _, _, loop, port = health_server
+        _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+        status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
+        assert "503 Service Unavailable" in status
+        assert body["status"] == "unavailable"
+        assert body["checks"]["draining"] is True
+        # Distinct from the shutting_down payload.
+        assert "shutting_down" not in body["checks"]
+
+    def test_healthz_200_while_draining(self, health_server):
+        """Liveness stays green while draining: healthy, just not taking work."""
+        engine, _, loop, port = health_server
+        _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+        # Prove the engine is actually draining before asserting liveness stays
+        # green: otherwise a 405 no-op on /drainz would make this pass vacuously.
+        assert engine.draining is True
+        status, body = _parse_http(_fetch_health(loop, port, path="/healthz"))
+        assert "200 OK" in status
+        assert body["status"] == "ok"
+
+    def test_livez_200_while_draining(self, health_server):
+        engine, _, loop, port = health_server
+        _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+        assert engine.draining is True
+        status, body = _parse_http(_fetch_health(loop, port, path="/livez"))
+        assert "200 OK" in status
+        assert body["status"] == "ok"
+
+    def test_get_drainz_returns_404(self, health_server):
+        """Only POST /drainz drains; a GET to it is an unknown path (404)."""
+        engine, _, loop, port = health_server
+        status, _ = _parse_http(_fetch_health(loop, port, method="GET", path="/drainz"))
+        # GET is not POST-and-/drainz, so it misses the drain branch and the
+        # non-GET 405 branch, landing on the unknown-path 404. Draining unchanged.
+        assert "404" in status
+        assert engine.draining is False
+
+    def test_post_readyz_still_405(self, health_server):
+        """A non-/drainz POST still returns 405, not a drain."""
+        engine, _, loop, port = health_server
+        status, _ = _parse_http(
+            _fetch_health(loop, port, method="POST", path="/readyz")
+        )
+        assert "405" in status
+        assert engine.draining is False
 
     def test_empty_request_handled_gracefully(self, health_server):
         """Connection that sends no data is handled without error."""

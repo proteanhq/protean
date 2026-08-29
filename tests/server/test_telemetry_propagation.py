@@ -128,6 +128,7 @@ class _FakeEngine:
         self.loop = None
         self.emitter = Mock()
         self.shutting_down = False
+        self.draining = False
 
 
 # ---------------------------------------------------------------------------

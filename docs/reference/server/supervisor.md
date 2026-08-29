@@ -120,6 +120,11 @@ available). When a signal is received:
 
 Sending a second signal while shutdown is already in progress is ignored.
 
+`SIGTERM` to the Supervisor is the only way to quiesce every worker at once.
+`POST /drainz` drains the single worker whose health server answered it, since
+workers share no IPC. See
+[`/drainz` drains one worker](hardening.md#drainz-drains-one-worker).
+
 ## Monitoring Workers
 
 The Supervisor continuously monitors worker processes:

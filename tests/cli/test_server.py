@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
+from protean.server.supervisor import _worker_entry
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
@@ -459,3 +460,42 @@ class TestServerCommand:
             # so the user sees the real ModuleNotFoundError.
             assert "watchfiles" not in result.output
             assert isinstance(result.exception, ModuleNotFoundError)
+
+    def test_single_worker_reads_drain_timeout_from_config(self):
+        """The single-worker `protean server` path constructs an Engine that
+        picks up server.drain_timeout from the domain's domain.toml."""
+        change_working_directory_to("test_drain")
+
+        captured = {}
+
+        def fake_run(self):
+            captured["drain_timeout"] = self.drain_timeout
+
+        with patch.object(Engine, "run", fake_run):
+            args = ["server", "--domain", "drain_domain.py"]
+            result = runner.invoke(app, args)
+
+        assert result.exit_code == 0
+        assert captured["drain_timeout"] == 3.0
+
+    def test_worker_entry_reads_drain_timeout_from_config(self):
+        """The multi-worker worker entry constructs an Engine that reads the
+        same domain.toml key, so the drain window flows to every worker."""
+        change_working_directory_to("test_drain")
+
+        captured = {}
+
+        def fake_run(self):
+            captured["drain_timeout"] = self.drain_timeout
+
+        with patch.object(Engine, "run", fake_run):
+            with pytest.raises(SystemExit) as exc_info:
+                _worker_entry(
+                    "drain_domain.py",
+                    test_mode=True,
+                    debug=False,
+                    worker_id=0,
+                )
+
+        assert exc_info.value.code == 0
+        assert captured["drain_timeout"] == 3.0
