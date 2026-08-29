@@ -1,7 +1,7 @@
 """Tests for the canonical golden-path domain in ``examples/reference_app``.
 
 The module lives outside the package tree (under ``examples/``), so it is
-loaded by file path with ``spec_from_file_location`` — the same pattern
+loaded by file path with ``spec_from_file_location``, the same pattern
 ``tests/test_tutorial.py`` uses for the hyphenated ``getting-started`` path.
 
 Each test builds its own domain, so the class carries
@@ -78,7 +78,7 @@ class TestReferenceAppQuickstart:
             )
 
         out = capsys.readouterr().out
-        assert "Event handled: post published — Hello, Protean!" in out
+        assert "Event handled: post published (Hello, Protean!)" in out
 
     def test_projection_query_returns_the_published_post(self, blog):
         """The projector fills the feed with exactly the one published post."""

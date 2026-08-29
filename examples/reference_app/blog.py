@@ -59,7 +59,7 @@ class PostCommandHandler:
 class PostEventHandler:
     @handle(PostPublished)
     def announce(self, event: PostPublished):
-        print(f"Event handled: post published — {event.title}")
+        print(f"Event handled: post published ({event.title})")
 
 
 @domain.projection
