@@ -1851,6 +1851,7 @@ class IRBuilder:
         self._diagnose_published_no_external_broker(ir)
         self._diagnose_aggregate_without_command_handler(ir)
         self._diagnose_projection_without_projector(ir)
+        self._diagnose_unsourced_projection_field(ir)
         self._diagnose_upcaster_gap(ir)
         self._diagnose_cross_aggregate_reference(ir)
         self._diagnose_es_aggregate_no_events(ir)
@@ -2474,6 +2475,191 @@ class IRBuilder:
                         element=proj["fqn"],
                         message=f"Projection `{proj['name']}` has no projector "
                         f"to populate it",
+                    )
+                )
+
+    def _diagnose_unsourced_projection_field(self, ir: dict[str, Any]) -> None:
+        """UNSOURCED_PROJECTION_FIELD (info): a projection field no observed
+        projector write fills, so it renders as a dead column.
+
+        Where :meth:`_diagnose_projection_without_projector` catches a projection
+        with *no* projector, this catches a projector that fills some of a
+        projection's fields but not all. Origin evidence is what the projector
+        writes, read from the same behavioral view the producer rules use: a
+        field counts as sourced when some projector method either constructs the
+        projection with that field as a keyword (``ConstructionFact.field_names``)
+        or writes it as an attribute named after one of the projection's fields.
+        Coverage is the union across every projector of the projection.
+
+        Every method of the projector is read, not only its ``@on`` handlers. A
+        projector that delegates its writes to a helper method is common, and the
+        helper's writes are the same evidence the handler's would be; scoping to
+        handler names would report the fields that helper fills. An unused method
+        can contribute evidence that way, which costs a finding rather than
+        inventing one, and that is the direction this rule errs in throughout.
+
+        The rule is deliberately conservative, so its verdict is reproducible:
+
+        - ``externally_populated`` projections opt out (filled by a subscriber),
+          the same guard the sibling rule uses.
+        - A construction of the projection whose field set is unknowable
+          disables the projection: nothing is emitted for it. Two shapes make it
+          unknowable, a ``**kwargs`` splat (``dynamic_kwargs``) and a positional
+          template (``positional_template``), which a container reads as a
+          mapping whose keys fill fields (``Projection(data, key=...)``) but
+          whose keys the fact cannot see. Construction is the only disabler,
+          because it is the only dynamic write the rule can tie to *this*
+          projection: a
+          ``QuerySet`` ``update(**data)`` fills fields from a mapping the same
+          way, but ``CallFact`` carries only the callee name, so an
+          ``update(...)`` on a query surface is indistinguishable from one on a
+          plain dict. Treating either as a write to the projection would let any
+          ``mapping.update(**changes)`` in any projector method blind the rule,
+          so ``update`` is read as neither evidence nor a disabler.
+        - If the projectors yielded no observable field write at all (indirect
+          assignment through a helper, a dict splat, unreadable source), the
+          projection is skipped entirely rather than reported field-by-field: the
+          rule reports a field missing from a set it could see, never a field
+          missing from a set it failed to build.
+        - The ``identity_field`` is exempt: the framework fills it on write, not
+          necessarily by a named field assignment.
+
+        Attribute evidence is filtered by what the write can be attributed to:
+
+        - A write whose attribute name is not a field of this projection is not
+          evidence for it, and does not count towards the evidence guard either.
+          Without that, a projector that only wrote some unrelated object
+          (``audit.trail = ...``) would clear the guard and have every field of
+          the projection reported.
+        - A ``del record.city`` is an ``AttributeFact`` write (``is_write``
+          covers stores and deletes), but it unbinds the attribute rather than
+          filling it, so a delete is not evidence.
+        - In an ``@on`` handler, a write whose receiver is one of the method's
+          parameters (``self.city = ...``, ``event.city = ...``) is provably not
+          a write to the record, so it is not evidence either: a handler's
+          parameters are the projector and the message, never the record.
+          Dropping it matters beyond the one field: a projector whose only
+          "write" was on ``self`` would otherwise clear the evidence guard and
+          have every real field reported.
+        - In any other method, only the receiver is dropped: the first parameter
+          of a non-static method is the projector, so ``self.city = ...`` in a
+          helper is no more a record write than it is in a handler. The rest of
+          a helper's parameters are kept, because one of them often *is* the
+          record (``_apply(self, record, event)``) and dropping its writes would
+          report the fields that helper fills. A ``@staticmethod`` has no
+          receiver, so nothing is dropped there.
+        - A write whose receiver cannot be pinned (a nested attribute, a call
+          result) is *kept* as evidence. The rule cannot tell whether it lands on
+          the record, and counting it keeps the rule quiet, which is the
+          direction it errs in everywhere else. The same applies to a write on a
+          local that holds some other record, when the attribute name matches a
+          field of this projection: it is counted.
+
+        The evidence guard is scoped to the whole projection, so the rule is
+        advisory: once any projector write is observed, a sibling field filled
+        only through an unfollowable path (a helper, ``setattr``, a dict splat,
+        a bulk ``update``) is still flagged. The ``info`` level reflects that.
+
+        Projections are walked in ``ir["projections"]`` key order, projectors in
+        entry order, and unsourced fields are emitted in sorted field-name order
+        (``fields`` is already sorted by :meth:`_extract_fields`), so the output
+        is stable.
+        """
+        registry = self._domain._domain_registry
+        projector_cls_by_fqn = {
+            fqn(record.cls): record.cls
+            for record in registry._elements.get("PROJECTOR", {}).values()
+        }
+
+        for proj_entry in ir["projections"].values():
+            proj = proj_entry["projection"]
+            if proj.get("options", {}).get("externally_populated"):
+                continue
+
+            proj_fqn = proj["fqn"]
+            proj_fields = proj.get("fields", {})
+            written: set[str] = set()
+            dynamic = False
+            for projector_fqn, projector_entry in proj_entry["projectors"].items():
+                cls = projector_cls_by_fqn.get(projector_fqn)
+                entry = self.view.element_class_entry(cls) if cls is not None else None
+                if entry is None:
+                    continue
+                handler_names = {
+                    name
+                    for names in projector_entry.get("handlers", {}).values()
+                    for name in names
+                }
+                for method in entry.methods:
+                    facts = self.view.method_facts(entry.module, method.node)
+                    for construction in facts.constructions:
+                        if construction.fqn != proj_fqn:
+                            continue
+                        if construction.dynamic_kwargs or (
+                            construction.positional_template
+                        ):
+                            dynamic = True
+                        written.update(construction.field_names)
+                    writes = [
+                        attribute
+                        for attribute in facts.attributes
+                        if attribute.is_write
+                        and not attribute.is_delete
+                        and attribute.name in proj_fields
+                    ]
+                    if writes:
+                        if method.name in handler_names:
+                            # A handler's parameters are the projector and the
+                            # message, never the record, so a write on one is
+                            # provably not a record write. Asking for the flow
+                            # costs a walk, so ask only when there is a write to
+                            # judge.
+                            excluded = {
+                                definition.name
+                                for definition in self.view.method_flow(
+                                    entry.module, method.node
+                                ).parameters
+                            }
+                        else:
+                            # A helper's parameter often *is* the record
+                            # (``_apply(self, record, event)``), so only its
+                            # receiver is dropped: the first parameter of a
+                            # non-static method is the projector, never a
+                            # record.
+                            positional = (
+                                method.node.args.posonlyargs or method.node.args.args
+                            )
+                            excluded = (
+                                {positional[0].arg}
+                                if positional
+                                and "staticmethod" not in method.decorators
+                                else set()
+                            )
+                        writes = [
+                            attribute
+                            for attribute in writes
+                            if attribute.receiver not in excluded
+                        ]
+                    written.update(attribute.name for attribute in writes)
+
+            # A dynamic construction anywhere in the union makes the field set
+            # unknowable; the evidence guard trips only when the union is empty.
+            if dynamic or not written:
+                continue
+
+            identity_field = proj.get("identity_field")
+            exempt = {identity_field} if identity_field is not None else set()
+            for field_name in proj.get("fields", {}):
+                if field_name in written or field_name in exempt:
+                    continue
+                self._diagnostics.append(
+                    build_diagnostic(
+                        DiagnosticCode.UNSOURCED_PROJECTION_FIELD,
+                        element=proj_fqn,
+                        message=f"Field `{field_name}` on projection "
+                        f"`{proj['name']}` is filled by no projector write, so "
+                        f"it renders as a dead column.",
+                        field=field_name,
                     )
                 )
 
