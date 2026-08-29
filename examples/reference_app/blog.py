@@ -5,8 +5,8 @@ domain a reader can hold in their head: a command creates and publishes a
 post, an event handler reacts to the publish, and a projector maintains a
 read-optimized feed of published posts.
 
-Every other piece of the reference application (the FastAPI app, the docs
-quickstart, the README guard) builds on this exact domain. Importing the
+Later pieces of the reference application (the FastAPI app, the docs
+quickstart, the README guard) will build on this exact domain. Importing the
 module only defines the domain; it does not call ``domain.init()`` or run
 the demo. The in-memory demo lives behind the ``if __name__ == "__main__"``
 guard so a reader can run it with ``pip install protean`` and nothing else:
@@ -85,7 +85,6 @@ if __name__ == "__main__":
     domain.config["event_processing"] = "sync"
 
     domain.init()
-    domain.providers["default"]._create_database_artifacts()
 
     with domain.domain_context():
         # Write: publish a post through the command.
