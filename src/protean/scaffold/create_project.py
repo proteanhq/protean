@@ -124,11 +124,11 @@ def create_project(
         dry_run: When true, touch nothing at the target. The project is rendered
             into a temp directory only to enumerate the files apply would create,
             and the returned list is the same set apply produces.
-        force: When the target directory already exists and is not empty, clear
-            its contents first. Without this a non-empty target raises
-            :exc:`FileExistsError`. A target that resolves outside
-            *output_folder* is refused either way, so the clear never reaches
-            outside the output folder.
+        force: When something already sits at the target path (a non-empty
+            directory, or a non-directory such as a file or symlink), clear it
+            first. Without this such a target raises :exc:`FileExistsError`. A
+            target that resolves outside *output_folder* is refused either way,
+            so the clear never reaches outside the output folder.
         defaults: Pass copier's ``defaults`` through, so unanswered questions take
             their template default instead of prompting.
 
@@ -144,7 +144,9 @@ def create_project(
             resolves outside *output_folder*, which is what a symlink left at
             the target does.
         FileNotFoundError: *output_folder* does not exist.
-        FileExistsError: The target directory is not empty and *force* is false.
+        FileExistsError: Something already sits at the target path (a non-empty
+            directory, or a non-directory such as a file or symlink) and *force*
+            is false.
     """
     # ``copier`` is the optional ``[scaffold]`` extra. Import it first, before
     # any validation or clearing, so a lean install fails with the ImportError
@@ -213,13 +215,35 @@ def create_project(
         with tempfile.TemporaryDirectory() as temp_dir:
             return render_into(temp_dir, quiet=True)
 
-    # Apply only: a non-empty target is cleared with force, or refused without
-    # it. This runs after the dry_run branch so a preview touches nothing.
-    if os.path.isdir(project_directory) and os.listdir(project_directory):
+    # Apply only. Something already at the target that copier cannot render
+    # into is cleared with force, or refused without it. Two shapes count: a
+    # non-empty directory, and a non-directory left at the path (a file, a
+    # symlink to a file, or a broken symlink). copier renders into a directory,
+    # so a non-directory target would otherwise fail deep inside copier with a
+    # confusing NotADirectoryError instead of the documented FileExistsError,
+    # and force would crash instead of making room. os.path.lexists catches the
+    # broken symlink that os.path.exists misses. This runs after the dry_run
+    # branch so a preview touches nothing.
+    target_is_nonempty_dir = os.path.isdir(project_directory) and os.listdir(
+        project_directory
+    )
+    target_is_non_directory = os.path.lexists(project_directory) and not os.path.isdir(
+        project_directory
+    )
+    if target_is_nonempty_dir:
         if not force:
             raise FileExistsError(
                 f'Folder "{project_name}" is not empty. Use --force to overwrite.'
             )
         _clear_directory_contents(project_directory)
+    elif target_is_non_directory:
+        if not force:
+            raise FileExistsError(
+                f'Target "{project_name}" already exists and is not a directory. '
+                "Use --force to overwrite."
+            )
+        # Unlink the file or symlink itself. For a symlink this removes the
+        # link, never the file it points at.
+        os.unlink(project_directory)
 
     return render_into(project_directory)

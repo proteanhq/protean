@@ -157,6 +157,42 @@ def test_nonempty_target_needs_force():
         assert os.path.isfile(os.path.join(project_dir, "README.md"))
 
 
+def test_non_directory_target_needs_force():
+    """A file or broken symlink at the target raises without force; force clears it.
+
+    copier renders into a directory, so a non-directory at the target path used
+    to fail deep inside copier with a NotADirectoryError, and force crashed
+    instead of making room. The core now raises the documented FileExistsError
+    without force, and with force removes the file or link and renders cleanly.
+    """
+    # A plain file sitting exactly at the target path.
+    with isolated_filesystem() as output_folder:
+        target = os.path.join(output_folder, PROJECT_NAME)
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write("i am a file")
+
+        with pytest.raises(FileExistsError, match="not a directory"):
+            create_project(PROJECT_NAME, output_folder, ANSWERS, defaults=True)
+        assert os.path.isfile(target), "the file must be untouched without force"
+
+        create_project(PROJECT_NAME, output_folder, ANSWERS, force=True, defaults=True)
+        assert os.path.isfile(os.path.join(target, "README.md"))
+
+    # A broken symlink at the target path: os.path.exists is False, but it is
+    # still in copier's way. It points inside the output folder so the
+    # resolves-outside guard does not fire first.
+    with isolated_filesystem() as output_folder:
+        target = os.path.join(output_folder, PROJECT_NAME)
+        os.symlink(os.path.join(output_folder, "nowhere"), target)
+
+        with pytest.raises(FileExistsError, match="not a directory"):
+            create_project(PROJECT_NAME, output_folder, ANSWERS, defaults=True)
+        assert os.path.islink(target), "the dangling link must survive without force"
+
+        create_project(PROJECT_NAME, output_folder, ANSWERS, force=True, defaults=True)
+        assert os.path.isfile(os.path.join(target, "README.md"))
+
+
 def test_symlinked_target_outside_the_output_folder_is_refused():
     """A target symlinked out of the output folder is refused before any clear.
 
