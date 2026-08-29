@@ -108,3 +108,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0034](0034-project-manifest.md) | Derived Project Manifest |
 | [0035](0035-generation-gap-seam.md) | Generation-Gap Seam Between Generated Wiring and Hand-Owned Logic |
 | [0036](0036-configurable-graceful-drain-window.md) | Configurable Graceful Drain Window |
+| [0037](0037-idempotent-file-projection.md) | Idempotent File Projection and the `dx` Lockfile |

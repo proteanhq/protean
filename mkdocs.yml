@@ -438,6 +438,7 @@ nav:
       - adr/0034-project-manifest.md
       - adr/0035-generation-gap-seam.md
       - adr/0036-configurable-graceful-drain-window.md
+      - adr/0037-idempotent-file-projection.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
