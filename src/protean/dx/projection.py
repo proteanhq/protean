@@ -53,9 +53,11 @@ See ADR-0037 for the decision record behind the lockfile and the two merge modes
 
 Design decisions for v1:
 
-- **One named region per file.** A managed-region target carries exactly one
-  ``PROTEAN:BEGIN/END`` pair. A missing, duplicated, or reversed marker raises
-  rather than silently overwriting the whole file.
+- **One pair per region id.** A managed-region target carries exactly one
+  ``PROTEAN:BEGIN/END`` pair for the requested region id; other tools' regions,
+  with different ids, may sit in the same file and are left untouched. A missing,
+  duplicated, or reversed marker for the requested id raises rather than silently
+  overwriting the whole file.
 - **Shallow JSON merge.** The managed top-level keys are replaced whole; every
   other key, nested structure included, is preserved. ``.mcp.json`` names its
   servers at the top level, so a shallow merge is enough.
@@ -481,7 +483,8 @@ def _find_unique_marker(text: str, marker: str, target: str) -> int:
     once, so a malformed managed-region target is refused rather than silently
     overwritten. Matching is line-anchored (see :func:`_marker_line_positions`),
     so a shorter region id that is a prefix of a longer one does not mismatch.
-    v1 supports exactly one region per file.
+    The marker carries the requested region id, so another tool's region with a
+    different id in the same file does not count as a second occurrence.
     """
     positions = _marker_line_positions(text, marker)
     if len(positions) == 0:

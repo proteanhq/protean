@@ -85,9 +85,12 @@ writes through `os.replace`, which would swap the link for a regular file and le
 the link's target holding the old content. `apply_plan` already refuses to create
 over a symlink, dangling ones included, so both paths say the same thing.
 
-**One named region per file, in v1.** A missing, duplicated, or reversed marker
-raises instead of falling back to overwriting the file. Marker matching is
-line-anchored, so a region id that is a prefix of another id does not false-match.
+**One pair per region id, in v1.** A file carries exactly one
+`PROTEAN:BEGIN/END` pair for the requested region id; other tools' regions, with
+different ids, may coexist in the same file and are left untouched. A missing,
+duplicated, or reversed marker for the requested id raises instead of falling
+back to overwriting the file. Marker matching is line-anchored, so a region id
+that is a prefix of another id does not false-match.
 A projection whose body contains a line identical to a marker is rejected at
 construction, because writing it would frame a phantom region and poison every later
 re-projection.
