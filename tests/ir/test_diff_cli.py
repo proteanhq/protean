@@ -2713,6 +2713,111 @@ class TestDiffEventModelConsumerTopology:
         assert not any("Proj1" in ln for ln in _added_lines(result.output))
         assert not any("Proj1" in ln for ln in _removed_lines(result.output))
 
+    def _two_event_order_ir(self, order_events):
+        """An Order cluster with a handler and a projector wired to both events.
+
+        Both consumers key on OrderPlaced and OrderShipped, so each is one node
+        drawn from two edges. Varying *order_events* moves one edge without
+        touching either consumer's own handler map.
+        """
+        handlers = {
+            _em_type("OrderPlaced"): ["on_placed"],
+            _em_type("OrderShipped"): ["on_shipped"],
+        }
+        return _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
+                    events=order_events,
+                    event_handlers={
+                        "app.Notifier": _em_event_handler("Notifier", handlers)
+                    },
+                )
+            },
+            projections={
+                "app.OrderSummary": _em_projection_group(
+                    "OrderSummary",
+                    projectors={
+                        "app.Proj1": _em_projector(
+                            "Proj1", "OrderSummary", handlers=handlers
+                        )
+                    },
+                )
+            },
+        )
+
+    def test_losing_one_of_two_same_cluster_edges_is_reported_as_the_event(
+        self, tmp_path
+    ):
+        # Both consumers keep their edge from OrderPlaced, so their nodes, their
+        # labels and the one slice they are drawn in are identical on both
+        # sides. Only OrderShipped is gone. The lost OrderShipped edge surfaces
+        # as the removed event, not as a consumer change: neither consumer
+        # actually changed, the event it also reacted to did.
+        left_ir = self._two_event_order_ir(
+            {
+                "app.OrderPlaced": _em_event("OrderPlaced"),
+                "app.OrderShipped": _em_event("OrderShipped"),
+            }
+        )
+        right_ir = self._two_event_order_ir(
+            {"app.OrderPlaced": _em_event("OrderPlaced")}
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        changed = _changed_lines(result.output)
+        assert "  ~ slice Order: event OrderShipped removed" in changed
+        assert not any("Notifier" in ln for ln in changed)
+        assert not any("Proj1" in ln for ln in changed)
+
+    def test_a_second_same_cluster_event_turning_into_a_fact_event_is_reported(
+        self, tmp_path
+    ):
+        # The mirror by cause: OrderShipped stays in the cluster but becomes a
+        # fact event, which the diagram stops drawing. The consumers keep their
+        # OrderPlaced edge, so again the change reads on the event line, not on
+        # the consumers.
+        left_ir = self._two_event_order_ir(
+            {
+                "app.OrderPlaced": _em_event("OrderPlaced"),
+                "app.OrderShipped": _em_event("OrderShipped"),
+            }
+        )
+        right_ir = self._two_event_order_ir(
+            {
+                "app.OrderPlaced": _em_event("OrderPlaced"),
+                "app.OrderShipped": _em_event("OrderShipped", is_fact_event=True),
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        changed = _changed_lines(result.output)
+        assert (
+            "  ~ slice Order: event OrderShipped removed (now a fact event)" in changed
+        )
+        assert not any("Notifier" in ln for ln in changed)
+        assert not any("Proj1" in ln for ln in changed)
+
+    def test_gaining_a_second_same_cluster_edge_is_reported_as_the_event(
+        self, tmp_path
+    ):
+        # The mirror by direction: OrderShipped is added and both consumers
+        # already route to it, so each gains an edge without moving its node.
+        # The gained edge reads as the added event.
+        left_ir = self._two_event_order_ir(
+            {"app.OrderPlaced": _em_event("OrderPlaced")}
+        )
+        right_ir = self._two_event_order_ir(
+            {
+                "app.OrderPlaced": _em_event("OrderPlaced"),
+                "app.OrderShipped": _em_event("OrderShipped"),
+            }
+        )
+        result = self._run(tmp_path, left_ir, right_ir)
+        changed = _changed_lines(result.output)
+        assert "  ~ slice Order: event OrderShipped added" in changed
+        assert not any("Notifier" in ln for ln in changed)
+        assert not any("Proj1" in ln for ln in changed)
+
 
 @pytest.mark.no_test_domain
 class TestDiffFormatValidation:
