@@ -574,14 +574,28 @@ def _parse_json_object(text: str, target: str) -> dict[str, Any]:
     return data
 
 
+def _json_slice_input(source: Mapping[str, Any], keys: tuple[str, ...]) -> str:
+    """Canonical hash-input for the managed *keys* of *source*, presence included.
+
+    Each key contributes ``[key, present, value]``. Carrying ``present`` keeps a
+    key that is absent distinct from one set to ``null``: ``dict.get`` answers
+    ``None`` for both, so hashing the values alone would read "add a key whose
+    value is ``null``" as a no-op and miss a user deleting a managed key. Keys are
+    sorted so the disk and new slices compare regardless of their order.
+    """
+    return _canonical_json(
+        [[key, key in source, source.get(key)] for key in sorted(keys)]
+    )
+
+
 def _json_disk_slice(disk: dict[str, Any], keys: tuple[str, ...]) -> str:
     """Canonical hash-input for the managed keys' current on-disk values."""
-    return _canonical_json({key: disk.get(key) for key in keys})
+    return _json_slice_input(disk, keys)
 
 
 def _json_new_slice(projection: StructuredJsonProjection) -> str:
     """Canonical hash-input for the newly rendered managed values."""
-    return _canonical_json(dict(projection.data))
+    return _json_slice_input(projection.data, projection.managed_keys)
 
 
 def _merge_json(disk: dict[str, Any], projection: StructuredJsonProjection) -> str:

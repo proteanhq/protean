@@ -511,6 +511,23 @@ def test_json_conflict_on_hand_edited_managed_key(tmp_path: Path) -> None:
     assert lock_path(tmp_path).read_text(encoding="utf-8") == lock_before
 
 
+def test_json_missing_key_is_distinct_from_a_null_key(tmp_path: Path) -> None:
+    """A managed key set to null and then deleted on disk is drift, not a no-op.
+
+    ``disk.get(key)`` answers ``None`` for both a missing key and a null one, so
+    hashing the values alone would read the deletion as NO_CHANGE and never notice
+    the managed key vanished. The slice carries key presence, so the two differ.
+    """
+    proj = structured(".mcp.json", "1", {"x": None})
+    apply_projection(tmp_path, proj)  # writes {"x": null}, records the lock
+    target = tmp_path / ".mcp.json"
+    target.write_text("{}\n", encoding="utf-8")  # user deletes the managed key
+
+    # Same version: with the values-only slice this read as NO_CHANGE and the
+    # deletion was silently accepted. Preserving presence makes it a real change.
+    assert diff_projection(tmp_path, proj).status is ProjectionStatus.CONFLICT
+
+
 def test_json_non_object_target_raises(tmp_path: Path) -> None:
     target = tmp_path / ".mcp.json"
     target.write_text("[1, 2, 3]\n", encoding="utf-8")
