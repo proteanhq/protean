@@ -200,12 +200,11 @@ class TestReloaderTerminationBudget:
     """
 
     def _reloader_with_window(self, window):
-        """A Reloader whose domain reports *window* as its drain_timeout."""
+        """A Reloader whose on-disk config reports *window* as drain_timeout."""
         reloader = Reloader(domain_path="my.domain")
-        domain = MagicMock()
-        domain.config = {"server": {"drain_timeout": window}}
+        config = {"server": {"drain_timeout": window}}
         return reloader, patch(
-            "protean.utils.domain_discovery.derive_domain", return_value=domain
+            "protean.domain.config.Config2.load_from_path", return_value=config
         )
 
     def test_budget_covers_a_longer_drain_window(self):
@@ -228,28 +227,31 @@ class TestReloaderTerminationBudget:
         with patched:
             assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
 
-    def test_unreadable_domain_falls_back_to_the_default(self):
-        """The domain may not import here; the worker surfaces the real error."""
+    def test_unreadable_config_falls_back_to_the_default(self):
+        """The config may not read here; the worker surfaces the real error."""
         reloader = Reloader(domain_path="my.domain")
         with patch(
-            "protean.utils.domain_discovery.derive_domain",
-            side_effect=ImportError("no such module"),
+            "protean.domain.config.Config2.load_from_path",
+            side_effect=ValueError("bad TOML"),
         ):
             assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
 
-    def test_missing_domain_falls_back_to_the_default(self):
+    def test_missing_drain_timeout_falls_back_to_the_default(self):
+        """A config with no server.drain_timeout uses the default budget."""
         reloader = Reloader(domain_path="my.domain")
-        with patch("protean.utils.domain_discovery.derive_domain", return_value=None):
+        with patch(
+            "protean.domain.config.Config2.load_from_path", return_value={"server": {}}
+        ):
             assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
 
     def test_budget_is_computed_once(self):
-        """The config is read at worker startup and reload watches Python files,
-        so the window is read once, not on every restart."""
+        """domain.toml is not watched, so the window is read once, not on every
+        restart."""
         reloader, patched = self._reloader_with_window(20)
-        with patched as mock_derive:
+        with patched as mock_load:
             reloader._termination_timeout()
             reloader._termination_timeout()
-        assert mock_derive.call_count == 1
+        assert mock_load.call_count == 1
 
     def test_stop_process_joins_for_the_configured_budget(self):
         """The join actually uses the budget, so a 20s drain is not cut at 10."""

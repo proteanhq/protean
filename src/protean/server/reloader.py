@@ -36,6 +36,7 @@ import multiprocessing
 import os
 import signal
 import threading
+import warnings
 from collections.abc import Sequence
 from multiprocessing.process import BaseProcess
 from pathlib import Path
@@ -116,9 +117,8 @@ class Reloader:
         logger.info(startup_msg)
         print(startup_msg)
 
-        # Size the termination budget now, while the source on disk is the code
-        # the run started with. By the first reload it may be mid-edit, and a
-        # half-written module would read as an unimportable domain.
+        # Size the termination budget now, from the config on disk as the run
+        # started. Reading it later risks catching domain.toml mid-edit.
         self._termination_timeout()
 
         self._start_process()
@@ -171,28 +171,34 @@ class Reloader:
     def _configured_drain_window(self) -> float:
         """The worker Engine's ``[server].drain_timeout``, or 0 if unreadable.
 
-        Read here in the parent so the join budget below matches the window the
-        worker will actually wait. Deriving the domain can fail (unimportable
-        path, bad config); the worker surfaces the real error when it re-derives,
-        so fall back to 0 and let the default budget apply. Anything that is not
-        a finite positive number is treated the same way: the Engine rejects
-        those values too and uses its own default.
+        Read from the project config file so the join budget below matches the
+        window the worker will wait, without importing or instantiating the
+        domain here in the parent. Deriving the domain would re-run a
+        factory-style ``domain_path`` (the worker already invokes it in the
+        child), doubling resource initialisation in a process that only watches
+        files; reading the config file has no such side effect.
+
+        The config read can fail (no file, bad TOML); the worker surfaces the
+        real error when it starts, so fall back to 0 and let the default budget
+        apply. Anything that is not a finite positive number is treated the same
+        way: the Engine rejects those values too and uses its own default.
         """
-        from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
+        from protean.domain.config import Config2  # noqa: PLC0415
 
         try:
-            domain = derive_domain(self.domain_path)
-            if domain is None:
-                return 0.0
-            value = domain.config.get("server", {}).get("drain_timeout", 0)
+            with warnings.catch_warnings():
+                # load_from_path warns when no config file is found; the worker
+                # reports that, so keep the parent quiet and use the default.
+                warnings.simplefilter("ignore")
+                config = Config2.load_from_path(os.getcwd())
+            value = config.get("server", {}).get("drain_timeout", 0)
             if isinstance(value, bool):
                 return 0.0
             window = float(value)
         except Exception:
             logger.debug(
-                "Could not read server.drain_timeout from domain '%s'; "
+                "Could not read server.drain_timeout from the project config; "
                 "using the default termination budget",
-                self.domain_path,
                 exc_info=True,
             )
             return 0.0
@@ -206,8 +212,8 @@ class Reloader:
         handlers before force-cancelling them, so a flat 10 seconds here would
         kill a worker mid-drain whenever that window is longer. Take the
         configured window plus a margin, never less than the 10-second default.
-        Computed once: the config is read at worker startup and reload watches
-        Python files, not ``domain.toml``.
+        Computed once: ``domain.toml`` is not among the watched files, so the
+        window cannot change under a running reloader.
         """
         if self._stop_timeout is None:
             self._stop_timeout = max(

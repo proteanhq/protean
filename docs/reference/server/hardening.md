@@ -291,10 +291,13 @@ drains; a `GET` to the path is an unknown path (`404`) and any other non-`GET`
 method still returns `405`.
 
 Draining is a one-way latch. There is no un-drain endpoint: once flipped, the
-message-subscription poll loops exit and the worker takes in no new messages
-(the outbox keeps flushing its committed rows, as above), while `/healthz` and
-`/livez` stay `200` (draining is not a restart signal), so Kubernetes keeps the
-pod but pulls it from rotation. Send `SIGTERM` to finish stopping it. Because
+worker takes in no new messages. Ordinary subscriptions stop pulling and their
+poll loops exit. Partitioned subscriptions stop processing and stop acquiring
+new partitions, but their discovery loop stays alive to renew the leases they
+already hold (as above), so those partitions are not abandoned. The outbox
+keeps flushing its committed rows. `/healthz` and `/livez` stay `200` (draining
+is not a restart signal), so Kubernetes keeps the pod but pulls it from
+rotation. Send `SIGTERM` to finish stopping it. Because
 the trigger is unauthenticated, keep the health server on `127.0.0.1` (the
 default) unless you have a reason to expose it; a stray `POST /drainz` from any
 reachable client takes a worker out of service until it is stopped.
