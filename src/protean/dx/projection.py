@@ -669,8 +669,9 @@ def diff_projection(
     mutate nothing.
 
     Raises :exc:`ProjectionError` when the target escapes the project root, when
-    it is a symlink, when a managed-region target has a malformed marker, when a
-    structured-JSON target is not a JSON object, or when the lockfile is corrupt.
+    it is a symlink, when the lock directory or lockfile is a symlink, when a
+    managed-region target has a malformed marker, when a structured-JSON target
+    is not a JSON object, or when the lockfile is corrupt.
     """
     root = Path(project_root)
     target_path = _resolve_target(root, projection.target)
@@ -874,15 +875,39 @@ def _atomic_write(path: Path, content: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def _resolve_lock_path(project_root: Path) -> Path:
+    """Return the lockfile path, refusing a symlinked lock dir or lockfile.
+
+    A ``.protean`` directory or a ``dx.lock`` file that is a symlink would let a
+    read or write follow the link outside the project tree, the same escape the
+    target path is already guarded against. Refuse it before the path is treated
+    as absent, read, or written.
+    """
+    lock_dir = project_root / _LOCK_DIR
+    if lock_dir.is_symlink():
+        raise ProjectionError(
+            f"Lock directory {lock_dir} is a symlink; refusing to follow it "
+            "outside the project tree."
+        )
+    lock_path = lock_dir / _LOCK_FILENAME
+    if lock_path.is_symlink():
+        raise ProjectionError(
+            f"Lockfile {lock_path} is a symlink; refusing to follow it outside "
+            "the project tree."
+        )
+    return lock_path
+
+
 def load_lock(project_root: Path | str) -> ProjectionLock:
     """Load the lockfile from ``<project_root>/.protean/dx.lock``.
 
     Returns an empty :class:`ProjectionLock` when the file is absent, which is how
     a first projection reads. Raises :exc:`ValueError` when the file exists but
     cannot be read, is not valid JSON, or does not carry the lock shape (an
-    unknown ``lock_version`` included).
+    unknown ``lock_version`` included), and :exc:`ProjectionError` when the lock
+    directory or lockfile is a symlink.
     """
-    lock_path = Path(project_root) / _LOCK_DIR / _LOCK_FILENAME
+    lock_path = _resolve_lock_path(Path(project_root))
     if not lock_path.exists():
         return ProjectionLock()
     try:
@@ -908,9 +933,10 @@ def _record_lock(project_root: Path, target: str, entry: ProjectionEntry) -> Non
     sorted keys and a trailing newline, the same house style as the manifest.
     """
     lock = load_lock(project_root).with_entry(target, entry)
-    protean_dir = project_root / _LOCK_DIR
-    protean_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = protean_dir / _LOCK_FILENAME
+    # Re-check the lock path is not a symlink before creating the dir or writing,
+    # so the write cannot follow a link outside the project tree either.
+    lock_path = _resolve_lock_path(project_root)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     # Write the lock atomically too, so a crash mid-write cannot corrupt it and
     # make every later projection fail to load it.
     _atomic_write(

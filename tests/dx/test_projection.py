@@ -695,7 +695,11 @@ def test_crlf_target_reads_as_no_change(tmp_path: Path) -> None:
     """
     apply_projection(tmp_path, region("AGENTS.md", "1", "line one\nline two"))
     target = tmp_path / "AGENTS.md"
-    target.write_bytes(target.read_bytes().replace(b"\n", b"\r\n"))
+    # Normalize to LF first so the conversion is exact whatever the create path
+    # wrote: an already-CRLF file would otherwise double to "\r\r\n".
+    target.write_bytes(
+        target.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    )
 
     result = diff_projection(tmp_path, region("AGENTS.md", "1", "line one\nline two"))
 
@@ -711,9 +715,10 @@ def test_update_keeps_a_crlf_target_in_crlf(tmp_path: Path) -> None:
     """
     apply_projection(tmp_path, region("AGENTS.md", "1", "v1 body"))
     target = tmp_path / "AGENTS.md"
-    target.write_bytes(
-        target.read_bytes().replace(b"\n", b"\r\n") + b"user tail\r\n",
-    )
+    # Normalize to LF first so an already-CRLF create path does not double to
+    # "\r\r\n" and invalidate the CRLF-preservation check below.
+    crlf = target.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    target.write_bytes(crlf + b"user tail\r\n")
 
     assert apply_projection(tmp_path, region("AGENTS.md", "2", "v2 body")).status is (
         ProjectionStatus.UPDATE
@@ -728,9 +733,13 @@ def test_update_keeps_a_crlf_target_in_crlf(tmp_path: Path) -> None:
 def test_update_keeps_an_lf_target_in_lf(tmp_path: Path) -> None:
     """An LF file stays LF, whatever the platform's own line ending is."""
     apply_projection(tmp_path, region("AGENTS.md", "1", "v1 body"))
+    target = tmp_path / "AGENTS.md"
+    # Force the created file to LF first so the update is what's under test, not
+    # whatever line ending the create path happened to write on this platform.
+    target.write_bytes(target.read_bytes().replace(b"\r\n", b"\n"))
     apply_projection(tmp_path, region("AGENTS.md", "2", "v2 body"))
 
-    assert b"\r" not in (tmp_path / "AGENTS.md").read_bytes()
+    assert b"\r" not in target.read_bytes()
     assert b"\r" not in lock_path(tmp_path).read_bytes()
 
 
@@ -775,6 +784,37 @@ def test_symlink_to_a_real_target_is_refused(tmp_path: Path) -> None:
     assert "symlink" in str(excinfo.value)
     assert link.is_symlink()
     assert real.read_bytes() == original
+
+
+def test_symlinked_lock_directory_is_refused(tmp_path: Path) -> None:
+    """A ``.protean`` symlink would let the lock read/write escape the project root."""
+    outside = tmp_path.parent / "outside_dot_protean"
+    outside.mkdir()
+    (tmp_path / ".protean").symlink_to(outside, target_is_directory=True)
+    proj = region("AGENTS.md", "1", "framework block")
+
+    with pytest.raises(ProjectionError, match="symlink"):
+        load_lock(tmp_path)
+    for call in (diff_projection, apply_projection):
+        with pytest.raises(ProjectionError, match="symlink"):
+            call(tmp_path, proj)
+
+    # Nothing was written through the link.
+    assert not (outside / "dx.lock").exists()
+    assert not (tmp_path / "AGENTS.md").exists()
+
+
+def test_symlinked_lockfile_is_refused(tmp_path: Path) -> None:
+    """A ``dx.lock`` symlink would let a write follow the link outside the tree."""
+    (tmp_path / ".protean").mkdir()
+    outside = tmp_path.parent / "outside.lock"
+    outside.write_text("{}", encoding="utf-8")
+    lock_path(tmp_path).symlink_to(outside)
+
+    with pytest.raises(ProjectionError, match="symlink"):
+        apply_projection(tmp_path, region("AGENTS.md", "1", "framework block"))
+
+    assert outside.read_text(encoding="utf-8") == "{}"
 
 
 # --- targets outside the project root --------------------------------------
