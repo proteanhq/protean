@@ -35,6 +35,9 @@ def _load_module() -> types.ModuleType:
     defines the domain; it does not call ``domain.init()`` or run the demo.
     """
     spec = importlib.util.spec_from_file_location("reference_app_blog", _MODULE_PATH)
+    assert spec is not None and spec.loader is not None, (
+        f"Could not build a loadable module spec from {_MODULE_PATH}"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -52,10 +55,13 @@ class TestReferenceAppQuickstart:
         domain.init()
         domain.setup_database()
 
-        yield mod
-
-        domain.drop_database()
-        domain.close()
+        try:
+            yield mod
+        finally:
+            try:
+                domain.drop_database()
+            finally:
+                domain.close()
 
     def test_command_persists_the_published_aggregate(self, blog):
         """PublishPost through domain.process() persists a PUBLISHED post."""
