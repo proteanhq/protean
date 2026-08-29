@@ -50,11 +50,12 @@ class TestReferenceAppQuickstart:
         domain.config["command_processing"] = "sync"
         domain.config["event_processing"] = "sync"
         domain.init()
-        domain.providers["default"]._create_database_artifacts()
+        domain.setup_database()
 
         yield mod
 
-        domain.providers["default"]._drop_database_artifacts()
+        domain.drop_database()
+        domain.close()
 
     def test_command_persists_the_published_aggregate(self, blog):
         """PublishPost through domain.process() persists a PUBLISHED post."""
