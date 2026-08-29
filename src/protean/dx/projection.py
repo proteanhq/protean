@@ -820,6 +820,19 @@ def _detect_newline(path: Path) -> str:
     return "\n"
 
 
+def _umask_mode(base: int) -> int:
+    """Return *base* masked by the process umask: the mode a normal write would get.
+
+    :func:`tempfile.mkstemp` always creates at 0600, narrower than the rest of the
+    scaffold, which writes through umask-respecting ``write_text``. Reading the
+    umask means setting it and putting it straight back; this runs on the
+    single-threaded CLI scaffold path, so the brief window is safe.
+    """
+    current = os.umask(0)
+    os.umask(current)
+    return base & ~current
+
+
 def _atomic_write(path: Path, content: str) -> None:
     """Write *content* to *path* atomically: a sibling temp file, then a rename.
 
@@ -844,9 +857,10 @@ def _atomic_write(path: Path, content: str) -> None:
         with os.fdopen(handle_fd, "w", encoding="utf-8", newline=newline) as handle:
             handle.write(content)
         # ``mkstemp`` creates at 0600. Carry the target's own permissions over an
-        # update, and use the usual create mode for a new file, so a projection
-        # never silently narrows a file's access.
-        os.chmod(tmp, stat.S_IMODE(mode) if mode is not None else 0o644)
+        # update; for a new file, match a umask-respecting write so a projection
+        # neither silently narrows an existing file nor forces a new lockfile
+        # wider than the user's umask would allow.
+        os.chmod(tmp, stat.S_IMODE(mode) if mode is not None else _umask_mode(0o666))
         os.replace(tmp, path)
     finally:
         # A failed write (or a failed replace) must not leave a stale temp

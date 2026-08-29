@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 
@@ -414,6 +415,20 @@ def test_apply_preserves_the_target_file_mode(tmp_path: Path) -> None:
     apply_projection(tmp_path, region("AGENTS.md", "2", "v2"))
 
     assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+
+def test_create_respects_the_process_umask(tmp_path: Path) -> None:
+    """A new file follows the umask, not a forced 0644 that could widen it."""
+    old = os.umask(0o077)
+    try:
+        apply_projection(tmp_path, region("AGENTS.md", "1", "v1"))
+    finally:
+        os.umask(old)
+
+    # ``mkstemp`` creates at 0600; forcing 0644 would have made the file
+    # world-readable despite the 0077 umask that asked to keep it private.
+    assert stat.S_IMODE((tmp_path / "AGENTS.md").stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / ".protean" / "dx.lock").stat().st_mode) == 0o600
 
 
 # --- structured JSON -------------------------------------------------------
