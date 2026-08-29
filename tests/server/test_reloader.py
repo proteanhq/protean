@@ -244,18 +244,46 @@ class TestReloaderTerminationBudget:
         ):
             assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
 
-    def test_budget_is_computed_once(self):
-        """domain.toml is not watched, so the window is read once, not on every
-        restart."""
+    def test_budget_is_read_fresh_each_call(self):
+        """A domain.toml edit mid-run must be picked up, so the window is read
+        on every call, not cached."""
         reloader, patched = self._reloader_with_window(20)
         with patched as mock_load:
             reloader._termination_timeout()
             reloader._termination_timeout()
-        assert mock_load.call_count == 1
+        assert mock_load.call_count == 2
 
-    def test_stop_process_joins_for_the_configured_budget(self):
-        """The join actually uses the budget, so a 20s drain is not cut at 10."""
+    def test_start_process_binds_the_budget_from_current_config(self):
+        """_start_process sizes the join budget from the config as it stands,
+        so the worker it spawns is later joined with its own window."""
         reloader, patched = self._reloader_with_window(20)
+        reloader._ctx = MagicMock()
+        with patched:
+            reloader._start_process()
+        assert reloader._stop_timeout == 20 + _DRAIN_MARGIN_SECONDS
+
+    def test_budget_refreshes_between_worker_generations(self):
+        """A domain.toml change between restarts binds the new window to the
+        replacement worker, not the value read when the reloader started."""
+        reloader = Reloader(domain_path="my.domain")
+        reloader._ctx = MagicMock()
+        configs = iter(
+            [{"server": {"drain_timeout": 20}}, {"server": {"drain_timeout": 40}}]
+        )
+        with patch(
+            "protean.domain.config.Config2.load_from_path",
+            side_effect=lambda _path: next(configs),
+        ):
+            reloader._start_process()
+            assert reloader._stop_timeout == 20 + _DRAIN_MARGIN_SECONDS
+            reloader._start_process()
+            assert reloader._stop_timeout == 40 + _DRAIN_MARGIN_SECONDS
+
+    def test_stop_process_joins_for_the_bound_budget(self):
+        """The join uses the budget bound when the worker started, so a 20s
+        drain is not cut at 10 and a later config edit cannot shorten it."""
+        reloader = Reloader(domain_path="my.domain")
+        reloader._stop_timeout = 20 + _DRAIN_MARGIN_SECONDS
 
         mock_process = MagicMock()
         alive_states = iter([True, False, False])
@@ -264,7 +292,7 @@ class TestReloaderTerminationBudget:
         mock_process.exitcode = 0
         reloader.process = mock_process
 
-        with patched, patch("os.kill"):
+        with patch("os.kill"):
             reloader._stop_process()
 
         mock_process.join.assert_called_once_with(timeout=20 + _DRAIN_MARGIN_SECONDS)

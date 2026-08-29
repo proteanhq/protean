@@ -117,10 +117,6 @@ class Reloader:
         logger.info(startup_msg)
         print(startup_msg)
 
-        # Size the termination budget now, from the config on disk as the run
-        # started. Reading it later risks catching domain.toml mid-edit.
-        self._termination_timeout()
-
         self._start_process()
 
         # ``PythonFilter`` already excludes ``.pyc``, ``__pycache__``,
@@ -159,6 +155,12 @@ class Reloader:
 
     def _start_process(self) -> None:
         """Spawn a new inner Engine worker process."""
+        # Bind the join budget to this worker from the config as it stands now,
+        # so a later domain.toml edit does not leave _stop_process joining it
+        # with a stale window. The worker reads the same config at its own
+        # startup, so the two match. Reading the file has no domain side effect.
+        self._stop_timeout = self._termination_timeout()
+
         process = self._ctx.Process(
             target=_worker_entry,
             args=(self.domain_path, self.test_mode, self.debug, 0, None),
@@ -206,21 +208,23 @@ class Reloader:
         return window if math.isfinite(window) and window > 0 else 0.0
 
     def _termination_timeout(self) -> float:
-        """How long to wait for the inner worker to exit before killing it.
+        """How long to wait for a worker to exit before killing it.
 
         The worker's Engine waits ``[server].drain_timeout`` for in-flight
         handlers before force-cancelling them, so a flat 10 seconds here would
         kill a worker mid-drain whenever that window is longer. Take the
         configured window plus a margin, never less than the 10-second default.
-        Computed once: ``domain.toml`` is not among the watched files, so the
-        window cannot change under a running reloader.
+
+        Read fresh each time so a ``domain.toml`` edit that lands mid-run is
+        picked up: ``_start_process`` calls this to bind the budget to the
+        worker it is about to spawn, matching the window that worker will read
+        at its own startup. A cached budget would join the next worker with a
+        stale window and could kill it before its drain elapses.
         """
-        if self._stop_timeout is None:
-            self._stop_timeout = max(
-                float(_SHUTDOWN_TIMEOUT_SECONDS),
-                self._configured_drain_window() + _DRAIN_MARGIN_SECONDS,
-            )
-        return self._stop_timeout
+        return max(
+            float(_SHUTDOWN_TIMEOUT_SECONDS),
+            self._configured_drain_window() + _DRAIN_MARGIN_SECONDS,
+        )
 
     def _stop_process(self) -> None:
         """Terminate and join the current inner Engine process, if any."""
@@ -232,7 +236,12 @@ class Reloader:
             with contextlib.suppress(ProcessLookupError, OSError):
                 os.kill(process.pid, signal.SIGTERM)
 
-        timeout = self._termination_timeout()
+        # Use the budget bound to this worker when it started, so a config edit
+        # since then does not shorten the join for a worker still draining on
+        # its old window. Fall back to a fresh read if we stop before starting.
+        timeout = self._stop_timeout
+        if timeout is None:
+            timeout = self._termination_timeout()
         process.join(timeout=timeout)
         if process.is_alive():
             logger.warning(
