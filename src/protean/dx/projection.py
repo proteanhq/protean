@@ -674,7 +674,13 @@ def diff_projection(
     """
     root = Path(project_root)
     target_path = _resolve_target(root, projection.target)
-    lock = load_lock(root)
+    # ``load_lock`` keeps its own ``ValueError`` contract for direct callers; the
+    # projection APIs document a corrupt lockfile as ``ProjectionError``, so
+    # translate at this boundary.
+    try:
+        lock = load_lock(root)
+    except ValueError as exc:
+        raise ProjectionError(str(exc)) from exc
     entry = lock.entries.get(projection.target)
 
     if isinstance(projection, ManagedRegionProjection):

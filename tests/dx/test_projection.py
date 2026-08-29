@@ -24,6 +24,10 @@ from protean.dx.projection import (
     load_lock,
 )
 
+# The projection engine is pure filesystem behavior and never touches a domain,
+# so skip the autouse ``test_domain`` fixture's per-test domain setup.
+pytestmark = pytest.mark.no_test_domain
+
 # --- helpers ---------------------------------------------------------------
 
 
@@ -551,6 +555,22 @@ def test_malformed_lockfile_raises_loudly(tmp_path: Path) -> None:
     lock_path(tmp_path).write_text("{ not valid json", encoding="utf-8")
     with pytest.raises(ValueError, match="Invalid JSON"):
         load_lock(tmp_path)
+
+
+def test_corrupt_lockfile_surfaces_as_projection_error(tmp_path: Path) -> None:
+    """The public APIs honor their documented ProjectionError contract.
+
+    ``load_lock`` keeps its own ``ValueError`` for direct callers;
+    ``diff_projection`` and ``apply_projection`` translate it, so a caller
+    catching ``ProjectionError`` still sees lockfile corruption.
+    """
+    (tmp_path / ".protean").mkdir()
+    lock_path(tmp_path).write_text("{ not valid json", encoding="utf-8")
+
+    with pytest.raises(ProjectionError, match="Invalid JSON"):
+        diff_projection(tmp_path, region("AGENTS.md", "1", "v1"))
+    with pytest.raises(ProjectionError, match="Invalid JSON"):
+        apply_projection(tmp_path, region("AGENTS.md", "1", "v1"))
 
 
 def test_non_utf8_lockfile_raises_value_error(tmp_path: Path) -> None:
