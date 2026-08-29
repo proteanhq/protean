@@ -31,10 +31,13 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import multiprocessing
 import os
+import re
 import signal
 import threading
+import warnings
 from collections.abc import Sequence
 from multiprocessing.process import BaseProcess
 from pathlib import Path
@@ -46,6 +49,11 @@ from protean.server.supervisor import _worker_entry
 logger = logging.getLogger(__name__)
 
 _SHUTDOWN_TIMEOUT_SECONDS = 10
+
+# Slack added on top of the Engine's drain window when sizing the join budget:
+# the worker still has to cancel stragglers, close brokers and providers, and
+# exit after the window elapses.
+_DRAIN_MARGIN_SECONDS = 5
 
 # Directories ignored in addition to the ``watchfiles`` defaults.
 # ``.protean/`` holds generated IR caches that should never trigger a reload.
@@ -95,6 +103,7 @@ class Reloader:
         self.process: BaseProcess | None = None
         self._ctx = multiprocessing.get_context("spawn")
         self._shutting_down: bool = False
+        self._stop_timeout: float | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -147,6 +156,12 @@ class Reloader:
 
     def _start_process(self) -> None:
         """Spawn a new inner Engine worker process."""
+        # Bind the join budget to this worker from the config as it stands now,
+        # so a later domain.toml edit does not leave _stop_process joining it
+        # with a stale window. The worker reads the same config at its own
+        # startup, so the two match. Reading the file has no domain side effect.
+        self._stop_timeout = self._termination_timeout()
+
         process = self._ctx.Process(
             target=_worker_entry,
             args=(self.domain_path, self.test_mode, self.debug, 0, None),
@@ -155,6 +170,94 @@ class Reloader:
         process.start()
         self.process = process
         logger.info("Started Engine worker (PID %s)", process.pid)
+
+    def _config_search_root(self) -> str:
+        """Where to search for the project config, matching the worker's
+        ``Domain.root_path`` resolution as closely as possible without
+        importing the domain.
+
+        The worker's Domain honours ``DOMAIN_ROOT_PATH`` and otherwise uses the
+        directory of the domain module file (``_guess_caller_path``). Mirror
+        that so the parent reads the same ``domain.toml`` the worker will, even
+        when ``--reload`` is launched from a different working directory. A
+        dotted module name cannot be resolved to a file without importing it, so
+        fall back to the working directory, where ``domain.toml`` conventionally
+        lives.
+        """
+        env_root = os.environ.get("DOMAIN_ROOT_PATH")
+        if env_root:
+            return env_root
+
+        domain_path = os.environ.get("PROTEAN_DOMAIN") or self.domain_path
+        # Drop a ":factory" suffix; the left side is the module or file path.
+        # Do not split a Windows drive letter or a URL scheme.
+        path_part = re.split(r":(?![\\/])", domain_path, maxsplit=1)[0]
+        candidate = os.path.realpath(path_part)
+        if not os.path.splitext(candidate)[1] and os.path.isfile(candidate + ".py"):
+            candidate += ".py"
+        if os.path.isfile(candidate):
+            return os.path.dirname(candidate)
+        if os.path.isdir(candidate):
+            return candidate
+        return os.getcwd()
+
+    def _configured_drain_window(self) -> float:
+        """The worker Engine's ``[server].drain_timeout``, or 0 if unreadable.
+
+        Read from the project config file so the join budget below matches the
+        window the worker will wait, without importing or instantiating the
+        domain here in the parent. Deriving the domain would re-run a
+        factory-style ``domain_path`` (the worker already invokes it in the
+        child), doubling resource initialisation in a process that only watches
+        files; reading the config file has no such side effect. The search
+        starts from the same place the worker resolves its config (see
+        ``_config_search_root``), not blindly from the working directory.
+
+        The config read can fail (no file, bad TOML); the worker surfaces the
+        real error when it starts, so fall back to 0 and let the default budget
+        apply. Anything that is not a finite positive number is treated the same
+        way: the Engine rejects those values too and uses its own default.
+        """
+        from protean.domain.config import Config2  # noqa: PLC0415
+
+        try:
+            with warnings.catch_warnings():
+                # load_from_path warns when no config file is found; the worker
+                # reports that, so keep the parent quiet and use the default.
+                warnings.simplefilter("ignore")
+                config = Config2.load_from_path(self._config_search_root())
+            value = config.get("server", {}).get("drain_timeout", 0)
+            if isinstance(value, bool):
+                return 0.0
+            window = float(value)
+        except Exception:
+            logger.debug(
+                "Could not read server.drain_timeout from the project config; "
+                "using the default termination budget",
+                exc_info=True,
+            )
+            return 0.0
+
+        return window if math.isfinite(window) and window > 0 else 0.0
+
+    def _termination_timeout(self) -> float:
+        """How long to wait for a worker to exit before killing it.
+
+        The worker's Engine waits ``[server].drain_timeout`` for in-flight
+        handlers before force-cancelling them, so a flat 10 seconds here would
+        kill a worker mid-drain whenever that window is longer. Take the
+        configured window plus a margin, never less than the 10-second default.
+
+        Read fresh each time so a ``domain.toml`` edit that lands mid-run is
+        picked up: ``_start_process`` calls this to bind the budget to the
+        worker it is about to spawn, matching the window that worker will read
+        at its own startup. A cached budget would join the next worker with a
+        stale window and could kill it before its drain elapses.
+        """
+        return max(
+            float(_SHUTDOWN_TIMEOUT_SECONDS),
+            self._configured_drain_window() + _DRAIN_MARGIN_SECONDS,
+        )
 
     def _stop_process(self) -> None:
         """Terminate and join the current inner Engine process, if any."""
@@ -166,11 +269,17 @@ class Reloader:
             with contextlib.suppress(ProcessLookupError, OSError):
                 os.kill(process.pid, signal.SIGTERM)
 
-        process.join(timeout=_SHUTDOWN_TIMEOUT_SECONDS)
+        # Use the budget bound to this worker when it started, so a config edit
+        # since then does not shorten the join for a worker still draining on
+        # its old window. Fall back to a fresh read if we stop before starting.
+        timeout = self._stop_timeout
+        if timeout is None:
+            timeout = self._termination_timeout()
+        process.join(timeout=timeout)
         if process.is_alive():
             logger.warning(
-                "Engine worker did not stop within %ds timeout, killing",
-                _SHUTDOWN_TIMEOUT_SECONDS,
+                "Engine worker did not stop within %gs timeout, killing",
+                timeout,
             )
             process.kill()
             process.join(timeout=5)

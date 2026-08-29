@@ -169,6 +169,49 @@ class TestIRShowSummary:
         assert "Element Counts" in result.output
 
 
+class TestIRFormatValidation:
+    """`ir show` and `ir check` reject an unknown --format, each against its
+    own valid set, before doing any work."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_show_rejects_bogus_format(self):
+        result = runner.invoke(
+            app,
+            ["ir", "show", "-d", "some_domain", "-f", "bogus"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code != 0
+        assert "invalid --format" in result.output
+        # Lists the values ir show actually accepts.
+        assert "summary" in result.output
+
+    def test_show_still_accepts_summary(self):
+        # Guards Decision 4's shared-set trap: ir show accepts 'summary', which a
+        # single shared valid set would wrongly reject.
+        change_working_directory_to("test7")
+        result = runner.invoke(
+            app, ["ir", "show", "-d", "publishing7.py", "-f", "summary"]
+        )
+        assert result.exit_code == 0
+        assert "Domain:" in result.output
+
+    def test_check_rejects_bogus_format(self):
+        result = runner.invoke(
+            app,
+            ["ir", "check", "-d", "some_domain", "-f", "bogus"],
+            env={"COLUMNS": "200"},
+        )
+        assert result.exit_code != 0
+        assert "invalid --format" in result.output
+
+
 class TestIRShowUpcasters:
     """Upcasters register through the standard lifecycle, so they appear in the
     IR that `protean ir show` renders.

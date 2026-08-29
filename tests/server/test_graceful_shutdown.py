@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean import Domain
-from protean.server.engine import Engine
+from protean.server.engine import _SHUTDOWN_TIMEOUT_SECONDS, Engine
 
 
 @pytest.mark.no_test_domain
@@ -205,6 +205,170 @@ class TestInFlightTaskCompletion:
         task = asyncio.ensure_future(handler_coro())
         await engine.shutdown()
         return task
+
+
+@pytest.mark.no_test_domain
+class TestConfigurableDrainWindow:
+    """The drain window is read from [server].drain_timeout and governs the
+    wait before in-flight tasks are force-cancelled on shutdown."""
+
+    def _engine(self, drain_timeout=None):
+        domain = Domain(name="Test")
+        if drain_timeout is not None:
+            domain.config["server"]["drain_timeout"] = drain_timeout
+        domain.init(traverse=False)
+        with domain.domain_context():
+            return Engine(domain, test_mode=True)
+
+    def _drain_with_inflight(self, engine, sleep_for):
+        """Start an in-flight handler, run shutdown, report its fate."""
+        state = {"completed": False, "cancelled": False}
+
+        async def slow_handler():
+            try:
+                await asyncio.sleep(sleep_for)
+                state["completed"] = True
+            except asyncio.CancelledError:
+                state["cancelled"] = True
+                raise
+
+        async def _run():
+            task = asyncio.ensure_future(slow_handler())
+            await engine.shutdown()
+            return task
+
+        engine.loop.run_until_complete(_run())
+        return state
+
+    def test_default_window_is_ten_seconds(self):
+        """With no key set, the drain window is 10 (unchanged default)."""
+        engine = self._engine()
+        assert engine.drain_timeout == 10.0
+
+    def test_configured_window_is_read(self):
+        engine = self._engine(drain_timeout=3)
+        assert engine.drain_timeout == 3.0
+
+    def test_garbage_window_falls_back_to_ten(self):
+        """An invalid value falls back to 10 without raising."""
+        engine = self._engine(drain_timeout="not-a-number")
+        assert engine.drain_timeout == 10.0
+
+    def test_short_window_cancels_straggler(self):
+        """A configured 0.05s window force-cancels a 1s in-flight handler.
+
+        This also proves the old hardcoded 10.0 literal is gone: under 10s the
+        1s sleep would finish, so the task would complete, not cancel.
+        """
+        engine = self._engine(drain_timeout=0.05)
+        state = self._drain_with_inflight(engine, sleep_for=1.0)
+        assert state["cancelled"] is True
+        assert state["completed"] is False
+
+    def test_generous_window_lets_inflight_finish(self):
+        """A 2s window lets a 0.05s in-flight handler run to completion."""
+        engine = self._engine(drain_timeout=2.0)
+        # Assert the configured window is what governs the wait, so this does
+        # not pass vacuously under the old hardcoded 10.0 (a 0.05s handler
+        # finishes under any window, so completion alone proves nothing).
+        assert engine.drain_timeout == 2.0
+        state = self._drain_with_inflight(engine, sleep_for=0.05)
+        assert state["completed"] is True
+        assert state["cancelled"] is False
+
+    def test_garbage_window_warns(self, caplog):
+        """The fallback is announced, so a typo'd value is not silently ignored."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout="not-a-number")
+
+        assert engine.drain_timeout == 10.0
+        assert any(
+            "drain_timeout_invalid_using_default" in r.message for r in caplog.records
+        )
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_boolean_window_falls_back_to_ten(self, value):
+        """A TOML `drain_timeout = true` is not a one-second window.
+
+        bool subclasses int, so plain float() coercion would turn `true` into
+        1.0 and quietly shrink the grace period. Both bools are rejected.
+        """
+        engine = self._engine(drain_timeout=value)
+        assert engine.drain_timeout == 10.0
+
+    @pytest.mark.parametrize(
+        "value", [float("nan"), float("inf"), float("-inf"), "nan", "inf"]
+    )
+    def test_non_finite_window_falls_back_to_ten(self, value):
+        """nan and inf survive float() but are not usable windows.
+
+        Every comparison against nan is False, so a nan window slips past the
+        positive/kill-timeout checks and reaches asyncio.wait, which then returns
+        on the next loop step and force-cancels in-flight handlers with no grace.
+        An inf window outlives the supervisor's kill timeout.
+        """
+        engine = self._engine(drain_timeout=value)
+        assert engine.drain_timeout == 10.0
+
+    def test_non_finite_window_warns(self, caplog):
+        """The nan fallback is announced, like any other invalid value."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout=float("nan"))
+
+        assert engine.drain_timeout == 10.0
+        assert any(
+            "drain_timeout_invalid_using_default" in r.message for r in caplog.records
+        )
+
+    def test_overflowing_window_falls_back_to_ten(self):
+        """A value too large for float() (an int beyond float range) is invalid."""
+        engine = self._engine(drain_timeout=10**400)
+        assert engine.drain_timeout == 10.0
+
+    def test_zero_window_falls_back_to_ten(self):
+        """A zero window would give no grace at all, so it is rejected."""
+        engine = self._engine(drain_timeout=0)
+        assert engine.drain_timeout == 10.0
+
+    def test_negative_window_falls_back_to_ten(self):
+        """A negative window is invalid and falls back to the default."""
+        engine = self._engine(drain_timeout=-5)
+        assert engine.drain_timeout == 10.0
+
+    def test_non_positive_window_warns(self, caplog):
+        """The non-positive fallback is announced, so an operator is told the
+        configured window was rejected rather than silently applied."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout=-5)
+
+        assert engine.drain_timeout == 10.0
+        assert any(
+            "drain_timeout_not_positive_using_default" in r.message
+            for r in caplog.records
+        )
+
+    def test_warns_when_window_at_or_above_supervisor_kill_timeout(self, caplog):
+        """A drain window >= the Supervisor kill timeout logs a warning so an
+        operator is told a worker may be SIGKILLed before it drains."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine(drain_timeout=_SHUTDOWN_TIMEOUT_SECONDS)
+
+        assert engine.drain_timeout == float(_SHUTDOWN_TIMEOUT_SECONDS)
+        assert any(
+            "drain_timeout_at_or_above_supervisor_kill_timeout" in r.message
+            for r in caplog.records
+        )
+
+    def test_no_warning_for_default_window(self, caplog):
+        """Negative: the default window (below the kill timeout) warns nothing."""
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            engine = self._engine()
+
+        assert engine.drain_timeout == 10.0
+        assert not any(
+            "drain_timeout_at_or_above_supervisor_kill_timeout" in r.message
+            for r in caplog.records
+        )
 
 
 @pytest.mark.no_test_domain

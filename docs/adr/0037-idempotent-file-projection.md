@@ -1,4 +1,4 @@
-# ADR-0036: Idempotent File Projection and the `dx` Lockfile
+# ADR-0037: Idempotent File Projection and the `dx` Lockfile
 
 **Status:** Accepted
 

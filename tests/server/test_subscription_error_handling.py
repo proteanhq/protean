@@ -202,3 +202,30 @@ async def test_handle_message_during_shutdown(test_domain_setup):
 
     # Verify error handler was not called (counter unchanged)
     assert error_handler_counter == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_message_while_draining_still_runs(test_domain_setup):
+    """handle_message is NOT gated on draining: an in-flight message runs.
+
+    Unlike shutting_down, draining must let already-dispatched work finish, so
+    the handler is invoked (here it raises and its handle_error runs, bumping the
+    counter). If draining rejected at the guard, the handler would never run and
+    the counter would stay 0.
+    """
+    engine = Engine(domain=test_domain_setup, test_mode=True)
+    engine.draining = True
+
+    user_id = "test-id-draining"
+    user = User(id=user_id, email="draining@example.com", name="Draining Test")
+    user.raise_(
+        Registered(id=user_id, email="draining@example.com", name="Draining Test")
+    )
+    message = Message.from_domain_object(user._events[-1])
+
+    await engine.handle_message(ErrorHandlerEventHandler, message)
+    assert error_handler_counter == 1
+
+    # handle_broker_message likewise runs its subscriber while draining.
+    await engine.handle_broker_message(ErrorHandlerSubscriber, {"data": "test"})
+    assert error_handler_counter == 2

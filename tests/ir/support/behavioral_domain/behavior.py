@@ -26,6 +26,9 @@ Each method carries a deliberate shape a test asserts:
 - ``OrderRepository.dynamic`` — a ``**filters`` query that names no field.
 - ``OrderRepository.seed`` — an ``Order(...)`` construction.
 - ``OrderRepository.seed_dynamic`` — an ``Order(**data)`` construction, dynamic.
+- ``OrderRepository.seed_template`` — an ``Order(data, status=...)``
+  construction, whose positional template mapping carries field names the
+  fact cannot see.
 - ``OrderRepository.in_transaction`` — a call on a ``UnitOfWork()`` receiver.
 """
 
@@ -94,6 +97,12 @@ class OrderRepository(BaseRepository):
     def seed_dynamic(self, data: dict) -> None:
         """A construction spread from a ``**data`` star: dynamic, no field."""
         Order(**data)
+
+    def seed_template(self, data: dict) -> None:
+        """A construction whose positional argument is a template mapping: the
+        keys it fills are invisible, so the keyword alone is not the field
+        set."""
+        Order(data, status="new")
 
     def in_transaction(self) -> None:
         """A call on a ``UnitOfWork()`` receiver."""

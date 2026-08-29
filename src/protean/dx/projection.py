@@ -49,7 +49,7 @@ as an LF one and a benign platform newline difference never reads as a phantom
 conflict. Writes go back out in whatever line ending the file already uses, so an
 update never rewrites a file's line endings.
 
-See ADR-0036 for the decision record behind the lockfile and the two merge modes.
+See ADR-0037 for the decision record behind the lockfile and the two merge modes.
 
 Design decisions for v1:
 

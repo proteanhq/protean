@@ -30,6 +30,13 @@ class OutboxProcessor(BaseSubscription):
     and provides retry mechanisms for failed messages.
     """
 
+    # The outbox holds already-committed rows waiting to be published, not new
+    # inbound work. Draining means "finish what you have", so keep flushing the
+    # outbox during the drain window instead of freezing committed rows until
+    # the replacement process starts. Shutdown still stops it: _quiescing()
+    # returns True once the engine is shutting down, whatever pauses_on_drain is.
+    pauses_on_drain = False
+
     def __init__(
         self,
         engine: "Engine",

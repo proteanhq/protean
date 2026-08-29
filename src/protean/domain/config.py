@@ -96,6 +96,14 @@ def _default_config() -> dict[str, Any]:
             # Common settings (can be overridden by subscription-specific settings)
             "messages_per_tick": 100,  # Optimal batch size for throughput vs latency
             "tick_interval": 0,  # Disable tick-based polling, use pure blocking reads
+            # Graceful drain window, in seconds. On shutdown the engine stops
+            # taking new work and waits this long for in-flight message handlers
+            # to finish before force-cancelling them. Default 10 preserves the
+            # previous hardcoded behaviour. Keep this below the multi-worker
+            # Supervisor kill timeout (``_SHUTDOWN_TIMEOUT_SECONDS`` in
+            # protean.server.supervisor) so a worker is not SIGKILLed before its
+            # drain window elapses.
+            "drain_timeout": 10,
             # Event store subscription settings
             # Used when subscription_type is "event_store"
             "event_store_subscription": {
