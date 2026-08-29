@@ -92,7 +92,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from protean.scaffold.apply import apply_plan
+from protean.scaffold.apply import ApplyError, apply_plan
 from protean.scaffold.change_plan import (
     OWNERSHIP_GENERATED,
     ChangePlan,
@@ -672,9 +672,10 @@ def diff_projection(
     mutate nothing.
 
     Raises :exc:`ProjectionError` when the target escapes the project root, when
-    it is a symlink, when the lock directory or lockfile is a symlink, when a
-    managed-region target has a malformed marker, when a structured-JSON target
-    is not a JSON object, or when the lockfile is corrupt.
+    it is a symlink, when the lock directory or lockfile is a symlink, when the
+    target cannot be read, when a managed-region target has a malformed marker,
+    when a structured-JSON target is not a JSON object, or when the lockfile is
+    corrupt.
     """
     root = Path(project_root)
     target_path = _resolve_target(root, projection.target)
@@ -718,6 +719,13 @@ def diff_projection(
     except UnicodeDecodeError as exc:
         raise ProjectionError(
             f"Target {projection.target!r} is not valid utf-8: {exc}. "
+            "Refusing to overwrite it."
+        ) from exc
+    except OSError as exc:
+        # A directory at the target, a permission error, or any other read
+        # failure. Surface the module's error type, not a raw OSError.
+        raise ProjectionError(
+            f"Could not read target {projection.target!r}: {exc}. "
             "Refusing to overwrite it."
         ) from exc
     if isinstance(projection, ManagedRegionProjection):
@@ -767,7 +775,11 @@ def apply_projection(
       an ``os.replace``), then records the lock entry. The file is written before
       the lock, so a failed write leaves the lock on the prior stamp.
 
-    Returns the :class:`ProjectionResult` from the diff.
+    Returns the :class:`ProjectionResult` from the diff. Raises
+    :exc:`ProjectionConflict` on a conflict, and :exc:`ProjectionError` for the
+    diff-time failures :func:`diff_projection` lists and for a write that fails
+    (the create path's ``ApplyError`` and any write-time ``OSError`` are surfaced
+    as :exc:`ProjectionError`).
     """
     root = Path(project_root)
     result = diff_projection(root, projection)
@@ -786,29 +798,39 @@ def apply_projection(
     # checker (CONFLICT and NO_CHANGE, the None-content cases, already returned).
     assert result.content is not None and result.file_hash is not None
 
-    if result.status is ProjectionStatus.CREATE:
-        plan = ChangePlan(
-            operations=(
-                CreateFileOperation(
-                    path=projection.target,
-                    content=result.content,
-                    ownership=OWNERSHIP_GENERATED,
-                ),
+    # The create path raises ``ApplyError`` and every write path can raise
+    # ``OSError``; surface them as the module's own error type so a caller of the
+    # public API handles one exception family. A ``ProjectionError`` already
+    # raised inside (a symlinked target or lock path) is not an ``OSError``, so
+    # it passes through unwrapped.
+    try:
+        if result.status is ProjectionStatus.CREATE:
+            plan = ChangePlan(
+                operations=(
+                    CreateFileOperation(
+                        path=projection.target,
+                        content=result.content,
+                        ownership=OWNERSHIP_GENERATED,
+                    ),
+                )
             )
-        )
-        apply_plan(str(root), plan)
-    else:  # UPDATE
-        _atomic_write(_resolve_target(root, projection.target), result.content)
+            apply_plan(str(root), plan)
+        else:  # UPDATE
+            _atomic_write(_resolve_target(root, projection.target), result.content)
 
-    _record_lock(
-        root,
-        projection.target,
-        ProjectionEntry(
-            version=result.version,
-            file_hash=result.file_hash,
-            slice_hash=result.slice_hash,
-        ),
-    )
+        _record_lock(
+            root,
+            projection.target,
+            ProjectionEntry(
+                version=result.version,
+                file_hash=result.file_hash,
+                slice_hash=result.slice_hash,
+            ),
+        )
+    except (ApplyError, OSError) as exc:
+        raise ProjectionError(
+            f"Could not write projection for {projection.target!r}: {exc}."
+        ) from exc
     return result
 
 

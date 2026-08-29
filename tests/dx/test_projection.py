@@ -308,6 +308,31 @@ def test_non_utf8_target_raises_projection_error(tmp_path: Path) -> None:
         diff_projection(tmp_path, region("AGENTS.md", "1", "new"))
 
 
+def test_unreadable_target_surfaces_as_projection_error(tmp_path: Path) -> None:
+    """A directory (or other OS-level read failure) at the target is a ProjectionError.
+
+    ``Path.read_text`` on a directory raises ``IsADirectoryError``; the public API
+    surfaces the module's own error type, not a raw ``OSError``.
+    """
+    (tmp_path / "AGENTS.md").mkdir()
+    proj = region("AGENTS.md", "1", "framework block")
+
+    for call in (diff_projection, apply_projection):
+        with pytest.raises(ProjectionError, match="Could not read"):
+            call(tmp_path, proj)
+
+
+def test_create_write_failure_surfaces_as_projection_error(tmp_path: Path) -> None:
+    """A failing create surfaces as ProjectionError, not the scaffold's ApplyError.
+
+    ``apply_plan`` raises ``ApplyError`` when the project root is not a directory;
+    ``apply_projection`` wraps it so callers handle one exception family.
+    """
+    missing_root = tmp_path / "does-not-exist"
+    with pytest.raises(ProjectionError, match="Could not write"):
+        apply_projection(missing_root, region("AGENTS.md", "1", "framework block"))
+
+
 def test_hash_mode_uses_comment_syntax_config(tmp_path: Path) -> None:
     """A ``#``-comment config target projects and re-projects idempotently."""
     proj = ManagedRegionProjection(
