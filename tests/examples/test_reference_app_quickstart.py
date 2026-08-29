@@ -52,7 +52,7 @@ class TestReferenceAppQuickstart:
         domain = mod.domain
         domain.config["command_processing"] = "sync"
         domain.config["event_processing"] = "sync"
-        domain.init()
+        domain.init(traverse=False)
         domain.setup_database()
 
         try:

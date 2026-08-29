@@ -84,7 +84,7 @@ if __name__ == "__main__":
     domain.config["command_processing"] = "sync"
     domain.config["event_processing"] = "sync"
 
-    domain.init()
+    domain.init(traverse=False)
 
     with domain.domain_context():
         # Write: publish a post through the command.
