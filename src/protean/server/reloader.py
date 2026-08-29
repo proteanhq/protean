@@ -34,6 +34,7 @@ import logging
 import math
 import multiprocessing
 import os
+import re
 import signal
 import threading
 import warnings
@@ -170,6 +171,36 @@ class Reloader:
         self.process = process
         logger.info("Started Engine worker (PID %s)", process.pid)
 
+    def _config_search_root(self) -> str:
+        """Where to search for the project config, matching the worker's
+        ``Domain.root_path`` resolution as closely as possible without
+        importing the domain.
+
+        The worker's Domain honours ``DOMAIN_ROOT_PATH`` and otherwise uses the
+        directory of the domain module file (``_guess_caller_path``). Mirror
+        that so the parent reads the same ``domain.toml`` the worker will, even
+        when ``--reload`` is launched from a different working directory. A
+        dotted module name cannot be resolved to a file without importing it, so
+        fall back to the working directory, where ``domain.toml`` conventionally
+        lives.
+        """
+        env_root = os.environ.get("DOMAIN_ROOT_PATH")
+        if env_root:
+            return env_root
+
+        domain_path = os.environ.get("PROTEAN_DOMAIN") or self.domain_path
+        # Drop a ":factory" suffix; the left side is the module or file path.
+        # Do not split a Windows drive letter or a URL scheme.
+        path_part = re.split(r":(?![\\/])", domain_path, maxsplit=1)[0]
+        candidate = os.path.realpath(path_part)
+        if not os.path.splitext(candidate)[1] and os.path.isfile(candidate + ".py"):
+            candidate += ".py"
+        if os.path.isfile(candidate):
+            return os.path.dirname(candidate)
+        if os.path.isdir(candidate):
+            return candidate
+        return os.getcwd()
+
     def _configured_drain_window(self) -> float:
         """The worker Engine's ``[server].drain_timeout``, or 0 if unreadable.
 
@@ -178,7 +209,9 @@ class Reloader:
         domain here in the parent. Deriving the domain would re-run a
         factory-style ``domain_path`` (the worker already invokes it in the
         child), doubling resource initialisation in a process that only watches
-        files; reading the config file has no such side effect.
+        files; reading the config file has no such side effect. The search
+        starts from the same place the worker resolves its config (see
+        ``_config_search_root``), not blindly from the working directory.
 
         The config read can fail (no file, bad TOML); the worker surfaces the
         real error when it starts, so fall back to 0 and let the default budget
@@ -192,7 +225,7 @@ class Reloader:
                 # load_from_path warns when no config file is found; the worker
                 # reports that, so keep the parent quiet and use the default.
                 warnings.simplefilter("ignore")
-                config = Config2.load_from_path(os.getcwd())
+                config = Config2.load_from_path(self._config_search_root())
             value = config.get("server", {}).get("drain_timeout", 0)
             if isinstance(value, bool):
                 return 0.0

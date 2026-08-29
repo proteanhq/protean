@@ -6,6 +6,7 @@ watchfiles integration without spawning real worker processes or
 triggering real filesystem events.
 """
 
+import os
 import signal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -297,6 +298,51 @@ class TestReloaderTerminationBudget:
 
         mock_process.join.assert_called_once_with(timeout=20 + _DRAIN_MARGIN_SECONDS)
         mock_process.kill.assert_not_called()
+
+
+class TestReloaderConfigSearchRoot:
+    """Where the reloader parent looks for the project config, so its join
+    budget is sized from the same ``domain.toml`` the worker reads."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    def test_domain_file_path_resolves_to_its_directory(self, tmp_path):
+        """A file-path domain reads config from the file's directory, matching
+        the worker's ``Domain.root_path`` even when the CWD differs."""
+        domain_file = tmp_path / "domain.py"
+        domain_file.write_text("domain = object()\n")
+        reloader = Reloader(domain_path=str(domain_file))
+        assert reloader._config_search_root() == os.path.realpath(str(tmp_path))
+
+    def test_domain_path_without_extension_finds_the_py_file(self, tmp_path):
+        """``--domain path/to/domain`` (no ``.py``) resolves to that directory."""
+        (tmp_path / "domain.py").write_text("domain = object()\n")
+        reloader = Reloader(domain_path=str(tmp_path / "domain"))
+        assert reloader._config_search_root() == os.path.realpath(str(tmp_path))
+
+    def test_factory_suffix_is_stripped(self, tmp_path):
+        """A ``path:factory`` domain resolves on the path, ignoring the suffix."""
+        domain_file = tmp_path / "app.py"
+        domain_file.write_text("def create():\n    return object()\n")
+        reloader = Reloader(domain_path=f"{domain_file}:create")
+        assert reloader._config_search_root() == os.path.realpath(str(tmp_path))
+
+    def test_domain_root_path_env_wins(self, tmp_path, monkeypatch):
+        """``DOMAIN_ROOT_PATH`` overrides, exactly as the worker's Domain honours
+        it."""
+        monkeypatch.setenv("DOMAIN_ROOT_PATH", str(tmp_path))
+        reloader = Reloader(domain_path="some/other/domain.py")
+        assert reloader._config_search_root() == str(tmp_path)
+
+    def test_dotted_module_falls_back_to_cwd(self):
+        """A dotted module cannot be resolved to a file without importing it, so
+        the working directory (where ``domain.toml`` conventionally lives) is
+        used."""
+        reloader = Reloader(domain_path="my.package.domain")
+        assert reloader._config_search_root() == os.getcwd()
 
 
 class TestReloaderSignalHandling:
