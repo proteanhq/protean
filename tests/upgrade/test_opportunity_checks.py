@@ -130,6 +130,18 @@ class TestCustomMiddlewareDetector:
         src = "def wire(app):\n    app.add_middleware(DomainContextMiddleware)\n"
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
 
+    def test_standard_framework_middlewares_are_not_flagged(self):
+        # CORS/gzip/etc. are the ASGI stack's own middlewares, not hand-rolled
+        # capability. DomainContextMiddleware does not replace them, so
+        # registering one is correct code and must stay silent.
+        src = (
+            "def wire(app):\n"
+            "    app.add_middleware(CORSMiddleware)\n"
+            "    app.add_middleware(GZipMiddleware)\n"
+            "    app.add_middleware(TrustedHostMiddleware)\n"
+        )
+        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+
     def test_a_plain_class_is_not_flagged(self):
         src = "class Order:\n    async def dispatch(self):\n        return None\n"
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []

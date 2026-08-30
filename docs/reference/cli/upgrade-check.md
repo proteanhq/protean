@@ -74,8 +74,10 @@ protean upgrade-check --opportunities --domain=my_app --format=json
 
 Every detector is **deterministic**: it reads your source and matches on imports
 and structure, never on bare names, so it gives the same findings every run and
-does not fire on correct code. All findings are advisory (`info`), so this mode
-does not change the exit code.
+does not fire on correct code. Detector findings are advisory (`info`) and do not
+change the exit code. The one exception is `CHECK_FAILED`: if a detector cannot
+complete, that is a `warning`, and any warning exits `2` under the shared
+exit-code rule.
 
 ### The pinned version
 

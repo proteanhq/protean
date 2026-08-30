@@ -4,6 +4,7 @@ import json
 
 from typer.testing import CliRunner
 
+from protean import upgrade_opportunities
 from protean.cli import app
 from protean.cli.upgrade import _print_rich
 from protean.upgrade import UpgradeFinding
@@ -117,6 +118,19 @@ class TestOpportunitiesCLI:
         )
         assert result.exit_code == 1
         assert "Invalid --pinned-version" in result.stdout
+
+    def test_a_failing_detector_surfaces_check_failed_and_exits_2(self, monkeypatch):
+        # Detector findings are advisory, but a detector that cannot complete is
+        # a CHECK_FAILED warning, and any warning exits 2 through the CLI.
+        def boom(trees, pinned):
+            raise RuntimeError("detector blew up")
+
+        monkeypatch.setattr(upgrade_opportunities, "_DETECTORS", (boom,))
+        result = runner.invoke(
+            app, ["upgrade-check", "-d", _TEXT_DOMAIN, "--opportunities"]
+        )
+        assert result.exit_code == 2
+        assert "CHECK_FAILED" in result.stdout
 
 
 class TestPrintRich:

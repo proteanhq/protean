@@ -183,6 +183,29 @@ def _detect_raw_sql(trees: list[Tree], pinned: Version) -> list[UpgradeFinding]:
 # Detector 2: a custom ASGI middleware beside DomainContextMiddleware
 # ---------------------------------------------------------------------------
 
+# Middlewares the framework or its ASGI stack already ships. Registering one of
+# these is not hand-rolled capability, so an `add_middleware(...)` of any of them
+# is not an opportunity. `DomainContextMiddleware` is Protean's own; the rest are
+# the standard Starlette/FastAPI/uvicorn middlewares, which cover CORS, gzip,
+# host allow-listing, sessions, and the like, none of which
+# `DomainContextMiddleware` replaces. Without this allow-list the detector fires
+# on a correct `app.add_middleware(CORSMiddleware)`.
+_FRAMEWORK_MIDDLEWARES = frozenset(
+    {
+        "DomainContextMiddleware",
+        "CORSMiddleware",
+        "GZipMiddleware",
+        "TrustedHostMiddleware",
+        "SessionMiddleware",
+        "HTTPSRedirectMiddleware",
+        "WSGIMiddleware",
+        "AuthenticationMiddleware",
+        "ServerErrorMiddleware",
+        "ExceptionMiddleware",
+        "ProxyHeadersMiddleware",
+    }
+)
+
 
 def _is_custom_middleware_class(node: ast.ClassDef) -> bool:
     """A user-defined ASGI middleware: a ``BaseHTTPMiddleware`` subclass, or a
@@ -203,8 +226,9 @@ def _is_custom_middleware_class(node: ast.ClassDef) -> bool:
 def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
     """``module:line`` for each custom middleware definition or registration.
 
-    Registrations name the middleware they add; ``DomainContextMiddleware`` is
-    the framework's own, so adding it is not an opportunity and is skipped.
+    Registrations name the middleware they add; the framework's own middlewares
+    (``DomainContextMiddleware`` and the standard Starlette/FastAPI ones in
+    :data:`_FRAMEWORK_MIDDLEWARES`) are not opportunities and are skipped.
     """
     sites: list[str] = []
     for module_name, tree in trees:
@@ -218,7 +242,7 @@ def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
                 and node.args
             ):
                 added = _root_name(node.args[0])
-                if added is not None and added != "DomainContextMiddleware":
+                if added is not None and added not in _FRAMEWORK_MIDDLEWARES:
                     sites.append(f"{module_name}:{node.lineno}")
     return sites
 
