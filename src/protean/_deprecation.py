@@ -134,6 +134,7 @@ def deprecated(
     *,
     removal: str,
     alternative: str | None = None,
+    subject: str | None = None,
 ) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """Decorate a deprecated function/method: warn on every call, then delegate.
 
@@ -144,6 +145,10 @@ def deprecated(
         removal: Canonical ``X.Y.Z`` version the callable is removed in.
         alternative: An optional complete sentence telling the caller what to do
             instead.
+        subject: What the warning calls the deprecated API. Defaults to
+            ``"<func name>()"``. That is enough for a module-level function, but
+            not for a method: a bare ``update()`` does not tell the caller which
+            object it came from. Pass the qualified name for a method.
 
     Example::
 
@@ -156,7 +161,7 @@ def deprecated(
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
             warn_deprecated(
-                f"{func.__name__}()",
+                subject or f"{func.__name__}()",
                 removal=removal,
                 alternative=alternative,
             )
@@ -429,8 +434,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             detection="runtime",
             alternative=(
                 "Load the matched aggregates, invoke a behaviour method on each, "
-                "and persist them with `repository.add()` inside a `UnitOfWork` "
-                "instead."
+                "and persist each one with `repository.add()` instead."
             ),
             reason=(
                 "An imperative method call has no static declaration site for a "
@@ -473,4 +477,11 @@ def deprecated_from_registry(
     ``KeyError`` at import, so a decorated deprecation cannot skip the registry).
     """
     entry = DEPRECATIONS[slug]
-    return deprecated(removal=entry.removal, alternative=entry.alternative)
+    return deprecated(
+        removal=entry.removal,
+        alternative=entry.alternative,
+        # The registry already carries the name the docs use, so take the
+        # warning's subject from there rather than re-deriving a barer one from
+        # the function name.
+        subject=entry.name.replace("`", ""),
+    )

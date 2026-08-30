@@ -385,8 +385,7 @@ class QuerySet:
         .. deprecated:: 0.18.0
             The patch-and-persist path is deprecated and is removed in v1.0.0.
             Load the matched aggregates, invoke a behaviour method on each, and
-            persist them with ``repository.add()`` inside a ``UnitOfWork``
-            instead.
+            persist each one with ``repository.add()`` instead.
 
         This method updates each object individually, to fire callback methods and ensure
         validations are run, so each matched aggregate advances its version and,

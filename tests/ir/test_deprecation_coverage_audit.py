@@ -35,6 +35,11 @@ from protean.ir.builder import IRBuilder
 from protean.testing import assert_invalid, assert_valid
 from tests.ir.support import deprecated_usage_domain, infra_import_domain
 
+# Every test here builds the domains it needs. Skip the autouse ``test_domain``
+# fixture so no unrelated default domain is initialized and pushed as the
+# ambient context around these checks.
+pytestmark = pytest.mark.no_test_domain
+
 
 def _build_audit_domain() -> Domain:
     """One domain that exercises every ``detection='check'`` deprecated path."""

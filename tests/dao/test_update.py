@@ -226,7 +226,8 @@ class TestUpdateDeprecationWarning:
             dao.query.filter(id=1).update(age=10)
 
         messages = [str(w.message) for w in record]
-        assert any("UnitOfWork" in m for m in messages)
+        assert any("QuerySet.update()" in m for m in messages)
+        assert any("repository.add()" in m for m in messages)
         assert dao.get(1).age == 10
 
     def test_bulk_queryset_update_warns_exactly_once(self, test_domain):
