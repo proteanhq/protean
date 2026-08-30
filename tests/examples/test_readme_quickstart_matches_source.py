@@ -50,8 +50,13 @@ def _extract_readme_quickstart_block(readme_text: str) -> str:
     )
 
     _, remainder = section.split("```python", 1)
-    block, _, _ = remainder.partition("```")
-    return block.strip("\n")
+    block, closing_fence, _ = remainder.partition("```")
+    assert closing_fence, "Quick Start python block is missing its closing fence"
+    assert block.startswith("\n"), (
+        "Expected a newline directly after the ```python fence"
+    )
+    assert block.endswith("\n"), "Expected a newline directly before the closing fence"
+    return block[1:-1]
 
 
 def _extract_blog_quickstart_region(blog_text: str) -> str:
@@ -67,11 +72,9 @@ def _extract_blog_quickstart_region(blog_text: str) -> str:
 
     _, remainder = blog_text.split(_START_MARKER, 1)
     region, _, _ = remainder.partition(_END_MARKER)
-    lines = region.splitlines()
-    assert lines and lines[0] == "", (
-        "Expected a newline directly after the start marker"
-    )
-    return "\n".join(lines[1:]).strip("\n")
+    assert region.startswith("\n"), "Expected a newline directly after the start marker"
+    assert region.endswith("\n"), "Expected a newline directly before the end marker"
+    return region[1:-1]
 
 
 @pytest.mark.no_test_domain
@@ -123,3 +126,37 @@ class TestReadmeQuickstartMatchesSource:
         assert "Post created: Hello, Protean! (status: PUBLISHED)" in result.stdout
         assert "Published posts feed: 1 row(s)" in result.stdout
         assert "  - Hello, Protean!" in result.stdout
+
+
+@pytest.mark.no_test_domain
+class TestExtractorsAreVerbatim:
+    """The extractors must keep blank lines at the edges, or drift slips through."""
+
+    def test_readme_extractor_keeps_edge_blank_lines(self):
+        readme = "## Quick Start\n\n```python\n\nx = 1\n\n```\n"
+        assert _extract_readme_quickstart_block(readme) == "\nx = 1\n"
+
+    def test_blog_extractor_keeps_edge_blank_lines(self):
+        blog = f"{_START_MARKER}\n\nx = 1\n\n{_END_MARKER}\n"
+        assert _extract_blog_quickstart_region(blog) == "\nx = 1\n"
+
+    def test_a_blank_line_only_difference_fails_the_comparison(self):
+        readme = "## Quick Start\n\n```python\n\nx = 1\n```\n"
+        blog = f"{_START_MARKER}\nx = 1\n{_END_MARKER}\n"
+        assert _extract_readme_quickstart_block(
+            readme
+        ) != _extract_blog_quickstart_region(blog)
+
+    def test_readme_extractor_rejects_an_unclosed_fence(self):
+        with pytest.raises(AssertionError, match="closing fence"):
+            _extract_readme_quickstart_block("## Quick Start\n\n```python\nx = 1\n")
+
+    def test_readme_extractor_rejects_code_on_the_fence_line(self):
+        with pytest.raises(AssertionError, match="newline directly after"):
+            _extract_readme_quickstart_block("## Quick Start\n\n```pythonx = 1\n```\n")
+
+    def test_blog_extractor_rejects_an_indented_end_marker(self):
+        with pytest.raises(AssertionError, match="newline directly before"):
+            _extract_blog_quickstart_region(
+                f"{_START_MARKER}\nx = 1\n    {_END_MARKER}\n"
+            )
