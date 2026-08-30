@@ -207,11 +207,26 @@ _FRAMEWORK_MIDDLEWARES = frozenset(
 )
 
 
+def _symbol_name(node: ast.expr) -> str | None:
+    """The final symbol an attribute chain names, if there is one.
+
+    ``CORSMiddleware`` and ``starlette.middleware.cors.CORSMiddleware`` both give
+    ``"CORSMiddleware"``, so a class matches by name whether it was imported
+    directly or reached through its module. ``f()`` gives ``None``, since there
+    is no name to reason about.
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
 def _is_custom_middleware_class(node: ast.ClassDef) -> bool:
     """A user-defined ASGI middleware: a ``BaseHTTPMiddleware`` subclass, or a
     class defining ``async def dispatch(self, request, call_next)``."""
     for base in node.bases:
-        if _root_name(base) == "BaseHTTPMiddleware":
+        if _symbol_name(base) == "BaseHTTPMiddleware":
             return True
     for item in node.body:
         if (
@@ -241,7 +256,7 @@ def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
                 and node.func.attr == "add_middleware"
                 and node.args
             ):
-                added = _root_name(node.args[0])
+                added = _symbol_name(node.args[0])
                 if added is not None and added not in _FRAMEWORK_MIDDLEWARES:
                     sites.append(f"{module_name}:{node.lineno}")
     return sites

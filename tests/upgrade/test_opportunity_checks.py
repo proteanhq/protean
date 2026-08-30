@@ -142,6 +142,24 @@ class TestCustomMiddlewareDetector:
         )
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
 
+    def test_qualified_base_http_middleware_subclass_is_flagged(self):
+        # Subclassing through the module path is the same middleware.
+        src = (
+            "import starlette.middleware.base\n"
+            "class ContextMiddleware(starlette.middleware.base.BaseHTTPMiddleware):\n"
+            "    pass\n"
+        )
+        assert len(_detect_custom_middleware(trees(src), OWNS_ALL)) == 1
+
+    def test_qualified_framework_middlewares_are_not_flagged(self):
+        # Registering through the module path is still the stack's own middleware.
+        src = (
+            "import starlette.middleware.cors\n"
+            "def wire(app):\n"
+            "    app.add_middleware(starlette.middleware.cors.CORSMiddleware)\n"
+        )
+        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+
     def test_a_plain_class_is_not_flagged(self):
         src = "class Order:\n    async def dispatch(self):\n        return None\n"
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
