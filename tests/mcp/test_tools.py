@@ -100,6 +100,13 @@ class TestReadTools:
 
         assert captured == ["."]
 
+    @pytest.mark.parametrize("blank", ["", "   "])
+    def test_an_empty_domain_path_is_rejected(self, blank):
+        # An explicit empty/blank path is a caller error, not "use the working
+        # directory"; only an absent (None) domain falls back to discovery.
+        with pytest.raises(tools.McpToolError, match="domain path must not be empty"):
+            tools.check(blank)
+
     def test_check_translates_a_prepare_failure(self, monkeypatch):
         # `check` prepares the domain (importing the rest of its package); a
         # failure there must surface as a clean McpToolError.
@@ -206,6 +213,10 @@ class TestScaffold:
         assert len(result["written"]) > 0
         assert set(result["written"]) == set(result["files"])
         assert (project / "src" / "myproj" / "order").is_dir()
+
+    def test_an_empty_project_path_is_rejected(self):
+        with pytest.raises(tools.McpToolError, match="project path must not be empty"):
+            tools.scaffold("aggregate", "Order", project="  ")
 
     def test_an_unsupported_element_raises(self, tmp_path):
         project = _write_project(tmp_path / "proj")

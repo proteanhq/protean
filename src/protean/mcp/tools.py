@@ -43,6 +43,21 @@ class McpToolError(Exception):
     """
 
 
+def _resolve_path(value: str | None, kind: str) -> str:
+    """Resolve a location argument to the working directory only when it is unset.
+
+    ``None`` means "not provided", so it falls back to the ``"."`` default
+    ``protean check`` uses. An explicit empty or blank string is a caller error,
+    not "use the working directory": treating it as the default would silently
+    discover (or write into) the wrong place, so it is rejected instead.
+    """
+    if value is None:
+        return "."
+    if not value.strip():
+        raise McpToolError(f"The {kind} path must not be empty.")
+    return value
+
+
 class ValidateResult(TypedDict):
     """The ``validate`` tool's result: a go/no-go verdict over a domain."""
 
@@ -76,7 +91,7 @@ def _derive(domain: str | None) -> Domain:
     [`Domain.check`][protean.domain.Domain.check] prepares the domain itself, so
     ``check``/``validate`` skip ``init()`` the same way ``protean check`` does.
     """
-    path = domain or "."
+    path = _resolve_path(domain, "domain")
     try:
         derived = derive_domain(path)
     except NoDomainException as exc:
@@ -218,7 +233,7 @@ def scaffold(
         render_preview,
     )
 
-    project_path = project or "."
+    project_path = _resolve_path(project, "project")
     try:
         plan = plan_add_slice(project_path, element, name)
     except AddPlanError as exc:
