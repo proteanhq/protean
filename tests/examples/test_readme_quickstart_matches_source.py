@@ -1,8 +1,8 @@
 """Guard test: the README Quick Start block must match the reference module.
 
 The README cannot use pymdownx snippet markers (GitHub does not render
-them), so this test gives it the same anti-drift protection by extracting
-both sides and comparing them byte for byte:
+them), so this test gives it equivalent anti-drift protection in CI by
+extracting both sides and comparing them byte for byte:
 
 - the fenced ```python``` block under the README's "## Quick Start" heading
 - the region of ``examples/reference_app/blog.py`` marked with
@@ -13,6 +13,7 @@ copy-paste runnable and prints the expected write-then-read arc.
 """
 
 import os
+import re
 import subprocess
 import sys
 
@@ -23,26 +24,32 @@ _README_PATH = os.path.join(_REPO_ROOT, "README.md")
 _BLOG_PATH = os.path.join(_REPO_ROOT, "examples", "reference_app", "blog.py")
 
 _QUICKSTART_HEADING = "## Quick Start"
+_QUICKSTART_HEADING_RE = re.compile(r"^## Quick Start\s*$", re.MULTILINE)
+_NEXT_HEADING_RE = re.compile(r"^#{1,2} ", re.MULTILINE)
 _START_MARKER = "# --8<-- [start:quickstart]"
 _END_MARKER = "# --8<-- [end:quickstart]"
 
 
 def _extract_readme_quickstart_block(readme_text: str) -> str:
-    """Return the text inside the first fenced ```python block after the heading."""
-    heading_count = readme_text.count(_QUICKSTART_HEADING)
-    assert heading_count == 1, (
-        f"Expected exactly one {_QUICKSTART_HEADING!r} heading in README.md, "
-        f"found {heading_count}"
+    """Return the text inside the first fenced ```python block in the Quick Start section."""
+    heading_matches = list(_QUICKSTART_HEADING_RE.finditer(readme_text))
+    assert len(heading_matches) == 1, (
+        f"Expected exactly one {_QUICKSTART_HEADING!r} heading line in README.md, "
+        f"found {len(heading_matches)}"
     )
 
-    after_heading = readme_text.split(_QUICKSTART_HEADING, 1)[1]
-    fence_count = after_heading.count("```python")
+    section_start = heading_matches[0].end()
+    next_heading = _NEXT_HEADING_RE.search(readme_text, section_start)
+    section_end = next_heading.start() if next_heading else len(readme_text)
+    section = readme_text[section_start:section_end]
+
+    fence_count = section.count("```python")
     assert fence_count == 1, (
-        f"Expected exactly one fenced python block after {_QUICKSTART_HEADING!r}, "
-        f"found {fence_count}"
+        f"Expected exactly one fenced python block in the {_QUICKSTART_HEADING!r} "
+        f"section, found {fence_count}"
     )
 
-    _, remainder = after_heading.split("```python", 1)
+    _, remainder = section.split("```python", 1)
     block, _, _ = remainder.partition("```")
     return block.strip("\n")
 
