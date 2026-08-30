@@ -2425,7 +2425,7 @@ requires-dist = [
     { name = "ipython", marker = "extra == 'shell'", specifier = ">=9.0.0,<10.0" },
     { name = "jinja2", marker = "extra == 'server'", specifier = ">=3.1.6" },
     { name = "marshmallow", specifier = ">=4.0.0" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.1.1" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.1.1,<3" },
     { name = "message-db-py", marker = "extra == 'message-db'", specifier = ">=0.3.4" },
     { name = "opentelemetry-api", marker = "extra == 'telemetry'", specifier = ">=1.36.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'telemetry'", specifier = ">=1.36.0" },
