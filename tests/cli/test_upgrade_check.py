@@ -2,11 +2,13 @@
 
 import json
 
+import pytest
 from typer.testing import CliRunner
 
 from protean import upgrade_opportunities
 from protean.cli import app
 from protean.cli.upgrade import _print_rich
+from protean.domain import Domain
 from protean.upgrade import UpgradeFinding
 
 runner = CliRunner()
@@ -104,7 +106,10 @@ class TestOpportunitiesCLI:
         payload = json.loads(result.stdout)
         assert not any(f["code"] == "OPPORTUNITY_QUERY_API" for f in payload)
 
-    def test_bad_pinned_version_exits_1(self):
+    @pytest.mark.parametrize(
+        "pinned", ["latest", "0.16latest", "0.16.3oops", "0.16.", "0.16.3rc", "x.y.z"]
+    )
+    def test_bad_pinned_version_exits_1(self, pinned):
         result = runner.invoke(
             app,
             [
@@ -113,11 +118,45 @@ class TestOpportunitiesCLI:
                 _TEXT_DOMAIN,
                 "--opportunities",
                 "--pinned-version",
-                "latest",
+                pinned,
             ],
         )
         assert result.exit_code == 1
         assert "Invalid --pinned-version" in result.stdout
+
+    @pytest.mark.parametrize(
+        "pinned", ["0.16", "0.16.3", "0.16.0rc1", "0.16.0a1", "0.16.0b2", "0.16.0.dev1"]
+    )
+    def test_pinned_version_accepts_semver_and_release_tags(self, pinned):
+        result = runner.invoke(
+            app,
+            [
+                "upgrade-check",
+                "-d",
+                _TEXT_DOMAIN,
+                "--opportunities",
+                "--pinned-version",
+                pinned,
+                "--format",
+                "json",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Invalid --pinned-version" not in result.stdout
+
+    def test_opportunities_does_not_initialize_adapters(self, monkeypatch):
+        # Opportunity checks read source off disk, so they must not need working
+        # infrastructure. Standing in for unreachable adapters: an init that
+        # blows up must not reach the report.
+        def boom(self, *args, **kwargs):
+            raise RuntimeError("adapters unreachable")
+
+        monkeypatch.setattr(Domain, "init", boom)
+        result = runner.invoke(
+            app, ["upgrade-check", "-d", _TEXT_DOMAIN, "--opportunities"]
+        )
+        assert result.exit_code == 0
+        assert "OPPORTUNITY_QUERY_API" in result.stdout
 
     def test_a_failing_detector_surfaces_check_failed_and_exits_2(self, monkeypatch):
         # Detector findings are advisory, but a detector that cannot complete is

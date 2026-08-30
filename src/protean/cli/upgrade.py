@@ -39,10 +39,13 @@ logger = get_logger(__name__)
 
 _LEVEL_STYLE = {"warning": "[yellow]warning[/yellow]", "info": "[cyan]info[/cyan]"}
 
-# A pinned version is MAJOR.MINOR with an optional patch and pre-release tag,
-# e.g. 0.16, 0.16.3, 0.15.0rc1. Guarded so a typo fails fast rather than parsing
-# to a surprising tuple.
-_PINNED_VERSION_RE = re.compile(r"^\d+\.\d+(\.\d+)?[A-Za-z0-9]*$")
+# A pinned version is MAJOR.MINOR with an optional patch and an optional
+# release tag: 0.16, 0.16.3, 0.15.0rc1, 0.17.0.dev1. Only the PEP 440 tags
+# (a/b/rc/dev/post) with a numeric suffix are accepted, so a typo like
+# "0.16latest" fails fast rather than parsing to a surprising tuple.
+_PINNED_VERSION_RE = re.compile(
+    r"^\d+\.\d+(\.\d+)?((a|b|rc)\d+|\.?(dev|post)\d+)?$",
+)
 
 
 @handle_cli_exceptions("upgrade-check")
@@ -108,15 +111,18 @@ def upgrade_check(
         print("[red]Error loading Protean domain: no domain found.[/red]")
         raise typer.Exit(code=1)
 
-    # Full init so live-schema checks (e.g. the outbox table diff) can introspect
-    # the configured databases. Element/config checks do not require it, but the
-    # schema check does.
-    with derived_domain.domain_context():
-        derived_domain.init(traverse=True)
-        if opportunities:
-            pinned = pinned_version or __version__
-            findings = run_opportunity_checks(derived_domain, pinned)
-        else:
+    if opportunities:
+        # No init here. The opportunity detectors only read the domain's source
+        # off disk through SourceProvider, so initializing adapters would make
+        # the mode fail or hang whenever the databases and brokers aren't up.
+        pinned = pinned_version or __version__
+        findings = run_opportunity_checks(derived_domain, pinned)
+    else:
+        # Full init so live-schema checks (e.g. the outbox table diff) can
+        # introspect the configured databases. Element/config checks do not
+        # require it, but the schema check does.
+        with derived_domain.domain_context():
+            derived_domain.init(traverse=True)
             findings = run_upgrade_checks(derived_domain)
 
     if format == "json":

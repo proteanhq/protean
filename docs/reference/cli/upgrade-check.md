@@ -21,8 +21,10 @@ protean upgrade-check --domain=my_app --format=json
 | `--pinned-version` | installed Protean | The version the domain is pinned to, for `--opportunities` |
 
 The domain is initialized so the schema check can introspect the configured
-databases. Exit code is `0` when only advisory (info) findings are present and
-`2` when any warnings need review.
+databases. `--opportunities` skips that init: those detectors only read your
+source, so the mode runs with the databases and brokers down. Exit code is `0`
+when only advisory (info) findings are present and `2` when any warnings need
+review.
 
 ## Checks
 
@@ -88,6 +90,10 @@ defaults to the installed Protean. `--pinned-version` overrides it, so you can
 ask "what has arrived since the release this code was written against". Pinning
 below a capability's release suppresses that capability's finding, because you do
 not own it yet.
+
+`--pinned-version` takes `MAJOR.MINOR` with an optional patch and an optional
+release tag: `0.16`, `0.16.3`, `0.16.0rc1`, `0.16.0.dev1`. Anything else exits
+`1`, so a typo does not silently read as some other version.
 
 ### Detectors
 
