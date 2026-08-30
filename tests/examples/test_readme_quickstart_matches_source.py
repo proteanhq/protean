@@ -2,7 +2,7 @@
 
 The README cannot use pymdownx snippet markers (GitHub does not render
 them), so this test gives it equivalent anti-drift protection in CI by
-extracting both sides and comparing them byte for byte:
+extracting both sides and comparing them verbatim:
 
 - the fenced ```python``` block under the README's "## Quick Start" heading
 - the region of ``examples/reference_app/blog.py`` marked with
@@ -106,9 +106,7 @@ class TestReadmeQuickstartMatchesSource:
             assert "from protean import Domain, current_domain, handle" in block
             assert "protean.utils.globals" not in block
 
-    def test_readme_block_matches_blog_source_byte_for_byte(
-        self, readme_block, blog_region
-    ):
+    def test_readme_block_matches_blog_source_verbatim(self, readme_block, blog_region):
         assert readme_block == blog_region, (
             "README.md 'Quick Start' block has drifted from the marked region "
             "in examples/reference_app/blog.py. Re-copy the region between "
