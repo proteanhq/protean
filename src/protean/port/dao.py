@@ -4,6 +4,7 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
+from protean._deprecation import deprecated_from_registry
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.queryset import QuerySet, ResultSet
@@ -846,6 +847,7 @@ class BaseDAO(metaclass=ABCMeta):
             logger.error(f"Failed saving entity because {exc}")
             raise
 
+    @deprecated_from_registry("dao_update")
     def update(
         self,
         entity_obj: Any,
@@ -854,6 +856,11 @@ class BaseDAO(metaclass=ABCMeta):
         **kwargs: Any,
     ) -> "BaseEntity":
         """Apply a field patch to an existing entity and persist it.
+
+        .. deprecated:: 0.18.0
+            The patch-and-persist path is deprecated and is removed in v1.0.0.
+            Load the aggregate, invoke a behaviour method that applies the
+            change, and persist it with ``repository.add()`` instead.
 
         Applies the supplied attribute values, validates uniqueness, then
         persists through the same path as :meth:`save` — so an aggregate update
@@ -885,6 +892,22 @@ class BaseDAO(metaclass=ABCMeta):
             (``auto_now`` stamping and enrichers) for a raw write; optimistic
             concurrency still applies. See :meth:`save`.
         :param kwargs: keyword arguments of attribute pairs to be updated
+        """
+        return self._apply_update(entity_obj, *data, apply_hooks=apply_hooks, **kwargs)
+
+    def _apply_update(
+        self,
+        entity_obj: Any,
+        *data: Any,
+        apply_hooks: bool = True,
+        **kwargs: Any,
+    ) -> "BaseEntity":
+        """Apply a field patch to an existing entity and persist it.
+
+        The real work behind :meth:`update`, split out so ``QuerySet.update``
+        can drive a bulk patch without re-emitting the per-call deprecation
+        warning once for every matched row. Not a public API; the deprecation
+        lives on the :meth:`update` wrapper.
         """
         logger.debug(
             f"Updating existing `{self.entity_cls.__name__}` object with id {entity_obj.id}"

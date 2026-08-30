@@ -1,5 +1,8 @@
+import warnings
+
 import pytest
 
+from protean._deprecation import RemovedInProtean10Warning
 from protean.exceptions import ObjectNotFoundError
 from protean.utils.query import Q
 
@@ -12,6 +15,15 @@ class TestDAOUpdateFunctionality:
         test_domain.register(Person)
         test_domain.register(PersonRepository, part_of=Person)
         test_domain.register(User)
+
+    @pytest.fixture(autouse=True)
+    def _ignore_update_deprecation(self):
+        # These tests assert the persistence behaviour of the patch-and-persist
+        # path, which is deprecated (see TestUpdateDeprecationWarning). Silence
+        # the warning here so the behaviour assertions stay the focus.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RemovedInProtean10Warning)
+            yield
 
     def test_update_an_existing_entity_in_the_repository(self, test_domain):
         person = test_domain.repository_for(Person)._dao.create(
@@ -180,3 +192,61 @@ class TestDAOUpdateFunctionality:
         assert u_person2.last_name == "Musketeer"
         assert u_person3.last_name == "Fraud"
         assert u_person4.last_name == "Fraud"
+
+
+class TestUpdateDeprecationWarning:
+    """`DAO.update()` and `QuerySet.update()` are the patch-and-persist path,
+    deprecated in 0.18.0 and removed in 1.0.0. Each must warn, name the
+    replacement and the removal version, and a bulk `QuerySet.update()` must
+    warn exactly once for the whole call, not once per matched row."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Person)
+        test_domain.register(PersonRepository, part_of=Person)
+
+    def test_dao_update_warns_naming_removal_and_replacement(self, test_domain):
+        dao = test_domain.repository_for(Person)._dao
+        person = dao.create(id=1, first_name="John", last_name="Doe", age=22)
+
+        with pytest.warns(RemovedInProtean10Warning, match=r"v1\.0\.0") as record:
+            dao.update(person, age=10)
+
+        assert len(record) == 1
+        message = str(record[0].message)
+        assert "repository.add()" in message
+        # Behaviour is unchanged: the patch is applied and persisted.
+        assert dao.get(1).age == 10
+
+    def test_queryset_update_warns_naming_removal_and_replacement(self, test_domain):
+        dao = test_domain.repository_for(Person)._dao
+        dao.create(id=1, first_name="John", last_name="Doe", age=22)
+
+        with pytest.warns(RemovedInProtean10Warning, match=r"v1\.0\.0") as record:
+            dao.query.filter(id=1).update(age=10)
+
+        messages = [str(w.message) for w in record]
+        assert any("UnitOfWork" in m for m in messages)
+        assert dao.get(1).age == 10
+
+    def test_bulk_queryset_update_warns_exactly_once(self, test_domain):
+        """A bulk update over several matched rows drives the silent internal
+        path per row, so the whole call emits exactly one warning, not N+1."""
+        dao = test_domain.repository_for(Person)._dao
+        for i in range(1, 4):
+            dao.create(id=i, first_name=f"P{i}", last_name="Musketeer", age=i)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            updated_count = dao.query.filter(last_name="Musketeer").update(
+                last_name="Fraud"
+            )
+
+        assert updated_count == 3
+        queryset_warnings = [
+            w for w in caught if issubclass(w.category, RemovedInProtean10Warning)
+        ]
+        assert len(queryset_warnings) == 1, (
+            f"expected exactly one deprecation warning for a bulk update, "
+            f"got {len(queryset_warnings)}"
+        )

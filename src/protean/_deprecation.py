@@ -405,6 +405,39 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "test suites (ADR-0019), so it never sees the call site."
             ),
         ),
+        Deprecation(
+            slug="dao_update",
+            name="`DAO.update()`",
+            since="0.18.0",
+            removal="1.0.0",
+            detection="runtime",
+            alternative=(
+                "Load the aggregate, invoke a behaviour method that applies the "
+                "change, and persist it with `repository.add()` instead."
+            ),
+            reason=(
+                "An imperative method call has no static declaration site for a "
+                "rule to read off a built domain; the per-call "
+                "RemovedInProtean10Warning is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="queryset_update",
+            name="`QuerySet.update()`",
+            since="0.18.0",
+            removal="1.0.0",
+            detection="runtime",
+            alternative=(
+                "Load the matched aggregates, invoke a behaviour method on each, "
+                "and persist them with `repository.add()` inside a `UnitOfWork` "
+                "instead."
+            ),
+            reason=(
+                "An imperative method call has no static declaration site for a "
+                "rule to read off a built domain; the per-call "
+                "RemovedInProtean10Warning is the only detector."
+            ),
+        ),
     )
 }
 
