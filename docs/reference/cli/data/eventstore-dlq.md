@@ -127,14 +127,15 @@ Under `--json` the envelope's `data` carries `position`, `type`,
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success (including "no exhausted positions") |
-| `2` | Usage/environment error: unloadable domain, unknown `--subscription`, unknown position, or an event that can no longer be re-read |
+| `0` | Success (including "no exhausted positions"). |
+| `1` | Human mode (`--json` not set): the domain failed to load. Typer aborts, the same as every other `protean` command. |
+| `2` | Usage or environment error: unknown `--subscription`, unknown position, or an event that can no longer be re-read. Under `--json`, a domain that failed to load also exits `2` and emits the error envelope. |
 
 ## Error handling
 
 | Condition | Behavior |
 |-----------|----------|
-| Invalid domain path | Error envelope (with `--json`) or "Error loading Protean domain", exit `2` |
+| Invalid domain path | Human mode: "Error loading Protean domain", Typer aborts with exit `1`. Under `--json`: error envelope, exit `2`. |
 | `--subscription` matches no event-store subscription | "No event-store subscription found for stream category ...", exit `2` |
 | `inspect` position is not exhausted | "No exhausted position ... found", exit `2` |
 | `inspect` event can no longer be read | "Could not re-read the event ...", exit `2` |
