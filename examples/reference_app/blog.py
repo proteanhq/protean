@@ -14,10 +14,10 @@ guard so a reader can run it with ``pip install protean`` and nothing else:
     python examples/reference_app/blog.py
 """
 
-from protean import Domain, handle
+# --8<-- [start:quickstart]
+from protean import Domain, current_domain, handle
 from protean.core.projector import on
 from protean.fields import Identifier, String, Text
-from protean.utils.globals import current_domain
 
 domain = Domain()
 
@@ -99,3 +99,4 @@ if __name__ == "__main__":
         print(f"Published posts feed: {feed.total} row(s)")
         for entry in feed.items:
             print(f"  - {entry.title}")
+# --8<-- [end:quickstart]
