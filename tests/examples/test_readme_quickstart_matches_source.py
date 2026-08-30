@@ -98,6 +98,14 @@ class TestReadmeQuickstartMatchesSource:
             assert "from protean import Domain" in block
             assert "class PublishedPostsFeed" in block
 
+    def test_quickstart_takes_current_domain_from_the_public_api(
+        self, readme_block, blog_region
+    ):
+        """current_domain is public at the top level, so the snippet must import it there."""
+        for block in (readme_block, blog_region):
+            assert "from protean import Domain, current_domain, handle" in block
+            assert "protean.utils.globals" not in block
+
     def test_readme_block_matches_blog_source_byte_for_byte(
         self, readme_block, blog_region
     ):

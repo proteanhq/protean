@@ -15,10 +15,9 @@ guard so a reader can run it with ``pip install protean`` and nothing else:
 """
 
 # --8<-- [start:quickstart]
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
 from protean.core.projector import on
 from protean.fields import Identifier, String, Text
-from protean.utils.globals import current_domain
 
 domain = Domain()
 

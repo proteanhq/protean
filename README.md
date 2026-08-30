@@ -28,10 +28,9 @@ handler reacts, and a projector keeps a read-optimized feed in sync, all
 wired by the domain, independent of infrastructure:
 
 ```python
-from protean import Domain, handle
+from protean import Domain, current_domain, handle
 from protean.core.projector import on
 from protean.fields import Identifier, String, Text
-from protean.utils.globals import current_domain
 
 domain = Domain()
 
