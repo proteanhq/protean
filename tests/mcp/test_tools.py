@@ -6,6 +6,7 @@ and a scaffolded temp project, so they exercise the same paths the server does.
 """
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,6 +15,19 @@ from tests.shared import module_unavailable
 
 # A clean domain that passes every check (the one `protean check` tests use).
 CLEAN_DOMAIN = "tests/support/domains/test19/domain19.py:domain"
+
+
+def _stub_domain() -> MagicMock:
+    """A stand-in domain whose ``check()`` returns a minimal clean report."""
+    domain = MagicMock()
+    domain.check.return_value = {
+        "domain": "STUB",
+        "status": "pass",
+        "errors": [],
+        "diagnostics": [],
+        "counts": {"errors": 0, "warnings": 0, "infos": 0},
+    }
+    return domain
 
 
 def _write_project(root: Path, package: str = "myproj") -> Path:
@@ -67,18 +81,24 @@ class TestReadTools:
         with pytest.raises(tools.McpToolError, match="Error loading Protean domain"):
             tools.check(str(bad))
 
-    def test_check_defaults_to_a_domain_in_the_working_directory(
-        self, tmp_path, monkeypatch
+    def test_read_tools_default_the_domain_path_to_the_working_directory(
+        self, monkeypatch
     ):
-        # With no `domain`, the tool discovers a domain from the working directory,
-        # the same "." default `protean check` uses.
-        (tmp_path / "domain.py").write_text(
-            'from protean.domain import Domain\n\ndomain = Domain(name="CWDDOMAIN")\n',
-            encoding="utf-8",
-        )
-        monkeypatch.chdir(tmp_path)
+        # With no `domain`, the read tools hand derive_domain the "." default
+        # `protean check` uses, so discovery runs against the working directory.
+        # Asserted by capturing the path rather than relying on real discovery,
+        # which is sensitive to sys.modules caching across the full suite.
+        captured: list[str | None] = []
 
-        assert tools.check()["domain"] == "CWDDOMAIN"
+        def fake_derive(path):
+            captured.append(path)
+            return _stub_domain()
+
+        monkeypatch.setattr("protean.mcp.tools.derive_domain", fake_derive)
+
+        tools.check()
+
+        assert captured == ["."]
 
     def test_check_translates_a_prepare_failure(self, monkeypatch):
         # `check` prepares the domain (importing the rest of its package); a
