@@ -17,6 +17,8 @@ protean upgrade-check --domain=my_app --format=json
 |--------|---------|-------------|
 | `--domain` / `-d` | `.` | Path to the domain module (e.g. `my_app.domain`) |
 | `--format` / `-f` | `rich` | Output format: `rich` or `json` |
+| `--opportunities` | off | Report shipped capability the domain still hand-rolls, instead of the readiness checks (see [Opportunities](#opportunities-what-you-hand-roll-that-the-framework-now-ships)) |
+| `--pinned-version` | installed Protean | The version the domain is pinned to, for `--opportunities` |
 
 The domain is initialized so the schema check can introspect the configured
 databases. Exit code is `0` when only advisory (info) findings are present and
@@ -54,6 +56,52 @@ Protean never applies the migration for you: schema changes are an
 adapter/operator concern (see [ADR-0004](../../adr/0004-release-workflow-and-breaking-change-policy.md)).
 
 See the [v0.16 migration guide](../migration/v0-16.md) for the full upgrade notes.
+
+## Opportunities: what you hand-roll that the framework now ships
+
+The checks above report what needs attention when you move *up* a release.
+`--opportunities` reports the other direction: capability the framework has
+already shipped that your domain still appears to hand-roll. A codebase written
+against an older Protean keeps its hand-rolled queue table, its custom
+middleware, its raw SQL, long after the framework caught up, because nobody goes
+back to re-check. This mode names those spots.
+
+```bash
+protean upgrade-check --opportunities --domain=my_app
+protean upgrade-check --opportunities --domain=my_app --pinned-version=0.15
+protean upgrade-check --opportunities --domain=my_app --format=json
+```
+
+Every detector is **deterministic**: it reads your source and matches on imports
+and structure, never on bare names, so it gives the same findings every run and
+does not fire on correct code. All findings are advisory (`info`), so this mode
+does not change the exit code.
+
+### The pinned version
+
+Each detector declares the release its capability arrived in. A finding is
+reported only when that release is at or below the *pinned* version, i.e. you
+already have the capability installed but still hand-roll it. The pinned version
+defaults to the installed Protean. `--pinned-version` overrides it, so you can
+ask "what has arrived since the release this code was written against". Pinning
+below a capability's release suppresses that capability's finding, because you do
+not own it yet.
+
+### Detectors
+
+| Code | Level | Capability (release) | What it finds |
+|------|-------|----------------------|---------------|
+| `OPPORTUNITY_QUERY_API` | info | Query API (0.16.0) | Raw `sqlalchemy.text(...)` SQL sites. The query API (`Q(field__isnull=)`, `F()`, `QuerySet.count()`, `.only()`, `.all(with_total=False)`, dispatched through `@domain.query_handler` and `domain.dispatch()`) covers most of what raw SQL is reached for. The `text` name is import-gated to `sqlalchemy`, so an unrelated `text(` call is not flagged. |
+| `OPPORTUNITY_DOMAIN_CONTEXT_MIDDLEWARE` | info | `DomainContextMiddleware` (0.15.0) | A custom ASGI middleware: a `BaseHTTPMiddleware` subclass, a class with `async def dispatch(self, request, call_next)`, or an `app.add_middleware(...)` of a class other than `DomainContextMiddleware`, which wires domain context plus correlation-id propagation. |
+| `OPPORTUNITY_OUTBOX` | info | Outbox (0.14.0) | A status/state field whose choices cycle through queue states (pending / processing / done / failed). That is usually a hand-rolled work queue the outbox (retry, backoff, DLQ) now covers. The match needs a queue-like choice set, so a plain `status` with business choices does not fire. |
+| `CHECK_FAILED` | warning | n/a | A detector could not complete; the report may be incomplete for that area. |
+
+### Where the line is
+
+This mode ships only deterministic detectors, so the report gives the same
+verdict every run. Judgment-heavy advice ("this orchestration is really a process
+manager") stays out of OSS; that is the commercial Domain Assessment surface, on
+the non-deterministic side of the open-core boundary.
 
 !!! warning "Exit code 2 is easier to hit in 0.17"
 

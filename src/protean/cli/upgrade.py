@@ -21,20 +21,28 @@ Exit codes:
 """
 
 import json
+import re
 from typing import Annotated
 
 import typer
 from rich import print
 
+from protean import __version__
 from protean.cli._helpers import handle_cli_exceptions
 from protean.exceptions import NoDomainException
 from protean.upgrade import UpgradeFinding, run_upgrade_checks
+from protean.upgrade_opportunities import run_opportunity_checks
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 _LEVEL_STYLE = {"warning": "[yellow]warning[/yellow]", "info": "[cyan]info[/cyan]"}
+
+# A pinned version is MAJOR.MINOR with an optional patch and pre-release tag,
+# e.g. 0.16, 0.16.3, 0.15.0rc1. Guarded so a typo fails fast rather than parsing
+# to a surprising tuple.
+_PINNED_VERSION_RE = re.compile(r"^\d+\.\d+(\.\d+)?[A-Za-z0-9]*$")
 
 
 @handle_cli_exceptions("upgrade-check")
@@ -55,10 +63,37 @@ def upgrade_check(
             help="Output format: 'rich' (default) or 'json'",
         ),
     ] = "rich",
+    opportunities: Annotated[
+        bool,
+        typer.Option(
+            "--opportunities",
+            help=(
+                "Report shipped capability the domain still hand-rolls, instead "
+                "of upgrade-readiness changes"
+            ),
+        ),
+    ] = False,
+    pinned_version: Annotated[
+        str | None,
+        typer.Option(
+            "--pinned-version",
+            help=(
+                "Version the domain is pinned to, for --opportunities "
+                "(default: the installed Protean)"
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Report changes that need attention when upgrading to a newer Protean."""
     if format not in ("rich", "json"):
         print(f"[red]Invalid --format: {format!r}. Use 'rich' or 'json'.[/red]")
+        raise typer.Exit(code=1)
+
+    if pinned_version is not None and not _PINNED_VERSION_RE.match(pinned_version):
+        print(
+            f"[red]Invalid --pinned-version: {pinned_version!r}. "
+            "Use a version like '0.16' or '0.16.3'.[/red]"
+        )
         raise typer.Exit(code=1)
 
     try:
@@ -78,7 +113,11 @@ def upgrade_check(
     # schema check does.
     with derived_domain.domain_context():
         derived_domain.init(traverse=True)
-        findings = run_upgrade_checks(derived_domain)
+        if opportunities:
+            pinned = pinned_version or __version__
+            findings = run_opportunity_checks(derived_domain, pinned)
+        else:
+            findings = run_upgrade_checks(derived_domain)
 
     if format == "json":
         typer.echo(json.dumps([f.as_dict() for f in findings], indent=2))
