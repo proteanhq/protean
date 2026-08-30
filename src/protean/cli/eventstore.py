@@ -289,7 +289,7 @@ def list_dlq(
                 continue
             subscriptions.append(
                 {
-                    "handler": info.handler_fqn,
+                    "handler": info.subscription_fqn,
                     "stream_category": info.stream_category,
                     "exhausted": exhausted,
                 }

@@ -24,8 +24,12 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.server.subscription.event_store_subscription import EventStoreSubscription
-from protean.utils.eventing import EventStoreMeta, Message, Metadata
+from protean.server.subscription.event_store_subscription import (
+    EventStoreSubscription,
+    FailedPositionStatus,
+)
+from protean.utils.dlq import collect_failed_streams, command_dispatcher_fqn
+from protean.utils.eventing import EventStoreMeta, Message, MessageType, Metadata
 from protean.utils.mixins import handle
 from tests.cli._envelope import assert_envelope
 
@@ -64,7 +68,7 @@ class AlwaysFailingEventHandler(BaseEventHandler):
 class NotifySubscriber(BaseSubscriber):
     """A broker subscriber — it has no event-store failed stream."""
 
-    def notify(self, data: dict) -> None:
+    def __call__(self, payload: dict) -> None:
         pass
 
 
@@ -260,6 +264,74 @@ class TestEventstoreDlqList:
         categories = [s["stream_category"] for s in env["data"]["subscriptions"]]
         assert "person_added" not in categories
         assert User.meta_.stream_category in categories
+
+    def test_command_handler_reports_dispatcher_identity(self, test_domain):
+        """A command handler's exhausted positions report the dispatcher fqn.
+
+        The engine fans a command stream's handlers into one CommandDispatcher
+        subscription and writes the exhausted records under the dispatcher's
+        stream, so ``list`` must name that dispatcher, not the concrete handler
+        class (which would misidentify the writer and hide sibling handlers).
+        """
+
+        @test_domain.aggregate
+        class Order:
+            total: str
+
+        @test_domain.command(part_of=Order)
+        class PlaceOrder:
+            total: str
+
+        @test_domain.command_handler(part_of=Order)
+        class OrderCommandHandler:
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        test_domain.init(traverse=False)
+
+        # A command handler's stream is the command stream (``...:command``), and
+        # the engine writes its exhausted records under the CommandDispatcher, so
+        # locate the exact failed stream through discovery rather than guessing.
+        info, stream = next(
+            p for p in collect_failed_streams(test_domain) if p[0].is_command_handler
+        )
+        category = info.stream_category
+        test_domain.event_store.store._write(
+            stream,
+            FailedPositionStatus.EXHAUSTED.value,
+            {
+                "position": 7,
+                "message_type": "PlaceOrder",
+                "message_id": str(uuid4()),
+                "retry_count": 3,
+                "stream_name": f"{category}-{uuid4()}",
+                "stream_position": 0,
+            },
+            metadata={
+                "headers": {
+                    "type": FailedPositionStatus.EXHAUSTED.value,
+                    "stream": stream,
+                },
+                "domain": {
+                    "kind": MessageType.READ_POSITION.value,
+                    "origin_stream": category,
+                },
+            },
+        )
+
+        with patch("protean.cli.eventstore.load_domain", return_value=test_domain):
+            result = runner.invoke(
+                app, ["eventstore", "dlq", "list", "--domain", "x.py", "--json"]
+            )
+
+        assert result.exit_code == 0, result.output
+        env = assert_envelope(result.stdout)
+        sub = next(
+            s for s in env["data"]["subscriptions"] if s["stream_category"] == category
+        )
+        assert sub["handler"] == command_dispatcher_fqn(category)
+        assert sub["exhausted"] == [7]
 
     def test_unknown_subscription_is_usage_error(self, test_domain):
         _register(test_domain)

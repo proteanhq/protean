@@ -28,6 +28,21 @@ class SubscriptionInfo:
     is_broker: bool = False
     is_command_handler: bool = False
 
+    @property
+    def subscription_fqn(self) -> str:
+        """The fqn of the subscription that owns this handler's failed stream.
+
+        The engine fans every command handler on a stream category into one
+        ``CommandDispatcher`` subscription, so the failed-positions stream is
+        keyed by the dispatcher's fqn, not the handler class. Event handlers and
+        projectors own their stream directly, so it is their own fqn. Reads use
+        this both to key the stream and to name the subscription in CLI output,
+        so the two never diverge.
+        """
+        if self.is_command_handler:
+            return command_dispatcher_fqn(self.stream_category)
+        return self.handler_fqn
+
 
 # Module and name the engine gives the CommandDispatcher it wraps a command
 # stream's handlers in. The dispatcher lives in ``protean.server.engine``; that
@@ -207,11 +222,9 @@ def collect_failed_streams(domain: Domain) -> list[tuple[SubscriptionInfo, str]]
     for info in discover_subscriptions(domain):
         if info.is_broker:
             continue
-        if info.is_command_handler:
-            handler_fqn = command_dispatcher_fqn(info.stream_category)
-        else:
-            handler_fqn = info.handler_fqn
-        failed_stream = failed_positions_stream(handler_fqn, info.stream_category)
+        failed_stream = failed_positions_stream(
+            info.subscription_fqn, info.stream_category
+        )
         if failed_stream in seen:
             continue
         seen.add(failed_stream)

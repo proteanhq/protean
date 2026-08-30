@@ -44,6 +44,8 @@ class TestDiscoverSubscriptions:
         assert order_info is not None
         assert order_info.dlq_stream.endswith(":dlq")
         assert order_info.backfill_dlq_stream is None  # No priority lanes by default
+        # An event handler owns its stream directly, so it names itself.
+        assert order_info.subscription_fqn == order_info.handler_fqn
 
     def test_discover_subscriptions_empty_domain(self):
         domain = Domain(__file__, "EmptyDLQ")
@@ -439,6 +441,10 @@ class TestCollectFailedStreams:
         assert stream == expected
         # And crucially NOT the handler-class-keyed name that would miss the stream.
         assert stream != failed_positions_stream(info.handler_fqn, category)
+        # The reported subscription identity is the dispatcher, not the handler
+        # class, so CLI output names the subscription that wrote the records.
+        assert info.subscription_fqn == command_dispatcher_fqn(category)
+        assert info.subscription_fqn != info.handler_fqn
 
     def test_command_handlers_sharing_category_collapse_to_one_stream(self):
         """Two command handlers on one stream share a single dispatcher stream."""
