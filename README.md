@@ -23,60 +23,96 @@ Protean officially supports Python 3.11+.
 
 ## Quick Start
 
-A command flows to its handler, the aggregate raises an event, and an event
-handler reacts — all wired by the domain, independent of infrastructure:
+A command flows to its handler, the aggregate raises an event, an event
+handler reacts, and a projector keeps a read-optimized feed in sync, all
+wired by the domain, independent of infrastructure:
 
 ```python
-from protean import Domain
-from protean.fields import Boolean, Identifier, String
-from protean.utils.mixins import handle
+from protean import Domain, handle
+from protean.core.projector import on
+from protean.fields import Identifier, String, Text
+from protean.utils.globals import current_domain
 
-domain = Domain(name="Publishing")
-domain.config["command_processing"] = "sync"
-domain.config["event_processing"] = "sync"
-
-
-@domain.event(part_of="Post")
-class PostPublished:
-    post_id = Identifier()
-    title = String()
+domain = Domain()
 
 
 @domain.aggregate
 class Post:
-    title = String(required=True, max_length=200)
-    is_published = Boolean(default=False)
+    title: String(max_length=100, required=True)
+    body: Text(required=True)
+    status: String(max_length=20, default="DRAFT")
 
     def publish(self):
-        self.is_published = True
+        self.status = "PUBLISHED"
         self.raise_(PostPublished(post_id=self.id, title=self.title))
 
 
-@domain.command(part_of="Post")
+@domain.event(part_of=Post)
+class PostPublished:
+    post_id: Identifier(required=True)
+    title: String(required=True)
+
+
+@domain.command(part_of=Post)
 class PublishPost:
-    post_id = Identifier(identifier=True)
-    title = String()
+    title: String(max_length=100, required=True)
+    body: Text(required=True)
 
 
-@domain.command_handler(part_of="Post")
+@domain.command_handler(part_of=Post)
 class PostCommandHandler:
     @handle(PublishPost)
-    def publish(self, command):
-        post = Post(id=command.post_id, title=command.title)
+    def publish_post(self, command: PublishPost):
+        post = Post(title=command.title, body=command.body)
         post.publish()
-        domain.repository_for(Post).add(post)
+        current_domain.repository_for(Post).add(post)
+        return post.id
 
 
-@domain.event_handler(part_of="Post")
-class Notifications:
+@domain.event_handler(part_of=Post)
+class PostEventHandler:
     @handle(PostPublished)
-    def announce(self, event):
-        print(f"Published: {event.title}")
+    def announce(self, event: PostPublished):
+        print(f"Event handled: post published ({event.title})")
 
 
-domain.init(traverse=False)
-with domain.domain_context():
-    domain.process(PublishPost(post_id="1", title="Hello, Protean"))
+@domain.projection
+class PublishedPostsFeed:
+    """A read-optimized feed of published posts."""
+
+    post_id: Identifier(identifier=True, required=True)
+    title: String(max_length=100, required=True)
+
+
+@domain.projector(projector_for=PublishedPostsFeed, aggregates=[Post])
+class PublishedPostsFeedProjector:
+    """Maintains the PublishedPostsFeed projection from Post events."""
+
+    @on(PostPublished)
+    def on_post_published(self, event: PostPublished):
+        feed_entry = PublishedPostsFeed(post_id=event.post_id, title=event.title)
+        current_domain.repository_for(PublishedPostsFeed).add(feed_entry)
+
+
+if __name__ == "__main__":
+    domain.config["command_processing"] = "sync"
+    domain.config["event_processing"] = "sync"
+
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        # Write: publish a post through the command.
+        post_id = domain.process(
+            PublishPost(title="Hello, Protean!", body="My first published post.")
+        )
+        post = domain.repository_for(Post).get(post_id)
+        print(f"Post created: {post.title} (status: {post.status})")
+
+        # Read: the projector has already filled the feed inline.
+        feed = domain.view_for(PublishedPostsFeed).query.all()
+        print(f"Published posts feed: {feed.total} row(s)")
+        for entry in feed.items:
+            print(f"  - {entry.title}")
 ```
 
 ## Documentation
