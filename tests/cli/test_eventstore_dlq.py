@@ -148,7 +148,12 @@ def _drive_to_exhaustion(
         for _ in range(max_retries + 1):
             await sub.run_recovery_pass()
 
-    asyncio.run(drive())
+    try:
+        asyncio.run(drive())
+    finally:
+        # Engine() opens its own event loop that asyncio.run never uses; close
+        # it so the suite does not leak loops across tests.
+        engine.loop.close()
     return msg
 
 
@@ -176,7 +181,10 @@ def _record_failed_only(test_domain, *, stream_name: str | None = None) -> None:
         await sub.process_batch([msg])
         await sub.run_recovery_pass()
 
-    asyncio.run(drive())
+    try:
+        asyncio.run(drive())
+    finally:
+        engine.loop.close()
 
 
 # ---------------------------------------------------------------------------
