@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "protean": {
+      "command": "protean",
+      "args": ["mcp"]
+    }
+  }
+}

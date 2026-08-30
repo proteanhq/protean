@@ -193,6 +193,7 @@ specific area.
 - [`protean new`](./reference/cli/project/new.md): Initialize new projects.
 - [`protean shell`](./reference/cli/project/shell.md): Interactive shell with the domain pre-loaded.
 - [`protean server`](./reference/cli/runtime/server.md): Run the async background message processing server.
+- [`protean mcp`](./reference/cli/runtime/mcp.md): Run the MCP server that exposes framework tools to a coding agent.
 - [`protean docs`](./reference/cli/project/docs.md): Live preview server for documentation.
 - [`protean test`](./community/contributing/testing.md): Run Protean's framework test suite (development only).
 - [`protean ir show`](./reference/cli/ir.md): Display the domain's IR as JSON or a human-readable summary.
