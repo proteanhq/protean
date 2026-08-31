@@ -84,6 +84,12 @@ class TestRawSqlDetector:
         src = "from sqlalchemy import text as t\ndef q(s):\n    s.execute(t('x'))\n"
         assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
 
+    def test_qualified_sqlalchemy_sql_text_is_flagged(self):
+        # `sqlalchemy.sql.text(...)` reaches the same `text` through the module
+        # path, so the root of the chain is the bound `sqlalchemy` alias.
+        src = "import sqlalchemy\ndef q(s):\n    s.execute(sqlalchemy.sql.text('x'))\n"
+        assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
+
     def test_clean_domain_gives_no_finding(self):
         src = "def q(repo):\n    return repo.filter(name='x')\n"
         assert _detect_raw_sql(trees(src), OWNS_ALL) == []
@@ -157,6 +163,16 @@ class TestCustomMiddlewareDetector:
             "import starlette.middleware.cors\n"
             "def wire(app):\n"
             "    app.add_middleware(starlette.middleware.cors.CORSMiddleware)\n"
+        )
+        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+
+    def test_aliased_standard_middleware_is_not_flagged(self):
+        # Importing a standard middleware under an alias is still the stack's own
+        # middleware, so `add_middleware(CORS)` must stay silent.
+        src = (
+            "from starlette.middleware.cors import CORSMiddleware as CORS\n"
+            "def wire(app):\n"
+            "    app.add_middleware(CORS)\n"
         )
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
 

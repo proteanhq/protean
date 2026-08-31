@@ -127,13 +127,22 @@ def _sqlalchemy_text_names(tree: ast.Module) -> tuple[set[str], set[str]]:
     return direct, module_aliases
 
 
+def _leftmost_name(node: ast.expr) -> str | None:
+    """The leftmost plain name of an attribute chain (``a.b.c`` gives ``"a"``)."""
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
 def _is_text_call(node: ast.Call, direct: set[str], module_aliases: set[str]) -> bool:
     """Is *node* a call to the sqlalchemy ``text`` bound in this module?"""
     func = node.func
     if isinstance(func, ast.Name):
         return func.id in direct
     if isinstance(func, ast.Attribute) and func.attr == "text":
-        return _root_name(func.value) in module_aliases
+        # Match on the root of the chain, so both `sqlalchemy.text(...)` and
+        # `sqlalchemy.sql.text(...)` resolve to the bound `sqlalchemy` alias.
+        return _leftmost_name(func.value) in module_aliases
     return False
 
 
@@ -240,6 +249,22 @@ def _is_custom_middleware_class(node: ast.ClassDef) -> bool:
     return False
 
 
+def _import_aliases(tree: ast.Module) -> dict[str, str]:
+    """Map each ``import ... as`` alias to the symbol it renames.
+
+    ``from starlette.middleware.cors import CORSMiddleware as CORS`` maps ``CORS``
+    to ``CORSMiddleware``, so an ``add_middleware(CORS)`` is recognised as the
+    standard middleware it aliases and stays silent.
+    """
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name.split(".")[-1]
+    return aliases
+
+
 def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
     """``module:line`` for each custom middleware definition or registration.
 
@@ -249,6 +274,7 @@ def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
     """
     sites: list[str] = []
     for module_name, tree in trees:
+        aliases = _import_aliases(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and _is_custom_middleware_class(node):
                 sites.append(f"{module_name}:{node.lineno}")
@@ -259,7 +285,10 @@ def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
                 and node.args
             ):
                 added = _symbol_name(node.args[0])
-                if added is not None and added not in _FRAMEWORK_MIDDLEWARES:
+                if added is None:
+                    continue
+                resolved = aliases.get(added, added)
+                if resolved not in _FRAMEWORK_MIDDLEWARES:
                     sites.append(f"{module_name}:{node.lineno}")
     return sites
 
