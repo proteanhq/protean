@@ -38,6 +38,7 @@ from protean.cli.events import app as events_app
 from protean.cli.eventstore import app as eventstore_app
 from protean.cli.idempotency import app as idempotency_app
 from protean.cli.ir import app as ir_app
+from protean.cli.mcp import mcp
 from protean.cli.new import new
 from protean.cli.observatory import observatory
 from protean.cli.outbox import app as outbox_app
@@ -69,6 +70,7 @@ app.command()(recover)
 app.command()(upgrade_check)
 app.command()(new)
 app.command()(observatory)
+app.command()(mcp)
 app.command()(shell)
 app.add_typer(db_app, name="db")
 app.add_typer(dlq_app, name="dlq")

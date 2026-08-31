@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.proteanhq/protean",
+  "description": "Protean framework tools (validate, check, introspect, explain, scaffold) answered from the installed version.",
+  "version": "0.17.0",
+  "repository": {
+    "url": "https://github.com/proteanhq/protean",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registry_type": "pypi",
+      "identifier": "protean",
+      "version": "0.17.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "package_arguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

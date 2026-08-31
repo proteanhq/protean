@@ -2,8 +2,9 @@
 
 Several runtime concerns are install-time optional and live behind extras so a
 plain ``pip install protean`` stays lean (see ADR-0029): the web/observatory
-stack (``protean[server]``), the interactive shell (``protean[shell]``), and the
-project scaffolder (``protean[scaffold]``).
+stack (``protean[server]``), the interactive shell (``protean[shell]``), the
+project scaffolder (``protean[scaffold]``), and the agent-facing MCP server
+(``protean[mcp]``).
 
 When a feature is used without its extra installed, the code that reaches for
 the missing package should fail with a message that names the extra to install,
@@ -14,7 +15,7 @@ CLI and the FastAPI integration.
 
 from typing import Literal
 
-FeatureExtra = Literal["server", "shell", "scaffold"]
+FeatureExtra = Literal["server", "shell", "scaffold", "mcp"]
 
 # Each optional feature extra and the top-level import packages it provides. This
 # is the single source of truth for the "which extra is missing" checks: the CLI
@@ -25,6 +26,7 @@ FEATURE_EXTRA_MODULES: dict[FeatureExtra, tuple[str, ...]] = {
     "server": ("fastapi", "uvicorn", "jinja2"),
     "shell": ("IPython",),
     "scaffold": ("copier",),
+    "mcp": ("mcp",),
 }
 
 

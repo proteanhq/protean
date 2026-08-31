@@ -19,6 +19,7 @@ converged onto it; see that page for what is standardized today.
 | [`protean shell`](project/shell.md)    | Working with the shell             |
 | [`protean server`](runtime/server.md)  | Running an async background server |
 | [`protean observatory`](runtime/observatory.md) | Running the observability dashboard |
+| [`protean mcp`](runtime/mcp.md)         | Running the MCP server for a coding agent |
 | [`protean ir show`](ir.md)                   | Display the domain's IR as JSON or summary |
 | [`protean db setup`](data/database.md)       | Create all database tables         |
 | [`protean db drop`](data/database.md)        | Drop all database tables           |
