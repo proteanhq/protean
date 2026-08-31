@@ -90,6 +90,17 @@ class TestRawSqlDetector:
         src = "import sqlalchemy\ndef q(s):\n    s.execute(sqlalchemy.sql.text('x'))\n"
         assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
 
+    def test_unrelated_imports_do_not_break_text_detection(self):
+        # An unrelated `import` and a non-`text` name in the sqlalchemy import
+        # are both skipped while `text` is still bound and matched.
+        src = (
+            "import os\n"
+            "from sqlalchemy import select, text\n"
+            "def q(s):\n"
+            "    return s.execute(text('SELECT 1'))\n"
+        )
+        assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
+
     def test_clean_domain_gives_no_finding(self):
         src = "def q(repo):\n    return repo.filter(name='x')\n"
         assert _detect_raw_sql(trees(src), OWNS_ALL) == []
@@ -176,6 +187,17 @@ class TestCustomMiddlewareDetector:
         )
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
 
+    def test_add_middleware_with_a_computed_argument_is_ignored(self):
+        # A middleware built by a call has no static name to check, so it is
+        # neither matched against the framework set nor flagged.
+        src = "def wire(app):\n    app.add_middleware(make_middleware())\n"
+        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+
+    def test_class_with_multiple_unrelated_bases_is_not_flagged(self):
+        # Walking past several non-middleware bases still lands on "not custom".
+        src = "class M(Foo, Bar):\n    pass\n"
+        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+
     def test_a_plain_class_is_not_flagged(self):
         src = "class Order:\n    async def dispatch(self):\n        return None\n"
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
@@ -200,6 +222,12 @@ class TestQueueStatusDetector:
         # A domain `status` with business choices is not a work queue.
         src = "class User:\n    status = String(choices=['active', 'inactive'])\n"
         assert _detect_queue_status(trees(src), OWNS_ALL) == []
+
+    def test_non_string_choice_members_are_skipped(self):
+        # A non-string member in the choices list is skipped; the string queue
+        # tokens still drive the match.
+        src = "class Job:\n    status = String(choices=['pending', 'processing', 3])\n"
+        assert len(_detect_queue_status(trees(src), OWNS_ALL)) == 1
 
     def test_single_queue_token_is_not_enough(self):
         # One overlapping token is too loose; a match needs at least two.
