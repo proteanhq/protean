@@ -87,7 +87,8 @@ def upgrade_check(
         ),
     ] = None,
 ) -> None:
-    """Report changes that need attention when upgrading to a newer Protean."""
+    """Report upgrade-readiness changes, or with --opportunities, shipped
+    capability the domain still hand-rolls."""
     if format not in ("rich", "json"):
         print(f"[red]Invalid --format: {format!r}. Use 'rich' or 'json'.[/red]")
         raise typer.Exit(code=1)

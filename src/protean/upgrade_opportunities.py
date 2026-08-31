@@ -316,7 +316,7 @@ def _detect_custom_middleware(
         UpgradeFinding(
             code="OPPORTUNITY_DOMAIN_CONTEXT_MIDDLEWARE",
             level="info",
-            title=f"{len(sites)} custom ASGI middleware definition(s)",
+            title=f"{len(sites)} custom ASGI middleware site(s)",
             detail=(
                 f"`DomainContextMiddleware` shipped in {_MIDDLEWARE_RELEASE} and "
                 "wires the domain context plus correlation-id propagation "
