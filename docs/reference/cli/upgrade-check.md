@@ -74,9 +74,14 @@ protean upgrade-check --opportunities --domain=my_app --pinned-version=0.15
 protean upgrade-check --opportunities --domain=my_app --format=json
 ```
 
-Every detector is **deterministic**: it reads your source and matches on imports
-and structure, never on bare names, so it gives the same findings every run and
-does not fire on correct code. Detector findings are advisory (`info`) and do not
+Every detector is **deterministic**: it reads your source and matches on
+structure, its imports, call shapes, and the literal choices in a field, so it
+gives the same findings every run. The raw-SQL and middleware detectors are
+import-gated: `text` is matched only when it comes from `sqlalchemy`, and
+`add_middleware` skips the framework's own middlewares and the standard Starlette
+and FastAPI ones. The queue-status detector reads a `status` or `state` field and
+needs at least two queue-vocabulary choices before it fires. Detector findings
+are advisory (`info`) and do not
 change the exit code. The one exception is `CHECK_FAILED`: if a detector cannot
 complete, that is a `warning`, and any warning exits `2` under the shared
 exit-code rule.

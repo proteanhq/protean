@@ -70,9 +70,9 @@ def parse_version(version: str) -> Version:
     """Parse a ``MAJOR.MINOR.PATCH`` string to a tuple of ints for comparison.
 
     Only the leading digits of each of the first three dot-separated components
-    are read, so a pre-release suffix (``0.15.0rc1``) compares by its numeric
-    core and a missing component reads as ``0``. Protean version strings are
-    clean semver, so this stays deterministic without pulling in ``packaging``.
+    are read, so a version with a PEP 440 suffix (``0.16.0rc1``, ``0.17.0.dev1``)
+    compares by its numeric core and a missing component reads as ``0``. Comparing
+    the numeric core keeps this deterministic without pulling in ``packaging``.
     """
     numbers: list[int] = []
     for part in version.strip().split(".")[:3]:
