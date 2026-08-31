@@ -392,11 +392,10 @@ class QuerySet:
         by default, has its ``auto_now`` timestamps and enrichers applied. Pass
         ``apply_hooks=False`` to skip those hooks for a raw bulk write.
 
-        Because each row is updated individually with an optimistic-concurrency
-        check, a mid-batch conflict raises `ExpectedVersionError`. Run
-        inside a ``UnitOfWork`` to keep the batch atomic (the raise rolls the whole
-        batch back); run standalone and the rows updated before the conflict are
-        already committed.
+        Each row is updated individually with an optimistic-concurrency check, so
+        a mid-batch conflict raises `ExpectedVersionError` after the earlier rows
+        have already committed. The batch is never atomic; every aggregate is its
+        own consistency boundary.
 
         ``apply_hooks`` is a reserved keyword argument; to update a field named
         ``apply_hooks``, use the dictionary form (``.update({'apply_hooks': ...})``).
