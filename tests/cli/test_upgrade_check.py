@@ -124,6 +124,22 @@ class TestOpportunitiesCLI:
         assert result.exit_code == 1
         assert "Invalid --pinned-version" in result.stdout
 
+    def test_pinned_version_without_opportunities_exits_1(self):
+        # --pinned-version only affects --opportunities mode; passing it without
+        # that flag is a mistake, not a silently ignored option.
+        result = runner.invoke(
+            app,
+            [
+                "upgrade-check",
+                "-d",
+                _TEXT_DOMAIN,
+                "--pinned-version",
+                "0.16",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "--pinned-version applies only with --opportunities" in result.stdout
+
     @pytest.mark.parametrize(
         "pinned", ["0.16", "0.16.3", "0.16.0rc1", "0.16.0a1", "0.16.0b2", "0.16.0.dev1"]
     )

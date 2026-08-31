@@ -92,10 +92,14 @@ def upgrade_check(
         print(f"[red]Invalid --format: {format!r}. Use 'rich' or 'json'.[/red]")
         raise typer.Exit(code=1)
 
+    if pinned_version is not None and not opportunities:
+        print("[red]--pinned-version applies only with --opportunities.[/red]")
+        raise typer.Exit(code=1)
+
     if pinned_version is not None and not _PINNED_VERSION_RE.match(pinned_version):
         print(
             f"[red]Invalid --pinned-version: {pinned_version!r}. "
-            "Use a version like '0.16' or '0.16.3'.[/red]"
+            "Use a version like '0.16', '0.16.3', or '0.16.0rc1'.[/red]"
         )
         raise typer.Exit(code=1)
 

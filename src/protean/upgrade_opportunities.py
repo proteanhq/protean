@@ -7,8 +7,10 @@ shipped that the domain still appears to hand-roll. The issue's phrase for it is
 
 Every detector here is **deterministic**. It reads the domain's source through
 :class:`~protean.ir.analysis.source_provider.SourceProvider` and matches on
-imports and structure, never on bare names, so it gives the same verdict every
-run and does not fire on correct code. Judgment-heavy advice ("this orchestration
+structure: imports, call shapes, and literal choices. The raw-SQL and middleware
+detectors are import-gated; the queue-status detector reads a ``status`` or
+``state`` field with two or more queue-vocabulary choices. Every run gives the
+same verdict. Judgment-heavy advice ("this orchestration
 is really a process manager") stays out of OSS; that lives in the commercial
 Domain Assessment surface, on the non-deterministic side of the open-core
 boundary.
