@@ -193,6 +193,17 @@ class TestCustomMiddlewareDetector:
         src = "def wire(app):\n    app.add_middleware(make_middleware())\n"
         assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
 
+    def test_own_class_aliased_like_a_standard_middleware_is_flagged(self):
+        # A user's own middleware imported from their package under a name that
+        # collides with a standard one is still custom. Alias resolution trusts
+        # only the framework module roots, so this stays flagged.
+        src = (
+            "from myapp.middleware import CORSMiddleware as CORS\n"
+            "def wire(app):\n"
+            "    app.add_middleware(CORS)\n"
+        )
+        assert len(_detect_custom_middleware(trees(src), OWNS_ALL)) == 1
+
     def test_class_with_multiple_unrelated_bases_is_not_flagged(self):
         # Walking past several non-middleware bases still lands on "not custom".
         src = "class M(Foo, Bar):\n    pass\n"

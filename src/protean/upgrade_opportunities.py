@@ -217,6 +217,11 @@ _FRAMEWORK_MIDDLEWARES = frozenset(
     }
 )
 
+# Import roots that alias resolution trusts. A standard middleware only comes
+# from one of these, so restricting alias mapping to them keeps a user's own
+# class named like a standard one (imported from their package) flaggable.
+_MIDDLEWARE_MODULE_ROOTS = frozenset({"starlette", "fastapi", "uvicorn", "protean"})
+
 
 def _symbol_name(node: ast.expr) -> str | None:
     """The final symbol an attribute chain names, if there is one.
@@ -250,18 +255,24 @@ def _is_custom_middleware_class(node: ast.ClassDef) -> bool:
 
 
 def _import_aliases(tree: ast.Module) -> dict[str, str]:
-    """Map each ``import ... as`` alias to the symbol it renames.
+    """Map an ``import ... as`` alias to the symbol it renames, framework only.
 
     ``from starlette.middleware.cors import CORSMiddleware as CORS`` maps ``CORS``
     to ``CORSMiddleware``, so an ``add_middleware(CORS)`` is recognised as the
-    standard middleware it aliases and stays silent.
+    standard middleware it aliases and stays silent. Only imports from the
+    framework module roots are mapped, so a user's own class named like a
+    standard middleware (``from myapp.mw import CORSMiddleware as CORS``) is still
+    flagged.
     """
     aliases: dict[str, str] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if alias.asname:
-                    aliases[alias.asname] = alias.name.split(".")[-1]
+        if not isinstance(node, ast.ImportFrom) or not node.module:
+            continue
+        if node.module.split(".")[0] not in _MIDDLEWARE_MODULE_ROOTS:
+            continue
+        for alias in node.names:
+            if alias.asname:
+                aliases[alias.asname] = alias.name.split(".")[-1]
     return aliases
 
 
