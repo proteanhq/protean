@@ -35,6 +35,11 @@ from protean.ir.builder import IRBuilder
 from protean.testing import assert_invalid, assert_valid
 from tests.ir.support import deprecated_usage_domain, infra_import_domain
 
+# Every test here builds the domains it needs. Skip the autouse ``test_domain``
+# fixture so no unrelated default domain is initialized and pushed as the
+# ambient context around these checks.
+pytestmark = pytest.mark.no_test_domain
+
 
 def _build_audit_domain() -> Domain:
     """One domain that exercises every ``detection='check'`` deprecated path."""
@@ -86,8 +91,8 @@ def _deprecation_diagnostics(ir: dict) -> list[dict]:
 
 
 class TestRegistryCompleteness:
-    def test_registry_holds_twelve_active_deprecations(self) -> None:
-        assert len(DEPRECATIONS) == 12
+    def test_registry_holds_fourteen_active_deprecations(self) -> None:
+        assert len(DEPRECATIONS) == 14
 
     def test_every_entry_is_well_formed(self) -> None:
         for slug, entry in DEPRECATIONS.items():
@@ -376,6 +381,34 @@ def _trigger_assert_invalid() -> None:
     assert_invalid(_raises)
 
 
+def _runtime_arm_update_domain() -> tuple[Domain, type]:
+    """A tiny built domain with one persistable aggregate for the update arms."""
+    domain = Domain(name="RuntimeArmUpdate")
+
+    @domain.aggregate
+    class Thing:
+        name = String(max_length=50)
+
+    domain.init(traverse=False)
+    return domain, Thing
+
+
+def _trigger_dao_update() -> None:
+    domain, Thing = _runtime_arm_update_domain()
+    with domain.domain_context():
+        dao = domain.repository_for(Thing)._dao
+        thing = dao.create(name="before")
+        dao.update(thing, name="after")
+
+
+def _trigger_queryset_update() -> None:
+    domain, Thing = _runtime_arm_update_domain()
+    with domain.domain_context():
+        dao = domain.repository_for(Thing)._dao
+        dao.create(name="before")
+        dao.query.filter(name="before").update(name="after")
+
+
 # Each runtime deprecation's slug → a callable that exercises its deprecated
 # path. Keyed by slug so the completeness test below can prove the map and the
 # registry's runtime arm stay in lock-step: adding a runtime entry without a
@@ -385,6 +418,8 @@ _RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
     "send_email": _trigger_send_email,
     "assert_valid": _trigger_assert_valid,
     "assert_invalid": _trigger_assert_invalid,
+    "dao_update": _trigger_dao_update,
+    "queryset_update": _trigger_queryset_update,
 }
 
 
