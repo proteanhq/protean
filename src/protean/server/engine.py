@@ -17,6 +17,7 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.port.broker import BrokerCapabilities
+from protean.utils.dlq import COMMAND_DISPATCHER_MODULE, command_dispatcher_name
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -80,10 +81,12 @@ class CommandDispatcher:
         self._last_resolved_handler: type[BaseCommandHandler] | None = None
         self._last_resolved_item: BaseCommand | BaseEvent | None = None
 
-        # Identity attributes for fqn() and logging
-        self.__name__ = f"Commands:{stream_category}"
+        # Identity attributes for fqn() and logging. Sourced from dlq so the
+        # failed-positions stream this subscription writes to and the one the
+        # ``eventstore dlq`` CLI derives stay the same string.
+        self.__name__ = command_dispatcher_name(stream_category)
         self.__qualname__ = self.__name__
-        self.__module__ = "protean.server.engine"
+        self.__module__ = COMMAND_DISPATCHER_MODULE
 
         # Copy meta_ from the source handler so ConfigResolver can resolve
         # subscription settings (type, profile, tick interval, etc.)
