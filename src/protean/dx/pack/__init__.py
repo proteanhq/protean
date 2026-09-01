@@ -124,9 +124,12 @@ def _skippable(line: str) -> bool:
 
 
 def _strip_comment(value: str) -> str:
-    """Drop a YAML end-of-line ``#`` comment (one preceded by whitespace)."""
-    for index in range(1, len(value)):
-        if value[index] == "#" and value[index - 1] in " \t":
+    """Drop a YAML ``#`` comment: one at the start of the value, or one preceded
+    by whitespace. A ``#`` inside a token (``a#b``) is not a comment, so it
+    stays. A value that is nothing but a comment (``# note``) becomes empty,
+    which is how YAML reads a bare ``- # note`` item: null, not a code."""
+    for index in range(len(value)):
+        if value[index] == "#" and (index == 0 or value[index - 1] in " \t"):
             return value[:index].rstrip()
     return value
 
@@ -215,6 +218,8 @@ def _collect_block_list(lines: list[str], key_indent: int) -> list[str]:
     to a parent). Blank and comment-only lines within the sequence are skipped.
     The sequence ends at the first line that is not one of those and not an item
     at that indentation: a sibling mapping key, a dedent, or a re-indented item.
+    A ``- # note`` item is a null entry in YAML, not a code; it sets the
+    sequence indentation like any item but contributes nothing.
     """
     codes: list[str] = []
     seq_indent: int | None = None
@@ -231,7 +236,9 @@ def _collect_block_list(lines: list[str], key_indent: int) -> list[str]:
             seq_indent = indent
         elif indent != seq_indent:
             break
-        codes.append(_clean_scalar(match.group(1)))
+        code = _clean_scalar(match.group(1))
+        if code:
+            codes.append(code)
     return codes
 
 

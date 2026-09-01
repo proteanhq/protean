@@ -238,6 +238,42 @@ def test_block_list_skips_a_comment_line(tmp_path, monkeypatch):
     ]
 
 
+def test_block_list_ignores_a_comment_only_item(tmp_path, monkeypatch):
+    # A bare ``- # note`` is a null entry in YAML, not a code. It must not become
+    # the code "# note", and it must not truncate the list: the real item after
+    # it is still read. Without the fix the scanner captures "# note" verbatim.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "    - # placeholder, no code yet\n"
+        "    - CROSS_AGGREGATE_REFERENCE\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == [
+        "AGGREGATE_NO_INVARIANTS",
+        "CROSS_AGGREGATE_REFERENCE",
+    ]
+
+
+def test_inline_value_that_is_only_a_comment_reads_nothing(tmp_path, monkeypatch):
+    # ``diagnostic_codes: # note`` is a null value in YAML, so the skill teaches
+    # nothing. Without the fix the trailing comment is read as the code "# note".
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\nmetadata:\n  diagnostic_codes: # none yet, added later\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == []
+
+
 def test_metadata_block_survives_an_unindented_comment(tmp_path, monkeypatch):
     # A comment-only line at column 0 is not a top-level key, so it does not end
     # the metadata block and the key after it is still read.
