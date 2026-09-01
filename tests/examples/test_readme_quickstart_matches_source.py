@@ -29,6 +29,21 @@ _NEXT_HEADING_RE = re.compile(r"^#{1,2} ", re.MULTILINE)
 _START_MARKER = "# --8<-- [start:quickstart]"
 _END_MARKER = "# --8<-- [end:quickstart]"
 
+# A pymdownx snippet section marker, e.g. ``# --8<-- [start:aggregate]``. The
+# docs quickstart pulls named regions out of blog.py, so the module carries
+# these markers nested inside the ``quickstart`` region. pymdownx drops the
+# marker lines when it extracts a section, so this strips the canonical
+# markers blog.py writes the same way, letting the marker-free README block
+# compare verbatim against the code between the ``quickstart`` markers.
+_SNIPPET_SECTION_MARKER_RE = re.compile(r"^# --8<-- \[(?:start|end):[a-z][\w-]*\]$")
+
+
+def _strip_snippet_section_markers(text: str) -> str:
+    """Drop pymdownx snippet section-marker lines from ``text``."""
+    return "\n".join(
+        line for line in text.split("\n") if not _SNIPPET_SECTION_MARKER_RE.match(line)
+    )
+
 
 def _extract_readme_quickstart_block(readme_text: str) -> str:
     """Return the text inside the first fenced ```python block in the Quick Start section."""
@@ -60,7 +75,13 @@ def _extract_readme_quickstart_block(readme_text: str) -> str:
 
 
 def _extract_blog_quickstart_region(blog_text: str) -> str:
-    """Return the text strictly between the start and end marker lines."""
+    """Return the code between the quickstart markers, minus nested markers.
+
+    ``blog.py`` carries the outer ``quickstart`` markers the README block
+    mirrors, plus nested ``[start:...]`` / ``[end:...]`` markers the docs page
+    pulls named regions from. The nested marker lines are stripped so the
+    comparison is against code only, the same content pymdownx renders.
+    """
     start_count = blog_text.count(_START_MARKER)
     end_count = blog_text.count(_END_MARKER)
     assert start_count == 1, (
@@ -74,7 +95,7 @@ def _extract_blog_quickstart_region(blog_text: str) -> str:
     region, _, _ = remainder.partition(_END_MARKER)
     assert region.startswith("\n"), "Expected a newline directly after the start marker"
     assert region.endswith("\n"), "Expected a newline directly before the end marker"
-    return region[1:-1]
+    return _strip_snippet_section_markers(region[1:-1])
 
 
 @pytest.mark.no_test_domain
@@ -166,3 +187,55 @@ class TestExtractorsAreVerbatim:
             _extract_blog_quickstart_region(
                 f"{_START_MARKER}\nx = 1\n    {_END_MARKER}\n"
             )
+
+    def test_blog_extractor_strips_nested_section_markers(self):
+        """Nested docs-region markers must not leak into the compared code.
+
+        The docs page pulls named regions with ``--8<--``, so blog.py has
+        nested markers inside the ``quickstart`` region. A README block has
+        none, so the extractor drops them before comparing.
+        """
+        blog = (
+            f"{_START_MARKER}\n"
+            "# --8<-- [start:aggregate]\n"
+            "x = 1\n"
+            "# --8<-- [end:aggregate]\n"
+            f"{_END_MARKER}\n"
+        )
+        region = _extract_blog_quickstart_region(blog)
+        assert "--8<--" not in region
+        assert region == "x = 1"
+
+    def test_readme_matches_a_source_that_carries_nested_markers(self):
+        """A README with no markers matches source whose region has them."""
+        readme = "## Quick Start\n\n```python\nx = 1\ny = 2\n```\n"
+        blog = (
+            f"{_START_MARKER}\n"
+            "# --8<-- [start:one]\n"
+            "x = 1\n"
+            "# --8<-- [end:one]\n"
+            "# --8<-- [start:two]\n"
+            "y = 2\n"
+            "# --8<-- [end:two]\n"
+            f"{_END_MARKER}\n"
+        )
+        assert _extract_readme_quickstart_block(
+            readme
+        ) == _extract_blog_quickstart_region(blog)
+
+    def test_a_code_drift_inside_a_marked_region_still_fails(self):
+        """Stripping markers must not hide a real code difference."""
+        readme = "## Quick Start\n\n```python\nx = 1\ny = 2\n```\n"
+        blog = (
+            f"{_START_MARKER}\n"
+            "# --8<-- [start:one]\n"
+            "x = 1\n"
+            "# --8<-- [end:one]\n"
+            "# --8<-- [start:two]\n"
+            "y = 999\n"
+            "# --8<-- [end:two]\n"
+            f"{_END_MARKER}\n"
+        )
+        assert _extract_readme_quickstart_block(
+            readme
+        ) != _extract_blog_quickstart_region(blog)
