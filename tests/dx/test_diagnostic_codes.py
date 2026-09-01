@@ -275,6 +275,20 @@ def test_block_list_stops_at_a_dedented_item(tmp_path, monkeypatch):
     assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
 
 
+def test_block_list_stops_at_an_item_shallower_than_the_key(tmp_path, monkeypatch):
+    # The first item sets the sequence indentation, but only if it is at least as
+    # deep as the diagnostic_codes key. An item indented less than the key is not
+    # that key's sequence, so nothing is collected.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\nmetadata:\n  diagnostic_codes:\n - AGGREGATE_NO_INVARIANTS\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == []
+
+
 # --- Contract enforcement: codes live under metadata, in a closed block ------
 
 
@@ -287,6 +301,27 @@ def test_diagnostic_codes_outside_metadata_are_not_read(tmp_path, monkeypatch):
         tmp_path,
         "demo",
         "---\ndiagnostic_codes:\n  - AGGREGATE_NO_INVARIANTS\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == []
+
+
+def test_metadata_block_ends_at_the_next_top_level_key(tmp_path, monkeypatch):
+    # The metadata block is the run of lines indented under the key, and it ends
+    # at the next top-level key. A diagnostic_codes key nested under a *later*
+    # top-level key is outside metadata and is not read.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  category: orientation\n"
+        "name: demo\n"
+        "extra:\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "---\n",
     )
     monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
 
