@@ -1493,6 +1493,26 @@ class TestLagDrainRate:
             assert block["details"][2]["lag_drain_rate"] is None
             assert set(refresher._samples) == {"orders-handler"}
 
+    async def test_a_block_without_a_list_of_details_is_left_alone(self):
+        """A block whose ``details`` is missing or not a list has nothing to
+        annotate, so the pass returns without touching it or recording a
+        window."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            missing = {"total": 0}
+            refresher._annotate_lag_drain_rates(missing)
+            assert missing == {"total": 0}
+
+            not_a_list = {"total": 0, "details": "boom"}
+            refresher._annotate_lag_drain_rates(not_a_list)
+            assert not_a_list == {"total": 0, "details": "boom"}
+
+            assert refresher._samples == {}
+
     async def test_rate_field_is_present_on_the_readiness_block(self):
         """The field rides on the real readiness output, null after one window."""
         domain = self._domain()
