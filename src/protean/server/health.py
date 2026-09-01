@@ -254,11 +254,11 @@ class _SubscriptionBlockRefresher:
         the backlog is draining; positive means it is falling behind.  It is
         ``None`` until two windows have landed, and ``None`` for any row whose
         ``lag_seconds`` is unknown (an unreachable backend or an unmatched
-        breaker) — a rate with no window is meaningless and must never read as 0.
+        breaker). A rate with no window is meaningless and must never read as 0.
 
         Only the refresher holds a window, so the rate is computed here rather
-        than in the one-shot collector, and both readiness entry points that
-        read the block get the field without a second wiring site.
+        than in the one-shot collector, and the readiness probe picks the field
+        up from the block it already reads.
         """
         details = block.get("details")
         if not isinstance(details, list):

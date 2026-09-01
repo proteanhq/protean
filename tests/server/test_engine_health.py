@@ -1368,7 +1368,7 @@ class TestLagDrainRate:
             assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(2.0)
 
     async def test_state_is_bounded_by_the_sample_window(self):
-        """AC3: state cannot grow with runtime — the window is a bounded deque."""
+        """AC3: state cannot grow with runtime; the window is a bounded deque."""
         domain = self._domain()
         clock = [1000.0]
         with domain.domain_context():
