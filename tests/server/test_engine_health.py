@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 import time
+from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -1257,6 +1258,353 @@ class TestSubscriptionBlockRefresher:
             engine = Engine(domain, test_mode=True)
             with pytest.raises(ValueError, match="interval"):
                 _SubscriptionBlockRefresher(engine, interval=0)
+
+
+@pytest.mark.no_test_domain
+class TestLagDrainRate:
+    """Per-subscription lag-drain rate rides on the readiness block.
+
+    The rate is the change in ``lag_seconds`` per second, computed by the
+    refresher because it is the only place that holds a window.  Negative means
+    draining; positive means falling behind; ``null`` until two windows land.
+    """
+
+    def _domain(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        return domain
+
+    def _refresher(self, engine, clock):
+        # Injected clock so the sample times are exact and the slope is a known
+        # number, not something that depends on wall-clock jitter.
+        return _SubscriptionBlockRefresher(engine, interval=2.0, clock=lambda: clock[0])
+
+    def _series_collector(self, name, lag_seconds_series):
+        """A collector that returns *name* with the next ``lag_seconds`` value."""
+        values = iter(lag_seconds_series)
+
+        def _collect(_domain):
+            return [_status(name, lag=5, lag_seconds=next(values), status="lagging")]
+
+        return _collect
+
+    async def test_draining_lag_yields_a_negative_rate(self):
+        """AC1: lag falling across windows gives a negative rate."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=self._series_collector(
+                    "orders-handler", [20.0, 16.0, 12.0]
+                ),
+            ):
+                # One sample: a rate is meaningless, so it stays null.
+                await refresher._refresh_once()
+                assert refresher.block["details"][0]["lag_drain_rate"] is None
+
+                # Two samples 2s apart, 20 → 16: slope is -2.0 lag-seconds/second.
+                clock[0] += 2.0
+                await refresher._refresh_once()
+                assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(
+                    -2.0
+                )
+
+                # A third on the same line holds the slope at -2.0.
+                clock[0] += 2.0
+                await refresher._refresh_once()
+                assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(
+                    -2.0
+                )
+
+    async def test_steady_caught_up_lag_yields_a_zero_rate(self):
+        """AC2 (negative test): a caught-up subscription reports 0, never a
+        spurious non-zero drift."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=self._series_collector(
+                    "orders-handler", [0.0, 0.0, 0.0, 0.0]
+                ),
+            ):
+                rates = []
+                for _ in range(4):
+                    await refresher._refresh_once()
+                    rates.append(refresher.block["details"][0]["lag_drain_rate"])
+                    clock[0] += 2.0
+
+            # First is null (one sample); the rest are exactly zero, never a
+            # fabricated non-zero rate.
+            assert rates[0] is None
+            for rate in rates[1:]:
+                assert rate == pytest.approx(0.0, abs=1e-9)
+
+    async def test_rising_backlog_yields_a_positive_rate(self):
+        """Lag climbing across windows gives a positive rate."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=self._series_collector("orders-handler", [4.0, 8.0, 12.0]),
+            ):
+                await refresher._refresh_once()
+                clock[0] += 2.0
+                await refresher._refresh_once()
+                clock[0] += 2.0
+                await refresher._refresh_once()
+
+            # 4 → 8 → 12 over 2s steps: +2.0 lag-seconds/second.
+            assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(2.0)
+
+    async def test_state_is_bounded_by_the_sample_window(self):
+        """AC3: state cannot grow with runtime; the window is a bounded deque."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status("orders-handler", lag=5, lag_seconds=9.0, status="lagging")
+                ],
+            ):
+                # Far more refreshes than the window can hold.
+                for _ in range(100):
+                    await refresher._refresh_once()
+                    clock[0] += 2.0
+
+            window = refresher._samples["orders-handler"]
+            assert window.maxlen == 30
+            assert len(window) == 30
+
+    async def test_unknown_lag_stays_null_and_records_no_sample(self):
+        """A row whose ``lag_seconds`` is unknown gets a null rate and no
+        sample: a 0 sample would later read as a real drained rate."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status(
+                        "orders-handler",
+                        lag=None,
+                        lag_seconds=None,
+                        status="unknown",
+                    )
+                ],
+            ):
+                await refresher._refresh_once()
+                clock[0] += 2.0
+                await refresher._refresh_once()
+
+            assert refresher.block["details"][0]["lag_drain_rate"] is None
+            # No sample was recorded, so the name never enters the window map.
+            assert "orders-handler" not in refresher._samples
+
+    async def test_a_gap_in_readable_lag_restarts_the_window(self):
+        """A subscription whose lag goes unreadable and comes back starts a
+        fresh window, so readings from either side of the gap are never joined
+        into one slope."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            def _collect(_domain):
+                return [_status("orders-handler", lag=5, lag_seconds=20.0)]
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=_collect,
+            ):
+                await refresher._refresh_once()
+                clock[0] += 2.0
+                await refresher._refresh_once()
+            assert refresher.block["details"][0]["lag_drain_rate"] == 0.0
+
+            # The backend goes unreadable for a long stretch.
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status(
+                        "orders-handler", lag=None, lag_seconds=None, status="unknown"
+                    )
+                ],
+            ):
+                clock[0] += 2.0
+                await refresher._refresh_once()
+            assert refresher.block["details"][0]["lag_drain_rate"] is None
+            assert "orders-handler" not in refresher._samples
+
+            # Readings return an hour later.  The first one has nothing to
+            # compare against, so it reads null rather than a slope smeared
+            # across the outage.
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=self._series_collector("orders-handler", [10.0, 8.0]),
+            ):
+                clock[0] += 3600.0
+                await refresher._refresh_once()
+                assert refresher.block["details"][0]["lag_drain_rate"] is None
+
+                clock[0] += 2.0
+                await refresher._refresh_once()
+
+            # The slope comes from the two post-gap readings only.
+            assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(
+                -1.0
+            )
+
+    async def test_a_row_without_a_name_gets_a_null_rate(self):
+        """A row with no usable name cannot key a window, so it is annotated
+        null and records nothing."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            block = {"total": 1, "details": [{"lag_seconds": 9.0}]}
+            refresher._annotate_lag_drain_rates(block)
+
+            assert block["details"][0]["lag_drain_rate"] is None
+            assert refresher._samples == {}
+
+    async def test_zero_time_variance_yields_null_not_a_crash(self):
+        """Two samples at the same instant must return null, not divide by zero."""
+        domain = self._domain()
+        clock = [1000.0]  # never advanced: a fixed clock
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=self._series_collector("orders-handler", [20.0, 16.0]),
+            ):
+                await refresher._refresh_once()
+                await refresher._refresh_once()
+
+            # Two samples share one instant, so the slope is undefined, not 0.
+            assert refresher.block["details"][0]["lag_drain_rate"] is None
+
+    async def test_a_dropped_subscription_is_pruned_from_the_window(self):
+        """A subscription that vanishes from the collector output no longer
+        holds a window, so the key set cannot grow with churn."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status("orders-handler", lag=5, lag_seconds=9.0, status="lagging"),
+                    _status("audit-handler", lag=1, lag_seconds=3.0, status="lagging"),
+                ],
+            ):
+                await refresher._refresh_once()
+            assert "audit-handler" in refresher._samples
+
+            clock[0] += 2.0
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status("orders-handler", lag=5, lag_seconds=7.0, status="lagging")
+                ],
+            ):
+                await refresher._refresh_once()
+
+            assert "orders-handler" in refresher._samples
+            assert "audit-handler" not in refresher._samples
+
+    async def test_a_non_dict_row_is_skipped_instead_of_crashing(self):
+        """Annotation runs outside the collector's guard, so a row that is not
+        a writable dict must be skipped, not raise and end the refresher."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            block = {
+                "total": 2,
+                "details": [
+                    "not-a-row",
+                    MappingProxyType({"name": "frozen", "lag_seconds": 4.0}),
+                    {"name": "orders-handler", "lag_seconds": 9.0},
+                ],
+            }
+            refresher._annotate_lag_drain_rates(block)
+
+            assert block["details"][0] == "not-a-row"
+            assert "lag_drain_rate" not in block["details"][1]
+            # The good row is still annotated, and only it holds a window.
+            assert block["details"][2]["lag_drain_rate"] is None
+            assert set(refresher._samples) == {"orders-handler"}
+
+    async def test_a_block_without_a_list_of_details_is_left_alone(self):
+        """A block whose ``details`` is missing or not a list has nothing to
+        annotate, so the pass returns without touching it or recording a
+        window."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            missing = {"total": 0}
+            refresher._annotate_lag_drain_rates(missing)
+            assert missing == {"total": 0}
+
+            not_a_list = {"total": 0, "details": "boom"}
+            refresher._annotate_lag_drain_rates(not_a_list)
+            assert not_a_list == {"total": 0, "details": "boom"}
+
+            assert refresher._samples == {}
+
+    async def test_rate_field_is_present_on_the_readiness_block(self):
+        """The field rides on the real readiness output, null after one window."""
+        domain = self._domain()
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status("orders-handler", lag=5, lag_seconds=9.0, status="lagging")
+                ],
+            ):
+                result = await _readiness(engine)
+
+            detail = result["checks"]["subscriptions"]["details"][0]
+            assert "lag_drain_rate" in detail
+            assert detail["lag_drain_rate"] is None
+
+    async def test_rate_is_not_a_subscription_status_field(self):
+        """AC4: the rate is a health-block annotation, not a SubscriptionStatus
+        field (and not an OTEL gauge): it never leaks into the shared status
+        surface the CLI and Observatory read."""
+        assert "lag_drain_rate" not in _status("orders-handler").to_dict()
 
 
 # ---------------------------------------------------------------------------

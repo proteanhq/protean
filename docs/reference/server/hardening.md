@@ -130,6 +130,8 @@ Content-Type: application/json
           "subscription_type": "stream",
           "stream_category": "order",
           "lag": 0,
+          "lag_seconds": 0.0,
+          "lag_drain_rate": 0.0,
           "pending": 0,
           "dlq_depth": 0,
           "status": "ok",
@@ -152,10 +154,12 @@ stream subscription.
 | `total` | How many subscription objects the engine is running. |
 | `details` | One row per subscription found by walking the domain registry. |
 | `lag` | Messages behind the stream head, or `null` when it cannot be determined. |
+| `lag_seconds` | Seconds behind the stream head, or `null` when it cannot be determined. |
+| `lag_drain_rate` | Change in `lag_seconds` per second: negative while the backlog drains, positive while it grows. `null` until two refreshes have landed, or when `lag_seconds` is unknown. |
 | `status` | `ok`, `lagging`, or `unknown`. |
 | `circuit_state` | `closed`, `open`, or `half_open`. Absent when the subscription has no breaker. |
 
-Two things worth knowing before you build on this:
+Worth knowing before you build on this:
 
 - **`total` and `details` count different things** and may differ in length.
   `total` is the engine's own tally of live subscription objects; `details`
@@ -169,6 +173,16 @@ Two things worth knowing before you build on this:
   cannot be reached, or the lag cannot be computed, the row says
   `lag: null, status: "unknown"` rather than guessing. A `status: "ok"` row means
   the collector read the subscription and found it caught up.
+- **`lag_drain_rate` tells you which way lag is moving, not just how big it is**:
+  a lag of 40 seconds that is draining at `-2.0` clears on its own; the same 40
+  seconds at `+2.0` is falling further behind and needs attention. It is the
+  slope of `lag_seconds` over a short sliding window, so it reads `null` for the
+  first refresh after startup (one sample is not a trend) and whenever
+  `lag_seconds` itself is `null`. An unreadable lag also starts the window over,
+  so the first refresh after the lag becomes readable again reads `null` rather
+  than a slope stretched across the gap. It is not a metrics gauge: a metrics
+  backend derives the same signal from `protean_subscription_lag_seconds` with
+  `deriv()`.
 - **A partitioned category reports summed lag**: A `sequential_by` subscription
   consumes `{category}:{key}` partition streams, so its row aggregates lag and
   pending counts across every live partition, and `current_position` reports how

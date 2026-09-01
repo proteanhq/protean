@@ -24,7 +24,10 @@ the default ``false`` only the first worker binds and the rest run without
 probes.  One worker per pod (the usual Kubernetes shape) has no such gap.
 
 The readiness response also carries a ``subscriptions`` block reporting per-
-subscription lag, status, and circuit-breaker state.  That block is
+subscription lag, status, and circuit-breaker state.  Each row also carries a
+``lag_drain_rate``: the change in ``lag_seconds`` per second, negative while the
+backlog drains and positive while it grows.  It is ``null`` until two refreshes
+have landed and for any row whose ``lag_seconds`` is unknown.  That block is
 **informational and is not one of the gates above**: a lagging subscription or
 an open breaker never flips the probe to 503, because a backlog is not a reason
 for Kubernetes to pull the pod out of service — the engine is still healthy and
@@ -50,6 +53,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -88,6 +92,12 @@ _SUBSCRIPTION_REFRESH_SECONDS = 2.0
 # How many missed refreshes before the block is called stale.  One skipped tick
 # is normal jitter; several in a row means collection is wedged.
 _STALE_AFTER_INTERVALS = 3
+
+# How many recent (clock, lag_seconds) samples to retain per subscription when
+# computing the lag-drain rate.  At the 2s refresh cadence this is about a 60s
+# window.  It is a ``deque`` maxlen, so it bounds the per-subscription state:
+# the window slides, it never grows with runtime.
+_LAG_SAMPLE_WINDOW = 30
 
 # SubscriptionStatus fields the readiness block drops: stream cursors and
 # bookkeeping that answer "where is it?" rather than "is it healthy?".
@@ -181,6 +191,12 @@ class _SubscriptionBlockRefresher:
         self._block: dict[str, Any] | None = None
         self._collected_at: float = 0.0
         self._task: asyncio.Task[None] | None = None
+        # Per-subscription sliding window of (clock_time, lag_seconds) samples,
+        # keyed by subscription name.  Each deque is bounded by
+        # ``_LAG_SAMPLE_WINDOW``, and a name is dropped when it leaves the block
+        # or when its lag becomes unreadable, so neither axis of this state
+        # grows with runtime.
+        self._samples: dict[str, deque[tuple[float, float]]] = {}
 
     @property
     def block(self) -> dict[str, Any]:
@@ -227,13 +243,97 @@ class _SubscriptionBlockRefresher:
             logger.debug("Subscription block refresh failed", exc_info=True)
             return
 
+        self._annotate_lag_drain_rates(block)
         self._block = block
         self._collected_at = self._clock()
+
+    def _annotate_lag_drain_rates(self, block: dict[str, Any]) -> None:
+        """Set ``lag_drain_rate`` on each detail row of *block*, in place.
+
+        The rate is the change in ``lag_seconds`` per second, computed by
+        least-squares over this subscription's retained samples.  Negative means
+        the backlog is draining; positive means it is falling behind.  It is
+        ``None`` until two windows have landed, and ``None`` for any row whose
+        ``lag_seconds`` is unknown (an unreachable backend or an unmatched
+        breaker). A rate with no window is meaningless and must never read as 0.
+        An unknown lag also clears that subscription's window, so readings from
+        either side of the gap are never joined into one slope.
+
+        Only the refresher holds a window, so the rate is computed here rather
+        than in the one-shot collector, and the readiness probe picks the field
+        up from the block it already reads.
+        """
+        details = block.get("details")
+        if not isinstance(details, list):
+            return
+
+        now = self._clock()
+        present: set[str] = set()
+        for detail in details:
+            if not isinstance(detail, dict):
+                # Nothing to annotate on a row we cannot write to.  Skipping it
+                # keeps a malformed row from taking the refresher down: this
+                # runs outside the collector's own guard, so an exception here
+                # would end the loop and freeze the block for good.
+                continue
+
+            name = detail.get("name")
+            if not isinstance(name, str):
+                # No name to key a window by, so there is nothing to sample.
+                detail["lag_drain_rate"] = None
+                continue
+
+            present.add(name)
+
+            lag_seconds = detail.get("lag_seconds")
+            if not isinstance(lag_seconds, (int, float)):
+                # Unknown lag: no sample, no rate.  A 0 sample here would later
+                # read as a real, drained rate.  The window starts over too, so
+                # the next readable lag is not compared against one from before
+                # the gap: the slope between them would be spread over however
+                # long the backend was unreadable and read as a trend that never
+                # happened.
+                self._samples.pop(name, None)
+                detail["lag_drain_rate"] = None
+                continue
+
+            samples = self._samples.setdefault(name, deque(maxlen=_LAG_SAMPLE_WINDOW))
+            samples.append((now, float(lag_seconds)))
+            detail["lag_drain_rate"] = _lag_drain_rate(samples)
+
+        # Prune windows for subscriptions no longer in the block, so the key set
+        # cannot grow unbounded as subscriptions churn.  A row that is present
+        # but has unknown lag is not a dropped subscription: its window was
+        # already reset above, and its name stays in ``present``.
+        for dropped_name in self._samples.keys() - present:
+            del self._samples[dropped_name]
 
     async def _run(self) -> None:
         while True:
             await self._refresh_once()
             await asyncio.sleep(self._interval)
+
+
+def _lag_drain_rate(samples: deque[tuple[float, float]]) -> float | None:
+    """Least-squares slope of ``lag_seconds`` over ``(time, lag_seconds)`` samples.
+
+    Returns the change in lag-seconds per second: negative while draining,
+    positive while falling behind.  Returns ``None`` with fewer than two samples
+    (no line to fit) or when the samples share one instant (a fixed or
+    non-advancing clock), which would otherwise divide by zero.
+    """
+    n = len(samples)
+    if n < 2:
+        return None
+
+    mean_t = sum(t for t, _ in samples) / n
+    mean_y = sum(y for _, y in samples) / n
+    denominator = sum((t - mean_t) ** 2 for t, _ in samples)
+    if denominator == 0:
+        return None
+
+    numerator = sum((t - mean_t) * (y - mean_y) for t, y in samples)
+    return numerator / denominator
 
 
 def _circuit_states(engine: Engine) -> dict[str, str]:
