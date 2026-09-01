@@ -318,7 +318,7 @@ def db(test_domain):
 
 
 @pytest.fixture(autouse=True)
-def run_around_tests(test_domain):
+def run_around_tests(test_domain, request):
     yield
 
     if test_domain:
@@ -341,11 +341,50 @@ def run_around_tests(test_domain):
 
         if test_domain.event_store.store:
             try:
-                test_domain.event_store.store._data_reset()
+                # ``_isolate_message_db`` already truncates the shared Message-DB
+                # store before each ``message_db`` test, so skip the redundant
+                # teardown truncate for those and only release the pool. Other
+                # stores (memory) still reset here.
+                if "message_db" not in request.keywords:
+                    test_domain.event_store.store._data_reset()
             finally:
                 # Always close event store connections to prevent pool exhaustion,
                 # even if _data_reset() fails
                 test_domain.event_store.store.close()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_message_db(request):
+    """Give every ``message_db``-marked test a clean shared store.
+
+    The Message-DB adapter tests all run against one Postgres ``message-db``
+    database, whose ``$all`` stream tail and per-stream version counters are
+    global to the process. When the full matrix runs in a single process,
+    residue from an earlier Message-DB test skews a later ``$all``-tail read,
+    which fails intermittently and depends on execution order. Truncating the
+    store before each marked test gives it a clean start regardless of what ran
+    before, so every Message-DB test is order-independent and tests no longer
+    need per-class ``_data_reset()`` scaffolding. Resetting before (not after)
+    is what breaks the dependence on a predecessor cleaning up after itself.
+
+    The reset is a whole-store ``TRUNCATE``, so it assumes Message-DB tests run
+    in a single process against the shared database. The ``protean test`` full
+    matrix runs them that way and there is no ``pytest-xdist`` in play; two
+    processes truncating the same store at once would wipe each other's
+    in-flight writes.
+
+    Non-``message_db`` tests take the early return below, so they never touch
+    the store or import ``psycopg2``. A marked test reaches the reset only under
+    ``--message_db``: without it the test is skipped before fixture setup runs.
+    """
+    if "message_db" not in request.keywords:
+        yield
+        return
+
+    from tests.shared import reset_message_db
+
+    reset_message_db()
+    yield
 
 
 @pytest.fixture(autouse=True)

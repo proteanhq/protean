@@ -30,9 +30,13 @@ protean docs generate --ir=domain-ir.json --type=event-model
     - `handlers`: handler wiring diagrams.
     - `catalog`: an event and command catalog (Markdown tables).
     - `event-model`: the EventModeling slice timeline (see below).
-    - `all` (default): every section except `event-model`.
+    - `llms`: a versioned `llms.txt` context pack (see below).
+    - `agents`: a versioned `AGENTS.md` negative-constraint pack (see below).
+    - `all` (default): every section except `event-model`, `llms`, and
+      `agents`.
 - `--format`, `-f`: `markdown` (fenced code blocks, the default) or `mermaid`
-  (raw diagram source). `mermaid` is not supported for `catalog`.
+  (raw diagram source). `mermaid` is not supported for `catalog`, `llms`, or
+  `agents`.
 - `--output`, `-o`: Write to a file instead of stdout.
 - `--cluster`: Filter to a single cluster FQN (only with `--type=clusters` or
   `--type=all`).
@@ -81,6 +85,80 @@ protean docs generate --domain=my_app --type=event-model
 
 Unlike the other diagram types, `event-model` is its own view and is not
 included in `--type=all`.
+
+### The llms.txt context pack
+
+`--type=llms` renders a versioned context pack in the
+[llms.txt](https://llmstxt.org) convention, aimed at an LLM agent working on a
+Protean project. It has two layers:
+
+- **Framework layer** (always present): an H1 naming Protean and the installed
+  version, a one-line summary, and a "Core documentation" section of links to
+  the published docs site for the core areas: aggregate clusters, events,
+  command and event handlers, projections, and event evolution.
+- **Project overlay** (present only with a source): a section derived from the
+  IR listing the project's own aggregate clusters (with their commands, events,
+  and handlers) and its projections.
+
+`--type=llms` is the one type that runs with no `--domain` and no `--ir`: with
+no source it emits the framework layer alone; with a source it adds the project
+overlay. Like `event-model`, it is its own view and is not part of `--type=all`.
+
+The output is byte-stable: for a given Protean version and project structure,
+generating twice yields identical bytes. The overlay reads only structural parts
+of the IR, never volatile fields like the build timestamp, so it does not churn
+between runs.
+
+```shell
+# Framework layer only (no source needed)
+protean docs generate --type=llms
+
+# Framework layer plus the project overlay
+protean docs generate --domain=my_app --type=llms --output=llms.txt
+```
+
+### The AGENTS.md constraint pack
+
+`--type=agents` renders a versioned
+[AGENTS.md](https://agents.md) negative-constraint pack: the hard rules an agent
+working on a Protean project must not break. It has one rule for every
+error-level diagnostic code Protean can raise. Each rule is a prohibition built
+from that code's registered `meaning`, `rationale`, and `fix`, and it ends with
+the code so a reader can trace it back:
+
+```
+- **Do not** write code that causes this error: <meaning> <rationale> To
+  comply: <fix> (`CODE`)
+```
+
+Beyond the fixed wording in that template (the lead-in, `To comply:`, and the
+code in backticks at the end), the generator adds nothing: it drops the three
+registry fields in as they are written, joined with single spaces. The rule
+reads as full sentences because each registry field already ends with a period.
+
+Only error-level codes appear: advisory `warning` and `info` codes are style and
+design nudges, not hard rules, so they are excluded. The set of rules is coupled
+to the live registry, so adding or removing an error code changes the file.
+
+`--type=agents` needs no `--domain` and no `--ir`: it derives only from the
+registry and the installed Protean version, so it runs with no source. Like
+`llms` and `event-model`, it is its own view and is not part of `--type=all`.
+
+The output is byte-stable: for a given Protean version it renders identical
+bytes, because the header is version-stamped, the registry traversal is sorted,
+and nothing reads a timestamp.
+
+A project generated with `protean new` already ships this file as `AGENTS.md` at
+its root, kept byte-identical to this command's output. Regenerate it after
+upgrading Protean:
+
+```shell
+# Print the constraint pack
+protean docs generate --type=agents
+
+# Refresh the project's AGENTS.md
+protean docs generate --type=agents --output=AGENTS.md
+```
 
 ### Annotating the event model
 
@@ -163,7 +241,7 @@ To start the live preview server for your project's documentation, run
 the command without any additional options:
 
 ```shell
-protean docs preview`
+protean docs preview
 ```
 
 This will start a local server, usually accessible via a web browser at a URL

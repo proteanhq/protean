@@ -17,6 +17,15 @@ Usage::
     # Generate the EventModeling slice timeline
     protean docs generate --domain=my_app --type=event-model
 
+    # Generate the versioned llms.txt context pack (framework layer only)
+    protean docs generate --type=llms
+
+    # ...with the project overlay from a domain or IR file
+    protean docs generate --domain=my_app --type=llms
+
+    # Generate the versioned AGENTS.md negative-constraint pack (needs no source)
+    protean docs generate --type=agents
+
     # Write output to a file
     protean docs generate --domain=my_app --output=docs/architecture.md
 
@@ -39,6 +48,7 @@ from typing import Annotated, Any
 import typer
 from rich import print
 
+import protean
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.ir.generators.base import mermaid_fence
 
@@ -70,7 +80,16 @@ def preview() -> None:
 # ``protean docs generate``
 # ---------------------------------------------------------------------------
 
-_VALID_TYPES = ("clusters", "events", "handlers", "catalog", "event-model", "all")
+_VALID_TYPES = (
+    "clusters",
+    "events",
+    "handlers",
+    "catalog",
+    "event-model",
+    "llms",
+    "agents",
+    "all",
+)
 
 
 @app.command()
@@ -97,7 +116,7 @@ def generate(
             "-t",
             help=(
                 "Generator type: clusters, events, handlers, catalog, "
-                "event-model, or all (default)"
+                "event-model, llms, agents, or all (default)"
             ),
         ),
     ] = "all",
@@ -137,7 +156,10 @@ def generate(
 ) -> None:
     """Generate architecture documentation from a Protean domain or IR file."""
     # --- Validate inputs --------------------------------------------------
-    if not domain and not ir:
+    # --type=llms and --type=agents are the types that run with no source: llms
+    # emits the framework layer alone and agents emits the registry-derived
+    # constraint pack. Every other type still requires --domain or --ir.
+    if not domain and not ir and type not in ("llms", "agents"):
         print("[red]Error:[/red] provide either --domain or --ir")
         raise typer.Abort()
 
@@ -171,15 +193,29 @@ def generate(
         )
         raise typer.Abort()
 
-    if format == "mermaid" and type == "catalog":
+    if format == "mermaid" and type in ("catalog", "llms", "agents"):
+        _reason = {
+            "catalog": "catalog outputs Markdown tables, not Mermaid diagrams",
+            "llms": "llms outputs a Markdown context pack, not Mermaid diagrams",
+            "agents": "agents outputs a Markdown constraint pack, not Mermaid diagrams",
+        }[type]
         print(
-            "[red]Error:[/red] --format=mermaid is not supported for --type=catalog "
-            "(catalog outputs Markdown tables, not Mermaid diagrams)"
+            f"[red]Error:[/red] --format=mermaid is not supported for --type={type} "
+            f"({_reason})"
         )
         raise typer.Abort()
 
     # --- Load IR ----------------------------------------------------------
-    ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
+    # --type=llms and --type=agents run with no source. agents is derived only
+    # from the diagnostics registry, so its source is truly ignored: skip the
+    # IR load entirely, otherwise a broken --domain/--ir would abort the command
+    # before the registry-only pack is printed. llms loads a source when given
+    # (it adds a project overlay) and emits the framework layer alone without one.
+    ir_data: dict[str, Any] | None
+    if type == "agents" or (not domain and not ir):
+        ir_data = None
+    else:
+        ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
 
     # --- Load annotations (event-model only) ------------------------------
     # Loaded and validated here, before any generation or file write, so a
@@ -294,15 +330,34 @@ def _load_annotations(path: Path) -> dict[str, Any]:
 
 
 def _generate_output(
-    ir_data: dict[str, Any],
+    ir_data: dict[str, Any] | None,
     *,
     doc_type: str,
     output_format: str,
     cluster_fqn: str,
     annotations: dict[str, Any] | None = None,
 ) -> str:
-    """Dispatch to the appropriate generator(s) and assemble the result."""
+    """Dispatch to the appropriate generator(s) and assemble the result.
+
+    ``ir_data`` is always ``None`` for ``--type=agents``: it is derived from the
+    diagnostics registry alone, so ``generate`` skips the IR load even when a
+    source is given. It is ``None`` for ``--type=llms`` only when run with no
+    source. Every other type requires a source, so ``ir_data`` is a dict on
+    their paths.
+    """
     sections: list[str] = []
+
+    # llms and agents are deliberately not part of the "all" bundle: each is a
+    # distinct pack view, and agents needs no IR at all.
+    if doc_type == "llms":
+        return _generate_llms(ir_data)
+
+    if doc_type == "agents":
+        return _generate_agents()
+
+    # From here every type requires an IR; the guard above and the source
+    # validation in ``generate`` guarantee ir_data is a dict on these paths.
+    assert ir_data is not None
 
     if doc_type in ("clusters", "all"):
         sections.append(_generate_clusters(ir_data, output_format, cluster_fqn))
@@ -504,6 +559,31 @@ def _generate_catalog(ir_data: dict[str, Any]) -> str:
     from protean.ir.generators.catalog import generate_catalog  # noqa: PLC0415
 
     return generate_catalog(ir_data)
+
+
+def _generate_llms(ir_data: dict[str, Any] | None) -> str:
+    """Generate the versioned ``llms.txt`` context pack.
+
+    The framework layer is stamped with the installed Protean version. When an
+    IR was loaded (``--domain``/``--ir``), the project overlay is appended;
+    with no source, ``ir_data`` is ``None`` and only the framework layer is
+    emitted.
+    """
+    from protean.ir.generators.llms import generate_llms_txt  # noqa: PLC0415
+
+    return generate_llms_txt(ir_data, version=protean.__version__)
+
+
+def _generate_agents() -> str:
+    """Generate the versioned ``AGENTS.md`` negative-constraint pack.
+
+    Derived only from the diagnostics registry and stamped with the installed
+    Protean version. It reads no IR, so it needs no ``--domain``/``--ir``; a
+    source, if given, is ignored.
+    """
+    from protean.ir.generators.agents import generate_agents_md  # noqa: PLC0415
+
+    return generate_agents_md(version=protean.__version__)
 
 
 def _write_output(path: str, content: str) -> None:

@@ -43,6 +43,7 @@ def _make_engine(priority_lanes_config=None, server_extras=None):
     engine.domain.config = {"server": server_config}
     engine.domain.brokers = {"default": MagicMock()}
     engine.shutting_down = False
+    engine.draining = False
     engine.emitter = MagicMock()
     engine.loop = asyncio.new_event_loop()
     return engine

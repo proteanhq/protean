@@ -64,6 +64,25 @@ MSSQL_URI = (
 ELASTICSEARCH_URI: dict = {"hosts": [f"localhost:{ELASTICSEARCH_PORT}"]}
 
 
+def reset_message_db() -> None:
+    """Truncate the shared Message-DB store used by every ``message_db`` test.
+
+    All Message-DB tests run against one Postgres ``message-db`` database, so the
+    global ``$all`` stream tail and per-stream version counters are process-wide
+    state. Truncating clears both, so a test that reads the ``$all`` tail sees
+    only its own writes regardless of what ran before it. Delegates to the
+    adapter's own :func:`_truncate_message_store`, so there is one copy of the
+    reset recipe.
+    """
+    # ``protean.adapters.event_store.message_db`` pulls in ``psycopg2`` and the
+    # message-db client, optional deps present only in the Message-DB test
+    # environment. Import it locally so importing this module never requires
+    # them — this runs only for ``message_db``-marked tests.
+    from protean.adapters.event_store.message_db import _truncate_message_store
+
+    _truncate_message_store(MESSAGE_DB_URI)
+
+
 def initialize_domain(name="Tests", root_path=None):
     """Initialize a Protean Domain with configuration from a file"""
     domain = Domain(name=name, root_path=root_path)

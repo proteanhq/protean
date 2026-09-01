@@ -115,6 +115,12 @@ embedders can call directly.
   fixed rather than make it configurable to avoid incident scenarios
   where an operator sets it to a high value and delays deploys
   indefinitely.
+
+  > **Superseded by ADR-0036.** The window is now configurable via
+  > `server.drain_timeout` (default 10 seconds), with guardrails for the
+  > set-high-and-forget concern: the default preserves this behaviour, the
+  > supervisor warns when the value reaches its kill timeout, and the value is
+  > version-controlled. The rest of the shutdown contract in this ADR stands.
 - Custom adapters that ignored lifecycle before must now implement
   `close()` if they hold resources. The no-op default keeps the
   common case backward-compatible.
@@ -124,7 +130,16 @@ embedders can call directly.
 
 ## Alternatives Considered
 
-**Configurable drain timeout.** Rejected. The operational value of a
+**Configurable drain timeout.** Rejected.
+
+> **Superseded by ADR-0036.** This rejection has been lifted. The operational
+> value of a predictable upper bound still holds as the default, but the fixed
+> bound force-cancelled handlers that legitimately run longer than 10 seconds.
+> ADR-0036 makes the window configurable and addresses the set-and-forget worry
+> below with a 10-second default, a supervisor warning, and version-controlled
+> config.
+
+The operational value of a
 predictable upper bound outweighs the flexibility of tuning. A
 configurable drain invites operators to set it to five minutes during
 an incident and then forget to reset it, stretching subsequent rolling

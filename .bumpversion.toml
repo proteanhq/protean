@@ -46,3 +46,11 @@ filename = "src/protean/template/domain_template/pyproject.toml.jinja"
 
 [[tool.bumpversion.files]]
 filename = "docs/guides/getting-started/installation.md"
+
+# The MCP registry manifest. Both version references are the framework version;
+# anchoring on `"version": "..."` skips the schema URL's date, which is not a
+# version.
+[[tool.bumpversion.files]]
+filename = "server.json"
+search = '"version": "{current_version}"'
+replace = '"version": "{new_version}"'

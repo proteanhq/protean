@@ -231,6 +231,12 @@ class PartitionedStreamSubscription(StreamSubscription):
         index, and takes leases on any we do not yet own (spawning a worker per
         newly-owned partition). Per-partition draining happens in those worker
         tasks, so different keys drain in parallel. Runs until shutdown.
+
+        This loop keeps renewing leases while the engine is draining (it stops
+        only on shutdown), so owned partitions are not abandoned to lapse mid-
+        drain; ``_acquire_new`` stops taking on new partitions while draining and
+        ``_run_partition`` stops processing, so the worker holds its leases idle
+        until the SIGTERM shutdown releases them.
         """
         consecutive_errors = 0
         while self.keep_going and not self.engine.shutting_down:
@@ -322,6 +328,11 @@ class PartitionedStreamSubscription(StreamSubscription):
     async def _acquire_new(self, units: dict[str, list[tuple[str, str]]]) -> None:
         """Take leases on discovered partitions we do not yet own."""
         assert self.broker is not None, "Broker not initialized"
+        # While draining (or shutting down) do not take on new partitions: the
+        # worker is quiescing, so acquiring a lease it will not process only
+        # blocks a healthy peer. Owned partitions keep being renewed above.
+        if self._quiescing():
+            return
         for partition_id, streams in units.items():
             if partition_id in self._owned:
                 # Already owned. A partition unit can grow — a process manager's
@@ -350,6 +361,13 @@ class PartitionedStreamSubscription(StreamSubscription):
                 generation,
                 fence_token,
             )
+            if self._quiescing():
+                # The acquisition above awaits, so a drain can start while it is
+                # in flight. Registering the partition now would start a worker
+                # that processes nothing and hold the lease away from a healthy
+                # peer for the whole drain window, so hand it straight back.
+                await self._release_lease(owned)
+                return
             self._owned[partition_id] = owned
             logger.info(
                 "partition.acquired",
@@ -435,7 +453,7 @@ class PartitionedStreamSubscription(StreamSubscription):
             await self._reclaim(owned)
             while (
                 self.keep_going
-                and not self.engine.shutting_down
+                and not self._quiescing()
                 and not owned.halted
                 and owned.partition_id in self._owned
             ):
@@ -523,10 +541,14 @@ class PartitionedStreamSubscription(StreamSubscription):
         assert self.broker is not None, "Broker not initialized"
         processed = 0
         for category, stream in owned.streams:
-            if owned.halted:
+            # Each stream's read and handler awaits, so a drain can begin part
+            # way through a pass. Stop before reading the next stream instead of
+            # only between passes: the message just handled was in flight, the
+            # next one would be new intake.
+            if owned.halted or self._quiescing():
                 break
             head = await self._read_head(owned, stream)
-            if head is None and self._lanes_enabled:
+            if head is None and self._lanes_enabled and not self._quiescing():
                 head = await self._read_head(owned, self._backfill_stream(stream))
             if head is None:
                 continue
@@ -552,6 +574,13 @@ class PartitionedStreamSubscription(StreamSubscription):
         """
         assert self.broker is not None, "Broker not initialized"
         for new_messages in (False, True):  # pending first, then new
+            if new_messages and self._quiescing():
+                # The pending read above awaits, so a drain can land between the
+                # two reads. A pending entry is work already handed to this
+                # consumer, so it still finishes; a `>` read is fresh intake, so
+                # stop here rather than pulling in a new message after the
+                # trigger.
+                return None
             messages = await asyncio.to_thread(
                 self.broker.read_partition_fenced,
                 stream,

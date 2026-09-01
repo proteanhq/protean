@@ -1,4 +1,4 @@
-# ADR-0035: Canonical field-declaration style for mypy-strict domains
+# ADR-0038: Canonical field-declaration style for mypy-strict domains
 
 **Status:** Accepted
 

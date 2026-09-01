@@ -114,10 +114,11 @@ sendgrid = [
 server = ["fastapi>=0.139.0", "uvicorn>=0.30.0", "jinja2>=3.1.6"]  # `protean observatory`, the FastAPI integration
 shell = ["ipython>=9.0.0,<10.0"]  # `protean shell`
 scaffold = ["copier>=9.4.0,<10"]  # `protean new`
+mcp = ["mcp>=2.1.1,<3"]  # `protean mcp`, the agent-facing MCP server
 # Convenience bundles. `cli` is the full interactive CLI experience; `all`
 # restores everything that shipped in the pre-0.18 core (the one-line upgrade for
 # projects that relied on the fat install).
-cli = ["protean[shell,scaffold]"]
+cli = ["protean[shell,scaffold,mcp]"]
 all = ["protean[server,cli]"]
 dev = ["watchfiles>=1.2.0"]
 telemetry = [

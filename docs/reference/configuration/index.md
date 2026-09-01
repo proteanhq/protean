@@ -392,6 +392,7 @@ settings.
 default_subscription_type = "stream"      # "stream" or "event_store"
 default_subscription_profile = "production"  # Profile for defaults
 messages_per_tick = 100                   # Messages per processing cycle
+drain_timeout = 10                        # Seconds to wait for in-flight handlers on shutdown
 
 # StreamSubscription defaults
 [server.stream_subscription]
@@ -533,9 +534,11 @@ default** on port `8080`.
 | `port` | int | `8080` | Listen port. |
 | `port_auto_increment` | bool | `false` | When `true`, if `port` is already bound the server walks up (`8081`, `8082`, ...) until it finds a free one. Lets several engines share a host without colliding. |
 
-The server exposes `GET /healthz`, `GET /livez`, and `GET /readyz`. For
-the probe response bodies, readiness semantics, and FastAPI router
-factory, see
+The server exposes `GET /healthz`, `GET /livez`, `GET /readyz`, and
+`POST /drainz`. `/drainz` asks the engine in that process to stop taking new
+work while in-flight work finishes, without shutting it down; `/readyz` then
+reports not-ready so a load balancer stops routing to the pod. For the probe
+response bodies, readiness semantics, draining, and FastAPI router factory, see
 [Server Hardening reference](../server/hardening.md#health-checks).
 
 #### Priority Lanes

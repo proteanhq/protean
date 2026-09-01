@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import math
 import platform
 import signal
 import time
@@ -16,6 +17,7 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.port.broker import BrokerCapabilities
+from protean.utils.dlq import COMMAND_DISPATCHER_MODULE, command_dispatcher_name
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -43,6 +45,7 @@ from .subscription.factory import (
     SubscriptionFactory,
     broker_supports_partitioning,
 )
+from .supervisor import _SHUTDOWN_TIMEOUT_SECONDS
 from .tracing import TraceEmitter
 
 if TYPE_CHECKING:
@@ -78,10 +81,12 @@ class CommandDispatcher:
         self._last_resolved_handler: type[BaseCommandHandler] | None = None
         self._last_resolved_item: BaseCommand | BaseEvent | None = None
 
-        # Identity attributes for fqn() and logging
-        self.__name__ = f"Commands:{stream_category}"
+        # Identity attributes for fqn() and logging. Sourced from dlq so the
+        # failed-positions stream this subscription writes to and the one the
+        # ``eventstore dlq`` CLI derives stay the same string.
+        self.__name__ = command_dispatcher_name(stream_category)
         self.__qualname__ = self.__name__
-        self.__module__ = "protean.server.engine"
+        self.__module__ = COMMAND_DISPATCHER_MODULE
 
         # Copy meta_ from the source handler so ConfigResolver can resolve
         # subscription settings (type, profile, tick interval, etc.)
@@ -232,6 +237,75 @@ class Engine:
         self.debug = debug  # Flag to indicate if debug mode is enabled
         self.exit_code = 0
         self.shutting_down = False  # Flag to indicate the engine is shutting down
+        # Advisory drain flag, flipped by POST /drainz. Distinct from
+        # shutting_down: draining means "stop fetching new work, let in-flight
+        # work finish, stay alive" so an orchestrator can quiesce the process
+        # before sending SIGTERM. shutting_down means "tear everything down".
+        #
+        # Draining only gates the subscription poll loops (they stop pulling new
+        # batches); it deliberately does NOT gate handle_message /
+        # handle_broker_message. A message already read into an in-flight batch
+        # must run to completion, since a False return from those guards travels
+        # the failure path (NACK/retry/DLQ) and would drop the message. The
+        # loop-top check then exits once the current batch finishes.
+        self.draining = False
+
+        # Graceful drain window (seconds): how long shutdown() waits for
+        # in-flight handlers to finish before force-cancelling. Read from
+        # [server].drain_timeout, defaulting to 10 to preserve the previous
+        # hardcoded behaviour. Defensive read + numeric coercion mirrors the
+        # observatory/health config reads elsewhere in __init__.
+        # Pre-seeded so the warning below can name the offending value; it stays
+        # the default only if the config read itself fails.
+        drain_timeout_raw: Any = 10
+        try:
+            drain_timeout_raw = domain.config.get("server", {}).get("drain_timeout", 10)
+            if isinstance(drain_timeout_raw, bool):
+                # bool is a subclass of int, so float(True) is 1.0: a TOML
+                # `drain_timeout = true` would silently become a one-second
+                # window instead of an invalid value. Reject it like any other
+                # non-numeric setting.
+                raise TypeError("drain_timeout must be a number, not a boolean")
+            drain_timeout = float(drain_timeout_raw)
+            if not math.isfinite(drain_timeout):
+                # nan and inf survive float() and slip past the range checks
+                # below, since every comparison against nan is False. A nan
+                # window makes asyncio.wait return on the next loop step and
+                # force-cancel in-flight handlers with no grace; an inf window
+                # outlives the supervisor's kill timeout. Both are invalid.
+                raise ValueError("drain_timeout must be a finite number")
+            self.drain_timeout = drain_timeout
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            logger.warning(
+                "engine.drain_timeout_invalid_using_default",
+                extra={"drain_timeout": drain_timeout_raw, "default": 10},
+            )
+            self.drain_timeout = 10.0
+        # A zero or negative window gives no grace at all: asyncio.wait returns
+        # on the next loop step and every unfinished task is cancelled
+        # immediately. That is almost never intended, so treat it as invalid and
+        # restore the default rather than silently force-cancelling in-flight
+        # work.
+        if self.drain_timeout <= 0:
+            logger.warning(
+                "engine.drain_timeout_not_positive_using_default",
+                extra={"drain_timeout": self.drain_timeout, "default": 10},
+            )
+            self.drain_timeout = 10.0
+
+        # Warn if the drain window is at or above the multi-worker Supervisor
+        # kill timeout: a worker whose drain window reaches the kill timeout can
+        # be SIGKILLed before it finishes draining. Single-worker runs have no
+        # supervisor, so an over-long window there is legitimate — hence a
+        # warning, not an error.
+        if self.drain_timeout >= _SHUTDOWN_TIMEOUT_SECONDS:
+            logger.warning(
+                "engine.drain_timeout_at_or_above_supervisor_kill_timeout",
+                extra={
+                    "drain_timeout": self.drain_timeout,
+                    "supervisor_kill_timeout": _SHUTDOWN_TIMEOUT_SECONDS,
+                },
+            )
 
         # Keep a strong reference to the shutdown task so it isn't garbage
         # collected mid-flight (see RUF006).
@@ -648,7 +722,7 @@ class Engine:
         """
 
         if self.shutting_down:
-            return False  # Skip handling if shutdown is in progress
+            return False  # Skip handling while shutting down
 
         with self.domain.domain_context():
             # Set message context so subscribers (and any commands they
@@ -722,7 +796,7 @@ class Engine:
             bool: True if the message was processed successfully, False otherwise
         """
         if self.shutting_down:
-            return False  # Skip handling if shutdown is in progress
+            return False  # Skip handling while shutting down
 
         # Propagate metadata extensions into g so that handlers see the
         # same context (tenant_id, user_id, etc.) that enrichers injected
@@ -1111,7 +1185,7 @@ class Engine:
             tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
             if tasks:
                 logger.debug("engine.draining_tasks", extra={"count": len(tasks)})
-                done, pending = await asyncio.wait(tasks, timeout=10.0)
+                done, pending = await asyncio.wait(tasks, timeout=self.drain_timeout)
 
                 # Retrieve exceptions from completed tasks so Python doesn't
                 # emit "Task exception was never retrieved" warnings.

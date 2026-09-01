@@ -16,7 +16,8 @@ Verifies that:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, Mock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -31,10 +32,17 @@ from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector, on
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Processing
 from protean.fields import Identifier, String
 from protean.server import Engine
+from protean.server.observatory.metrics import (
+    _hand_rolled_metrics,
+    _register_infrastructure_gauges,
+    _scrape_cache,
+)
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import fqn
 from protean.utils.eventing import Message
@@ -152,6 +160,7 @@ class MockEngine:
         self.loop = asyncio.new_event_loop()
         self.emitter = Mock()
         self.shutting_down = False
+        self.draining = False
         # Create a real engine for message handling
         self._real_engine = Engine(domain, test_mode=True)
 
@@ -760,3 +769,161 @@ class TestNoOpSubscriptionMetrics:
         metrics.subscription_retries.add(1, attrs)
         metrics.subscription_dlq_routed.add(1, attrs)
         metrics.subscription_processing_duration.record(0.5, attrs)
+
+
+# ---------------------------------------------------------------------------
+# Subscription lag-seconds gauge (infrastructure gauge + hand-rolled fallback)
+# ---------------------------------------------------------------------------
+
+
+class LagProjection(BaseProjection):
+    user_id = Identifier(identifier=True)
+    name = String()
+
+
+class LagProjector(BaseProjector):
+    @on(Registered)
+    def on_registered(self, event: Registered):
+        pass
+
+
+def _seed_lagging(test_domain, seconds_behind: int = 120) -> None:
+    """Write events and a position that trails head by a fixed wall-clock gap.
+
+    The position message carries a timestamp ``seconds_behind`` in the past and
+    a position below head, so the event-store subscription reports a positive
+    ``lag`` and a positive ``lag_seconds``.
+    """
+    with test_domain.domain_context():
+        store = test_domain.event_store.store
+        category = LagProjector.meta_.stream_categories[0]
+        for i in range(3):
+            store._write(f"{category}-{i}", "Registered", {"user_id": str(i)})
+        old = (datetime.now(UTC) - timedelta(seconds=seconds_behind)).isoformat()
+        store._write(
+            f"position-{fqn(LagProjector)}-{category}",
+            "Read",
+            {"position": 0},
+            metadata={"headers": {"time": old}},
+        )
+
+
+class TestSubscriptionLagSecondsGauge:
+    """``protean.subscription.lag_seconds`` emits through both metric paths."""
+
+    @pytest.fixture(autouse=True)
+    def _elements(self, test_domain):
+        test_domain.register(User)
+        test_domain.register(Registered, part_of=User)
+        test_domain.register(LagProjection)
+        test_domain.register(
+            LagProjector, projector_for=LagProjection, aggregates=[User]
+        )
+        test_domain.init(traverse=False)
+
+    @pytest.fixture(autouse=True)
+    def _clear_scrape_cache(self):
+        _scrape_cache.clear()
+        yield
+        _scrape_cache.clear()
+
+    def test_gauge_emits_seconds_behind_on_scrape(self, test_domain):
+        """The OTel gauge is registered and reports the projector's seconds behind.
+
+        The real store stamps the position record at write time, so seconds-behind
+        is measured against the collection clock. Advancing that clock 300s past
+        the write makes the reported value a controlled, non-trivial number rather
+        than the sub-millisecond gap of a just-written record.
+        """
+        _seed_lagging(test_domain)
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
+
+        _register_infrastructure_gauges([test_domain])
+
+        future = datetime.now(UTC) + timedelta(seconds=300)
+        with patch.object(test_domain.clock, "now", return_value=future):
+            metric = _get_metric(metric_reader, "protean.subscription.lag_seconds")
+            assert metric is not None
+            # The gauge is registered with an explicit unit so scrapers label it
+            # as seconds; that is the reason it gets its own registration.
+            assert metric.unit == "s"
+
+            points = list(metric.data.data_points)
+            point = next(
+                p for p in points if p.attributes.get("handler") == "LagProjector"
+            )
+        # The store stamps the position at write time (~now), and the clock is
+        # advanced 300s past it, so the elapsed-time branch reports ~300s (not the
+        # caught-up 0.0 short-circuit).
+        assert point.value == pytest.approx(300, abs=30)
+
+    def test_hand_rolled_fallback_emits_seconds_behind(self, test_domain):
+        """The hand-rolled text carries the seconds-behind value for the projector."""
+        _seed_lagging(test_domain)
+
+        # The store stamps the position at write time; advance the clock 300s past
+        # it so the emitted value is a controlled, non-trivial number rather than
+        # the sub-millisecond gap of a just-written record.
+        future = datetime.now(UTC) + timedelta(seconds=300)
+        with patch.object(test_domain.clock, "now", return_value=future):
+            text = _hand_rolled_metrics([test_domain])
+
+        assert "# HELP protean_subscription_lag_seconds" in text
+        assert "# TYPE protean_subscription_lag_seconds gauge" in text
+        assert "protean_subscription_lag_seconds{" in text
+        assert 'handler="LagProjector"' in text
+
+        # The emitted value is the real elapsed gap, not a placeholder.
+        line = next(
+            ln
+            for ln in text.splitlines()
+            if ln.startswith("protean_subscription_lag_seconds{")
+            and 'handler="LagProjector"' in ln
+        )
+        value = float(line.rsplit(" ", 1)[1])
+        assert value == pytest.approx(300, abs=30)
+
+    def test_gauge_skips_seconds_when_none(self, test_domain):
+        """A status whose ``lag_seconds`` is None emits no OTel data point.
+
+        The count-based lag path already guards this; the seconds gauge must not
+        report a data point (which would read as ``0.0``) when the value is
+        unavailable. Seed a status with a real message-count lag but no seconds.
+        """
+        from protean.server.subscription_status import SubscriptionStatus
+
+        no_seconds = SubscriptionStatus(
+            name="sub-lagprojector",
+            handler_name="LagProjector",
+            subscription_type="event_store",
+            stream_category="user",
+            lag=42,
+            pending=0,
+            current_position="100",
+            head_position="142",
+            status="lagging",
+            consumer_count=0,
+            dlq_depth=0,
+            last_updated=None,
+            lag_seconds=None,
+        )
+        _, metric_reader = _init_telemetry_in_memory(test_domain)
+
+        with patch(
+            "protean.server.observatory.metrics._collect_subscription_statuses",
+            return_value=[(test_domain, no_seconds)],
+        ):
+            _register_infrastructure_gauges([test_domain])
+            # Read both metrics while the collector is patched; observable-gauge
+            # callbacks fire at read time.
+            points = _get_metric_data_points(
+                metric_reader, "protean.subscription.lag_seconds"
+            )
+            lag_points = _get_metric_data_points(
+                metric_reader, "protean.subscription.consumer_lag"
+            )
+
+        assert not any(p.attributes.get("handler") == "LagProjector" for p in points)
+        # The count-based lag still reports, proving the status was collected and
+        # only the None seconds were skipped.
+        assert any(p.attributes.get("handler") == "LagProjector" for p in lag_points)

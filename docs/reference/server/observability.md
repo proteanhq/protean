@@ -353,6 +353,7 @@ curl http://localhost:9000/api/subscriptions
         "subscription_type": "event_store",
         "stream_category": "customer",
         "lag": 0,
+        "lag_seconds": 0.0,
         "pending": 0,
         "current_position": "42",
         "head_position": "42",
@@ -520,6 +521,7 @@ Available metrics:
 | `protean_streams_count` | gauge | Number of active streams |
 | `protean_consumer_groups_count` | gauge | Number of consumer groups |
 | `protean_subscription_lag` | gauge | Messages behind stream head (per subscription) |
+| `protean_subscription_lag_seconds` | gauge | Seconds since the last processed position (per event-store subscription); not emitted when unavailable |
 | `protean_subscription_pending` | gauge | Unacknowledged messages (per subscription) |
 | `protean_subscription_dlq_depth` | gauge | Dead letter queue depth (per subscription) |
 | `protean_subscription_status` | gauge | Subscription health: 1=ok, 0=not ok |

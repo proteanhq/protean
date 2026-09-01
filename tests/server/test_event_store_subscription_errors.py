@@ -486,8 +486,73 @@ class TestRecoveryPass:
         statuses = [m.metadata.headers.type for m in failed_msgs]
         assert FailedPositionStatus.EXHAUSTED.value in statuses
 
+        # The Exhausted record carries the failing event's stream location so
+        # `eventstore dlq inspect` can re-read it. The message was created with
+        # stream_position=0 and the default stream name; assert the real values,
+        # not None (pre-enrichment records had neither).
+        exhausted = [
+            m
+            for m in failed_msgs
+            if m.metadata.headers.type == FailedPositionStatus.EXHAUSTED.value
+        ]
+        assert len(exhausted) == 1
+        exhausted_data = exhausted[0].data
+        assert exhausted_data["stream_name"] == msg.metadata.headers.stream
+        assert exhausted_data["stream_name"] is not None
+        assert exhausted_data["stream_position"] == 0
+
         # No more unresolved positions
         assert len(sub._get_unresolved_positions()) == 0
+
+    @pytest.mark.asyncio
+    async def test_recovery_stops_mid_pass_when_a_drain_lands(self, test_domain):
+        """A drain landing mid-pass stops the pass after the item in flight.
+
+        Each position in the pass costs a fresh store read and handler dispatch,
+        so the positions still queued are new intake. They stay unresolved and
+        are picked up by the next pass, here or in the replacement process.
+        """
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler, max_retries=5)
+
+        msg1 = _create_message(global_position=1, stream_position=0)
+        msg2 = _create_message(global_position=2, stream_position=0)
+        _write_event_to_store(test_domain, msg1)
+        _write_event_to_store(test_domain, msg2)
+
+        await sub.process_batch([msg1, msg2])
+        assert handler_counter == 2
+        assert len(sub._get_unresolved_positions()) == 2
+
+        real_handle = sub.engine.handle_message
+
+        async def _handle_then_drain(*args, **kwargs):
+            result = await real_handle(*args, **kwargs)
+            sub.engine.draining = True  # POST /drainz lands mid-pass
+            return result
+
+        sub.engine.handle_message = _handle_then_drain
+        await sub.run_recovery_pass()
+
+        # Exactly one position was retried; the other was never re-read.
+        assert handler_counter == 3
+        assert len(sub._get_unresolved_positions()) == 2
+
+    @pytest.mark.asyncio
+    async def test_recovery_retries_every_position_when_not_draining(self, test_domain):
+        """Negative: with no drain, one pass works through every position."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler, max_retries=5)
+
+        msg1 = _create_message(global_position=1, stream_position=0)
+        msg2 = _create_message(global_position=2, stream_position=0)
+        _write_event_to_store(test_domain, msg1)
+        _write_event_to_store(test_domain, msg2)
+
+        await sub.process_batch([msg1, msg2])
+        assert handler_counter == 2
+
+        await sub.run_recovery_pass()
+
+        assert handler_counter == 4  # both positions retried
 
     @pytest.mark.asyncio
     async def test_recovery_skips_resolved_positions(self, test_domain):

@@ -22,6 +22,7 @@ def test_message_is_a_single_actionable_line_per_extra():
         ("fastapi", "server"),
         ("IPython", "shell"),
         ("copier", "scaffold"),
+        ("mcp", "mcp"),
     ]:
         msg = missing_dependency_message(package, extra, "a feature")
         assert msg.startswith("a feature requires the")

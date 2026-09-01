@@ -3,11 +3,17 @@
 import pytest
 
 from protean import Domain
+from protean.fields import Identifier, String
+from protean.server.engine import Engine
 from protean.utils.dlq import (
     _infer_stream_category,
     collect_dlq_streams,
+    collect_failed_streams,
+    command_dispatcher_fqn,
     discover_subscriptions,
+    failed_positions_stream,
 )
+from protean.utils.mixins import handle
 
 
 @pytest.mark.no_test_domain
@@ -38,6 +44,8 @@ class TestDiscoverSubscriptions:
         assert order_info is not None
         assert order_info.dlq_stream.endswith(":dlq")
         assert order_info.backfill_dlq_stream is None  # No priority lanes by default
+        # An event handler owns its stream directly, so it names itself.
+        assert order_info.subscription_fqn == order_info.handler_fqn
 
     def test_discover_subscriptions_empty_domain(self):
         domain = Domain(__file__, "EmptyDLQ")
@@ -327,3 +335,180 @@ class TestDiscoverSubscriptions:
 
         streams = collect_dlq_streams(domain)
         assert "webhooks:dlq" in streams
+
+
+def _real_failed_streams(domain: Domain) -> set[str]:
+    """The failed-positions stream each event-store subscription actually uses.
+
+    Builds the engine's subscriptions the same way ``protean server`` does and
+    reads their ``failed_positions_stream`` attribute, so this is the ground
+    truth the ``eventstore dlq`` CLI must match.
+    """
+    engine = Engine(domain=domain, test_mode=True)
+    try:
+        return {
+            sub.failed_positions_stream
+            for sub in engine._subscriptions.values()
+            if getattr(sub, "failed_positions_stream", None)
+        }
+    finally:
+        engine.loop.close()
+
+
+@pytest.mark.no_test_domain
+class TestCollectFailedStreams:
+    def test_matches_engine_subscriptions_across_handler_types(self):
+        """The CLI-derived failed streams equal what the engine subscriptions use.
+
+        Covers all three event-store handler kinds at once — an event handler, a
+        command handler, and a projector — because a command handler is fanned
+        into a ``CommandDispatcher`` whose stream name differs from the handler
+        class's, which is where the CLI would otherwise read the wrong stream.
+        """
+        domain = Domain(__file__, "TestNoDrift")
+
+        @domain.aggregate
+        class Invoice:
+            amount: str
+
+        @domain.event(part_of=Invoice)
+        class InvoiceRaised:
+            amount: str
+
+        @domain.command(part_of=Invoice)
+        class CreateInvoice:
+            amount: str
+
+        @domain.command_handler(part_of=Invoice)
+        class InvoiceCommandHandler:
+            @handle(CreateInvoice)
+            def create(self, command):
+                pass
+
+        @domain.event_handler(part_of=Invoice)
+        class InvoiceEventHandler:
+            @handle(InvoiceRaised)
+            def on_raised(self, event):
+                pass
+
+        @domain.projection
+        class InvoiceListing:
+            id = Identifier(identifier=True)
+            amount = String()
+
+        @domain.projector(projector_for=InvoiceListing, aggregates=[Invoice])
+        class InvoiceProjector:
+            @handle(InvoiceRaised)
+            def project(self, event):
+                pass
+
+        domain.init(traverse=False)
+
+        derived = {stream for _info, stream in collect_failed_streams(domain)}
+        assert derived, "expected at least one failed stream"
+        assert derived == _real_failed_streams(domain)
+
+    def test_command_handler_stream_uses_dispatcher_name(self):
+        """A command handler's failed stream is keyed by the dispatcher, not the class.
+
+        The engine wraps a command stream's handlers in one CommandDispatcher, so
+        the failed-positions stream carries the dispatcher fqn. Deriving it from
+        the handler class fqn would point the CLI at a stream that never exists.
+        """
+        domain = Domain(__file__, "TestCmdStream")
+
+        @domain.aggregate
+        class Order:
+            total: str
+
+        @domain.command(part_of=Order)
+        class PlaceOrder:
+            total: str
+
+        @domain.command_handler(part_of=Order)
+        class OrderCommandHandler:
+            @handle(PlaceOrder)
+            def place(self, command):
+                pass
+
+        domain.init(traverse=False)
+
+        pairs = collect_failed_streams(domain)
+        cmd = next(p for p in pairs if p[0].is_command_handler)
+        info, stream = cmd
+        category = info.stream_category
+        expected = failed_positions_stream(command_dispatcher_fqn(category), category)
+        assert stream == expected
+        # And crucially NOT the handler-class-keyed name that would miss the stream.
+        assert stream != failed_positions_stream(info.handler_fqn, category)
+        # The reported subscription identity is the dispatcher, not the handler
+        # class, so CLI output names the subscription that wrote the records.
+        assert info.subscription_fqn == command_dispatcher_fqn(category)
+        assert info.subscription_fqn != info.handler_fqn
+
+    def test_command_handlers_sharing_category_collapse_to_one_stream(self):
+        """Two command handlers on one stream share a single dispatcher stream."""
+        domain = Domain(__file__, "TestCmdShare")
+
+        @domain.aggregate
+        class Account:
+            balance: str
+
+        @domain.command(part_of=Account)
+        class Debit:
+            amount: str
+
+        @domain.command(part_of=Account)
+        class Credit:
+            amount: str
+
+        @domain.command_handler(part_of=Account)
+        class DebitHandler:
+            @handle(Debit)
+            def debit(self, command):
+                pass
+
+        @domain.command_handler(part_of=Account)
+        class CreditHandler:
+            @handle(Credit)
+            def credit(self, command):
+                pass
+
+        domain.init(traverse=False)
+
+        cmd_streams = [s for info, s in collect_failed_streams(domain)]
+        # One stream, not two, and it matches what the engine builds.
+        assert len(set(cmd_streams)) == len(cmd_streams)  # no duplicate streams
+        assert set(cmd_streams) == _real_failed_streams(domain)
+
+    def test_excludes_broker_subscribers(self):
+        """Broker subscribers have no event-store failed stream, so they're excluded."""
+        from protean.core.subscriber import BaseSubscriber
+
+        domain = Domain(__file__, "TestBrokerExcluded")
+
+        @domain.aggregate
+        class Widget:
+            name: str
+
+        @domain.event(part_of=Widget)
+        class WidgetMade:
+            name: str
+
+        @domain.event_handler(part_of=Widget)
+        class WidgetHandler:
+            @handle(WidgetMade)
+            def on_made(self, event):
+                pass
+
+        class WebhookSubscriber(BaseSubscriber):
+            def __call__(self, data: dict):
+                pass
+
+        domain.register(WebhookSubscriber, stream="external")
+        domain.init(traverse=False)
+
+        infos = [info for info, _ in collect_failed_streams(domain)]
+        names = {info.handler_name for info in infos}
+        assert "WidgetHandler" in names
+        assert "WebhookSubscriber" not in names

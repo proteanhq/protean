@@ -4,6 +4,8 @@ import pytest
 from jsonschema import ValidationError, validate
 
 from protean.scaffold import (
+    OWNERSHIP_GENERATED,
+    OWNERSHIP_HAND_OWNED,
     PLAN_VERSION,
     SCHEMA_VERSION,
     ChangePlan,
@@ -164,6 +166,84 @@ def test_config_value_may_be_falsy():
     for value in (None, False, 0, ""):
         plan = ChangePlan(operations=(ConfigOperation(key_path=("a",), value=value),))
         assert ChangePlan.from_json(plan.to_json()) == plan
+
+
+# ---------------------------------------------------------------------------
+# Create op ownership (the generation-gap seam, ADR-0035)
+# ---------------------------------------------------------------------------
+
+
+def test_create_operation_defaults_to_hand_owned():
+    # The safe side: an op must opt in to being overwritten on a re-run, so a
+    # file with no stated ownership is preserved, never clobbered.
+    op = CreateFileOperation(path="a.py", content="x")
+    assert op.ownership == OWNERSHIP_HAND_OWNED
+
+
+def test_create_operation_rejects_an_unknown_ownership():
+    with pytest.raises(ValueError, match="Invalid ownership"):
+        CreateFileOperation(path="a.py", content="x", ownership="everyone")
+
+
+def test_ownership_survives_the_round_trip():
+    for ownership in (OWNERSHIP_GENERATED, OWNERSHIP_HAND_OWNED):
+        plan = ChangePlan(
+            operations=(
+                CreateFileOperation(path="a.py", content="x", ownership=ownership),
+            )
+        )
+        restored = ChangePlan.from_json(plan.to_json()).operations[0]
+        assert isinstance(restored, CreateFileOperation)
+        assert restored.ownership == ownership
+
+
+def test_ownership_is_optional_on_the_wire_and_defaults_to_hand_owned(schema):
+    # A plan written before the seam existed carries no ownership. It must still
+    # validate against the schema AND parse, defaulting to the safe side.
+    data = {
+        "plan_version": PLAN_VERSION,
+        "operations": [{"kind": "create", "path": "a.py", "content": "x"}],
+    }
+    validate(instance=data, schema=schema)
+    restored = ChangePlan.from_dict(data).operations[0]
+    assert isinstance(restored, CreateFileOperation)
+    assert restored.ownership == OWNERSHIP_HAND_OWNED
+
+
+def test_from_dict_rejects_an_out_of_range_ownership():
+    data = {
+        "plan_version": PLAN_VERSION,
+        "operations": [
+            {"kind": "create", "path": "a.py", "content": "x", "ownership": "nobody"}
+        ],
+    }
+    with pytest.raises(ValueError, match="Invalid ownership"):
+        ChangePlan.from_dict(data)
+
+
+@pytest.mark.parametrize("bad", [1, None], ids=["int", "null"])
+def test_from_dict_rejects_a_non_string_ownership(bad):
+    # A JSON null (Python None) is the likelier malformed value and hits the same
+    # branch as a number: present-but-not-a-string is rejected, not defaulted.
+    data = {
+        "plan_version": PLAN_VERSION,
+        "operations": [
+            {"kind": "create", "path": "a.py", "content": "x", "ownership": bad}
+        ],
+    }
+    with pytest.raises(ValueError, match="field 'ownership' must be a string"):
+        ChangePlan.from_dict(data)
+
+
+def test_schema_rejects_an_out_of_range_ownership(schema):
+    data = {
+        "plan_version": PLAN_VERSION,
+        "operations": [
+            {"kind": "create", "path": "a.py", "content": "x", "ownership": "nobody"}
+        ],
+    }
+    with pytest.raises(ValidationError):
+        validate(instance=data, schema=schema)
 
 
 # ---------------------------------------------------------------------------

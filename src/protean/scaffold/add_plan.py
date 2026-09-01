@@ -1,14 +1,23 @@
 """Plan a new element slice as a :class:`~protean.scaffold.ChangePlan`.
 
-``protean add <element-type> <name>`` computes what it *would* write and previews
-it, without touching the filesystem. This module is the pure planner behind that
-command: given a project directory and a name, it returns a
+This module is the pure planner behind ``protean add <element-type> <name>``:
+given a project directory and a name, it returns a
 :class:`~protean.scaffold.ChangePlan` of :class:`CreateFileOperation`\\ s in the
-ADR-0030 canonical layout. It writes nothing; the CLI renders the plan.
+ADR-0030 canonical layout. It writes nothing itself; the CLI applies the plan, or
+renders it under ``--dry-run``.
 
 For this first cut the only supported element type is ``aggregate``, which emits
-one complete write-side vertical slice: the aggregate, its create command, its
-created event, and the command handler that ties them together.
+one complete vertical slice: the aggregate, its create command, its created
+event, the command handler that drives it, and a projector plus read-model
+projection that consume the event. The projector is what makes the created event
+a handled event, so ``protean verify`` on the applied slice is green.
+
+The aggregate is split by a generation-gap seam (ADR-0035) so a later re-run of
+``add`` never clobbers hand-written logic: a generated base (``aggregate_base.py``,
+carrying structure and wiring) and a hand-owned subclass (``aggregate.py``, where
+the developer's invariants and behavior live). Each :class:`CreateFileOperation`
+carries an ``ownership`` marker (``"generated"`` vs ``"hand_owned"``) that tells
+an applier which files a re-run may refresh and which it must leave alone.
 
 The project is resolved from the ADR-0030 layout, without importing anything:
 locate the single ``src/<package>/domain.py``, then AST-parse it to read the
@@ -28,7 +37,12 @@ import keyword
 from collections.abc import Callable
 from pathlib import Path
 
-from protean.scaffold.change_plan import ChangePlan, CreateFileOperation
+from protean.scaffold.change_plan import (
+    OWNERSHIP_GENERATED,
+    OWNERSHIP_HAND_OWNED,
+    ChangePlan,
+    CreateFileOperation,
+)
 
 # A renderer turns a slice's parameters into one file's whole content.
 _Renderer = Callable[["_SliceContext"], str]
@@ -122,15 +136,19 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
 
     base = f"src/{package}/{slug}"
     operations = tuple(
-        CreateFileOperation(path=f"{base}/{filename}", content=render(context))
-        for filename, render in _SLICE_FILES
+        CreateFileOperation(
+            path=f"{base}/{filename}",
+            content=render(context),
+            ownership=ownership,
+        )
+        for filename, render, ownership in _SLICE_FILES
     )
 
     return ChangePlan(
         operations=operations,
         description=(
             f"Add the {class_name} aggregate slice "
-            f"(aggregate, command, event, command handler)"
+            f"(aggregate, command, event, command handler, projector, projection)"
         ),
     )
 
@@ -284,26 +302,35 @@ def _render_init(ctx: _SliceContext) -> str:
     )
 
 
-def _render_aggregate(ctx: _SliceContext) -> str:
-    return f'''"""The {ctx.name} aggregate."""
+def _render_aggregate_base(ctx: _SliceContext) -> str:
+    # The generated side of the seam. Carries structure (fields) and wiring (the
+    # ``create`` factory that raises the created event). A plain, undecorated
+    # ``BaseAggregate`` subclass: it registers nothing on its own, so discovery
+    # importing it is harmless; only the decorated subclass in ``aggregate.py``
+    # is registered. A re-run of ``add`` refreshes this file.
+    return f'''"""Generated base for the {ctx.name} aggregate.
 
-from typing import Annotated
+``protean add`` generates this file and refreshes it on every re-run, so do not
+edit it. Put your invariants and behavior in ``aggregate.py``, the hand-owned
+subclass a re-run never overwrites (the generation-gap seam, ADR-0035).
+"""
+
+from typing import Annotated, Self
 
 from pydantic import Field
 
-from {ctx.package}.domain import {ctx.domain_var}
+from protean.core.aggregate import BaseAggregate
 
 from .events import {ctx.name}Created
 
 
-@{ctx.domain_var}.aggregate
-class {ctx.name}:
-    """The {ctx.name} aggregate root."""
+class {ctx.name}Base(BaseAggregate):
+    """Generated structure and wiring for {ctx.name}. Edit the subclass, not this."""
 
     name: Annotated[str, Field(max_length=100)]
 
     @classmethod
-    def create(cls, name: str) -> "{ctx.name}":
+    def create(cls, name: str) -> Self:
         """Create a new {ctx.name} and raise {ctx.name}Created."""
         {ctx.slug} = cls(name=name)
 
@@ -315,6 +342,30 @@ class {ctx.name}:
         )
 
         return {ctx.slug}
+'''
+
+
+def _render_aggregate(ctx: _SliceContext) -> str:
+    # The hand-owned side of the seam. The decorated subclass: this is the
+    # registered aggregate, and where the developer's invariants and behavior
+    # live. A re-run of ``add`` never touches this file, so those edits are safe.
+    # The class body is a docstring only; the developer fills it in.
+    return f'''"""The {ctx.name} aggregate.
+
+Your own logic lives here. ``protean add`` never overwrites this file, so add
+invariants (``@invariant.post``) and behavior as methods on the class below. The
+generated structure and wiring sit in ``aggregate_base.py`` (the generation-gap
+seam, ADR-0035).
+"""
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+from .aggregate_base import {ctx.name}Base
+
+
+@{ctx.domain_var}.aggregate
+class {ctx.name}({ctx.name}Base):
+    """The {ctx.name} aggregate root."""
 '''
 
 
@@ -386,12 +437,78 @@ class {ctx.name}CommandHandler:
 '''
 
 
+def _render_projection(ctx: _SliceContext) -> str:
+    return f'''"""Read-model projection for the {ctx.name} aggregate."""
+
+from typing import Annotated
+
+from protean.fields import Identifier
+from pydantic import Field
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+
+@{ctx.domain_var}.projection
+class {ctx.name}Summary:
+    """A read-optimized view of {ctx.name} aggregates."""
+
+    {ctx.slug}_id: Identifier(identifier=True)
+    name: Annotated[str, Field(max_length=100)]
+
+    class Meta:
+        stream_name = "{ctx.slug}"
+'''
+
+
+def _render_projectors(ctx: _SliceContext) -> str:
+    return f'''"""Projector that keeps {ctx.name}Summary up to date."""
+
+from protean.core.projector import on
+
+from {ctx.package}.domain import {ctx.domain_var}
+
+from .aggregate import {ctx.name}
+from .events import {ctx.name}Created
+from .projection import {ctx.name}Summary
+
+
+@{ctx.domain_var}.projector(projector_for={ctx.name}Summary, aggregates=[{ctx.name}])
+class {ctx.name}Projector:
+    """Update the {ctx.name}Summary projection from {ctx.name} events."""
+
+    @on({ctx.name}Created)
+    def on_{ctx.slug}_created(self, event: {ctx.name}Created) -> None:
+        """Create a {ctx.name}Summary when a {ctx.name} is created."""
+        summary = {ctx.name}Summary(
+            {ctx.slug}_id=event.{ctx.slug}_id,
+            name=event.name,
+        )
+
+        repo = {ctx.domain_var}.repository_for({ctx.name}Summary)
+        repo.add(summary)
+'''
+
+
 # The slice's files, in the order they render into the plan. Each entry is
-# ``(filename, renderer)``; every renderer returns the file's whole content.
-_SLICE_FILES: tuple[tuple[str, _Renderer], ...] = (
-    ("__init__.py", _render_init),
-    ("aggregate.py", _render_aggregate),
-    ("commands.py", _render_commands),
-    ("events.py", _render_events),
-    ("command_handlers.py", _render_command_handlers),
+# ``(filename, renderer, ownership)``; the renderer returns the file's whole
+# content and the ownership marks the generation-gap seam (ADR-0035). Only the
+# aggregate is split by the seam (its base is generated, its subclass hand-owned);
+# every other file is a single, hand-owned file a re-run creates once and leaves
+# alone. The per-renderer comments explain each side.
+#
+# The slice is a complete write-then-read vertical: the aggregate raises its
+# created event, the command handler drives the aggregate, and the projector
+# consumes the event into a read-model projection. The projector is what makes
+# the created event a *handled* event, so ``protean verify`` on the applied slice
+# is green (an unconsumed event trips the UNHANDLED_EVENT check). This mirrors the
+# canonical Example slice that ``protean new`` scaffolds.
+_SLICE_FILES: tuple[tuple[str, _Renderer, str], ...] = (
+    ("__init__.py", _render_init, OWNERSHIP_HAND_OWNED),
+    ("aggregate_base.py", _render_aggregate_base, OWNERSHIP_GENERATED),
+    ("aggregate.py", _render_aggregate, OWNERSHIP_HAND_OWNED),
+    ("commands.py", _render_commands, OWNERSHIP_HAND_OWNED),
+    ("events.py", _render_events, OWNERSHIP_HAND_OWNED),
+    ("command_handlers.py", _render_command_handlers, OWNERSHIP_HAND_OWNED),
+    ("projection.py", _render_projection, OWNERSHIP_HAND_OWNED),
+    ("projectors.py", _render_projectors, OWNERSHIP_HAND_OWNED),
 )

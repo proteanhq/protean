@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, overload
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import SubscriptionType
-from protean.utils import fqn
+from protean.utils import ensure_utc_aware, fqn
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -108,6 +108,10 @@ class SubscriptionStatus:
 
     last_updated: str | None = None
     """ISO timestamp of the last processed position (event-store subscriptions only)."""
+
+    lag_seconds: float | None = None
+    """Seconds behind head: ``0.0`` when caught up, time-since-last-update when
+    lagging, ``None`` when unknown (event-store subscriptions only)."""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -193,6 +197,8 @@ def _collect_event_store_status(
 
             status = _classify_status(lag)
 
+            lag_seconds = _lag_seconds(lag, last_updated, domain.clock.now())
+
             return SubscriptionStatus(
                 name=name,
                 handler_name=handler_cls.__name__,
@@ -206,6 +212,7 @@ def _collect_event_store_status(
                 consumer_count=0,
                 dlq_depth=0,
                 last_updated=last_updated,
+                lag_seconds=lag_seconds,
             )
     except Exception as exc:
         logger.debug(
@@ -900,6 +907,40 @@ def _extract_position_time(last_msg: dict[str, Any] | None) -> str | None:
     if isinstance(raw, datetime):
         return raw.isoformat()
     return raw if isinstance(raw, str) else None
+
+
+def _parse_time(iso_value: str | None) -> datetime | None:
+    """Parse an ISO timestamp into an aware UTC datetime, or ``None``."""
+    if not iso_value:
+        return None
+    try:
+        # ``fromisoformat`` does not reliably accept a trailing ``Z``; normalize
+        # to ``+00:00`` so timestamps from any adapter parse consistently.
+        parsed = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return ensure_utc_aware(parsed)
+
+
+def _lag_seconds(
+    lag: int | None, last_updated: str | None, now: datetime
+) -> float | None:
+    """Seconds a subscription is behind head, mirroring projection staleness.
+
+    ``None`` lag stays ``None`` (unknown seconds). A caught-up subscription
+    (``lag == 0``) is ``0.0``. Otherwise the seconds are the wall-clock gap
+    since ``last_updated``, clamped to ``0.0`` for clock skew; if
+    ``last_updated`` is missing or unparseable the result is ``None``.
+    """
+    if lag is None:
+        return None
+    if lag == 0:
+        return 0.0
+    parsed = _parse_time(last_updated)
+    if parsed is None:
+        return None
+    # Clamp clock skew (position timestamp slightly ahead of now) to 0.
+    return max(0.0, (now - parsed).total_seconds())
 
 
 def _classify_status(lag: int | None, pending: int = 0) -> str:

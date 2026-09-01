@@ -61,6 +61,7 @@ def _lagging_status(
     lag: int = 42,
     pending: int = 3,
     dlq: int = 1,
+    lag_seconds: float | None = None,
 ) -> SubscriptionStatus:
     return SubscriptionStatus(
         name=f"sub-{handler_name.lower()}",
@@ -74,6 +75,7 @@ def _lagging_status(
         status="lagging",
         consumer_count=2,
         dlq_depth=dlq,
+        lag_seconds=lag_seconds,
     )
 
 
@@ -319,6 +321,52 @@ class TestSubscriptionsMetrics:
         )
         # pending and dlq_depth lines should still appear
         assert 'handler="UnknownHandler"' in body
+
+    def test_metrics_contains_subscription_lag_seconds(self):
+        """Prometheus output carries the seconds-behind line when it is known."""
+        mock_domain = _make_mock_domain("metric-domain")
+
+        statuses = [_lagging_status(handler_name="OrderHandler", lag_seconds=12.5)]
+
+        with patch(
+            "protean.server.subscription_status.collect_subscription_statuses",
+            return_value=statuses,
+        ):
+            observatory = Observatory(domains=[mock_domain])
+            client = TestClient(observatory.app)
+            response = client.get("/metrics")
+
+        body = response.text
+        assert "# HELP protean_subscription_lag_seconds" in body
+        assert "# TYPE protean_subscription_lag_seconds gauge" in body
+        assert "protean_subscription_lag_seconds" in body
+        assert "12.5" in body
+
+    def test_metrics_skips_lag_seconds_when_none(self):
+        """A subscription with no seconds-behind emits no value line, only HELP/TYPE.
+
+        As with count-based lag, a missing value must not surface as 0.0, which
+        would read as caught up."""
+        mock_domain = _make_mock_domain("metric-domain")
+
+        # A lagging subscription whose seconds-behind could not be computed.
+        statuses = [_lagging_status(handler_name="NoSecondsHandler", lag_seconds=None)]
+
+        with patch(
+            "protean.server.subscription_status.collect_subscription_statuses",
+            return_value=statuses,
+        ):
+            observatory = Observatory(domains=[mock_domain])
+            client = TestClient(observatory.app)
+            response = client.get("/metrics")
+
+        body = response.text
+        assert "# HELP protean_subscription_lag_seconds" in body
+        # HELP/TYPE carry a trailing space; a value line carries `{labels}`.
+        # Its absence proves no seconds value was emitted for this subscription.
+        assert "protean_subscription_lag_seconds{" not in body
+        # The subscription is still present via its other metric lines.
+        assert 'handler="NoSecondsHandler"' in body
 
     def test_metrics_handles_per_domain_collection_error(self):
         """Per-domain error in collect_subscription_statuses is handled gracefully."""

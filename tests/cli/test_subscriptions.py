@@ -32,6 +32,7 @@ def _make_status(
     dlq_depth: int = 0,
     consumer_count: int = 1,
     status: str = "ok",
+    lag_seconds: float | None = None,
 ) -> SubscriptionStatus:
     return SubscriptionStatus(
         name=f"sub-{handler_name.lower()}",
@@ -45,6 +46,7 @@ def _make_status(
         status=status,
         consumer_count=consumer_count,
         dlq_depth=dlq_depth,
+        lag_seconds=lag_seconds,
     )
 
 
@@ -94,15 +96,16 @@ class TestSubscriptionsStatus:
                 return_value=statuses,
             ),
         ):
+            # Widen the terminal so Rich does not truncate the handler names.
             result = runner.invoke(
                 app,
                 ["subscriptions", "status", "--domain", "publishing7.py"],
+                env={"COLUMNS": "200"},
             )
 
         assert result.exit_code == 0
-        # Rich may truncate handler names in narrow terminals
-        assert "OrderHan" in result.output
-        assert "PaymentH" in result.output
+        assert "OrderHandler" in result.output
+        assert "PaymentHandler" in result.output
         assert "2 subscription(s)" in result.output
 
     def test_shows_empty_message(self):
@@ -129,7 +132,9 @@ class TestSubscriptionsStatus:
         change_working_directory_to("test7")
 
         statuses = [
-            _make_status("OrderHandler", "event_store", "order"),
+            _make_status(
+                "OrderHandler", "event_store", "order", lag=5, lag_seconds=30.0
+            ),
         ]
         mock_domain = _mock_domain_for_cli()
 
@@ -151,6 +156,7 @@ class TestSubscriptionsStatus:
         subs = env["data"]["subscriptions"]
         assert len(subs) == 1
         assert subs[0]["handler_name"] == "OrderHandler"
+        assert subs[0]["lag_seconds"] == 30.0
 
     def test_json_output_empty(self):
         change_working_directory_to("test7")
@@ -278,6 +284,60 @@ class TestSubscriptionsStatus:
         assert result.exit_code == 0
         assert "1 subscription(s)" in result.output
         assert "unknown" in result.output
+
+    def test_table_shows_lag_seconds_column(self):
+        """The table has a seconds-behind column: a value when known, '-' when not."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status(
+                "LaggingHandler",
+                "event_store",
+                "order",
+                lag=5,
+                lag_seconds=12.34,
+                status="lagging",
+            ),
+            _make_status(
+                "NoSecondsHandler",
+                "stream",
+                "payment",
+                lag=2,
+                pending=7,
+                dlq_depth=4,
+                consumer_count=6,
+                lag_seconds=None,
+                status="lagging",
+            ),
+        ]
+        mock_domain = _mock_domain_for_cli()
+
+        with (
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
+            patch(
+                "protean.server.subscription_status.collect_subscription_statuses",
+                return_value=statuses,
+            ),
+        ):
+            # Widen the terminal so Rich does not truncate the new column.
+            result = runner.invoke(
+                app,
+                ["subscriptions", "status", "--domain", "publishing7.py"],
+                env={"COLUMNS": "200"},
+            )
+
+        assert result.exit_code == 0
+        assert "Lag (s)" in result.output
+        # A known value renders formatted to one decimal, not its raw repr.
+        assert "12.3" in result.output
+        assert "12.34" not in result.output
+        # The None row shows '-', not '0.0'. Every other cell in that row is a
+        # non-zero number, so the '-' can only be the Lag (s) column.
+        no_seconds_row = next(
+            ln for ln in result.output.splitlines() if "NoSecondsHandler" in ln
+        )
+        assert "-" in no_seconds_row
+        assert "0.0" not in no_seconds_row
 
     def test_summary_counts(self):
         change_working_directory_to("test7")

@@ -46,6 +46,11 @@
         "content": {
           "type": "string",
           "description": "Full content of the new file"
+        },
+        "ownership": {
+          "type": "string",
+          "enum": ["generated", "hand_owned"],
+          "description": "The generation-gap seam (ADR-0035): 'generated' for a file the generator owns and may refresh on a re-run of add, 'hand_owned' for a file the developer owns that a re-run must never overwrite. Optional; defaults to 'hand_owned'."
         }
       },
       "required": ["kind", "path", "content"],

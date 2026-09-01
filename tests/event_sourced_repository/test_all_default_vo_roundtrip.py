@@ -108,15 +108,14 @@ class TestAllDefaultValueObjectRoundTripOnMessageDB:
 
     @pytest.fixture
     def domain(self):
+        # The autouse ``_isolate_message_db`` fixture gives this test a clean
+        # store. ``no_test_domain`` makes ``test_domain`` yield ``None``, so
+        # ``run_around_tests`` does nothing; close the store here to avoid a
+        # connection-pool leak.
         domain = _make_messagedb_domain()
         with domain.domain_context():
-            store = domain.event_store.store
-            store._data_reset()
             yield domain
-            # ``no_test_domain`` skips ``run_around_tests``, so reset + close the
-            # store here to keep the shared instance clean and avoid pool leaks.
-            store._data_reset()
-            store.close()
+            domain.event_store.store.close()
 
     def test_all_default_vo_reloads_as_equal_vo(self, domain):
         reloaded = _round_trip(domain, initial_quantity=0)

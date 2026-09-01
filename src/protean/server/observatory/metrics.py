@@ -23,6 +23,7 @@ Infrastructure gauges (OTEL instrument name / Prometheus text name):
 
 - protean.outbox.pending_count — Pending outbox messages per domain
 - protean.subscription.consumer_lag — Messages behind stream head per subscription
+- protean.subscription.lag_seconds — Seconds since a subscription's last processed position
 - protean.subscription.pending_messages — Unacknowledged messages per subscription
 - protean_subscription_dlq_depth — Dead letter queue depth per subscription
 - protean_subscription_status — Subscription health (1=ok, 0=not ok)
@@ -441,6 +442,17 @@ def _register_infrastructure_gauges(domains: list[Domain]) -> None:
             description=description,
         )
 
+    # Seconds-behind gets its own registration (not another row in the loop
+    # above) because that loop cannot set a unit, and this gauge carries `s`.
+    # The shared callback already skips None, so unavailable seconds are simply
+    # not reported.
+    meter.create_observable_gauge(
+        "protean.subscription.lag_seconds",
+        callbacks=[_make_subscription_callback("lag_seconds")],
+        description="Seconds since a subscription's last processed position",
+        unit="s",
+    )
+
     # --- Database connection pool gauges ---
     def _make_pool_callback(stat_key: str) -> Callable[[Any], list[Any]]:
         def callback(_options: Any) -> list[Any]:
@@ -639,6 +651,12 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                 "# HELP protean_subscription_status Subscription health (1=ok, 0=not ok)"
             )
             lines.append("# TYPE protean_subscription_status gauge")
+            lines.append("")
+            lines.append(
+                "# HELP protean_subscription_lag_seconds Seconds since a "
+                "subscription's last processed position"
+            )
+            lines.append("# TYPE protean_subscription_lag_seconds gauge")
 
             for domain, s in collected:
                 labels = (
@@ -650,6 +668,10 @@ def _hand_rolled_metrics(domains: list[Domain]) -> str:
                 if s.lag is not None:
                     lines.append(
                         f"protean_subscription_consumer_lag{{{labels}}} {s.lag}"
+                    )
+                if s.lag_seconds is not None:
+                    lines.append(
+                        f"protean_subscription_lag_seconds{{{labels}}} {s.lag_seconds}"
                     )
                 lines.append(
                     f"protean_subscription_pending_messages{{{labels}}} {s.pending}"

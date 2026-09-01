@@ -255,6 +255,7 @@ class TestMergePMSubscriptionStatus:
         s1.handler_name = "ShippingProcess"
         s1.status = "ok"
         s1.lag = 3
+        s1.lag_seconds = None
         s1.pending = 1
         s1.dlq_depth = 0
         s1.consumer_count = 1
@@ -265,6 +266,7 @@ class TestMergePMSubscriptionStatus:
         s2.handler_name = "ShippingProcess"
         s2.status = "lagging"
         s2.lag = 10
+        s2.lag_seconds = None
         s2.pending = 5
         s2.dlq_depth = 2
         s2.consumer_count = 1
@@ -290,6 +292,7 @@ class TestMergePMSubscriptionStatus:
         s1.handler_name = "PM1"
         s1.status = "lagging"
         s1.lag = 5
+        s1.lag_seconds = None
         s1.pending = 0
         s1.dlq_depth = 0
         s1.consumer_count = 1
@@ -299,6 +302,7 @@ class TestMergePMSubscriptionStatus:
         s2.handler_name = "PM1"
         s2.status = "unknown"
         s2.lag = None
+        s2.lag_seconds = None
         s2.pending = 0
         s2.dlq_depth = 0
         s2.consumer_count = 0
@@ -311,6 +315,62 @@ class TestMergePMSubscriptionStatus:
             merge_pm_subscription_status(pms, [domain])
 
         assert pms[0]["subscription"]["status"] == "unknown"
+
+    def test_lag_seconds_is_max_not_sum(self):
+        """Seconds-lag aggregates as the worst (max) stream staleness, not a sum."""
+        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
+        domain = _make_mock_domain()
+
+        s1 = MagicMock()
+        s1.handler_name = "PM1"
+        s1.status = "lagging"
+        s1.lag = 3
+        s1.lag_seconds = 4.0
+        s1.pending = 0
+        s1.dlq_depth = 0
+        s1.consumer_count = 1
+        s1.subscription_type = "event_store"
+
+        s2 = MagicMock()
+        s2.handler_name = "PM1"
+        s2.status = "lagging"
+        s2.lag = 10
+        s2.lag_seconds = 30.0
+        s2.pending = 0
+        s2.dlq_depth = 0
+        s2.consumer_count = 1
+        s2.subscription_type = "event_store"
+
+        with patch(
+            "protean.server.observatory.routes.processes.collect_subscription_statuses",
+            return_value=[s1, s2],
+        ):
+            merge_pm_subscription_status(pms, [domain])
+
+        assert pms[0]["subscription"]["lag_seconds"] == 30.0  # max, not 34.0
+
+    def test_lag_seconds_none_when_all_none(self):
+        """No stream reports seconds, so the aggregate stays None (unavailable)."""
+        pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]
+        domain = _make_mock_domain()
+
+        s1 = MagicMock()
+        s1.handler_name = "PM1"
+        s1.status = "lagging"
+        s1.lag = 3
+        s1.lag_seconds = None
+        s1.pending = 0
+        s1.dlq_depth = 0
+        s1.consumer_count = 1
+        s1.subscription_type = "stream"
+
+        with patch(
+            "protean.server.observatory.routes.processes.collect_subscription_statuses",
+            return_value=[s1],
+        ):
+            merge_pm_subscription_status(pms, [domain])
+
+        assert pms[0]["subscription"]["lag_seconds"] is None
 
     def test_handles_collection_exception(self):
         pms = [{"name": "PM1", "type": "process_manager", "subscription": None}]

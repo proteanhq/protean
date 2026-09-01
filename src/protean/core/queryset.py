@@ -6,6 +6,7 @@ import math
 from collections.abc import Iterator, KeysView
 from typing import TYPE_CHECKING, Any
 
+from protean._deprecation import warn_from_registry
 from protean.exceptions import NotSupportedError
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
@@ -381,16 +382,20 @@ class QuerySet:
     def update(self, *data: Any, apply_hooks: bool = True, **kwargs: Any) -> int:
         """Updates all objects with details given if they match a set of conditions supplied.
 
+        .. deprecated:: 0.18.0
+            The patch-and-persist path is deprecated and is removed in v1.0.0.
+            Load the matched aggregates, invoke a behaviour method on each, and
+            persist each one with ``repository.add()`` instead.
+
         This method updates each object individually, to fire callback methods and ensure
         validations are run, so each matched aggregate advances its version and,
         by default, has its ``auto_now`` timestamps and enrichers applied. Pass
         ``apply_hooks=False`` to skip those hooks for a raw bulk write.
 
-        Because each row is updated individually with an optimistic-concurrency
-        check, a mid-batch conflict raises `ExpectedVersionError`. Run
-        inside a ``UnitOfWork`` to keep the batch atomic (the raise rolls the whole
-        batch back); run standalone and the rows updated before the conflict are
-        already committed.
+        Each row is updated individually with an optimistic-concurrency check, so
+        a mid-batch conflict raises `ExpectedVersionError` after the earlier rows
+        have already committed. The batch is never atomic; every aggregate is its
+        own consistency boundary.
 
         ``apply_hooks`` is a reserved keyword argument; to update a field named
         ``apply_hooks``, use the dictionary form (``.update({'apply_hooks': ...})``).
@@ -400,13 +405,19 @@ class QuerySet:
         """
         self._reject_if_projected("update")
 
+        # Warn once for the whole bulk call, then drive the silent internal path
+        # (``_apply_update``) per row so a batch does not re-warn once per item.
+        warn_from_registry("queryset_update", "QuerySet.update()")
+
         updated_item_count = 0
 
         try:
             items = self.all()
 
             for item in items:
-                self._owner_dao.update(item, *data, apply_hooks=apply_hooks, **kwargs)
+                self._owner_dao._apply_update(
+                    item, *data, apply_hooks=apply_hooks, **kwargs
+                )
                 updated_item_count += 1
         except Exception:
             raise

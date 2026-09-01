@@ -213,6 +213,7 @@ def _lanes_engine(*, enabled: bool):
     engine.domain.config = {"server": server_config}
     engine.domain.brokers = {"default": MagicMock()}
     engine.shutting_down = False
+    engine.draining = False
     engine.emitter = MagicMock()
     try:
         engine.loop = asyncio.get_running_loop()

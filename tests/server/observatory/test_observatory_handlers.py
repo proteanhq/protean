@@ -539,6 +539,7 @@ class TestMergeSubscriptionStatus:
         s1.handler_name = "MyProjector"
         s1.status = "ok"
         s1.lag = 2
+        s1.lag_seconds = None
         s1.pending = 1
         s1.dlq_depth = 0
         s1.consumer_count = 1
@@ -549,6 +550,7 @@ class TestMergeSubscriptionStatus:
         s2.handler_name = "MyProjector"
         s2.status = "lagging"
         s2.lag = 5
+        s2.lag_seconds = None
         s2.pending = 3
         s2.dlq_depth = 1
         s2.consumer_count = 2
@@ -581,6 +583,7 @@ class TestMergeSubscriptionStatus:
         s1.handler_name = "P"
         s1.status = "lagging"
         s1.lag = 2
+        s1.lag_seconds = None
         s1.pending = 0
         s1.dlq_depth = 0
         s1.consumer_count = 1
@@ -591,6 +594,7 @@ class TestMergeSubscriptionStatus:
         s2.handler_name = "P"
         s2.status = "unknown"
         s2.lag = None
+        s2.lag_seconds = None
         s2.pending = 0
         s2.dlq_depth = 0
         s2.consumer_count = 0
@@ -604,6 +608,96 @@ class TestMergeSubscriptionStatus:
             merge_subscription_status(handlers, [MagicMock()])
 
         assert handlers[0]["subscription"]["status"] == "unknown"
+
+    def test_event_handler_carries_lag_seconds(self):
+        status = MagicMock()
+        status.name = "OrderEventHandler"
+        status.handler_name = "OrderEventHandler"
+        status.status = "lagging"
+        status.lag = 5
+        status.lag_seconds = 8.5
+        status.pending = 0
+        status.dlq_depth = 0
+        status.consumer_count = 1
+        status.subscription_type = "event_store"
+
+        handlers = [
+            {
+                "name": "OrderEventHandler",
+                "type": "event_handler",
+                "stream_categories": ["order"],
+            }
+        ]
+        with patch(
+            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
+            return_value=[status],
+        ):
+            merge_subscription_status(handlers, [MagicMock()])
+
+        assert handlers[0]["subscription"]["lag_seconds"] == 8.5
+
+    def test_projector_lag_seconds_is_max_not_sum(self):
+        """Seconds-lag aggregates as the worst (max) stream staleness, not a sum."""
+        s1 = MagicMock()
+        s1.name = "MyProjector-order"
+        s1.handler_name = "MyProjector"
+        s1.status = "lagging"
+        s1.lag = 2
+        s1.lag_seconds = 3.0
+        s1.pending = 0
+        s1.dlq_depth = 0
+        s1.consumer_count = 1
+        s1.subscription_type = "event_store"
+
+        s2 = MagicMock()
+        s2.name = "MyProjector-payment"
+        s2.handler_name = "MyProjector"
+        s2.status = "lagging"
+        s2.lag = 5
+        s2.lag_seconds = 12.0
+        s2.pending = 0
+        s2.dlq_depth = 0
+        s2.consumer_count = 1
+        s2.subscription_type = "event_store"
+
+        handlers = [
+            {
+                "name": "MyProjector",
+                "type": "projector",
+                "stream_categories": ["order", "payment"],
+            }
+        ]
+        with patch(
+            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
+            return_value=[s1, s2],
+        ):
+            merge_subscription_status(handlers, [MagicMock()])
+
+        assert handlers[0]["subscription"]["lag_seconds"] == 12.0  # max, not 15.0
+
+    def test_projector_lag_seconds_none_when_all_none(self):
+        """No stream reports seconds, so the aggregate stays None (unavailable)."""
+        s1 = MagicMock()
+        s1.name = "MyProjector-order"
+        s1.handler_name = "MyProjector"
+        s1.status = "lagging"
+        s1.lag = 2
+        s1.lag_seconds = None
+        s1.pending = 0
+        s1.dlq_depth = 0
+        s1.consumer_count = 1
+        s1.subscription_type = "stream"
+
+        handlers = [
+            {"name": "MyProjector", "type": "projector", "stream_categories": ["order"]}
+        ]
+        with patch(
+            "protean.server.observatory.routes.handlers.collect_subscription_statuses",
+            return_value=[s1],
+        ):
+            merge_subscription_status(handlers, [MagicMock()])
+
+        assert handlers[0]["subscription"]["lag_seconds"] is None
 
     def test_exception_in_collect_does_not_crash(self):
         handlers = [{"name": "H", "type": "event_handler", "stream_categories": []}]

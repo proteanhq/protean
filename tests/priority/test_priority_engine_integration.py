@@ -80,6 +80,7 @@ def _make_engine_mock(domain_config):
     engine.domain.config = domain_config
     engine.domain.brokers = {"default": MagicMock()}
     engine.shutting_down = False
+    engine.draining = False
     engine.emitter = MagicMock()
     engine.loop = asyncio.new_event_loop()
     return engine
@@ -372,6 +373,7 @@ class TestEnginePriorityRestoration:
         # Build a minimal engine mock
         engine = MagicMock()
         engine.shutting_down = False
+        engine.draining = False
         engine.emitter = MagicMock()
 
         # We need a real domain context, so create a minimal domain
@@ -422,6 +424,7 @@ class TestEnginePriorityRestoration:
 
         engine = MagicMock()
         engine.shutting_down = False
+        engine.draining = False
         engine.emitter = MagicMock()
 
         from protean.domain import Domain

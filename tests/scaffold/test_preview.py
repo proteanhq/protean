@@ -3,6 +3,8 @@
 import pytest
 
 from protean.scaffold import (
+    OWNERSHIP_GENERATED,
+    OWNERSHIP_HAND_OWNED,
     ChangePlan,
     ConfigOperation,
     CreateFileOperation,
@@ -74,7 +76,7 @@ def test_preview_shows_create_content_and_line_count():
             operations=(CreateFileOperation(path="a.py", content="one\ntwo\nthree"),)
         )
     )
-    assert "create a.py  (3 lines)" in text
+    assert "create a.py  (3 lines, hand-owned)" in text
     assert "one" in text
     assert "three" in text
 
@@ -85,7 +87,37 @@ def test_preview_create_line_count_ignores_a_trailing_newline():
     text = render_preview(
         ChangePlan(operations=(CreateFileOperation(path="a.py", content="a\nb\n"),))
     )
-    assert "create a.py  (2 lines)" in text
+    assert "create a.py  (2 lines, hand-owned)" in text
+
+
+def test_every_ownership_value_has_a_preview_label():
+    # The preview's label map is a hand-maintained mirror of the model's allowed
+    # ownership values. Diff the two so a value added to the model without a label
+    # fails here loudly, instead of the preview mislabeling that file and quietly
+    # telling a user the wrong thing about what a re-run would touch.
+    from protean.scaffold.change_plan import _OWNERSHIP_VALUES
+    from protean.scaffold.preview import _OWNERSHIP_LABELS
+
+    assert set(_OWNERSHIP_LABELS) == _OWNERSHIP_VALUES
+
+
+def test_preview_labels_a_create_op_with_its_ownership():
+    # The seam (ADR-0035) is visible in the preview: a "generated" file a re-run
+    # of add would refresh reads differently from a "hand-owned" one it leaves.
+    text = render_preview(
+        ChangePlan(
+            operations=(
+                CreateFileOperation(
+                    path="base.py", content="x", ownership=OWNERSHIP_GENERATED
+                ),
+                CreateFileOperation(
+                    path="logic.py", content="y", ownership=OWNERSHIP_HAND_OWNED
+                ),
+            )
+        )
+    )
+    assert "create base.py  (1 lines, generated)" in text
+    assert "create logic.py  (1 lines, hand-owned)" in text
 
 
 def test_preview_of_an_empty_plan_renders_without_error():

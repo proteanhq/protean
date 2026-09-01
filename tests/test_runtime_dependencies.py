@@ -1,7 +1,8 @@
 """Guards for the right-sized runtime dependency surface (ADR-0029).
 
-The web/observatory stack, the interactive shell, and the project scaffolder live
-behind install extras, not in the lean core. These tests pin that boundary so a
+The web/observatory stack, the interactive shell, the project scaffolder, and the
+MCP server live behind install extras, not in the lean core. These tests pin that
+boundary so a
 stray eager import or a dependency creeping back into ``[project].dependencies``
 is caught. ``bleach`` intentionally stays in core; ``werkzeug`` was removed in
 favor of stdlib ``contextvars`` (#1375).
@@ -27,10 +28,11 @@ OPTIONAL_DISTS = {
     "jinja2": "server",
     "ipython": "shell",
     "copier": "scaffold",
+    "mcp": "mcp",
 }
 
 # Top-level import name of each optional stack. `import protean` must pull none.
-OPTIONAL_IMPORTS = ["fastapi", "uvicorn", "jinja2", "IPython", "copier"]
+OPTIONAL_IMPORTS = ["fastapi", "uvicorn", "jinja2", "IPython", "copier", "mcp"]
 
 # Dependencies that must stay in the lean core.
 CORE_MUST_KEEP = {"bleach", "pydantic", "marshmallow", "typer"}
@@ -74,7 +76,7 @@ def test_each_optional_distribution_is_declared_in_its_extra():
 
 def test_convenience_extras_compose_the_feature_extras():
     extras = _pyproject()["project"]["optional-dependencies"]
-    assert extras["cli"] == ["protean[shell,scaffold]"]
+    assert extras["cli"] == ["protean[shell,scaffold,mcp]"]
     assert extras["all"] == ["protean[server,cli]"]
 
 

@@ -333,6 +333,7 @@ nav:
         - reference/cli/runtime/index.md
         - reference/cli/runtime/server.md
         - reference/cli/runtime/observatory.md
+        - reference/cli/runtime/mcp.md
         - reference/cli/runtime/subscriptions.md
         - reference/cli/runtime/recover.md
       - IR:
@@ -345,6 +346,7 @@ nav:
         - reference/cli/data/dlq.md
         - reference/cli/data/events.md
         - reference/cli/data/eventstore.md
+        - reference/cli/data/eventstore-dlq.md
         - reference/cli/data/snapshot.md
         - reference/cli/data/projection.md
         - reference/cli/data/outbox.md
@@ -436,7 +438,10 @@ nav:
       - adr/0032-annotation-file-for-the-event-model.md
       - adr/0033-change-plan-versioned-structural-contract.md
       - adr/0034-project-manifest.md
-      - adr/0035-canonical-field-style-for-mypy-strict.md
+      - adr/0035-generation-gap-seam.md
+      - adr/0036-configurable-graceful-drain-window.md
+      - adr/0037-idempotent-file-projection.md
+      - adr/0038-canonical-field-style-for-mypy-strict.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
