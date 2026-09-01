@@ -4,9 +4,15 @@ These read the pack from the source tree. The clean-venv wheel check in CI
 proves the same resources survive the build into an installed wheel.
 """
 
+import pytest
+
 import protean
 from protean import dx
 from protean.dx import pack
+
+# These tests read package data; they never touch a Domain, so skip the autouse
+# test_domain fixture and its initialization cost.
+pytestmark = pytest.mark.no_test_domain
 
 
 def test_pack_version_is_the_framework_version():
@@ -33,6 +39,13 @@ def test_read_pack_text_reads_a_nested_resource():
     text = dx.read_pack_text(dx.SKILLS_DIR, "protean-overview", dx.SKILL_FILE)
 
     assert "name: protean-overview" in text
+
+
+@pytest.mark.parametrize("bad", ["..", ".", "", "a/b", "a\\b"])
+def test_read_pack_text_rejects_path_traversal(bad):
+    # A caller must not be able to escape the pack with `..` or a separator.
+    with pytest.raises(ValueError):
+        dx.read_pack_text(dx.SKILLS_DIR, bad)
 
 
 def test_iter_skills_lists_the_seed_skill():

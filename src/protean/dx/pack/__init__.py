@@ -50,9 +50,16 @@ def pack_files() -> Traversable:
 
 
 def read_pack_text(*parts: str) -> str:
-    """Read a text resource from the pack, addressed by its path parts."""
+    """Read a text resource from the pack, addressed by its path parts.
+
+    Each part is a single path segment. A segment that is empty, ``.`` or
+    ``..``, or that contains a path separator is rejected, so a caller cannot
+    read outside the pack on a filesystem install.
+    """
     resource = pack_files()
     for part in parts:
+        if not part or part in (".", "..") or "/" in part or "\\" in part:
+            raise ValueError(f"invalid pack path segment: {part!r}")
         resource = resource / part
     return resource.read_text(encoding="utf-8")
 
