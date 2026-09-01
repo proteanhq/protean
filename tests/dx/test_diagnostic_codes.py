@@ -168,6 +168,34 @@ def test_skill_diagnostic_codes_empty_without_the_key(tmp_path, monkeypatch):
     assert pack.skill_diagnostic_codes("demo") == []
 
 
+def test_metadata_block_with_no_direct_children_reads_nothing(tmp_path, monkeypatch):
+    # ``metadata:`` opens with nothing indented under it before the next top-level
+    # key, so the block has no direct children. There is no diagnostic_codes key
+    # to find and the skill declares nothing.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\nmetadata:\nname: demo\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == []
+
+
+def test_block_is_read_past_a_blank_first_line_in_metadata(tmp_path, monkeypatch):
+    # A blank line right after ``metadata:`` sits at the top of the block. The
+    # direct-child indentation is set by the first real line past it, so the
+    # diagnostic_codes key is still found.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\nmetadata:\n\n  diagnostic_codes:\n    - AGGREGATE_NO_INVARIANTS\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
 def test_skill_diagnostic_codes_empty_without_frontmatter(tmp_path, monkeypatch):
     _write_skill(tmp_path, "demo", "# A heading, no frontmatter fence at all\n")
     monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
@@ -296,6 +324,47 @@ def test_inline_value_that_is_only_a_comment_reads_nothing(tmp_path, monkeypatch
     monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
 
     assert pack.skill_diagnostic_codes("demo") == []
+
+
+def test_metadata_with_a_trailing_comment_still_opens_the_block(tmp_path, monkeypatch):
+    # ``metadata: # note`` is a mapping key with a trailing comment, not an inline
+    # value: the block still follows on the indented lines. Without the fix the
+    # comment is read as a value, metadata is never recognized, and the codes
+    # under it are missed.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata: # everything this skill teaches\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
+def test_key_with_a_trailing_comment_then_block_reads_the_block(tmp_path, monkeypatch):
+    # ``diagnostic_codes: # note`` followed by a block list is a comment on the
+    # key line, not an inline value: the block below is the value. Without the fix
+    # the comment is taken as the inline value and the block items are missed.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes: # the codes this skill teaches\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "    - CROSS_AGGREGATE_REFERENCE\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == [
+        "AGGREGATE_NO_INVARIANTS",
+        "CROSS_AGGREGATE_REFERENCE",
+    ]
 
 
 def test_metadata_block_survives_an_unindented_comment(tmp_path, monkeypatch):
@@ -433,6 +502,29 @@ def test_diagnostic_codes_outside_metadata_are_not_read(tmp_path, monkeypatch):
         tmp_path,
         "demo",
         "---\ndiagnostic_codes:\n  - AGGREGATE_NO_INVARIANTS\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == []
+
+
+def test_diagnostic_codes_nested_below_a_metadata_subkey_are_not_read(
+    tmp_path, monkeypatch
+):
+    # The contract is metadata.diagnostic_codes: a direct child of metadata. A
+    # diagnostic_codes key one level deeper, under a metadata sub-mapping, is
+    # metadata.other.diagnostic_codes and is off-contract, so it reads as
+    # "teaches nothing" rather than being swept in by matching the key name at
+    # any depth.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  other:\n"
+        "    diagnostic_codes:\n"
+        "      - AGGREGATE_NO_INVARIANTS\n"
+        "---\n",
     )
     monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
 

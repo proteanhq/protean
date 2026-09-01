@@ -190,17 +190,18 @@ def _metadata_block(lines: list[str]) -> list[str] | None:
 
     ``metadata`` must be a top-level frontmatter key (indent 0) with no inline
     value; the block is the run of following lines indented under it, ending at
-    the next top-level key. Blank and comment-only lines carry no structure, so
-    an unindented one does not end the block. Returns ``None`` when no such key
-    exists, so a skill with no ``metadata`` block declares nothing and a stray
-    ``diagnostic_codes`` outside ``metadata`` is not read.
+    the next top-level key. A trailing comment (``metadata: # note``) is not an
+    inline value, so it still opens the block. Blank and comment-only lines carry
+    no structure, so an unindented one does not end the block. Returns ``None``
+    when no such key exists, so a skill with no ``metadata`` block declares
+    nothing and a stray ``diagnostic_codes`` outside ``metadata`` is not read.
     """
     start = None
     for index, line in enumerate(lines):
         if _skippable(line) or _indent(line) != 0:
             continue
         head, sep, rest = line.strip().partition(":")
-        if sep and head == _METADATA_KEY and rest.strip() == "":
+        if sep and head == _METADATA_KEY and _strip_comment(rest.strip()) == "":
             start = index
             break
     if start is None:
@@ -246,24 +247,41 @@ def _collect_block_list(lines: list[str], key_indent: int) -> list[str]:
     return codes
 
 
+def _direct_child_indent(block: list[str]) -> int | None:
+    """Return the indentation of the metadata block's direct children.
+
+    The first non-skippable line sets it; in well-formed YAML every direct child
+    shares that indentation. Returns ``None`` for a block with no real lines.
+    """
+    for line in block:
+        if not _skippable(line):
+            return _indent(line)
+    return None
+
+
 def _parse_diagnostic_codes(lines: list[str]) -> list[str]:
     """Read ``metadata.diagnostic_codes`` from frontmatter ``lines``.
 
-    The key must sit inside the top-level ``metadata`` mapping, as the contract
-    promises. Reads both the block-list form (``- CODE`` on its own indented
-    line) and the inline form (``[CODE, CODE]``) after the key, and de-duplicates
-    the result. Returns ``[]`` when there is no ``metadata`` block or no
-    ``diagnostic_codes`` key, so a skill that teaches no coded rule declares
-    nothing.
+    The key must be a direct child of the top-level ``metadata`` mapping, as the
+    contract promises: a ``diagnostic_codes`` nested one level deeper (under a
+    ``metadata`` sub-key) is not ``metadata.diagnostic_codes`` and is not read.
+    Reads both the block-list form (``- CODE`` on its own indented line) and the
+    inline form (``[CODE, CODE]``) after the key, ignoring a trailing comment on
+    the key line, and de-duplicates the result. Returns ``[]`` when there is no
+    ``metadata`` block or no ``diagnostic_codes`` key, so a skill that teaches no
+    coded rule declares nothing.
     """
     block = _metadata_block(lines)
     if block is None:
         return []
+    child_indent = _direct_child_indent(block)
     for index, line in enumerate(block):
+        if _skippable(line) or _indent(line) != child_indent:
+            continue
         head, sep, rest = line.strip().partition(":")
         if not sep or head != _DIAGNOSTIC_CODES_KEY:
             continue
-        inline = rest.strip()
+        inline = _strip_comment(rest.strip())
         if inline:
             return _dedup(_split_inline_list(inline))
         return _dedup(_collect_block_list(block[index + 1 :], _indent(line)))
