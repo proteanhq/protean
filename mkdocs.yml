@@ -441,6 +441,7 @@ nav:
       - adr/0035-generation-gap-seam.md
       - adr/0036-configurable-graceful-drain-window.md
       - adr/0037-idempotent-file-projection.md
+      - adr/0038-canonical-field-style-for-mypy-strict.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
