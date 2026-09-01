@@ -131,7 +131,7 @@ Content-Type: application/json
           "stream_category": "order",
           "lag": 0,
           "lag_seconds": 0.0,
-          "lag_drain_rate": -1.5,
+          "lag_drain_rate": 0.0,
           "pending": 0,
           "dlq_depth": 0,
           "status": "ok",
