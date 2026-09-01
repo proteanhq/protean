@@ -179,8 +179,11 @@ def test_skill_diagnostic_codes_ignores_blank_lines_before_the_fence(
     assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
 
 
-def test_block_list_stops_at_a_blank_line(tmp_path, monkeypatch):
-    # A blank line ends the block list; a later mapping key is not swept in.
+def test_block_list_skips_a_blank_line(tmp_path, monkeypatch):
+    # A blank line inside a block sequence is skipped, not a terminator: the item
+    # after the gap is still part of the same list (this is what YAML does). The
+    # deeper second item pins the branch — if the blank-line skip were dropped,
+    # the scan would break on the gap and never reach CROSS_AGGREGATE_REFERENCE.
     _write_skill(
         tmp_path,
         "demo",
@@ -189,8 +192,64 @@ def test_block_list_stops_at_a_blank_line(tmp_path, monkeypatch):
         "  diagnostic_codes:\n"
         "    - AGGREGATE_NO_INVARIANTS\n"
         "\n"
+        "    - CROSS_AGGREGATE_REFERENCE\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == [
+        "AGGREGATE_NO_INVARIANTS",
+        "CROSS_AGGREGATE_REFERENCE",
+    ]
+
+
+def test_block_list_stops_at_a_sibling_mapping_key(tmp_path, monkeypatch):
+    # A sibling mapping key at the key's own indentation ends the sequence and is
+    # not swept in, even without a blank line between them.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
         "  category: x\n"
         "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
+def test_block_list_reads_items_at_the_key_indentation(tmp_path, monkeypatch):
+    # A block sequence whose items sit at the key's own indentation is valid YAML
+    # and the seed does not use it. The items must still be read, not dropped.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes:\n"
+        "  - AGGREGATE_NO_INVARIANTS\n"
+        "  - CROSS_AGGREGATE_REFERENCE\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == [
+        "AGGREGATE_NO_INVARIANTS",
+        "CROSS_AGGREGATE_REFERENCE",
+    ]
+
+
+def test_block_list_reads_tab_indented_items(tmp_path, monkeypatch):
+    # Tab-indented items under a space-indented key: measured by visual width, a
+    # tab is deeper than two spaces, so the items are read rather than dropped as
+    # shallower than the key.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\nmetadata:\n  diagnostic_codes:\n\t- AGGREGATE_NO_INVARIANTS\n---\n",
     )
     monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
 
@@ -214,6 +273,102 @@ def test_block_list_stops_at_a_dedented_item(tmp_path, monkeypatch):
     monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
 
     assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
+# --- Contract enforcement: codes live under metadata, in a closed block ------
+
+
+def test_diagnostic_codes_outside_metadata_are_not_read(tmp_path, monkeypatch):
+    # The contract is metadata.diagnostic_codes. A top-level diagnostic_codes key
+    # with no metadata block is not the contract and must be ignored, so a
+    # misplaced declaration reads as "teaches nothing" rather than silently
+    # working off-contract.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\ndiagnostic_codes:\n  - AGGREGATE_NO_INVARIANTS\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == []
+
+
+def test_unterminated_frontmatter_is_not_read(tmp_path, monkeypatch):
+    # An opening fence with no closing fence is malformed. The body is not treated
+    # as frontmatter, so a diagnostic_codes key in it declares nothing.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\nmetadata:\n  diagnostic_codes:\n    - AGGREGATE_NO_INVARIANTS\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == []
+
+
+def test_inline_list_strips_a_trailing_comment(tmp_path, monkeypatch):
+    # A YAML end-of-line comment after an inline list is not part of the value.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes: [AGGREGATE_NO_INVARIANTS]  # the invariants nudge\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
+def test_block_item_strips_a_comment_and_quotes(tmp_path, monkeypatch):
+    # A block item carrying a trailing comment or wrapped in quotes yields the
+    # bare code, not the decorated string.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS  # the invariants nudge\n"
+        '    - "CROSS_AGGREGATE_REFERENCE"\n'
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == [
+        "AGGREGATE_NO_INVARIANTS",
+        "CROSS_AGGREGATE_REFERENCE",
+    ]
+
+
+def test_duplicate_codes_are_de_duplicated(tmp_path, monkeypatch):
+    # A skill that declares the same code twice teaches it once; the wire list
+    # must not carry a duplicate.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
+def test_reverse_index_de_duplicates_skill_names(monkeypatch):
+    # Two skills, one of them named twice by iter_skills (a defensive case): the
+    # reverse index lists each teaching skill once.
+    monkeypatch.setattr(pack, "iter_skills", lambda: ["alpha", "alpha"])
+    monkeypatch.setattr(
+        pack, "skill_diagnostic_codes", lambda name: ["AGGREGATE_NO_INVARIANTS"]
+    )
+
+    assert pack.diagnostic_code_skills() == {"AGGREGATE_NO_INVARIANTS": ["alpha"]}
 
 
 def test_reverse_index_inverts_and_sorts_skill_names(tmp_path, monkeypatch):
