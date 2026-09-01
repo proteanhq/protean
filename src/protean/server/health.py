@@ -267,6 +267,13 @@ class _SubscriptionBlockRefresher:
         now = self._clock()
         seen: set[str] = set()
         for detail in details:
+            if not isinstance(detail, dict):
+                # Nothing to annotate on a row we cannot write to.  Skipping it
+                # keeps a malformed row from taking the refresher down: this
+                # runs outside the collector's own guard, so an exception here
+                # would end the loop and freeze the block for good.
+                continue
+
             name = detail.get("name")
             lag_seconds = detail.get("lag_seconds")
             if not isinstance(name, str) or not isinstance(lag_seconds, (int, float)):

@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 import time
+from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -1466,6 +1467,31 @@ class TestLagDrainRate:
 
             assert "orders-handler" in refresher._samples
             assert "audit-handler" not in refresher._samples
+
+    async def test_a_non_dict_row_is_skipped_instead_of_crashing(self):
+        """Annotation runs outside the collector's guard, so a row that is not
+        a writable dict must be skipped, not raise and end the refresher."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            block = {
+                "total": 2,
+                "details": [
+                    "not-a-row",
+                    MappingProxyType({"name": "frozen", "lag_seconds": 4.0}),
+                    {"name": "orders-handler", "lag_seconds": 9.0},
+                ],
+            }
+            refresher._annotate_lag_drain_rates(block)
+
+            assert block["details"][0] == "not-a-row"
+            assert "lag_drain_rate" not in block["details"][1]
+            # The good row is still annotated, and only it holds a window.
+            assert block["details"][2]["lag_drain_rate"] is None
+            assert set(refresher._samples) == {"orders-handler"}
 
     async def test_rate_field_is_present_on_the_readiness_block(self):
         """The field rides on the real readiness output, null after one window."""
