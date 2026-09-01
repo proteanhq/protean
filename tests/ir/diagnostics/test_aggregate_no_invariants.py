@@ -35,9 +35,11 @@ class TestAggregateNoInvariants:
         assert d["rule"]["fix"]
         assert d["suggestion"] == d["rule"]["fix"]
         # End-to-end lock: a real domain built through IRBuilder emits this code
-        # carrying the DX-pack skill that teaches it, not just build_diagnostic in
-        # isolation. protean-overview declares AGGREGATE_NO_INVARIANTS.
-        assert d["teaching_skills"] == ["protean-overview"]
+        # carrying the DX-pack skills that teach it, not just build_diagnostic in
+        # isolation. protean-overview declares AGGREGATE_NO_INVARIANTS; another
+        # skill declaring it later joins the sorted list rather than breaking it.
+        assert "protean-overview" in d["teaching_skills"]
+        assert d["teaching_skills"] == sorted(d["teaching_skills"])
 
     def test_post_invariant_not_flagged(self):
         domain = Domain(name="PostInvariant", root_path=".")

@@ -76,9 +76,14 @@ def test_every_skill_in_the_reverse_index_exists():
 
 
 def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
-    assert pack.diagnostic_code_skills()["AGGREGATE_NO_INVARIANTS"] == [
-        "protean-overview"
-    ]
+    # protean-overview declares the seed code, so it must be named. Assert
+    # inclusion, not the whole list: another skill declaring the same code later
+    # is the contract working, not a break. The list's own shape (sorted, no
+    # duplicates) is asserted here and pinned exactly by the fake-pack tests.
+    teachers = pack.diagnostic_code_skills()["AGGREGATE_NO_INVARIANTS"]
+
+    assert "protean-overview" in teachers
+    assert teachers == sorted(set(teachers))
 
 
 # --- Surfacing on a built diagnostic ----------------------------------------
@@ -91,16 +96,22 @@ def test_build_diagnostic_surfaces_teaching_skills():
         message="Order declares no invariants.",
     )
 
-    assert diag["teaching_skills"] == ["protean-overview"]
+    assert "protean-overview" in diag["teaching_skills"]
+    assert diag["teaching_skills"] == sorted(set(diag["teaching_skills"]))
 
 
-def test_build_diagnostic_omits_teaching_skills_when_no_skill_teaches():
-    # A real code that no seed skill declares: the key must be absent entirely,
-    # mirroring the resolving_operation-absent case.
-    taught = set(pack.diagnostic_code_skills())
-    untaught = next(code for code in DiagnosticCode if code.value not in taught)
+def test_build_diagnostic_omits_teaching_skills_when_no_skill_teaches(monkeypatch):
+    # Force the untaught case through the reverse index instead of hunting the
+    # shipped pack for a code no skill declares: that search has no answer once
+    # the pack covers every code, and the branch under test is the same either
+    # way. The key must be absent entirely, mirroring resolving_operation.
+    monkeypatch.setattr(
+        pack, "diagnostic_code_skills", lambda: {"EVENT_WITHOUT_DATA": ["demo"]}
+    )
 
-    diag = build_diagnostic(untaught, element="my_app.Thing", message="msg")
+    diag = build_diagnostic(
+        DiagnosticCode.AGGREGATE_NO_INVARIANTS, element="my_app.Thing", message="msg"
+    )
 
     assert "teaching_skills" not in diag
 
