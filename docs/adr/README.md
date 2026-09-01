@@ -110,3 +110,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0036](0036-configurable-graceful-drain-window.md) | Configurable Graceful Drain Window |
 | [0037](0037-idempotent-file-projection.md) | Idempotent File Projection and the `dx` Lockfile |
 | [0038](0038-canonical-field-style-for-mypy-strict.md) | Canonical field-declaration style for mypy-strict domains |
+| [0039](0039-dx-pack-ships-as-package-data.md) | Ship the developer-experience pack as package data |

@@ -131,6 +131,64 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check
 
+  dx-pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: DX pack (clean install)
+    # Builds the wheel and installs it into a clean virtualenv that cannot see
+    # the source tree, then asserts the DX pack (src/protean/dx/pack) shipped as
+    # package data and is readable through the importlib.resources accessor. The
+    # unit suite reads the pack from the source tree; only a clean-install check
+    # proves the data survived the build into the wheel. Hatchling ships the pack
+    # with no build-config change (its packages target includes every file under
+    # src/protean), so this job guards against silent loss of that data: an
+    # uncommitted, deleted, or moved file.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Install the wheel into a clean venv and read the pack
+        # `python -` reads the check from stdin, so sys.path[0] is the repo root,
+        # which has no top-level `protean` package to shadow the installed wheel.
+        run: |
+          python -m venv /tmp/pack-venv
+          /tmp/pack-venv/bin/pip install --upgrade pip
+          /tmp/pack-venv/bin/pip install dist/*.whl
+          # Explicit raises, not asserts: `python -O` would strip asserts, and a
+          # guard whose job is to fail loudly must not be optimizable away. The
+          # SKILL.md check covers every shipped skill, not just the first.
+          /tmp/pack-venv/bin/python - <<'PY'
+          import protean
+          from protean import dx
+
+          if dx.PACK_VERSION != protean.__version__: raise SystemExit("PACK_VERSION drifted from the framework version")
+
+          agents = dx.load_agents_source()
+          if not agents.strip(): raise SystemExit("AGENTS.md source is empty")
+
+          skills = dx.iter_skills()
+          if not skills: raise SystemExit("no skills shipped in the DX pack")
+
+          empty = [name for name in skills if not dx.read_pack_text(dx.SKILLS_DIR, name, dx.SKILL_FILE).strip()]
+          if empty: raise SystemExit(f"skills with an empty SKILL.md: {empty}")
+
+          print(f"DX pack OK: version={dx.PACK_VERSION}, skills={skills}")
+          PY
+
   # Publishes the docs via the GitHub Actions Pages pipeline (build the site,
   # then deploy the artifact) instead of `mkdocs gh-deploy` to the gh-pages
   # branch. The legacy branch-based Pages builder proved unreliable (builds
