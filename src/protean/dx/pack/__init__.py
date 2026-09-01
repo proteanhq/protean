@@ -93,8 +93,9 @@ def iter_skills() -> list[str]:
 # line-scanner reads that one key without a YAML dependency (the repo has none).
 # The scanner honours the parts of YAML that a real author reasonably relies on:
 # the ``metadata`` nesting the contract promises, tab or space indentation,
-# same-indent or deeper block sequences, end-of-line comments, and quoted
-# scalars. It is deliberately narrow, not a general YAML reader.
+# same-indent or deeper block sequences, comment lines and end-of-line
+# comments, and quoted scalars. It is deliberately narrow, not a general YAML
+# reader.
 _FRONTMATTER_FENCE = "---"
 _METADATA_KEY = "metadata"
 _DIAGNOSTIC_CODES_KEY = "diagnostic_codes"
@@ -110,6 +111,16 @@ def _indent(line: str) -> int:
     """
     leading = line[: len(line) - len(line.lstrip())]
     return len(leading.expandtabs())
+
+
+def _skippable(line: str) -> bool:
+    """Return whether YAML ignores this line wherever it appears in a block.
+
+    A blank line and a comment-only line carry no structure, so neither one ends
+    a mapping block or a block sequence.
+    """
+    stripped = line.strip()
+    return stripped == "" or stripped.startswith("#")
 
 
 def _strip_comment(value: str) -> str:
@@ -173,13 +184,14 @@ def _metadata_block(lines: list[str]) -> list[str] | None:
 
     ``metadata`` must be a top-level frontmatter key (indent 0) with no inline
     value; the block is the run of following lines indented under it, ending at
-    the next top-level key. Returns ``None`` when no such key exists, so a skill
-    with no ``metadata`` block declares nothing and a stray ``diagnostic_codes``
-    outside ``metadata`` is not read.
+    the next top-level key. Blank and comment-only lines carry no structure, so
+    an unindented one does not end the block. Returns ``None`` when no such key
+    exists, so a skill with no ``metadata`` block declares nothing and a stray
+    ``diagnostic_codes`` outside ``metadata`` is not read.
     """
     start = None
     for index, line in enumerate(lines):
-        if line.strip() == "" or _indent(line) != 0:
+        if _skippable(line) or _indent(line) != 0:
             continue
         head, sep, rest = line.strip().partition(":")
         if sep and head == _METADATA_KEY and rest.strip() == "":
@@ -189,7 +201,7 @@ def _metadata_block(lines: list[str]) -> list[str] | None:
         return None
     block: list[str] = []
     for line in lines[start + 1 :]:
-        if line.strip() != "" and _indent(line) == 0:
+        if not _skippable(line) and _indent(line) == 0:
             break
         block.append(line)
     return block
@@ -200,14 +212,14 @@ def _collect_block_list(lines: list[str], key_indent: int) -> list[str]:
 
     Items are ``- VALUE`` lines that share one indentation: the first item sets
     it, and it must be at least the key's indentation (a shallower item belongs
-    to a parent). Blank lines within the sequence are skipped. The sequence ends
-    at the first non-blank line that is not an item at that indentation — a
-    sibling mapping key, a dedent, or a re-indented item.
+    to a parent). Blank and comment-only lines within the sequence are skipped.
+    The sequence ends at the first line that is not one of those and not an item
+    at that indentation: a sibling mapping key, a dedent, or a re-indented item.
     """
     codes: list[str] = []
     seq_indent: int | None = None
     for line in lines:
-        if line.strip() == "":
+        if _skippable(line):
             continue
         match = _BLOCK_ITEM.match(line)
         if match is None:

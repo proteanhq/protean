@@ -203,6 +203,67 @@ def test_block_list_skips_a_blank_line(tmp_path, monkeypatch):
     ]
 
 
+def test_block_list_skips_a_comment_line(tmp_path, monkeypatch):
+    # YAML ignores a comment-only line inside a block sequence, so a comment
+    # between two items does not truncate the list. The comment sits at the item
+    # indentation and at column 0 to cover both shapes.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "    # the next one is the interesting case\n"
+        "# and this one is unindented\n"
+        "    - CROSS_AGGREGATE_REFERENCE\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == [
+        "AGGREGATE_NO_INVARIANTS",
+        "CROSS_AGGREGATE_REFERENCE",
+    ]
+
+
+def test_metadata_block_survives_an_unindented_comment(tmp_path, monkeypatch):
+    # A comment-only line at column 0 is not a top-level key, so it does not end
+    # the metadata block and the key after it is still read.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  category: orientation\n"
+        "# a note about the codes below\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
+def test_metadata_key_is_found_past_an_unindented_comment(tmp_path, monkeypatch):
+    # A comment-only line before the metadata key is skipped by the key scan, so
+    # the block is still found.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "name: demo\n"
+        "# codes this skill teaches\n"
+        "metadata:\n"
+        "  diagnostic_codes: [AGGREGATE_NO_INVARIANTS]\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
 def test_block_list_stops_at_a_sibling_mapping_key(tmp_path, monkeypatch):
     # A sibling mapping key at the key's own indentation ends the sequence and is
     # not swept in, even without a blank line between them.
