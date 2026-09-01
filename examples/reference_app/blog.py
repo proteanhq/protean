@@ -15,13 +15,16 @@ guard so a reader can run it with ``pip install protean`` and nothing else:
 """
 
 # --8<-- [start:quickstart]
+# --8<-- [start:imports]
 from protean import Domain, current_domain, handle
 from protean.core.projector import on
 from protean.fields import Identifier, String, Text
 
 domain = Domain()
+# --8<-- [end:imports]
 
 
+# --8<-- [start:aggregate]
 @domain.aggregate
 class Post:
     title: String(max_length=100, required=True)
@@ -33,12 +36,16 @@ class Post:
         self.raise_(PostPublished(post_id=self.id, title=self.title))
 
 
+# --8<-- [end:aggregate]
+# --8<-- [start:event]
 @domain.event(part_of=Post)
 class PostPublished:
     post_id: Identifier(required=True)
     title: String(required=True)
 
 
+# --8<-- [end:event]
+# --8<-- [start:command]
 @domain.command(part_of=Post)
 class PublishPost:
     title: String(max_length=100, required=True)
@@ -55,6 +62,8 @@ class PostCommandHandler:
         return post.id
 
 
+# --8<-- [end:command]
+# --8<-- [start:event_handler]
 @domain.event_handler(part_of=Post)
 class PostEventHandler:
     @handle(PostPublished)
@@ -62,6 +71,8 @@ class PostEventHandler:
         print(f"Event handled: post published ({event.title})")
 
 
+# --8<-- [end:event_handler]
+# --8<-- [start:projection]
 @domain.projection
 class PublishedPostsFeed:
     """A read-optimized feed of published posts."""
@@ -80,6 +91,8 @@ class PublishedPostsFeedProjector:
         current_domain.repository_for(PublishedPostsFeed).add(feed_entry)
 
 
+# --8<-- [end:projection]
+# --8<-- [start:usage]
 if __name__ == "__main__":
     domain.config["command_processing"] = "sync"
     domain.config["event_processing"] = "sync"
@@ -99,4 +112,5 @@ if __name__ == "__main__":
         print(f"Published posts feed: {feed.total} row(s)")
         for entry in feed.items:
             print(f"  - {entry.title}")
+# --8<-- [end:usage]
 # --8<-- [end:quickstart]
