@@ -7,6 +7,8 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: orientation
+  diagnostic_codes:
+    - AGGREGATE_NO_INVARIANTS
 ---
 
 # Protean overview

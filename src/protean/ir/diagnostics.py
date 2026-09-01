@@ -129,8 +129,11 @@ class Diagnostic(_DiagnosticRequired, total=False):
     (``ProteanException.location``), not on any IR/``check`` diagnostic.
     ``resolving_operation`` is present only for a code whose failure a
     deterministic ``protean`` command clears (the registry holds the mapping);
-    a code with no such command omits the key. Every other key is always
-    present on diagnostics built through :func:`build_diagnostic`.
+    a code with no such command omits the key. ``teaching_skills`` is present
+    only for a code some DX-pack skill declares it teaches (the skills point at
+    the code under ``metadata.diagnostic_codes``); it lists the teaching skill
+    names, sorted, and a code no skill teaches omits the key. Every other key is
+    always present on diagnostics built through :func:`build_diagnostic`.
     This does not describe every entry in ``ir["diagnostics"]``: custom lint
     rules (``ir.builder._run_custom_lint_rules``) contribute dicts that only
     require ``code``/``element``/``level``/``message``, with ``rule`` and
@@ -141,6 +144,7 @@ class Diagnostic(_DiagnosticRequired, total=False):
     field: str
     location: str
     resolving_operation: ResolvingOperationDict
+    teaching_skills: list[str]
 
 
 @dataclass(frozen=True)
@@ -977,6 +981,24 @@ def resolve(code: DiagnosticCode) -> CodeMeta:
     return REGISTRY[code]
 
 
+def _teaching_skills_for(code: str) -> list[str]:
+    """Return the DX-pack skills that teach ``code``, sorted, or ``[]``.
+
+    The DX pack is an optional subsystem that can be stripped from an install,
+    and core IR must not gain a hard dependency on ``protean.dx`` or an import
+    cycle. So the reverse index is reached through a function-local, guarded
+    import; any failure (pack absent, read error) yields ``[]`` and the
+    diagnostic simply omits the key. The index itself is cached in
+    :func:`protean.dx.pack.diagnostic_code_skills`.
+    """
+    try:
+        from protean.dx.pack import diagnostic_code_skills  # noqa: PLC0415
+
+        return list(diagnostic_code_skills().get(code, []))
+    except Exception:
+        return []
+
+
 def build_diagnostic(
     code: DiagnosticCode,
     *,
@@ -998,9 +1020,12 @@ def build_diagnostic(
     given (no lint producer sets it today — it is carried on the exception path
     instead). ``resolving_operation`` is attached automatically from the
     registry for a code that maps to a resolving command, and omitted for one
-    that does not. The returned dict carries exactly the wire keys the IR,
-    SARIF, and ``check`` output already emit, plus
-    ``field``/``location``/``resolving_operation`` when they apply.
+    that does not. ``teaching_skills`` is attached from the DX pack's reverse
+    index for a code some skill declares it teaches, and omitted for one no
+    skill teaches (or when the pack is absent). The returned dict carries
+    exactly the wire keys the IR, SARIF, and ``check`` output already emit, plus
+    ``field``/``location``/``resolving_operation``/``teaching_skills`` when they
+    apply.
     """
     meta = REGISTRY[code]
     resolved_rationale = rationale if rationale is not None else meta.rationale
@@ -1020,4 +1045,7 @@ def build_diagnostic(
         diagnostic["location"] = location
     if meta.resolution is not None:
         diagnostic["resolving_operation"] = meta.resolution.as_wire()
+    teaching_skills = _teaching_skills_for(code.value)
+    if teaching_skills:
+        diagnostic["teaching_skills"] = teaching_skills
     return diagnostic
