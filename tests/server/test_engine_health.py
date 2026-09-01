@@ -1419,6 +1419,76 @@ class TestLagDrainRate:
             # No sample was recorded, so the name never enters the window map.
             assert "orders-handler" not in refresher._samples
 
+    async def test_a_gap_in_readable_lag_restarts_the_window(self):
+        """A subscription whose lag goes unreadable and comes back starts a
+        fresh window, so readings from either side of the gap are never joined
+        into one slope."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            def _collect(_domain):
+                return [_status("orders-handler", lag=5, lag_seconds=20.0)]
+
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=_collect,
+            ):
+                await refresher._refresh_once()
+                clock[0] += 2.0
+                await refresher._refresh_once()
+            assert refresher.block["details"][0]["lag_drain_rate"] == 0.0
+
+            # The backend goes unreadable for a long stretch.
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                return_value=[
+                    _status(
+                        "orders-handler", lag=None, lag_seconds=None, status="unknown"
+                    )
+                ],
+            ):
+                clock[0] += 2.0
+                await refresher._refresh_once()
+            assert refresher.block["details"][0]["lag_drain_rate"] is None
+            assert "orders-handler" not in refresher._samples
+
+            # Readings return an hour later.  The first one has nothing to
+            # compare against, so it reads null rather than a slope smeared
+            # across the outage.
+            with patch(
+                "protean.server.health.collect_subscription_statuses",
+                side_effect=self._series_collector("orders-handler", [10.0, 8.0]),
+            ):
+                clock[0] += 3600.0
+                await refresher._refresh_once()
+                assert refresher.block["details"][0]["lag_drain_rate"] is None
+
+                clock[0] += 2.0
+                await refresher._refresh_once()
+
+            # The slope comes from the two post-gap readings only.
+            assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(
+                -1.0
+            )
+
+    async def test_a_row_without_a_name_gets_a_null_rate(self):
+        """A row with no usable name cannot key a window, so it is annotated
+        null and records nothing."""
+        domain = self._domain()
+        clock = [1000.0]
+        with domain.domain_context():
+            engine = Engine(domain, test_mode=True)
+            refresher = self._refresher(engine, clock)
+
+            block = {"total": 1, "details": [{"lag_seconds": 9.0}]}
+            refresher._annotate_lag_drain_rates(block)
+
+            assert block["details"][0]["lag_drain_rate"] is None
+            assert refresher._samples == {}
+
     async def test_zero_time_variance_yields_null_not_a_crash(self):
         """Two samples at the same instant must return null, not divide by zero."""
         domain = self._domain()

@@ -193,8 +193,9 @@ class _SubscriptionBlockRefresher:
         self._task: asyncio.Task[None] | None = None
         # Per-subscription sliding window of (clock_time, lag_seconds) samples,
         # keyed by subscription name.  Each deque is bounded by
-        # ``_LAG_SAMPLE_WINDOW`` and the key set is pruned to the names in the
-        # current block, so neither axis of this state grows with runtime.
+        # ``_LAG_SAMPLE_WINDOW``, and a name is dropped when it leaves the block
+        # or when its lag becomes unreadable, so neither axis of this state
+        # grows with runtime.
         self._samples: dict[str, deque[tuple[float, float]]] = {}
 
     @property
@@ -255,6 +256,8 @@ class _SubscriptionBlockRefresher:
         ``None`` until two windows have landed, and ``None`` for any row whose
         ``lag_seconds`` is unknown (an unreachable backend or an unmatched
         breaker). A rate with no window is meaningless and must never read as 0.
+        An unknown lag also clears that subscription's window, so readings from
+        either side of the gap are never joined into one slope.
 
         Only the refresher holds a window, so the rate is computed here rather
         than in the one-shot collector, and the readiness probe picks the field
@@ -265,7 +268,7 @@ class _SubscriptionBlockRefresher:
             return
 
         now = self._clock()
-        seen: set[str] = set()
+        present: set[str] = set()
         for detail in details:
             if not isinstance(detail, dict):
                 # Nothing to annotate on a row we cannot write to.  Skipping it
@@ -275,22 +278,35 @@ class _SubscriptionBlockRefresher:
                 continue
 
             name = detail.get("name")
-            lag_seconds = detail.get("lag_seconds")
-            if not isinstance(name, str) or not isinstance(lag_seconds, (int, float)):
-                # Unknown lag (or a malformed row): no sample, no rate.  A 0
-                # sample here would later read as a real, drained rate.
+            if not isinstance(name, str):
+                # No name to key a window by, so there is nothing to sample.
                 detail["lag_drain_rate"] = None
                 continue
 
-            seen.add(name)
+            present.add(name)
+
+            lag_seconds = detail.get("lag_seconds")
+            if not isinstance(lag_seconds, (int, float)):
+                # Unknown lag: no sample, no rate.  A 0 sample here would later
+                # read as a real, drained rate.  The window starts over too, so
+                # the next readable lag is not compared against one from before
+                # the gap: the slope between them would be spread over however
+                # long the backend was unreadable and read as a trend that never
+                # happened.
+                self._samples.pop(name, None)
+                detail["lag_drain_rate"] = None
+                continue
+
             samples = self._samples.setdefault(name, deque(maxlen=_LAG_SAMPLE_WINDOW))
             samples.append((now, float(lag_seconds)))
             detail["lag_drain_rate"] = _lag_drain_rate(samples)
 
         # Prune windows for subscriptions no longer in the block, so the key set
-        # cannot grow unbounded as subscriptions churn.
-        for stale_name in self._samples.keys() - seen:
-            del self._samples[stale_name]
+        # cannot grow unbounded as subscriptions churn.  A row that is present
+        # but has unknown lag is not a dropped subscription: its window was
+        # already reset above, and its name stays in ``present``.
+        for dropped_name in self._samples.keys() - present:
+            del self._samples[dropped_name]
 
     async def _run(self) -> None:
         while True:

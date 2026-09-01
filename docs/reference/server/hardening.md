@@ -159,7 +159,7 @@ stream subscription.
 | `status` | `ok`, `lagging`, or `unknown`. |
 | `circuit_state` | `closed`, `open`, or `half_open`. Absent when the subscription has no breaker. |
 
-Two things worth knowing before you build on this:
+Worth knowing before you build on this:
 
 - **`total` and `details` count different things** and may differ in length.
   `total` is the engine's own tally of live subscription objects; `details`
@@ -178,8 +178,11 @@ Two things worth knowing before you build on this:
   seconds at `+2.0` is falling further behind and needs attention. It is the
   slope of `lag_seconds` over a short sliding window, so it reads `null` for the
   first refresh after startup (one sample is not a trend) and whenever
-  `lag_seconds` itself is `null`. It is not a metrics gauge: a metrics backend
-  derives the same signal from `protean_subscription_lag_seconds` with `deriv()`.
+  `lag_seconds` itself is `null`. An unreadable lag also starts the window over,
+  so the first refresh after the lag becomes readable again reads `null` rather
+  than a slope stretched across the gap. It is not a metrics gauge: a metrics
+  backend derives the same signal from `protean_subscription_lag_seconds` with
+  `deriv()`.
 - **A partitioned category reports summed lag**: A `sequential_by` subscription
   consumes `{category}:{key}` partition streams, so its row aggregates lag and
   pending counts across every live partition, and `current_position` reports how
