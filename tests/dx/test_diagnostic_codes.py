@@ -261,6 +261,30 @@ def test_block_list_ignores_a_comment_only_item(tmp_path, monkeypatch):
     ]
 
 
+def test_block_list_ignores_a_bare_null_item(tmp_path, monkeypatch):
+    # A bare ``-`` with no value is a null entry in YAML. It must not terminate
+    # the sequence: the real item after it is still read. Without the fix the
+    # item regex fails to match the bare dash and the scan breaks there, dropping
+    # CROSS_AGGREGATE_REFERENCE.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\n"
+        "metadata:\n"
+        "  diagnostic_codes:\n"
+        "    - AGGREGATE_NO_INVARIANTS\n"
+        "    -\n"
+        "    - CROSS_AGGREGATE_REFERENCE\n"
+        "---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == [
+        "AGGREGATE_NO_INVARIANTS",
+        "CROSS_AGGREGATE_REFERENCE",
+    ]
+
+
 def test_inline_value_that_is_only_a_comment_reads_nothing(tmp_path, monkeypatch):
     # ``diagnostic_codes: # note`` is a null value in YAML, so the skill teaches
     # nothing. Without the fix the trailing comment is read as the code "# note".

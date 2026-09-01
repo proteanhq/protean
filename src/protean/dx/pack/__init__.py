@@ -99,7 +99,10 @@ def iter_skills() -> list[str]:
 _FRONTMATTER_FENCE = "---"
 _METADATA_KEY = "metadata"
 _DIAGNOSTIC_CODES_KEY = "diagnostic_codes"
-_BLOCK_ITEM = re.compile(r"^\s*-\s*(.+?)\s*$")
+# The value is captured with ``.*?`` so a bare ``-`` (a null item in YAML)
+# matches with an empty value rather than failing to match and ending the
+# sequence early; the collector skips such empty items.
+_BLOCK_ITEM = re.compile(r"^\s*-\s*(.*?)\s*$")
 
 
 def _indent(line: str) -> int:
@@ -218,8 +221,9 @@ def _collect_block_list(lines: list[str], key_indent: int) -> list[str]:
     to a parent). Blank and comment-only lines within the sequence are skipped.
     The sequence ends at the first line that is not one of those and not an item
     at that indentation: a sibling mapping key, a dedent, or a re-indented item.
-    A ``- # note`` item is a null entry in YAML, not a code; it sets the
-    sequence indentation like any item but contributes nothing.
+    A null item (a bare ``-``, or ``- # note``) is not a code; it sets the
+    sequence indentation like any item but contributes nothing, and it does not
+    end the sequence.
     """
     codes: list[str] = []
     seq_indent: int | None = None
