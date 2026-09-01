@@ -201,7 +201,7 @@ def _metadata_block(lines: list[str]) -> list[str] | None:
         if _skippable(line) or _indent(line) != 0:
             continue
         head, sep, rest = line.strip().partition(":")
-        if sep and head == _METADATA_KEY and _strip_comment(rest.strip()) == "":
+        if sep and head.strip() == _METADATA_KEY and _strip_comment(rest.strip()) == "":
             start = index
             break
     if start is None:
@@ -279,7 +279,7 @@ def _parse_diagnostic_codes(lines: list[str]) -> list[str]:
         if _skippable(line) or _indent(line) != child_indent:
             continue
         head, sep, rest = line.strip().partition(":")
-        if not sep or head != _DIAGNOSTIC_CODES_KEY:
+        if not sep or head.strip() != _DIAGNOSTIC_CODES_KEY:
             continue
         inline = _strip_comment(rest.strip())
         if inline:

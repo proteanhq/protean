@@ -476,6 +476,21 @@ def test_block_list_stops_at_a_dedented_item(tmp_path, monkeypatch):
     assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
 
 
+def test_keys_with_a_space_before_the_colon_are_read(tmp_path, monkeypatch):
+    # ``metadata :`` and ``diagnostic_codes :`` (a space before the colon) are
+    # valid YAML: the key is still ``metadata`` / ``diagnostic_codes``. The scan
+    # compares the key name with surrounding whitespace trimmed, so the codes are
+    # read rather than dropped.
+    _write_skill(
+        tmp_path,
+        "demo",
+        "---\nmetadata :\n  diagnostic_codes :\n    - AGGREGATE_NO_INVARIANTS\n---\n",
+    )
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    assert pack.skill_diagnostic_codes("demo") == ["AGGREGATE_NO_INVARIANTS"]
+
+
 def test_block_list_stops_at_an_item_shallower_than_the_key(tmp_path, monkeypatch):
     # The first item sets the sequence indentation, but only if it is at least as
     # deep as the diagnostic_codes key. An item indented less than the key is not
