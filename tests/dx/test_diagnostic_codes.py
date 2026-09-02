@@ -693,6 +693,19 @@ def test_reverse_index_tolerates_pack_absent(monkeypatch):
     assert pack.diagnostic_code_skills() == {}
 
 
+def test_skill_diagnostic_codes_raises_when_the_manifest_is_absent(
+    tmp_path, monkeypatch
+):
+    # The single-skill accessor is a query about one named skill, so a manifest
+    # it cannot read is an error, not an empty answer: unlike the reverse index,
+    # it raises. This is deliberate. Pointing it at an empty pack (no such skill,
+    # and no pack data) is the same missing-manifest case either way.
+    monkeypatch.setattr(pack, "pack_files", lambda: tmp_path)
+
+    with pytest.raises(FileNotFoundError):
+        pack.skill_diagnostic_codes("not-a-real-skill")
+
+
 def test_build_diagnostic_tolerates_pack_absent(monkeypatch):
     def _stripped():
         raise FileNotFoundError("pack data stripped from the install")

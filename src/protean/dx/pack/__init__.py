@@ -297,6 +297,12 @@ def skill_diagnostic_codes(name: str) -> list[str]:
     no framework-owned map to drift. A skill with no frontmatter, no
     ``metadata`` block, or no ``diagnostic_codes`` key declares nothing and
     returns ``[]``.
+
+    Raises if the named skill's manifest cannot be read, whether because the
+    name is unknown or the pack is not installed. This is a query about one named
+    skill, so a missing manifest is an error, not an empty answer. The
+    pack-tolerant read path is :func:`diagnostic_code_skills`, which core IR uses
+    and which degrades to an empty index when the pack is stripped.
     """
     text = read_pack_text(SKILLS_DIR, name, SKILL_FILE)
     return _parse_diagnostic_codes(_frontmatter_lines(text))
