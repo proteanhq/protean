@@ -1,20 +1,20 @@
 /* ==========================================================================
    Protean Documentation Theme
-   Teal palette derived from the Protean logo
+   Ink and vermilion palette matching the Protean brand identity
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
    Light Mode Color Scheme
    -------------------------------------------------------------------------- */
 [data-md-color-scheme="default"] {
-  /* Primary: deep teal from logo outer ring */
+  /* Primary: near-black ink for the header */
   --md-primary-fg-color:              #14100F;
   --md-primary-fg-color--light:       #2A2320;
   --md-primary-fg-color--dark:        #0A0807;
   --md-primary-bg-color:              #FFFFFF;
   --md-primary-bg-color--light:       #FFFFFFB3;
 
-  /* Accent: medium teal from logo mid-layers */
+  /* Accent: vermilion */
   --md-accent-fg-color:               #C6371C;
   --md-accent-fg-color--transparent:  #C6371C1A;
 
@@ -59,7 +59,7 @@
   --md-primary-bg-color:              #FFFFFF;
   --md-primary-bg-color--light:       #FFFFFFB3;
 
-  /* Accent: bright teal for dark backgrounds */
+  /* Accent: brighter vermilion for dark backgrounds */
   --md-accent-fg-color:               #FF6A4D;
   --md-accent-fg-color--transparent:  #FF6A4D1A;
 
@@ -134,7 +134,7 @@
   position: relative;
 }
 
-/* Teal accent bar under H2 — short, warm, like Diataxis */
+/* Vermilion accent bar under H2 — short, warm, like Diataxis */
 .md-typeset h2::after {
   content: "";
   display: block;
@@ -745,7 +745,7 @@ a:visited {
    mkdocstrings — API Reference Styling
    -------------------------------------------------------------------------- */
 
-/* Object heading (class/function name) — match the teal theme */
+/* Object heading (class/function name) — match the ink theme */
 .doc-heading code {
   font-size: 1.1em;
   font-weight: 700;
