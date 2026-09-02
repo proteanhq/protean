@@ -1,0 +1,22 @@
+# Configuration for the reference application.
+#
+# Every value that the PostgreSQL + Redis path overrides is an env-var
+# reference with a sensible default, so the same file runs two ways:
+#
+#   - Clean clone, nothing set: SQLite on disk and the in-process inline
+#     broker. Commands and events run synchronously, so a POST fills the
+#     feed before the request returns.
+#   - `docker-compose up` path: set DATABASE_PROVIDER/DATABASE_URL and
+#     BROKER_PROVIDER/BROKER_URL (see .env.example) to point at PostgreSQL
+#     and Redis without editing this file.
+
+command_processing = "sync"
+event_processing = "sync"
+
+[databases.default]
+provider = "${DATABASE_PROVIDER|sqlite}"
+database_uri = "${DATABASE_URL|sqlite:///reference_app.db}"
+
+[brokers.default]
+provider = "${BROKER_PROVIDER|inline}"
+URI = "${BROKER_URL|redis://localhost:6379/0}"

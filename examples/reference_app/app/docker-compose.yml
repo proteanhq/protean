@@ -1,0 +1,23 @@
+# Optional services for the "when you are ready" path: run the reference app
+# against PostgreSQL and Redis instead of SQLite and the inline broker.
+#
+#   docker compose up -d   # older Docker: docker-compose up -d
+#   cp .env.example .env && set -a && . ./.env && set +a
+#   uvicorn app.api:app
+#
+# The clean-clone path needs none of this.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: protean
+      POSTGRES_PASSWORD: protean
+      POSTGRES_DB: reference_app
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
