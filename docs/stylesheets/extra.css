@@ -151,6 +151,27 @@
 .md-header__button.md-logo img,
 .md-header__button.md-logo svg { height: 1.9rem; }
 
+/* Home hero brand lockup: the shared squircle-aperture mark plus wordmark,
+   composed the same way the marketing-site nav composes it. The mark ships in
+   two fixed-color variants; show whichever suits the active scheme's ground. */
+.pt-home-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0.2rem 0 1.4rem;
+}
+.pt-home-brand__mark { width: 48px; height: 48px; flex: none; }
+.pt-home-brand__word {
+  font-family: var(--pt-display);
+  font-weight: 700;
+  font-size: 2.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--md-primary-fg-color);
+}
+[data-md-color-scheme="default"] .pt-home-brand__mark--dark  { display: none; }
+[data-md-color-scheme="slate"]   .pt-home-brand__mark--light { display: none; }
+
 /* --------------------------------------------------------------------------
    Typography
    -------------------------------------------------------------------------- */

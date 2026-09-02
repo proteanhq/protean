@@ -1,5 +1,9 @@
-![Protean](./assets/full-logo-light.png#only-light){ width="360" }
-![Protean](./assets/full-logo-dark.png#only-dark){ width="360" }
+<div class="pt-home-brand">
+  <img class="pt-home-brand__mark pt-home-brand__mark--light" src="./assets/protean-mark-light.svg" alt="Protean" width="48" height="48">
+  <img class="pt-home-brand__mark pt-home-brand__mark--dark" src="./assets/protean-mark-dark.svg" alt="" width="48" height="48" aria-hidden="true">
+  <span class="pt-home-brand__word">Protean</span>
+</div>
+
 # Your whiteboard, shipped.
 
 [![Python](https://img.shields.io/pypi/pyversions/protean?label=Python)](https://github.com/proteanhq/protean/)
