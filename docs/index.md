@@ -1,4 +1,5 @@
-![Protean](./assets/full-logo.png){ width="400" }
+![Protean](./assets/full-logo-light.png#only-light){ width="360" }
+![Protean](./assets/full-logo-dark.png#only-dark){ width="360" }
 # Your whiteboard, shipped.
 
 [![Python](https://img.shields.io/pypi/pyversions/protean?label=Python)](https://github.com/proteanhq/protean/)

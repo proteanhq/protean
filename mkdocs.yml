@@ -11,20 +11,20 @@ theme:
   favicon: assets/favicon.png
   language: custom
   font:
-    text: Inter
-    code: JetBrains Mono
+    text: IBM Plex Sans
+    code: IBM Plex Mono
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
-    primary: teal
-    accent: teal
+    primary: black
+    accent: deep orange
     toggle:
       icon: material/lightbulb
       name: Switch to dark mode
   - media: '(prefers-color-scheme: dark)'
     scheme: slate
-    primary: teal
-    accent: teal
+    primary: black
+    accent: deep orange
     toggle:
       icon: material/lightbulb-outline
       name: Switch to light mode
