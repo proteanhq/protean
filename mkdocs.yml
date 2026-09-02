@@ -7,12 +7,12 @@ copyright: Copyright &copy; 2019 - 2026 Subhash Bhushan
 theme:
   name: material
   custom_dir: docs/overrides
-  logo: assets/logo.png
-  favicon: assets/favicon.png
+  logo: assets/protean-mark-dark.svg
+  favicon: assets/protean-favicon.svg
   language: custom
   font:
-    text: IBM Plex Sans
-    code: IBM Plex Mono
+    text: Hanken Grotesk
+    code: JetBrains Mono
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
