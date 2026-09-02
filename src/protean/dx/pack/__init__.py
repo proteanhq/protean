@@ -14,6 +14,8 @@ through :func:`pack_files`.
 
 from __future__ import annotations
 
+import re
+from functools import lru_cache
 from importlib import resources
 from importlib.resources.abc import Traversable
 
@@ -24,10 +26,12 @@ __all__ = [
     "PACK_VERSION",
     "SKILLS_DIR",
     "SKILL_FILE",
+    "diagnostic_code_skills",
     "iter_skills",
     "load_agents_source",
     "pack_files",
     "read_pack_text",
+    "skill_diagnostic_codes",
 ]
 
 # The pack ships inside the wheel, so its version is the framework version. A
@@ -81,3 +85,252 @@ def iter_skills() -> list[str]:
         for child in skills_root.iterdir()
         if child.is_dir() and (child / SKILL_FILE).is_file()
     )
+
+
+# A skill declares the diagnostic codes it teaches under
+# ``metadata.diagnostic_codes`` in the leading ``---``-fenced frontmatter of its
+# SKILL.md. The pack format is under the framework's control, so a small
+# line-scanner reads that one key without a YAML dependency (the repo has none).
+# The scanner honours the parts of YAML that a real author reasonably relies on:
+# the ``metadata`` nesting the contract promises, tab or space indentation,
+# same-indent or deeper block sequences, comment lines and end-of-line
+# comments, and quoted scalars. It is deliberately narrow, not a general YAML
+# reader.
+_FRONTMATTER_FENCE = "---"
+_METADATA_KEY = "metadata"
+_DIAGNOSTIC_CODES_KEY = "diagnostic_codes"
+# The value is captured with ``.*?`` so a bare ``-`` (a null item in YAML)
+# matches with an empty value rather than failing to match and ending the
+# sequence early; the collector skips such empty items.
+_BLOCK_ITEM = re.compile(r"^\s*-\s*(.*?)\s*$")
+
+
+def _indent(line: str) -> int:
+    """Return the line's visual indentation width, with tabs expanded.
+
+    A tab and a run of spaces can produce the same visual indent, so measure the
+    expanded width rather than the raw character count. Otherwise a tab-indented
+    item under a space-indented key looks shallower than it is and is dropped.
+    """
+    leading = line[: len(line) - len(line.lstrip())]
+    return len(leading.expandtabs())
+
+
+def _skippable(line: str) -> bool:
+    """Return whether YAML ignores this line wherever it appears in a block.
+
+    A blank line and a comment-only line carry no structure, so neither one ends
+    a mapping block or a block sequence.
+    """
+    stripped = line.strip()
+    return stripped == "" or stripped.startswith("#")
+
+
+def _strip_comment(value: str) -> str:
+    """Drop a YAML ``#`` comment: one at the start of the value, or one preceded
+    by whitespace. A ``#`` inside a token (``a#b``) is not a comment, so it
+    stays. A value that is nothing but a comment (``# note``) becomes empty,
+    which is how YAML reads a bare ``- # note`` item: null, not a code."""
+    for index in range(len(value)):
+        if value[index] == "#" and (index == 0 or value[index - 1] in " \t"):
+            return value[:index].rstrip()
+    return value
+
+
+def _clean_scalar(value: str) -> str:
+    """Trim one scalar: drop a trailing comment and matching surrounding quotes."""
+    value = _strip_comment(value.strip()).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        value = value[1:-1].strip()
+    return value
+
+
+def _dedup(items: list[str]) -> list[str]:
+    """Drop duplicate items, keeping first-seen order."""
+    return list(dict.fromkeys(items))
+
+
+def _frontmatter_lines(text: str) -> list[str]:
+    """Return the lines inside a SKILL.md's leading ``---``-fenced block.
+
+    A skill with no frontmatter (no opening fence on its first non-empty line)
+    yields no lines. An opening fence with no closing fence is malformed and also
+    yields no lines, so an unterminated block is not read as frontmatter. The
+    closing fence and everything after it is dropped.
+    """
+    lines = text.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip() == "":
+            continue
+        if line.strip() == _FRONTMATTER_FENCE:
+            start = index
+        break
+    if start is None:
+        return []
+    body: list[str] = []
+    for line in lines[start + 1 :]:
+        if line.strip() == _FRONTMATTER_FENCE:
+            return body
+        body.append(line)
+    return []
+
+
+def _split_inline_list(value: str) -> list[str]:
+    """Split an inline ``[A, B]`` list into its cleaned, non-empty items."""
+    value = _strip_comment(value.strip()).strip()
+    if value.startswith("[") and value.endswith("]"):
+        value = value[1:-1]
+    items = [_clean_scalar(item) for item in value.split(",")]
+    return [item for item in items if item]
+
+
+def _metadata_block(lines: list[str]) -> list[str] | None:
+    """Return the lines inside the top-level ``metadata:`` mapping, or ``None``.
+
+    ``metadata`` must be a top-level frontmatter key (indent 0) with no inline
+    value; the block is the run of following lines indented under it, ending at
+    the next top-level key. A trailing comment (``metadata: # note``) is not an
+    inline value, so it still opens the block. Blank and comment-only lines carry
+    no structure, so an unindented one does not end the block. Returns ``None``
+    when no such key exists, so a skill with no ``metadata`` block declares
+    nothing and a stray ``diagnostic_codes`` outside ``metadata`` is not read.
+    """
+    start = None
+    for index, line in enumerate(lines):
+        if _skippable(line) or _indent(line) != 0:
+            continue
+        head, sep, rest = line.strip().partition(":")
+        if sep and head.strip() == _METADATA_KEY and _strip_comment(rest.strip()) == "":
+            start = index
+            break
+    if start is None:
+        return None
+    block: list[str] = []
+    for line in lines[start + 1 :]:
+        if not _skippable(line) and _indent(line) == 0:
+            break
+        block.append(line)
+    return block
+
+
+def _collect_block_list(lines: list[str], key_indent: int) -> list[str]:
+    """Collect a YAML block sequence's items following its ``key:`` line.
+
+    Items are ``- VALUE`` lines that share one indentation: the first item sets
+    it, and it must be at least the key's indentation (a shallower item belongs
+    to a parent). Blank and comment-only lines within the sequence are skipped.
+    The sequence ends at the first line that is not one of those and not an item
+    at that indentation: a sibling mapping key, a dedent, or a re-indented item.
+    A null item (a bare ``-``, or ``- # note``) is not a code; it sets the
+    sequence indentation like any item but contributes nothing, and it does not
+    end the sequence.
+    """
+    codes: list[str] = []
+    seq_indent: int | None = None
+    for line in lines:
+        if _skippable(line):
+            continue
+        match = _BLOCK_ITEM.match(line)
+        if match is None:
+            break
+        indent = _indent(line)
+        if seq_indent is None:
+            if indent < key_indent:
+                break
+            seq_indent = indent
+        elif indent != seq_indent:
+            break
+        code = _clean_scalar(match.group(1))
+        if code:
+            codes.append(code)
+    return codes
+
+
+def _direct_child_indent(block: list[str]) -> int | None:
+    """Return the indentation of the metadata block's direct children.
+
+    The first non-skippable line sets it; in well-formed YAML every direct child
+    shares that indentation. Returns ``None`` for a block with no real lines.
+    """
+    for line in block:
+        if not _skippable(line):
+            return _indent(line)
+    return None
+
+
+def _parse_diagnostic_codes(lines: list[str]) -> list[str]:
+    """Read ``metadata.diagnostic_codes`` from frontmatter ``lines``.
+
+    The key must be a direct child of the top-level ``metadata`` mapping, as the
+    contract promises: a ``diagnostic_codes`` nested one level deeper (under a
+    ``metadata`` sub-key) is not ``metadata.diagnostic_codes`` and is not read.
+    Reads both the block-list form (``- CODE`` on its own indented line) and the
+    inline form (``[CODE, CODE]``) after the key, ignoring a trailing comment on
+    the key line, and de-duplicates the result. Returns ``[]`` when there is no
+    ``metadata`` block or no ``diagnostic_codes`` key, so a skill that teaches no
+    coded rule declares nothing.
+    """
+    block = _metadata_block(lines)
+    if block is None:
+        return []
+    child_indent = _direct_child_indent(block)
+    for index, line in enumerate(block):
+        if _skippable(line) or _indent(line) != child_indent:
+            continue
+        head, sep, rest = line.strip().partition(":")
+        if not sep or head.strip() != _DIAGNOSTIC_CODES_KEY:
+            continue
+        inline = _strip_comment(rest.strip())
+        if inline:
+            return _dedup(_split_inline_list(inline))
+        return _dedup(_collect_block_list(block[index + 1 :], _indent(line)))
+    return []
+
+
+def skill_diagnostic_codes(name: str) -> list[str]:
+    """Return the diagnostic codes the named skill declares it teaches.
+
+    A skill points at the codes (the source of truth is
+    :class:`~protean.ir.diagnostics.DiagnosticCode`) under
+    ``metadata.diagnostic_codes`` in its ``SKILL.md`` frontmatter, so there is
+    no framework-owned map to drift. A skill with no frontmatter, no
+    ``metadata`` block, or no ``diagnostic_codes`` key declares nothing and
+    returns ``[]``.
+
+    Raises if the named skill's manifest cannot be read, whether because the
+    name is unknown or the pack is not installed. This is a query about one named
+    skill, so a missing manifest is an error, not an empty answer. The
+    pack-tolerant read path is :func:`diagnostic_code_skills`, which core IR uses
+    and which degrades to an empty index when the pack is stripped.
+    """
+    text = read_pack_text(SKILLS_DIR, name, SKILL_FILE)
+    return _parse_diagnostic_codes(_frontmatter_lines(text))
+
+
+@lru_cache(maxsize=1)
+def diagnostic_code_skills() -> dict[str, list[str]]:
+    """Return the reverse index: each diagnostic code to the sorted skills that
+    teach it.
+
+    Built by reading every skill's declared codes and inverting the map, with
+    each code's skill list sorted and de-duplicated. The result is cached; call
+    ``diagnostic_code_skills.cache_clear()`` after pointing the accessor at a
+    different pack (tests do this). Degrades rather than raises when the pack is
+    incomplete: a failure listing the skills yields an empty index, and a failure
+    reading one skill skips that skill and keeps the rest. So a caller in core IR
+    keeps working when the pack is stripped from the wheel.
+    """
+    index: dict[str, list[str]] = {}
+    try:
+        skills = iter_skills()
+    except Exception:
+        return {}
+    for skill in skills:
+        try:
+            codes = skill_diagnostic_codes(skill)
+        except Exception:
+            continue
+        for code in codes:
+            index.setdefault(code, []).append(skill)
+    return {code: sorted(set(names)) for code, names in index.items()}

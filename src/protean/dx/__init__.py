@@ -17,10 +17,12 @@ from protean.dx.pack import (
     PACK_VERSION,
     SKILL_FILE,
     SKILLS_DIR,
+    diagnostic_code_skills,
     iter_skills,
     load_agents_source,
     pack_files,
     read_pack_text,
+    skill_diagnostic_codes,
 )
 from protean.dx.projection import (
     LOCK_VERSION,
@@ -56,10 +58,12 @@ __all__ = [
     "ProjectionStatus",
     "StructuredJsonProjection",
     "apply_projection",
+    "diagnostic_code_skills",
     "diff_projection",
     "iter_skills",
     "load_agents_source",
     "load_lock",
     "pack_files",
     "read_pack_text",
+    "skill_diagnostic_codes",
 ]

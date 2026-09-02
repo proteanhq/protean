@@ -138,6 +138,7 @@ On a usage/environment error (`status: "error"`, exit 2) `data` carries a single
 | `message` | str | Human-readable description of this specific finding. |
 | `rule` | object | Rule metadata: `rationale` (why the rule exists) and `fix` (suggested remediation). |
 | `suggestion` | str | Remediation text. Currently equals `rule.fix`; reserved for AI-populated, context-aware text in a future release. |
+| `teaching_skills` | list | Names of the DX-pack skills that teach this code, sorted. Present only when a skill declares the code (under `metadata.diagnostic_codes` in its `SKILL.md`); omitted for a code no skill teaches, or when the pack is stripped from the install. |
 
 ## CI integration
 

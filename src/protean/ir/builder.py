@@ -4099,8 +4099,24 @@ class IRBuilder:
 
         Excludes :data:`protean.ir.constants.VOLATILE_IR_KEYS` so the checksum
         reflects domain *content* only and stays in lockstep with ``ir diff``.
+
+        Also strips ``teaching_skills`` from each diagnostic before hashing. That
+        key names the DX-pack skills that teach a code, so it is present or absent
+        with the pack, not with the domain. Hashing it would make the same domain
+        check STALE when the pack is stripped (a CI runner without the pack, or
+        an upgrade from a version that never emitted the key), so it stays out of
+        the digest. ``ir diff`` already ignores it: diagnostics are matched by
+        ``(code, element)`` and their inner fields are not compared.
         """
         ir_copy = {k: v for k, v in ir.items() if k not in VOLATILE_IR_KEYS}
+        diagnostics = ir_copy.get("diagnostics")
+        if isinstance(diagnostics, list):
+            ir_copy["diagnostics"] = [
+                {k: v for k, v in diag.items() if k != "teaching_skills"}
+                if isinstance(diag, dict)
+                else diag
+                for diag in diagnostics
+            ]
         canonical = json.dumps(ir_copy, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return f"sha256:{digest}"

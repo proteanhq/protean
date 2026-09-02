@@ -191,6 +191,34 @@ class TestChecksum:
         # ... and the staleness checksum agrees.
         assert IRBuilder._compute_checksum(bumped) == IRBuilder._compute_checksum(ir)
 
+    def test_checksum_ignores_teaching_skills_on_diagnostics(self):
+        """``teaching_skills`` is install-dependent DX-pack metadata: present when
+        the pack ships, absent when it is stripped. The checksum must not move
+        with it, or the same domain reports STALE across a pack-present versus
+        pack-stripped boundary (a CI runner without the pack, or an upgrade from a
+        version that never emitted the key).
+        """
+        domain = Domain(name="TeachingSkills")
+        domain.init(traverse=False)
+        ir = domain.to_ir()
+
+        ir["diagnostics"] = [
+            {"code": "AGGREGATE_NO_INVARIANTS", "element": "app.Order", "level": "info"}
+        ]
+        without_pack = IRBuilder._compute_checksum(ir)
+
+        ir["diagnostics"] = [
+            {
+                "code": "AGGREGATE_NO_INVARIANTS",
+                "element": "app.Order",
+                "level": "info",
+                "teaching_skills": ["protean-overview"],
+            }
+        ]
+        with_pack = IRBuilder._compute_checksum(ir)
+
+        assert with_pack == without_pack
+
 
 @pytest.mark.no_test_domain
 class TestCanonicalIR:
