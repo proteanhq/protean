@@ -43,9 +43,8 @@ _BLOG_PATH = os.path.join(os.path.dirname(APP_DIR), "blog.py")
 def _load_domain():
     """Load ``blog.py`` by file path and return its domain and elements."""
     spec = importlib.util.spec_from_file_location("reference_app_blog", _BLOG_PATH)
-    assert spec is not None and spec.loader is not None, (
-        f"Could not build a loadable module spec from {_BLOG_PATH}"
-    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not build a loadable module spec from {_BLOG_PATH}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -80,19 +79,27 @@ register_exception_handlers(app)
 
 
 @app.post("/posts", status_code=201)
-async def create_post(payload: dict):
+def create_post(payload: dict):
     """Create and publish a post, returning its id.
 
     A missing or empty title raises ``ValidationError`` when the command is
     built; the registered exception handlers turn that into a 400.
+
+    Declared ``def``, not ``async def``: ``domain.process()`` is synchronous
+    and writes to the database, so FastAPI runs it in a threadpool instead of
+    blocking the event loop.
     """
     post_id = current_domain.process(PublishPost(**payload))
     return {"id": post_id}
 
 
 @app.get("/posts")
-async def list_posts():
-    """Return the published-posts feed from the projection."""
+def list_posts():
+    """Return the published-posts feed from the projection.
+
+    Synchronous for the same reason as ``create_post``: the projection query
+    hits the database.
+    """
     feed = current_domain.view_for(PublishedPostsFeed).query.all()
     return {
         "posts": [{"post_id": row.post_id, "title": row.title} for row in feed.items]

@@ -15,6 +15,7 @@ would never run and the SQLite tables would be missing.
 """
 
 import importlib.util
+import inspect
 import os
 import types
 
@@ -34,6 +35,21 @@ _BLOG_PATH = os.path.abspath(
 )
 
 
+def _pin_config_env(monkeypatch, db_path) -> None:
+    """Pin every env var the app's ``domain.toml`` reads.
+
+    The config file resolves its provider and URI from the environment, so a
+    developer or CI runner with ``DATABASE_PROVIDER``/``BROKER_PROVIDER`` set
+    globally would push these tests onto PostgreSQL or Redis. Pinning them here
+    keeps the run on SQLite in a throwaway file plus the inline broker, whatever
+    the ambient environment holds.
+    """
+    monkeypatch.setenv("DATABASE_PROVIDER", "sqlite")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("BROKER_PROVIDER", "inline")
+    monkeypatch.delenv("BROKER_URL", raising=False)
+
+
 def _load_module(name: str, path: str) -> types.ModuleType:
     """Load a module fresh from its file path, unregistered in ``sys.modules``."""
     spec = importlib.util.spec_from_file_location(name, path)
@@ -51,19 +67,20 @@ class TestReferenceAppApi:
     def client(self, tmp_path, monkeypatch):
         """A TestClient whose SQLite DB points at a throwaway file.
 
-        Setting ``DATABASE_URL`` before the lifespan runs makes the app's
+        Pinning the config env vars before the lifespan runs makes the app's
         ``domain.toml`` resolve to this temp file, so the run is isolated and
         re-runnable. Entering the ``with`` block runs startup (init +
         setup_database); leaving it runs shutdown.
         """
         db_path = tmp_path / "reference_app.db"
-        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+        _pin_config_env(monkeypatch, db_path)
 
         api = _load_module("reference_app_api", _API_PATH)
         with TestClient(api.app) as client:
             # The lifespan has run: confirm the app is actually on SQLite, not
             # the in-memory default it was built with.
             assert api.domain.config["databases"]["default"]["provider"] == "sqlite"
+            assert api.domain.config["brokers"]["default"]["provider"] == "inline"
             yield client
 
     def test_post_then_get_returns_the_published_post(self, client):
@@ -130,6 +147,19 @@ class TestReferenceAppApi:
         feed = client.get("/posts")
         assert feed.json()["posts"] == []
 
+    def test_endpoints_are_sync_functions(self, tmp_path, monkeypatch):
+        """The endpoints are plain ``def``, so FastAPI runs them in a threadpool.
+
+        ``domain.process()`` and the projection query both block on I/O. An
+        ``async def`` endpoint would run that work on the event loop thread and
+        stall every other request while it waits.
+        """
+        _pin_config_env(monkeypatch, tmp_path / "reference_app.db")
+
+        api = _load_module("reference_app_api", _API_PATH)
+        assert not inspect.iscoroutinefunction(api.create_post)
+        assert not inspect.iscoroutinefunction(api.list_posts)
+
     def test_app_config_does_not_leak_into_the_quickstart(self, tmp_path, monkeypatch):
         """With the app on SQLite in this process, a fresh ``blog.py`` still resolves memory.
 
@@ -140,7 +170,7 @@ class TestReferenceAppApi:
         config resolution never descends into the ``app`` subfolder.
         """
         db_path = tmp_path / "reference_app.db"
-        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+        _pin_config_env(monkeypatch, db_path)
 
         api = _load_module("reference_app_api", _API_PATH)
         with TestClient(api.app):
