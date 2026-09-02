@@ -8,15 +8,15 @@
    -------------------------------------------------------------------------- */
 [data-md-color-scheme="default"] {
   /* Primary: deep teal from logo outer ring */
-  --md-primary-fg-color:              #0F4C5C;
-  --md-primary-fg-color--light:       #14807A;
-  --md-primary-fg-color--dark:        #0A3640;
+  --md-primary-fg-color:              #14100F;
+  --md-primary-fg-color--light:       #2A2320;
+  --md-primary-fg-color--dark:        #0A0807;
   --md-primary-bg-color:              #FFFFFF;
   --md-primary-bg-color--light:       #FFFFFFB3;
 
   /* Accent: medium teal from logo mid-layers */
-  --md-accent-fg-color:               #0D9488;
-  --md-accent-fg-color--transparent:  #0D94881A;
+  --md-accent-fg-color:               #C6371C;
+  --md-accent-fg-color--transparent:  #C6371C1A;
 
   /* Foreground */
   --md-default-fg-color:              #1A2332;
@@ -31,14 +31,14 @@
   /* Code */
   --md-code-bg-color:                 #F0F4F5;
   --md-code-fg-color:                 #1A2332;
-  --md-code-hl-color:                 #0D948826;
+  --md-code-hl-color:                 #FF5A3C1F;
 
   /* Links */
   --md-typeset-a-color:               var(--md-accent-fg-color);
 
   /* Footer */
-  --md-footer-bg-color:               #0A3640;
-  --md-footer-bg-color--dark:         #071E24;
+  --md-footer-bg-color:               #0A0807;
+  --md-footer-bg-color--dark:         #050404;
   --md-footer-fg-color:               #FFFFFFDE;
   --md-footer-fg-color--light:        #FFFFFFB3;
   --md-footer-fg-color--lighter:      #FFFFFF73;
@@ -53,15 +53,15 @@
   --md-hue: 190;
 
   /* Primary */
-  --md-primary-fg-color:              #0F4C5C;
-  --md-primary-fg-color--light:       #14807A;
-  --md-primary-fg-color--dark:        #0A3640;
+  --md-primary-fg-color:              #14100F;
+  --md-primary-fg-color--light:       #2A2320;
+  --md-primary-fg-color--dark:        #0A0807;
   --md-primary-bg-color:              #FFFFFF;
   --md-primary-bg-color--light:       #FFFFFFB3;
 
   /* Accent: bright teal for dark backgrounds */
-  --md-accent-fg-color:               #2DD4BF;
-  --md-accent-fg-color--transparent:  #2DD4BF1A;
+  --md-accent-fg-color:               #FF6A4D;
+  --md-accent-fg-color--transparent:  #FF6A4D1A;
 
   /* Foreground */
   --md-default-fg-color:              #E2E8F0;
@@ -76,7 +76,7 @@
   /* Code */
   --md-code-bg-color:                 #1A2332;
   --md-code-fg-color:                 #E2E8F0;
-  --md-code-hl-color:                 #2DD4BF33;
+  --md-code-hl-color:                 #FF6A4D2B;
   --md-code-hl-number-color:          #F6AD55;
   --md-code-hl-special-color:         #FC8181;
   --md-code-hl-function-color:        #B794F4;
@@ -146,7 +146,7 @@
 }
 
 [data-md-color-scheme="slate"] .md-typeset h2::after {
-  background-color: #2DD4BF;
+  background-color: #FF6A4D;
 }
 
 .md-typeset h3 {
@@ -170,7 +170,7 @@
 [data-md-color-scheme="slate"] .md-typeset h2,
 [data-md-color-scheme="slate"] .md-typeset h3,
 [data-md-color-scheme="slate"] .md-typeset h4 {
-  color: #5EEAD4;
+  color: #F1EDEA;
 }
 
 /* --------------------------------------------------------------------------
@@ -241,7 +241,7 @@
 .mermaid .messageText {
   font-weight: 600 !important;
   font-size: 13px !important;
-  fill: #0F4C5C !important;
+  fill: #14100F !important;
 }
 
 [data-md-color-scheme="slate"] .mermaid .messageText {
@@ -280,7 +280,7 @@
 }
 
 [data-md-color-scheme="slate"] .md-typeset .md-annotation__index:hover {
-  background-color: #2DD4BF !important;
+  background-color: #FF6A4D !important;
   color: #131A24 !important;
 }
 
@@ -307,7 +307,7 @@ a:visited {
 }
 
 [data-md-color-scheme="slate"] .md-typeset a:hover {
-  color: #5EEAD4;
+  color: #F1EDEA;
 }
 
 .md-typeset a:visited {
@@ -382,11 +382,11 @@ a:visited {
    Tabs
    -------------------------------------------------------------------------- */
 .md-tabs {
-  background-color: #14807A;
+  background-color: #2A2320;
 }
 
 [data-md-color-scheme="slate"] .md-tabs {
-  background-color: #0D3D48;
+  background-color: #0A0807;
 }
 
 .md-tabs__link {
@@ -421,14 +421,14 @@ a:visited {
 
 /* Horizontal dividers between major nav sections */
 .md-nav__item--section + .md-nav__item--section {
-  border-top: 2px solid rgba(13, 148, 136, 0.35);
+  border-top: 2px solid rgba(198, 55, 28, 0.35);
   margin-top: 0.75rem;
   padding-top: 0.75rem;
 }
 
 /* Separator when a section follows a non-section item (but not at the very top) */
 .md-nav__item:not(.md-nav__item--section) + .md-nav__item--section {
-  border-top: 2px solid rgba(13, 148, 136, 0.35);
+  border-top: 2px solid rgba(198, 55, 28, 0.35);
   margin-top: 0.75rem;
   padding-top: 0.75rem;
 }
@@ -443,7 +443,7 @@ a:visited {
 
 [data-md-color-scheme="slate"] .md-nav__item--section + .md-nav__item--section,
 [data-md-color-scheme="slate"] .md-nav__item:not(.md-nav__item--section) + .md-nav__item--section {
-  border-top-color: rgba(45, 212, 191, 0.3);
+  border-top-color: rgba(255, 106, 77, 0.3);
 }
 
 /* Section headers in left nav — both label-style and container-style */
@@ -461,7 +461,7 @@ a:visited {
 [data-md-color-scheme="slate"] .md-nav--primary .md-nav__item--section > label.md-nav__link,
 [data-md-color-scheme="slate"] .md-nav--lifted .md-nav__item--section > label.md-nav__link,
 [data-md-color-scheme="slate"] .md-nav--primary .md-nav__item--section > .md-nav__link.md-nav__container > a.md-nav__link {
-  color: #5EEAD4;
+  color: #F1EDEA;
 }
 
 /* Tab-level title in left sidebar (e.g. "Guides", "Reference", "Concepts")
@@ -480,17 +480,17 @@ a:visited {
 .md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
   padding-bottom: 0.5rem;
   margin-bottom: 0.25rem;
-  border-bottom: 2px solid rgba(13, 148, 136, 0.35);
+  border-bottom: 2px solid rgba(198, 55, 28, 0.35);
 }
 
 [data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container > a.md-nav__link,
 [data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
-  color: #5EEAD4 !important;
+  color: #F1EDEA !important;
 }
 
 [data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link.md-nav__container,
 [data-md-color-scheme="slate"] .md-nav--lifted > .md-nav__list > .md-nav__item--active > label.md-nav__link {
-  border-bottom-color: rgba(45, 212, 191, 0.3);
+  border-bottom-color: rgba(255, 106, 77, 0.3);
 }
 
 /* --------------------------------------------------------------------------
@@ -534,12 +534,12 @@ a:visited {
 .md-typeset .grid.cards > ul > li:hover,
 .md-typeset .grid.cards > ol > li:hover {
   border-color: var(--md-accent-fg-color);
-  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.08);
+  box-shadow: 0 2px 8px rgba(255, 90, 60, 0.10);
 }
 
 [data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover,
 [data-md-color-scheme="slate"] .md-typeset .grid.cards > ol > li:hover {
-  box-shadow: 0 2px 8px rgba(45, 212, 191, 0.1);
+  box-shadow: 0 2px 8px rgba(255, 106, 77, 0.12);
 }
 
 /* --------------------------------------------------------------------------
@@ -655,15 +655,15 @@ a:visited {
 .md-typeset a.md-button--primary,
 .md-typeset a.md-button--primary:hover,
 .md-typeset a.md-button--primary:visited {
-  background-color: var(--md-primary-fg-color);
-  border-color: var(--md-primary-fg-color);
-  color: #FFFFFF;
+  background-color: #FF5A3C;
+  border-color: #FF5A3C;
+  color: #2a0d05;
   font-weight: 600;
   transition: background-color 0.2s ease;
 }
 
 .md-typeset a.md-button--primary:hover {
-  background-color: var(--md-primary-fg-color--dark);
+  background-color: #E0431F;
 }
 
 .md-typeset a.md-button:not(.md-button--primary),
@@ -717,12 +717,12 @@ a:visited {
    Text Selection
    -------------------------------------------------------------------------- */
 ::selection {
-  background-color: #0D948833;
+  background-color: #FF5A3C33;
   color: inherit;
 }
 
 [data-md-color-scheme="slate"] ::selection {
-  background-color: #2DD4BF33;
+  background-color: #FF6A4D33;
 }
 
 /* --------------------------------------------------------------------------
@@ -756,7 +756,7 @@ a:visited {
 }
 
 [data-md-color-scheme="slate"] .doc-heading code {
-  color: #5EEAD4;
+  color: #F1EDEA;
 }
 
 /* Pathway tags — small inline badges on index page headings */
