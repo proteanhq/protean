@@ -1,0 +1,10 @@
+# Runtime dependencies for the reference application.
+#
+# `protean[sqlite,server]` pulls the SQLAlchemy SQLite adapter and the server
+# extras (FastAPI, uvicorn, the integration middleware). uvicorn is listed
+# explicitly so `uvicorn app.api:app` works even if the extra's pin changes.
+#
+# This app ships a requirements.txt rather than a pyproject.toml on purpose: a
+# second pyproject.toml in the tree would confuse the root project's tooling.
+protean[sqlite,server]
+uvicorn
