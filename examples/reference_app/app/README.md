@@ -45,7 +45,7 @@ body, straight from Protean's validation:
 curl -sS -X POST http://127.0.0.1:8000/posts \
   -H 'Content-Type: application/json' \
   -d '{"title": "", "body": "no title"}'
-# -> 400 {"error": {"title": [...]}}
+# -> 400 {"error": {"title": [...]}, "correlation_id": "..."}
 ```
 
 ## When you are ready: PostgreSQL + Redis
@@ -55,7 +55,7 @@ environment variables, so you do not edit the config to change targets. Start th
 optional services and point the app at them:
 
 ```bash
-docker-compose up -d
+docker compose up -d   # older Docker installs: docker-compose up -d
 cp .env.example .env
 set -a && . ./.env && set +a   # export DATABASE_* and BROKER_*
 cd ..

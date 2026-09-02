@@ -19,4 +19,4 @@ database_uri = "${DATABASE_URL|sqlite:///reference_app.db}"
 
 [brokers.default]
 provider = "${BROKER_PROVIDER|inline}"
-url = "${BROKER_URL|redis://localhost:6379/0}"
+URI = "${BROKER_URL|redis://localhost:6379/0}"

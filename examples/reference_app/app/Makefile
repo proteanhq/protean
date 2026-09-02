@@ -9,8 +9,10 @@ install:  ## Install the runtime dependencies.
 run:  ## Run the app on the clean-clone path (SQLite + inline broker).
 	cd .. && uvicorn app.api:app --reload
 
+# These use Compose v2 (`docker compose`). On older installs that ship only
+# Compose v1, swap in the hyphenated `docker-compose`.
 compose-up:  ## Start the optional PostgreSQL + Redis services.
-	docker-compose up -d
+	docker compose up -d
 
 compose-down:  ## Stop the optional services.
-	docker-compose down
+	docker compose down

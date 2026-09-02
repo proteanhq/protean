@@ -1,7 +1,7 @@
 # Optional services for the "when you are ready" path: run the reference app
 # against PostgreSQL and Redis instead of SQLite and the inline broker.
 #
-#   docker-compose up -d
+#   docker compose up -d   # older Docker: docker-compose up -d
 #   cp .env.example .env && set -a && . ./.env && set +a
 #   uvicorn app.api:app
 #

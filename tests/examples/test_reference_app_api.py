@@ -83,6 +83,22 @@ class TestReferenceAppApi:
         assert posts[0]["post_id"] == post_id
         assert posts[0]["title"] == "Hello, Protean!"
 
+    def test_two_posts_both_appear_in_the_feed(self, client):
+        """Posting twice lands both posts in the feed, not just the first."""
+        first = client.post("/posts", json={"title": "First", "body": "one"})
+        second = client.post("/posts", json={"title": "Second", "body": "two"})
+        assert first.status_code == 201, first.text
+        assert second.status_code == 201, second.text
+        ids = {first.json()["id"], second.json()["id"]}
+        assert len(ids) == 2
+
+        feed = client.get("/posts")
+        assert feed.status_code == 200, feed.text
+        posts = feed.json()["posts"]
+        assert len(posts) == 2
+        assert {post["post_id"] for post in posts} == ids
+        assert {post["title"] for post in posts} == {"First", "Second"}
+
     def test_empty_title_is_a_400(self, client):
         """A validation failure maps to the 400 shape from the exception handlers.
 
@@ -100,13 +116,36 @@ class TestReferenceAppApi:
         feed = client.get("/posts")
         assert feed.json()["posts"] == []
 
-    def test_app_config_does_not_leak_into_the_quickstart(self):
-        """The app's SQLite config must not change what ``blog.py`` resolves.
+    def test_unknown_field_is_a_400(self, client):
+        """An unknown key is rejected as a 400, not swallowed or crashed as a 500.
 
-        ``blog.py`` builds its ``Domain`` with ``root_path`` fixed to its own
-        directory, and config resolution never descends into the ``app``
-        subfolder. So importing the quickstart still resolves the in-memory
-        default, even with the app's ``domain.toml`` present.
+        Protean commands set ``extra="forbid"``, so building the command from a
+        payload with an unexpected key raises ``ValidationError``. The handler
+        turns that into a 400, and nothing reaches the feed.
         """
-        blog = _load_module("reference_app_blog", _BLOG_PATH)
-        assert blog.domain.config["databases"]["default"]["provider"] == "memory"
+        response = client.post("/posts", json={"title": "Hi", "body": "x", "bogus": 1})
+        assert response.status_code == 400, response.text
+        assert "error" in response.json()
+
+        feed = client.get("/posts")
+        assert feed.json()["posts"] == []
+
+    def test_app_config_does_not_leak_into_the_quickstart(self, tmp_path, monkeypatch):
+        """With the app on SQLite in this process, a fresh ``blog.py`` still resolves memory.
+
+        This loads ``api.py`` and runs its lifespan, so the app applies its own
+        ``domain.toml`` and its domain is on SQLite. Even then, loading the
+        quickstart fresh by file path resolves the in-memory default: ``blog.py``
+        builds its ``Domain`` with ``root_path`` fixed to its own directory, and
+        config resolution never descends into the ``app`` subfolder.
+        """
+        db_path = tmp_path / "reference_app.db"
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+
+        api = _load_module("reference_app_api", _API_PATH)
+        with TestClient(api.app):
+            # The app has applied its SQLite config in this process.
+            assert api.domain.config["databases"]["default"]["provider"] == "sqlite"
+            # A fresh quickstart load still resolves the in-memory default.
+            blog = _load_module("reference_app_blog", _BLOG_PATH)
+            assert blog.domain.config["databases"]["default"]["provider"] == "memory"
