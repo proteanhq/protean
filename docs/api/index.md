@@ -22,9 +22,9 @@ For hand-written reference tables, see [Reference](../reference/index.md).
 
     Aggregates, Entities, Value Objects, Commands, and Events.
 
-    [:material-arrow-right-box: Aggregate](aggregate.md) ·
-    [:material-arrow-right-box: Entity](entity.md) ·
-    [:material-arrow-right-box: Value Object](value-object.md) ·
+    [:material-arrow-right-box: Aggregate](aggregate.md)
+    [:material-arrow-right-box: Entity](entity.md)
+    [:material-arrow-right-box: Value Object](value-object.md)
     [:material-arrow-right-box: Messages](messages.md)
 
 -   **:material-swap-horizontal: Handlers & Services**
@@ -33,7 +33,7 @@ For hand-written reference tables, see [Reference](../reference/index.md).
 
     Command handlers, event handlers, application services, and domain services.
 
-    [:material-arrow-right-box: Handlers](handlers.md) ·
+    [:material-arrow-right-box: Handlers](handlers.md)
     [:material-arrow-right-box: Services](services.md)
 
 -   **:material-database: Persistence**
@@ -42,9 +42,9 @@ For hand-written reference tables, see [Reference](../reference/index.md).
 
     Repositories, Unit of Work, QuerySet, and database models.
 
-    [:material-arrow-right-box: Repository](repository.md) ·
-    [:material-arrow-right-box: Unit of Work](unit-of-work.md) ·
-    [:material-arrow-right-box: QuerySet](queryset.md) ·
+    [:material-arrow-right-box: Repository](repository.md)
+    [:material-arrow-right-box: Unit of Work](unit-of-work.md)
+    [:material-arrow-right-box: QuerySet](queryset.md)
     [:material-arrow-right-box: Database Model](database-model.md)
 
 -   **:material-lightning-bolt: Event Processing**
@@ -53,7 +53,7 @@ For hand-written reference tables, see [Reference](../reference/index.md).
 
     Projections, projectors, subscribers, process managers, and upcasters.
 
-    [:material-arrow-right-box: Read Models](read-models.md) ·
+    [:material-arrow-right-box: Read Models](read-models.md)
     [:material-arrow-right-box: Event Processing](event-processing.md)
 
 -   **:material-form-textbox: Fields**

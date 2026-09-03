@@ -28,8 +28,8 @@ with DDD and evolve later.
     Model your business concepts with aggregates, entities, value objects,
     and rich behavior.
 
-    [:material-arrow-right-box: Set Up the Domain](./compose-a-domain/index.md) ·
-    [:material-arrow-right-box: Define Domain Elements](./domain-definition/index.md) ·
+    [:material-arrow-right-box: Set Up the Domain](./compose-a-domain/index.md)
+    [:material-arrow-right-box: Define Domain Elements](./domain-definition/index.md)
     [:material-arrow-right-box: Add Rules and Behavior](./domain-behavior/index.md)
 
 -   **:material-cog-outline: Change State**
@@ -58,12 +58,12 @@ with DDD and evolve later.
 
     Run the async processing server and integrate with FastAPI.
 
-    [:material-arrow-right-box: Run the Server](./server/index.md) ·
-    [:material-arrow-right-box: FastAPI](./fastapi/index.md) ·
+    [:material-arrow-right-box: Run the Server](./server/index.md)
+    [:material-arrow-right-box: FastAPI](./fastapi/index.md)
     [:material-arrow-right-box: Observability](./observability/correlation-and-causation.md)
 
-    *See also:* [Configuration](../reference/configuration/index.md) ·
-    [CLI](../reference/cli/index.md) ·
+    *See also:* [Configuration](../reference/configuration/index.md)
+    [CLI](../reference/cli/index.md)
     [Adapters](../reference/adapters/index.md)
 
 -   **:material-test-tube: Test Your Application**

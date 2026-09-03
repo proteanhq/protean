@@ -17,8 +17,8 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
     Decorator options, meta attributes, reflection API, identity
     configuration.
 
-    [:material-arrow-right-box: Element Decorators](domain-elements/element-decorators.md) ·
-    [:material-arrow-right-box: Object Model](domain-elements/object-model.md) ·
+    [:material-arrow-right-box: Element Decorators](domain-elements/element-decorators.md)
+    [:material-arrow-right-box: Object Model](domain-elements/object-model.md)
     [:material-arrow-right-box: Identity](domain-elements/identity.md)
 
 -   **:material-form-textbox: Fields**
@@ -60,9 +60,9 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     Subscription types, profiles, multi-worker mode, observability.
 
-    [:material-arrow-right-box: Subscription Types](server/subscription-types.md) ·
-    [:material-arrow-right-box: Configuration](server/configuration.md) ·
-    [:material-arrow-right-box: Multi-Worker](server/supervisor.md) ·
+    [:material-arrow-right-box: Subscription Types](server/subscription-types.md)
+    [:material-arrow-right-box: Configuration](server/configuration.md)
+    [:material-arrow-right-box: Multi-Worker](server/supervisor.md)
     [:material-arrow-right-box: Observability](server/observability.md)
 
 -   **:material-puzzle: Adapters**

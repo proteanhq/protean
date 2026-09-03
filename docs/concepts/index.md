@@ -33,8 +33,8 @@ For step-by-step instructions, see [Guides](../guides/index.md).
 
     DDD, CQRS, and Event Sourcing as implemented in Protean.
 
-    [:material-arrow-right-box: DDD](architecture/ddd.md) ·
-    [:material-arrow-right-box: CQRS](architecture/cqrs.md) ·
+    [:material-arrow-right-box: DDD](architecture/ddd.md)
+    [:material-arrow-right-box: CQRS](architecture/cqrs.md)
     [:material-arrow-right-box: Event Sourcing](architecture/event-sourcing.md)
 
 -   **:material-toy-brick-outline: Building Blocks**
