@@ -14,25 +14,22 @@ theme:
     text: Hanken Grotesk
     code: JetBrains Mono
   palette:
-  # follow the OS by default, with a manual override toggle
-  - media: '(prefers-color-scheme)'
-    toggle:
-      icon: material/brightness-auto
-      name: System theme
+  # Two states only. Each keyed to prefers-color-scheme, so Material honors the
+  # system theme on first load, and the toggle flips between light and dark.
   - media: '(prefers-color-scheme: light)'
     scheme: default
     primary: black
     accent: deep orange
     toggle:
-      icon: material/brightness-7
-      name: Light
+      icon: material/weather-night
+      name: Switch to dark
   - media: '(prefers-color-scheme: dark)'
     scheme: slate
     primary: black
     accent: deep orange
     toggle:
-      icon: material/brightness-4
-      name: Dark
+      icon: material/weather-sunny
+      name: Switch to light
 
   features:
     - content.code.annotate

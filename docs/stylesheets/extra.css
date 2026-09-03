@@ -9,14 +9,14 @@
      extra_css: [stylesheets/extra.css]
      theme:
        palette:
-         - media: "(prefers-color-scheme)"        # system default
-           toggle: { icon: material/brightness-auto, name: "System theme" }
+         # Two states only. Each keyed to prefers-color-scheme, so Material
+         # honors the SYSTEM theme on first load, and the toggle flips light↔dark.
          - media: "(prefers-color-scheme: light)"
            scheme: default
-           toggle: { icon: material/brightness-7, name: "Light" }
+           toggle: { icon: material/weather-night, name: "Switch to dark" }
          - media: "(prefers-color-scheme: dark)"
            scheme: slate
-           toggle: { icon: material/brightness-4, name: "Dark" }
+           toggle: { icon: material/weather-sunny, name: "Switch to light" }
 
    Signature: Vermilion (A) · Space Grotesk / Hanken Grotesk / JetBrains Mono
    Two accents, two jobs:
@@ -265,6 +265,10 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 .md-typeset .highlight > pre { margin: 0; }
 .md-typeset .highlight > pre > code { border: none; }
 
+/* Consecutive code blocks read as one stacked sequence, not disjoint cards. */
+.md-typeset .highlight + .highlight,
+.md-typeset .highlighttable + .highlighttable { margin-top: 0.4rem; }
+
 /* Pygments tokens Material exposes no hl var for — pin them to the design
    code theme so decorators, class names and builtins read the same as the
    homepage cards across guides / reference / API code blocks. */
@@ -350,8 +354,8 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 /* --------------------------------------------------------------------------
    Navigation — quieter, brand active state
    -------------------------------------------------------------------------- */
-.md-nav { font-size: 0.68rem; line-height: 1.45; }
-.md-nav__item .md-nav__link { padding-top: 0.2em; padding-bottom: 0.2em; }
+.md-nav { font-size: 0.68rem; line-height: 1.4; }
+.md-nav__item .md-nav__link { padding-top: 0.13em; padding-bottom: 0.13em; }
 .md-nav__link { transition: color 0.15s ease; }
 .md-nav__item .md-nav__link--active,
 .md-nav__link--active {
@@ -581,14 +585,59 @@ code, kbd, pre, .md-typeset code { font-family: var(--pt-mono); }
 .md-typeset img[src*="codecov.io"] { margin-right: 0.25rem; }
 
 /* --------------------------------------------------------------------------
-   Mermaid — keep message text legible in both modes
+   Mermaid — legible in both schemes (sequence + flowchart)
+   Mermaid inlines styles, so these need !important. Colors come from the
+   Material tokens, so one set covers light and dark.
    -------------------------------------------------------------------------- */
-.mermaid .messageText {
-  font-weight: 600 !important;
-  font-size: 13px !important;
-  fill: #14100F !important;
+.md-typeset .mermaid text { font-family: var(--pt-font); }
+
+/* Sequence: participant boxes = neutral panel, ink label (not faint on coral) */
+.mermaid .actor {
+  fill: var(--md-default-bg-color) !important;
+  stroke: var(--md-default-fg-color--lightest) !important;
 }
-[data-md-color-scheme="slate"] .mermaid .messageText { fill: #F3F1EE !important; }
+.mermaid text.actor,
+.mermaid text.actor > tspan {
+  fill: var(--md-default-fg-color) !important;
+  stroke: none !important;
+  font-weight: 600 !important;
+}
+.mermaid .actor-line { stroke: var(--md-default-fg-color--lighter) !important; }
+.mermaid .messageLine0,
+.mermaid .messageLine1 { stroke: var(--md-default-fg-color--light) !important; }
+.mermaid .messageText,
+.mermaid .loopText, .mermaid .loopText > tspan,
+.mermaid .noteText, .mermaid .noteText > tspan {
+  fill: var(--md-default-fg-color--light) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+}
+.mermaid .labelBox { stroke: var(--md-default-fg-color--lightest) !important; fill: var(--md-default-bg-color) !important; }
+.mermaid .note { fill: var(--md-code-bg-color) !important; stroke: var(--pt-hairline-dk) !important; }
+/* sequence-number bullets keep the brand accent */
+.mermaid .sequenceNumber { fill: #fff !important; }
+[data-md-color-scheme="default"] .mermaid line.loopLine { stroke: var(--md-default-fg-color--lighter) !important; }
+
+/* Flowchart: neutral nodes with a brand edge, legible labels + edges */
+.mermaid .node rect, .mermaid .node polygon,
+.mermaid .node circle, .mermaid .node path {
+  fill: var(--md-default-bg-color) !important;
+  stroke: var(--pt-brand) !important;
+}
+.mermaid .nodeLabel, .mermaid .node .label {
+  color: var(--md-default-fg-color) !important;
+  fill: var(--md-default-fg-color) !important;
+}
+.mermaid .edgePath .path, .mermaid .flowchart-link {
+  stroke: var(--md-default-fg-color--light) !important;
+}
+.mermaid .edgeLabel, .mermaid .edgeLabel rect {
+  background: var(--md-default-bg-color) !important;
+  fill: var(--md-default-bg-color) !important;
+  color: var(--md-default-fg-color) !important;
+}
+.mermaid .edgeLabel .edgeLabel { color: var(--md-default-fg-color) !important; }
+.mermaid marker { fill: var(--md-default-fg-color--light) !important; stroke: var(--md-default-fg-color--light) !important; }
 
 /* --------------------------------------------------------------------------
    Pathway tags — semantic category badges
