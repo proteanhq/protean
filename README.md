@@ -114,6 +114,17 @@ if __name__ == "__main__":
             print(f"  - {entry.title}")
 ```
 
+## Reference application
+
+For a fuller picture, [`examples/reference_app/`](examples/reference_app/) runs
+the same blog domain behind a FastAPI app. See
+[`app/README.md`](examples/reference_app/app/README.md) for setup and the
+routes it exposes.
+
+For a larger, multi-context example, see
+[proteanhq/shopstream](https://github.com/proteanhq/shopstream), a shopping
+platform built with Protean.
+
 ## Documentation
 
 Online docs are available at [https://docs.proteanhq.com](https://docs.proteanhq.com).

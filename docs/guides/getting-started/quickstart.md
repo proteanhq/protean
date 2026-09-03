@@ -156,6 +156,11 @@ Here is the complete example in a single file:
 
 ## Where to go next
 
+- [Reference application](https://github.com/proteanhq/protean/tree/main/examples/reference_app):
+  the same blog domain running behind a FastAPI app. Clone it and run it to
+  see the pieces wired together.
+- [Shopstream](https://github.com/proteanhq/shopstream): a larger, multi-context
+  example built with Protean.
 - [Set Up the Domain](../compose-a-domain/index.md): Learn about domain
   registration, initialization, and activation in depth.
 - [Define Domain Elements](../domain-definition/index.md): Explore aggregates,
