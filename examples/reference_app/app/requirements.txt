@@ -7,5 +7,5 @@
 #
 # This app ships a requirements.txt rather than a pyproject.toml on purpose: a
 # second pyproject.toml in the tree would confuse the root project's tooling.
-protean[sqlite,server]
+protean[sqlite,server]==0.17.1
 uvicorn
