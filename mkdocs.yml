@@ -207,10 +207,10 @@ nav:
     - guides/index.md
     - Choose a Path:
       - guides/pathways/index.md
-      - guides/pathways/ddd.md
+      - "Domain-Driven Design": guides/pathways/ddd.md
       - guides/pathways/cqrs.md
       - guides/pathways/event-sourcing.md
-      - guides/pathways/migrating-between-architectures.md
+      - "Migrating Architectures": guides/pathways/migrating-between-architectures.md
     - Set Up the Domain:
       - guides/compose-a-domain/index.md
       - guides/compose-a-domain/register-elements.md
@@ -273,12 +273,12 @@ nav:
       - guides/server/dead-letter-queues.md
       - guides/server/outbox.md
       - guides/server/production-deployment.md
-      - guides/server/hardening.md
+      - "Server Hardening": guides/server/hardening.md
       - guides/server/tuning-subscriptions.md
       - guides/server/using-priority-lanes.md
-      - guides/server/external-event-dispatch.md
+      - "External Event Dispatch": guides/server/external-event-dispatch.md
     - Observe Your System:
-      - guides/observability/exploring-your-domain.md
+      - "Explore in the Observatory": guides/observability/exploring-your-domain.md
       - guides/observability/correlation-and-causation.md
       - guides/server/logging.md
       - guides/server/monitoring.md
@@ -290,7 +290,7 @@ nav:
       - guides/evolving-events.md
       - guides/compatibility-checking.md
       - guides/architecture-fitness-functions.md
-      - guides/pathways/migrating-between-architectures.md
+      - "Migrating Architectures": guides/pathways/migrating-between-architectures.md
     - Test Your Application:
       - guides/testing/index.md
       - guides/testing/domain-model-tests.md
@@ -325,7 +325,7 @@ nav:
     - Logging: reference/logging.md
     - CLI:
       - reference/cli/index.md
-      - reference/cli/conventions.md
+      - "CLI Conventions": reference/cli/conventions.md
       - reference/cli/check.md
       - reference/cli/verify.md
       - reference/cli/upgrade-check.md
@@ -361,11 +361,11 @@ nav:
     - Fitness Functions:
       - reference/fitness-functions.md
     - Init & Runtime Diagnostics:
-      - reference/init-diagnostics.md
+      - "Diagnostics": reference/init-diagnostics.md
     - Server:
       - reference/server/index.md
       - reference/server/subscription-types.md
-      - reference/server/sequential-by.md
+      - "Sequential by Partition Key": reference/server/sequential-by.md
       - reference/server/configuration.md
       - reference/server/supervisor.md
       - reference/server/observability.md
@@ -410,46 +410,46 @@ nav:
       - reference/migration/v0-15.md
     - Architecture Decisions:
       - adr/README.md
-      - adr/0000-guiding-principles.md
-      - adr/0001-monotonic-integer-event-versioning.md
-      - adr/0002-event-publication-visibility.md
-      - adr/0003-one-ir-document-per-bounded-context.md
-      - adr/0004-release-workflow-and-breaking-change-policy.md
-      - adr/0005-ir-first-schema-generation.md
-      - adr/0006-standard-json-schema-with-x-extensions.md
-      - adr/0007-domain-scoped-opentelemetry-providers.md
-      - adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md
-      - adr/0009-concurrent-event-processing-strategy.md
-      - adr/0010-logging-overhaul-and-wide-event-architecture.md
-      - adr/0011-engine-shutdown-and-resource-lifecycle-contract.md
-      - adr/0012-health-check-architecture.md
-      - adr/0013-optimistic-concurrency-and-claim-contract.md
-      - adr/0014-aggregate-metadata-decorator-params-over-meta-class.md
-      - adr/0015-event-store-append-as-durable-anchor.md
-      - adr/0016-breadth-first-synchronous-event-dispatch.md
-      - adr/0017-consume-side-idempotency-for-projectors.md
-      - adr/0018-type-safety-strategy.md
-      - adr/0019-check-engine-determinism-boundary-and-behavioral-substrate.md
-      - adr/0020-dependency-floor-policy.md
-      - adr/0021-uuid-identity-is-a-string-in-python.md
-      - adr/0022-pre-persist-aggregate-enricher.md
-      - adr/0023-query-api-conformance-contract-and-capability-tiers.md
-      - adr/0024-event-store-read-position-contract.md
-      - adr/0025-all-subscription-gap-safety.md
-      - adr/0026-max-length-bounds-the-sanitized-value.md
-      - adr/0027-unit-of-work-is-a-real-transaction.md
-      - adr/0028-partition-per-key-sequential-processing.md
-      - adr/0029-runtime-dependency-boundary-and-extras.md
-      - adr/0030-canonical-project-layout.md
-      - adr/0031-handlers-persist-or-call-out.md
-      - adr/0032-annotation-file-for-the-event-model.md
-      - adr/0033-change-plan-versioned-structural-contract.md
-      - adr/0034-project-manifest.md
-      - adr/0035-generation-gap-seam.md
-      - adr/0036-configurable-graceful-drain-window.md
-      - adr/0037-idempotent-file-projection.md
-      - adr/0038-canonical-field-style-for-mypy-strict.md
-      - adr/0039-dx-pack-ships-as-package-data.md
+      - "0000 · Guiding principles": adr/0000-guiding-principles.md
+      - "0001 · Integer event versioning": adr/0001-monotonic-integer-event-versioning.md
+      - "0002 · Event publication visibility": adr/0002-event-publication-visibility.md
+      - "0003 · One IR per bounded context": adr/0003-one-ir-document-per-bounded-context.md
+      - "0004 · Release & breaking-change policy": adr/0004-release-workflow-and-breaking-change-policy.md
+      - "0005 · IR-first schema generation": adr/0005-ir-first-schema-generation.md
+      - "0006 · JSON Schema + x-protean": adr/0006-standard-json-schema-with-x-extensions.md
+      - "0007 · Domain-scoped OTel": adr/0007-domain-scoped-opentelemetry-providers.md
+      - "0008 · Telemetry gateway": adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md
+      - "0009 · Concurrent processing": adr/0009-concurrent-event-processing-strategy.md
+      - "0010 · Wide-event logging": adr/0010-logging-overhaul-and-wide-event-architecture.md
+      - "0011 · Engine shutdown contract": adr/0011-engine-shutdown-and-resource-lifecycle-contract.md
+      - "0012 · Health checks": adr/0012-health-check-architecture.md
+      - "0013 · Find-and-claim contract": adr/0013-optimistic-concurrency-and-claim-contract.md
+      - "0014 · Metadata via decorator params": adr/0014-aggregate-metadata-decorator-params-over-meta-class.md
+      - "0015 · Append as durable anchor": adr/0015-event-store-append-as-durable-anchor.md
+      - "0016 · Breadth-first dispatch": adr/0016-breadth-first-synchronous-event-dispatch.md
+      - "0017 · Consume-side idempotency": adr/0017-consume-side-idempotency-for-projectors.md
+      - "0018 · Type-safety strategy": adr/0018-type-safety-strategy.md
+      - "0019 · Determinism boundary": adr/0019-check-engine-determinism-boundary-and-behavioral-substrate.md
+      - "0020 · Dependency floor policy": adr/0020-dependency-floor-policy.md
+      - "0021 · UUID identity is a string": adr/0021-uuid-identity-is-a-string-in-python.md
+      - "0022 · Pre-persist enricher": adr/0022-pre-persist-aggregate-enricher.md
+      - "0023 · Query API conformance": adr/0023-query-api-conformance-contract-and-capability-tiers.md
+      - "0024 · Read-position contract": adr/0024-event-store-read-position-contract.md
+      - "0025 · Gap-safe $all checkpointing": adr/0025-all-subscription-gap-safety.md
+      - "0026 · Sanitized value bounds": adr/0026-max-length-bounds-the-sanitized-value.md
+      - "0027 · UoW is a real transaction": adr/0027-unit-of-work-is-a-real-transaction.md
+      - "0028 · Partition-key sequencing": adr/0028-partition-per-key-sequential-processing.md
+      - "0029 · Dependency boundary & extras": adr/0029-runtime-dependency-boundary-and-extras.md
+      - "0030 · Canonical project layout": adr/0030-canonical-project-layout.md
+      - "0031 · Persist or call out": adr/0031-handlers-persist-or-call-out.md
+      - "0032 · Event-model annotation file": adr/0032-annotation-file-for-the-event-model.md
+      - "0033 · ChangePlan contract": adr/0033-change-plan-versioned-structural-contract.md
+      - "0034 · Project manifest": adr/0034-project-manifest.md
+      - "0035 · Generation-gap seam": adr/0035-generation-gap-seam.md
+      - "0036 · Graceful drain window": adr/0036-configurable-graceful-drain-window.md
+      - "0037 · Idempotent file projection": adr/0037-idempotent-file-projection.md
+      - "0038 · Field style for mypy-strict": adr/0038-canonical-field-style-for-mypy-strict.md
+      - "0039 · DX pack as package data": adr/0039-dx-pack-ships-as-package-data.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
@@ -509,7 +509,7 @@ nav:
       - concepts/internals/query-system.md
       - concepts/internals/event-sourcing.md
       - concepts/internals/event-upcasting.md
-      - concepts/internals/ir-specification.md
+      - "Intermediate Representation": concepts/internals/ir-specification.md
     - Architecture Checks:
       - concepts/protean-check/behavioral-analysis.md
       - concepts/protean-check/rules/unbounded-indexed-string.md
@@ -521,51 +521,51 @@ nav:
     - Aggregate Design:
       - patterns/design-small-aggregates.md
       - patterns/one-aggregate-per-transaction.md
-      - patterns/optimistic-concurrency-as-design-tool.md
-      - patterns/encapsulate-state-changes.md
-      - patterns/replace-primitives-with-value-objects.md
-      - patterns/factory-methods-for-aggregate-creation.md
-      - patterns/aggregate-state-machines.md
+      - "Optimistic Concurrency": patterns/optimistic-concurrency-as-design-tool.md
+      - "Encapsulate State Changes": patterns/encapsulate-state-changes.md
+      - "Primitives to Value Objects": patterns/replace-primitives-with-value-objects.md
+      - "Factory Methods": patterns/factory-methods-for-aggregate-creation.md
+      - "Aggregate State Machines": patterns/aggregate-state-machines.md
     - Event-Driven Patterns:
       - patterns/design-events-for-consumers.md
       - patterns/idempotent-event-handlers.md
       - patterns/event-versioning-and-evolution.md
       - patterns/command-idempotency.md
-      - patterns/calling-external-systems-from-handlers.md
-      - patterns/coordinating-long-running-processes.md
-      - patterns/process-manager-lifecycle.md
-      - patterns/message-tracing.md
-      - patterns/message-enrichment.md
-      - patterns/multi-tenancy.md
-      - patterns/cloudevents-interoperability.md
+      - "Calling External Systems": patterns/calling-external-systems-from-handlers.md
+      - "Long-Running Processes": patterns/coordinating-long-running-processes.md
+      - "Process Manager Lifecycle": patterns/process-manager-lifecycle.md
+      - "Message Tracing": patterns/message-tracing.md
+      - "Message Enrichment": patterns/message-enrichment.md
+      - "Multi-Tenancy": patterns/multi-tenancy.md
+      - "CloudEvents Interoperability": patterns/cloudevents-interoperability.md
     - Architecture & Quality:
       - patterns/organize-by-domain-concept.md
-      - patterns/index-aggregates-for-query-paths.md
+      - "Index Aggregates": patterns/index-aggregates-for-query-paths.md
       - patterns/validation-layering.md
-      - patterns/model-reference-data.md
-      - patterns/track-audit-fields.md
+      - "Model Reference Data": patterns/model-reference-data.md
+      - "Audit and Lifecycle Fields": patterns/track-audit-fields.md
       - patterns/thin-handlers-rich-domain.md
-      - patterns/application-service-vs-command-handler.md
-      - patterns/projection-granularity.md
-      - patterns/projection-rebuilds-as-deployment.md
-      - patterns/eventual-consistency-in-uis.md
-      - patterns/testing-domain-logic-in-isolation.md
-      - patterns/dual-mode-testing.md
-      - patterns/testing-event-driven-flows.md
-      - patterns/setting-up-and-tearing-down-database-for-tests.md
+      - "Service vs Command Handler": patterns/application-service-vs-command-handler.md
+      - "Projection Granularity": patterns/projection-granularity.md
+      - "Projection Rebuilds": patterns/projection-rebuilds-as-deployment.md
+      - "Eventual Consistency in UIs": patterns/eventual-consistency-in-uis.md
+      - "Testing Domain Logic": patterns/testing-domain-logic-in-isolation.md
+      - "Dual-Mode Testing": patterns/dual-mode-testing.md
+      - "Testing Event-Driven Flows": patterns/testing-event-driven-flows.md
+      - "Database Setup and Teardown": patterns/setting-up-and-tearing-down-database-for-tests.md
     - Identity & Communication:
       - patterns/creating-identities-early.md
-      - patterns/connect-concepts-across-domains.md
-      - patterns/consuming-events-from-other-domains.md
-      - patterns/sharing-event-classes-across-domains.md
-      - patterns/fact-events-as-integration-contracts.md
-      - patterns/publishing-events-to-external-brokers.md
+      - "Concepts Across Contexts": patterns/connect-concepts-across-domains.md
+      - "Events from Other Domains": patterns/consuming-events-from-other-domains.md
+      - "Sharing Event Classes": patterns/sharing-event-classes-across-domains.md
+      - "Fact Events as Contracts": patterns/fact-events-as-integration-contracts.md
+      - "Publishing to External Brokers": patterns/publishing-events-to-external-brokers.md
     - Operations:
-      - patterns/running-data-migrations-with-priority-lanes.md
-      - patterns/classify-async-processing-errors.md
+      - "Migrations on Priority Lanes": patterns/running-data-migrations-with-priority-lanes.md
+      - "Classifying Async Errors": patterns/classify-async-processing-errors.md
       - patterns/expiring-stale-commands.md
-      - patterns/designing-for-concurrent-event-processing.md
-      - patterns/temporal-queries.md
+      - "Concurrent Event Processing": patterns/designing-for-concurrent-event-processing.md
+      - "Temporal Queries for Audit": patterns/temporal-queries.md
 
   - API:
     - api/index.md
