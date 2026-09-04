@@ -1,0 +1,4 @@
+# PyUp configuration: https://pyup.io/docs/configuration/
+pin: false
+update: false
+schedule: "every week"
