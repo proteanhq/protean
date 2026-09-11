@@ -4,9 +4,9 @@ This is the canonical AGENTS.md source that ships inside the `protean` package.
 It is version-coupled to the framework: a coding agent reading it always sees
 the guidance that matches the installed version.
 
-`protean dx install` renders this source into a project's `AGENTS.md`, the
-`CLAUDE.md` bridge, and the per-tool rule files. Until that command lands, the
-source is reachable through `protean.dx.load_agents_source()`.
+`protean dx install` renders this source into a project's `AGENTS.md` and a
+one-line `CLAUDE.md` bridge, composed with the hard rules derived from the
+diagnostics registry and stamped to the installed version.
 
 <!-- dx-pack-seed: this is a placeholder source; the full corpus lands with the
 developer-experience epic. -->

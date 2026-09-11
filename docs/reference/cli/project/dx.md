@@ -32,6 +32,12 @@ inside the block (a conflict the writer refuses to overwrite). Commit the state
 file so the conflict check works across machines. The design is recorded in
 [ADR-0037](../../../adr/0037-idempotent-file-projection.md).
 
+`install` refuses a pre-existing `AGENTS.md` that has no `PROTEAN` markers and
+writes nothing to it, so it never overwrites a file you wrote by hand. A project
+that already carries an unmarked `AGENTS.md`, including one written by an older
+`protean new`, reports an error until you remove or rename that file and run
+`install`, which then writes the managed version.
+
 ## Verbs
 
 ```shell
