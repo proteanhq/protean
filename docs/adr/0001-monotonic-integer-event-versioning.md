@@ -30,8 +30,12 @@ marker.
 ## Decision
 
 We will version events and commands with monotonic positive integers. The `__version__`
-attribute on message classes is an integer starting at 1, incremented by 1 for each schema
-change. The framework enforces this at class creation time in `BaseMessageType.__init_subclass__()`:
+attribute on message classes is an integer starting at 1, incremented by 1 for a change that
+needs a new version. ADR-0040's schema-evolution ladder settles which changes do: a
+structural change bumps the version and carries an upcaster, and a change that weak schema
+handles (a field added with a default, a rename via `renamed_from`) keeps the current
+version. The framework validates the integer at class creation time in
+`BaseMessageType.__init_subclass__()`:
 
 ```python
 class UserRegistered(BaseEvent):
@@ -39,12 +43,12 @@ class UserRegistered(BaseEvent):
     user_id: Identifier(identifier=True)
     email: String()
 
-# After adding a field:
+# After a structural change (email becomes required): bump the version and
+# register an upcaster to supply the field for old payloads.
 class UserRegistered(BaseEvent):
     __version__ = 2
     user_id: Identifier(identifier=True)
-    email: String()
-    name: String(default="")
+    email: String(required=True)
 ```
 
 The version appears in the message's `__type__` string as

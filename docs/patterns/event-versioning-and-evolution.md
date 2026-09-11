@@ -451,7 +451,9 @@ unambiguous. Avoid descriptive names for minor changes. They become unwieldy
 
 Events in the store are immutable historical records. Never update, delete, or
 "fix" stored events. If an event was written incorrectly, handle it through
-upcasting or compensating events.
+upcasting or compensating events. Rewriting a whole stream during a deliberate
+operator migration (see [Migration Strategies](#migration-strategies)) is the one
+exception to this rule; a single stored event is never edited in place.
 
 ```python
 # NEVER do this:
@@ -672,7 +674,7 @@ defaults on new fields for existing event types.
 | Consumer compatibility | Tolerant reader pattern |
 | Historical replay | Handle all versions in @apply handlers |
 | Large migrations | Copy-transform or dual-write transition |
-| Stored events | Never modified, only appended to |
+| Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
 Events are permanent contracts. Evolve them the way you evolve APIs. Additive
 changes are safe, breaking changes require versioning. New fields get defaults.
