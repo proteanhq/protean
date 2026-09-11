@@ -186,16 +186,21 @@ def test_diff_prints_no_diff_body_when_up_to_date(tmp_path: Path) -> None:
 
 
 def test_non_directory_path_is_rejected_by_every_verb(tmp_path: Path) -> None:
-    """A --path pointing at a regular file is rejected the same way by all verbs."""
+    """A --path that is not an existing directory is rejected the same way by all
+    verbs: a regular file, and a missing (mistyped) path."""
     a_file = tmp_path / "afile"
     a_file.write_text("x", encoding="utf-8")
+    missing = tmp_path / "does-not-exist"
 
-    for verb in ("install", "refresh", "diff", "check"):
-        result = runner.invoke(app, [verb, "-p", str(a_file)])
-        assert result.exit_code == 2, f"{verb}: {result.output}"
-        # Flatten whitespace: rich wraps the line at the terminal width, and a
-        # long temp path can split the message across a newline in CI.
-        assert "not a directory" in " ".join(result.output.split())
+    for bad_path in (a_file, missing):
+        for verb in ("install", "refresh", "diff", "check"):
+            result = runner.invoke(app, [verb, "-p", str(bad_path)])
+            assert result.exit_code == 2, f"{verb} {bad_path}: {result.output}"
+            # Flatten whitespace: rich wraps the line at the terminal width, and a
+            # long temp path can split the message across a newline in CI.
+            assert "not a directory" in " ".join(result.output.split())
+    # A rejected path writes nothing.
+    assert not missing.exists()
 
 
 def test_diff_writes_nothing_on_a_stale_block(tmp_path: Path, monkeypatch) -> None:
@@ -265,6 +270,9 @@ def test_hand_edit_inside_the_block_conflicts(tmp_path: Path) -> None:
     check_result = runner.invoke(app, ["check", "-p", str(tmp_path)])
     assert check_result.exit_code == 1, check_result.output
     assert "conflict" in check_result.output
+    # A conflict is not fixed by re-installing, so check tells the user to resolve
+    # it first rather than to just run install. Flatten for rich line wrapping.
+    assert "Resolve the conflicts" in " ".join(check_result.output.split())
 
     install_result = runner.invoke(app, ["install", "-p", str(tmp_path)])
     assert install_result.exit_code == 1, install_result.output

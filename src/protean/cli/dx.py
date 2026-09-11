@@ -87,15 +87,16 @@ def check(path: Annotated[str, _PATH_OPTION] = ".") -> None:
 
 
 def _project_root(path: str) -> Path:
-    """Return *path* as the project root, or exit ``2`` if it is not a directory.
+    """Return *path* as the project root, or exit ``2`` unless it is a directory.
 
-    A ``--path`` pointing at a regular file would otherwise make every target read
-    as absent, so the verbs would disagree (``diff`` exits ``0``, ``check`` ``1``,
-    ``install`` ``2``). Reject a non-directory path up front so all verbs answer
-    the same environment error.
+    Anything that is not an existing directory (a regular file, or a missing or
+    mistyped path) would otherwise make every target read as absent, so the verbs
+    would disagree (``diff`` exits ``0``, ``check`` ``1``, ``install`` ``2`` when
+    ``apply_plan`` later fails). Reject it up front so all verbs answer the same
+    environment error, and a typo never silently writes into the wrong place.
     """
     root = Path(path)
-    if root.exists() and not root.is_dir():
+    if not root.is_dir():
         print(f"[red]error[/red] {escape(path)} — not a directory")
         raise typer.Exit(code=EXIT_USAGE)
     return root
@@ -164,14 +165,16 @@ def _apply(path: str) -> None:
         raise typer.Exit(code=EXIT_FAILURE)
 
 
-def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool]:
+def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool, bool]:
     """Diff every managed file under *path* and print each target's pending line.
 
     Mutates nothing; shared by ``diff`` and ``check``. With *show_diff*, also print
     a unified diff of the pending change under each target's line, which is what
-    ``diff`` adds over ``check``. Returns ``(had_error, drifted)``: ``had_error``
-    is set when a target is refused or the pack cannot render, ``drifted`` when any
-    target is not ``NO_CHANGE`` (missing, stale, or a hand-edited conflict).
+    ``diff`` adds over ``check``. Returns ``(had_error, drifted, had_conflict)``:
+    ``had_error`` is set when a target is refused or the pack cannot render,
+    ``drifted`` when any target is not ``NO_CHANGE`` (missing, stale, or a
+    hand-edited conflict), and ``had_conflict`` when any target's managed block
+    was edited by hand, which needs resolving before a re-install can update it.
     """
     from protean.dx import (  # noqa: PLC0415
         ApplyStatus,
@@ -182,6 +185,7 @@ def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool]:
     root = _project_root(path)
     had_error = False
     drifted = False
+    had_conflict = False
     for managed_file in _render_managed_files():
         try:
             result = diff_managed_file(root, managed_file)
@@ -191,6 +195,8 @@ def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool]:
         else:
             if result.status is not ApplyStatus.NO_CHANGE:
                 drifted = True
+            if result.status is ApplyStatus.CONFLICT:
+                had_conflict = True
             print(_pending_line(result))
             if show_diff:
                 body = _unified_diff(root, result)
@@ -198,7 +204,7 @@ def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool]:
                     # Print the diff plain: it is content, not a status line, and
                     # a stray bracket in it must not be read as rich markup.
                     typer.echo(body)
-    return had_error, drifted
+    return had_error, drifted, had_conflict
 
 
 def _unified_diff(root: Path, result: ApplyResult) -> str:
@@ -235,7 +241,7 @@ def _diff(path: str) -> None:
     otherwise, including when there are pending changes: ``diff`` is a read-only
     preview, so pending changes are the report, not a failure.
     """
-    had_error, _ = _scan(path, show_diff=True)
+    had_error, _, _ = _scan(path, show_diff=True)
     if had_error:
         raise typer.Exit(code=EXIT_USAGE)
 
@@ -247,11 +253,22 @@ def _check(path: str) -> None:
     render, ``1`` when any target is missing, stale, or conflicted, ``0`` when
     every target is up to date.
     """
-    had_error, drifted = _scan(path)
+    had_error, drifted, had_conflict = _scan(path)
     if had_error:
         raise typer.Exit(code=EXIT_USAGE)
     if drifted:
-        print("[yellow]Drift detected.[/yellow] Run `protean dx install` to update.")
+        # A conflict is not fixed by re-installing: install refuses a hand-edited
+        # block. Point the user at resolving it first, so the next step is
+        # actionable for every drift type.
+        if had_conflict:
+            print(
+                "[yellow]Drift detected.[/yellow] Resolve the conflicts above, then "
+                "run `protean dx install`."
+            )
+        else:
+            print(
+                "[yellow]Drift detected.[/yellow] Run `protean dx install` to update."
+            )
         raise typer.Exit(code=EXIT_FAILURE)
     print("[green]Up to date.[/green]")
     raise typer.Exit(code=EXIT_OK)

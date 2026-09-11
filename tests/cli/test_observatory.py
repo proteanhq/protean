@@ -22,6 +22,7 @@ runner = CliRunner()
 OBSERVATORY_CLS = "protean.server.observatory.Observatory"
 
 
+@pytest.mark.no_test_domain
 def test_click_is_imported_lazily_not_at_module_top() -> None:
     """observatory imports click inside the command, so a core-only install can
     still run the CLI. click ships with the server extra (via uvicorn), not core,
