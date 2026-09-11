@@ -94,9 +94,10 @@ remove-plus-add (more on that [below](#check-compatibility-protean-ir-diff)).
 
 ## Bump the version and write upcasters
 
-Renames and other structural changes need the version bumped so stored events
-can be transformed on read. Set `__version__` and register an **upcaster** for
-each hop. An upcaster rewrites the *stored payload* from one version to the next;
+A rename is handled by `renamed_from` alone, shown above, with no version bump.
+Structural changes that weak schema cannot express (a newly required field, a
+type change, a field split) need the version bumped so stored events can be
+transformed on read. Set `__version__` and register an **upcaster** for each hop. An upcaster rewrites the *stored payload* from one version to the next;
 Protean chains them, so a `v1` payload is walked all the way up to the current
 `v3` before your handler sees it.
 
@@ -280,7 +281,7 @@ guide](compatibility-checking.md) to wire this into pre-commit hooks and CI.
 |--------|-----|---------------|
 | Add an optional / defaulted field | add it | `FULL`, nobody breaks |
 | Add a required field, no default | avoid; give it a default | breaks `BACKWARD` |
-| Rename a field | `renamed_from=[...]` + bump `__version__` + upcaster | `BACKWARD` (Avro `aliases`) |
+| Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` (Avro `aliases`) |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |
 | Read old payloads with dropped fields | `lenient_deserialization` (opt-in) | read-path escape hatch |
@@ -295,4 +296,5 @@ and your CI) exactly what changed and whether it is safe.
     - [Compatibility Checking](compatibility-checking.md): Pre-commit hooks, CI gating, strictness.
     - [Schema Generation](compose-a-domain/schema-generation.md): JSON / Avro / Protobuf output.
     - [Event Versioning and Evolution](../patterns/event-versioning-and-evolution.md): The *why*: strategies and trade-offs.
+    - [ADR-0040: The schema-evolution ladder](../adr/0040-schema-evolution-ladder.md): Which mechanism for which change, and why.
     - CLI reference: [`protean events catalog`](../reference/cli/data/events.md), [`protean schema generate`](../reference/cli/schema.md), [`protean ir diff`](../reference/cli/ir.md).

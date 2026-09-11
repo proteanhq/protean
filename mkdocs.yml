@@ -447,6 +447,7 @@ nav:
       - "0037 · Idempotent managed files": adr/0037-idempotent-file-projection.md
       - "0038 · Field style for mypy-strict": adr/0038-canonical-field-style-for-mypy-strict.md
       - "0039 · DX pack as package data": adr/0039-dx-pack-ships-as-package-data.md
+      - "0040 · Schema-evolution ladder": adr/0040-schema-evolution-ladder.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

@@ -521,6 +521,13 @@ class Order(BaseAggregate):
 
 ## Migration Strategies
 
+When an upcaster chain has grown long enough that maintaining it costs more than
+it saves, the answer is to rewrite the stored events once, so no upcaster runs on
+every read. This is the top rung of the [schema-evolution
+ladder](../adr/0040-schema-evolution-ladder.md). Both tactics below rewrite the
+contents of an event store, which is migration work, so Protean leaves them to
+operators and does not build them into core.
+
 ### The Copy-Transform Pattern
 
 For large schema changes, create a new stream with transformed events:
@@ -532,6 +539,14 @@ For large schema changes, create a new stream with transformed events:
 5. Keep the old stream for audit purposes
 
 This is a heavy operation but provides a clean break from historical schemas.
+
+### In-Place Transformation
+
+In-place transformation rewrites the events in the existing stream to the current
+schema, keeping the stream name. It skips the consumer cutover that
+copy-transform needs, and it loses the original payloads unless you archive them
+first. Reach for it when the old schema has no audit value and the stream name
+must stay stable.
 
 ### The Dual-Write Transition
 
@@ -637,7 +652,7 @@ defaults on new fields for existing event types.
 | Add optional field with default | Yes | add it |
 | Add new event type | Yes | Add handler methods |
 | Add more choices to a field | Yes | Consumers handle unknowns |
-| Rename a field | No | New event type or upcasting |
+| Rename a field | Yes | `renamed_from` (same type, no version bump) |
 | Remove a field | No | Deprecate, don't remove |
 | Change field type | No | New field or new event type |
 | Change field semantics | No | New field name |
@@ -652,7 +667,7 @@ defaults on new fields for existing event types.
 |--------|----------|
 | Adding data | Optional fields with defaults |
 | New operations | New event types |
-| Renamed fields | New event type (V2) or upcasting |
+| Renamed fields | `renamed_from` (weak schema) |
 | Changed semantics | New field name or new event type |
 | Consumer compatibility | Tolerant reader pattern |
 | Historical replay | Handle all versions in @apply handlers |

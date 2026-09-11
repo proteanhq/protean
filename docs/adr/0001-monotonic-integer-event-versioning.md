@@ -1,6 +1,7 @@
 # ADR-0001: Monotonic Integer Versioning for Events
 
-**Status:** Accepted
+**Status:** Accepted. Compatibility semantics are settled by the schema-evolution
+ladder in [ADR-0040](0040-schema-evolution-ladder.md).
 
 **Date:** March 2026
 
@@ -49,8 +50,10 @@ class UserRegistered(BaseEvent):
 The version appears in the message's `__type__` string as
 `{Domain}.{ClassName}.{version}` (e.g., `Auth.UserRegistered.2`), which is used
 for runtime routing and event store lookups. Compatibility semantics (whether
-v2 is backward-compatible with v1, and how to convert between them) are handled
-by the upcaster chain, not by the version number itself.
+v2 is backward-compatible with v1, and how to convert between them) are settled
+by the schema-evolution ladder in ADR-0040, which routes each change to weak
+schema (`renamed_from`, lenient mode) or to an upcaster. The version number
+stays an identity marker.
 
 ## Consequences
 
@@ -64,8 +67,9 @@ on refactoring.
 
 The trade-off is that the version number alone tells you nothing about
 compatibility. Given `UserRegistered` v3, you cannot know from the number alone
-whether v1 events can be upcast to v3. You need to inspect the upcaster chain.
-This is intentional. Compatibility analysis is a tooling concern (see ADR-0000,
+whether v1 events can be read as v3. You need to inspect the change and the
+evolution mechanism it uses, weak schema or an upcaster (the schema-evolution
+ladder in ADR-0040). Compatibility analysis is a tooling concern (see ADR-0000,
 principle 8), and the Phase 4 compatibility checker will provide this analysis
 automatically.
 
