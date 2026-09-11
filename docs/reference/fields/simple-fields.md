@@ -18,18 +18,30 @@ use [Text](#text).
 Defaults to 255.
 - **`min_length`**: The minimum length (in characters) of the field.
 Defaults to `None` (no minimum).
-- **`sanitize`**: Optionally turn off HTML sanitization. Default is `True`.
+- **`sanitize`**: Opt in to HTML sanitization (`bleach.clean()`) of the stored
+value. Default is `False`: the stored value is the raw input.
+
+!!! warning "Sanitization is opt-in, and off by default"
+    Sanitization is a display-layer concern: escaping on write bakes one
+    encoding (HTML) into stored data and corrupts the value anywhere it is
+    rendered in another context (a plain-text email, a JSON API, a CSV export).
+    The real control is encoding output where it is rendered. So `sanitize` is
+    `False` by default, and you should pass `sanitize=True` only for a value
+    that is rendered as HTML without output encoding. To set the default for a
+    whole domain, use the [`[field_defaults] sanitize`](../configuration/index.md#field_defaults)
+    config key; precedence is field kwarg > domain default > framework default.
 
 !!! note "Length bounds apply to the sanitized value"
-    Sanitization changes the length of a value, HTML-escaping grows it (`&` →
-    `&amp;`) and stripping HTML comments/attributes shrinks it. So `min_length`/`max_length` are
-    checked against **both** the raw input and the **stored** (sanitized) form.
-    Because the stored form is bounded, a value that is accepted always
-    round-trips through serialization and event-sourced replay. An input is
-    rejected on write if *either* form is out of bounds (so a raw length that
-    looks fine can still be rejected once sanitized, and vice versa); widen the
-    bound or set `sanitize=False` if you need the escaped form. A `choices` field is **never**
-    sanitized. Its value must match a declared choice exactly. See
+    When `sanitize=True`, sanitization changes the length of a value:
+    HTML-escaping grows it (`&` → `&amp;`) and stripping HTML comments/attributes
+    shrinks it. So `min_length`/`max_length` are checked against **both** the raw
+    input and the **stored** (sanitized) form. Because the stored form is
+    bounded, a value that is accepted always round-trips through serialization
+    and event-sourced replay. An input is rejected on write if *either* form is
+    out of bounds (so a raw length that looks fine can still be rejected once
+    sanitized, and vice versa); widen the bound or leave `sanitize` off if you
+    need the raw form. A `choices` field is **never** sanitized, even with
+    `sanitize=True`: its value must match a declared choice exactly. See
     [ADR-0026](../../adr/0026-max-length-bounds-the-sanitized-value.md).
 
 ## Text
@@ -43,7 +55,9 @@ size constraints.
 
 **Optional Arguments**
 
-- **`sanitize`**: Optionally turn off HTML sanitization. Default is `True`.
+- **`sanitize`**: Opt in to HTML sanitization (`bleach.clean()`) of the stored
+value. Default is `False`; see [String](#string) for when to opt in and the
+precedence rules.
 
 ## Integer
 

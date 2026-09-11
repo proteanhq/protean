@@ -29,6 +29,15 @@ def _default_config() -> dict[str, Any]:
         "source_uri": None,
         "identity_strategy": IdentityStrategy.UUID.value,
         "identity_type": IdentityType.STRING.value,
+        # Domain-level defaults applied to fields that leave an option unset.
+        # ``sanitize`` is the default for String/Text fields declared without an
+        # explicit ``sanitize=`` kwarg. The framework default is False (the
+        # stored value is the raw input); set this to True to restore
+        # sanitize-by-default across the domain. Precedence: field kwarg >
+        # this domain default > framework default.
+        "field_defaults": {
+            "sanitize": False,
+        },
         "databases": {
             "default": {"provider": "memory"},
             "memory": {"provider": "memory"},

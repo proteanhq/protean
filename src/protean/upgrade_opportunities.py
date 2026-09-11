@@ -12,7 +12,12 @@ detector is import-gated to ``sqlalchemy``. The middleware detector matches a
 ``BaseHTTPMiddleware`` subclass or a ``dispatch`` method, and an
 ``add_middleware`` call that names something outside the framework's own set. The
 queue-status detector reads a ``status`` or ``state`` field with two or more
-queue-vocabulary choices. Every run gives the same verdict. Judgment-heavy advice
+queue-vocabulary choices. The default-sanitize detector reads ``String(...)`` /
+``Text(...)`` calls that pass no ``sanitize=`` keyword; it is the one detector
+here that reports a behavior change (the 0.18.0 sanitize-default flip) rather
+than a capability the domain hand-rolls, but it works the same way: a
+deterministic source scan gated on the release. Every run gives the same
+verdict. Judgment-heavy advice
 ("this orchestration
 is really a process manager") stays out of OSS; that lives in the commercial
 Domain Assessment surface, on the non-deterministic side of the open-core
@@ -64,6 +69,11 @@ _QUERY_API_RELEASE = "0.16.0"
 _MIDDLEWARE_RELEASE = "0.15.0"
 # The outbox processor (retry, backoff, DLQ).
 _OUTBOX_RELEASE = "0.14.0"
+# The release that flipped the String/Text ``sanitize`` default from True to
+# False. Unlike the other constants, this does not mark a capability the domain
+# owns; it marks a behavior change, so the detector below reports the sites that
+# relied on the old default once the domain is on this release or later.
+_SANITIZE_DEFAULT_RELEASE = "0.18.0"
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +454,68 @@ def _detect_queue_status(trees: list[Tree], pinned: Version) -> list[UpgradeFind
 
 
 # ---------------------------------------------------------------------------
+# Detector 4: String/Text fields that relied on the old sanitize-by-default
+# ---------------------------------------------------------------------------
+
+
+def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
+    """``module:line`` for each ``String(...)`` / ``Text(...)`` that left
+    ``sanitize`` unset and so relied on the pre-flip default.
+
+    A ``choices=`` field is skipped: a choices field was never sanitized (the
+    value must match a declared choice exactly), so it never relied on the old
+    default. A field that passes ``sanitize=`` either way declared its intent
+    explicitly and is unaffected by the flip, so it is skipped too. Source
+    parsing is required here: after the flip a live domain cannot tell an unset
+    field from an explicit ``sanitize=False``; only the source distinguishes
+    them.
+    """
+    sites: list[str] = []
+    for module_name, tree in trees:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _symbol_name(node.func) not in ("String", "Text"):
+                continue
+            keyword_names = {kw.arg for kw in node.keywords}
+            if "sanitize" in keyword_names or "choices" in keyword_names:
+                continue
+            sites.append(f"{module_name}:{node.lineno}")
+    return sites
+
+
+def _detect_default_sanitize(
+    trees: list[Tree], pinned: Version
+) -> list[UpgradeFinding]:
+    if not _owned(_SANITIZE_DEFAULT_RELEASE, pinned):
+        return []
+    sites = _sanitize_reliant_sites(trees)
+    if not sites:
+        return []
+    return [
+        UpgradeFinding(
+            code="SANITIZE_DEFAULT_CHANGED",
+            level="info",
+            title=f"{len(sites)} String/Text field(s) relying on the old sanitize default",
+            detail=(
+                f"{_SANITIZE_DEFAULT_RELEASE} flipped the String/Text `sanitize` "
+                "default from True to False: a field declared without an explicit "
+                "`sanitize=` kwarg no longer runs `bleach.clean()`, so the stored "
+                "value is now the raw input. Fields that relied on the old default "
+                f"are at: {_summarise(sorted(sites))}."
+            ),
+            remediation=(
+                "Sanitization is a display-layer concern, so the real fix is to "
+                "encode output where these values are rendered as HTML. To restore "
+                "the previous behavior across the domain instead, set "
+                "`[field_defaults] sanitize = true`; to restore it for one field, "
+                "pass `sanitize=True` on that field."
+            ),
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -451,6 +523,7 @@ _DETECTORS: tuple[Detector, ...] = (
     _detect_raw_sql,
     _detect_custom_middleware,
     _detect_queue_status,
+    _detect_default_sanitize,
 )
 
 

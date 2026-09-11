@@ -20,6 +20,7 @@ import pytest
 from protean import upgrade_opportunities
 from protean.upgrade_opportunities import (
     _detect_custom_middleware,
+    _detect_default_sanitize,
     _detect_queue_status,
     _detect_raw_sql,
     parse_version,
@@ -273,6 +274,57 @@ class TestQueueStatusDetector:
         assert len(_detect_queue_status(trees(src), OWNS_ALL)) == 1
 
 
+class TestDefaultSanitizeDetector:
+    # The sanitize-default flip shipped in 0.18.0, so the detector only fires
+    # once the domain is pinned there or later.
+    OWNS = parse_version("0.18.0")
+
+    def test_unset_string_field_is_flagged(self):
+        src = "class User:\n    name = String(max_length=50)\n"
+        findings = _detect_default_sanitize(trees(src), self.OWNS)
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.code == "SANITIZE_DEFAULT_CHANGED"
+        assert finding.level == "info"
+        assert "0.18.0" in finding.detail
+        assert "m:2" in finding.detail
+
+    def test_unset_text_field_is_flagged(self):
+        src = "class Post:\n    body = Text()\n"
+        assert len(_detect_default_sanitize(trees(src), self.OWNS)) == 1
+
+    def test_counts_every_unset_site(self):
+        src = "class User:\n    name = String()\n    bio = Text()\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS)[0].title.startswith("2 ")
+
+    def test_explicit_sanitize_false_is_not_flagged(self):
+        # A field that declares its intent is unaffected by the flip.
+        src = "class User:\n    name = String(sanitize=False)\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+
+    def test_explicit_sanitize_true_is_not_flagged(self):
+        src = "class User:\n    name = String(sanitize=True)\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+
+    def test_choices_field_is_not_flagged(self):
+        # A choices field was never sanitized, so it never relied on the default.
+        src = "class User:\n    status = String(choices=['active', 'inactive'])\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+
+    def test_non_string_field_is_not_flagged(self):
+        src = "class User:\n    age = Integer()\n    joined = DateTime()\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+
+    def test_module_qualified_call_is_flagged(self):
+        # `fields.String(...)` reaches the same factory through the module path.
+        src = "class User:\n    name = fields.String(max_length=50)\n"
+        assert len(_detect_default_sanitize(trees(src), self.OWNS)) == 1
+
+    def test_annotation_style_declaration_is_flagged(self):
+        src = "class User:\n    name: String(max_length=50)\n"
+        assert len(_detect_default_sanitize(trees(src), self.OWNS)) == 1
+
+
 class TestVersionGate:
     _SRC = (
         "from sqlalchemy import text\n"
@@ -304,6 +356,16 @@ class TestVersionGate:
         # The outbox arrived in 0.14.0.
         src = "class Job:\n    status = String(choices=['pending', 'done', 'failed'])\n"
         assert _detect_queue_status(trees(src), parse_version("0.13.1")) == []
+
+    def test_sanitize_gate_suppresses_below_its_release(self):
+        # The sanitize-default flip shipped in 0.18.0; a domain pinned to 0.17.0
+        # still has the old default, so there is nothing to migrate yet.
+        src = "class User:\n    name = String(max_length=50)\n"
+        assert _detect_default_sanitize(trees(src), parse_version("0.17.0")) == []
+
+    def test_sanitize_gate_surfaces_at_its_release(self):
+        src = "class User:\n    name = String(max_length=50)\n"
+        assert len(_detect_default_sanitize(trees(src), parse_version("0.18.0"))) == 1
 
 
 @pytest.mark.no_test_domain

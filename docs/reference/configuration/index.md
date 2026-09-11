@@ -251,6 +251,29 @@ Applies only when aggregates are event sourced.
 
 Default: `10`
 
+### `field_defaults`
+
+Domain-level defaults applied to fields that leave an option unset. Today it
+holds one key, `sanitize`, the default for String and Text fields declared
+without an explicit `sanitize=` kwarg.
+
+```toml
+[field_defaults]
+sanitize = false
+```
+
+The framework default is `false`: a String/Text field with no `sanitize=`
+kwarg stores the raw input (sanitization is a display-layer concern, encoded
+where output is rendered). Set `sanitize = true` to sanitize every unset
+String/Text field across the domain instead.
+
+Precedence is field kwarg > this domain default > framework default. A field
+that passes `sanitize=True` or `sanitize=False` always wins over the domain
+default, so a domain default of `true` still lets a single field opt out with
+`sanitize=False`.
+
+Default: `{ sanitize = false }`
+
 ## Adapter Configuration
 
 ### `databases`

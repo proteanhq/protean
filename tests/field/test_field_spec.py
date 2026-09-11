@@ -251,10 +251,11 @@ class TestFieldSpecRepr:
         assert "min_value=1" in r
         assert "max_value=100" in r
 
-    def test_repr_string_sanitize_false(self):
-        """sanitize=False is shown for String/Text types."""
-        spec = FieldSpec(str)
-        assert "sanitize=False" in repr(spec)
+    def test_repr_string_sanitize_true_is_shown(self):
+        """Only an explicit sanitize=True is shown; the default (unset/False) is not."""
+        assert "sanitize=True" in repr(FieldSpec(str, sanitize=True))
+        assert "sanitize" not in repr(FieldSpec(str))
+        assert "sanitize" not in repr(FieldSpec(str, sanitize=False))
 
 
 # ---------------------------------------------------------------------------
