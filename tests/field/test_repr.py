@@ -52,8 +52,9 @@ def test_description_in_repr():
 
 
 def test_string_repr_and_str():
-    # The default is now sanitize=False, so only an explicit sanitize=True shows;
-    # an unset field and an explicit sanitize=False both print nothing.
+    # The factory default is now unset, so both explicit values show. They are
+    # not interchangeable: under `[field_defaults] sanitize = true` an unset
+    # field cleans while an explicit sanitize=False stays raw.
     str_obj1 = String(max_length=50)
     str_obj2 = String(min_length=50)
     str_obj3 = String(sanitize=True)
@@ -78,8 +79,8 @@ def test_string_repr_and_str():
         == str(str_obj6)
         == "String(default='John Doe', max_length=50, min_length=50)"
     )
-    # Explicit sanitize=False matches the default, so it is not shown.
-    assert repr(str_obj7) == str(str_obj7) == "String(max_length=255)"
+    # An explicit opt-out is shown, so it stays distinguishable from unset.
+    assert repr(str_obj7) == str(str_obj7) == "String(max_length=255, sanitize=False)"
 
 
 def test_text_repr_and_str():
@@ -93,8 +94,9 @@ def test_text_repr_and_str():
     assert repr(text_obj2) == str(text_obj2) == "Text(default='John Doe')"
     assert repr(text_obj3) == str(text_obj3) == "Text(required=True, sanitize=True)"
     assert repr(text_obj4) == str(text_obj4) == "Text(default='John Doe')"
-    # Unset (the default) prints nothing.
-    assert repr(text_obj5) == str(text_obj5) == "Text()"
+    assert repr(text_obj5) == str(text_obj5) == "Text(sanitize=False)"
+    # Unset is the default, so it prints nothing.
+    assert repr(Text()) == str(Text()) == "Text()"
 
 
 def test_integer_repr_and_str():

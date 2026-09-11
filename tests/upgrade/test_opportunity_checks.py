@@ -453,6 +453,93 @@ class TestDefaultSanitizeDetector:
         src = "import sqlalchemy\nclass UserTable:\n    name = sqlalchemy.String(50)\n"
         assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
 
+    # -- Names rebound by something other than an import ---------------------
+
+    def test_a_reassigned_name_is_no_longer_the_factory(self):
+        # `String = make_factory()` rebinds the name, so the later call is not
+        # Protean's factory.
+        src = (
+            "from protean.fields import String\n"
+            "String = make_factory()\n"
+            "class User:\n"
+            "    name = String()\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_declaration_before_the_reassignment_is_still_flagged(self):
+        src = (
+            "from protean.fields import String\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+            "String = make_factory()\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:3" in findings[0].detail
+
+    def test_a_parameter_shadows_the_factory_inside_the_function(self):
+        # The scan cannot know what the caller passes.
+        src = (
+            "from protean.fields import String\n"
+            "def build(String):\n"
+            "    return String()\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_parameter_does_not_shadow_outside_the_function(self):
+        src = (
+            "from protean.fields import String\n"
+            "def build(String):\n"
+            "    return String()\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:5" in findings[0].detail
+
+    def test_a_loop_target_rebinds_the_name(self):
+        src = (
+            "from protean.fields import String\n"
+            "for String in factories:\n"
+            "    pass\n"
+            "class User:\n"
+            "    name = String()\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_foreign_star_import_drops_the_binding(self):
+        # A star import from elsewhere may overwrite `String`, and the scan
+        # cannot tell, so it stops claiming the name is Protean's.
+        src = (
+            "from protean.fields import String\n"
+            "from vendor.types import *\n"
+            "class User:\n"
+            "    name = String()\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_declaration_before_a_foreign_star_import_is_still_flagged(self):
+        src = (
+            "from protean.fields import String\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+            "from vendor.types import *\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:3" in findings[0].detail
+
+    def test_a_function_named_like_the_factory_rebinds_it(self):
+        src = (
+            "from protean.fields import String\n"
+            "def String(**kw):\n"
+            "    return kw\n"
+            "class User:\n"
+            "    name = String()\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
     # -- Attribute chains the scan cannot resolve ----------------------------
 
     def test_a_call_rooted_attribute_chain_is_not_flagged(self):

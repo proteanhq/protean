@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from protean.fields.spec import _coerce_sanitize_flag
 from protean.ir.analysis.source_provider import SourceProvider
@@ -552,11 +552,17 @@ def _apply_import(
                 # ``from protean.fields import *`` binds every name the module
                 # exports, so assume the tracked ones under their own spelling.
                 # Leaving them unbound would drop the whole module from the
-                # migration checklist without saying so. A star import from
-                # anywhere else may or may not export these names; leave
-                # existing bindings alone rather than guess.
+                # migration checklist without saying so.
                 if _module_is_fields(module):
                     factories.update({name: name for name in _TRACKED_SYMBOLS})
+                    continue
+                # A star import from anywhere else may or may not export these
+                # names, and the scan cannot tell. Drop the tracked bindings
+                # rather than keep one that may have been overwritten, the same
+                # way an unreadable argument skips a site.
+                for name in _TRACKED_SYMBOLS:
+                    factories.pop(name, None)
+                    modules.pop(name, None)
                 continue
             local = alias.asname or alias.name
             factories.pop(local, None)
@@ -584,33 +590,55 @@ def _apply_import(
             modules[local] = path
 
 
-def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[list[ast.stmt]]]:
-    """The nodes in one statement, with nested scopes held back.
+class _Scope(NamedTuple):
+    """One nested lexical scope: its body, and the names it binds on entry."""
 
-    Returns the nodes that execute in the current scope and the bodies of the
-    function and class definitions inside it. A nested scope gets its own
-    binding maps, so an import inside a helper cannot reach back out and shadow
-    a name the module bound at the top.
+    body: list[ast.stmt]
+    bound: frozenset[str]
+
+
+def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[_Scope], set[str]]:
+    """The nodes in one statement, its nested scopes, and the names it rebinds.
+
+    Returns the nodes that execute in the current scope, the function and class
+    scopes inside it, and the names this statement binds. A nested scope gets its
+    own binding maps, so an import inside a helper cannot reach back out and
+    shadow a name the module bound at the top.
     """
     own: list[ast.AST] = []
-    nested: list[list[ast.stmt]] = []
+    nested: list[_Scope] = []
+    bound: set[str] = set()
     stack: list[ast.AST] = [stmt]
     while stack:
         node = stack.pop()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             # The decorators, base classes and default arguments run in the
-            # enclosing scope; only the body opens a new one.
-            nested.append(node.body)
+            # enclosing scope; only the body opens a new one. The name itself is
+            # bound out here.
+            bound.add(node.name)
             stack.extend(node.decorator_list)
             if isinstance(node, ast.ClassDef):
+                nested.append(_Scope(node.body, frozenset()))
                 stack.extend(node.bases)
                 stack.extend(keyword.value for keyword in node.keywords)
             else:
+                nested.append(_Scope(node.body, _parameter_names(node.args)))
                 stack.extend(ast.iter_child_nodes(node.args))
             continue
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            bound.add(node.id)
         own.append(node)
         stack.extend(ast.iter_child_nodes(node))
-    return own, nested
+    return own, nested, bound
+
+
+def _parameter_names(args: ast.arguments) -> frozenset[str]:
+    """Every name a function signature binds in its own scope."""
+    names = {arg.arg for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]}
+    for extra in (args.vararg, args.kwarg):
+        if extra is not None:
+            names.add(extra.arg)
+    return frozenset(names)
 
 
 def _resolved_symbol(
@@ -731,7 +759,7 @@ def _scan_scope(
             _apply_import(stmt, factories, modules)
             continue
 
-        own, nested_bodies = _split_scopes(stmt)
+        own, nested_scopes, bound = _split_scopes(stmt)
         spec_calls = _content_spec_calls(own, factories, modules)
         for node in own:
             if not isinstance(node, ast.Call):
@@ -742,8 +770,24 @@ def _scan_scope(
             if _relies_on_the_old_default(node, factory, spec_calls):
                 sites.append(f"{module_name}:{node.lineno}")
 
-        for nested_body in nested_bodies:
-            _scan_scope(module_name, nested_body, factories, modules, sites)
+        for scope in nested_scopes:
+            # A parameter named after a tracked symbol shadows it inside the
+            # function, and the scan cannot know what the caller passes.
+            _scan_scope(
+                module_name,
+                scope.body,
+                {k: v for k, v in factories.items() if k not in scope.bound},
+                {k: v for k, v in modules.items() if k not in scope.bound},
+                sites,
+            )
+
+        # A name rebound by anything other than an import (``String =
+        # make_factory()``, a ``for`` target, a ``with ... as``) is no longer the
+        # factory it was imported as. Applied after this statement's own calls,
+        # because the right-hand side is evaluated first.
+        for name in bound:
+            factories.pop(name, None)
+            modules.pop(name, None)
 
 
 def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:

@@ -251,11 +251,16 @@ class TestFieldSpecRepr:
         assert "min_value=1" in r
         assert "max_value=100" in r
 
-    def test_repr_string_sanitize_true_is_shown(self):
-        """Only an explicit sanitize=True is shown; the default (unset/False) is not."""
+    def test_repr_shows_an_explicit_sanitize_either_way(self):
+        """Both explicit values deviate from the unset default, so both show.
+
+        Under ``[field_defaults] sanitize = true`` an unset field cleans while an
+        explicit ``sanitize=False`` stays raw, so hiding the False would make a
+        per-field opt-out invisible in the repr.
+        """
         assert "sanitize=True" in repr(FieldSpec(str, sanitize=True))
+        assert "sanitize=False" in repr(FieldSpec(str, sanitize=False))
         assert "sanitize" not in repr(FieldSpec(str))
-        assert "sanitize" not in repr(FieldSpec(str, sanitize=False))
 
 
 # ---------------------------------------------------------------------------

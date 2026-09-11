@@ -181,3 +181,24 @@ class TestMalformedSectionsAreRejected:
         config = Config2()
         config.from_object(Settings)
         assert config["field_defaults"] == {}
+
+    def test_a_typo_in_the_key_is_rejected(self):
+        # The failure this prevents: `sanitze = true` leaves `sanitize` at the
+        # merged default of False, so the sanitization the operator asked for
+        # silently never happens.
+        with pytest.raises(ConfigurationError) as exc:
+            Config2.load_from_dict({"field_defaults": {"sanitze": True}})
+        assert "sanitze" in str(exc.value)
+
+    def test_a_typo_alongside_the_real_key_is_rejected(self):
+        with pytest.raises(ConfigurationError) as exc:
+            Config2.load_from_dict(
+                {"field_defaults": {"sanitize": True, "sanitze": True}}
+            )
+        assert "sanitze" in str(exc.value)
+
+    def test_a_typo_in_toml_is_rejected_at_load(self, tmp_path):
+        (tmp_path / "domain.toml").write_text("[field_defaults]\nsanitze = true\n")
+        with pytest.raises(ConfigurationError) as exc:
+            Config2.load_from_path(str(tmp_path))
+        assert "sanitze" in str(exc.value)

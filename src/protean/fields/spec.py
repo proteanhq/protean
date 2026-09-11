@@ -540,12 +540,13 @@ class FieldSpec:
             parts.append(f"max_value={self.max_value}")
         if self.min_value is not None:
             parts.append(f"min_value={self.min_value}")
-        # Show sanitize only when it deviates from the factory default. The
-        # default is now False, so only an explicit ``sanitize=True``
-        # deviates; an unset field and an explicit ``sanitize=False`` both match
-        # the default and print nothing.
-        if factory_name in ("String", "Text") and self.sanitize is True:
-            parts.append("sanitize=True")
+        # Show sanitize only when it deviates from the factory default, which is
+        # now unset (``None``). Both explicit values deviate, and they are no
+        # longer interchangeable: under ``[field_defaults] sanitize = true`` an
+        # unset field cleans while an explicit ``sanitize=False`` stays raw, so
+        # hiding the False would make a per-field opt-out invisible.
+        if factory_name in ("String", "Text") and self.sanitize is not None:
+            parts.append(f"sanitize={self.sanitize}")
         # Show increment for Auto fields
         if factory_name == "Auto" and getattr(self, "_increment", False):
             parts.append("increment=True")

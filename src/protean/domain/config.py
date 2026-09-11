@@ -302,6 +302,12 @@ class ConfigAttribute:
         obj.config[self.__name__] = value
 
 
+# The keys ``[field_defaults]`` recognises. Anything else is a typo, and a
+# typo in this section fails silently unless it is rejected: the merged
+# default stays in force and the operator's intent is dropped.
+_FIELD_DEFAULT_KEYS = frozenset({"sanitize"})
+
+
 def _validate_field_defaults(config: dict[str, Any]) -> None:
     """Reject a malformed ``[field_defaults]`` section at config load time.
 
@@ -321,6 +327,18 @@ def _validate_field_defaults(config: dict[str, Any]) -> None:
     if not isinstance(section, dict):
         raise ConfigurationError(
             f"`field_defaults` must be a table, got {type(section).__name__}",
+            code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
+            location="Config2 ([field_defaults])",
+        )
+
+    unknown = sorted(set(section) - _FIELD_DEFAULT_KEYS)
+    if unknown:
+        # A typo lands here: `sanitze = true` leaves `sanitize` at the merged
+        # default of False, so the sanitization the operator asked for silently
+        # never happens. Name the key rather than ignore it.
+        raise ConfigurationError(
+            f"`field_defaults` has no key(s) {', '.join(unknown)}. "
+            f"Known keys: {', '.join(sorted(_FIELD_DEFAULT_KEYS))}.",
             code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
             location="Config2 ([field_defaults])",
         )
