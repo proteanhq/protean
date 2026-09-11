@@ -193,7 +193,9 @@ def test_non_directory_path_is_rejected_by_every_verb(tmp_path: Path) -> None:
     for verb in ("install", "refresh", "diff", "check"):
         result = runner.invoke(app, [verb, "-p", str(a_file)])
         assert result.exit_code == 2, f"{verb}: {result.output}"
-        assert "not a directory" in result.output
+        # Flatten whitespace: rich wraps the line at the terminal width, and a
+        # long temp path can split the message across a newline in CI.
+        assert "not a directory" in " ".join(result.output.split())
 
 
 def test_diff_writes_nothing_on_a_stale_block(tmp_path: Path, monkeypatch) -> None:
@@ -301,7 +303,8 @@ def test_check_notes_edits_around_the_block(tmp_path: Path) -> None:
     result = runner.invoke(app, ["check", "-p", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
-    assert "edited around the block" in result.output
+    # Flatten whitespace: rich wraps the line at the terminal width.
+    assert "edited around the block" in " ".join(result.output.split())
 
 
 # --- filesystem errors ------------------------------------------------------
