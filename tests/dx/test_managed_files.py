@@ -133,7 +133,7 @@ def test_conflict_on_user_edit_inside_block_writes_nothing(tmp_path: Path) -> No
     with pytest.raises(ManagedFileConflict) as excinfo:
         apply_managed_file(tmp_path, proj)
     assert excinfo.value.target == "AGENTS.md"
-    assert "protean" in excinfo.value.block
+    assert "protean" in excinfo.value.managed
 
     assert target.read_text(encoding="utf-8") == before  # nothing written
     assert state_path(tmp_path).read_text(encoding="utf-8") == state_before
@@ -507,8 +507,13 @@ def test_json_conflict_on_hand_edited_managed_key(tmp_path: Path) -> None:
 
     proj = json_keys(".mcp.json", "2", {"servers": {"a": 2}})
     assert diff_managed_file(tmp_path, proj).status is ApplyStatus.CONFLICT
-    with pytest.raises(ManagedFileConflict):
+    with pytest.raises(ManagedFileConflict) as excinfo:
         apply_managed_file(tmp_path, proj)
+    # A JSON-keys conflict names the managed keys, and its message does not call
+    # the target a "block".
+    assert excinfo.value.managed == "servers"
+    assert "servers" in str(excinfo.value)
+    assert "block" not in str(excinfo.value)
     assert target.read_text(encoding="utf-8") == before
     assert state_path(tmp_path).read_text(encoding="utf-8") == state_before
 

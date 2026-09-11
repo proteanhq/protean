@@ -144,20 +144,22 @@ class ManagedFileError(Exception):
 
 
 class ManagedFileConflict(ManagedFileError):
-    """The user edited inside the managed slice, so a re-apply is refused.
+    """The user edited the managed content, so a re-apply is refused.
 
-    Carries the *target* path and a *block* description (the block id for a
-    managed-block target, the managed key names for a JSON-keys target) so a
-    ``check`` or ``diff`` verb can report exactly what conflicts.
+    Carries the *target* path and a *managed* description (the block id for a
+    managed-block target, the managed key names for a managed-JSON-keys target)
+    so a ``check`` or ``diff`` verb can report exactly what conflicts. The
+    description names the managed content whichever merge mode raised, so it does
+    not call a JSON-keys target a block.
     """
 
-    def __init__(self, target: str, block: str) -> None:
+    def __init__(self, target: str, managed: str) -> None:
         self.target = target
-        self.block = block
+        self.managed = managed
         super().__init__(
-            f"Managed-file conflict at {target!r}: the managed block {block!r} was "
-            "edited by hand and now differs from the incoming content. Refusing to "
-            "overwrite it; resolve the edit and re-run."
+            f"Managed-file conflict at {target!r}: the managed content {managed!r} "
+            "was edited by hand and now differs from the incoming content. Refusing "
+            "to overwrite it; resolve the edit and re-run."
         )
 
 
@@ -803,10 +805,10 @@ def apply_managed_file(
 
     if result.status is ApplyStatus.CONFLICT:
         if isinstance(managed_file, ManagedBlock):
-            block = managed_file.block_id
+            managed = managed_file.block_id
         else:
-            block = ", ".join(managed_file.managed_keys)
-        raise ManagedFileConflict(target=managed_file.target, block=block)
+            managed = ", ".join(managed_file.managed_keys)
+        raise ManagedFileConflict(target=managed_file.target, managed=managed)
 
     if result.status is ApplyStatus.NO_CHANGE:
         return result
