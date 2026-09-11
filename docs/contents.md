@@ -195,6 +195,7 @@ specific area.
 - [`protean server`](./reference/cli/runtime/server.md): Run the async background message processing server.
 - [`protean mcp`](./reference/cli/runtime/mcp.md): Run the MCP server that exposes framework tools to a coding agent.
 - [`protean docs`](./reference/cli/project/docs.md): Live preview server for documentation.
+- [`protean dx`](./reference/cli/project/dx.md): Write and maintain a project's agent-facing files (AGENTS.md and the CLAUDE.md bridge), version-coupled to the installed framework.
 - [`protean test`](./community/contributing/testing.md): Run Protean's framework test suite (development only).
 - [`protean ir show`](./reference/cli/ir.md): Display the domain's IR as JSON or a human-readable summary.
 - [`protean schema`](./reference/cli/schema.md): Generate and inspect JSON Schema files for data-carrying domain elements.

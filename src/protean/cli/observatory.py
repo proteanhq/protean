@@ -3,7 +3,6 @@
 import os
 from typing import Annotated
 
-import click
 import typer
 
 from protean.cli._helpers import (
@@ -47,6 +46,11 @@ def observatory(
         from protean.server.observatory import Observatory  # noqa: PLC0415
     except ImportError as exc:
         abort_for_missing_dependency("server", "'protean observatory'", exc)
+
+    # click ships with the server extra (via uvicorn), not with core, so import it
+    # lazily inside the command that needs the server extra anyway. A top-level
+    # import would break every `protean` CLI invocation on a core-only install.
+    import click  # noqa: PLC0415
 
     # Check parent context for CLI-level logging configuration.
     # click.get_current_context may fail when called directly (not via CLI).
