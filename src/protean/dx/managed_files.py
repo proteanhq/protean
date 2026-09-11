@@ -156,8 +156,8 @@ class ManagedFileConflict(ManagedFileError):
         self.block = block
         super().__init__(
             f"Managed-file conflict at {target!r}: the managed block {block!r} was "
-            "edited outside the framework, and the edit differs from the incoming "
-            "content. Refusing to overwrite it; resolve the edit and re-run."
+            "edited by hand and now differs from the incoming content. Refusing to "
+            "overwrite it; resolve the edit and re-run."
         )
 
 
