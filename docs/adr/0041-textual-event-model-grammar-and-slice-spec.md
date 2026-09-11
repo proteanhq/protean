@@ -81,15 +81,24 @@ The rules:
 - A **field line** is `field <name>: <type>` with an optional parenthesized
   constraint list: `field name: string(max_length=100)`. `<name>` is a valid
   Python identifier that is not a Python keyword, read verbatim, because the
-  generator writes it as a class attribute. `<type>` is one of the eight primitive
-  types below. Fields keep their declaration order for generation.
+  generator writes it as a class attribute. Field names are unique within a block;
+  a duplicate is an error. `id` is reserved in an `aggregate` block for the
+  framework's injected identity, so the parser rejects `field id` there. `<type>`
+  is one of the eight primitive types below, and fields keep their declaration
+  order for generation.
+- A **field is required and has no default.** `field name: string` maps to a bare
+  `str` annotation, a required, unbounded string that the IR records as a `String`
+  with no `max_length`. Optional fields and defaults are a later addition to the
+  grammar.
 - A **constraint list** sits in the parentheses, comma-separated, with insignificant
   whitespace around each entry: `string(max_length=100)`, `identifier(key)`. A
-  constraint is either `max_length=<integer>` or the bare flag `key`. `max_length`
-  applies only to `string` and `text`; on any other type the parser rejects it,
-  because Protean drops `max_length` on a non-string field. `key` applies only to an
-  `identifier` field of a `projection`, where it marks the projection's identity
-  field; the parser rejects `key` on any other block or field type.
+  constraint is either `max_length=<positive-integer>` or the bare flag `key`.
+  `max_length` applies only to `string` and `text`, and its value is a positive
+  integer; the parser rejects it on any other type, because Protean drops
+  `max_length` on a non-string field, and rejects a zero or negative value. `key`
+  applies only to a field of a `projection`, where it marks the projection's
+  identity field, whatever that field's type; the parser rejects `key` in any other
+  block.
 - A **projector body** is one `for <ProjectionName>` line naming the projection it
   feeds, and one `consumes <EventName>` line naming the event it reads.
 
@@ -173,7 +182,7 @@ node the renderer draws:
 | `event <Name>:` | `SliceSpec.event.name` | `clusters[C].events[evt]`, non-fact | event (result), a stadium |
 | `projection <Name>:` | `SliceSpec.projection.name` | `projections[P].projection.name` | read model, a cylinder |
 | `projector <Name>:` | `SliceSpec.projector.name` | `projections[P].projectors[pr]` | the read-model node |
-| `for <Projection>` | `SliceSpec.projector.projection` | `projectors[pr].projector_for` | the `Projector -> Projection` node label |
+| `for <Projection>` | `SliceSpec.projector.projection` | `projectors[pr].projector_for` (an FQN the emitter shortens to the class name) | the `Projector -> Projection` node label |
 | `consumes <Event>` | `SliceSpec.projector.consumes` | `projectors[pr].handlers` (the one event `__type__` key in a one-slice model) | the edge from the event to the read model |
 
 Two constraints map onto the IR field entry:
@@ -199,17 +208,20 @@ round trip, run as a build-time test, with no live sync between the two.
 one cluster, and produces grammar text for that slice. The emitter reads only what
 the vocabulary map covers: the aggregate and its authored fields, the command, the
 non-fact event, and the read model's projection and projector with the event it
-consumes. It skips the injected `id`, FQNs, element options, and every element the
-grammar does not carry (entities, value objects, repositories, database models,
-command handlers, application services, queries, automations, fact events). It
-recovers the `consumes` name by matching the projector's `handlers` key back to the
-slice's event.
+consumes. It renders every name by its short form, the same `short_name` the
+renderer applies: `projector_for` is stored as a full projection FQN, and the
+emitter shortens it to the class name the `for` line carries. It recovers the
+`consumes` name by matching the projector's `handlers` key back to the slice's
+event. It skips the injected `id`, element options, and every element the grammar
+does not carry (entities, value objects, repositories, database models, command
+handlers, application services, queries, automations, fact events).
 
 The emitter's precondition is the shape the grammar covers: a cluster with exactly
-one command and one non-fact event. A cluster with more than one of either is
-outside the grammar, and the emitter raises on it. It never reduces such a cluster
-to a single element, so conformance cannot pass while the emitter drops model
-elements.
+one command and one non-fact event, and either no read side or one projection with
+one projector. A cluster with more than one command, non-fact event, projection, or
+projector is outside the grammar, and the emitter raises on it. It never reduces
+such a cluster to a single element, so conformance cannot pass while the emitter
+drops model elements.
 
 `_extract_fields` sorts a cluster's fields by name, so the IR does not keep the
 order the fields were declared in. The emitter emits fields in the IR's order, and
