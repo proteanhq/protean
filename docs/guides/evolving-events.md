@@ -289,15 +289,15 @@ The ladder at a glance:
 ```mermaid
 flowchart TD
     change(["A change to a stored event"]) --> q1{"Can weak schema<br/>express it?"}
-    q1 -->|"add a defaulted field,<br/>rename a field"| r1["<b>Rung 1 · Weak schema</b><br/>renamed_from, lenient<br/>no version bump"]
-    q1 -->|"type change, newly required<br/>field, split or merge"| r2["<b>Rung 2 · Versioning + upcaster</b><br/>bump the version<br/>transform on read, in memory"]
+    q1 -->|"add a defaulted field,<br/>rename or remove a field"| r1["<b>Rung 1 · Weak schema</b><br/>renamed_from, lenient<br/>no version bump"]
+    q1 -->|"type change, newly required<br/>field, field split or merge"| r2["<b>Rung 2 · Versioning + upcaster</b><br/>bump the version<br/>transform on read, in memory"]
     r2 -->|"the upcaster chain<br/>grows too long"| r3["<b>Rung 3 · Operator migration</b><br/>in-place / copy-and-transform<br/>rewrites the store"]
 ```
 
 | Change | How | Compatibility |
 |--------|-----|---------------|
 | Add an optional / defaulted field | add it | `FULL`, nobody breaks |
-| Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` |
+| Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` if unmitigated |
 | Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` (Avro `aliases`) |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |

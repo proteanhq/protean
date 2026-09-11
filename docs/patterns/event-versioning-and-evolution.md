@@ -247,8 +247,10 @@ class FulfillmentEventHandler(BaseEventHandler):
 ```
 
 **When to use:** Significant structural changes, changed semantics, new required
-fields without meaningful defaults, or a rename bundled with one of those. A pure
-rename uses `renamed_from` and needs no new event type.
+fields whose value cannot be computed from historical data, or a rename bundled
+with one of those. A pure rename uses `renamed_from` and needs no new event type.
+A required field whose value is computable from the old payload is a Rung 2
+upcaster case.
 
 #### Marking the old event deprecated
 
@@ -660,8 +662,8 @@ The ladder at a glance:
 ```mermaid
 flowchart TD
     change(["A change to a stored event"]) --> q1{"Can weak schema<br/>express it?"}
-    q1 -->|"add a defaulted field,<br/>rename a field"| r1["<b>Rung 1 · Weak schema</b><br/>renamed_from, lenient<br/>no version bump"]
-    q1 -->|"type change, newly required<br/>field, split or merge"| r2["<b>Rung 2 · Versioning + upcaster</b><br/>bump the version<br/>transform on read, in memory"]
+    q1 -->|"add a defaulted field,<br/>rename or remove a field"| r1["<b>Rung 1 · Weak schema</b><br/>renamed_from, lenient<br/>no version bump"]
+    q1 -->|"type change, newly required<br/>field, field split or merge"| r2["<b>Rung 2 · Versioning + upcaster</b><br/>bump the version<br/>transform on read, in memory"]
     r2 -->|"the upcaster chain<br/>grows too long"| r3["<b>Rung 3 · Operator migration</b><br/>in-place / copy-and-transform<br/>rewrites the store"]
 ```
 

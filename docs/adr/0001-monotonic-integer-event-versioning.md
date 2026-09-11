@@ -32,9 +32,9 @@ marker.
 We will version events and commands with monotonic positive integers. The `__version__`
 attribute on message classes is an integer starting at 1, incremented by 1 for a change that
 needs a new version. ADR-0040's schema-evolution ladder settles which changes do: a
-structural change bumps the version and carries an upcaster, and a change that weak schema
-handles (a field added with a default, a rename via `renamed_from`) keeps the current
-version. The framework validates the integer at class creation time in
+structural change bumps the version and carries an upcaster, or becomes a new event type
+when no value can be supplied for it, and a change that weak schema handles (a field added
+with a default, a rename via `renamed_from`) keeps the current version. The framework validates the integer at class creation time in
 `BaseMessageType.__init_subclass__()`:
 
 ```python
@@ -52,7 +52,7 @@ class UserRegistered(BaseEvent):
 ```
 
 The version appears in the message's `__type__` string as
-`{Domain}.{ClassName}.{version}` (e.g., `Auth.UserRegistered.2`), which is used
+`{Domain}.{ClassName}.v{version}` (e.g., `Auth.UserRegistered.v2`), which is used
 for runtime routing and event store lookups. Compatibility semantics (whether
 v2 is backward-compatible with v1, and how to convert between them) are settled
 by the schema-evolution ladder in ADR-0040, which routes each change to weak
