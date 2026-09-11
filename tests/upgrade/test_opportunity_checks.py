@@ -411,6 +411,48 @@ class TestDefaultSanitizeDetector:
         src = "def String(**kw):\n    return kw\nclass User:\n    name = String()\n"
         assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
 
+    def test_a_later_import_shadows_an_earlier_one(self):
+        # Python rebinding: the SQLAlchemy import wins, so the call is not a
+        # Protean field declaration.
+        src = (
+            "from protean.fields import String\n"
+            "from sqlalchemy import String\n"
+            "class UserTable:\n"
+            "    name = String(50)\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_later_protean_import_shadows_a_foreign_one(self):
+        src = (
+            "from sqlalchemy import String\n"
+            "from protean.fields import String\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_an_aliased_module_import_resolves(self):
+        src = (
+            "import protean.fields as pf\n"
+            "class User:\n"
+            "    name = pf.String(max_length=50)\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_another_protean_submodule_is_not_the_field_module(self):
+        # `import protean` reaches `protean.fields.String`, but a `String` in
+        # some other Protean submodule is a different symbol.
+        src = (
+            "import protean\n"
+            "class User:\n"
+            "    name = protean.other.String(max_length=50)\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_an_unrelated_module_attribute_call_is_not_flagged(self):
+        src = "import sqlalchemy\nclass UserTable:\n    name = sqlalchemy.String(50)\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
     # -- Explicit opt-ins passed positionally --------------------------------
 
     def test_positional_sanitize_on_text_is_not_flagged(self):

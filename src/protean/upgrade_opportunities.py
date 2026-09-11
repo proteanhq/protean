@@ -244,6 +244,7 @@ _MIDDLEWARE_MODULE_ROOTS = frozenset({"starlette", "fastapi", "uvicorn", "protea
 # Field factories are only Protean's; a ``String`` imported from anywhere else
 # (SQLAlchemy has one) is a different symbol and not a field declaration.
 _FIELD_MODULE_ROOT = "protean"
+_FIELD_MODULE = "protean.fields"
 
 
 def _symbol_name(node: ast.expr) -> str | None:
@@ -508,70 +509,117 @@ def _domain_sanitize_default(domain: Domain) -> bool:
     return _coerce_sanitize_flag(raw)
 
 
-def _attribute_root(node: ast.expr) -> str | None:
-    """The leftmost name in an attribute chain: ``a.b.c`` gives ``"a"``."""
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
+def _module_is_fields(path: str) -> bool:
+    """Whether a dotted module path is Protean's field module or below it."""
+    return path == _FIELD_MODULE or path.startswith(_FIELD_MODULE + ".")
 
 
-def _protean_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
+def _dotted_prefix(node: ast.Attribute) -> tuple[str, list[str]] | None:
+    """The root name and intermediate attributes of ``a.b.c.Sym``: ``("a", ["b", "c"])``."""
+    parts: list[str] = []
+    current: ast.expr = node.value
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.reverse()
+    return current.id, parts
+
+
+def _protean_bindings(tree: ast.Module) -> tuple[dict[str, str], dict[str, str]]:
     """What the tracked Protean symbols are bound to in one module.
 
     Returns the local names that resolve to one of :data:`_TRACKED_SYMBOLS`
     (mapped to the symbol they name) and the local names that resolve to a
-    Protean module, so ``fields.String(...)`` and ``protean.fields.Text(...)``
-    resolve too.
+    module (mapped to its full dotted path), so ``fields.String(...)`` and
+    ``protean.fields.Text(...)`` resolve too.
 
     Matching on the trailing symbol alone gets this wrong both ways:
     ``from protean.fields import String as StringField`` is a field declaration
     that the trailing name misses, and ``from sqlalchemy import String`` is not
     one but the trailing name matches it. Both matter here, because this detector
     is the migration safety net for a silent behavior change.
+
+    Imports are read in source order and a later one shadows an earlier one, so
+    ``from protean.fields import String`` followed by ``from sqlalchemy import
+    String`` leaves ``String`` pointing at SQLAlchemy's, as Python does. Module
+    paths are tracked in full rather than by root package, so ``import protean``
+    reaches ``protean.fields.String`` but not ``protean.other.String``.
     """
-    bindings: dict[str, str] = {}
-    modules: set[str] = set()
-    for node in ast.walk(tree):
+    factories: dict[str, str] = {}
+    modules: dict[str, str] = {}
+
+    imports = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
+    imports.sort(key=lambda node: (node.lineno, node.col_offset))
+
+    for node in imports:
         if isinstance(node, ast.ImportFrom):
-            if not node.module or node.module.split(".")[0] != _FIELD_MODULE_ROOT:
-                continue
+            module = node.module or ""
             for alias in node.names:
                 if alias.name == "*":
                     # ``from protean.fields import *`` binds every name the
                     # module exports, so assume the tracked ones under their own
                     # spelling. Leaving them unbound would drop the whole module
-                    # from the migration checklist without saying so.
-                    bindings.update({name: name for name in _TRACKED_SYMBOLS})
+                    # from the migration checklist without saying so. A star
+                    # import from anywhere else may or may not export these
+                    # names; leave existing bindings alone rather than guess.
+                    if _module_is_fields(module):
+                        factories.update({name: name for name in _TRACKED_SYMBOLS})
                     continue
                 local = alias.asname or alias.name
-                if alias.name in _TRACKED_SYMBOLS:
-                    bindings[local] = alias.name
-                else:
-                    # ``from protean import fields`` — a module, reached by
-                    # attribute access below.
-                    modules.add(local)
-        elif isinstance(node, ast.Import):
+                factories.pop(local, None)
+                modules.pop(local, None)
+                if _module_is_fields(module) and alias.name in _TRACKED_SYMBOLS:
+                    factories[local] = alias.name
+                    continue
+                # ``from protean import fields`` names a submodule, reached by
+                # attribute access at the call site.
+                path = f"{module}.{alias.name}" if module else alias.name
+                if _module_is_fields(path):
+                    modules[local] = path
+        else:
             for alias in node.names:
-                if alias.name.split(".")[0] == _FIELD_MODULE_ROOT:
-                    modules.add(alias.asname or alias.name.split(".")[0])
-    return bindings, modules
+                # ``import a.b.c`` binds ``a``; ``import a.b.c as x`` binds ``x``
+                # to the full path.
+                local = alias.asname or alias.name.split(".")[0]
+                path = alias.name if alias.asname else alias.name.split(".")[0]
+                factories.pop(local, None)
+                modules.pop(local, None)
+                # The root package still reaches the fields module by attribute
+                # access, so keep it and check the full path at the call site.
+                if path == _FIELD_MODULE_ROOT or _module_is_fields(path):
+                    modules[local] = path
+
+    return factories, modules
 
 
 def _resolved_symbol(
-    func: ast.expr, bindings: dict[str, str], modules: set[str]
+    func: ast.expr, factories: dict[str, str], modules: dict[str, str]
 ) -> str | None:
     """The Protean symbol a call names, or ``None`` if it names something else."""
     if isinstance(func, ast.Name):
-        return bindings.get(func.id)
+        return factories.get(func.id)
     if isinstance(func, ast.Attribute) and func.attr in _TRACKED_SYMBOLS:
-        root = _attribute_root(func)
-        if root is not None and root in modules:
+        prefix = _dotted_prefix(func)
+        if prefix is None:
+            return None
+        root, parts = prefix
+        base = modules.get(root)
+        if base is None:
+            return None
+        path = ".".join([base, *parts])
+        if _module_is_fields(path):
             return func.attr
     return None
 
 
 def _content_spec_calls(
-    tree: ast.Module, bindings: dict[str, str], modules: set[str]
+    tree: ast.Module, bindings: dict[str, str], modules: dict[str, str]
 ) -> set[int]:
     """``id()`` of every call passed as a content spec to a container factory.
 
