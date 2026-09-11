@@ -286,7 +286,7 @@ guide](compatibility-checking.md) to wire this into pre-commit hooks and CI.
 | Change | How | Compatibility |
 |--------|-----|---------------|
 | Add an optional / defaulted field | add it | `FULL`, nobody breaks |
-| Add a required field, no default | give it a default, or bump `__version__` + an upcaster to supply it | breaks `BACKWARD` |
+| Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` |
 | Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` (Avro `aliases`) |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |
