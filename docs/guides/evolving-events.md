@@ -102,6 +102,11 @@ version to the next, leaving the stored event unchanged; Protean chains them, so
 a `v1` payload is walked all the way up to the current `v3` before your handler
 sees it.
 
+The running example bumps `OrderPlaced` to show this chaining. Its rename and
+defaulted fields would load under weak schema without a bump, so read the version
+bump here as an illustration of the mechanism, not a requirement for those two
+changes.
+
 ```python
 --8<-- "guides/evolving-events/002.py:55:60"
 

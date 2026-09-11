@@ -662,7 +662,7 @@ defaults on new fields for existing event types.
 | Remove a field | With lenient mode | Deprecate, or read old payloads leniently (drops its data) |
 | Change field type | No | Version bump + upcaster, or a new field / event type |
 | Change field semantics | No | New field name |
-| Add required field without default | No | Version bump + upcaster to supply it, or give it a default |
+| Add required field without default | No | Give it a default, an upcaster to supply a computable value, or a new event type |
 | Split event into multiple events | No | New event types + transition period |
 
 ---
