@@ -245,6 +245,7 @@ need by what you're trying to accomplish.
 | Run the async background server                 | [`protean server`](./reference/cli/runtime/server.md) |
 | Run the observability dashboard                 | [`protean observatory`](./reference/cli/runtime/observatory.md) |
 | Give a coding agent framework tools over MCP    | [`protean mcp`](./reference/cli/runtime/mcp.md) |
+| Install agent instructions into a project       | [`protean dx`](./reference/cli/project/dx.md) |
 | Manage database schemas                         | [`protean db`](./reference/cli/data/database.md) |
 | Create and manage snapshots                     | [`protean snapshot`](./reference/cli/data/snapshot.md) |
 | Rebuild projections from events                 | [`protean projection`](./reference/cli/data/projection.md) |

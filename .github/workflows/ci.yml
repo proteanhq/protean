@@ -189,6 +189,24 @@ jobs:
           print(f"DX pack OK: version={dx.PACK_VERSION}, skills={skills}")
           PY
 
+      - name: Round-trip `protean dx` install and check from the wheel
+        # Prove the `dx` command works end to end from the built wheel, not just
+        # from the source tree: a fresh project reports drift, and after
+        # `dx install` the same `dx check` is clean. This is the `check` CI gate
+        # exercised against the artifact that ships.
+        run: |
+          set -e
+          proj="$(mktemp -d)"
+          # A project that was never installed has drifted, so check must fail.
+          if /tmp/pack-venv/bin/protean dx check -p "$proj"; then
+            echo "dx check unexpectedly passed on a fresh project; expected drift"
+            exit 1
+          fi
+          # After install, check must be clean.
+          /tmp/pack-venv/bin/protean dx install -p "$proj"
+          /tmp/pack-venv/bin/protean dx check -p "$proj"
+          echo "dx round-trip OK"
+
   # Publishes the docs via the GitHub Actions Pages pipeline (build the site,
   # then deploy the artifact) instead of `mkdocs gh-deploy` to the gh-pages
   # branch. The legacy branch-based Pages builder proved unreliable (builds

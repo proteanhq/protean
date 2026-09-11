@@ -333,6 +333,7 @@ nav:
         - reference/cli/project/discovery.md
         - reference/cli/project/shell.md
         - reference/cli/project/docs.md
+        - reference/cli/project/dx.md
       - Runtime:
         - reference/cli/runtime/index.md
         - reference/cli/runtime/server.md
