@@ -65,7 +65,7 @@ Versioning is simple and unambiguous. There is no debate about whether a change 
 or patch version: the number increments by 1 when a change needs a new version, and ADR-0040
 decides which changes do. Adding an optional or defaulted field, like renaming one, does not.
 
-The `__type__` string (`Domain.ClassName.version`) is stable across code refactoring. Moving
+The `__type__` string (`{Domain}.{ClassName}.v{version}`) is stable across code refactoring. Moving
 `UserRegistered` from `auth.events` to `auth.domain.events` does not change its `__type__`,
 so existing stored events remain routable. This is distinct from the FQN, which does change
 on refactoring.
