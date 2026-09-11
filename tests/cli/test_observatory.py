@@ -22,6 +22,17 @@ runner = CliRunner()
 OBSERVATORY_CLS = "protean.server.observatory.Observatory"
 
 
+def test_click_is_imported_lazily_not_at_module_top() -> None:
+    """observatory imports click inside the command, so a core-only install can
+    still run the CLI. click ships with the server extra (via uvicorn), not core,
+    so a top-level import would break every `protean` CLI invocation without that
+    extra. A function-local import binds click in the function scope, never the
+    module globals, so this stays empty regardless of test order."""
+    import protean.cli.observatory as observatory_module
+
+    assert "click" not in vars(observatory_module)
+
+
 class TestObservatoryCommand:
     @pytest.fixture(autouse=True)
     def reset_path(self):
