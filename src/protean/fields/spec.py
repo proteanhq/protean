@@ -18,12 +18,19 @@ from uuid import uuid4
 from pydantic import AfterValidator, BeforeValidator
 from pydantic import Field as PydanticField
 
+from protean.exceptions import ConfigurationError
 from protean.exceptions import ValidationError as ProteanValidationError
 from protean.fields.base import (
     EMPTY_VALUES,
     normalize_field_renamed_from,
 )
-from protean.utils import _generate_identity, _normalize_deprecated
+from protean.ir.diagnostics import DiagnosticCode
+from protean.utils import (
+    FALSY_FLAG_SPELLINGS,
+    TRUTHY_FLAG_SPELLINGS,
+    _generate_identity,
+    _normalize_deprecated,
+)
 from protean.utils.globals import current_domain
 
 
@@ -351,9 +358,15 @@ class FieldSpec:
     def resolve_annotated(self) -> Any:
         """Combine resolved type and field kwargs into ``Annotated[type, Field(...)]``.
 
-        When ``sanitize=True`` or per-field ``validators`` are present, the
-        corresponding ``AfterValidator`` wrappers are appended to the
-        ``Annotated`` metadata.
+        Per-field ``validators`` are appended as ``AfterValidator`` wrappers on
+        the ``Annotated`` metadata. A sanitization ``AfterValidator`` is appended
+        for an explicit ``sanitize=True`` *and* for a String/Text field that
+        leaves ``sanitize`` unset: the unset field cannot decide at build time
+        whether it sanitizes, because that depends on the domain-level
+        ``[field_defaults] sanitize`` default, which is only known at validation
+        time. So the unset field carries the validator and the validator returns
+        the value untouched when the domain default is off. Only an explicit
+        ``sanitize=False`` gets no validator at all.
         """
         resolved_type = self.resolve_type()
         field_kwargs = self.resolve_field_kwargs()
@@ -635,6 +648,12 @@ def _domain_default_sanitize() -> bool:
     is no default to read, so this returns the framework default (``False``):
     do not sanitize. A missing ``field_defaults``/``sanitize`` key reads the
     same way.
+
+    Only a *missing* key falls back. A malformed section is rejected at config
+    load time by ``Config2._validate_field_defaults``, so it never reaches here;
+    if one does (a config mutated in place after load), the resulting
+    ``TypeError`` propagates rather than being read as "do not sanitize". A
+    typo must not silently fail open on a security-relevant setting.
     """
     # ``has_domain_context`` reads the context stack without emitting the
     # "working outside of domain context" warning that a bare ``current_domain``
@@ -646,7 +665,7 @@ def _domain_default_sanitize() -> bool:
         return False
     try:
         raw = current_domain.config["field_defaults"]["sanitize"]
-    except (KeyError, TypeError):
+    except KeyError:
         return False
     return _coerce_sanitize_flag(raw)
 
@@ -658,20 +677,26 @@ def _coerce_sanitize_flag(raw: Any) -> bool:
     yields strings, so ``[field_defaults] sanitize = "${SANITIZE|false}"`` with
     the var unset resolves to the string ``"false"``; a plain ``bool(...)`` on
     that reads True and would silently sanitize, the opposite of what the
-    operator wrote. Parse the common string spellings instead: ``"true"/"1"/
-    "yes"/"on"`` are True and ``"false"/"0"/"no"/"off"/""`` are False
-    (case-insensitive). Any other type or unrecognized string falls back to the
-    framework default (``False``): do not sanitize.
+    operator wrote. Parse the recognized string spellings instead
+    (case-insensitive), which are the same set the config validator accepts.
+
+    Anything else is malformed. ``Config2._validate_field_defaults`` rejects it
+    at load, so it only reaches here from a config mutated in place after load;
+    raise rather than read it as "do not sanitize".
     """
     if isinstance(raw, bool):
         return raw
     if isinstance(raw, str):
         text = raw.strip().lower()
-        if text in ("true", "1", "yes", "on"):
+        if text in TRUTHY_FLAG_SPELLINGS:
             return True
-        if text in ("false", "0", "no", "off", ""):
+        if text in FALSY_FLAG_SPELLINGS:
             return False
-    return False
+    raise ConfigurationError(
+        f"`field_defaults.sanitize` must be a boolean, got {raw!r}",
+        code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
+        location="Config2 ([field_defaults] sanitize)",
+    )
 
 
 def _make_sanitize_validator(

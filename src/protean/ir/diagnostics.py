@@ -45,6 +45,7 @@ class DiagnosticCode(StrEnum):
     CONFIG_AMBIGUOUS_ELEMENT_NAME = "CONFIG_AMBIGUOUS_ELEMENT_NAME"
     CONFIG_ELEMENT_NOT_REGISTERED = "CONFIG_ELEMENT_NOT_REGISTERED"
     CONFIG_EVENT_STORE_NOT_INITIALIZED = "CONFIG_EVENT_STORE_NOT_INITIALIZED"
+    CONFIG_INVALID_FIELD_DEFAULTS = "CONFIG_INVALID_FIELD_DEFAULTS"
     CONFIG_UNRESOLVED_ENV_VAR = "CONFIG_UNRESOLVED_ENV_VAR"
     CROSS_AGGREGATE_REFERENCE = "CROSS_AGGREGATE_REFERENCE"
     DEPRECATED_CONFIG = "DEPRECATED_CONFIG"
@@ -367,6 +368,22 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "then leaves the store unset."
         ),
         fix="Call `domain.init()` before using the event store.",
+    ),
+    DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS: CodeMeta(
+        category="configuration",
+        level="error",
+        kind="raise",
+        meaning="The `[field_defaults]` config section is malformed.",
+        rationale=(
+            "`field_defaults.sanitize` decides whether String and Text fields "
+            "that leave `sanitize` unset are cleaned. Reading a malformed value "
+            "as `false` would turn a typo into a silent fail-open, so the value "
+            "is rejected at load time instead."
+        ),
+        fix=(
+            "Write `[field_defaults]` as a table and give `sanitize` a boolean, "
+            "or one of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`."
+        ),
     ),
     DiagnosticCode.CONFIG_UNRESOLVED_ENV_VAR: CodeMeta(
         category="configuration",

@@ -51,7 +51,10 @@ if TYPE_CHECKING:
 # A parsed module, as yielded by SourceProvider.iter_trees().
 Tree = tuple[str, ast.Module]
 Version = tuple[int, int, int]
-Detector = Callable[[list[Tree], Version], list[UpgradeFinding]]
+# Detectors take the domain as well as its parsed source: a behavior-change
+# detector has to know what the domain's config already does about the change
+# before it reports a migration site.
+Detector = Callable[[list[Tree], Version, "Domain"], list[UpgradeFinding]]
 
 # ---------------------------------------------------------------------------
 # Release catalog
@@ -175,7 +178,9 @@ def _raw_sql_sites(trees: list[Tree]) -> list[str]:
     return sites
 
 
-def _detect_raw_sql(trees: list[Tree], pinned: Version) -> list[UpgradeFinding]:
+def _detect_raw_sql(
+    trees: list[Tree], pinned: Version, domain: Domain
+) -> list[UpgradeFinding]:
     if not _owned(_QUERY_API_RELEASE, pinned):
         return []
     sites = _raw_sql_sites(trees)
@@ -234,6 +239,10 @@ _FRAMEWORK_MIDDLEWARES = frozenset(
 # from one of these, so restricting alias mapping to them keeps a user's own
 # class named like a standard one (imported from their package) flaggable.
 _MIDDLEWARE_MODULE_ROOTS = frozenset({"starlette", "fastapi", "uvicorn", "protean"})
+
+# Field factories are only Protean's; a ``String`` imported from anywhere else
+# (SQLAlchemy has one) is a different symbol and not a field declaration.
+_FIELD_MODULE_ROOT = "protean"
 
 
 def _symbol_name(node: ast.expr) -> str | None:
@@ -318,7 +327,7 @@ def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
 
 
 def _detect_custom_middleware(
-    trees: list[Tree], pinned: Version
+    trees: list[Tree], pinned: Version, domain: Domain
 ) -> list[UpgradeFinding]:
     if not _owned(_MIDDLEWARE_RELEASE, pinned):
         return []
@@ -426,7 +435,9 @@ def _queue_status_sites(trees: list[Tree]) -> list[str]:
     return sites
 
 
-def _detect_queue_status(trees: list[Tree], pinned: Version) -> list[UpgradeFinding]:
+def _detect_queue_status(
+    trees: list[Tree], pinned: Version, domain: Domain
+) -> list[UpgradeFinding]:
     if not _owned(_OUTBOX_RELEASE, pinned):
         return []
     sites = _queue_status_sites(trees)
@@ -457,6 +468,111 @@ def _detect_queue_status(trees: list[Tree], pinned: Version) -> list[UpgradeFind
 # Detector 4: String/Text fields that relied on the old sanitize-by-default
 # ---------------------------------------------------------------------------
 
+# Container factories whose arguments are content specs, not field declarations.
+# ``List(String(max_length=50))`` types the list's items: the container only
+# reads the inner spec's type and choices and never attaches its sanitization
+# validator, so the inner ``String`` was not sanitized before the flip either
+# and is not a migration site.
+_CONTENT_SPEC_FACTORIES = frozenset({"List", "Dict"})
+
+# The positional slot ``sanitize`` occupies in each factory's signature. It is
+# positional-or-keyword in both, so ``Text(True)`` and ``String(255, None, True)``
+# are explicit opt-ins that a keyword-only scan would miss.
+_SANITIZE_POSITION = {"String": 2, "Text": 0}
+
+
+def _domain_sanitize_default(domain: Domain) -> bool:
+    """The domain's ``[field_defaults] sanitize`` default.
+
+    Reads through the same coercion the field layer uses, so a string spelling
+    from env-var interpolation (``"${SANITIZE|true}"`` resolving to ``"true"``)
+    is read the same way in both places. A domain with no such key uses the
+    framework default, ``False``.
+    """
+    from protean.fields.spec import _coerce_sanitize_flag  # noqa: PLC0415
+
+    try:
+        raw = domain.config["field_defaults"]["sanitize"]
+    except (KeyError, TypeError):
+        return False
+    return _coerce_sanitize_flag(raw)
+
+
+def _attribute_root(node: ast.expr) -> str | None:
+    """The leftmost name in an attribute chain: ``a.b.c`` gives ``"a"``."""
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _field_factory_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
+    """What ``String`` and ``Text`` are bound to in one module.
+
+    Returns the local names that resolve to a Protean field factory (mapped to
+    the factory they name) and the local names that resolve to a Protean module,
+    so ``fields.String(...)`` and ``protean.fields.Text(...)`` resolve too.
+
+    Matching on the trailing symbol alone gets this wrong both ways:
+    ``from protean.fields import String as StringField`` is a field declaration
+    that the trailing name misses, and ``from sqlalchemy import String`` is not
+    one but the trailing name matches it. Both matter here, because this detector
+    is the migration safety net for a silent behavior change.
+    """
+    factories: dict[str, str] = {}
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if not node.module or node.module.split(".")[0] != _FIELD_MODULE_ROOT:
+                continue
+            for alias in node.names:
+                local = alias.asname or alias.name
+                if alias.name in _SANITIZE_POSITION:
+                    factories[local] = alias.name
+                else:
+                    # ``from protean import fields`` — a module, reached by
+                    # attribute access below.
+                    modules.add(local)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] == _FIELD_MODULE_ROOT:
+                    modules.add(alias.asname or alias.name.split(".")[0])
+    return factories, modules
+
+
+def _resolved_factory(
+    func: ast.expr, factories: dict[str, str], modules: set[str]
+) -> str | None:
+    """The Protean field factory a call names, or ``None`` if it names something
+    else."""
+    if isinstance(func, ast.Name):
+        return factories.get(func.id)
+    if isinstance(func, ast.Attribute) and func.attr in _SANITIZE_POSITION:
+        root = _attribute_root(func)
+        if root is not None and root in modules:
+            return func.attr
+    return None
+
+
+def _content_spec_calls(tree: ast.Module) -> set[int]:
+    """``id()`` of every call passed as a content spec to a container factory."""
+    nested: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _symbol_name(node.func) not in _CONTENT_SPEC_FACTORIES:
+            continue
+        for arg in [*node.args, *(kw.value for kw in node.keywords)]:
+            if isinstance(arg, ast.Call):
+                nested.add(id(arg))
+    return nested
+
+
+def _declares_sanitize(node: ast.Call, factory: str) -> bool:
+    """Whether a call passes ``sanitize`` explicitly, by keyword or position."""
+    if any(kw.arg == "sanitize" for kw in node.keywords):
+        return True
+    return len(node.args) > _SANITIZE_POSITION[factory]
+
 
 def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
     """``module:line`` for each ``String(...)`` / ``Text(...)`` that left
@@ -464,36 +580,51 @@ def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
 
     A ``choices=`` field is skipped: a choices field was never sanitized (the
     value must match a declared choice exactly), so it never relied on the old
-    default. A field that passes ``sanitize=`` either way declared its intent
-    explicitly and is unaffected by the flip, so it is skipped too. Source
-    parsing is required here: after the flip a live domain cannot tell an unset
-    field from an explicit ``sanitize=False``; only the source distinguishes
-    them.
+    default. A field that passes ``sanitize=`` either way, by keyword or
+    positionally, declared its intent explicitly and is unaffected by the flip,
+    so it is skipped too. Source parsing is required here: after the flip a live
+    domain cannot tell an unset field from an explicit ``sanitize=False``; only
+    the source distinguishes them.
     """
     sites: list[str] = []
     for module_name, tree in trees:
+        factories, modules = _field_factory_bindings(tree)
+        if not factories and not modules:
+            continue
+        nested = _content_spec_calls(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            if _symbol_name(node.func) not in ("String", "Text"):
+            factory = _resolved_factory(node.func, factories, modules)
+            if factory is None:
                 continue
-            keyword_names = {kw.arg for kw in node.keywords}
-            if "sanitize" in keyword_names or "choices" in keyword_names:
+            if id(node) in nested:
+                continue
+            if _declares_sanitize(node, factory):
+                continue
+            if any(kw.arg == "choices" for kw in node.keywords):
                 continue
             # A ``**kwargs`` splat (``String(**opts)``) shows up as a keyword
-            # with ``arg is None``. Its contents are invisible to a static scan,
-            # so ``sanitize`` or ``choices`` could be hidden inside. Skip rather
-            # than report a false positive.
-            if None in keyword_names:
+            # with ``arg is None``; a ``*args`` splat shows up as ``ast.Starred``.
+            # Neither is readable by a static scan, so ``sanitize`` or ``choices``
+            # could be hidden inside. Skip rather than report a false positive.
+            if any(kw.arg is None for kw in node.keywords):
+                continue
+            if any(isinstance(arg, ast.Starred) for arg in node.args):
                 continue
             sites.append(f"{module_name}:{node.lineno}")
     return sites
 
 
 def _detect_default_sanitize(
-    trees: list[Tree], pinned: Version
+    trees: list[Tree], pinned: Version, domain: Domain
 ) -> list[UpgradeFinding]:
     if not _owned(_SANITIZE_DEFAULT_RELEASE, pinned):
+        return []
+    # With ``[field_defaults] sanitize = true`` the domain has already opted
+    # every unset field back into the old behavior, so nothing changed for them
+    # and there is no migration to do.
+    if _domain_sanitize_default(domain):
         return []
     sites = _sanitize_reliant_sites(trees)
     if not sites:
@@ -508,7 +639,9 @@ def _detect_default_sanitize(
                 "default from True to False: a field declared without an explicit "
                 "`sanitize=` kwarg no longer runs `bleach.clean()`, so the stored "
                 "value is now the raw input. Fields that relied on the old default "
-                f"are at: {_summarise(sorted(sites))}."
+                # Listed in full, not summarised: this is the migration checklist,
+                # and a site left off it is a site nobody reviews.
+                f"are at: {', '.join(sorted(sites))}."
             ),
             remediation=(
                 "Sanitization is a display-layer concern, so the real fix is to "
@@ -553,7 +686,7 @@ def run_opportunity_checks(domain: Domain, pinned_version: str) -> list[UpgradeF
     findings: list[UpgradeFinding] = []
     for detector in _DETECTORS:
         try:
-            findings.extend(detector(trees, pinned))
+            findings.extend(detector(trees, pinned, domain))
         except Exception as exc:
             findings.append(
                 UpgradeFinding(

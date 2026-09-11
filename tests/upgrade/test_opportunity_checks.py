@@ -36,6 +36,19 @@ def trees(src: str) -> list[tuple[str, ast.Module]]:
     return [("m", ast.parse(src))]
 
 
+class _StubDomain:
+    """Stands in for a Domain in the detector unit tests, which drive detectors
+    on in-memory source. Only ``config`` is read."""
+
+    def __init__(self, config=None):
+        self.config = config if config is not None else {}
+
+
+# A domain that sets no ``[field_defaults]`` override, so the framework default
+# (``sanitize=False``) applies and the sanitize detector is not suppressed.
+NO_DEFAULTS = _StubDomain()
+
+
 class TestVersionParsing:
     def test_plain_semver(self):
         assert parse_version("0.16.3") == (0, 16, 3)
@@ -59,7 +72,7 @@ class TestRawSqlDetector:
             "def q(s):\n"
             "    return s.execute(text('SELECT 1'))\n"
         )
-        findings = _detect_raw_sql(trees(src), OWNS_ALL)
+        findings = _detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS)
         assert len(findings) == 1
         finding = findings[0]
         assert finding.code == "OPPORTUNITY_QUERY_API"
@@ -74,22 +87,22 @@ class TestRawSqlDetector:
             "    s.execute(text('SELECT 1'))\n"
             "    s.execute(text('SELECT 2'))\n"
         )
-        findings = _detect_raw_sql(trees(src), OWNS_ALL)
+        findings = _detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS)
         assert findings[0].title.startswith("2 raw")
 
     def test_module_alias_attribute_call_is_flagged(self):
         src = "import sqlalchemy as sa\ndef q(s):\n    s.execute(sa.text('SELECT 1'))\n"
-        assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_aliased_from_import_is_flagged(self):
         src = "from sqlalchemy import text as t\ndef q(s):\n    s.execute(t('x'))\n"
-        assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_qualified_sqlalchemy_sql_text_is_flagged(self):
         # `sqlalchemy.sql.text(...)` reaches the same `text` through the module
         # path, so the root of the chain is the bound `sqlalchemy` alias.
         src = "import sqlalchemy\ndef q(s):\n    s.execute(sqlalchemy.sql.text('x'))\n"
-        assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_unrelated_imports_do_not_break_text_detection(self):
         # An unrelated `import` and a non-`text` name in the sqlalchemy import
@@ -100,23 +113,23 @@ class TestRawSqlDetector:
             "def q(s):\n"
             "    return s.execute(text('SELECT 1'))\n"
         )
-        assert len(_detect_raw_sql(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_clean_domain_gives_no_finding(self):
         src = "def q(repo):\n    return repo.filter(name='x')\n"
-        assert _detect_raw_sql(trees(src), OWNS_ALL) == []
+        assert _detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_local_text_without_sqlalchemy_import_is_not_flagged(self):
         # The import gate is the whole point: a `text()` that is not the
         # sqlalchemy import must stay silent.
         src = "def text(x):\n    return x\ndef q():\n    return text('hi')\n"
-        assert _detect_raw_sql(trees(src), OWNS_ALL) == []
+        assert _detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_text_attribute_on_an_unrelated_object_is_not_flagged(self):
         # `widget.text(...)` is an attribute call whose root is not the
         # sqlalchemy module, so it is not a raw-SQL site.
         src = "def q(widget):\n    return widget.text('hi')\n"
-        assert _detect_raw_sql(trees(src), OWNS_ALL) == []
+        assert _detect_raw_sql(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
 
 class TestCustomMiddlewareDetector:
@@ -126,7 +139,7 @@ class TestCustomMiddlewareDetector:
             "class ContextMiddleware(BaseHTTPMiddleware):\n"
             "    pass\n"
         )
-        findings = _detect_custom_middleware(trees(src), OWNS_ALL)
+        findings = _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS)
         assert len(findings) == 1
         assert findings[0].code == "OPPORTUNITY_DOMAIN_CONTEXT_MIDDLEWARE"
         assert "0.15.0" in findings[0].detail
@@ -137,16 +150,16 @@ class TestCustomMiddlewareDetector:
             "    async def dispatch(self, request, call_next):\n"
             "        return await call_next(request)\n"
         )
-        assert len(_detect_custom_middleware(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_add_middleware_of_a_custom_class_is_flagged(self):
         src = "def wire(app):\n    app.add_middleware(MyMiddleware)\n"
-        assert len(_detect_custom_middleware(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_adding_domain_context_middleware_is_not_flagged(self):
         # The framework's own middleware is the answer, not an opportunity.
         src = "def wire(app):\n    app.add_middleware(DomainContextMiddleware)\n"
-        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+        assert _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_standard_framework_middlewares_are_not_flagged(self):
         # CORS/gzip/etc. are the ASGI stack's own middlewares, not hand-rolled
@@ -158,7 +171,7 @@ class TestCustomMiddlewareDetector:
             "    app.add_middleware(GZipMiddleware)\n"
             "    app.add_middleware(TrustedHostMiddleware)\n"
         )
-        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+        assert _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_qualified_base_http_middleware_subclass_is_flagged(self):
         # Subclassing through the module path is the same middleware.
@@ -167,7 +180,7 @@ class TestCustomMiddlewareDetector:
             "class ContextMiddleware(starlette.middleware.base.BaseHTTPMiddleware):\n"
             "    pass\n"
         )
-        assert len(_detect_custom_middleware(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_qualified_framework_middlewares_are_not_flagged(self):
         # Registering through the module path is still the stack's own middleware.
@@ -176,7 +189,7 @@ class TestCustomMiddlewareDetector:
             "def wire(app):\n"
             "    app.add_middleware(starlette.middleware.cors.CORSMiddleware)\n"
         )
-        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+        assert _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_aliased_standard_middleware_is_not_flagged(self):
         # Importing a standard middleware under an alias is still the stack's own
@@ -186,13 +199,13 @@ class TestCustomMiddlewareDetector:
             "def wire(app):\n"
             "    app.add_middleware(CORS)\n"
         )
-        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+        assert _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_add_middleware_with_a_computed_argument_is_ignored(self):
         # A middleware built by a call has no static name to check, so it is
         # neither matched against the framework set nor flagged.
         src = "def wire(app):\n    app.add_middleware(make_middleware())\n"
-        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+        assert _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_own_class_aliased_like_a_standard_middleware_is_flagged(self):
         # A user's own middleware imported from their package under a name that
@@ -203,16 +216,16 @@ class TestCustomMiddlewareDetector:
             "def wire(app):\n"
             "    app.add_middleware(CORS)\n"
         )
-        assert len(_detect_custom_middleware(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_class_with_multiple_unrelated_bases_is_not_flagged(self):
         # Walking past several non-middleware bases still lands on "not custom".
         src = "class M(Foo, Bar):\n    pass\n"
-        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+        assert _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_a_plain_class_is_not_flagged(self):
         src = "class Order:\n    async def dispatch(self):\n        return None\n"
-        assert _detect_custom_middleware(trees(src), OWNS_ALL) == []
+        assert _detect_custom_middleware(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
 
 class TestQueueStatusDetector:
@@ -221,39 +234,39 @@ class TestQueueStatusDetector:
             "class Job:\n"
             "    status = String(choices=['pending', 'processing', 'done', 'failed'])\n"
         )
-        findings = _detect_queue_status(trees(src), OWNS_ALL)
+        findings = _detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS)
         assert len(findings) == 1
         assert findings[0].code == "OPPORTUNITY_OUTBOX"
         assert "0.14.0" in findings[0].detail
 
     def test_annotated_assignment_is_flagged(self):
         src = "class Job:\n    state: str = Field(choices=['queued', 'sent'])\n"
-        assert len(_detect_queue_status(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_non_queue_status_choices_are_not_flagged(self):
         # A domain `status` with business choices is not a work queue.
         src = "class User:\n    status = String(choices=['active', 'inactive'])\n"
-        assert _detect_queue_status(trees(src), OWNS_ALL) == []
+        assert _detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_non_string_choice_members_are_skipped(self):
         # A non-string member in the choices list is skipped; the string queue
         # tokens still drive the match.
         src = "class Job:\n    status = String(choices=['pending', 'processing', 3])\n"
-        assert len(_detect_queue_status(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_single_queue_token_is_not_enough(self):
         # One overlapping token is too loose; a match needs at least two.
         src = "class User:\n    status = String(choices=['pending', 'approved'])\n"
-        assert _detect_queue_status(trees(src), OWNS_ALL) == []
+        assert _detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_enum_choices_are_not_read(self):
         # An enum reference has no literal members to inspect, so it stays silent.
         src = "class Job:\n    status = String(choices=JobStatus)\n"
-        assert _detect_queue_status(trees(src), OWNS_ALL) == []
+        assert _detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_non_status_field_with_queue_words_is_not_flagged(self):
         src = "class Job:\n    label = String(choices=['pending', 'done', 'failed'])\n"
-        assert _detect_queue_status(trees(src), OWNS_ALL) == []
+        assert _detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS) == []
 
     def test_other_field_keywords_are_skipped_before_choices(self):
         # A field carrying more than `choices` still matches on its choices.
@@ -262,7 +275,7 @@ class TestQueueStatusDetector:
             "    status = String(required=True, "
             "choices=['pending', 'processing', 'done'])\n"
         )
-        assert len(_detect_queue_status(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
     def test_a_non_call_assignment_is_ignored(self):
         # A plain constant assignment beside the field is not a field at all.
@@ -271,74 +284,217 @@ class TestQueueStatusDetector:
             "class Job:\n"
             "    status = String(choices=['pending', 'processing', 'done'])\n"
         )
-        assert len(_detect_queue_status(trees(src), OWNS_ALL)) == 1
+        assert len(_detect_queue_status(trees(src), OWNS_ALL, NO_DEFAULTS)) == 1
 
 
+@pytest.mark.no_test_domain
 class TestDefaultSanitizeDetector:
     # The sanitize-default flip shipped in 0.18.0, so the detector only fires
     # once the domain is pinned there or later.
     OWNS = parse_version("0.18.0")
 
+    # Every fixture imports the factories the way a real domain module does.
+    # The detector resolves `String`/`Text` back to a Protean import, so an
+    # unbound name is not a field declaration.
+    IMPORT = "from protean.fields import String, Text\n"
+
+    def _findings(self, body: str, pinned=None, domain=NO_DEFAULTS):
+        return _detect_default_sanitize(
+            trees(self.IMPORT + body), pinned or self.OWNS, domain
+        )
+
     def test_unset_string_field_is_flagged(self):
-        src = "class User:\n    name = String(max_length=50)\n"
-        findings = _detect_default_sanitize(trees(src), self.OWNS)
+        findings = self._findings("class User:\n    name = String(max_length=50)\n")
         assert len(findings) == 1
         finding = findings[0]
         assert finding.code == "SANITIZE_DEFAULT_CHANGED"
         assert finding.level == "info"
         assert "0.18.0" in finding.detail
-        assert "m:2" in finding.detail
+        assert "m:3" in finding.detail
 
     def test_unset_text_field_is_flagged(self):
-        src = "class Post:\n    body = Text()\n"
-        assert len(_detect_default_sanitize(trees(src), self.OWNS)) == 1
+        assert len(self._findings("class Post:\n    body = Text()\n")) == 1
 
     def test_counts_every_unset_site(self):
-        src = "class User:\n    name = String()\n    bio = Text()\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS)[0].title.startswith("2 ")
+        findings = self._findings(
+            "class User:\n    name = String()\n    bio = Text()\n"
+        )
+        assert findings[0].title.startswith("2 ")
 
     def test_explicit_sanitize_false_is_not_flagged(self):
         # A field that declares its intent is unaffected by the flip.
-        src = "class User:\n    name = String(sanitize=False)\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+        assert self._findings("class User:\n    name = String(sanitize=False)\n") == []
 
     def test_explicit_sanitize_true_is_not_flagged(self):
-        src = "class User:\n    name = String(sanitize=True)\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+        assert self._findings("class User:\n    name = String(sanitize=True)\n") == []
 
     def test_choices_field_is_not_flagged(self):
         # A choices field was never sanitized, so it never relied on the default.
-        src = "class User:\n    status = String(choices=['active', 'inactive'])\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+        body = "class User:\n    status = String(choices=['active', 'inactive'])\n"
+        assert self._findings(body) == []
 
     def test_text_choices_field_is_not_flagged(self):
         # The choices carve-out applies to Text too, not just String.
-        src = "class Post:\n    kind = Text(choices=['draft', 'published'])\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+        body = "class Post:\n    kind = Text(choices=['draft', 'published'])\n"
+        assert self._findings(body) == []
 
     def test_kwargs_splat_is_not_flagged(self):
         # `String(**opts)` hides its keywords from a static scan; `sanitize` or
         # `choices` could be inside, so the site is skipped rather than reported
         # as a false positive.
-        src = "class User:\n    name = String(**opts)\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+        assert self._findings("class User:\n    name = String(**opts)\n") == []
 
     def test_kwargs_splat_alongside_explicit_kwargs_is_not_flagged(self):
-        src = "class User:\n    name = String(max_length=50, **opts)\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+        body = "class User:\n    name = String(max_length=50, **opts)\n"
+        assert self._findings(body) == []
+
+    def test_args_splat_is_not_flagged(self):
+        # `String(*opts)` hides its positional arguments the same way, and
+        # `sanitize` is positional-or-keyword, so it could be in there.
+        assert self._findings("class User:\n    name = String(*opts)\n") == []
 
     def test_non_string_field_is_not_flagged(self):
-        src = "class User:\n    age = Integer()\n    joined = DateTime()\n"
-        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+        body = "class User:\n    age = Integer()\n    joined = DateTime()\n"
+        assert self._findings(body) == []
+
+    def test_annotation_style_declaration_is_flagged(self):
+        body = "class User:\n    name: String(max_length=50)\n"
+        assert len(self._findings(body)) == 1
+
+    # -- Resolving what `String`/`Text` actually name -----------------------
 
     def test_module_qualified_call_is_flagged(self):
         # `fields.String(...)` reaches the same factory through the module path.
-        src = "class User:\n    name = fields.String(max_length=50)\n"
-        assert len(_detect_default_sanitize(trees(src), self.OWNS)) == 1
+        src = (
+            "from protean import fields\n"
+            "class User:\n"
+            "    name = fields.String(max_length=50)\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
 
-    def test_annotation_style_declaration_is_flagged(self):
-        src = "class User:\n    name: String(max_length=50)\n"
-        assert len(_detect_default_sanitize(trees(src), self.OWNS)) == 1
+    def test_dotted_module_import_is_flagged(self):
+        src = (
+            "import protean\n"
+            "class User:\n"
+            "    name = protean.fields.String(max_length=50)\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_aliased_import_is_flagged(self):
+        # `String as StringField` is still a Protean field declaration; matching
+        # on the trailing name alone would miss it.
+        src = (
+            "from protean.fields import String as StringField\n"
+            "class User:\n"
+            "    name = StringField(max_length=50)\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_aliased_text_import_is_flagged(self):
+        src = (
+            "from protean.fields import Text as Body\nclass Post:\n    body = Body()\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_string_from_another_library_is_not_flagged(self):
+        # SQLAlchemy has a `String` too, and it is not a Protean field.
+        src = (
+            "from sqlalchemy import Column, String\n"
+            "class UserTable:\n"
+            "    name = Column(String(50))\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_unimported_local_string_is_not_flagged(self):
+        # A locally defined `String` shares the name and nothing else.
+        src = "def String(**kw):\n    return kw\nclass User:\n    name = String()\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    # -- Explicit opt-ins passed positionally --------------------------------
+
+    def test_positional_sanitize_on_text_is_not_flagged(self):
+        # `sanitize` is the first positional parameter of `Text`, so `Text(True)`
+        # is an explicit opt-in, not a field relying on the old default.
+        assert self._findings("class Post:\n    body = Text(True)\n") == []
+
+    def test_positional_sanitize_on_string_is_not_flagged(self):
+        # `String(max_length, min_length, sanitize)` — the third positional slot.
+        body = "class User:\n    name = String(255, None, True)\n"
+        assert self._findings(body) == []
+
+    def test_positional_args_short_of_sanitize_are_still_flagged(self):
+        # Two positional arguments stop before the `sanitize` slot, so the field
+        # still left it unset.
+        assert len(self._findings("class User:\n    name = String(255, 2)\n")) == 1
+
+    # -- Container content specs ---------------------------------------------
+
+    def test_string_inside_a_list_content_spec_is_not_flagged(self):
+        # `List` reads the inner spec's type and choices and never attaches its
+        # sanitization validator, so the inner `String` was not sanitized before
+        # the flip either.
+        src = (
+            "from protean.fields import List, String\n"
+            "class Post:\n"
+            "    tags = List(String(max_length=50))\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_string_as_a_keyword_content_spec_is_not_flagged(self):
+        src = (
+            "from protean.fields import List, String\n"
+            "class Post:\n"
+            "    tags = List(content_type=String(max_length=50))\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_text_inside_a_dict_value_spec_is_not_flagged(self):
+        src = (
+            "from protean.fields import Dict, Text\n"
+            "class Post:\n"
+            "    meta = Dict(value_type=Text())\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    # -- The domain's own default --------------------------------------------
+
+    def test_domain_default_true_suppresses_the_finding(self):
+        # With `[field_defaults] sanitize = true` the domain already opted every
+        # unset field back into the old behavior, so nothing changed for them.
+        domain = _StubDomain({"field_defaults": {"sanitize": True}})
+        body = "class User:\n    name = String(max_length=50)\n"
+        assert self._findings(body, domain=domain) == []
+
+    def test_domain_default_true_as_a_string_suppresses_the_finding(self):
+        # Env-var interpolation yields strings; they are read the same way the
+        # field layer reads them.
+        domain = _StubDomain({"field_defaults": {"sanitize": "true"}})
+        body = "class User:\n    name = String(max_length=50)\n"
+        assert self._findings(body, domain=domain) == []
+
+    def test_domain_default_false_leaves_the_finding(self):
+        domain = _StubDomain({"field_defaults": {"sanitize": False}})
+        body = "class User:\n    name = String(max_length=50)\n"
+        assert len(self._findings(body, domain=domain)) == 1
+
+    def test_malformed_domain_default_leaves_the_finding(self):
+        # A config mutated to a non-mapping does not silently suppress the
+        # migration report.
+        domain = _StubDomain({"field_defaults": False})
+        body = "class User:\n    name = String(max_length=50)\n"
+        assert len(self._findings(body, domain=domain)) == 1
+
+    # -- The report is a checklist -------------------------------------------
+
+    def test_every_site_is_listed_not_summarised(self):
+        # More than ten sites: the detail is the migration checklist, so a site
+        # left off it is a site nobody reviews.
+        body = "class User:\n" + "".join(f"    f{i} = String()\n" for i in range(12))
+        findings = self._findings(body)
+        assert findings[0].title.startswith("12 ")
+        assert "more)" not in findings[0].detail
+        for line in range(3, 15):
+            assert f"m:{line}" in findings[0].detail
 
 
 class TestVersionGate:
@@ -351,13 +507,22 @@ class TestVersionGate:
     def test_pinned_below_the_release_suppresses_the_finding(self):
         # The query API arrived in 0.16.0; a domain pinned to 0.15.0 does not own
         # it yet, so there is nothing to claim.
-        assert _detect_raw_sql(trees(self._SRC), parse_version("0.15.0")) == []
+        assert (
+            _detect_raw_sql(trees(self._SRC), parse_version("0.15.0"), NO_DEFAULTS)
+            == []
+        )
 
     def test_pinned_at_the_release_surfaces_the_finding(self):
-        assert len(_detect_raw_sql(trees(self._SRC), parse_version("0.16.0"))) == 1
+        assert (
+            len(_detect_raw_sql(trees(self._SRC), parse_version("0.16.0"), NO_DEFAULTS))
+            == 1
+        )
 
     def test_pinned_above_the_release_surfaces_the_finding(self):
-        assert len(_detect_raw_sql(trees(self._SRC), parse_version("0.17.2"))) == 1
+        assert (
+            len(_detect_raw_sql(trees(self._SRC), parse_version("0.17.2"), NO_DEFAULTS))
+            == 1
+        )
 
     def test_middleware_gate_suppresses_below_its_release(self):
         # DomainContextMiddleware arrived in 0.15.0.
@@ -366,22 +531,37 @@ class TestVersionGate:
             "class M(BaseHTTPMiddleware):\n"
             "    pass\n"
         )
-        assert _detect_custom_middleware(trees(src), parse_version("0.14.0")) == []
+        assert (
+            _detect_custom_middleware(trees(src), parse_version("0.14.0"), NO_DEFAULTS)
+            == []
+        )
 
     def test_outbox_gate_suppresses_below_its_release(self):
         # The outbox arrived in 0.14.0.
         src = "class Job:\n    status = String(choices=['pending', 'done', 'failed'])\n"
-        assert _detect_queue_status(trees(src), parse_version("0.13.1")) == []
+        assert (
+            _detect_queue_status(trees(src), parse_version("0.13.1"), NO_DEFAULTS) == []
+        )
+
+    _SANITIZE_SRC = (
+        "from protean.fields import String\n"
+        "class User:\n"
+        "    name = String(max_length=50)\n"
+    )
 
     def test_sanitize_gate_suppresses_below_its_release(self):
         # The sanitize-default flip shipped in 0.18.0; a domain pinned to 0.17.0
         # still has the old default, so there is nothing to migrate yet.
-        src = "class User:\n    name = String(max_length=50)\n"
-        assert _detect_default_sanitize(trees(src), parse_version("0.17.0")) == []
+        findings = _detect_default_sanitize(
+            trees(self._SANITIZE_SRC), parse_version("0.17.0"), NO_DEFAULTS
+        )
+        assert findings == []
 
     def test_sanitize_gate_surfaces_at_its_release(self):
-        src = "class User:\n    name = String(max_length=50)\n"
-        assert len(_detect_default_sanitize(trees(src), parse_version("0.18.0"))) == 1
+        findings = _detect_default_sanitize(
+            trees(self._SANITIZE_SRC), parse_version("0.18.0"), NO_DEFAULTS
+        )
+        assert len(findings) == 1
 
 
 @pytest.mark.no_test_domain
@@ -453,7 +633,7 @@ class TestAgainstRealSource:
         assert first, "expected at least one finding to compare"
 
     def test_a_raising_detector_is_isolated(self, tmp_path, monkeypatch):
-        def boom(trees, pinned):
+        def boom(trees, pinned, domain):
             raise RuntimeError("detector blew up")
 
         monkeypatch.setattr(

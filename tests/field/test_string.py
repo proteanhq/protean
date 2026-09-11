@@ -16,7 +16,7 @@ from protean import Domain
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import ValidationError
+from protean.exceptions import ConfigurationError, ValidationError
 from protean.fields import Identifier, String, Text
 
 
@@ -52,10 +52,15 @@ def test_that_sanitization_can_be_explicitly_switched_off():
     assert vo.name == "an <script>evil()</script> example"
 
 
+@pytest.mark.no_test_domain
 class TestDomainLevelSanitizeDefault:
     """``[field_defaults] sanitize`` sets the default for fields that leave
     ``sanitize`` unset. Precedence: field kwarg > domain default > framework
     default. Exercised through ``Domain.init()`` so the config path is real.
+
+    ``no_test_domain`` keeps the suite's autouse ``test_domain`` fixture out of
+    the way: these tests build and enter their own domains, and the default one
+    would otherwise be initialized (with its infrastructure) for every case.
     """
 
     def _domain(self, sanitize_default=None):
@@ -185,7 +190,6 @@ class TestDomainLevelSanitizeDefault:
             ("no", False),
             ("off", False),
             ("", False),
-            ("garbage", False),
         ],
     )
     def test_string_config_values_are_coerced_to_a_real_bool(self, raw, sanitizes):
@@ -206,6 +210,30 @@ class TestDomainLevelSanitizeDefault:
         with domain.domain_context():
             vo = RawVO(name=raw_html)
         assert vo.name == (cleaned if sanitizes else raw_html)
+
+    def test_an_unrecognized_spelling_is_rejected_at_config_load(self):
+        # A typo must not read as "do not sanitize": that turns an operator's
+        # mistake into a silent fail-open on a security-relevant setting. The
+        # config validator rejects it when the domain loads its config.
+        with pytest.raises(ConfigurationError) as exc:
+            self._domain(sanitize_default="maybe")
+        assert "field_defaults.sanitize" in str(exc.value)
+
+    def test_a_value_mutated_in_after_load_still_raises(self):
+        # The config validator is the gate, but a config mutated in place after
+        # load bypasses it. The field-level read raises rather than falling back
+        # to "do not sanitize".
+        class RawVO(BaseValueObject):
+            name = String()
+
+        domain = self._domain()
+        domain.register(RawVO)
+        domain.init(traverse=False)
+        domain.config["field_defaults"]["sanitize"] = object()
+
+        with domain.domain_context(), pytest.raises(ConfigurationError) as exc:
+            RawVO(name="x")
+        assert "field_defaults.sanitize" in str(exc.value)
 
 
 @pytest.mark.no_test_domain

@@ -426,6 +426,16 @@ def _track_id_field(cls: type) -> None:
 
 _T = TypeVar("_T")
 
+# The string spellings a boolean config flag may be written as. Config env-var
+# interpolation only ever yields strings, so ``sanitize = "${SANITIZE|false}"``
+# with the var unset arrives as the string ``"false"``; a plain ``bool(...)`` on
+# that reads True, the opposite of what the operator wrote. Both the config
+# validator (protean.domain.config) and the field-level reader
+# (protean.fields.spec) parse against these sets, so they agree on what counts
+# as a valid spelling.
+TRUTHY_FLAG_SPELLINGS = frozenset({"true", "1", "yes", "on"})
+FALSY_FLAG_SPELLINGS = frozenset({"false", "0", "no", "off", ""})
+
 
 def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] | None:
     """Normalize the ``deprecated`` value used by element decorators and by
