@@ -390,10 +390,10 @@ ever stored).
 |-----------|----------|
 | Add optional field with default | No upcaster needed, add `default=` |
 | Add required field with computable default | Upcaster |
-| Rename a field | Upcaster |
+| Rename a field | `renamed_from` (an upcaster only if you are already bumping the version) |
 | Change field type (e.g. string→int) | Upcaster |
 | Change data structure (flat→nested) | Upcaster |
-| Remove an unused field | Upcaster (strip from old data) |
+| Remove a field | Lenient mode drops it on read; an upcaster can strip it |
 | Change the meaning of a field | **New event type** |
 | Fundamentally different business operation | **New event type** |
 | Event applies to a different aggregate | **New event type** |
@@ -410,10 +410,10 @@ ever stored).
   time. Splitting one event into two or merging two events into one is not
   supported. Use compensating events or the copy-transform migration pattern.
 
-- **No eager/batch migration**: Upcasting is lazy (on-read). If you need to
-  rewrite the event store in a new format, use the copy-transform pattern
-  documented in the [Event Versioning](../../patterns/event-versioning-and-evolution.md)
-  pattern.
+- **No eager/batch migration**: Upcasting is lazy (on-read) and never rewrites
+  the store. To rewrite the event store in a new format, use an operator
+  migration, in-place transformation or copy-transform, documented under
+  [Migration Strategies](../../patterns/event-versioning-and-evolution.md#migration-strategies).
 
 ---
 

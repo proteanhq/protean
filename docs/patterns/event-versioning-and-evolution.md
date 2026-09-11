@@ -655,7 +655,7 @@ defaults on new fields for existing event types.
 | Add new event type | Yes | Add handler methods |
 | Add more choices to a field | Yes | Consumers handle unknowns |
 | Rename a field | Yes | `renamed_from` (same type, no version bump) |
-| Remove a field | No | Deprecate, don't remove |
+| Remove a field | With lenient mode | Deprecate, or read old payloads leniently (drops its data) |
 | Change field type | No | New field or new event type |
 | Change field semantics | No | New field name |
 | Add required field without default | No | Use default, or new event type |
@@ -673,13 +673,13 @@ defaults on new fields for existing event types.
 | Changed semantics | New field name or new event type |
 | Consumer compatibility | Tolerant reader pattern |
 | Historical replay | Handle all versions in @apply handlers |
-| Large migrations | Copy-transform or dual-write transition |
+| Large migrations | In-place transformation, copy-transform, or dual-write transition |
 | Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
 Events are permanent contracts. Evolve them the way you evolve APIs. Additive
 changes are safe, breaking changes require versioning. New fields get defaults.
-Old fields are never removed. Semantics never change. When in doubt, create a
-new event type.
+Old fields stay unless you opt into lenient reads, which drop them. Semantics
+never change. When in doubt, create a new event type.
 
 ---
 

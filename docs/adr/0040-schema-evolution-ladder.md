@@ -6,8 +6,9 @@
 
 ## Context
 
-An event is immutable once stored, but the code that reads it keeps changing. A
-field gets renamed, a new one is added, an old one is dropped. Months later a
+An event is immutable once stored (only a deliberate operator migration rewrites
+it), but the code that reads it keeps changing. A field gets renamed, a new one
+is added, an old one is dropped. Months later a
 handler still has to decode a payload written by last year's schema. Protean has
 three mechanisms for surviving that drift, and until now no written rule for
 which one to reach for.
@@ -18,9 +19,10 @@ which one to reach for.
   declares, recording them under `_dropped_fields` in the message metadata. It
   is the per-class `lenient` meta option or the `lenient_deserialization` config
   key, read by `Message._is_lenient`, and it is off by default.
-- Upcasters (`@domain.upcaster`): Rewrite a stored payload from one version to the
-  next. `Message.to_domain_object` walks the chain when a stored type string
-  names a version older than the current class.
+- Upcasters (`@domain.upcaster`): Transform a stored payload on read, in memory,
+  from one version to the next. `Message.to_domain_object` walks the chain when a
+  stored type string names a version older than the current class. The stored
+  event is left unchanged.
 
 ADR-0001 settled how events are versioned: monotonic integers, with the version
 in the `__type__` string. It also said compatibility semantics "are handled by
@@ -60,10 +62,11 @@ field.
 
 A change weak schema cannot express (a newly required field, a type change, a
 field split or merge) needs the version bumped and an upcaster for each hop. The
-upcaster rewrites the stored payload to the next version, and Protean chains
-them so a `v1` payload is walked up to the current version before a handler sees
-it. Use this rung whenever a stored value has to be transformed, which weak
-schema cannot do.
+upcaster transforms the payload on read, in memory, from one version to the next,
+leaving the stored event unchanged; Protean chains them so a `v1` payload is
+walked up to the current version before a handler sees it. This is a read-time
+transform, distinct from the Rung 3 migrations that rewrite the store. Use this
+rung whenever a stored value has to be transformed, which weak schema cannot do.
 
 ### Rung 3: an operator-level migration, for a chain grown past usefulness
 
