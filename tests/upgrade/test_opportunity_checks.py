@@ -494,6 +494,29 @@ class TestDefaultSanitizeDetector:
         )
         assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
 
+    def test_a_call_above_a_later_import_in_the_same_block_is_flagged(self):
+        # Within one compound statement, position order decides: the call sits
+        # above the SQLAlchemy import, so it resolved against the Protean
+        # binding and is a real site.
+        src = (
+            "from protean.fields import String\n"
+            "if True:\n"
+            "    name = String(max_length=50)\n"
+            "    from sqlalchemy import String\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:3" in findings[0].detail
+
+    def test_a_call_below_an_import_in_the_same_block_is_not_flagged(self):
+        src = (
+            "from protean.fields import String\n"
+            "if True:\n"
+            "    from sqlalchemy import String\n"
+            "    name = String(50)\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
     def test_a_conditional_foreign_import_still_shadows(self):
         src = (
             "from protean.fields import String\n"

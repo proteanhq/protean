@@ -2,6 +2,8 @@
 
 import pytest
 
+from protean import Domain
+from protean.fields.simple import String
 from protean.ir.builder import IRBuilder
 
 from .elements import (
@@ -145,9 +147,6 @@ class TestSparseRepresentation:
         assert "sanitize" not in product_fields["description"]  # unset Text
 
     def test_sanitize_absent_for_an_explicit_false_string(self):
-        from protean import Domain
-        from protean.fields.simple import String
-
         domain = Domain(name="ExplicitFalseSanitize", root_path=".")
 
         @domain.aggregate

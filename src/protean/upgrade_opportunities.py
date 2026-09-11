@@ -805,6 +805,22 @@ def _scan_scope(
     starts from a copy of the enclosing bindings, so a helper-local
     ``from sqlalchemy import String`` shadows the name inside that helper without
     touching the module-level field declarations around it.
+
+    Two places this approximates Python rather than matching it, both only
+    reachable by code no working domain contains:
+
+    - A name bound anywhere in a function is local to the whole function, not
+      just from its binding onward. A call above a function-local import of the
+      same name therefore raises ``UnboundLocalError`` at runtime; this reads it
+      positionally instead and reports it.
+    - A class body's bindings are not visible to functions or classes nested
+      inside it. This copies them in, so a class-body import would shadow the
+      name for a nested class too.
+
+    Both are read positionally on purpose: modelling them exactly costs a full
+    symbol table, and the shapes that tell the difference (an import buried in a
+    class body, a name used before its function-local import) are broken or
+    pathological code rather than field declarations anyone writes.
     """
     factories = dict(factories)
     modules = dict(modules)
@@ -817,16 +833,22 @@ def _scan_scope(
         # (``try: from protean.fields import String``) binds the name for
         # everything after it, and skipping those dropped their fields from the
         # checklist silently.
-        imports: list[ast.Import | ast.ImportFrom] = [
-            node for node in own if isinstance(node, (ast.Import, ast.ImportFrom))
+        # Imports and calls are interleaved by source position, not batched.
+        # An import anywhere in this statement takes effect from where it
+        # appears, so a guarded import (``try: from protean.fields import
+        # String``) binds the name for what follows, while a call that sits
+        # above a later import still resolves against the binding it actually
+        # had.
+        interesting = [
+            node
+            for node in own
+            if isinstance(node, (ast.Import, ast.ImportFrom, ast.Call))
         ]
-        imports.sort(key=lambda imported: (imported.lineno, imported.col_offset))
-        for imported in imports:
-            _apply_import(imported, factories, modules)
-
+        interesting.sort(key=lambda node: (node.lineno, node.col_offset))
         spec_calls = _content_spec_calls(own, factories, modules)
-        for node in own:
-            if not isinstance(node, ast.Call):
+        for node in interesting:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                _apply_import(node, factories, modules)
                 continue
             factory = _resolved_symbol(node.func, factories, modules)
             if factory not in _FIELD_FACTORIES:

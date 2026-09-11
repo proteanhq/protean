@@ -16,6 +16,7 @@ from protean import Domain
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
+from protean.domain.context import has_domain_context
 from protean.exceptions import ConfigurationError, ValidationError
 from protean.fields import Identifier, String, Text
 
@@ -248,8 +249,6 @@ class TestSanitizeDefaultWithoutADomainContext:
     """
 
     def test_unset_field_stays_raw_with_no_active_domain(self):
-        from protean.domain.context import has_domain_context
-
         assert has_domain_context() is False
 
         class RawVO(BaseValueObject):
