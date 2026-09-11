@@ -203,6 +203,10 @@ A stored v1 event automatically passes through both upcasters: v1→v2→v3.
 A stored v2 event passes through only v2→v3.
 A stored v3 event skips upcasting entirely (zero overhead).
 
+The `amount → total_amount` step renames a field inside a version bump to show
+how the chain composes. A rename on its own uses `renamed_from` and needs no
+version bump; the decision table below covers which change calls for which tool.
+
 ### Scenario 5: Removing an Obsolete Field
 
 The `legacy_code` field was never used by any handler but was stored in v1
@@ -393,7 +397,7 @@ ever stored).
 | Rename a field | `renamed_from` (an upcaster only if you are already bumping the version) |
 | Change field type (e.g. string→int) | Upcaster |
 | Change data structure (flat→nested) | Upcaster |
-| Remove a field | Lenient mode drops it on read; an upcaster can strip it |
+| Remove a field | Lenient mode drops it on read (an upcaster strips it only if you also bump the version) |
 | Change the meaning of a field | **New event type** |
 | Fundamentally different business operation | **New event type** |
 | Event applies to a different aggregate | **New event type** |

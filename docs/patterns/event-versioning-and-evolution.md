@@ -58,12 +58,14 @@ strategies to bridge old and new schemas.
 The golden rules:
 
 1. **New fields get defaults**: Always.
-2. **Old fields are never removed**: They can be deprecated but must remain
-   deserializable.
+2. **Old fields stay by default**: Keep and deprecate an unused field so old
+   payloads stay deserializable. To remove one, enable lenient mode, which drops it
+   on read and gives up its data (see [ADR-0040](../adr/0040-schema-evolution-ladder.md)).
 3. **Semantics never change**: A field's meaning is permanent. If the meaning
    changes, create a new field or a new event type.
-4. **Breaking changes create new event types**: If none of the above work, the
-   old event type is retired and a new one takes its place.
+4. **Structural changes are versioned**: A change weak schema cannot express (a
+   type change, a newly required field) bumps the version and adds an upcaster; a
+   change that no transformation can bridge retires the old event type for a new one.
 
 ---
 
@@ -244,8 +246,9 @@ class FulfillmentEventHandler(BaseEventHandler):
         repo.add(fulfillment)
 ```
 
-**When to use:** Significant structural changes, renamed fields, changed
-semantics, new required fields without meaningful defaults.
+**When to use:** Significant structural changes, changed semantics, new required
+fields without meaningful defaults, or a rename bundled with one of those. A pure
+rename uses `renamed_from` and needs no new event type.
 
 #### Marking the old event deprecated
 
@@ -330,9 +333,10 @@ message from the event store and constructing the typed event object. All
 handlers (`@apply`, `@handle`, projectors) always receive the current schema, regardless
 of which version was originally stored.
 
-**When to use:** Field renames, type changes, or calculated new fields where
-a reasonable transformation exists. Useful when you don't want handlers to
-know about historical schemas.
+**When to use:** Type changes, field splits or merges, or calculated new fields
+where a reasonable transformation exists. Useful when you don't want handlers to
+know about historical schemas. A pure rename uses `renamed_from` and needs no
+upcaster.
 
 **Trade-off:** Upcasting adds a processing layer and must be maintained as
 schemas evolve further. Each version needs an upcaster to the next.
@@ -656,9 +660,9 @@ defaults on new fields for existing event types.
 | Add more choices to a field | Yes | Consumers handle unknowns |
 | Rename a field | Yes | `renamed_from` (same type, no version bump) |
 | Remove a field | With lenient mode | Deprecate, or read old payloads leniently (drops its data) |
-| Change field type | No | New field or new event type |
+| Change field type | No | Version bump + upcaster, or a new field / event type |
 | Change field semantics | No | New field name |
-| Add required field without default | No | Use default, or new event type |
+| Add required field without default | No | Version bump + upcaster to supply it, or give it a default |
 | Split event into multiple events | No | New event types + transition period |
 
 ---

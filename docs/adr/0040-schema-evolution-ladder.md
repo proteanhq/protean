@@ -112,7 +112,8 @@ with the fixed type `SNAPSHOT` and no metadata. An aggregate carries a `_version
 upcast from, and `renamed_from`, lenient mode, and upcasters are all consumed by
 `Message.to_domain_object`, which a snapshot never reaches. So an adopter who declares `renamed_from`, enables
 lenient mode, and registers upcasters still has unloadable snapshots after a
-field change. The ladder settles what "the same treatment events get" means, so
+snapshot-breaking change: a field renamed or removed, or a required field added.
+(A field added with a default still constructs, since the default fills the gap.) The ladder settles what "the same treatment events get" means, so
 the snapshot fix (#1362) can align a snapshot with the rung that matches its
 change.
 
