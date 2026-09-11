@@ -57,13 +57,17 @@ strategies to bridge old and new schemas.
 
 The golden rules:
 
-1. **New fields get defaults**: Always.
-2. **Old fields are never removed**: They can be deprecated but must remain
-   deserializable.
+1. **New fields get defaults where possible**: A default keeps old payloads
+   readable. When no sensible default exists, reach for an upcaster or a new event
+   type (rule 4).
+2. **Old fields stay by default**: Keep and deprecate an unused field so old
+   payloads stay deserializable. To remove one, enable lenient mode, which drops it
+   on read and gives up its data (see [ADR-0040](../adr/0040-schema-evolution-ladder.md)).
 3. **Semantics never change**: A field's meaning is permanent. If the meaning
    changes, create a new field or a new event type.
-4. **Breaking changes create new event types**: If none of the above work, the
-   old event type is retired and a new one takes its place.
+4. **Structural changes are versioned**: A change weak schema cannot express (a
+   type change, a newly required field) bumps the version and adds an upcaster; a
+   change that no transformation can bridge retires the old event type for a new one.
 
 ---
 
@@ -77,7 +81,7 @@ The most common evolution. Add a new field with a default value that preserves
 the behavior of events written before the field existed:
 
 ```python
-# Version 1: original event
+# Before: original event
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
@@ -86,7 +90,7 @@ class OrderPlaced(BaseEvent):
     total: Float(required=True)
 
 
-# Version 2: added discount_code and channel
+# After: added discount_code and channel (same message version, no bump)
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
@@ -244,8 +248,11 @@ class FulfillmentEventHandler(BaseEventHandler):
         repo.add(fulfillment)
 ```
 
-**When to use:** Significant structural changes, renamed fields, changed
-semantics, new required fields without meaningful defaults.
+**When to use:** Significant structural changes, changed semantics, new required
+fields whose value cannot be computed from historical data, or a rename bundled
+with one of those. A pure rename uses `renamed_from` and needs no new event type.
+A required field whose value is computable from the old payload is a Rung 2
+upcaster case.
 
 #### Marking the old event deprecated
 
@@ -330,9 +337,10 @@ message from the event store and constructing the typed event object. All
 handlers (`@apply`, `@handle`, projectors) always receive the current schema, regardless
 of which version was originally stored.
 
-**When to use:** Field renames, type changes, or calculated new fields where
-a reasonable transformation exists. Useful when you don't want handlers to
-know about historical schemas.
+**When to use:** Type changes, field splits or merges, or calculated new fields
+where a reasonable transformation exists. Useful when you don't want handlers to
+know about historical schemas. A pure rename uses `renamed_from` and needs no
+upcaster.
 
 **Trade-off:** Upcasting adds a processing layer and must be maintained as
 schemas evolve further. Each version needs an upcaster to the next.
@@ -451,7 +459,9 @@ unambiguous. Avoid descriptive names for minor changes. They become unwieldy
 
 Events in the store are immutable historical records. Never update, delete, or
 "fix" stored events. If an event was written incorrectly, handle it through
-upcasting or compensating events.
+upcasting or compensating events. Rewriting a whole stream during a deliberate
+operator migration (see [Migration Strategies](#migration-strategies)) is the one
+exception to this rule; a single stored event is never edited in place.
 
 ```python
 # NEVER do this:
@@ -470,7 +480,9 @@ class OrderTotalCorrected(BaseEvent):
 
 When you deploy a schema change, existing events in the stream remain
 unchanged. New events use the new schema. The stream contains a mix of old
-and new schemas. Consumers must handle both.
+and new schemas. Consumers must handle both. This is the normal deployment path;
+a deliberate operator migration (see [Migration Strategies](#migration-strategies))
+is the one thing that rewrites existing events.
 
 ### Replaying from the Beginning
 
@@ -521,6 +533,13 @@ class Order(BaseAggregate):
 
 ## Migration Strategies
 
+When an upcaster chain has grown long enough that maintaining it costs more than
+it saves, the answer is to rewrite the stored events once, so no upcaster runs on
+every read. This is the top rung of the [schema-evolution
+ladder](../adr/0040-schema-evolution-ladder.md). Both tactics below rewrite the
+contents of an event store, which is migration work, so Protean leaves them to
+operators and does not build them into core.
+
 ### The Copy-Transform Pattern
 
 For large schema changes, create a new stream with transformed events:
@@ -532,6 +551,15 @@ For large schema changes, create a new stream with transformed events:
 5. Keep the old stream for audit purposes
 
 This is a heavy operation but provides a clean break from historical schemas.
+
+### In-Place Transformation
+
+In-place transformation rewrites the events in the existing stream to the current
+schema and retags them with the current type and version, so a rewritten event no
+longer takes the upcast path on read. It keeps the stream name and skips the
+consumer cutover that copy-transform needs, and it loses the original payloads
+unless you archive them first. Reach for it when the old schema has no audit value
+and the stream name must stay stable.
 
 ### The Dual-Write Transition
 
@@ -625,23 +653,34 @@ class OrderPlaced(BaseEvent):
     currency: String(required=True)  # BREAKS all historical events
 ```
 
-Historical events don't have `currency`. Deserialization fails. Always use
-defaults on new fields for existing event types.
+Historical events don't have `currency`, so deserialization fails. Give a new
+field a default, or supply the value with an upcaster when it can be computed, or
+create a new event type. The Decision Guide below lists the routes.
 
 ---
 
 ## Decision Guide
+
+The ladder at a glance:
+
+```mermaid
+flowchart TD
+    change(["A change to a stored event"]) --> q1{"Can weak schema<br/>express it?"}
+    q1 -->|"add a defaulted field,<br/>rename or remove a field"| r1["<b>Rung 1 · Weak schema</b><br/>renamed_from, lenient<br/>no version bump"]
+    q1 -->|"type change, newly required<br/>field, field split or merge"| r2["<b>Rung 2 · Versioning + upcaster</b><br/>bump the version<br/>transform on read, in memory<br/>(new event type if no value to supply)"]
+    r2 -->|"the upcaster chain<br/>grows too long"| r3["<b>Rung 3 · Operator migration</b><br/>in-place / copy-and-transform<br/>rewrites the store"]
+```
 
 | Change Type | Safe? | Strategy |
 |-------------|-------|----------|
 | Add optional field with default | Yes | add it |
 | Add new event type | Yes | Add handler methods |
 | Add more choices to a field | Yes | Consumers handle unknowns |
-| Rename a field | No | New event type or upcasting |
-| Remove a field | No | Deprecate, don't remove |
-| Change field type | No | New field or new event type |
+| Rename a field | Yes | `renamed_from` (same type, no version bump) |
+| Remove a field | With lenient mode | Deprecate, or read old payloads leniently (drops its data) |
+| Change field type | No | Version bump + upcaster, or a new field / event type |
 | Change field semantics | No | New field name |
-| Add required field without default | No | Use default, or new event type |
+| Add required field without default | No | Give it a default, an upcaster to supply a computable value, or a new event type |
 | Split event into multiple events | No | New event types + transition period |
 
 ---
@@ -652,17 +691,17 @@ defaults on new fields for existing event types.
 |--------|----------|
 | Adding data | Optional fields with defaults |
 | New operations | New event types |
-| Renamed fields | New event type (V2) or upcasting |
+| Renamed fields | `renamed_from` (weak schema) |
 | Changed semantics | New field name or new event type |
 | Consumer compatibility | Tolerant reader pattern |
 | Historical replay | Handle all versions in @apply handlers |
-| Large migrations | Copy-transform or dual-write transition |
-| Stored events | Never modified, only appended to |
+| Large migrations | In-place transformation, copy-transform, or dual-write transition |
+| Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
 Events are permanent contracts. Evolve them the way you evolve APIs. Additive
-changes are safe, breaking changes require versioning. New fields get defaults.
-Old fields are never removed. Semantics never change. When in doubt, create a
-new event type.
+changes are safe; structural changes are versioned or replaced. New fields get
+defaults. Old fields stay unless you opt into lenient reads, which drop them.
+Semantics never change. When in doubt, create a new event type.
 
 ---
 
