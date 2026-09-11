@@ -57,7 +57,9 @@ strategies to bridge old and new schemas.
 
 The golden rules:
 
-1. **New fields get defaults**: Always.
+1. **New fields get defaults where possible**: A default keeps old payloads
+   readable. When no sensible default exists, reach for an upcaster or a new event
+   type (rule 4).
 2. **Old fields stay by default**: Keep and deprecate an unused field so old
    payloads stay deserializable. To remove one, enable lenient mode, which drops it
    on read and gives up its data (see [ADR-0040](../adr/0040-schema-evolution-ladder.md)).

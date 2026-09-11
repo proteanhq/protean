@@ -298,7 +298,7 @@ flowchart TD
 |--------|-----|---------------|
 | Add an optional / defaulted field | add it | `FULL`, nobody breaks |
 | Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` if unmitigated |
-| Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` (Avro `aliases`) |
+| Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` via Avro `aliases`; `FULL` if the field was optional or defaulted |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |
 | Read old payloads with dropped fields | `lenient_deserialization` (opt-in) | read-path escape hatch |

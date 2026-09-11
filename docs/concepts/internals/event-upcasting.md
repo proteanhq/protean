@@ -393,11 +393,12 @@ adapters read raw messages and return `Message` objects. Upcasting happens when
 ### Snapshots
 
 Snapshot-based aggregate loading (`part_of(**snapshot_data)`) bypasses
-`Message.to_domain_object()` and constructs the aggregate directly. If a
-snapshot was taken with an old schema, the aggregate constructor handles it
-(or fails). Upcasting does **not** apply to snapshots, if an old snapshot fails
-to load, the system falls back to full event replay, where upcasting does
-apply.
+`Message.to_domain_object()` and constructs the aggregate directly, so upcasting
+does **not** apply to snapshots. A snapshot taken under an old schema constructs
+only when the current class still accepts its payload. A renamed, removed, or
+newly required field makes construction raise, with no fallback to event replay
+today. The [schema-evolution ladder](../../adr/0040-schema-evolution-ladder.md)
+documents this snapshot gap.
 
 ### `domain.init()` Ordering
 

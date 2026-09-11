@@ -32,10 +32,12 @@ marker.
 We will version events and commands with monotonic positive integers. The `__version__`
 attribute on message classes is an integer starting at 1, incremented by 1 for a change that
 needs a new version. ADR-0040's schema-evolution ladder settles which changes do: a
-structural change bumps the version and carries an upcaster, or becomes a new event type
-when no value can be supplied for it, and a change that weak schema handles (a field added
-with a default, a rename via `renamed_from`) keeps the current version. The framework validates the integer at class creation time in
-`BaseMessageType.__init_subclass__()`:
+structural change bumps the version, and a change that weak schema handles (a field added
+with a default, a rename via `renamed_from`) keeps the current version. Upcasters apply to
+stored events: an upcaster transforms an old event payload to the new version, or the event
+becomes a new type when no value can be supplied. Commands are versioned the same way, but
+they are not replayed, so they carry no upcaster. The framework validates the integer at
+class creation time in `BaseMessageType.__init_subclass__()`:
 
 ```python
 class UserRegistered(BaseEvent):
@@ -43,20 +45,24 @@ class UserRegistered(BaseEvent):
     user_id: Identifier(identifier=True)
     email: String()
 
-# After a structural change (email becomes required): bump the version and
-# register an upcaster to supply the field for old payloads.
+# After a structural change (email becomes required): bump the version.
+# A v1 -> v2 upcaster supplies `email` for old payloads (registered separately).
 class UserRegistered(BaseEvent):
     __version__ = 2
     user_id: Identifier(identifier=True)
     email: String(required=True)
 ```
 
+The block shows the class change only. The v1 → v2 upcaster that supplies `email`
+for stored v1 payloads is a separate registration; see the [Event Upcasting
+guide](../guides/consume-state/event-upcasting.md).
+
 The version appears in the message's `__type__` string as
 `{Domain}.{ClassName}.v{version}` (e.g., `Auth.UserRegistered.v2`), which is used
 for runtime routing and event store lookups. Compatibility semantics (whether
 v2 is backward-compatible with v1, and how to convert between them) are settled
 by the schema-evolution ladder in ADR-0040, which routes each change to weak
-schema (`renamed_from`, lenient mode) or to an upcaster. The version number
+schema (`renamed_from`, lenient mode), an upcaster, or a new event type. The version number
 stays an identity marker.
 
 ## Consequences
