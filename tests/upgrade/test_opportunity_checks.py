@@ -453,6 +453,113 @@ class TestDefaultSanitizeDetector:
         src = "import sqlalchemy\nclass UserTable:\n    name = sqlalchemy.String(50)\n"
         assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
 
+    # -- Attribute chains the scan cannot resolve ----------------------------
+
+    def test_a_call_rooted_attribute_chain_is_not_flagged(self):
+        # `get_fields().String(...)` has a call, not a name, at the root of the
+        # chain, so there is no import binding to resolve it against.
+        src = (
+            "from protean import fields\n"
+            "class User:\n"
+            "    name = get_fields().String(max_length=50)\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_an_untracked_attribute_call_is_not_flagged(self):
+        # `fields.Integer()` reaches the field module but is not a tracked
+        # symbol.
+        src = "from protean import fields\nclass User:\n    age = fields.Integer()\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_container_with_a_plain_type_argument_is_handled(self):
+        # `List(int)` passes a name, not a call, so there is no inner spec to
+        # hold back.
+        src = (
+            "from protean.fields import List, String\n"
+            "class Post:\n"
+            "    counts = List(int)\n"
+            "    name = String(max_length=50)\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:4" in findings[0].detail
+
+    # -- Lexical scope --------------------------------------------------------
+
+    def test_a_helper_local_import_does_not_shadow_the_module(self):
+        # The reported failure: a helper that imports SQLAlchemy's String must
+        # not make the real module-level field declaration disappear from the
+        # checklist.
+        src = (
+            "from protean.fields import String\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+            "def build_table():\n"
+            "    from sqlalchemy import String\n"
+            "    return String(50)\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:3" in findings[0].detail
+        assert "m:6" not in findings[0].detail
+
+    def test_a_helper_local_import_shadows_inside_that_helper(self):
+        src = (
+            "from protean.fields import String\n"
+            "def build_table():\n"
+            "    from sqlalchemy import String\n"
+            "    return String(50)\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_helper_local_protean_import_is_resolved(self):
+        # The reverse: a field declared inside a function whose own import
+        # brings in the Protean factory is still a site.
+        src = (
+            "def make_vo():\n"
+            "    from protean.fields import String\n"
+            "    class VO:\n"
+            "        name = String(max_length=50)\n"
+            "    return VO\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:4" in findings[0].detail
+
+    def test_a_helper_local_import_does_not_leak_to_a_sibling(self):
+        # Two helpers, only one of which imports the factory.
+        src = (
+            "def a():\n"
+            "    from protean.fields import String\n"
+            "    return String()\n"
+            "def b():\n"
+            "    return String()\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:3" in findings[0].detail
+
+    def test_a_class_body_sees_the_module_binding(self):
+        # The ordinary shape: the class body is a nested scope, and it inherits
+        # what the module bound above it.
+        src = (
+            "from protean.fields import String\n"
+            "class Outer:\n"
+            "    class Inner:\n"
+            "        name = String()\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_an_import_below_a_declaration_does_not_apply_above_it(self):
+        # Statements are read in order, so a name resolves to what it held at
+        # that point.
+        src = (
+            "class UserTable:\n"
+            "    name = String(50)\n"
+            "from protean.fields import String\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
     # -- Explicit opt-ins passed positionally --------------------------------
 
     def test_positional_sanitize_on_text_is_not_flagged(self):

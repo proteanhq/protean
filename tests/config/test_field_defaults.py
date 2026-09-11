@@ -161,3 +161,23 @@ class TestMalformedSectionsAreRejected:
         config = Config2()
         config.from_object({"field_defaults": {"sanitize": True}})
         assert config["field_defaults"]["sanitize"] is True
+
+    def test_a_class_config_without_the_section_is_accepted(self):
+        # `from_object` with a plain object copies only uppercase attributes, so
+        # a class that names none leaves the section absent entirely.
+        class Settings:
+            DEBUG = True
+
+        config = Config2()
+        config.from_object(Settings)
+        assert "field_defaults" not in config
+
+    def test_a_class_config_with_an_empty_section_is_accepted(self):
+        # `from_object` on a non-dict does not normalize, so the section stays
+        # empty rather than being filled in with the default.
+        class Settings:
+            FIELD_DEFAULTS: dict = {}
+
+        config = Config2()
+        config.from_object(Settings)
+        assert config["field_defaults"] == {}

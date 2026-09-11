@@ -527,13 +527,12 @@ def _dotted_prefix(node: ast.Attribute) -> tuple[str, list[str]] | None:
     return current.id, parts
 
 
-def _protean_bindings(tree: ast.Module) -> tuple[dict[str, str], dict[str, str]]:
-    """What the tracked Protean symbols are bound to in one module.
-
-    Returns the local names that resolve to one of :data:`_TRACKED_SYMBOLS`
-    (mapped to the symbol they name) and the local names that resolve to a
-    module (mapped to its full dotted path), so ``fields.String(...)`` and
-    ``protean.fields.Text(...)`` resolve too.
+def _apply_import(
+    node: ast.Import | ast.ImportFrom,
+    factories: dict[str, str],
+    modules: dict[str, str],
+) -> None:
+    """Fold one import statement into a scope's binding maps.
 
     Matching on the trailing symbol alone gets this wrong both ways:
     ``from protean.fields import String as StringField`` is a field declaration
@@ -541,61 +540,77 @@ def _protean_bindings(tree: ast.Module) -> tuple[dict[str, str], dict[str, str]]
     one but the trailing name matches it. Both matter here, because this detector
     is the migration safety net for a silent behavior change.
 
-    Imports are read in source order and a later one shadows an earlier one, so
-    ``from protean.fields import String`` followed by ``from sqlalchemy import
-    String`` leaves ``String`` pointing at SQLAlchemy's, as Python does. Module
-    paths are tracked in full rather than by root package, so ``import protean``
-    reaches ``protean.fields.String`` but not ``protean.other.String``.
+    A binding replaces whatever the name held before, so a later import shadows
+    an earlier one the way Python does. Module paths are recorded in full rather
+    than by root package, so ``import protean`` reaches ``protean.fields.String``
+    but not ``protean.other.String``.
     """
-    factories: dict[str, str] = {}
-    modules: dict[str, str] = {}
+    if isinstance(node, ast.ImportFrom):
+        module = node.module or ""
+        for alias in node.names:
+            if alias.name == "*":
+                # ``from protean.fields import *`` binds every name the module
+                # exports, so assume the tracked ones under their own spelling.
+                # Leaving them unbound would drop the whole module from the
+                # migration checklist without saying so. A star import from
+                # anywhere else may or may not export these names; leave
+                # existing bindings alone rather than guess.
+                if _module_is_fields(module):
+                    factories.update({name: name for name in _TRACKED_SYMBOLS})
+                continue
+            local = alias.asname or alias.name
+            factories.pop(local, None)
+            modules.pop(local, None)
+            if _module_is_fields(module) and alias.name in _TRACKED_SYMBOLS:
+                factories[local] = alias.name
+                continue
+            # ``from protean import fields`` names a submodule, reached by
+            # attribute access at the call site.
+            path = f"{module}.{alias.name}" if module else alias.name
+            if _module_is_fields(path):
+                modules[local] = path
+        return
 
-    imports = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.Import, ast.ImportFrom))
-    ]
-    imports.sort(key=lambda node: (node.lineno, node.col_offset))
+    for alias in node.names:
+        # ``import a.b.c`` binds ``a``; ``import a.b.c as x`` binds ``x`` to the
+        # full path.
+        local = alias.asname or alias.name.split(".")[0]
+        path = alias.name if alias.asname else alias.name.split(".")[0]
+        factories.pop(local, None)
+        modules.pop(local, None)
+        # The root package still reaches the fields module by attribute access,
+        # so keep it and check the full path at the call site.
+        if path == _FIELD_MODULE_ROOT or _module_is_fields(path):
+            modules[local] = path
 
-    for node in imports:
-        if isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            for alias in node.names:
-                if alias.name == "*":
-                    # ``from protean.fields import *`` binds every name the
-                    # module exports, so assume the tracked ones under their own
-                    # spelling. Leaving them unbound would drop the whole module
-                    # from the migration checklist without saying so. A star
-                    # import from anywhere else may or may not export these
-                    # names; leave existing bindings alone rather than guess.
-                    if _module_is_fields(module):
-                        factories.update({name: name for name in _TRACKED_SYMBOLS})
-                    continue
-                local = alias.asname or alias.name
-                factories.pop(local, None)
-                modules.pop(local, None)
-                if _module_is_fields(module) and alias.name in _TRACKED_SYMBOLS:
-                    factories[local] = alias.name
-                    continue
-                # ``from protean import fields`` names a submodule, reached by
-                # attribute access at the call site.
-                path = f"{module}.{alias.name}" if module else alias.name
-                if _module_is_fields(path):
-                    modules[local] = path
-        else:
-            for alias in node.names:
-                # ``import a.b.c`` binds ``a``; ``import a.b.c as x`` binds ``x``
-                # to the full path.
-                local = alias.asname or alias.name.split(".")[0]
-                path = alias.name if alias.asname else alias.name.split(".")[0]
-                factories.pop(local, None)
-                modules.pop(local, None)
-                # The root package still reaches the fields module by attribute
-                # access, so keep it and check the full path at the call site.
-                if path == _FIELD_MODULE_ROOT or _module_is_fields(path):
-                    modules[local] = path
 
-    return factories, modules
+def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[list[ast.stmt]]]:
+    """The nodes in one statement, with nested scopes held back.
+
+    Returns the nodes that execute in the current scope and the bodies of the
+    function and class definitions inside it. A nested scope gets its own
+    binding maps, so an import inside a helper cannot reach back out and shadow
+    a name the module bound at the top.
+    """
+    own: list[ast.AST] = []
+    nested: list[list[ast.stmt]] = []
+    stack: list[ast.AST] = [stmt]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            # The decorators, base classes and default arguments run in the
+            # enclosing scope; only the body opens a new one.
+            nested.append(node.body)
+            stack.extend(node.decorator_list)
+            if isinstance(node, ast.ClassDef):
+                stack.extend(node.bases)
+                stack.extend(keyword.value for keyword in node.keywords)
+            else:
+                stack.extend(ast.iter_child_nodes(node.args))
+            continue
+        own.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    return own, nested
 
 
 def _resolved_symbol(
@@ -619,7 +634,7 @@ def _resolved_symbol(
 
 
 def _content_spec_calls(
-    tree: ast.Module, bindings: dict[str, str], modules: dict[str, str]
+    nodes: list[ast.AST], factories: dict[str, str], modules: dict[str, str]
 ) -> set[int]:
     """``id()`` of every call passed as a content spec to a container factory.
 
@@ -628,11 +643,11 @@ def _content_spec_calls(
     container and its inner spec is still skipped.
     """
     nested: set[int] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         if (
-            _resolved_symbol(node.func, bindings, modules)
+            _resolved_symbol(node.func, factories, modules)
             not in _CONTENT_SPEC_FACTORIES
         ):
             continue
@@ -678,6 +693,59 @@ def _declares_choices(node: ast.Call) -> bool:
     )
 
 
+def _relies_on_the_old_default(node: ast.Call, factory: str, nested: set[int]) -> bool:
+    """Whether one resolved ``String``/``Text`` call left ``sanitize`` unset."""
+    if id(node) in nested:
+        return False
+    if _declares_sanitize(node, factory) or _declares_choices(node):
+        return False
+    # A ``**kwargs`` splat (``String(**opts)``) shows up as a keyword with
+    # ``arg is None``; a ``*args`` splat shows up as ``ast.Starred``. Neither is
+    # readable by a static scan, so ``sanitize`` or ``choices`` could be hidden
+    # inside. Skip rather than report a false positive.
+    if any(keyword.arg is None for keyword in node.keywords):
+        return False
+    return not any(isinstance(arg, ast.Starred) for arg in node.args)
+
+
+def _scan_scope(
+    module_name: str,
+    body: list[ast.stmt],
+    factories: dict[str, str],
+    modules: dict[str, str],
+    sites: list[str],
+) -> None:
+    """Collect reliant sites in one lexical scope, then recurse into nested ones.
+
+    Statements are read in order, so an import takes effect from where it appears
+    and a name resolves to whatever it held at that point. Each nested scope
+    starts from a copy of the enclosing bindings, so a helper-local
+    ``from sqlalchemy import String`` shadows the name inside that helper without
+    touching the module-level field declarations around it.
+    """
+    factories = dict(factories)
+    modules = dict(modules)
+
+    for stmt in body:
+        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+            _apply_import(stmt, factories, modules)
+            continue
+
+        own, nested_bodies = _split_scopes(stmt)
+        spec_calls = _content_spec_calls(own, factories, modules)
+        for node in own:
+            if not isinstance(node, ast.Call):
+                continue
+            factory = _resolved_symbol(node.func, factories, modules)
+            if factory not in _FIELD_FACTORIES:
+                continue
+            if _relies_on_the_old_default(node, factory, spec_calls):
+                sites.append(f"{module_name}:{node.lineno}")
+
+        for nested_body in nested_bodies:
+            _scan_scope(module_name, nested_body, factories, modules, sites)
+
+
 def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
     """``module:line`` for each ``String(...)`` / ``Text(...)`` that left
     ``sanitize`` unset and so relied on the pre-flip default.
@@ -692,29 +760,7 @@ def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
     """
     sites: list[str] = []
     for module_name, tree in trees:
-        bindings, modules = _protean_bindings(tree)
-        if not bindings and not modules:
-            continue
-        nested = _content_spec_calls(tree, bindings, modules)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            factory = _resolved_symbol(node.func, bindings, modules)
-            if factory not in _FIELD_FACTORIES:
-                continue
-            if id(node) in nested:
-                continue
-            if _declares_sanitize(node, factory) or _declares_choices(node):
-                continue
-            # A ``**kwargs`` splat (``String(**opts)``) shows up as a keyword
-            # with ``arg is None``; a ``*args`` splat shows up as ``ast.Starred``.
-            # Neither is readable by a static scan, so ``sanitize`` or ``choices``
-            # could be hidden inside. Skip rather than report a false positive.
-            if any(keyword.arg is None for keyword in node.keywords):
-                continue
-            if any(isinstance(arg, ast.Starred) for arg in node.args):
-                continue
-            sites.append(f"{module_name}:{node.lineno}")
+        _scan_scope(module_name, tree.body, {}, {}, sites)
     return sites
 
 
