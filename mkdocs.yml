@@ -444,7 +444,7 @@ nav:
       - "0034 · Project manifest": adr/0034-project-manifest.md
       - "0035 · Generation-gap seam": adr/0035-generation-gap-seam.md
       - "0036 · Graceful drain window": adr/0036-configurable-graceful-drain-window.md
-      - "0037 · Idempotent file projection": adr/0037-idempotent-file-projection.md
+      - "0037 · Idempotent managed files": adr/0037-idempotent-file-projection.md
       - "0038 · Field style for mypy-strict": adr/0038-canonical-field-style-for-mypy-strict.md
       - "0039 · DX pack as package data": adr/0039-dx-pack-ships-as-package-data.md
     - Troubleshooting:

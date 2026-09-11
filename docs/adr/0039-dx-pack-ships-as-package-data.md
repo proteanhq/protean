@@ -60,8 +60,8 @@ and no version pin between them.
 
 Reading through `importlib.resources` hands consumers a `Traversable`, which is
 the abstract resource interface rather than a filesystem `Path`. Code that needs
-a real path on disk has to materialize one. The file-projection engine that
-renders these files into a user's project (ADR-0037) reads text, so a
+a real path on disk has to materialize one. The managed-file writer that
+generates these files into a user's project (ADR-0037) reads text, so a
 `Traversable` is enough.
 
 The data files have to be committed so a clean checkout carries them. CI builds
