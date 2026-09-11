@@ -379,7 +379,8 @@ ever stored).
   both v1→v2 and v2→v3 upcasters. A direct v1→v3 upcaster is valid only if
   there was no v2 in production.
 - **Don't modify the stored event**: Upcasting transforms data in memory during
-  deserialization. The event store is never modified.
+  deserialization; the event store is never modified. Rewriting stored events is a
+  separate, deliberate operator migration (see [Migration Strategies](../../patterns/event-versioning-and-evolution.md#migration-strategies)).
 - **Don't use upcasting for semantic changes**: If the *meaning* of an event
   changes (not just its structure), create a new event type instead.
 - **Don't perform expensive operations**: Upcasting happens synchronously during
@@ -395,8 +396,8 @@ ever stored).
 | Add optional field with default | No upcaster needed, add `default=` |
 | Add required field with computable default | Upcaster |
 | Rename a field | `renamed_from` (an upcaster only if you are already bumping the version) |
-| Change field type (e.g. string→int) | Upcaster |
-| Change data structure (flat→nested) | Upcaster |
+| Change field type (e.g. string→int) | Upcaster (bump the version) |
+| Change data structure (flat→nested) | Upcaster (bump the version) |
 | Remove a field | Lenient mode drops it on read (an upcaster strips it only if you also bump the version) |
 | Change the meaning of a field | **New event type** |
 | Fundamentally different business operation | **New event type** |

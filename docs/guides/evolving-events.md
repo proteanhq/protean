@@ -1,8 +1,8 @@
 # Evolving events over time
 
-Events are **immutable once stored**, but the code that reads them keeps
-changing. A field gets renamed, a new attribute is added, an old event is
-retired. Months later your service still has to decode events written by last
+Events are **immutable once stored** (only a deliberate operator migration
+rewrites them), but the code that reads them keeps changing. A field gets
+renamed, a new attribute is added, an old event is retired. Months later your service still has to decode events written by last
 year's code, and a downstream consumer still expects last year's shape.
 
 Protean gives you a complete toolkit for evolving an event safely from `v1` to

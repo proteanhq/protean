@@ -81,7 +81,7 @@ The most common evolution. Add a new field with a default value that preserves
 the behavior of events written before the field existed:
 
 ```python
-# Version 1: original event
+# Before: original event
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
@@ -90,7 +90,7 @@ class OrderPlaced(BaseEvent):
     total: Float(required=True)
 
 
-# Version 2: added discount_code and channel
+# After: added discount_code and channel (same message version, no bump)
 @domain.event(part_of=Order)
 class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
@@ -480,7 +480,9 @@ class OrderTotalCorrected(BaseEvent):
 
 When you deploy a schema change, existing events in the stream remain
 unchanged. New events use the new schema. The stream contains a mix of old
-and new schemas. Consumers must handle both.
+and new schemas. Consumers must handle both. This is the normal deployment path;
+a deliberate operator migration (see [Migration Strategies](#migration-strategies))
+is the one thing that rewrites existing events.
 
 ### Replaying from the Beginning
 
