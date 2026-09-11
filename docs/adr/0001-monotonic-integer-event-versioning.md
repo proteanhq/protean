@@ -33,7 +33,8 @@ We will version events and commands with monotonic positive integers. The `__ver
 attribute on message classes is an integer starting at 1, incremented by 1 for a change that
 needs a new version. ADR-0040's schema-evolution ladder settles which changes do: a
 structural change bumps the version, and a change that weak schema handles (a field added
-with a default, a rename via `renamed_from`) keeps the current version. Upcasters apply to
+with a default, a rename via `renamed_from`, or a removed field read leniently) keeps the
+current version. Upcasters apply to
 stored events: an upcaster transforms an old event payload to the new version, or the event
 becomes a new type when no value can be supplied. Commands are versioned the same way, but
 they are not replayed, so they carry no upcaster. The framework validates the integer at
