@@ -82,14 +82,20 @@ The rules:
   constraint list: `field name: string(max_length=100)`. `<name>` is a valid
   Python identifier that is not a Python keyword, read verbatim, because the
   generator writes it as a class attribute. Field names are unique within a block;
-  a duplicate is an error. `id` is reserved in an `aggregate` block for the
-  framework's injected identity, so the parser rejects `field id` there. `<type>`
-  is one of the eight primitive types below, and fields keep their declaration
-  order for generation.
-- A **field is required and has no default.** `field name: string` maps to a bare
+  a duplicate is an error. A field name may not start with an underscore or use the
+  pydantic `model_` prefix, and it may not shadow a member the generated class
+  already defines in its block: `id` and `create` in an `aggregate`, `Meta` in a
+  `projection`. The parser rejects these; the reserved set follows the generated
+  templates and is checked against them in code, so it grows with the generator
+  and does not drift from a list written here. `<type>` is one of the eight
+  primitive types below, and fields keep their declaration order for generation.
+- A **field is required and has no default,** and the grammar does not express
+  optional fields or author-supplied defaults. `field name: string` maps to a bare
   `str` annotation, a required, unbounded string that the IR records as a `String`
-  with no `max_length`. Optional fields and defaults are a later addition to the
-  grammar.
+  with no `max_length`. The projection's `key` field is the framework's identity:
+  the generator emits it as `Identifier(identifier=True)`, whose identity
+  default_factory the framework supplies. Optional fields and author defaults are a
+  later addition to the grammar.
 - A **constraint list** sits in the parentheses, comma-separated, with insignificant
   whitespace around each entry: `string(max_length=100)`, `identifier(key)`. A
   constraint is either `max_length=<positive-integer>` or the bare flag `key`.
@@ -105,7 +111,10 @@ The rules:
 Cardinality for one slice: exactly one `aggregate`, one `command`, and one
 `event`. A `projection` carries exactly one `key` field. The read side is optional
 and all-or-nothing: a model has both a `projection` and a `projector`, or neither.
-A `projector` without a `projection` to feed, or the reverse, is an error.
+A `projector` without a `projection` to feed, or the reverse, is an error. Block
+names are unique across the slice, because the generated command handler and
+projector import the aggregate, command, event, and projection by their bare class
+names; a name shared by two blocks is an error.
 
 The parse is deterministic and infers nothing. Names are preserved as written. A
 `for` line must name the model's projection, and the `consumes` line must name the
@@ -165,9 +174,19 @@ matching the IR field entry.
 
 The generator (#1472) fills in everything the slice needs that the model does not
 carry: the command handler, the generation-gap base/subclass seam (ADR-0035), the
-package `__init__.py`, and the aggregate's injected identity. When the read side
-is `None`, the generator supplies a default projection and projector, so a
-write-side-only model still generates a project that passes `protean verify`.
+package `__init__.py`, and the aggregate's injected identity. It wires fields by
+name: the command handler creates the aggregate from the command's fields, the
+aggregate raises the event with its identity and its same-named fields, and the
+projector copies each projection field from the event field of the same name. For
+this to be total, v1 lines the names up across the slice, and the parser rejects a
+model that would make the generator read a field that does not exist, so generation
+is a name lookup with no inference. Field sets that diverge, such as a denormalizing
+projection, are a later addition with explicit mappings.
+
+When the read side is `None`, the generator supplies a default projection that
+mirrors the event and a default projector that consumes the event and copies each
+field by name. The derivation reads the event, so a write-side-only model with any
+field set still generates a read side, and the project passes `protean verify`.
 
 ### The vocabulary map
 
@@ -218,10 +237,11 @@ handlers, application services, queries, automations, fact events).
 
 The emitter's precondition is the shape the grammar covers: a cluster with exactly
 one command and one non-fact event, and either no read side or one projection with
-one projector. A cluster with more than one command, non-fact event, projection, or
-projector is outside the grammar, and the emitter raises on it. It never reduces
-such a cluster to a single element, so conformance cannot pass while the emitter
-drops model elements.
+one projector whose `handlers` map routes that one event and nothing else. A cluster
+with more than one command, non-fact event, projection, or projector, or a projector
+that handles no event, several events, or an event from another cluster, is outside
+the grammar, and the emitter raises on it. It never reduces such a cluster to a
+single element, so conformance cannot pass while the emitter drops model elements.
 
 `_extract_fields` sorts a cluster's fields by name, so the IR does not keep the
 order the fields were declared in. The emitter emits fields in the IR's order, and
