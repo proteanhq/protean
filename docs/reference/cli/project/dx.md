@@ -43,13 +43,14 @@ that already carries an unmarked `AGENTS.md`, including one written by an older
 ```shell
 protean dx install     # write AGENTS.md and the CLAUDE.md bridge
 protean dx refresh     # re-render the blocks to the installed version
-protean dx diff        # preview what install would change; write nothing
+protean dx diff        # preview what install would change (unified diff); write nothing
 protean dx check       # exit non-zero when a target has drifted; write nothing
 ```
 
 `install` creates a missing file and refreshes a stale block. `refresh` is the
 same idempotent apply, run after upgrading Protean. `diff` and `check` write
-nothing: `diff` is the preview and `check` is the CI gate.
+nothing: `diff` is the preview, printing a unified diff of each pending change,
+and `check` is the CI gate.
 
 A target has drifted when it is missing, its block is stale against the installed
 version, or you edited inside the block. `check` reports each target and exits
@@ -58,14 +59,15 @@ non-zero when any has drifted.
 ### Options
 
 - `--path`, `-p`: The project directory to write into or check. Defaults to the
-  current directory.
+  current directory. A path that exists but is not a directory is rejected.
 
 ### Exit codes
 
 - `0`: the command succeeded. For `check`, every target is up to date.
 - `1`: for `check`, a target has drifted. For `install` and `refresh`, a block
   conflicts with a hand edit and was left untouched.
-- `2`: a filesystem error, such as an unreadable or malformed target.
+- `2`: a filesystem error, such as an unreadable or malformed target, a `--path`
+  that is not a directory, or a pack that cannot render.
 
 A conflict on one file does not stop the others. `install` applies every file it
 safely can, reports the conflict, and then exits non-zero.

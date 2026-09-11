@@ -146,6 +146,56 @@ def test_diff_reports_up_to_date_after_install(tmp_path: Path) -> None:
     assert "up to date" in result.output
 
 
+def test_diff_shows_a_unified_diff_on_a_fresh_project(tmp_path: Path) -> None:
+    """diff prints an actual unified diff, not just a status line, and writes nothing."""
+    result = runner.invoke(app, ["diff", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "--- AGENTS.md (current)" in result.output
+    assert "+++ AGENTS.md (managed)" in result.output
+    assert "+# Protean agent guidance" in result.output
+    # The CLAUDE.md bridge body shows as an addition too.
+    assert "+@AGENTS.md" in result.output
+    # Still a read-only preview.
+    assert not (tmp_path / "AGENTS.md").exists()
+    assert not (tmp_path / "CLAUDE.md").exists()
+
+
+def test_diff_shows_only_the_changed_line_on_a_stale_block(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.9")
+    _install(tmp_path)
+
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.10")
+    result = runner.invoke(app, ["diff", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "-# Protean agent guidance (9.9.9)" in result.output
+    assert "+# Protean agent guidance (9.9.10)" in result.output
+
+
+def test_diff_prints_no_diff_body_when_up_to_date(tmp_path: Path) -> None:
+    _install(tmp_path)
+    result = runner.invoke(app, ["diff", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "up to date" in result.output
+    # No unified-diff hunk header when nothing would change.
+    assert "@@" not in result.output
+
+
+def test_non_directory_path_is_rejected_by_every_verb(tmp_path: Path) -> None:
+    """A --path pointing at a regular file is rejected the same way by all verbs."""
+    a_file = tmp_path / "afile"
+    a_file.write_text("x", encoding="utf-8")
+
+    for verb in ("install", "refresh", "diff", "check"):
+        result = runner.invoke(app, [verb, "-p", str(a_file)])
+        assert result.exit_code == 2, f"{verb}: {result.output}"
+        assert "not a directory" in result.output
+
+
 def test_diff_writes_nothing_on_a_stale_block(tmp_path: Path, monkeypatch) -> None:
     """diff computes the merged content on the UPDATE path but must not persist it."""
     monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.9")

@@ -21,6 +21,7 @@ file and refresh a stale block, and both leave the user's own edits alone.
 
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -85,6 +86,21 @@ def check(path: Annotated[str, _PATH_OPTION] = ".") -> None:
     _check(path)
 
 
+def _project_root(path: str) -> Path:
+    """Return *path* as the project root, or exit ``2`` if it is not a directory.
+
+    A ``--path`` pointing at a regular file would otherwise make every target read
+    as absent, so the verbs would disagree (``diff`` exits ``0``, ``check`` ``1``,
+    ``install`` ``2``). Reject a non-directory path up front so all verbs answer
+    the same environment error.
+    """
+    root = Path(path)
+    if root.exists() and not root.is_dir():
+        print(f"[red]error[/red] {escape(path)} — not a directory")
+        raise typer.Exit(code=EXIT_USAGE)
+    return root
+
+
 def _render_managed_files() -> tuple[ManagedFile, ...]:
     """Build the managed files for the installed version, or exit ``2`` on failure.
 
@@ -124,7 +140,7 @@ def _apply(path: str) -> None:
         apply_managed_file,
     )
 
-    root = Path(path)
+    root = _project_root(path)
     had_conflict = False
     had_error = False
     for managed_file in _render_managed_files():
@@ -148,13 +164,14 @@ def _apply(path: str) -> None:
         raise typer.Exit(code=EXIT_FAILURE)
 
 
-def _scan(path: str) -> tuple[bool, bool]:
+def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool]:
     """Diff every managed file under *path* and print each target's pending line.
 
-    Mutates nothing; shared by ``diff`` and ``check``. Returns ``(had_error,
-    drifted)``: ``had_error`` is set when a target is refused or the pack cannot
-    render, ``drifted`` when any target is not ``NO_CHANGE`` (missing, stale, or a
-    hand-edited conflict).
+    Mutates nothing; shared by ``diff`` and ``check``. With *show_diff*, also print
+    a unified diff of the pending change under each target's line, which is what
+    ``diff`` adds over ``check``. Returns ``(had_error, drifted)``: ``had_error``
+    is set when a target is refused or the pack cannot render, ``drifted`` when any
+    target is not ``NO_CHANGE`` (missing, stale, or a hand-edited conflict).
     """
     from protean.dx import (  # noqa: PLC0415
         ApplyStatus,
@@ -162,7 +179,7 @@ def _scan(path: str) -> tuple[bool, bool]:
         diff_managed_file,
     )
 
-    root = Path(path)
+    root = _project_root(path)
     had_error = False
     drifted = False
     for managed_file in _render_managed_files():
@@ -175,17 +192,50 @@ def _scan(path: str) -> tuple[bool, bool]:
             if result.status is not ApplyStatus.NO_CHANGE:
                 drifted = True
             print(_pending_line(result))
+            if show_diff:
+                body = _unified_diff(root, result)
+                if body:
+                    # Print the diff plain: it is content, not a status line, and
+                    # a stray bracket in it must not be read as rich markup.
+                    typer.echo(body)
     return had_error, drifted
 
 
+def _unified_diff(root: Path, result: ApplyResult) -> str:
+    """Return a unified diff of what applying *result* would change, or ``""``.
+
+    Compares the target's current bytes against the content the writer would
+    write. Empty for ``NO_CHANGE`` and ``CONFLICT`` (``result.content`` is
+    ``None``) and when the target cannot be read.
+    """
+    if result.content is None:
+        return ""
+    target_path = root / result.target
+    try:
+        current = (
+            target_path.read_text(encoding="utf-8") if target_path.exists() else ""
+        )
+    except OSError:  # pragma: no cover - TOCTOU: the scan already read this target
+        return ""
+    return "".join(
+        difflib.unified_diff(
+            current.splitlines(keepends=True),
+            result.content.splitlines(keepends=True),
+            fromfile=f"{result.target} (current)",
+            tofile=f"{result.target} (managed)",
+        )
+    )
+
+
 def _diff(path: str) -> None:
-    """Print what applying each managed file would do; mutate nothing.
+    """Print what applying each managed file would do, with a unified diff of the
+    pending change; mutate nothing.
 
     Exits ``2`` when a target is refused or the pack cannot render, ``0``
     otherwise, including when there are pending changes: ``diff`` is a read-only
     preview, so pending changes are the report, not a failure.
     """
-    had_error, _ = _scan(path)
+    had_error, _ = _scan(path, show_diff=True)
     if had_error:
         raise typer.Exit(code=EXIT_USAGE)
 

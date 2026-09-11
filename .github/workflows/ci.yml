@@ -197,12 +197,15 @@ jobs:
         run: |
           set -e
           proj="$(mktemp -d)"
-          # A project that was never installed has drifted, so check must fail.
-          if /tmp/pack-venv/bin/protean dx check -p "$proj"; then
-            echo "dx check unexpectedly passed on a fresh project; expected drift"
+          # A project that was never installed has drifted, so check must report
+          # exactly the drift exit code (1), not an environment error (2).
+          status=0
+          /tmp/pack-venv/bin/protean dx check -p "$proj" || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "expected dx check to report drift (exit 1) on a fresh project, got $status"
             exit 1
           fi
-          # After install, check must be clean.
+          # After install, check must be clean (exit 0).
           /tmp/pack-venv/bin/protean dx install -p "$proj"
           /tmp/pack-venv/bin/protean dx check -p "$proj"
           echo "dx round-trip OK"
