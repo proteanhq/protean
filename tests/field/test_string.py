@@ -208,6 +208,38 @@ class TestDomainLevelSanitizeDefault:
         assert vo.name == (cleaned if sanitizes else raw_html)
 
 
+@pytest.mark.no_test_domain
+class TestSanitizeDefaultWithoutADomainContext:
+    """With no active domain there is no ``[field_defaults] sanitize`` to read,
+    so an unset field falls back to the framework default and does not clean.
+
+    The suite's autouse ``test_domain`` fixture pushes a domain context for
+    every test, so this class opts out of it with ``no_test_domain`` to reach
+    the path a value object built outside a domain actually takes (a
+    standalone script, a serializer, a user's own unit test).
+    """
+
+    def test_unset_field_stays_raw_with_no_active_domain(self):
+        from protean.domain.context import has_domain_context
+
+        assert has_domain_context() is False
+
+        class RawVO(BaseValueObject):
+            name = String()
+
+        vo = RawVO(name="an <script>evil()</script> example")
+        assert vo.name == "an <script>evil()</script> example"
+
+    def test_explicit_sanitize_true_still_cleans_with_no_active_domain(self):
+        # An explicit kwarg does not consult the domain at all, so it cleans
+        # whether or not a domain context is active.
+        class CleanVO(BaseValueObject):
+            name = String(sanitize=True)
+
+        vo = CleanVO(name="an <script>evil()</script> example")
+        assert vo.name == "an &lt;script&gt;evil()&lt;/script&gt; example"
+
+
 class TestLengthBoundsEnforcedOnSanitizedValue:
     """Length bounds (``max_length``/``min_length``, and the implicit ``min_length``
     of a required field) are enforced on the *sanitized* value, so a value
