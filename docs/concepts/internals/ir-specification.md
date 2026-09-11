@@ -417,7 +417,7 @@ All possible keys (no single field has all of them):
 | `max_length`, `min_length` | String length constraints |
 | `max_value`, `min_value` | Numeric bounds |
 | `choices` | Sorted list of allowed values |
-| `sanitize` | Whether the field value is sanitized |
+| `sanitize` | Present only for an explicit `sanitize=True` (declared intent); absent for an unset field, even one sanitized via a domain default |
 | `increment` | Auto-increment flag |
 | `content_type` | Element type of a container (`List`, `ValueObjectList`) |
 | `auto_generated` | `true` for framework-injected fields |

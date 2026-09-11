@@ -4,6 +4,12 @@
 
 **Date:** July 2026
 
+> **Update (0.18.0):** the framework `sanitize` default flipped from `True` to
+> `False` (issue #1455). This ADR still holds wherever a field does sanitize
+> (an explicit `sanitize=True`, or an unset field under a domain
+> `[field_defaults] sanitize = true`): the length re-check runs on that path.
+> The sentence below describing the default is historical.
+
 ## Context
 
 `String` and `Text` fields sanitize their input by default (`sanitize=True`),

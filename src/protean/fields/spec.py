@@ -645,9 +645,33 @@ def _domain_default_sanitize() -> bool:
     if not has_domain_context():
         return False
     try:
-        return bool(current_domain.config["field_defaults"]["sanitize"])
+        raw = current_domain.config["field_defaults"]["sanitize"]
     except (KeyError, TypeError):
         return False
+    return _coerce_sanitize_flag(raw)
+
+
+def _coerce_sanitize_flag(raw: Any) -> bool:
+    """Read a ``field_defaults.sanitize`` config value as a bool.
+
+    A real bool passes straight through. Config env-var interpolation only ever
+    yields strings, so ``[field_defaults] sanitize = "${SANITIZE|false}"`` with
+    the var unset resolves to the string ``"false"``; a plain ``bool(...)`` on
+    that reads True and would silently sanitize, the opposite of what the
+    operator wrote. Parse the common string spellings instead: ``"true"/"1"/
+    "yes"/"on"`` are True and ``"false"/"0"/"no"/"off"/""`` are False
+    (case-insensitive). Any other type or unrecognized string falls back to the
+    framework default (``False``): do not sanitize.
+    """
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip().lower()
+        if text in ("true", "1", "yes", "on"):
+            return True
+        if text in ("false", "0", "no", "off", ""):
+            return False
+    return False
 
 
 def _make_sanitize_validator(

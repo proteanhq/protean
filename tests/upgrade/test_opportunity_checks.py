@@ -311,6 +311,22 @@ class TestDefaultSanitizeDetector:
         src = "class User:\n    status = String(choices=['active', 'inactive'])\n"
         assert _detect_default_sanitize(trees(src), self.OWNS) == []
 
+    def test_text_choices_field_is_not_flagged(self):
+        # The choices carve-out applies to Text too, not just String.
+        src = "class Post:\n    kind = Text(choices=['draft', 'published'])\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+
+    def test_kwargs_splat_is_not_flagged(self):
+        # `String(**opts)` hides its keywords from a static scan; `sanitize` or
+        # `choices` could be inside, so the site is skipped rather than reported
+        # as a false positive.
+        src = "class User:\n    name = String(**opts)\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+
+    def test_kwargs_splat_alongside_explicit_kwargs_is_not_flagged(self):
+        src = "class User:\n    name = String(max_length=50, **opts)\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS) == []
+
     def test_non_string_field_is_not_flagged(self):
         src = "class User:\n    age = Integer()\n    joined = DateTime()\n"
         assert _detect_default_sanitize(trees(src), self.OWNS) == []

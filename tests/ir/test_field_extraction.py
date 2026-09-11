@@ -137,6 +137,29 @@ class TestSparseRepresentation:
         assert product_fields["name"].get("sanitize") is True
         assert "sanitize" not in product_fields["price"]
 
+    def test_sanitize_absent_for_an_unset_string_or_text(self, product_fields):
+        # An unset String/Text field carries no IR marker: whether it sanitizes
+        # is resolved from the domain default at validation time, not declared on
+        # the field. This guards against a regression that emitted the marker for
+        # anything but an explicit ``sanitize=True`` (e.g. ``is not False``).
+        assert "sanitize" not in product_fields["description"]  # unset Text
+
+    def test_sanitize_absent_for_an_explicit_false_string(self):
+        from protean import Domain
+        from protean.fields.simple import String
+
+        domain = Domain(name="ExplicitFalseSanitize", root_path=".")
+
+        @domain.aggregate
+        class Note:
+            body = String(max_length=200, sanitize=False)
+
+        domain.init(traverse=False)
+        fields = IRBuilder(domain)._extract_fields(Note)
+        # An explicit ``sanitize=False`` records no IR marker either: only
+        # ``sanitize=True`` is the declared, marker-worthy intent.
+        assert "sanitize" not in fields["body"]
+
 
 @pytest.mark.no_test_domain
 class TestDefaultSerialization:

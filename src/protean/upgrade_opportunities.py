@@ -480,6 +480,12 @@ def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
             keyword_names = {kw.arg for kw in node.keywords}
             if "sanitize" in keyword_names or "choices" in keyword_names:
                 continue
+            # A ``**kwargs`` splat (``String(**opts)``) shows up as a keyword
+            # with ``arg is None``. Its contents are invisible to a static scan,
+            # so ``sanitize`` or ``choices`` could be hidden inside. Skip rather
+            # than report a false positive.
+            if None in keyword_names:
+                continue
             sites.append(f"{module_name}:{node.lineno}")
     return sites
 

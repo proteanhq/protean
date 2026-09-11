@@ -132,6 +132,81 @@ class TestDomainLevelSanitizeDefault:
             vo = RawVO(name="an <script>evil()</script> example")
         assert vo.name == "an <script>evil()</script> example"
 
+    def test_domain_default_true_reenforces_length_on_an_unset_field(self):
+        # The one interaction that combines both new mechanisms: an unset field
+        # (always=False) whose cleaning is turned on by the domain default must
+        # still re-enforce max_length on the *sanitized* value (ADR-0026), just
+        # like an explicit ``sanitize=True`` field does.
+        class NameVO(BaseValueObject):
+            name = String(max_length=10)
+
+        domain = self._domain(sanitize_default=True)
+        domain.register(NameVO)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            # Raw "&" * 6 is 6 chars (within max_length=10); sanitized it grows
+            # to 30 chars, over the limit, so the domain-default path rejects it.
+            with pytest.raises(ValidationError) as exc:
+                NameVO(name="&" * 6)
+            assert "after sanitization" in str(exc.value.messages["name"])
+
+            # A value that stays within bounds after cleaning is accepted and
+            # is actually sanitized.
+            vo = NameVO(name="a & b")
+            assert vo.name == "a &amp; b"
+
+    def test_domain_default_false_leaves_length_re_enforcement_off(self):
+        # The mirror case: with the domain default off, an unset field bounds the
+        # raw value only, so an input that would grow past max_length on cleaning
+        # is accepted verbatim (no post-sanitize length re-check runs).
+        class NameVO(BaseValueObject):
+            name = String(max_length=10)
+
+        domain = self._domain(sanitize_default=False)
+        domain.register(NameVO)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            vo = NameVO(name="&" * 6)
+        assert vo.name == "&" * 6
+
+    @pytest.mark.parametrize(
+        "raw, sanitizes",
+        [
+            ("true", True),
+            ("True", True),
+            ("1", True),
+            ("yes", True),
+            ("on", True),
+            ("false", False),
+            ("False", False),
+            ("0", False),
+            ("no", False),
+            ("off", False),
+            ("", False),
+            ("garbage", False),
+        ],
+    )
+    def test_string_config_values_are_coerced_to_a_real_bool(self, raw, sanitizes):
+        # Config env-var interpolation only ever yields strings, so a
+        # ``[field_defaults] sanitize`` resolved from ``"${VAR|false}"`` arrives
+        # as the string ``"false"``. A plain ``bool("false")`` reads True and
+        # would silently sanitize, flipping the fail-open contract to
+        # fail-closed. The value is parsed instead.
+        class RawVO(BaseValueObject):
+            name = String()
+
+        domain = self._domain(sanitize_default=raw)
+        domain.register(RawVO)
+        domain.init(traverse=False)
+
+        raw_html = "an <script>evil()</script> example"
+        cleaned = "an &lt;script&gt;evil()&lt;/script&gt; example"
+        with domain.domain_context():
+            vo = RawVO(name=raw_html)
+        assert vo.name == (cleaned if sanitizes else raw_html)
+
 
 class TestLengthBoundsEnforcedOnSanitizedValue:
     """Length bounds (``max_length``/``min_length``, and the implicit ``min_length``
