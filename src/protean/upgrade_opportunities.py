@@ -600,10 +600,14 @@ class _Scope(NamedTuple):
 def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[_Scope], set[str]]:
     """The nodes in one statement, its nested scopes, and the names it rebinds.
 
-    Returns the nodes that execute in the current scope, the function and class
-    scopes inside it, and the names this statement binds. A nested scope gets its
-    own binding maps, so an import inside a helper cannot reach back out and
-    shadow a name the module bound at the top.
+    Returns the nodes that execute in the current scope, the scopes nested
+    inside it, and the names this statement binds. A nested scope gets its own
+    binding maps, so an import inside a helper cannot reach back out and shadow
+    a name the module bound at the top.
+
+    Functions, classes, lambdas and comprehensions all open a scope. The parts
+    that evaluate in the enclosing scope stay in the current scope: decorators,
+    base classes, argument defaults, and the iterables a comprehension walks.
     """
     own: list[ast.AST] = []
     nested: list[_Scope] = []
@@ -625,11 +629,51 @@ def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[_Scope], set[str]
                 nested.append(_Scope(node.body, _parameter_names(node.args)))
                 stack.extend(ast.iter_child_nodes(node.args))
             continue
+        if isinstance(node, ast.Lambda):
+            # ``lambda String: String()`` shadows the name for its body, and the
+            # scan cannot know what the caller passes.
+            nested.append(
+                _Scope([_as_statement(node.body)], _parameter_names(node.args))
+            )
+            stack.extend(ast.iter_child_nodes(node.args))
+            continue
+        if isinstance(
+            node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
+        ):
+            targets: set[str] = set()
+            body: list[ast.stmt] = []
+            for generator in node.generators:
+                targets.update(_stored_names(generator.target))
+                # The iterables are evaluated outside the comprehension's own
+                # scope, so they keep the enclosing bindings.
+                stack.append(generator.iter)
+                body.extend(_as_statement(test) for test in generator.ifs)
+            if isinstance(node, ast.DictComp):
+                body.append(_as_statement(node.key))
+                body.append(_as_statement(node.value))
+            else:
+                body.append(_as_statement(node.elt))
+            nested.append(_Scope(body, frozenset(targets)))
+            continue
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
             bound.add(node.id)
         own.append(node)
         stack.extend(ast.iter_child_nodes(node))
     return own, nested, bound
+
+
+def _as_statement(expr: ast.expr) -> ast.stmt:
+    """Wrap an expression so a scope body is uniformly a list of statements."""
+    return ast.copy_location(ast.Expr(value=expr), expr)
+
+
+def _stored_names(target: ast.expr) -> set[str]:
+    """Every name a comprehension or assignment target binds."""
+    return {
+        node.id
+        for node in ast.walk(target)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    }
 
 
 def _parameter_names(args: ast.arguments) -> frozenset[str]:
@@ -679,9 +723,20 @@ def _content_spec_calls(
             not in _CONTENT_SPEC_FACTORIES
         ):
             continue
-        for arg in [*node.args, *(kw.value for kw in node.keywords)]:
-            if isinstance(arg, ast.Call):
-                nested.add(id(arg))
+        # Containers nest: ``List(List(String(max_length=50)))`` is a supported
+        # shape, and the innermost spec is no more sanitized than the outer one,
+        # so shield the whole chain rather than only the immediate argument.
+        pending = [*node.args, *(kw.value for kw in node.keywords)]
+        while pending:
+            arg = pending.pop()
+            if not isinstance(arg, ast.Call):
+                continue
+            nested.add(id(arg))
+            if (
+                _resolved_symbol(arg.func, factories, modules)
+                in _CONTENT_SPEC_FACTORIES
+            ):
+                pending.extend([*arg.args, *(kw.value for kw in arg.keywords)])
     return nested
 
 
@@ -755,11 +810,20 @@ def _scan_scope(
     modules = dict(modules)
 
     for stmt in body:
-        if isinstance(stmt, (ast.Import, ast.ImportFrom)):
-            _apply_import(stmt, factories, modules)
-            continue
-
         own, nested_scopes, bound = _split_scopes(stmt)
+
+        # Imports anywhere in this statement take effect, not just a bare
+        # ``import`` at the top. A conditional or guarded import
+        # (``try: from protean.fields import String``) binds the name for
+        # everything after it, and skipping those dropped their fields from the
+        # checklist silently.
+        imports: list[ast.Import | ast.ImportFrom] = [
+            node for node in own if isinstance(node, (ast.Import, ast.ImportFrom))
+        ]
+        imports.sort(key=lambda imported: (imported.lineno, imported.col_offset))
+        for imported in imports:
+            _apply_import(imported, factories, modules)
+
         spec_calls = _content_spec_calls(own, factories, modules)
         for node in own:
             if not isinstance(node, ast.Call):

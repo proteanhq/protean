@@ -202,3 +202,17 @@ class TestMalformedSectionsAreRejected:
         with pytest.raises(ConfigurationError) as exc:
             Config2.load_from_path(str(tmp_path))
         assert "sanitze" in str(exc.value)
+
+    def test_a_non_string_key_is_rejected_as_a_configuration_error(self):
+        # `load_from_dict` takes arbitrary dictionaries, so a key need not be a
+        # string. Every malformed section must come out as a ConfigurationError,
+        # not a raw TypeError from formatting the message.
+        with pytest.raises(ConfigurationError) as exc:
+            Config2.load_from_dict({"field_defaults": {None: True}})
+        assert "None" in str(exc.value)
+
+    def test_mixed_key_types_are_rejected(self):
+        # `sorted` alone would refuse to order these.
+        with pytest.raises(ConfigurationError) as exc:
+            Config2.load_from_dict({"field_defaults": {1: True, "sanitze": True}})
+        assert "sanitze" in str(exc.value)

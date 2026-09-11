@@ -331,7 +331,11 @@ def _validate_field_defaults(config: dict[str, Any]) -> None:
             location="Config2 ([field_defaults])",
         )
 
-    unknown = sorted(set(section) - _FIELD_DEFAULT_KEYS)
+    # Rendered as text before sorting: ``load_from_dict`` takes arbitrary
+    # dictionaries, so a key can be a non-string (or a mix of types, which
+    # ``sorted`` alone would refuse to order). Every malformed section has to
+    # come out of here as a ConfigurationError, not a raw TypeError.
+    unknown = sorted(str(key) for key in set(section) - _FIELD_DEFAULT_KEYS)
     if unknown:
         # A typo lands here: `sanitze = true` leaves `sanitize` at the merged
         # default of False, so the sanitization the operator asked for silently

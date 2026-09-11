@@ -453,6 +453,90 @@ class TestDefaultSanitizeDetector:
         src = "import sqlalchemy\nclass UserTable:\n    name = sqlalchemy.String(50)\n"
         assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
 
+    # -- Imports that are not bare top-level statements ----------------------
+
+    def test_a_guarded_import_still_binds(self):
+        # A `try:`/`except ImportError:` around an import is a common shape, and
+        # skipping it dropped the module's fields from the checklist silently.
+        src = (
+            "try:\n"
+            "    from protean.fields import String\n"
+            "except ImportError:\n"
+            "    pass\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:6" in findings[0].detail
+
+    def test_an_import_with_a_fallback_assignment_is_not_resolved(self):
+        # A fallback that rebinds the name (`String = None`) leaves the scan
+        # unable to say which binding wins, so it stops claiming the name is
+        # Protean's. Conservative: it under-reports rather than reporting a call
+        # that may not be a field at all.
+        src = (
+            "try:\n"
+            "    from protean.fields import String\n"
+            "except ImportError:\n"
+            "    String = None\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_conditional_import_still_binds(self):
+        src = (
+            "if True:\n"
+            "    from protean.fields import String\n"
+            "class User:\n"
+            "    name = String(max_length=50)\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_a_conditional_foreign_import_still_shadows(self):
+        src = (
+            "from protean.fields import String\n"
+            "if True:\n"
+            "    from sqlalchemy import String\n"
+            "class UserTable:\n"
+            "    name = String(50)\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    # -- Scopes opened by expressions ----------------------------------------
+
+    def test_a_lambda_parameter_shadows_the_factory(self):
+        src = "from protean.fields import String\nmake = lambda String: String()\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_lambda_body_without_shadowing_is_flagged(self):
+        src = (
+            "from protean.fields import String\nmake = lambda: String(max_length=50)\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_a_comprehension_target_shadows_the_factory(self):
+        src = (
+            "from protean.fields import String\n"
+            "specs = [String() for String in factories]\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_comprehension_without_shadowing_is_flagged(self):
+        src = (
+            "from protean.fields import String\n"
+            "specs = [String(max_length=n) for n in sizes]\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_a_dict_comprehension_target_shadows_the_factory(self):
+        src = (
+            "from protean.fields import String\n"
+            "specs = {k: String() for k, String in pairs}\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
     # -- Names rebound by something other than an import ---------------------
 
     def test_a_reassigned_name_is_no_longer_the_factory(self):
@@ -684,6 +768,35 @@ class TestDefaultSanitizeDetector:
             "    tags = List(content_type=String(max_length=50))\n"
         )
         assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_nested_container_shields_the_innermost_spec(self):
+        # `List(List(String(...)))` is a supported shape and the inner String is
+        # no more sanitized than the outer container, so it is not a site.
+        src = (
+            "from protean.fields import List, String\n"
+            "class Post:\n"
+            "    grid = List(List(String(max_length=50)))\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_nested_container_by_keyword_shields_the_innermost_spec(self):
+        src = (
+            "from protean.fields import List, String\n"
+            "class Post:\n"
+            "    grid = List(content_type=List(content_type=String()))\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_field_beside_a_nested_container_is_still_flagged(self):
+        src = (
+            "from protean.fields import List, String\n"
+            "class Post:\n"
+            "    grid = List(List(String(max_length=50)))\n"
+            "    name = String(max_length=50)\n"
+        )
+        findings = _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)
+        assert len(findings) == 1
+        assert "m:4" in findings[0].detail
 
     def test_text_inside_a_dict_value_spec_is_not_flagged(self):
         src = (
