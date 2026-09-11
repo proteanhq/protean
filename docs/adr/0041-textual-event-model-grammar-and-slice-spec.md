@@ -1,4 +1,4 @@
-# ADR-0040: Textual event-model grammar and slice-spec vocabulary
+# ADR-0041: Textual event-model grammar and slice-spec vocabulary
 
 **Status:** Accepted
 
@@ -74,28 +74,34 @@ The rules:
 
 - A **block header** is `<keyword> <Name>:` at column zero. The keyword is one of
   `aggregate`, `command`, `event`, `projection`, `projector`. `<Name>` is a valid
-  Python identifier, read verbatim and used as the generated class name.
+  Python identifier that is not a Python keyword, read verbatim and used as the
+  generated class name.
 - A **body line** is indented under its header. A blank line and a line whose
   first non-space character is `#` are ignored, so comments and spacing are free.
 - A **field line** is `field <name>: <type>` with an optional parenthesized
   constraint list: `field name: string(max_length=100)`. `<name>` is a valid
-  Python identifier, read verbatim. `<type>` is one of the eight primitive types
-  below. Fields keep their declaration order.
-- A **constraint** is either `max_length=<integer>` or the bare flag `key`. `key`
-  marks the projection's identity field.
+  Python identifier that is not a Python keyword, read verbatim, because the
+  generator writes it as a class attribute. `<type>` is one of the eight primitive
+  types below. Fields keep their declaration order for generation.
+- A **constraint list** sits in the parentheses, comma-separated, with insignificant
+  whitespace around each entry: `string(max_length=100)`, `identifier(key)`. A
+  constraint is either `max_length=<integer>` or the bare flag `key`. `max_length`
+  applies only to `string` and `text`; on any other type the parser rejects it,
+  because Protean drops `max_length` on a non-string field. `key` applies only to an
+  `identifier` field of a `projection`, where it marks the projection's identity
+  field; the parser rejects `key` on any other block or field type.
 - A **projector body** is one `for <ProjectionName>` line naming the projection it
-  feeds, and one `consumes <EventName>[, <EventName> ...]` line naming the events
-  it reads.
+  feeds, and one `consumes <EventName>` line naming the event it reads.
 
 Cardinality for one slice: exactly one `aggregate`, one `command`, and one
-`event`. The read side is optional and all-or-nothing: a model has both a
-`projection` and a `projector`, or neither. A `projector` without a `projection`
-to feed, or the reverse, is an error.
+`event`. A `projection` carries exactly one `key` field. The read side is optional
+and all-or-nothing: a model has both a `projection` and a `projector`, or neither.
+A `projector` without a `projection` to feed, or the reverse, is an error.
 
 The parse is deterministic and infers nothing. Names are preserved as written. A
-`for` line must name the model's projection, and every `consumes` name must name
-the model's event; a dangling reference is an error. Every error names the
-one-based line number and the reason.
+`for` line must name the model's projection, and the `consumes` line must name the
+model's event; a dangling reference is an error. Every error names the one-based
+line number and the reason.
 
 ### The primitive types
 
@@ -133,8 +139,9 @@ imports them:
 - `ElementSpec(name: str, fields: tuple[SliceField, ...])`: an element with fields.
   The aggregate, the command, the event, and the projection are each an
   `ElementSpec`. `fields` keeps declaration order.
-- `ProjectorSpec(name: str, projection: str, consumes: tuple[str, ...])`: the
-  projector, the projection name it feeds, and the event names it reads.
+- `ProjectorSpec(name: str, projection: str, consumes: str)`: the projector, the
+  projection name it feeds, and the event name it reads. A later multi-event
+  grammar widens `consumes`, which is a `spec_version` bump.
 - `SliceSpec(aggregate: ElementSpec, command: ElementSpec, event: ElementSpec,
   projection: ElementSpec | None, projector: ProjectorSpec | None, spec_version:
   str)`: the whole slice. `projection` and `projector` are `None` together when
@@ -167,7 +174,7 @@ node the renderer draws:
 | `projection <Name>:` | `SliceSpec.projection.name` | `projections[P].projection.name` | read model, a cylinder |
 | `projector <Name>:` | `SliceSpec.projector.name` | `projections[P].projectors[pr]` | the read-model node |
 | `for <Projection>` | `SliceSpec.projector.projection` | `projectors[pr].projector_for` | the `Projector -> Projection` node label |
-| `consumes <Event>` | `SliceSpec.projector.consumes[]` | `projectors[pr].handlers` keys (the event `__type__`) | the edge from the event to the read model |
+| `consumes <Event>` | `SliceSpec.projector.consumes` | `projectors[pr].handlers` (the one event `__type__` key in a one-slice model) | the edge from the event to the read model |
 
 Two constraints map onto the IR field entry:
 
@@ -191,12 +198,24 @@ round trip, run as a build-time test, with no live sync between the two.
 #1471 adds an **emitter** that reads the IR (the same dict the renderer reads) and
 one cluster, and produces grammar text for that slice. The emitter reads only what
 the vocabulary map covers: the aggregate and its authored fields, the command, the
-non-fact event, and the read model's projection and projector with the events it
+non-fact event, and the read model's projection and projector with the event it
 consumes. It skips the injected `id`, FQNs, element options, and every element the
 grammar does not carry (entities, value objects, repositories, database models,
 command handlers, application services, queries, automations, fact events). It
-recovers a `consumes` name by matching a projector's `handlers` key back to the
+recovers the `consumes` name by matching the projector's `handlers` key back to the
 slice's event.
+
+The emitter's precondition is the shape the grammar covers: a cluster with exactly
+one command and one non-fact event. A cluster with more than one of either is
+outside the grammar, and the emitter raises on it. It never reduces such a cluster
+to a single element, so conformance cannot pass while the emitter drops model
+elements.
+
+`_extract_fields` sorts a cluster's fields by name, so the IR does not keep the
+order the fields were declared in. The emitter emits fields in the IR's order, and
+the conformance test matches fields by name. An authored model keeps its
+declaration order for generation; only this round-trip check reads fields without
+regard to order.
 
 The conformance test renders a known IR to model text, parses that text to a
 `SliceSpec`, and asserts the spec matches the slice as the vocabulary map reads it
@@ -241,7 +260,7 @@ Order slice above. It parses to exactly this spec (shown in serialized form):
   "projector": {
     "name": "OrderProjector",
     "projection": "OrderSummary",
-    "consumes": ["OrderCreated"]
+    "consumes": "OrderCreated"
   }
 }
 ```

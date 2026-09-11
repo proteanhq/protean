@@ -111,4 +111,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0037](0037-idempotent-file-projection.md) | Idempotent Managed Files and the `dx` State File |
 | [0038](0038-canonical-field-style-for-mypy-strict.md) | Canonical field-declaration style for mypy-strict domains |
 | [0039](0039-dx-pack-ships-as-package-data.md) | Ship the developer-experience pack as package data |
-| [0040](0040-textual-event-model-grammar-and-slice-spec.md) | Textual Event-Model Grammar and Slice-Spec Vocabulary |
+| [0041](0041-textual-event-model-grammar-and-slice-spec.md) | Textual Event-Model Grammar and Slice-Spec Vocabulary |

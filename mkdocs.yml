@@ -448,7 +448,7 @@ nav:
       - "0037 · Idempotent managed files": adr/0037-idempotent-file-projection.md
       - "0038 · Field style for mypy-strict": adr/0038-canonical-field-style-for-mypy-strict.md
       - "0039 · DX pack as package data": adr/0039-dx-pack-ships-as-package-data.md
-      - "0040 · Text event-model grammar": adr/0040-textual-event-model-grammar-and-slice-spec.md
+      - "0041 · Text event-model grammar": adr/0041-textual-event-model-grammar-and-slice-spec.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
