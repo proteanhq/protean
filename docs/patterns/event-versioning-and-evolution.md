@@ -549,10 +549,11 @@ This is a heavy operation but provides a clean break from historical schemas.
 ### In-Place Transformation
 
 In-place transformation rewrites the events in the existing stream to the current
-schema, keeping the stream name. It skips the consumer cutover that
-copy-transform needs, and it loses the original payloads unless you archive them
-first. Reach for it when the old schema has no audit value and the stream name
-must stay stable.
+schema and retags them with the current type and version, so a rewritten event no
+longer takes the upcast path on read. It keeps the stream name and skips the
+consumer cutover that copy-transform needs, and it loses the original payloads
+unless you archive them first. Reach for it when the old schema has no audit value
+and the stream name must stay stable.
 
 ### The Dual-Write Transition
 
@@ -646,14 +647,15 @@ class OrderPlaced(BaseEvent):
     currency: String(required=True)  # BREAKS all historical events
 ```
 
-Historical events don't have `currency`. Deserialization fails. Always use
-defaults on new fields for existing event types.
+Historical events don't have `currency`, so deserialization fails. Give a new
+field a default, or supply the value with an upcaster when it can be computed, or
+create a new event type. The Decision Guide below lists the routes.
 
 ---
 
 ## Decision Guide
 
-The ladder, at a glance: climb only as far as the change forces you.
+The ladder at a glance:
 
 ```mermaid
 flowchart TD
@@ -691,9 +693,9 @@ flowchart TD
 | Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
 Events are permanent contracts. Evolve them the way you evolve APIs. Additive
-changes are safe, breaking changes require versioning. New fields get defaults.
-Old fields stay unless you opt into lenient reads, which drop them. Semantics
-never change. When in doubt, create a new event type.
+changes are safe; structural changes are versioned or replaced. New fields get
+defaults. Old fields stay unless you opt into lenient reads, which drop them.
+Semantics never change. When in doubt, create a new event type.
 
 ---
 

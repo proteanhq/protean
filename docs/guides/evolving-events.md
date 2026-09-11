@@ -97,15 +97,16 @@ remove-plus-add (more on that [below](#check-compatibility-protean-ir-diff)).
 A rename is handled by `renamed_from` alone, shown above, with no version bump.
 Structural changes that weak schema cannot express (a newly required field, a
 type change, a field split) need the version bumped so stored events can be
-transformed on read. Set `__version__` and register an **upcaster** for each hop. An upcaster transforms the *stored payload* on read, in memory, from one
+transformed on read. Set `__version__` and register an **upcaster** for each hop.
+An upcaster can only supply a value it computes from the old payload; a newly
+required field with no such value needs a new event type. An upcaster transforms the *stored payload* on read, in memory, from one
 version to the next, leaving the stored event unchanged; Protean chains them, so
 a `v1` payload is walked all the way up to the current `v3` before your handler
 sees it.
 
 The running example bumps `OrderPlaced` to show this chaining. Its rename and
-defaulted fields would load under weak schema without a bump, so read the version
-bump here as an illustration of the mechanism, not a requirement for those two
-changes.
+defaulted fields would load under weak schema without a bump, so the version bump
+here illustrates the mechanism; those two changes do not require it.
 
 ```python
 --8<-- "guides/evolving-events/002.py:55:60"
@@ -283,7 +284,7 @@ guide](compatibility-checking.md) to wire this into pre-commit hooks and CI.
 
 ## Putting it together
 
-The ladder, at a glance: climb only as far as the change forces you.
+The ladder at a glance:
 
 ```mermaid
 flowchart TD

@@ -75,6 +75,9 @@ leaving the stored event unchanged; Protean chains them so a `v1` payload is
 walked up to the current version before a handler sees it. This is a read-time
 transform, distinct from the Rung 3 migrations that rewrite the store. Use this
 rung whenever a stored value has to be transformed, which weak schema cannot do.
+An upcaster works only when it can supply the new value from the old payload. A
+newly required field with no computable value has no upcaster to write; replace
+the event with a new type in that case.
 
 ### Rung 3: an operator-level migration, for a chain grown past usefulness
 
@@ -82,7 +85,8 @@ When an upcaster chain has grown long enough that maintaining it costs more than
 it saves, the answer is to rewrite the stored events. Two tactics apply.
 
 - In-place transformation: Rewrites the events in the existing stream to the
-  current schema.
+  current schema and retags them with the current type and version, so a rewritten
+  event no longer takes the upcast path on read.
 - Copy-and-transform: Reads the old stream, transforms each event, and writes a
   new stream, keeping the old one for audit.
 
@@ -128,7 +132,7 @@ change.
 ## Consequences
 
 An adopter facing a schema change now has one place that says which mechanism
-applies. The three existing mechanisms keep their jobs, and the two heavy tactics
+applies. The three existing mechanisms are unchanged, and the two heavy tactics
 are documented as operator migrations outside core.
 
 Each rung carries a cost. Weak schema is cheap and needs no version bump. It
@@ -138,8 +142,7 @@ the current schema does not declare, so it tolerates a missing field without
 recovering it. Rung 3 rewrites a store and belongs to operators, so a long chain
 becomes a migration project.
 
-This ADR states the snapshot gap plainly. It does not close it; #1362 is the work
-that does.
+The snapshot gap is not fixed here. #1362 tracks that work.
 
 ## Alternatives Considered
 
