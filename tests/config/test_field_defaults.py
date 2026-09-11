@@ -140,3 +140,24 @@ class TestMalformedSectionsAreRejected:
         with pytest.raises(ConfigurationError) as exc:
             Config2.load_from_path(str(tmp_path))
         assert "field_defaults.sanitize" in str(exc.value)
+
+    def test_from_object_with_a_dict_is_validated(self):
+        # `from_object` is its own bootstrap path, so it gets the same check.
+        config = Config2()
+        with pytest.raises(ConfigurationError) as exc:
+            config.from_object({"field_defaults": {"sanitize": "maybe"}})
+        assert "field_defaults.sanitize" in str(exc.value)
+
+    def test_from_object_with_a_class_is_validated(self):
+        class Settings:
+            FIELD_DEFAULTS = {"sanitize": "maybe"}
+
+        config = Config2()
+        with pytest.raises(ConfigurationError) as exc:
+            config.from_object(Settings)
+        assert "field_defaults.sanitize" in str(exc.value)
+
+    def test_from_object_accepts_a_valid_value(self):
+        config = Config2()
+        config.from_object({"field_defaults": {"sanitize": True}})
+        assert config["field_defaults"]["sanitize"] is True

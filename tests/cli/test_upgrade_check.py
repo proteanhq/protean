@@ -177,7 +177,7 @@ class TestOpportunitiesCLI:
     def test_a_failing_detector_surfaces_check_failed_and_exits_2(self, monkeypatch):
         # Detector findings are advisory, but a detector that cannot complete is
         # a CHECK_FAILED warning, and any warning exits 2 through the CLI.
-        def boom(trees, pinned):
+        def boom(trees, pinned, domain):
             raise RuntimeError("detector blew up")
 
         monkeypatch.setattr(upgrade_opportunities, "_DETECTORS", (boom,))

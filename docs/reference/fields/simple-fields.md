@@ -39,8 +39,10 @@ value. Default is `False`: the stored value is the raw input.
     bounded, a value that is accepted always round-trips through serialization
     and event-sourced replay. An input is rejected on write if *either* form is
     out of bounds (so a raw length that looks fine can still be rejected once
-    sanitized, and vice versa); widen the bound or leave `sanitize` off if you
-    need the raw form. A `choices` field is **never** sanitized, even with
+    sanitized, and vice versa); widen the bound or pass `sanitize=False` if you
+    need the raw form. Pass it explicitly rather than leaving `sanitize` unset:
+    an unset field follows the domain's `[field_defaults] sanitize` default,
+    which a domain can set to `true`. A `choices` field is **never** sanitized, even with
     `sanitize=True`: its value must match a declared choice exactly. See
     [ADR-0026](../../adr/0026-max-length-bounds-the-sanitized-value.md).
 

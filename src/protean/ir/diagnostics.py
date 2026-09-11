@@ -382,7 +382,9 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         ),
         fix=(
             "Write `[field_defaults]` as a table and give `sanitize` a boolean, "
-            "or one of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`."
+            "or one of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, "
+            "or the empty string, which reads as false and is what `${VAR|}` "
+            "resolves to when the variable is unset."
         ),
     ),
     DiagnosticCode.CONFIG_UNRESOLVED_ENV_VAR: CodeMeta(

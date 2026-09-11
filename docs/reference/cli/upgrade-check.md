@@ -108,12 +108,17 @@ release tag: `0.16`, `0.16.3`, `0.16.0rc1`, `0.16.0.dev1`. Anything else exits
 | `OPPORTUNITY_QUERY_API` | info | Query API (0.16.0) | Raw `sqlalchemy.text(...)` SQL sites. The query API (`Q(field__isnull=)`, `F()`, `QuerySet.count()`, `.only()`, `.all(with_total=False)`, dispatched through `@domain.query_handler` and `domain.dispatch()`) covers most of what raw SQL is reached for. The `text` name is import-gated to `sqlalchemy`, so an unrelated `text(` call is not flagged. |
 | `OPPORTUNITY_DOMAIN_CONTEXT_MIDDLEWARE` | info | `DomainContextMiddleware` (0.15.0) | A custom ASGI middleware: a `BaseHTTPMiddleware` subclass, a class with `async def dispatch(self, request, call_next)`, or an `app.add_middleware(...)` of a class the framework does not ship. `DomainContextMiddleware` wires domain context plus correlation-id propagation, and registering it (or a standard Starlette/FastAPI middleware like `CORSMiddleware` or `GZipMiddleware`) is not flagged. |
 | `OPPORTUNITY_OUTBOX` | info | Outbox (0.14.0) | A status/state field whose choices cycle through queue states (pending / processing / done / failed). That is usually a hand-rolled work queue the outbox (retry, backoff, DLQ) now covers. The match needs a queue-like choice set, so a plain `status` with business choices does not fire. |
+| `SANITIZE_DEFAULT_CHANGED` | info | Sanitize default flip (0.18.0) | A `String`/`Text` field declared without a `sanitize=` kwarg, which therefore relied on the pre-0.18 default of `sanitize=True`. Every site is listed by `module:line` so the finding works as a migration checklist. Not flagged: a field that declares `sanitize` by keyword or positionally (`Text(True)`), a `choices=` field (never sanitized), a container content spec (`List(String(...))`, never sanitized), a `String`/`Text` that is not Protean's, and a field whose arguments hide behind a splat (`String(**opts)`). The whole finding is suppressed when the domain sets `[field_defaults] sanitize = true`, which opts every unset field back into the old behaviour. See [the migration guide](../migration/v0-18.md#string-and-text-no-longer-sanitize-by-default). |
 | `CHECK_FAILED` | warning | n/a | A detector could not complete; the report may be incomplete for that area. |
 
 ### Where the line is
 
 This mode ships only deterministic detectors, so the report gives the same
-verdict every run. Judgment-heavy advice ("this orchestration is really a process
+verdict every run. Most of them report a capability the domain hand-rolls that
+the framework now ships. `SANITIZE_DEFAULT_CHANGED` is the exception: it reports
+a behaviour change, the 0.18.0 sanitize-default flip, whose effect is silent at
+runtime. It works the same way, a deterministic source scan gated on the
+release. Judgment-heavy advice ("this orchestration is really a process
 manager") stays out of OSS; that is the commercial Domain Assessment surface, on
 the non-deterministic side of the open-core boundary.
 

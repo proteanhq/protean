@@ -41,6 +41,7 @@ import ast
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from protean.fields.spec import _coerce_sanitize_flag
 from protean.ir.analysis.source_provider import SourceProvider
 from protean.upgrade import UpgradeFinding, _summarise
 from protean.upgrade_uow import _root_name
@@ -468,12 +469,18 @@ def _detect_queue_status(
 # Detector 4: String/Text fields that relied on the old sanitize-by-default
 # ---------------------------------------------------------------------------
 
+# The field factories the flip touches.
+_FIELD_FACTORIES = frozenset({"String", "Text"})
+
 # Container factories whose arguments are content specs, not field declarations.
 # ``List(String(max_length=50))`` types the list's items: the container only
 # reads the inner spec's type and choices and never attaches its sanitization
 # validator, so the inner ``String`` was not sanitized before the flip either
 # and is not a migration site.
 _CONTENT_SPEC_FACTORIES = frozenset({"List", "Dict"})
+
+# Every symbol whose Protean binding the scan resolves.
+_TRACKED_SYMBOLS = _FIELD_FACTORIES | _CONTENT_SPEC_FACTORIES
 
 # The positional slot ``sanitize`` occupies in each factory's signature. It is
 # positional-or-keyword in both, so ``Text(True)`` and ``String(255, None, True)``
@@ -488,12 +495,15 @@ def _domain_sanitize_default(domain: Domain) -> bool:
     from env-var interpolation (``"${SANITIZE|true}"`` resolving to ``"true"``)
     is read the same way in both places. A domain with no such key uses the
     framework default, ``False``.
-    """
-    from protean.fields.spec import _coerce_sanitize_flag  # noqa: PLC0415
 
+    Only a missing key falls back. A malformed section raises, and
+    ``run_opportunity_checks`` turns that into a ``CHECK_FAILED`` finding, which
+    says the report may be incomplete. That is the honest answer: the detector
+    cannot tell whether these sites need migrating without knowing the default.
+    """
     try:
         raw = domain.config["field_defaults"]["sanitize"]
-    except (KeyError, TypeError):
+    except KeyError:
         return False
     return _coerce_sanitize_flag(raw)
 
@@ -505,12 +515,13 @@ def _attribute_root(node: ast.expr) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
-def _field_factory_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
-    """What ``String`` and ``Text`` are bound to in one module.
+def _protean_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
+    """What the tracked Protean symbols are bound to in one module.
 
-    Returns the local names that resolve to a Protean field factory (mapped to
-    the factory they name) and the local names that resolve to a Protean module,
-    so ``fields.String(...)`` and ``protean.fields.Text(...)`` resolve too.
+    Returns the local names that resolve to one of :data:`_TRACKED_SYMBOLS`
+    (mapped to the symbol they name) and the local names that resolve to a
+    Protean module, so ``fields.String(...)`` and ``protean.fields.Text(...)``
+    resolve too.
 
     Matching on the trailing symbol alone gets this wrong both ways:
     ``from protean.fields import String as StringField`` is a field declaration
@@ -518,16 +529,23 @@ def _field_factory_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]
     one but the trailing name matches it. Both matter here, because this detector
     is the migration safety net for a silent behavior change.
     """
-    factories: dict[str, str] = {}
+    bindings: dict[str, str] = {}
     modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if not node.module or node.module.split(".")[0] != _FIELD_MODULE_ROOT:
                 continue
             for alias in node.names:
+                if alias.name == "*":
+                    # ``from protean.fields import *`` binds every name the
+                    # module exports, so assume the tracked ones under their own
+                    # spelling. Leaving them unbound would drop the whole module
+                    # from the migration checklist without saying so.
+                    bindings.update({name: name for name in _TRACKED_SYMBOLS})
+                    continue
                 local = alias.asname or alias.name
-                if alias.name in _SANITIZE_POSITION:
-                    factories[local] = alias.name
+                if alias.name in _TRACKED_SYMBOLS:
+                    bindings[local] = alias.name
                 else:
                     # ``from protean import fields`` — a module, reached by
                     # attribute access below.
@@ -536,30 +554,39 @@ def _field_factory_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]
             for alias in node.names:
                 if alias.name.split(".")[0] == _FIELD_MODULE_ROOT:
                     modules.add(alias.asname or alias.name.split(".")[0])
-    return factories, modules
+    return bindings, modules
 
 
-def _resolved_factory(
-    func: ast.expr, factories: dict[str, str], modules: set[str]
+def _resolved_symbol(
+    func: ast.expr, bindings: dict[str, str], modules: set[str]
 ) -> str | None:
-    """The Protean field factory a call names, or ``None`` if it names something
-    else."""
+    """The Protean symbol a call names, or ``None`` if it names something else."""
     if isinstance(func, ast.Name):
-        return factories.get(func.id)
-    if isinstance(func, ast.Attribute) and func.attr in _SANITIZE_POSITION:
+        return bindings.get(func.id)
+    if isinstance(func, ast.Attribute) and func.attr in _TRACKED_SYMBOLS:
         root = _attribute_root(func)
         if root is not None and root in modules:
             return func.attr
     return None
 
 
-def _content_spec_calls(tree: ast.Module) -> set[int]:
-    """``id()`` of every call passed as a content spec to a container factory."""
+def _content_spec_calls(
+    tree: ast.Module, bindings: dict[str, str], modules: set[str]
+) -> set[int]:
+    """``id()`` of every call passed as a content spec to a container factory.
+
+    The container is resolved the same way the field factories are, so
+    ``from protean.fields import List as StringList`` is still recognised as a
+    container and its inner spec is still skipped.
+    """
     nested: set[int] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if _symbol_name(node.func) not in _CONTENT_SPEC_FACTORIES:
+        if (
+            _resolved_symbol(node.func, bindings, modules)
+            not in _CONTENT_SPEC_FACTORIES
+        ):
             continue
         for arg in [*node.args, *(kw.value for kw in node.keywords)]:
             if isinstance(arg, ast.Call):
@@ -567,11 +594,40 @@ def _content_spec_calls(tree: ast.Module) -> set[int]:
     return nested
 
 
+def _is_explicit_value(node: ast.expr) -> bool:
+    """Whether an argument expression declares something other than ``None``.
+
+    ``sanitize=None`` and ``choices=None`` mean exactly what leaving the argument
+    out means: ``FieldSpec`` reads both as unset. So neither counts as a
+    declaration. Anything the scan cannot read (a name, a call, an attribute) is
+    treated as a declaration, so an unreadable expression skips the site rather
+    than reporting a field that may well have declared itself.
+    """
+    return not (isinstance(node, ast.Constant) and node.value is None)
+
+
 def _declares_sanitize(node: ast.Call, factory: str) -> bool:
-    """Whether a call passes ``sanitize`` explicitly, by keyword or position."""
-    if any(kw.arg == "sanitize" for kw in node.keywords):
-        return True
-    return len(node.args) > _SANITIZE_POSITION[factory]
+    """Whether a call declares ``sanitize``, by keyword or position.
+
+    ``sanitize`` is positional-or-keyword in both factories, so ``Text(True)``
+    and ``String(255, None, True)`` are explicit opt-ins that a keyword-only
+    scan would report as relying on the old default.
+    """
+    for keyword in node.keywords:
+        if keyword.arg == "sanitize":
+            return _is_explicit_value(keyword.value)
+    position = _SANITIZE_POSITION[factory]
+    if len(node.args) > position:
+        return _is_explicit_value(node.args[position])
+    return False
+
+
+def _declares_choices(node: ast.Call) -> bool:
+    """Whether a call declares a real ``choices`` constraint."""
+    return any(
+        keyword.arg == "choices" and _is_explicit_value(keyword.value)
+        for keyword in node.keywords
+    )
 
 
 def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
@@ -580,7 +636,7 @@ def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
 
     A ``choices=`` field is skipped: a choices field was never sanitized (the
     value must match a declared choice exactly), so it never relied on the old
-    default. A field that passes ``sanitize=`` either way, by keyword or
+    default. A field that declares ``sanitize`` either way, by keyword or
     positionally, declared its intent explicitly and is unaffected by the flip,
     so it is skipped too. Source parsing is required here: after the flip a live
     domain cannot tell an unset field from an explicit ``sanitize=False``; only
@@ -588,27 +644,25 @@ def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
     """
     sites: list[str] = []
     for module_name, tree in trees:
-        factories, modules = _field_factory_bindings(tree)
-        if not factories and not modules:
+        bindings, modules = _protean_bindings(tree)
+        if not bindings and not modules:
             continue
-        nested = _content_spec_calls(tree)
+        nested = _content_spec_calls(tree, bindings, modules)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            factory = _resolved_factory(node.func, factories, modules)
-            if factory is None:
+            factory = _resolved_symbol(node.func, bindings, modules)
+            if factory not in _FIELD_FACTORIES:
                 continue
             if id(node) in nested:
                 continue
-            if _declares_sanitize(node, factory):
-                continue
-            if any(kw.arg == "choices" for kw in node.keywords):
+            if _declares_sanitize(node, factory) or _declares_choices(node):
                 continue
             # A ``**kwargs`` splat (``String(**opts)``) shows up as a keyword
             # with ``arg is None``; a ``*args`` splat shows up as ``ast.Starred``.
             # Neither is readable by a static scan, so ``sanitize`` or ``choices``
             # could be hidden inside. Skip rather than report a false positive.
-            if any(kw.arg is None for kw in node.keywords):
+            if any(keyword.arg is None for keyword in node.keywords):
                 continue
             if any(isinstance(arg, ast.Starred) for arg in node.args):
                 continue

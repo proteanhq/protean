@@ -341,7 +341,8 @@ def _validate_field_defaults(config: dict[str, Any]) -> None:
     )
     raise ConfigurationError(
         f"`field_defaults.sanitize` must be a boolean, got {raw!r}. "
-        f"Accepted string spellings: {accepted}.",
+        f"Accepted string spellings: {accepted}, and the empty string "
+        "(what `${VAR|}` resolves to), which reads as false.",
         code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
         location="Config2 ([field_defaults] sanitize)",
     )
@@ -362,6 +363,12 @@ class Config2(dict[str, Any]):
             for key in dir(obj):
                 if key.isupper():
                     self[key.lower()] = getattr(obj, key)
+
+        # This is a config bootstrap path of its own, so it gets the same check
+        # the load paths get. Without it a class or dict config could set a
+        # malformed `field_defaults` and only be caught much later, when an unset
+        # field validates, or not at all if no such field is ever built.
+        _validate_field_defaults(self)
 
     @classmethod
     def load_from_dict(cls, config: dict[str, Any] | None = None) -> "Config2":

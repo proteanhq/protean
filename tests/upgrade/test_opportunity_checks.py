@@ -18,6 +18,7 @@ import sys
 import pytest
 
 from protean import upgrade_opportunities
+from protean.exceptions import ConfigurationError
 from protean.upgrade_opportunities import (
     _detect_custom_middleware,
     _detect_default_sanitize,
@@ -456,6 +457,27 @@ class TestDefaultSanitizeDetector:
         )
         assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
 
+    def test_an_aliased_container_still_skips_its_content_spec(self):
+        # The container is resolved the same way the field factories are, so an
+        # aliased `List` does not turn its inner spec into a false positive.
+        src = (
+            "from protean.fields import List as StringList, String\n"
+            "class Post:\n"
+            "    tags = StringList(String(max_length=50))\n"
+        )
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
+
+    def test_a_container_from_elsewhere_does_not_shield_its_argument(self):
+        # A non-Protean `List` is not a Protean container, so a Protean `String`
+        # inside it is still a field declaration.
+        src = (
+            "from typing import List\n"
+            "from protean.fields import String\n"
+            "class Post:\n"
+            "    tags = List(String(max_length=50))\n"
+        )
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
     # -- The domain's own default --------------------------------------------
 
     def test_domain_default_true_suppresses_the_finding(self):
@@ -477,12 +499,59 @@ class TestDefaultSanitizeDetector:
         body = "class User:\n    name = String(max_length=50)\n"
         assert len(self._findings(body, domain=domain)) == 1
 
-    def test_malformed_domain_default_leaves_the_finding(self):
-        # A config mutated to a non-mapping does not silently suppress the
-        # migration report.
+    def test_a_malformed_domain_default_raises_rather_than_guessing(self):
+        # A config mutated to a non-mapping must not be read as "sanitize is
+        # off". The detector cannot tell whether these sites need migrating
+        # without knowing the default, so it raises; `run_opportunity_checks`
+        # turns that into a CHECK_FAILED that says the report is incomplete.
         domain = _StubDomain({"field_defaults": False})
         body = "class User:\n    name = String(max_length=50)\n"
-        assert len(self._findings(body, domain=domain)) == 1
+        with pytest.raises(TypeError):
+            self._findings(body, domain=domain)
+
+    def test_an_unrecognized_domain_default_raises(self):
+        domain = _StubDomain({"field_defaults": {"sanitize": "maybe"}})
+        body = "class User:\n    name = String(max_length=50)\n"
+        with pytest.raises(ConfigurationError):
+            self._findings(body, domain=domain)
+
+    # -- `None` means unset, not declared ------------------------------------
+
+    def test_explicit_sanitize_none_is_still_flagged(self):
+        # `FieldSpec` reads `sanitize=None` exactly as it reads an absent
+        # kwarg, so the field did rely on the old default.
+        assert (
+            len(self._findings("class User:\n    name = String(sanitize=None)\n")) == 1
+        )
+
+    def test_positional_sanitize_none_is_still_flagged(self):
+        assert len(self._findings("class Post:\n    body = Text(None)\n")) == 1
+
+    def test_choices_none_is_still_flagged(self):
+        # `choices=None` is not a choices field: the validator reads
+        # `self.choices is None` to mean no constraint, so the field was
+        # sanitized under the old default.
+        assert (
+            len(self._findings("class User:\n    name = String(choices=None)\n")) == 1
+        )
+
+    def test_an_unreadable_sanitize_expression_is_skipped(self):
+        # A name the scan cannot resolve could be either value, so the site is
+        # skipped rather than reported as a false positive.
+        assert self._findings("class User:\n    name = String(sanitize=FLAG)\n") == []
+
+    # -- Star imports ---------------------------------------------------------
+
+    def test_a_star_import_still_resolves_the_factories(self):
+        # `from protean.fields import *` binds `String`/`Text` under their own
+        # names. Leaving them unbound would drop the whole module from the
+        # checklist without saying so.
+        src = "from protean.fields import *\nclass User:\n    name = String()\n"
+        assert len(_detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS)) == 1
+
+    def test_a_star_import_from_elsewhere_does_not_bind(self):
+        src = "from sqlalchemy import *\nclass User:\n    name = String()\n"
+        assert _detect_default_sanitize(trees(src), self.OWNS, NO_DEFAULTS) == []
 
     # -- The report is a checklist -------------------------------------------
 

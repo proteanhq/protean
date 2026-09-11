@@ -273,10 +273,12 @@ default, so a domain default of `true` still lets a single field opt out with
 `sanitize=False`.
 
 The value is checked when the domain loads its config. `sanitize` must be a
-boolean, or one of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`
-(the string spellings are there because env-var interpolation always yields a
-string, so `sanitize = "${SANITIZE|false}"` arrives as `"false"`). Anything else
-raises [`CONFIG_INVALID_FIELD_DEFAULTS`](../init-diagnostics.md#config-invalid-field-defaults).
+boolean, or one of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or
+the empty string, which reads as false. The string spellings are there because
+env-var interpolation always yields a string: `sanitize = "${SANITIZE|false}"`
+arrives as `"false"`, and `"${SANITIZE|}"` with the variable unset arrives as
+`""`. Anything else raises
+[`CONFIG_INVALID_FIELD_DEFAULTS`](../init-diagnostics.md#config-invalid-field-defaults).
 A typo is rejected rather than read as "do not sanitize", so it cannot quietly
 turn sanitization off.
 
