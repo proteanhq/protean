@@ -1,6 +1,7 @@
 # ADR-0001: Monotonic Integer Versioning for Events
 
-**Status:** Accepted
+**Status:** Accepted. Compatibility semantics are settled by the schema-evolution
+ladder in [ADR-0040](0040-schema-evolution-ladder.md).
 
 **Date:** March 2026
 
@@ -29,8 +30,14 @@ marker.
 ## Decision
 
 We will version events and commands with monotonic positive integers. The `__version__`
-attribute on message classes is an integer starting at 1, incremented by 1 for each schema
-change. The framework enforces this at class creation time in `BaseMessageType.__init_subclass__()`:
+attribute on message classes is an integer starting at 1, incremented by 1 for a change that
+needs a new version. ADR-0040's schema-evolution ladder settles which changes do: a
+structural change bumps the version, and a change that weak schema handles (a field added
+with a default, a rename via `renamed_from`) keeps the current version. Upcasters apply to
+stored events: an upcaster transforms an old event payload to the new version, or the event
+becomes a new type when no value can be supplied. Commands are versioned the same way, but
+they are not replayed, so they carry no upcaster. The framework validates the integer at
+class creation time in `BaseMessageType.__init_subclass__()`:
 
 ```python
 class UserRegistered(BaseEvent):
@@ -38,34 +45,42 @@ class UserRegistered(BaseEvent):
     user_id: Identifier(identifier=True)
     email: String()
 
-# After adding a field:
+# After a structural change (email becomes required): bump the version.
+# A v1 -> v2 upcaster supplies `email` for old payloads (registered separately).
 class UserRegistered(BaseEvent):
     __version__ = 2
     user_id: Identifier(identifier=True)
-    email: String()
-    name: String(default="")
+    email: String(required=True)
 ```
 
+The block shows the class change only. The v1 → v2 upcaster that supplies `email`
+for stored v1 payloads is a separate registration; see the [Event Upcasting
+guide](../guides/consume-state/event-upcasting.md).
+
 The version appears in the message's `__type__` string as
-`{Domain}.{ClassName}.{version}` (e.g., `Auth.UserRegistered.2`), which is used
+`{Domain}.{ClassName}.v{version}` (e.g., `Auth.UserRegistered.v2`), which is used
 for runtime routing and event store lookups. Compatibility semantics (whether
-v2 is backward-compatible with v1, and how to convert between them) are handled
-by the upcaster chain, not by the version number itself.
+v2 is backward-compatible with v1, and how to convert between them) are settled
+by the schema-evolution ladder in ADR-0040, which routes each change to weak
+schema (`renamed_from`, lenient mode), an upcaster, or a new event type. The version number
+stays an identity marker.
 
 ## Consequences
 
-Versioning is simple and unambiguous. There is no debate about whether adding an optional
-field is a minor or patch change. The version increments; the upcaster handles the rest.
+Versioning is simple and unambiguous. There is no debate about whether a change is a minor
+or patch version: the number increments by 1 when a change needs a new version, and ADR-0040
+decides which changes do. Adding an optional or defaulted field, like renaming one, does not.
 
-The `__type__` string (`Domain.ClassName.version`) is stable across code refactoring. Moving
+The `__type__` string (`{Domain}.{ClassName}.v{version}`) is stable across code refactoring. Moving
 `UserRegistered` from `auth.events` to `auth.domain.events` does not change its `__type__`,
 so existing stored events remain routable. This is distinct from the FQN, which does change
 on refactoring.
 
 The trade-off is that the version number alone tells you nothing about
 compatibility. Given `UserRegistered` v3, you cannot know from the number alone
-whether v1 events can be upcast to v3. You need to inspect the upcaster chain.
-This is intentional. Compatibility analysis is a tooling concern (see ADR-0000,
+whether v1 events can be read as v3. You need to inspect the change and the
+evolution mechanism it uses, weak schema or an upcaster (the schema-evolution
+ladder in ADR-0040). Compatibility analysis is a tooling concern (see ADR-0000,
 principle 8), and the Phase 4 compatibility checker will provide this analysis
 automatically.
 

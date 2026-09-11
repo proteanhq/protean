@@ -97,8 +97,10 @@ If any validation fails, `domain.init()` raises an error immediately.
   no upcasting.
 - **Old events (v1 reading v2)**: O(N) where N is the number of version
   hops. For v1 → v3 with two upcasters, N = 2. This is negligible.
-- **Never rewrite events**: The event store is append-only. Upcasting
-  respects this fundamental invariant.
+- **Never rewrite events**: The event store is append-only in normal operation,
+  and upcasting respects that by transforming old payloads in memory. A deliberate
+  operator migration is the separate exception; see [Migration
+  Strategies](../../../patterns/event-versioning-and-evolution.md#migration-strategies).
 
 ## What We Built
 

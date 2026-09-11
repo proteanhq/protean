@@ -1,8 +1,8 @@
 # Evolving events over time
 
-Events are **immutable once stored**, but the code that reads them keeps
-changing. A field gets renamed, a new attribute is added, an old event is
-retired. Months later your service still has to decode events written by last
+Events are **immutable once stored** (only a deliberate operator migration
+rewrites them), but the code that reads them keeps changing. A field gets
+renamed, a new attribute is added, an old event is retired. Months later your service still has to decode events written by last
 year's code, and a downstream consumer still expects last year's shape.
 
 Protean gives you a complete toolkit for evolving an event safely from `v1` to
@@ -94,11 +94,19 @@ remove-plus-add (more on that [below](#check-compatibility-protean-ir-diff)).
 
 ## Bump the version and write upcasters
 
-Renames and other structural changes need the version bumped so stored events
-can be transformed on read. Set `__version__` and register an **upcaster** for
-each hop. An upcaster rewrites the *stored payload* from one version to the next;
-Protean chains them, so a `v1` payload is walked all the way up to the current
-`v3` before your handler sees it.
+A rename is handled by `renamed_from` alone, shown above, with no version bump.
+Structural changes that weak schema cannot express (a newly required field, a
+type change, a field split) need the version bumped so stored events can be
+transformed on read. Set `__version__` and register an **upcaster** for each hop.
+An upcaster can only supply a value it computes from the old payload; a newly
+required field with no such value needs a new event type. An upcaster transforms the *stored payload* on read, in memory, from one
+version to the next, leaving the stored event unchanged; Protean chains them, so
+a `v1` payload is walked all the way up to the current `v3` before your handler
+sees it.
+
+The running example bumps `OrderPlaced` to show this chaining. Its rename and
+defaulted fields would load under weak schema without a bump, so the version bump
+here illustrates the mechanism; those two changes do not require it.
 
 ```python
 --8<-- "guides/evolving-events/002.py:55:60"
@@ -276,11 +284,21 @@ guide](compatibility-checking.md) to wire this into pre-commit hooks and CI.
 
 ## Putting it together
 
+The ladder at a glance:
+
+```mermaid
+flowchart TD
+    change(["A change to a stored event"]) --> q1{"Can weak schema<br/>express it?"}
+    q1 -->|"add a defaulted field,<br/>rename or remove a field"| r1["<b>Rung 1 · Weak schema</b><br/>renamed_from, lenient<br/>no version bump"]
+    q1 -->|"type change, newly required<br/>field, field split or merge"| r2["<b>Rung 2 · Versioning + upcaster</b><br/>bump the version<br/>transform on read, in memory<br/>(new event type if no value to supply)"]
+    r2 -->|"the upcaster chain<br/>grows too long"| r3["<b>Rung 3 · Operator migration</b><br/>in-place / copy-and-transform<br/>rewrites the store"]
+```
+
 | Change | How | Compatibility |
 |--------|-----|---------------|
 | Add an optional / defaulted field | add it | `FULL`, nobody breaks |
-| Add a required field, no default | avoid; give it a default | breaks `BACKWARD` |
-| Rename a field | `renamed_from=[...]` + bump `__version__` + upcaster | `BACKWARD` (Avro `aliases`) |
+| Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` if unmitigated |
+| Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` via Avro `aliases`; `FULL` if the field was optional or defaulted |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |
 | Read old payloads with dropped fields | `lenient_deserialization` (opt-in) | read-path escape hatch |
@@ -295,4 +313,5 @@ and your CI) exactly what changed and whether it is safe.
     - [Compatibility Checking](compatibility-checking.md): Pre-commit hooks, CI gating, strictness.
     - [Schema Generation](compose-a-domain/schema-generation.md): JSON / Avro / Protobuf output.
     - [Event Versioning and Evolution](../patterns/event-versioning-and-evolution.md): The *why*: strategies and trade-offs.
+    - [ADR-0040: The schema-evolution ladder](../adr/0040-schema-evolution-ladder.md): Which mechanism for which change, and why.
     - CLI reference: [`protean events catalog`](../reference/cli/data/events.md), [`protean schema generate`](../reference/cli/schema.md), [`protean ir diff`](../reference/cli/ir.md).
