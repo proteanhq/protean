@@ -34,18 +34,16 @@ from __future__ import annotations
 
 import ast
 import keyword
-from collections.abc import Callable
 from pathlib import Path
 
-from protean.scaffold.change_plan import (
-    OWNERSHIP_GENERATED,
-    OWNERSHIP_HAND_OWNED,
-    ChangePlan,
-    CreateFileOperation,
+from protean.scaffold.change_plan import ChangePlan
+from protean.scaffold.slice_generator import (
+    IRField,
+    SliceElement,
+    SliceFragment,
+    _split_words,
+    generate_slice_plan,
 )
-
-# A renderer turns a slice's parameters into one file's whole content.
-_Renderer = Callable[["_SliceContext"], str]
 
 __all__ = ["SUPPORTED_ELEMENT_TYPES", "AddPlanError", "plan_add_slice"]
 
@@ -127,60 +125,24 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
 
     package, domain_var = _resolve_project(project_path)
 
-    context = _SliceContext(
-        package=package,
-        domain_var=domain_var,
-        name=class_name,
-        slug=slug,
-    )
-
-    base = f"src/{package}/{slug}"
-    operations = tuple(
-        CreateFileOperation(
-            path=f"{base}/{filename}",
-            content=render(context),
-            ownership=ownership,
-        )
-        for filename, render, ownership in _SLICE_FILES
-    )
-
-    return ChangePlan(
-        operations=operations,
-        description=(
-            f"Add the {class_name} aggregate slice "
-            f"(aggregate, command, event, command handler, projector, projection)"
+    # Express today's default slice as a write-side-only fragment and route it
+    # through the shared generator (ADR-0041). The read side is omitted, so the
+    # generator derives the default projection and projector; the result is the
+    # same eight files ``add`` has always emitted. The only field is the
+    # name-only aggregate's ``name`` (a bounded String); the event carries the
+    # surfaced ``<slug>_id`` reference (a plain String) plus that name.
+    name_field = IRField(kind="standard", type="String", required=True, max_length=100)
+    id_field = IRField(kind="standard", type="String", required=True)
+    fragment = SliceFragment(
+        aggregate=SliceElement(name=class_name, fields={"name": name_field}),
+        command=SliceElement(name=f"Create{class_name}", fields={"name": name_field}),
+        event=SliceElement(
+            name=f"{class_name}Created",
+            fields={f"{slug}_id": id_field, "name": name_field},
         ),
     )
 
-
-def _split_words(name: str) -> list[str]:
-    """Split an identifier into the words its generated names are built from.
-
-    Underscores separate words, and so does a case change, so ``order_item``,
-    ``orderItem`` and ``OrderItem`` all split into two words and render the same
-    class ``OrderItem`` and the same slug ``order_item``. A run of capitals stays
-    one word except for the last capital, which starts the next one (``XMLHttp``
-    gives ``["XML", "Http"]``). The rest of each word keeps its original casing,
-    which is what keeps ``HTTPServer`` from becoming ``HttpServer``.
-    """
-    words: list[str] = []
-    current = ""
-    for index, char in enumerate(name):
-        if char == "_":
-            if current:
-                words.append(current)
-                current = ""
-            continue
-        if char.isupper() and current:
-            follows_lower = not current[-1].isupper()
-            starts_word = index + 1 < len(name) and name[index + 1].islower()
-            if follows_lower or starts_word:
-                words.append(current)
-                current = ""
-        current += char
-    if current:
-        words.append(current)
-    return words
+    return generate_slice_plan(fragment, package, domain_var)
 
 
 def _resolve_project(project_path: str) -> tuple[str, str]:
@@ -275,240 +237,3 @@ def _is_domain_call(value: ast.expr) -> bool:
     if isinstance(func, ast.Attribute):
         return func.attr == "Domain"
     return False
-
-
-class _SliceContext:
-    """The parameters that fill in one slice's file contents."""
-
-    __slots__ = ("domain_var", "name", "package", "slug")
-
-    def __init__(self, package: str, domain_var: str, name: str, slug: str) -> None:
-        self.package = package
-        self.domain_var = domain_var
-        self.name = name
-        self.slug = slug
-
-
-def _render_init(ctx: _SliceContext) -> str:
-    # ADR-0030 rule 4: the package initializer is side-effect free (docstring
-    # only). A re-export here would run during traversal and risk the
-    # partially-initialized-module cycle that broke init(traverse=True) in #1316.
-    return (
-        f'"""The {ctx.name} slice.\n\n'
-        "Modules are discovered independently by ``domain.init()``. Keep this\n"
-        "package initializer side-effect free so relative imports during\n"
-        "traversal cannot create partially initialized-module cycles.\n"
-        '"""\n'
-    )
-
-
-def _render_aggregate_base(ctx: _SliceContext) -> str:
-    # The generated side of the seam. Carries structure (fields) and wiring (the
-    # ``create`` factory that raises the created event). A plain, undecorated
-    # ``BaseAggregate`` subclass: it registers nothing on its own, so discovery
-    # importing it is harmless; only the decorated subclass in ``aggregate.py``
-    # is registered. A re-run of ``add`` refreshes this file.
-    return f'''"""Generated base for the {ctx.name} aggregate.
-
-``protean add`` generates this file and refreshes it on every re-run, so do not
-edit it. Put your invariants and behavior in ``aggregate.py``, the hand-owned
-subclass a re-run never overwrites (the generation-gap seam, ADR-0035).
-"""
-
-from typing import Annotated, Self
-
-from pydantic import Field
-
-from protean.core.aggregate import BaseAggregate
-
-from .events import {ctx.name}Created
-
-
-class {ctx.name}Base(BaseAggregate):
-    """Generated structure and wiring for {ctx.name}. Edit the subclass, not this."""
-
-    name: Annotated[str, Field(max_length=100)]
-
-    @classmethod
-    def create(cls, name: str) -> Self:
-        """Create a new {ctx.name} and raise {ctx.name}Created."""
-        {ctx.slug} = cls(name=name)
-
-        {ctx.slug}.raise_(
-            {ctx.name}Created(
-                {ctx.slug}_id={ctx.slug}.id,
-                name={ctx.slug}.name,
-            )
-        )
-
-        return {ctx.slug}
-'''
-
-
-def _render_aggregate(ctx: _SliceContext) -> str:
-    # The hand-owned side of the seam. The decorated subclass: this is the
-    # registered aggregate, and where the developer's invariants and behavior
-    # live. A re-run of ``add`` never touches this file, so those edits are safe.
-    # The class body is a docstring only; the developer fills it in.
-    return f'''"""The {ctx.name} aggregate.
-
-Your own logic lives here. ``protean add`` never overwrites this file, so add
-invariants (``@invariant.post``) and behavior as methods on the class below. The
-generated structure and wiring sit in ``aggregate_base.py`` (the generation-gap
-seam, ADR-0035).
-"""
-
-from {ctx.package}.domain import {ctx.domain_var}
-
-from .aggregate_base import {ctx.name}Base
-
-
-@{ctx.domain_var}.aggregate
-class {ctx.name}({ctx.name}Base):
-    """The {ctx.name} aggregate root."""
-'''
-
-
-def _render_commands(ctx: _SliceContext) -> str:
-    return f'''"""Commands for the {ctx.name} aggregate."""
-
-from typing import Annotated
-
-from pydantic import Field
-
-from {ctx.package}.domain import {ctx.domain_var}
-
-
-@{ctx.domain_var}.command(part_of="{ctx.name}")
-class Create{ctx.name}:
-    """Command to create a new {ctx.name}."""
-
-    name: Annotated[str, Field(max_length=100)]
-'''
-
-
-def _render_events(ctx: _SliceContext) -> str:
-    return f'''"""Events emitted by the {ctx.name} aggregate."""
-
-from typing import Annotated
-
-from pydantic import Field
-
-from {ctx.package}.domain import {ctx.domain_var}
-
-
-@{ctx.domain_var}.event(part_of="{ctx.name}")
-class {ctx.name}Created:
-    """Event emitted when a {ctx.name} is created."""
-
-    {ctx.slug}_id: str
-    name: Annotated[str, Field(max_length=100)]
-'''
-
-
-def _render_command_handlers(ctx: _SliceContext) -> str:
-    return f'''"""Command handlers for the {ctx.name} aggregate."""
-
-from protean import handle
-
-from {ctx.package}.domain import {ctx.domain_var}
-
-from .aggregate import {ctx.name}
-from .commands import Create{ctx.name}
-
-
-@{ctx.domain_var}.command_handler(part_of="{ctx.name}")
-class {ctx.name}CommandHandler:
-    """Handle commands for the {ctx.name} aggregate."""
-
-    @handle(Create{ctx.name})
-    def handle_create_{ctx.slug}(self, command: Create{ctx.name}) -> str:
-        """Create a {ctx.name} from the command and persist it.
-
-        Returns the new aggregate's id so a synchronous caller can look it up
-        right after ``domain.process``.
-        """
-        {ctx.slug} = {ctx.name}.create(name=command.name)
-
-        repo = {ctx.domain_var}.repository_for({ctx.name})
-        repo.add({ctx.slug})
-
-        return {ctx.slug}.id
-'''
-
-
-def _render_projection(ctx: _SliceContext) -> str:
-    return f'''"""Read-model projection for the {ctx.name} aggregate."""
-
-from typing import Annotated
-
-from protean.fields import Identifier
-from pydantic import Field
-
-from {ctx.package}.domain import {ctx.domain_var}
-
-
-@{ctx.domain_var}.projection
-class {ctx.name}Summary:
-    """A read-optimized view of {ctx.name} aggregates."""
-
-    {ctx.slug}_id: Identifier(identifier=True)
-    name: Annotated[str, Field(max_length=100)]
-
-    class Meta:
-        stream_name = "{ctx.slug}"
-'''
-
-
-def _render_projectors(ctx: _SliceContext) -> str:
-    return f'''"""Projector that keeps {ctx.name}Summary up to date."""
-
-from protean.core.projector import on
-
-from {ctx.package}.domain import {ctx.domain_var}
-
-from .aggregate import {ctx.name}
-from .events import {ctx.name}Created
-from .projection import {ctx.name}Summary
-
-
-@{ctx.domain_var}.projector(projector_for={ctx.name}Summary, aggregates=[{ctx.name}])
-class {ctx.name}Projector:
-    """Update the {ctx.name}Summary projection from {ctx.name} events."""
-
-    @on({ctx.name}Created)
-    def on_{ctx.slug}_created(self, event: {ctx.name}Created) -> None:
-        """Create a {ctx.name}Summary when a {ctx.name} is created."""
-        summary = {ctx.name}Summary(
-            {ctx.slug}_id=event.{ctx.slug}_id,
-            name=event.name,
-        )
-
-        repo = {ctx.domain_var}.repository_for({ctx.name}Summary)
-        repo.add(summary)
-'''
-
-
-# The slice's files, in the order they render into the plan. Each entry is
-# ``(filename, renderer, ownership)``; the renderer returns the file's whole
-# content and the ownership marks the generation-gap seam (ADR-0035). Only the
-# aggregate is split by the seam (its base is generated, its subclass hand-owned);
-# every other file is a single, hand-owned file a re-run creates once and leaves
-# alone. The per-renderer comments explain each side.
-#
-# The slice is a complete write-then-read vertical: the aggregate raises its
-# created event, the command handler drives the aggregate, and the projector
-# consumes the event into a read-model projection. The projector is what makes
-# the created event a *handled* event, so ``protean verify`` on the applied slice
-# is green (an unconsumed event trips the UNHANDLED_EVENT check). This mirrors the
-# canonical Example slice that ``protean new`` scaffolds.
-_SLICE_FILES: tuple[tuple[str, _Renderer, str], ...] = (
-    ("__init__.py", _render_init, OWNERSHIP_HAND_OWNED),
-    ("aggregate_base.py", _render_aggregate_base, OWNERSHIP_GENERATED),
-    ("aggregate.py", _render_aggregate, OWNERSHIP_HAND_OWNED),
-    ("commands.py", _render_commands, OWNERSHIP_HAND_OWNED),
-    ("events.py", _render_events, OWNERSHIP_HAND_OWNED),
-    ("command_handlers.py", _render_command_handlers, OWNERSHIP_HAND_OWNED),
-    ("projection.py", _render_projection, OWNERSHIP_HAND_OWNED),
-    ("projectors.py", _render_projectors, OWNERSHIP_HAND_OWNED),
-)

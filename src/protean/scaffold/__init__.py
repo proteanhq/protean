@@ -39,6 +39,14 @@ from protean.scaffold.change_plan import (
 )
 from protean.scaffold.create_project import create_project
 from protean.scaffold.preview import render_preview
+from protean.scaffold.slice_generator import (
+    IRField,
+    SliceElement,
+    SliceFragment,
+    SliceGeneratorError,
+    SliceProjector,
+    generate_slice_plan,
+)
 
 __all__ = [
     "OWNERSHIP_GENERATED",
@@ -53,9 +61,15 @@ __all__ = [
     "ConfigOperation",
     "CreateFileOperation",
     "EditFileOperation",
+    "IRField",
     "Operation",
+    "SliceElement",
+    "SliceFragment",
+    "SliceGeneratorError",
+    "SliceProjector",
     "apply_plan",
     "create_project",
+    "generate_slice_plan",
     "load_schema",
     "plan_add_slice",
     "render_preview",

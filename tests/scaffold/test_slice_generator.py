@@ -1,0 +1,398 @@
+"""Tests for the slice generator: it promotes a slice-shaped IR fragment (ADR-0041)
+to the same create-only :class:`ChangePlan` ``protean add`` emits.
+
+The generator is the shared machinery behind both ``protean add`` (which builds a
+default fragment from a name) and #1471's ``protean new --from-model`` (which parses
+one from text). These tests drive it directly with fragments and assert the planned
+files reflect the fragment's fields, that a write-side-only fragment derives its read
+side, that the default fragment reproduces today's slice, and that a fragment-driven
+slice passes ``protean verify``.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from protean.cli import app
+from protean.scaffold import CreateFileOperation
+from protean.scaffold.add_plan import plan_add_slice
+from protean.scaffold.slice_generator import (
+    IRField,
+    SliceElement,
+    SliceFragment,
+    SliceGeneratorError,
+    SliceProjector,
+    generate_slice_plan,
+)
+
+pytestmark = pytest.mark.no_test_domain
+
+# Reused field entries, exactly ADR-0041's field vocabulary.
+_STR_100 = IRField(kind="standard", type="String", required=True, max_length=100)
+_STR_PLAIN = IRField(kind="standard", type="String", required=True)
+
+
+def _content_for(plan, suffix: str) -> str:
+    op = next(
+        op
+        for op in plan.operations
+        if isinstance(op, CreateFileOperation) and op.path.endswith(suffix)
+    )
+    return op.content
+
+
+def _valid_fragment() -> SliceFragment:
+    """A minimal, valid write-side-only fragment (the ADR's Order slice, read side
+    omitted)."""
+    return SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+
+def test_default_fragment_reproduces_plan_add_slice(tmp_path):
+    """The default fragment ``protean add`` builds, promoted through the generator,
+    plans exactly the same operations ``plan_add_slice`` returns. This pins the
+    byte-for-byte default output now that ``add`` routes through the generator."""
+    package_dir = tmp_path / "proj" / "src" / "myproj"
+    package_dir.mkdir(parents=True)
+    (package_dir / "domain.py").write_text(
+        "from protean.domain import Domain\n\nmyproj = Domain(name='myproj')\n"
+    )
+
+    via_add = plan_add_slice(str(tmp_path / "proj"), "aggregate", "Order")
+    via_generator = generate_slice_plan(_valid_fragment(), "myproj", "myproj")
+
+    assert via_add.description == via_generator.description
+    assert [(op.path, op.content, op.ownership) for op in via_add.operations] == [
+        (op.path, op.content, op.ownership) for op in via_generator.operations
+    ]
+
+
+def test_rich_fragment_is_reflected_in_every_file(tmp_path):
+    """A fragment richer than the default declares each field in its per-type form,
+    across all eight primitive types and both constraints, and every planned file is
+    valid Python."""
+    fields = {
+        "title": IRField(kind="standard", type="String", required=True, max_length=200),
+        "body": IRField(kind="text", type="Text", required=True),
+        "note": IRField(kind="text", type="Text", required=True, max_length=500),
+        "views": IRField(kind="standard", type="Integer", required=True),
+        "rating": IRField(kind="standard", type="Float", required=True),
+        "published": IRField(kind="standard", type="Boolean", required=True),
+        "published_on": IRField(kind="standard", type="Date", required=True),
+        "created_at": IRField(kind="standard", type="DateTime", required=True),
+        "author_ref": IRField(kind="identifier", type="Identifier", required=True),
+    }
+    event_fields = {"article_id": _STR_PLAIN, **fields}
+    fragment = SliceFragment(
+        aggregate=SliceElement("Article", dict(fields)),
+        command=SliceElement("CreateArticle", dict(fields)),
+        event=SliceElement("ArticleCreated", event_fields),
+    )
+
+    plan = generate_slice_plan(fragment, "blog", "blog")
+
+    base = _content_for(plan, "aggregate_base.py")
+    # Each primitive type's declaration form, plus both constraints.
+    assert "title: Annotated[str, Field(max_length=200)]" in base
+    assert "body: Text(required=True)" in base
+    assert "note: Text(required=True, max_length=500)" in base
+    assert "views: int" in base
+    assert "rating: float" in base
+    assert "published: bool" in base
+    assert "published_on: date" in base
+    assert "created_at: datetime" in base
+    assert "author_ref: Identifier(required=True)" in base
+    # Imports the richer types pull in.
+    assert "from datetime import date, datetime" in base
+    assert "from typing import Annotated, Self" in base
+    assert "from pydantic import Field" in base
+    assert "from protean.fields import Identifier, Text" in base
+
+    # The create factory takes the aggregate's fields (plain base annotations) and
+    # sets the event's fields, the surfaced id from the aggregate's id.
+    assert "views: int" in base
+    assert "title: str" in base  # the create parameter, not the field declaration
+    assert "article_id=article.id," in base
+    assert "title=article.title," in base
+
+    # The command carries the same fields; the event carries the surfaced id as a
+    # plain String and the rest by name.
+    assert "title: Annotated[str, Field(max_length=200)]" in _content_for(
+        plan, "commands.py"
+    )
+    assert "article_id: str" in _content_for(plan, "events.py")
+
+    # The command handler drives create from the command's fields.
+    handler = _content_for(plan, "command_handlers.py")
+    assert "Article.create(" in handler
+    assert "title=command.title" in handler
+
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
+def test_write_side_only_fragment_derives_the_default_read_side(tmp_path):
+    """Omit the projection and projector; the generator derives the default
+    ``<Name>Summary`` projection (the surfaced id as the ``Identifier`` key) and the
+    ``<Name>Projector``, so a write-side-only fragment is still a complete slice."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    projection = _content_for(plan, "projection.py")
+    assert "class OrderSummary:" in projection
+    # The surfaced id becomes the projection's identity key; the other field mirrors
+    # the event.
+    assert "order_id: Identifier(identifier=True)" in projection
+    assert "name: Annotated[str, Field(max_length=100)]" in projection
+
+    projectors = _content_for(plan, "projectors.py")
+    assert "class OrderProjector:" in projectors
+    assert "projector_for=OrderSummary" in projectors
+    assert "@on(OrderCreated)" in projectors
+    assert "order_id=event.order_id," in projectors
+
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
+def test_explicit_read_side_is_honored(tmp_path):
+    """When the fragment carries its own projection and projector, the generator uses
+    them instead of deriving a default."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+        projection=SliceElement(
+            "OrderView",
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                ),
+                "name": _STR_100,
+            },
+        ),
+        projector=SliceProjector(
+            name="OrderViewProjector", for_="OrderView", consumes="OrderCreated"
+        ),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "class OrderView:" in _content_for(plan, "projection.py")
+    projectors = _content_for(plan, "projectors.py")
+    assert "class OrderViewProjector:" in projectors
+    assert "projector_for=OrderView" in projectors
+
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
+def test_unsupported_field_type_raises(tmp_path):
+    """A field of a type the generator does not render raises a clear error rather
+    than emitting code that will not compile."""
+    fragment = SliceFragment(
+        aggregate=SliceElement(
+            "Order",
+            {"price": IRField(kind="standard", type="Decimal", required=True)},
+        ),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    message = str(exc_info.value)
+    assert "Decimal" in message and "price" in message
+
+
+def test_event_without_surfaced_id_raises(tmp_path):
+    """The event must declare the surfaced ``<slug>_id`` so the create factory can set
+    it from the aggregate's id; without it the generator refuses to render."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "order_id" in str(exc_info.value)
+
+
+def test_half_present_read_side_raises(tmp_path):
+    """A projection without a projector (or the reverse) is rejected: the read side is
+    both together or neither."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+        projection=SliceElement(
+            "OrderSummary",
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                )
+            },
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "read side" in str(exc_info.value)
+
+
+def test_projector_wired_to_the_wrong_participant_raises(tmp_path):
+    """The projector's ``for`` and ``consumes`` must name the slice's own projection
+    and event; a mismatch would generate a projector referencing a class the slice
+    does not define."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+        projection=SliceElement(
+            "OrderSummary",
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                )
+            },
+        ),
+        projector=SliceProjector(
+            name="OrderProjector", for_="WrongName", consumes="OrderCreated"
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "WrongName" in str(exc_info.value)
+
+
+def test_projector_consuming_the_wrong_event_raises(tmp_path):
+    """When the projector's ``for`` matches the projection but its ``consumes`` names
+    an event the slice does not define, the generator refuses to render."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+        projection=SliceElement(
+            "OrderSummary",
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                )
+            },
+        ),
+        projector=SliceProjector(
+            name="OrderProjector", for_="OrderSummary", consumes="OrderUpdated"
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "OrderUpdated" in str(exc_info.value)
+
+
+# --- Acceptance #2: a fragment-driven slice passes ``protean verify`` ------------
+
+_VERIFY_PACKAGE = "scaffolded"
+
+
+def _generate_project(tmp_path: Path) -> Path:
+    """Run ``protean new`` and return the generated project root."""
+    out = tmp_path / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    result = CliRunner().invoke(
+        app,
+        ["new", _VERIFY_PACKAGE, "-o", str(out), "--defaults", "--skip-setup"],
+    )
+    assert result.exit_code == 0, f"protean new failed: {result.output}"
+    return out / _VERIFY_PACKAGE
+
+
+def _materialize(project: Path, plan) -> None:
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        target = project / op.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(op.content)
+
+
+def _subprocess_env(project: Path) -> dict[str, str]:
+    src = str(project / "src")
+    existing = os.environ.get("PYTHONPATH", "")
+    env = {
+        **os.environ,
+        "PYTHONPATH": src + os.pathsep + existing if existing else src,
+    }
+    env.pop("VIRTUAL_ENV", None)
+    env.pop("PROTEAN_ENV", None)
+    env.pop("PROTEAN_DEBUG", None)
+    return env
+
+
+def test_fragment_driven_slice_verifies_green(tmp_path):
+    """Acceptance #2: a slice generated from a fragment with typed fields beyond the
+    default, materialized into a ``protean new`` project, passes ``protean verify``
+    (init + check + the project's pytest suite) as a real subprocess."""
+    project = _generate_project(tmp_path)
+
+    fields = {
+        "name": _STR_100,
+        "quantity": IRField(kind="standard", type="Integer", required=True),
+    }
+    fragment = SliceFragment(
+        aggregate=SliceElement("Item", dict(fields)),
+        command=SliceElement("CreateItem", dict(fields)),
+        event=SliceElement("ItemCreated", {"item_id": _STR_PLAIN, **fields}),
+    )
+    plan = generate_slice_plan(fragment, _VERIFY_PACKAGE, _VERIFY_PACKAGE)
+    _materialize(project, plan)
+
+    # Prove the slice actually landed, so a green verdict reflects the generated
+    # slice, not just the base project.
+    assert (project / "src/scaffolded/item/aggregate_base.py").is_file()
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "protean",
+            "verify",
+            "-d",
+            "src/scaffolded/domain.py:scaffolded",
+            "--path",
+            ".",
+        ],
+        cwd=project,
+        env=_subprocess_env(project),
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+
+    assert completed.returncode == 0, (
+        "protean verify must pass on a fragment-driven slice:\n"
+        f"{completed.stdout}\n{completed.stderr}"
+    )
