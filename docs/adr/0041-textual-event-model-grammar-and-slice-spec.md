@@ -105,9 +105,9 @@ The rules:
   with no `max_length`. The projection's `key` field is a `string` or `identifier`,
   and the generator keeps that type: an `identifier` key becomes
   `Identifier(identifier=True)`, whose identity default_factory the framework
-  supplies, while a `string` key becomes `String(identifier=True)`, which is field
-  kind standard and carries no framework default, so the projector populates it from
-  the event. Optional fields and author defaults are a later addition to the grammar.
+  supplies, while a `string` key becomes `String(max_length=None, sanitize=False,
+  identifier=True, required=True)`, field kind standard, which carries no framework
+  default, so the projector populates it from the event. Optional fields and author defaults are a later addition to the grammar.
 - A **constraint list** sits in the parentheses, comma-separated, with insignificant
   whitespace around each entry: `string(max_length=100)`, `identifier(key)`. A
   constraint is either `max_length=<positive-integer>` or the bare flag `key`.
@@ -161,11 +161,14 @@ The grammar carries eight field types. Each maps to one IR field type (the value
 | `datetime`   | `"datetime"`| `DateTime`      | `DateTime`    |
 | `identifier` | `"identifier"` | `Identifier` | `Identifier`  |
 
-`string` maps to a bare `str` annotation (IR type `String`); `text` maps to
-`Text(sanitize=False)` (IR type `Text`), which keeps the text kind. Neither
-sanitizes. The sanitizing `String()` and `Text()` factory defaults are not what the
-generator emits, so an IR field that carries a `sanitize` flag is not representable
-and the emitter rejects its cluster.
+Every generated field is required, unsanitized, and unbounded unless it declares
+`max_length`. The generator pins the field parameters to reach that; it does not lean
+on the `String()`, `Text()`, or `Identifier()` factory defaults, which would add
+`max_length=255`, `sanitize=True`, or an optional `default`. `string` uses a bare
+`str` annotation (IR type `String`), which is already required, unbounded, and
+unsanitized; `text` uses `Text(sanitize=False, required=True)` (IR type `Text`),
+keeping the text kind. An IR field that carries a `sanitize` flag or resolves to an
+optional default is not representable, and the emitter rejects its cluster.
 
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
