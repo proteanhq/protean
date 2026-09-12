@@ -74,11 +74,13 @@ The rules:
 
 - A **block header** is `<keyword> <Name>:` at column zero. The keyword is one of
   `aggregate`, `command`, `event`, `projection`, `projector`. `<Name>` is a valid
-  Python identifier that is not a Python keyword, read verbatim and used as the
-  generated class name. The aggregate name also derives a snake_case `<slug>` by the
-  word split `add_plan.py` uses, and the slug must itself be a valid non-keyword
-  identifier; the parser rejects a name whose slug is not, such as `Class`, whose
-  slug `class` is a keyword.
+  Python identifier that is not a Python keyword. The generator normalizes it the way
+  `plan_add_slice` does, through the `_split_words` split `add_plan.py` uses: the
+  class name is the PascalCase join and the aggregate's `<slug>` is the snake_case
+  join, so `order_item`, `orderItem`, and `OrderItem` all name the same slice. Both
+  the class name and the slug must be valid non-keyword identifiers; the parser
+  rejects a name that derives an invalid one, such as `Class`, whose slug `class` is a
+  keyword.
 - A **body line** is indented under its header. A blank line and a line whose
   first non-space character is `#` are ignored, so comments and spacing are free.
 - A **field line** is `field <name>: <type>` with an optional parenthesized
@@ -138,7 +140,8 @@ generator supplies for an omitted read side (`<Aggregate>Summary`,
 `<Aggregate>Projector`). The parser checks these against the symbols the generated
 modules bind, in code, the same closed way it checks field names.
 
-The parse is deterministic and infers nothing. Names are preserved as written. A
+The parse is deterministic and infers nothing. Field names are preserved as written;
+a block name is normalized to its canonical class name and slug (above). A
 `for` line must name the model's projection, and the `consumes` line must name the
 model's event; a dangling reference is an error. Every error names the one-based
 line number and the reason. An error that has an offending line names it; a
@@ -173,7 +176,11 @@ optional default is not representable, and the emitter rejects its cluster.
 
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
-not carry it and the emitter skips it.
+not carry it and the emitter skips it. The grammar supports only an aggregate whose
+identity is that injected `id`; an aggregate with an explicit identifier field (its
+`identity_field` is not the auto `id`) is outside the grammar, and the emitter rejects
+that cluster, since serializing the identifier as an ordinary field would let the
+generator inject a different `id` and change the identity.
 
 ### The slice spec
 
@@ -317,7 +324,8 @@ ineligible: a field whose IR `type` is outside the eight (`Status`, a `List` or 
 container), a constraint or flag with no grammar syntax (a `sanitize` flag, an
 optional or defaulted field), an extra or mismatched field, a second projection or
 projector, a projector wired to another aggregate's events or a broader subscription,
-an identity beyond the default string, or a field named something the grammar
+an identity beyond the default string, an aggregate whose identity is an explicit
+field rather than the injected auto `id`, or a field named something the grammar
 reserves. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
 falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
