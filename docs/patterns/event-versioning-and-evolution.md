@@ -663,13 +663,7 @@ create a new event type. The Decision Guide below lists the routes.
 
 The ladder at a glance:
 
-```mermaid
-flowchart TD
-    change(["A change to a stored event"]) --> q1{"Can weak schema<br/>express it?"}
-    q1 -->|"add a defaulted field,<br/>rename or remove a field"| r1["<b>Rung 1 · Weak schema</b><br/>renamed_from, lenient<br/>no version bump"]
-    q1 -->|"type change, newly required<br/>field, field split or merge"| r2["<b>Rung 2 · Versioning + upcaster</b><br/>bump the version<br/>transform on read, in memory<br/>(new event type if no value to supply)"]
-    r2 -->|"the upcaster chain<br/>grows too long"| r3["<b>Rung 3 · Operator migration</b><br/>in-place / copy-and-transform<br/>rewrites the store"]
-```
+--8<-- "diagrams/schema-evolution-ladder.md"
 
 | Change Type | Safe? | Strategy |
 |-------------|-------|----------|
@@ -694,7 +688,7 @@ flowchart TD
 | Renamed fields | `renamed_from` (weak schema) |
 | Changed semantics | New field name or new event type |
 | Consumer compatibility | Tolerant reader pattern |
-| Historical replay | Handle all versions in @apply handlers |
+| Historical replay | Upcasters normalize old events so @apply handlers see the current schema; without upcasters, handle each version in the handler |
 | Large migrations | In-place transformation, copy-transform, or dual-write transition |
 | Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
