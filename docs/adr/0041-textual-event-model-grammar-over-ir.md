@@ -100,11 +100,16 @@ Cardinality for one slice: exactly one `aggregate`, one `command`, one `event`. 
 read side is optional: at most one `projection` and one `projector`, together or not
 at all. A `projection` contains exactly one `key` field, which is its identity and
 must be the surfaced `<slug>_id`; its other fields are a subset of the event's,
-matched by name. The parser rejects a projection whose `key` is named other than the
-`<slug>_id`, or that declares a field the event does not, because promotion populates
-the projection from the event by name and has no other source. The parse is
-deterministic and infers nothing. Every error names the one-based line number and the
-reason.
+matched by name, and each carries the same IR type and constraints as the event field
+it copies. The `<slug>_id` key is the one exception: the projection holds it as the
+`Identifier` key, while the event carries it as a `string` or `identifier` reference.
+The parser rejects a projection whose `key` is named other than the `<slug>_id`, that
+declares a field the event does not, or that gives a shared non-key field a type or
+constraint the event field lacks, because promotion copies the projection's fields
+from the event by name and has no other source. A `for` line must name the model's
+projection and a `consumes` line must name its event; a reference to a name the model
+does not declare is an error. The parse is deterministic and infers nothing. Every
+error names the one-based line number and the reason.
 
 The exhaustive normalization, reserved-name, and name-collision rules (which
 generated symbols a field or block name may not shadow, how a slug is recovered)
@@ -114,8 +119,10 @@ shapes; #1471 and #1472 fix the enumeration.
 
 ### The primitive types
 
-The grammar carries eight field types. Each names an IR field `kind` and `type`
-directly. This is the single vocabulary: the grammar has no type strings of its own.
+The grammar carries eight field types, each a lexical token (`string`, `integer`)
+that maps to one IR field `kind` and `type` through the table below. The tokens are
+the grammar's own surface; the field model they resolve to is the IR's, so there is no
+second field representation to keep in sync.
 
 | Grammar type | IR field `kind` | IR field `type` |
 |--------------|-----------------|-----------------|
@@ -158,15 +165,17 @@ representations used to drift. It references participants by their authored name
 not by FQN. It is not a schema-valid IR on its own.
 
 The generator promotes the fragment to a full IR and then to code (#1472). Promotion
-fills every derived key the author never writes: the FQNs and `module`; each
+fills the derived keys the author never writes. These include the FQNs and `module`; each
 message's `__type__` and `__version__`; `part_of`; the aggregate's injected identity
 (`id`, IR kind `auto`, `auto_generated: true`); the surfaced `<slug>_id` reference
 the event and projection carry; the aggregate and projection `options` and the
 aggregate's `stream_category`; the projector's `aggregates`, `stream_categories`, and
 `subscription` (a projector carries no `options`);
 `invariants`; the empty element maps every cluster requires; the domain metadata;
-the elements index; and the checksum. Promotion is one deterministic step, and it is
-the same step whether the fragment came from a text model or from `protean add`.
+the elements index; and the checksum. The complete schema-required output (including
+`$schema`, `ir_version`, `contracts`, `flows`, `diagnostics`, and the injected id's
+full `Auto` entry) is #1472's to produce. Promotion is one deterministic step, and it
+is the same step whether the fragment came from a text model or from `protean add`.
 
 Because the fragment is IR field entries plus names, there is one field vocabulary, so
 a field's shape lives in the IR field model alone. Widening the grammar to reach a new
@@ -188,8 +197,10 @@ mechanics (the command handler, the generation-gap seam of ADR-0035,
 
 Every grammar construct maps to one IR location. Most also map to a node the renderer
 draws; the `field` row is the exception, mapping to an IR field entry with no drawn
-node. There is no intermediate spec column: the grammar names IR keys. `C` is a
-cluster's FQN and `P` a projection group's FQN.
+node. There is no intermediate spec column: each grammar construct maps straight to an
+IR location. The authored fragment keeps the grammar terms (`for`, `consumes`), which
+promotion resolves to the IR keys (`projector_for`, `handlers`). `C` is a cluster's FQN
+and `P` a projection group's FQN.
 
 | Grammar construct | IR location | Renderer node |
 |-------------------|-------------|---------------|
@@ -226,10 +237,14 @@ aggregate's authored fields, excluding that injected `id` (the command's fields 
 those authored fields, the event's equal them plus `<slug>_id`, the projection's are
 `<slug>_id` plus a subset of the event's); the projector handles exactly the slice's
 one event; and the options, subscription, and stream category are the framework
-defaults. A cluster carrying anything the grammar cannot say (a container or `Status`
-field, a numeric bound, a `choices` or `unique` marker, a custom stream category, an
-authored identity, a projector that handles more than one event) is ineligible, and
-the emitter raises on it, so it never drops a covered participant silently. The precise
+defaults. A cluster is ineligible when its covered data (the authored fields, the
+identity, and the wiring) carries something the grammar cannot express: a container or
+`Status` field, a numeric bound, a `choices` or `unique` marker, a custom stream
+category, an authored identity, or a projector that handles more than one event.
+Derived metadata the round trip does not compare (element descriptions from
+docstrings, FQNs, message versions, and the rest) is ignored, so it never makes a
+cluster ineligible. The emitter raises on an ineligible cluster, so it never drops a
+covered participant silently. The precise
 eligibility enumeration and the project-contextual name-collision rules are #1471 and
 #1472 implementation detail; this ADR fixes that eligibility is decided against the
 IR and that the round trip compares the covered subset.
