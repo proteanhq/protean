@@ -88,20 +88,24 @@ The rules:
   constraint list: `field name: string(max_length=100)`. `<name>` is a valid
   Python identifier that is not a Python keyword, read verbatim, because the
   generator writes it as a class attribute. Field names are unique within a block;
-  a duplicate is an error. A field name may not shadow any member its block's
-  generated class carries. Every field-carrying block is a pydantic `BaseModel`
-  subclass, so that is the class's full MRO: the template-defined members, the
-  framework base (`BaseAggregate`, `BaseMessageType`, or `BaseProjection`), and
-  pydantic's own `BaseModel`. The parser reads that member set from the generated
-  class in code, so it tracks the base classes as they change instead of a list
-  written here. The check is the only guard: a field that shadows an inherited
-  member does not fail `domain.init()`, it warns and registers, then the generated
-  `create`, `raise_`, or serialization breaks at use time, so the slice would
-  register yet fail `protean verify`. An `aggregate` also reserves `<slug>_id`, the
-  identity reference the generator injects. In the write-side-only path the event's
-  fields become the synthesized projection's fields, so the event's field names are
-  checked against the projection's member set too. `<type>` is one of the eight
-  primitive types below, and fields keep their declaration order for generation.
+  a duplicate is an error. A field name may not start with an underscore (pydantic
+  treats an underscore-prefixed attribute as private, not a field) or use the pydantic
+  `model_` prefix (a protected namespace that raises). It also may not shadow any name
+  its block's generated code binds: a member of the generated class, or a local or
+  parameter the template binds around the field, such as the aggregate factory's `cls`
+  parameter. Every field-carrying block is a pydantic `BaseModel` subclass, so the
+  member set is the class's full MRO: the template-defined members, the framework base
+  (`BaseAggregate`, `BaseMessageType`, or `BaseProjection`), pydantic's `BaseModel`,
+  and, for an `aggregate`, the injected `id`. The parser reads that set from the
+  generated class and the templates in code, so it tracks the base classes as they
+  change. The check is the only guard: a field that shadows an inherited member does
+  not fail `domain.init()`, it warns and registers, then the generated `create`,
+  `raise_`, or serialization breaks at use time, so the slice would register yet fail
+  `protean verify`. An `aggregate` also reserves `<slug>_id`, the identity reference
+  the generator injects. In the write-side-only path the event's fields become the
+  synthesized projection's fields, so the event's field names are checked against the
+  projection's member set too. `<type>` is one of the eight primitive types below, and
+  fields keep their declaration order for generation.
 - A **field is required and has no default,** except the projection's identity `key`,
   which carries the framework identity default; the grammar does not express other
   optional fields or author-supplied defaults. `field name: string` maps to a bare
@@ -145,9 +149,11 @@ a module binds beside a block import: the framework class imports (`Annotated`, 
 `Field`, `BaseAggregate`) and the always-generated derived classes (`<Aggregate>Base`,
 `<Aggregate>CommandHandler`, and the synthesized `<Aggregate>Summary` and
 `<Aggregate>Projector`). The `<slug>` is lowercase, so it collides with the lowercase
-bindings: the composition-root variable and the command handler's `repo` local. The
-generator checks its own synthesized and derived names against this same set, so a
-project rooted at `OrderSummary` cannot also synthesize an `OrderSummary` projection.
+bindings: the composition-root variable and the command handler's locals and
+parameters (`repo`, and the `command` parameter, so an `aggregate Command` is
+rejected). The generator checks its own synthesized and derived names against this
+same set, so a project rooted at `OrderSummary` cannot also synthesize an
+`OrderSummary` projection.
 
 The parse is deterministic and infers nothing. Field names are preserved as written;
 a block name is normalized to its canonical class name and slug (above). A
@@ -179,9 +185,11 @@ it declares `max_length`, and the generator chooses a declaration form that reac
 that. `string` uses a bare `str` annotation and `string(max_length=N)` an
 `Annotated[str, Field(max_length=N)]`; `integer`, `float`, `boolean`, `date`, and
 `datetime` use their bare annotation (`int`, `float`, `bool`, `date`, `datetime`),
-each required with no extra keys; `text` uses `Text(required=True)` and a non-key
-`identifier` uses `Identifier(required=True)`, the factory forms, since no bare
-annotation yields those IR types. Sanitization is off by default, so no form sets it.
+each required with no extra keys; `text` uses `Text(required=True)`, `text(max_length=N)`
+a `Text(max_length=N, required=True)`, and a non-key `identifier`
+an `Identifier(required=True)`, all factory forms, since no bare annotation yields
+those IR types. Sanitization is off by default (`String`/`Text` leave `sanitize` unset
+and it reaches the IR only when explicitly `True`), so no form sets it.
 A required string-based factory field (`Text`, `Identifier`, or a `String()` call)
 carries an implicit `min_length=1` from Protean's required-string rule, so a `text`
 field and a required non-key `identifier` are non-empty; the bare-annotation forms
@@ -280,7 +288,7 @@ projection group's FQN (`ir/builder.py` keys the group by the projection's own F
 | Grammar construct | Slice-spec field | IR location | Renderer node |
 |-------------------|------------------|-------------|---------------|
 | `aggregate <Name>:` | `SliceSpec.aggregate.name` | `clusters[C].aggregate.name` | aggregate (state), a rectangle |
-| `field <n>: <t>` under an element | `<element>.fields[]` | `<element>.fields[n]` | (fields are not drawn; the diff reports `field <n>`) |
+| `field <n>: <t>` under an element | `<element>.fields[]` | `<element>.fields[<name>]` (a name-keyed dict) | (fields are not drawn; the diff reports `field <n>`) |
 | `command <Name>:` | `SliceSpec.command.name` | `clusters[C].commands[cmd]` | command (trigger), a parallelogram |
 | `event <Name>:` | `SliceSpec.event.name` | `clusters[C].events[evt]`, non-fact | event (result), a stadium |
 | `projection <Name>:` | `SliceSpec.projection.name` | `projections[P].projection.name` | read model, a cylinder |
@@ -342,7 +350,9 @@ with exactly one `identifier` field and one projector; a projector whose `handle
 route only that event, whose `aggregates` are exactly the slice's aggregate, whose
 `stream_categories` equal the aggregate's class-derived default
 (`<domain normalized_name>::<underscored aggregate name>`), and whose `subscription`
-is empty; distinct canonical short names; and every field within the eight types and
+is the framework default `{config: {}, profile: null, type: null}` (the value the IR
+carries for an unconfigured projector); distinct canonical short names; and every
+field within the eight types and
 two constraints, required and without an author default, with the projection's
 identity `key` the one exception, an `identifier` field carrying no `required` flag.
 
@@ -358,8 +368,9 @@ container), a constraint or flag with no grammar syntax (a `sanitize` flag, a nu
 `min_value` or `max_value`, a stray `min_length`, a `choices` or `unique` marker, an
 optional or defaulted field), an extra or mismatched field, a second projection or
 projector, a projector wired to another aggregate's events, wired via
-`stream_categories` with an empty `aggregates`, or with a non-empty `subscription`, an
-aggregate whose `stream_category` differs from its class-derived default, an aggregate
+`stream_categories` with an empty `aggregates`, or with a `subscription` other than
+that default, an aggregate whose `stream_category` differs from its class-derived
+default, an aggregate
 whose identity field is not `kind auto`, an identity beyond the default string, or a
 field named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
