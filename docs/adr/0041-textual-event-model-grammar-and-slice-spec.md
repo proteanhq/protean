@@ -190,21 +190,20 @@ that. `string` uses a bare `str` annotation and `string(max_length=N)` an
 each required with no extra keys; `text` uses `Text(sanitize=False, required=True)`,
 `text(max_length=N)` a `Text(max_length=N, sanitize=False, required=True)`, and a
 non-key `identifier` an `Identifier(sanitize=False, required=True)`, all factory forms,
-since no bare annotation yields those IR types. The `String`/`Text` factories leave
-`sanitize` off (the IR records it only when it is explicitly true), and the generator
-writes `sanitize=False` on the factory forms so the generated declaration is
-unambiguous. Protean's required-string rule adds an implicit `min_length=1` to a
+since no bare annotation yields those IR types. The generator writes `sanitize=False`
+on the factory forms, so the generated declaration disables sanitization; the IR
+records a `sanitize` key only when it is true, so these forms carry none. Protean's required-string rule adds an implicit `min_length=1` to a
 required `Text` or `Identifier` factory field, so a `text` field and a required
 non-key `identifier` are non-empty. That `1` is the implied form of a required field
 of those two types, so it round-trips even though the grammar has no syntax for it
 (both the source and the generated field carry it), and the emitter treats it as part
-of the required semantics, not a third constraint. The bare-annotation forms (`string`
+of the required semantics and does not count as a third constraint. The bare-annotation forms (`string`
 and the numeric and temporal types) carry no `min_length`. An IR field is not
 representable, and the emitter rejects its cluster, when it carries anything else the
 grammar cannot say: a `sanitize` flag, a `min_length` on a `string` (a
-`String()`-factory source field carries a `min_length=1` the grammar's `string` cannot
-express), a numeric `min_value` or `max_value`, a `choices` or `unique` marker, or an
-author `default`.
+`String(required=True)` source field carries a `min_length=1` the grammar's `string`
+cannot express), a numeric `min_value` or `max_value`, a `choices` or `unique` marker,
+or an author `default`.
 
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
@@ -344,10 +343,12 @@ application services, queries, automations, fact events).
 
 The conformance compares only the **vocabulary-covered data**: the participants'
 names, their authored fields, and the wiring (`for`, `consumes`). Everything else is
-skipped and plays no part in the comparison, so a canonical slice's command handler,
+skipped from the comparison and is not emitted: a canonical slice's command handler,
 the injected `id`, element options, and message metadata (an event's `__version__`,
-its publication or deprecation options) are skipped by design and never make a cluster
-ineligible.
+its publication or deprecation options). Not being compared is not the same as not
+being read. The eligibility rule still reads a few options, such as the aggregate's
+`stream_category`, and rejects a non-default value, so a cluster with a custom stream
+category is ineligible even though that option is never emitted.
 
 Within that covered data the emitter's precondition is one rule over what the IR
 shows: it emits a cluster only when the emitted grammar text would parse back to a
