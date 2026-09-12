@@ -129,9 +129,12 @@ Cardinality for one slice: exactly one `aggregate`, one `command`, and one
 `projector`, together or not at all. A `projection` without a `projector`, the
 reverse, or a second `projection` or `projector`, is an error, since the spec holds
 one of each. A `projection` carries exactly one `key` field. Block
-names are unique across the slice, because the generated command handler and
-projector import the aggregate, command, event, and projection by their bare class
-names; a name shared by two blocks is an error. A block name, and the aggregate's
+names are unique across the slice on their **canonical** class name, because the
+generated command handler and projector import the aggregate, command, event, and
+projection by their bare class names, and two spellings normalize to one class:
+`aggregate OrderItem` and `command order_item` both become `OrderItem` and collide, so
+that model is an error. A `for` or `consumes` reference resolves on the same canonical
+name. A block name, and the aggregate's
 `<slug>`, also may not collide with a symbol the generated modules bind: the `handle`
 and `on` decorators and the other helper imports, the composition-root domain
 variable (so a `<slug>` of `domain` is rejected), a local variable the templates bind
@@ -324,9 +327,9 @@ ineligible: a field whose IR `type` is outside the eight (`Status`, a `List` or 
 container), a constraint or flag with no grammar syntax (a `sanitize` flag, an
 optional or defaulted field), an extra or mismatched field, a second projection or
 projector, a projector wired to another aggregate's events or a broader subscription,
-an identity beyond the default string, an aggregate whose identity is an explicit
-field rather than the injected auto `id`, or a field named something the grammar
-reserves. The emitter judges a field on its IR `type`, so a Python type the builder
+an identity beyond the default string, an aggregate with an explicit identifier field
+where the grammar supports only the injected auto `id`, or a field named something the
+grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
 falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
 is `String` in the IR and round-trips as grammar `string`. That collapse is the
