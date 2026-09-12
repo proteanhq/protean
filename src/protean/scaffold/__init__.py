@@ -38,6 +38,12 @@ from protean.scaffold.change_plan import (
     Operation,
 )
 from protean.scaffold.create_project import create_project
+from protean.scaffold.model_parser import (
+    ModelEmitError,
+    ModelParseError,
+    emit_model,
+    parse_model,
+)
 from protean.scaffold.preview import render_preview
 
 __all__ = [
@@ -53,10 +59,14 @@ __all__ = [
     "ConfigOperation",
     "CreateFileOperation",
     "EditFileOperation",
+    "ModelEmitError",
+    "ModelParseError",
     "Operation",
     "apply_plan",
     "create_project",
+    "emit_model",
     "load_schema",
+    "parse_model",
     "plan_add_slice",
     "render_preview",
 ]
