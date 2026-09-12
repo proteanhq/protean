@@ -290,34 +290,41 @@ event. It skips the injected `id`, element options, and every element the gramma
 does not carry (entities, value objects, repositories, database models, command
 handlers, application services, queries, automations, fact events).
 
-The emitter's precondition is one closed rule: it emits a cluster only when the
-emitted grammar text parses back, under every parser rule above, to a spec that
-matches the cluster. The cluster must therefore satisfy the cross-block field-set and
-identity rules as well as the per-field shape: exactly one command and one non-fact
-event; the field-set equality (command equals aggregate, event equals aggregate plus
-`<slug>_id`, projection equals `<slug>_id` plus a subset of the event); either no
-read side or one projection with exactly one identity field, of type `identifier`,
-and one projector; a
-projector whose `handlers` route only that event, whose `aggregates` are exactly the
-slice's aggregate, and whose `stream_categories` are the default that aggregate
-derives, with no extra category or subscription override; distinct element short
-names; and every field within the eight types and two constraints, required and
-without an author default, with the projection's `identifier` key the one exception,
-which carries the framework identity default. Anything the grammar cannot carry
-makes the cluster ineligible: a field whose IR `type` is outside the eight (`Status`,
-a `List` or `Dict` container), a constraint or flag the grammar has no syntax for (a
-`sanitize` flag, an optional or defaulted field), an extra or mismatched field, a
-second projection or projector, a projector wired to another aggregate's events or a
-broader subscription, an identity beyond the default string, message metadata the
-grammar has no syntax for (a non-default `__version__`, a publication, supersession,
-or deprecation option), or a field named something the grammar reserves. The emitter
-judges a field on its IR `type`, so a Python type the builder already collapsed to a
-grammar type carries as that type: `IRBuilder._resolve_type_name` falls back to
-`String` for an unmapped type such as `decimal.Decimal`, so that field is `String` in
-the IR and round-trips as grammar `string`. That collapse is the builder's, before
-the emitter, and outside this round trip. The emitter raises on an ineligible cluster,
-so it never emits text that drops or distorts what the cluster holds, and conformance
-cannot pass while the emitter loses model elements.
+The conformance compares only the **vocabulary-covered data**: the participants'
+names, their authored fields, and the wiring (`for`, `consumes`). Everything else is
+skipped and plays no part in the comparison, so a canonical slice's command handler,
+the injected `id`, element options, and message metadata (an event's `__version__`,
+its publication or deprecation options) are skipped by design and never make a cluster
+ineligible.
+
+Within that covered data the emitter's precondition is one closed rule: it emits a
+cluster only when the emitted grammar text parses back, under every parser rule above,
+to a spec whose covered data matches the cluster. So the cluster must satisfy the
+cross-block field-set and identity rules as well as the per-field shape: exactly one
+command and one non-fact event; the field-set equality (command equals aggregate,
+event equals aggregate plus `<slug>_id`, projection equals `<slug>_id` plus a subset
+of the event); either no read side or one projection with exactly one identity field,
+of type `identifier`, and one projector; a projector whose `handlers` route only that
+event, whose `aggregates` are exactly the slice's aggregate, and whose
+`stream_categories` are the default that aggregate derives, with no extra category or
+subscription override; distinct element short names; and every field within the eight
+types and two constraints, required and without an author default, with the
+projection's `identifier` key the one exception, which carries the framework identity
+default.
+
+A covered participant that carries data the grammar cannot represent makes the cluster
+ineligible: a field whose IR `type` is outside the eight (`Status`, a `List` or `Dict`
+container), a constraint or flag with no grammar syntax (a `sanitize` flag, an
+optional or defaulted field), an extra or mismatched field, a second projection or
+projector, a projector wired to another aggregate's events or a broader subscription,
+an identity beyond the default string, or a field named something the grammar
+reserves. The emitter judges a field on its IR `type`, so a Python type the builder
+already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
+falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
+is `String` in the IR and round-trips as grammar `string`. That collapse is the
+builder's, before the emitter, and outside this round trip. The emitter raises on an
+ineligible cluster, so it never drops or distorts a participant the vocabulary map
+covers, and conformance cannot pass while the emitter loses a covered participant.
 
 `_extract_fields` sorts a cluster's fields by name, so the IR does not keep the
 order the fields were declared in. The emitter emits fields in the IR's order, and
