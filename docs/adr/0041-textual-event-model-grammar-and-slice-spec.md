@@ -102,21 +102,21 @@ The rules:
 - A **field is required and has no default,** and the grammar does not express
   optional fields or author-supplied defaults. `field name: string` maps to a bare
   `str` annotation, a required, unbounded string that the IR records as a `String`
-  with no `max_length`. The projection's `key` field is a `string` or `identifier`,
-  and the generator keeps that type: an `identifier` key becomes
-  `Identifier(identifier=True)`, whose identity default_factory the framework
-  supplies, while a `string` key becomes `String(max_length=None, sanitize=False,
-  identifier=True, required=True)`, field kind standard, which carries no framework
-  default, so the projector populates it from the event. Optional fields and author defaults are a later addition to the grammar.
+  with no `max_length`. The projection's `key` field is an `identifier`, and the
+  generator emits it as `Identifier(identifier=True)`, whose identity default_factory
+  the framework supplies. A projection whose identity is another field type (an IR
+  `String(identifier=True)`, say) is outside the grammar, and the emitter rejects
+  that cluster. Optional fields and author defaults are a later addition to the
+  grammar.
 - A **constraint list** sits in the parentheses, comma-separated, with insignificant
   whitespace around each entry: `string(max_length=100)`, `identifier(key)`. A
   constraint is either `max_length=<positive-integer>` or the bare flag `key`.
   `max_length` applies only to `string` and `text`, and its value is a positive
   integer; the parser rejects it on any other type, because Protean drops
   `max_length` on a non-string field, and rejects a zero or negative value. `key`
-  applies only to a str-based field (`string` or `identifier`) of a `projection`,
-  where it marks the projection's identity field; the parser rejects `key` on any
-  other type or in any other block. A constraint name appears at most once in a
+  applies only to an `identifier` field of a `projection`, where it marks the
+  projection's identity field; the parser rejects `key` on any other type or in any
+  other block. A constraint name appears at most once in a
   list; a duplicate, such as `string(max_length=10, max_length=20)` or
   `identifier(key, key)`, is an error.
 - A **projector body** is one `for <ProjectionName>` line naming the projection it
@@ -129,13 +129,14 @@ reverse, or a second `projection` or `projector`, is an error, since the spec ho
 one of each. A `projection` carries exactly one `key` field. Block
 names are unique across the slice, because the generated command handler and
 projector import the aggregate, command, event, and projection by their bare class
-names; a name shared by two blocks is an error. A block name also may not collide
-with a symbol the generated modules bind: the `handle` and `on` decorators and the
-other helper imports, the composition-root domain variable (so an aggregate whose
-slug is `domain` is rejected), or a name the generator supplies for an omitted read
-side (`<Aggregate>Summary`, `<Aggregate>Projector`). The parser checks block names
-against the symbols the generated modules bind, in code, the same closed way it
-checks field names.
+names; a name shared by two blocks is an error. A block name, and the aggregate's
+`<slug>`, also may not collide with a symbol the generated modules bind: the `handle`
+and `on` decorators and the other helper imports, the composition-root domain
+variable (so a `<slug>` of `domain` is rejected), a local variable the templates bind
+(the command handler's `repo`, so a `<slug>` of `repo` is rejected), or a name the
+generator supplies for an omitted read side (`<Aggregate>Summary`,
+`<Aggregate>Projector`). The parser checks these against the symbols the generated
+modules bind, in code, the same closed way it checks field names.
 
 The parse is deterministic and infers nothing. Names are preserved as written. A
 `for` line must name the model's projection, and the `consumes` line must name the
@@ -228,8 +229,8 @@ parser enforces on its own: it rejects a model whose event
 omits `<slug>_id`, whose `<slug>_id` is not an unconstrained `string` or
 `identifier`, whose command and aggregate field sets differ, whose event field set is
 not exactly the aggregate's fields plus `<slug>_id`, whose projection reads a field
-the event does not declare, or that declares a shared non-identity field name
-differently in two blocks. Generation is then a name lookup with no inference. Field sets that diverge further, such as a
+the event does not declare, whose projection `key` is a field other than `<slug>_id`,
+or that declares a shared non-identity field name differently in two blocks. Generation is then a name lookup with no inference. Field sets that diverge further, such as a
 denormalizing projection, are a later addition with explicit mappings.
 
 When the read side is `None`, the generator supplies a default projection that
@@ -295,14 +296,14 @@ matches the cluster. The cluster must therefore satisfy the cross-block field-se
 identity rules as well as the per-field shape: exactly one command and one non-fact
 event; the field-set equality (command equals aggregate, event equals aggregate plus
 `<slug>_id`, projection equals `<slug>_id` plus a subset of the event); either no
-read side or one projection with exactly one identifier field and one projector; a
+read side or one projection with exactly one identity field, of type `identifier`,
+and one projector; a
 projector whose `handlers` route only that event, whose `aggregates` are exactly the
 slice's aggregate, and whose `stream_categories` are the default that aggregate
 derives, with no extra category or subscription override; distinct element short
 names; and every field within the eight types and two constraints, required and
-without an author default, with the projection's `identifier` key the exception that
-carries the framework identity default, while a `string` key stays no-default and is
-populated by the projector. Anything the grammar cannot carry
+without an author default, with the projection's `identifier` key the one exception,
+which carries the framework identity default. Anything the grammar cannot carry
 makes the cluster ineligible: a richer field type or constraint (`Decimal`, `Status`,
 a container, an optional or defaulted field, a `sanitize` flag), an extra or
 mismatched field, a second projection or projector, a projector wired to another
