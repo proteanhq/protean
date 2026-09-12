@@ -92,7 +92,9 @@ The rules:
   bare flag `key`, valid only on an `identifier` field of a `projection`, where it
   marks the projection's identity.
 - A **projector body** is one `for <ProjectionName>` line and one
-  `consumes <EventName>` line.
+  `consumes <EventName>` line. The one-slice grammar's projector consumes exactly one
+  event; a projector that handles several events is a later grammar, and eligibility
+  rejects a multi-handler projector from the round trip.
 
 Cardinality for one slice: exactly one `aggregate`, one `command`, one `event`. The
 read side is optional: at most one `projection` and one `projector`, together or not
@@ -180,9 +182,10 @@ mechanics (the command handler, the generation-gap seam of ADR-0035,
 
 ### The vocabulary map
 
-Every grammar construct maps to one IR location and one node the renderer draws.
-There is no intermediate spec column: the grammar names IR keys. `C` is a cluster's
-FQN and `P` a projection group's FQN.
+Every grammar construct maps to one IR location. Most also map to a node the renderer
+draws; the `field` row is the exception, mapping to an IR field entry with no drawn
+node. There is no intermediate spec column: the grammar names IR keys. `C` is a
+cluster's FQN and `P` a projection group's FQN.
 
 | Grammar construct | IR location | Renderer node |
 |-------------------|-------------|---------------|
@@ -217,12 +220,12 @@ grammar: fields within the eight types and two constraints; the identity is the
 injected id (`auto_generated: true`); the field-set relationships hold over the
 aggregate's authored fields, excluding that injected `id` (the command's fields equal
 those authored fields, the event's equal them plus `<slug>_id`, the projection's are
-`<slug>_id` plus a subset of the event's); and the options,
-subscription, and stream category are the framework defaults. A cluster carrying
-anything the grammar cannot say (a container or `Status` field, a numeric bound, a
-`choices` or `unique` marker, a custom stream category, an authored identity) is
-ineligible, and the emitter raises on it, so it never drops a covered participant
-silently. The precise
+`<slug>_id` plus a subset of the event's); the projector handles exactly the slice's
+one event; and the options, subscription, and stream category are the framework
+defaults. A cluster carrying anything the grammar cannot say (a container or `Status`
+field, a numeric bound, a `choices` or `unique` marker, a custom stream category, an
+authored identity, a projector that handles more than one event) is ineligible, and
+the emitter raises on it, so it never drops a covered participant silently. The precise
 eligibility enumeration and the project-contextual name-collision rules are #1471 and
 #1472 implementation detail; this ADR fixes that eligibility is decided against the
 IR and that the round trip compares the covered subset.
@@ -285,8 +288,9 @@ omits the last two blocks; the generator derives the default `OrderSummary` and
 
 - **One canonical.** The text model is an authoring surface over the IR, so there is
   a single field vocabulary and a single structural contract. #1471 and #1472 build
-  against the IR schema. When a field kind is added, it is updated in the IR field
-  model alone.
+  against the IR schema, so no second field representation exists to drift from it.
+  Widening the grammar to a new IR field kind still updates the grammar, parser,
+  emitter, and eligibility check together, as the authored-IR profile above states.
 - **No middle column to drift.** The vocabulary map is grammar term to IR key. The
   conformance round trip is IR to text to IR, a true inverse, checked as a property.
   The class of defect that comes from keeping two representations aligned by hand does
