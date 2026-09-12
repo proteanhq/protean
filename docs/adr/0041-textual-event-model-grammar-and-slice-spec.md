@@ -135,13 +135,15 @@ projection by their bare class names, and two spellings normalize to one class:
 `aggregate OrderItem` and `command order_item` both become `OrderItem` and collide, so
 that model is an error. A `for` or `consumes` reference resolves on the same canonical
 name. A block name, and the aggregate's
-`<slug>`, also may not collide with a symbol the generated modules bind: the `handle`
-and `on` decorators and the other helper imports, the composition-root domain
-variable (so a `<slug>` of `domain` is rejected), a local variable the templates bind
-(the command handler's `repo`, so a `<slug>` of `repo` is rejected), or a name the
-generator supplies for an omitted read side (`<Aggregate>Summary`,
-`<Aggregate>Projector`). The parser checks these against the symbols the generated
-modules bind, in code, the same closed way it checks field names.
+`<slug>`, also may not collide with a symbol the generated code binds for the project.
+That set is project-contextual and template-derived: the composition-root variable
+resolved from `domain.py`, whatever its name (a project rooted at `myproj` reserves
+`myproj`); the helper and decorator imports (`handle`, `on`); the command handler's
+locals (`repo`, `command`); and the names the generator supplies for an omitted read
+side (`<Aggregate>Summary`, `<Aggregate>Projector`). The generator computes this set
+from the project and its templates and passes it to the parser, which checks each
+name and slug against it in code. It is not a fixed list here, because the root
+variable and the templates decide it.
 
 The parse is deterministic and infers nothing. Field names are preserved as written;
 a block name is normalized to its canonical class name and slug (above). A
