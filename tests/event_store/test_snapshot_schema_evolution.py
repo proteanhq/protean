@@ -1,8 +1,9 @@
 """Loading an event-sourced aggregate whose snapshot predates the current schema.
 
 A snapshot is written straight from the aggregate's serialized state, with no
-version and no upcaster path (see ``BaseEventStore._load_aggregate_current`` and
-``create_snapshot``). Change the aggregate's fields (rename one, remove one, add
+schema version and no upcaster path (see
+``BaseEventStore._load_aggregate_current`` and ``create_snapshot``). Change the
+aggregate's fields (rename one, remove one, add
 a newly required one) and a snapshot written before the change no longer
 constructs: Pydantic ``extra="forbid"`` rejects the stale key or the missing
 required field surfaces as a ``ValidationError``.
