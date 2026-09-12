@@ -139,6 +139,42 @@ _EXPRESSIBLE_FIELD_KEYS = frozenset(
     }
 )
 
+# The element options the grammar covers, with the value promotion fills in. The
+# grammar carries no option syntax, so a cluster whose options differ from these is
+# outside the covered subset: dropping ``is_event_sourced: true`` or a projection's
+# ``cache`` would emit a model that promotes back to a slice with different runtime
+# behaviour. ADR-0041 lists these among the derived keys promotion fills.
+#
+# ``schema_name`` and ``stream_category`` are left out because promotion derives them
+# from the element's name and the domain's, so they carry no authored choice. An
+# option key absent from a table means the emitter refuses the cluster rather than
+# guess, which is the safe direction when the framework gains an option.
+_DEFAULT_OPTIONS: dict[str, dict[str, Any]] = {
+    "aggregate": {
+        "auto_add_id_field": True,
+        "fact_events": False,
+        "is_event_sourced": False,
+        "limit": 100,
+        "provider": "default",
+    },
+    "projection": {
+        "cache": None,
+        "externally_populated": False,
+        "limit": 100,
+        "order_by": [],
+        "provider": "default",
+    },
+}
+
+# Option keys promotion derives from the element's own name, so they hold no choice
+# the grammar could lose.
+_DERIVED_OPTION_KEYS = frozenset({"schema_name", "stream_category"})
+
+# A projector's subscription settings as promotion fills them. A projector carries no
+# ``options`` (ADR-0041), so its subscription is what stands in for them here.
+_DEFAULT_SUBSCRIPTION: dict[str, Any] = {"config": {}, "profile": None, "type": None}
+
+
 # The implicit non-empty bound a required field carries (ADR-0026). The grammar's
 # ``required`` re-derives exactly this value, so the emitter drops a ``min_length``
 # equal to it and raises on any other, including an explicit ``0``: a required field
@@ -341,13 +377,24 @@ def _parse_constraints(
             # ``isdecimal`` and not ``isdigit``: a Unicode numeric like the
             # superscript two satisfies ``isdigit`` but ``int()`` then raises a
             # ValueError, and every violation here reports as a ModelParseError.
-            if not value.isdecimal() or int(value) <= 0:
+            if not value.isdecimal():
+                raise ModelParseError("max_length must be a positive integer", lineno)
+            try:
+                length = int(value)
+            except ValueError as exc:
+                # A decimal token past CPython's int-from-string digit limit. Still a
+                # grammar violation, so it reports as one.
+                raise ModelParseError(
+                    f"max_length has {len(value)} digits, which is too long to read",
+                    lineno,
+                ) from exc
+            if length <= 0:
                 raise ModelParseError("max_length must be a positive integer", lineno)
             if ftype not in ("string", "text"):
                 raise ModelParseError(
                     "max_length is valid only on string and text fields", lineno
                 )
-            max_length = int(value)
+            max_length = length
         else:
             raise ModelParseError(f"unknown constraint {token!r}", lineno)
 
@@ -611,6 +658,8 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
         )
     event = next(iter(authored_events.values()))
 
+    _check_options(cluster_fqn, "aggregate", aggregate)
+
     read_side = _resolve_read_side(ir, cluster_fqn, event.get("__type__"))
 
     blocks = [
@@ -620,6 +669,13 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     ]
     if read_side is not None:
         projection, projector = read_side
+        _check_options(cluster_fqn, "projection", projection)
+        subscription = projector.get("subscription")
+        if subscription is not None and subscription != _DEFAULT_SUBSCRIPTION:
+            raise ModelEmitError(
+                f"projector {projector['name']!r} sets a non-default subscription "
+                f"({subscription}), which the grammar cannot express"
+            )
         blocks.append(
             _emit_block(
                 "projection", projection["name"], projection.get("fields", {}), True
@@ -686,19 +742,22 @@ def _resolve_read_side(
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     """Find the projection and projector for this cluster's slice, or ``None``.
 
-    A projector belongs to the slice when it names this cluster among its
-    aggregates or consumes this cluster's event. A matching projector that spans
-    more than this one aggregate, or handles more than this one event, is
-    ineligible and raises rather than emit a lossy subset.
+    A projector belongs to the slice when it consumes this cluster's event, which
+    is how the event-model renderer attaches one (``_drawn_consumers`` in
+    ``protean.ir.generators.event_model``): the handler map decides, not the
+    aggregate list. A projector that names this aggregate but handles some other
+    cluster's event is not part of this slice and is passed over. One that does
+    consume this event but spans more than this aggregate, or handles more than
+    this event, is ineligible and raises rather than emit a lossy subset.
     """
-    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for group in ir.get("projections", {}).values():
-        for projector in group.get("projectors", {}).values():
-            references = cluster_fqn in projector.get("aggregates", []) or (
-                event_type is not None and event_type in projector.get("handlers", {})
-            )
-            if references:
-                matches.append((group, projector))
+    # An event with no ``__type__`` matches nothing, since a handler map is keyed by
+    # event type, so such a cluster comes out write-side-only.
+    matches = [
+        (group, projector)
+        for group in ir.get("projections", {}).values()
+        for projector in group.get("projectors", {}).values()
+        if event_type in projector.get("handlers", {})
+    ]
 
     if not matches:
         return None
@@ -722,6 +781,31 @@ def _resolve_read_side(
             "grammar covers a projector that consumes exactly one event"
         )
     return group["projection"], projector
+
+
+def _check_options(cluster_fqn: str, keyword: str, element: dict[str, Any]) -> None:
+    """Refuse an element whose options the grammar cannot carry.
+
+    The grammar has no option syntax, so it can only express an element promotion
+    would give the framework defaults. Emitting one with a non-default option would
+    return text that promotes back to different behaviour, with nothing in the model
+    to show for it.
+    """
+    defaults = _DEFAULT_OPTIONS[keyword]
+    options = element.get("options") or {}
+    for key, value in sorted(options.items()):
+        if key in _DERIVED_OPTION_KEYS:
+            continue
+        if key not in defaults:
+            raise ModelEmitError(
+                f"cluster {cluster_fqn!r} sets the {keyword} option {key!r}, which "
+                "the grammar does not carry"
+            )
+        if value != defaults[key]:
+            raise ModelEmitError(
+                f"cluster {cluster_fqn!r} sets the {keyword} option {key}={value!r} "
+                f"rather than {defaults[key]!r}, which the grammar cannot express"
+            )
 
 
 def _emit_block(

@@ -464,6 +464,15 @@ class TestParseRejections:
         )
         assert parse_model(model)["event"]["fields"]["order_id"]["type"] == "Identifier"
 
+    def test_max_length_too_long_to_read(self):
+        # A decimal token past CPython's int-from-string digit limit still has to
+        # report as a ModelParseError, not escape as a raw ValueError.
+        model = f"aggregate Order:\n    field name: string(max_length={'9' * 5000})\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "too long to read" in str(exc.value)
+
     def test_empty_constraint_list(self):
         model = "aggregate Order:\n    field name: string()\n"
         with pytest.raises(ModelParseError) as exc:
@@ -878,25 +887,19 @@ class TestEmitter:
         assert "field id:" not in text
 
     def test_fact_event_is_not_emitted(self):
-        domain = Domain(name="Ordering", root_path=".")
-
-        @domain.event(part_of="Order")
-        class OrderCreated:
-            order_id = String(max_length=None, required=True)
-            name = String(max_length=100, required=True)
-
-        @domain.aggregate(fact_events=True)
-        class Order:
-            name = String(max_length=100, required=True)
-
-        @domain.command(part_of="Order")
-        class CreateOrder:
-            name = String(max_length=100, required=True)
-
-        domain.init(traverse=False)
-        ir = domain.to_ir()
-        text = emit_model(ir, _cluster_fqn(ir))
-        # Exactly the one authored event is emitted; the fact event is filtered.
+        # A fact event in the events map is not counted as a second authored event
+        # and is not emitted. The aggregate's ``fact_events`` option is a separate
+        # matter, checked in TestEmitterIneligibility: the grammar cannot carry it.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["events"]["m.OrderFact"] = {
+            "name": "OrderFact",
+            "__type__": "M.OrderFact.v1",
+            "is_fact_event": True,
+            "fields": {
+                "name": {"kind": "standard", "type": "String", "required": True}
+            },
+        }
+        text = emit_model(ir, "m.Order")
         assert "event OrderCreated:" in text
         assert "Fact" not in text
 
@@ -982,6 +985,127 @@ class TestEmitter:
         ir = domain.to_ir()
         with pytest.raises(ModelEmitError):
             emit_model(ir, _cluster_fqn(ir))
+
+    def test_non_default_aggregate_option_raises(self):
+        # ``fact_events`` changes what the slice publishes at runtime, and the
+        # grammar has no option syntax, so emitting would drop it in silence.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["options"] = {
+            "auto_add_id_field": True,
+            "fact_events": True,
+            "is_event_sourced": False,
+            "limit": 100,
+            "provider": "default",
+            "schema_name": "order",
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "fact_events=True" in str(exc.value)
+
+    def test_event_sourced_aggregate_option_raises(self):
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["options"] = {"is_event_sourced": True}
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "is_event_sourced=True" in str(exc.value)
+
+    def test_name_derived_options_are_not_a_refusal(self):
+        # ``schema_name`` and ``stream_category`` are derived from the element and
+        # domain names, so they carry no authored choice and do not block emission.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["options"] = {
+            "provider": "default",
+            "schema_name": "order",
+            "stream_category": "ordering::order",
+        }
+        assert "aggregate Order:" in emit_model(ir, "m.Order")
+
+    def test_unknown_aggregate_option_raises(self):
+        # An option the table does not know is refused rather than guessed at, so a
+        # new framework option cannot start being dropped in silence.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["options"] = {"future_knob": "on"}
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "future_knob" in str(exc.value)
+
+    def test_non_default_projection_option_raises(self):
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "options": {"cache": "redis", "provider": "default"},
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        }
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "cache=" in str(exc.value)
+
+    def test_non_default_projector_subscription_raises(self):
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        }
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                        "subscription": {
+                            "config": {},
+                            "profile": "fast",
+                            "type": None,
+                        },
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "subscription" in str(exc.value)
+
+    def test_projector_on_this_aggregate_for_another_event_is_ignored(self):
+        # The renderer attaches a projector to a slice through the event handler map,
+        # so a projector that names this aggregate but consumes a different event is
+        # not this slice's read side. The model comes out write-side-only.
+        projections = {
+            "m.Report": {
+                "projection": {"name": "PaymentSummary", "fields": {}},
+                "projectors": {
+                    "m.PaymentProjector": {
+                        "name": "PaymentProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.PaymentReceived.v1": ["on_payment_received"]},
+                    }
+                },
+            }
+        }
+        text = emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "projection" not in text
+        assert "projector" not in text
 
     def test_multi_aggregate_projector_raises(self):
         """The shipped ordering example is ineligible; the emitter must raise."""
