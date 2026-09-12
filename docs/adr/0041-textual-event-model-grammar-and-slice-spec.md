@@ -110,7 +110,10 @@ The rules:
   not fail `domain.init()`, it warns and registers, then the generated `create`,
   `raise_`, or serialization breaks at use time, so the slice would register yet fail
   `protean verify`. An `aggregate` also reserves `<slug>_id`, the identity reference
-  the generator injects. In the write-side-only path the event's fields become the
+  the generator injects, and that generated name must itself be a valid field name: an
+  aggregate whose `<slug>_id` trips a field reservation is rejected, so `aggregate
+  Model` (whose `model_id` carries the reserved `model_` prefix) is an error. In the
+  write-side-only path the event's fields become the
   synthesized projection's fields, so the event's field names are checked against the
   projection's member set too. `<type>` is one of the eight primitive types below, and
   fields keep their declaration order for generation.
@@ -209,8 +212,10 @@ and the numeric and temporal types) carry no `min_length`. An IR field is not
 representable, and the emitter rejects its cluster, when it carries anything else the
 grammar cannot say: a `sanitize` flag, a `min_length` on a `string` (a
 `String(required=True)` source field carries a `min_length=1` the grammar's `string`
-cannot express), a numeric `min_value` or `max_value`, a `choices` or `unique` marker,
-or an author `default`.
+cannot express), a `max_length` on a field that is not `string` or `text` (Protean
+keeps `max_length` on any string-based field, so an `Identifier(max_length=100)`
+carries one the grammar's `identifier` cannot express), a numeric `min_value` or
+`max_value`, a `choices` or `unique` marker, or an author `default`.
 
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
