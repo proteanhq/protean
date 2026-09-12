@@ -480,6 +480,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # can retrieve descriptor/shadow kwargs.  Pydantic wipes __dict__
         # during validation, so we cannot stash data on the instance.
         stack: list[dict[str, Any]] = getattr(_init_context, "stack", [])
+        depth_before_init = len(stack)
         stack.append(
             {
                 "descriptor_kwargs": descriptor_kwargs,
@@ -495,6 +496,16 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             super().__init__(**kwargs)
         except PydanticValidationError as e:
             collected_errors.update(convert_pydantic_errors(e))
+        finally:
+            # ``model_post_init`` pops this call's entry on a successful init.
+            # When construction raises before it runs (Pydantic field validation
+            # fails, or an abstract class is rejected), the entry is left behind,
+            # and a caller that catches the error in a loop (the snapshot loader
+            # reloading a stale aggregate) leaks one entry per attempt. Truncate
+            # to the pre-push depth so this call's entry is balanced for any
+            # construction exception, without popping a parent or double-popping
+            # one ``model_post_init`` already removed.
+            del stack[depth_before_init:]
 
         # Check required descriptor fields (ValueObject, Reference, etc.)
         for field_name, field_obj in getattr(type(self), _FIELDS, {}).items():

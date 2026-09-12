@@ -24,6 +24,32 @@ time.
 
 ---
 
+## Snapshots and schema changes
+
+When you change an event-sourced aggregate's fields, a snapshot written before
+the change may no longer match the class. Renaming a field, removing one, or
+adding a required one leaves the stored snapshot out of step with the current
+schema, and it will not construct the aggregate any more.
+
+Protean handles this on load. It reads the snapshot, and when the snapshot no
+longer constructs, it discards the snapshot and rebuilds the aggregate from the
+event stream, which is authoritative. Once the replayed event count reaches the
+threshold, a fresh snapshot in the current schema replaces the stale one, so
+later loads are fast again.
+
+A stale snapshot is discarded and logged again on each load, without a fresh one
+being written, in two cases: an `at_version` query whose requested version is at
+or above the snapshot version, and an aggregate holding fewer events than the
+threshold. Rebuild with `protean snapshot create` or
+`domain.create_snapshots(YourAggregate)` to stop the repeat. An `as_of` query
+never reads snapshots, so it neither uses nor discards them.
+
+Each discard is logged as a WARNING on the
+[`protean.snapshot`](../../reference/logging.md#proteansnapshot) channel, with
+the aggregate name, its identifier, and the reason the snapshot was rejected.
+
+---
+
 ## Configuration
 
 Set the snapshot threshold globally in `domain.toml`:

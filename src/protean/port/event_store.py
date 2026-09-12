@@ -14,7 +14,12 @@ if TYPE_CHECKING:
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
+from protean.exceptions import (
+    IncorrectUsageError,
+    ObjectNotFoundError,
+    ValidationError,
+)
+from protean.integrations.logging import SNAPSHOT_EVENT_DISCARDED, log_snapshot_event
 from protean.utils.eventing import Message
 from protean.utils.telemetry import set_span_error
 
@@ -419,6 +424,55 @@ class BaseEventStore(metaclass=ABCMeta):
     # Private helpers for load_aggregate
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _log_snapshot_discarded(
+        part_of: type[BaseAggregate], identifier: str, error: ValidationError
+    ) -> None:
+        """Emit a WARNING that a snapshot was discarded as stale.
+
+        Called from both load paths when a stored snapshot no longer
+        constructs against the current aggregate schema. The aggregate still
+        loads by replaying the event stream; the warning marks snapshots that
+        need rebuilding (``protean snapshot create``).
+        """
+        log_snapshot_event(
+            SNAPSHOT_EVENT_DISCARDED,
+            aggregate=part_of.__name__,
+            aggregate_id=identifier,
+            reason=str(error),
+        )
+
+    def _read_stream_fully(
+        self, stream: str, start_position: int = 0, max_rows: int | None = None
+    ) -> deque[dict[str, Any]]:
+        """Read the rows of ``stream``, paging past the per-read page size.
+
+        A single ``_read`` returns at most one page, and an aggregate that
+        warranted a snapshot can hold more events than one page, so a caller that
+        needs the whole stream (or a bounded prefix of it) has to page or it
+        rebuilds an incomplete aggregate. ``start_position`` begins the read past
+        a snapshot's version to pick up only later events; ``max_rows`` bounds the
+        read to a prefix, which a temporal query uses to stop at the requested
+        version; ``None`` reads to the end. A continuation shorter than one page
+        still costs a single read. Reads are inclusive, so each page resumes one
+        position past the last row seen.
+        """
+        rows: deque[dict[str, Any]] = deque()
+        page_size = 1000  # the default page size of ``_read``
+        position = start_position
+        while max_rows is None or len(rows) < max_rows:
+            batch = (
+                page_size if max_rows is None else min(page_size, max_rows - len(rows))
+            )
+            page = self._read(stream, position=position, no_of_messages=batch)
+            if not page:
+                break
+            rows.extend(page)
+            if len(page) < batch:
+                break
+            position = page[-1]["position"] + 1
+        return rows
+
     def _load_aggregate_current(
         self, part_of: type[BaseAggregate], identifier: str
     ) -> BaseAggregate | None:
@@ -427,36 +481,52 @@ class BaseEventStore(metaclass=ABCMeta):
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
 
+        aggregate: BaseAggregate | None = None
         position_in_snapshot: int = 0
+        event_stream: deque[dict[str, Any]] = deque()
+
         if snapshot_message:
-            # We have a snapshot, so initialize aggregate from snapshot
-            #   and apply subsequent events
-            aggregate = part_of(**snapshot_message["data"])
-            position_in_snapshot = aggregate._version
-
-            event_stream = deque(
-                self._read(
+            try:
+                # We have a snapshot, so initialize aggregate from snapshot
+                #   and apply subsequent events
+                aggregate = part_of(**snapshot_message["data"])
+            except ValidationError as exc:
+                # The snapshot predates the current schema (a field was
+                # renamed, removed, or newly required), so it no longer
+                # constructs. A snapshot is a rebuildable cache over the
+                # authoritative event stream, so discard it, log a warning, and
+                # fall back to a full replay below. Treating it as absent also
+                # lets the threshold check rewrite a fresh snapshot.
+                self._log_snapshot_discarded(part_of, identifier, exc)
+                snapshot_message = None
+            else:
+                position_in_snapshot = aggregate._version
+                # Page from just past the snapshot so a continuation longer than
+                # one read page is not truncated (a short continuation is still
+                # one read).
+                event_stream = self._read_stream_fully(
                     f"{part_of.meta_.stream_category}-{identifier}",
-                    position=aggregate._version + 1,
+                    start_position=aggregate._version + 1,
                 )
-            )
+                for event_message in event_stream:
+                    event = Message.deserialize(event_message).to_domain_object()
+                    aggregate._apply(event)
 
-            events: list[BaseEvent | BaseCommand] = []
-            for event_message in event_stream:
-                event = Message.deserialize(event_message).to_domain_object()
-                aggregate._apply(event)
-        else:
-            # No snapshot, so initialize aggregate from events
-            event_stream = deque(
-                self._read(f"{part_of.meta_.stream_category}-{identifier}")
+        if aggregate is None:
+            # No usable snapshot, so initialize aggregate from the full event
+            # stream, paging to the end so a stream larger than one read is not
+            # truncated into an incomplete aggregate.
+            event_stream = self._read_stream_fully(
+                f"{part_of.meta_.stream_category}-{identifier}"
             )
 
             if not event_stream:
                 return None
 
-            events = []
-            for event_message in event_stream:
-                events.append(Message.deserialize(event_message).to_domain_object())
+            events: list[BaseEvent | BaseCommand] = [
+                Message.deserialize(event_message).to_domain_object()
+                for event_message in event_stream
+            ]
 
             aggregate = part_of.from_events(events)
 
@@ -509,26 +579,33 @@ class BaseEventStore(metaclass=ABCMeta):
         if snapshot_message:
             snapshot_version: int = snapshot_message["data"].get("_version", -1)
             if snapshot_version <= at_version:
-                # Snapshot is usable — initialize from it
-                aggregate = part_of(**snapshot_message["data"])
-                remaining = at_version - aggregate._version
-                if remaining > 0:
-                    event_stream = self._read(
-                        stream,
-                        position=aggregate._version + 1,
-                        no_of_messages=remaining,
-                    )
-                    for event_message in event_stream:
-                        event = Message.deserialize(event_message).to_domain_object()
-                        aggregate._apply(event)
-                # else: snapshot is exactly at the requested version
+                try:
+                    # Snapshot is usable: initialize from it
+                    aggregate = part_of(**snapshot_message["data"])
+                except ValidationError as exc:
+                    # Stale snapshot (predates the current schema). Discard it,
+                    # log a warning, and let the full-replay branch below rebuild
+                    # from the authoritative event stream.
+                    self._log_snapshot_discarded(part_of, identifier, exc)
+                else:
+                    remaining = at_version - aggregate._version
+                    if remaining > 0:
+                        event_stream = self._read_stream_fully(
+                            stream,
+                            start_position=aggregate._version + 1,
+                            max_rows=remaining,
+                        )
+                        for event_message in event_stream:
+                            event = Message.deserialize(
+                                event_message
+                            ).to_domain_object()
+                            aggregate._apply(event)
+                    # else: snapshot is exactly at the requested version
 
         if aggregate is None:
-            # No usable snapshot — replay from the beginning
-            event_stream = self._read(
-                stream,
-                no_of_messages=at_version + 1,
-            )
+            # No usable snapshot — replay from the beginning up to the requested
+            # version, paging so a version beyond one read page is not truncated.
+            event_stream = self._read_stream_fully(stream, max_rows=at_version + 1)
 
             if not event_stream:
                 return None
@@ -597,7 +674,9 @@ class BaseEventStore(metaclass=ABCMeta):
         ``time <= as_of`` are applied.
         """
         stream = f"{part_of.meta_.stream_category}-{identifier}"
-        event_stream = self._read(stream)
+        # Page the whole stream so a timestamp filter over more than one read
+        # page is not applied to a truncated prefix.
+        event_stream = self._read_stream_fully(stream)
 
         if not event_stream:
             return None
@@ -648,9 +727,11 @@ class BaseEventStore(metaclass=ABCMeta):
                 f"`{part_of.__name__}` is not an event-sourced aggregate"
             )
 
-        # Read ALL events (fresh reconstruction, not from existing snapshot)
-        event_stream = deque(
-            self._read(f"{part_of.meta_.stream_category}-{identifier}")
+        # Read ALL events (fresh reconstruction, not from existing snapshot),
+        # paging the whole stream so the snapshot reflects the head state even
+        # when the stream is longer than one read page.
+        event_stream = self._read_stream_fully(
+            f"{part_of.meta_.stream_category}-{identifier}"
         )
 
         if not event_stream:

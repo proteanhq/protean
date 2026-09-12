@@ -100,6 +100,7 @@ _FRAMEWORK_LOGGERS_NORMAL = {
     "protean.access.http": logging.INFO,
     "protean.perf": logging.WARNING,
     "protean.security": logging.WARNING,
+    "protean.snapshot": logging.WARNING,
     "protean.core": logging.WARNING,
     "protean.adapters": logging.WARNING,
     "protean.adapters.repository.sqlalchemy.slow_query": logging.WARNING,
