@@ -1,6 +1,6 @@
 """Generate a vertical slice's :class:`ChangePlan` from a slice-shaped IR fragment.
 
-ADR-0041 settles the contract this module implements. A textual event model parses
+ADR-0041 defines the contract this module implements. A textual event model parses
 to a **slice-shaped IR fragment** (#1471) that reuses the IR's own field model, and
 this **generator** (#1472) promotes that fragment to the full vertical slice
 ``protean add`` writes today: the aggregate (split by the generation-gap seam of
@@ -10,12 +10,16 @@ it, and a projector plus read-model projection that consume the event so
 
 The fragment is the contract between the parser and the generator. It carries only
 what the text model carries: the element names, their fields (each an IR field entry
-of ``kind``/``type`` plus the two constraints ``max_length`` and ``identifier``),
-and the read-side wiring (``for`` names the projection, ``consumes`` names the
-event). The read side is optional; when it is omitted, the generator derives a
-default projection that mirrors the event (the surfaced ``<slug>_id`` becoming the
-``Identifier`` key) and a projector that consumes the event, so a write-side-only
-model still passes ``protean verify``.
+of ``kind``/``type``, the ``required`` flag, and the two constraints ``max_length``
+and ``identifier``), and the read-side wiring (``for`` names the projection,
+``consumes`` names the event). The read side is optional; when it is omitted, the
+generator derives a default projection that mirrors the event (the surfaced
+``<slug>_id`` becoming the ``Identifier`` key) and a projector that consumes the
+event. That derivation makes the read side match the event. The applied slice
+passes ``protean verify`` when the write side is also aligned: the command carries
+the aggregate's fields and the event's non-id fields are aggregate fields. Field-set
+alignment across the aggregate, command, and event is #1471's parser to check
+(ADR-0041); this generator does not validate it.
 
 ``protean add`` routes through the generator too: it expresses its default
 name-only slice as a default fragment and calls :func:`generate_slice_plan`, so the
@@ -72,13 +76,19 @@ class SliceGeneratorError(Exception):
 
 @dataclass(frozen=True)
 class IRField:
-    """One field's IR entry, exactly ADR-0041's field vocabulary.
+    """One field's IR entry, from ADR-0041's field vocabulary.
 
     ``kind`` is ``"standard"``, ``"text"``, or ``"identifier"``; ``type`` is one of
     the eight primitive type names (``"String"``, ``"Integer"``, ...). ``max_length``
-    is set only on ``String``/``Text``; ``identifier`` is the projection key flag.
-    Every authored field is ``required``; the projection's identity key is the one
-    field that is not, since it takes the framework identity default.
+    is set only on ``String``/``Text``; ``identifier`` marks the projection's identity
+    key. ``required`` records the IR entry's required flag: the grammar makes every
+    authored field required, so callers set ``required=True`` on them, and the
+    projection's identity key is the one field that is not (it takes the framework
+    identity default), which is why the default is ``False``.
+
+    The create-only slice renders every authored field as required, so ``_declare``
+    does not read ``required`` today. The flag is kept so the fragment stays a
+    faithful IR field entry for #1471's parser, which produces it.
     """
 
     kind: str
@@ -421,9 +431,9 @@ def _render_aggregate_base(
 ) -> str:
     # The generated side of the seam. Carries structure (fields) and wiring (the
     # ``create`` factory that raises the created event). A plain, undecorated
-    # ``BaseAggregate`` subclass: it registers nothing on its own, so discovery
-    # importing it is harmless; only the decorated subclass in ``aggregate.py``
-    # is registered. A re-run of ``add`` refreshes this file.
+    # ``BaseAggregate`` subclass: it registers nothing on its own, so importing it
+    # during discovery adds no element; only the decorated subclass in
+    # ``aggregate.py`` is registered. A re-run of ``add`` refreshes this file.
     agg_fields = aggregate.fields
     ordered_agg = _ordered_names(agg_fields, slug)
 
@@ -489,7 +499,7 @@ class {name}Base(BaseAggregate):
 def _render_aggregate(name: str, package: str, domain_var: str) -> str:
     # The hand-owned side of the seam. The decorated subclass: this is the
     # registered aggregate, and where the developer's invariants and behavior
-    # live. A re-run of ``add`` never touches this file, so those edits are safe.
+    # live. A re-run of ``add`` leaves this file as it is, so those edits are safe.
     # The class body is a docstring only; the developer fills it in.
     return f'''"""The {name} aggregate.
 

@@ -59,8 +59,13 @@ def _valid_fragment() -> SliceFragment:
 
 def test_default_fragment_reproduces_plan_add_slice(tmp_path):
     """The default fragment ``protean add`` builds, promoted through the generator,
-    plans exactly the same operations ``plan_add_slice`` returns. This pins the
-    byte-for-byte default output now that ``add`` routes through the generator."""
+    plans exactly the same operations ``plan_add_slice`` returns.
+
+    Both sides route through ``generate_slice_plan``, so this is an equivalence
+    check: it confirms the fragment ``plan_add_slice`` builds internally is the same
+    one built here, not a guard against renderer drift. The anchor against drift from
+    the pre-refactor ``add`` output is ``tests/scaffold/test_add_plan.py``.
+    """
     package_dir = tmp_path / "proj" / "src" / "myproj"
     package_dir.mkdir(parents=True)
     (package_dir / "domain.py").write_text(
@@ -261,6 +266,24 @@ def test_half_present_read_side_raises(tmp_path):
     assert "read side" in str(exc_info.value)
 
 
+def test_projector_without_projection_raises(tmp_path):
+    """The other half-present direction: a projector with no projection is rejected
+    just like a projection with no projector."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+        projector=SliceProjector(
+            name="OrderProjector", for_="OrderSummary", consumes="OrderCreated"
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "read side" in str(exc_info.value)
+
+
 def test_projector_wired_to_the_wrong_participant_raises(tmp_path):
     """The projector's ``for`` and ``consumes`` must name the slice's own projection
     and event; a mismatch would generate a projector referencing a class the slice
@@ -358,9 +381,14 @@ def test_fragment_driven_slice_verifies_green(tmp_path):
     (init + check + the project's pytest suite) as a real subprocess."""
     project = _generate_project(tmp_path)
 
+    # Include richer types (Text and Date) alongside String and Integer so a green
+    # verdict proves those field declarations register and validate in a real domain,
+    # not just that they compile.
     fields = {
         "name": _STR_100,
         "quantity": IRField(kind="standard", type="Integer", required=True),
+        "note": IRField(kind="text", type="Text", required=True, max_length=500),
+        "available_on": IRField(kind="standard", type="Date", required=True),
     }
     fragment = SliceFragment(
         aggregate=SliceElement("Item", dict(fields)),
