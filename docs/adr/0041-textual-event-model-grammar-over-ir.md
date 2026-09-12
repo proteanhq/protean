@@ -83,7 +83,7 @@ The rules:
   constraint list: `field name: string(max_length=100)`. `<name>` is a non-keyword
   Python identifier, read verbatim, because the generator writes it as a class
   attribute. `<type>` is one of the eight primitive types below. Field names are
-  unique within a block, and fields keep their declaration order for generation.
+  unique within a block.
 - A **field is required and has no default**, except the projection's identity
   `key`, which carries the framework identity default. Optional fields and author
   defaults are a later addition to the grammar.
@@ -98,9 +98,13 @@ The rules:
 
 Cardinality for one slice: exactly one `aggregate`, one `command`, one `event`. The
 read side is optional: at most one `projection` and one `projector`, together or not
-at all. A `projection` contains exactly one `key` field, which is its identity, so a
-projection block is never without one. The parse is deterministic and infers nothing.
-Every error names the one-based line number and the reason.
+at all. A `projection` contains exactly one `key` field, which is its identity and
+must be the surfaced `<slug>_id`; its other fields are a subset of the event's,
+matched by name. The parser rejects a projection whose `key` is named other than the
+`<slug>_id`, or that declares a field the event does not, because promotion populates
+the projection from the event by name and has no other source. The parse is
+deterministic and infers nothing. Every error names the one-based line number and the
+reason.
 
 The exhaustive normalization, reserved-name, and name-collision rules (which
 generated symbols a field or block name may not shadow, how a slug is recovered)
@@ -194,8 +198,8 @@ cluster's FQN and `P` a projection group's FQN.
 | `event <Name>:` | `clusters[C].events[evt]`, non-fact | event (result), a stadium |
 | `projection <Name>:` | `projections[P].projection` | the projection in the read-model node's `Projector -> Projection` label |
 | `projector <Name>:` | `projections[P].projectors[pr]` | the read-model node, a cylinder |
-| `for <Projection>` | `projectors[pr].projector_for` (an FQN promotion resolves) | the `Projector -> Projection` label |
-| `consumes <Event>` | `projectors[pr].handlers` (the event `__type__` key) | the edge from the event to the read model |
+| `for <Projection>` | `projections[P].projectors[pr].projector_for` (an FQN promotion resolves) | the `Projector -> Projection` label |
+| `consumes <Event>` | `projections[P].projectors[pr].handlers` (the event `__type__` key) | the edge from the event to the read model |
 | `field <n>: <t>` | `<element>.fields[<n>]` | (fields are not drawn) |
 
 The grammar covers the write side and read models. It does not cover the renderer's
@@ -230,8 +234,10 @@ eligibility enumeration and the project-contextual name-collision rules are #147
 #1472 implementation detail; this ADR fixes that eligibility is decided against the
 IR and that the round trip compares the covered subset.
 
-Field order is not compared. The IR keys fields by name in a map, an authored model
-keeps declaration order for generation, and the round trip matches fields by name.
+Field order is not part of the contract. The IR keys fields by name in a map, and
+`IRBuilder` canonicalizes them by name, so a fragment carries no declaration order.
+Generation field order is therefore non-normative: the generator emits fields in a
+deterministic name order, and the round trip matches fields by name.
 
 ### Normative worked example
 
