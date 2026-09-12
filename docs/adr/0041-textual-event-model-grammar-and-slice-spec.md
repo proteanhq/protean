@@ -264,9 +264,10 @@ is then a string, so `<slug>_id` is an unconstrained `string` or `identifier`, w
 no `max_length`, since the id is a UUID. The command declares the aggregate's
 authored fields, the event declares those fields plus `<slug>_id`, and the projection
 declares `<slug>_id` and a subset of the event's fields. The identity `<slug>_id` is
-the one field allowed to differ across blocks, an unconstrained `string` or
-`identifier` on each side (typically a `string` on the event and the projection's
-`identifier` key). Every other field shared by name carries the same type and
+the one field allowed to differ across blocks: the event's `<slug>_id` is an
+unconstrained `string` or non-key `identifier`, and the projection's is the
+`identifier` `key` (the projection identity is always the `identifier` key, since
+`key` is valid only on a projection `identifier`). Every other field shared by name carries the same type and
 constraints on all sides, so the copied value fits. These are parser rules the
 parser enforces on its own: it rejects a model whose event
 omits `<slug>_id`, whose `<slug>_id` is not an unconstrained `string` or
@@ -327,9 +328,9 @@ the vocabulary map covers: the aggregate and its authored fields, the command, t
 non-fact event, and the read model's projection and projector with the event it
 consumes. To judge eligibility it also reads IR the map does not cover, and emits none
 of it: the identity field's `auto_generated` flag, the aggregate's
-`options.stream_category` and the domain's `identity_type`, and the projector's
-`aggregates`, `stream_categories`, and `subscription`. These are eligibility-only
-inputs. It renders every name by its short form, the same `short_name` the
+`options.stream_category`, the domain's `identity_type` and `identity_strategy`, and
+the projector's `aggregates`, `stream_categories`, and `subscription`. These are
+eligibility-only inputs. It renders every name by its short form, the same `short_name` the
 renderer applies: `projector_for` is stored as a full projection FQN, and the
 emitter shortens it to the class name the `for` line carries. It recovers the
 `consumes` name by matching the projector's `handlers` key back to the slice's
@@ -365,8 +366,9 @@ route only that event, whose `aggregates` are exactly the slice's aggregate, who
 (`<domain normalized_name>::<underscored aggregate name>`), and whose `subscription`
 is the framework default `{config: {}, profile: null, type: null}` (the value the IR
 carries for an unconfigured projector); distinct canonical short names; and every
-field within the eight types and two constraints, required and without an author
-default, save the implicit `min_length=1` a required `text` or `identifier` carries,
+authored field within the eight types and two constraints, required and without an
+author default (the injected `id`, `kind auto`, is skipped and exempt), save the
+implicit `min_length=1` a required `text` or `identifier` carries,
 which is part of the required semantics; the projection's identity `key` is the one
 optional field, an `identifier` carrying no `required` flag.
 
@@ -387,9 +389,10 @@ that default, an aggregate whose `stream_category` differs from its class-derive
 default, an aggregate
 whose identity field is not the injected id (no `auto_generated: true`, including an
 authored `Auto(identifier=True)`), a projection with more than one `identifier: true`
-field, a domain `identity_type` other than the default string or uuid (the injected id
-is `kind auto` under integer identity too, so `identity_type` is the only signal), or
-a field named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
+field, a domain `identity_type` other than the default string or uuid, or an
+`identity_strategy` other than the default `uuid` (the injected id is `kind auto` for
+every strategy and type, so the domain identity config is the only signal), or a field
+named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
 falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
 is `String` in the IR and round-trips as grammar `string`. That collapse is the
