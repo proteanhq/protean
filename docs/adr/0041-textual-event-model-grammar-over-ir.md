@@ -96,8 +96,9 @@ The rules:
 
 Cardinality for one slice: exactly one `aggregate`, one `command`, one `event`. The
 read side is optional: at most one `projection` and one `projector`, together or not
-at all. The parse is deterministic and infers nothing. Every error names the
-one-based line number and the reason.
+at all. A `projection` contains exactly one `key` field, which is its identity, so a
+projection block is never without one. The parse is deterministic and infers nothing.
+Every error names the one-based line number and the reason.
 
 The exhaustive normalization, reserved-name, and name-collision rules (which
 generated symbols a field or block name may not shadow, how a slug is recovered)
@@ -128,11 +129,13 @@ The two constraints map onto the same IR field entry:
 | `max_length=<n>` | `max_length` (int) |
 | `key` (flag) | `identifier: true` |
 
-Every authored field carries `required: true`. Protean's required-field rule adds
-an implicit `min_length=1` to a required `Text` or `Identifier`; that `1` is part of
-the required semantics, not a third constraint, and both the source field and the
-generated field carry it, so it round-trips. The projection's identity `key` is the
-one field without `required`, since it takes the framework identity default.
+Every authored field carries `required: true` in its IR entry. The projection's
+identity `key` is the one field without `required`, since it takes the framework
+identity default. The framework applies an implicit `min_length=1` to required
+string-based fields at runtime (ADR-0026), but the IR field entry does not record it:
+the builder reads the explicit `min_length`, which is unset here, as the required
+`String` field `customer_name` in `ir/examples/ordering-ir.json` shows. So the
+implicit bound stays out of the grammar and out of the round trip.
 
 ### The authored-IR profile
 
@@ -152,16 +155,18 @@ The generator promotes the fragment to a full IR and then to code (#1472). Promo
 fills every derived key the author never writes: the FQNs and `module`; each
 message's `__type__` and `__version__`; `part_of`; the aggregate's injected identity
 (`id`, IR kind `auto`, `auto_generated: true`); the surfaced `<slug>_id` reference
-the event and projection carry; the aggregate, projection, and projector `options`,
-`stream_category`, `aggregates`, `stream_categories`, and `subscription` defaults;
+the event and projection carry; the aggregate and projection `options` and the
+aggregate's `stream_category`; the projector's `aggregates`, `stream_categories`, and
+`subscription` (a projector carries no `options`);
 `invariants`; the empty element maps every cluster requires; the domain metadata;
 the elements index; and the checksum. Promotion is one deterministic step, and it is
 the same step whether the fragment came from a text model or from `protean add`.
 
-Because the fragment is IR field entries plus names, there is one field vocabulary
-and one place to update when a field kind changes. ADR-0005's stated maintenance
-cost (the generator updates when a new IR field kind appears) is paid in the IR field
-model alone.
+Because the fragment is IR field entries plus names, there is one field vocabulary, so
+a field's shape lives in the IR field model alone. Widening the grammar to reach a new
+IR field kind still updates the type table, the parser, the emitter, and the
+eligibility check together; the gain is that no second field representation exists to
+drift from the IR.
 
 v1 targets the default identity (`identity_type = string`, `identity_strategy =
 uuid`), so the aggregate id is a UUID stored as a string and the surfaced `<slug>_id`
@@ -209,9 +214,10 @@ representation, and the check is a property, not a hand-maintained table.
 
 A cluster is **eligible** only when its covered subset is expressible in the
 grammar: fields within the eight types and two constraints; the identity is the
-injected id (`auto_generated: true`); the field-set relationships hold (the command's
-fields equal the aggregate's, the event's equal the aggregate's plus `<slug>_id`, the
-projection's are `<slug>_id` plus a subset of the event's); and the options,
+injected id (`auto_generated: true`); the field-set relationships hold over the
+aggregate's authored fields, excluding that injected `id` (the command's fields equal
+those authored fields, the event's equal them plus `<slug>_id`, the projection's are
+`<slug>_id` plus a subset of the event's); and the options,
 subscription, and stream category are the framework defaults. A cluster carrying
 anything the grammar cannot say (a container or `Status` field, a numeric bound, a
 `choices` or `unique` marker, a custom stream category, an authored identity) is
@@ -266,11 +272,13 @@ referenced by name; the `fields` maps are unordered):
 }
 ```
 
-The field entries are exactly the shape `IRBuilder` emits (`ir/examples/ordering-ir.json`):
-a `String` with `max_length`, a plain-`String` `order_id` reference on the event, and
-an `Identifier` `key` on the projection. Promoted, this is the slice `protean add
-aggregate Order` produces today (ADR-0030, ADR-0035). A write-side-only model omits
-the last two blocks; the generator derives the default `OrderSummary` and
+The field-entry shape is what `IRBuilder` emits: the `String` with `max_length` matches
+`customer_name` in `ir/examples/ordering-ir.json`. The plain-`String` `order_id`
+reference on the event and the `Identifier` `key` on the projection are what `protean
+add aggregate Order` generates (`scaffold/add_plan.py`, ADR-0030, ADR-0035); a
+hand-written aggregate in `ordering-ir.json` instead carries its event reference as an
+`Identifier`. Promoted, this fragment is that default slice. A write-side-only model
+omits the last two blocks; the generator derives the default `OrderSummary` and
 `OrderProjector`.
 
 ## Consequences
@@ -283,9 +291,11 @@ the last two blocks; the generator derives the default `OrderSummary` and
   conformance round trip is IR to text to IR, a true inverse, checked as a property.
   The class of defect that comes from keeping two representations aligned by hand does
   not exist here.
-- **Versioning comes from the IR.** An authored model versions with `ir_version` and
-  gets the ADR-0033 / ADR-0040 diff and compatibility machinery, with no separate spec
-  version to maintain.
+- **No separate spec version.** The earlier draft's `SliceSpec` carried its own
+  `spec_version`. The authored fragment is IR-shaped, so its field entries track the IR
+  schema and need no parallel version. `ir_version` identifies the IR format, so it does
+  not version an authored model or its contract; the grammar's own evolution is versioned
+  by this ADR.
 - **The grammar is small:** eight types, two constraints, five block kinds, one slice.
   A person can write a model without a manual, and the parser can name the line of any
   mistake. The first grammar cannot express automations, multi-slice models, entities,
