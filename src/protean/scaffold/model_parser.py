@@ -173,6 +173,13 @@ _DEFAULT_OPTIONS: dict[str, dict[str, Any]] = {
 # documentation, dropped for the same reason a field's is. The identity and locating
 # keys (``fqn``, ``module``, ``element_type``, ``part_of``, ``__type__``,
 # ``__version__``, ``identity_field``) are ones promotion fills, per ADR-0041.
+#
+# ``method_edges`` is derived too, and dropping it loses nothing authored: the builder
+# reads it off the element's source (an aggregate method that raises an event, a
+# handler that invokes one) and the derivation fails open, so an element whose source
+# cannot be read simply has none. The event-model renderer ignores it for that reason.
+# It lands on the participants that own methods, the aggregate and the projector. Any
+# aggregate with the ``create`` factory the generator writes carries one.
 _EXPRESSIBLE_PARTICIPANT_KEYS: dict[str, frozenset[str]] = {
     "aggregate": frozenset(
         {
@@ -182,6 +189,7 @@ _EXPRESSIBLE_PARTICIPANT_KEYS: dict[str, frozenset[str]] = {
             "fqn",
             "identity_field",
             "invariants",
+            "method_edges",
             "module",
             "name",
             "options",
@@ -235,6 +243,7 @@ _EXPRESSIBLE_PARTICIPANT_KEYS: dict[str, frozenset[str]] = {
             "element_type",
             "fqn",
             "handlers",
+            "method_edges",
             "module",
             "name",
             "projector_for",
@@ -242,6 +251,12 @@ _EXPRESSIBLE_PARTICIPANT_KEYS: dict[str, frozenset[str]] = {
             "subscription",
         }
     ),
+}
+
+# The domain identity ADR-0041 v1 targets: a UUID stored as a string.
+_DEFAULT_IDENTITY: dict[str, str] = {
+    "identity_strategy": "uuid",
+    "identity_type": "string",
 }
 
 # A projector's subscription settings as promotion fills them. A projector carries no
@@ -732,7 +747,9 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
         )
     event = next(iter(authored_events.values()))
 
-    domain_name = (ir.get("domain") or {}).get("normalized_name", "")
+    domain = ir.get("domain") or {}
+    _check_identity(cluster_fqn, domain)
+    domain_name = domain.get("normalized_name", "")
     _check_participant(cluster_fqn, "aggregate", aggregate, domain_name)
     _check_participant(cluster_fqn, "command", command, domain_name)
     _check_participant(cluster_fqn, "event", event, domain_name)
@@ -876,6 +893,24 @@ def _resolve_read_side(
     return group["projection"], projector
 
 
+def _check_identity(cluster_fqn: str, domain: dict[str, Any]) -> None:
+    """Refuse a domain whose identity configuration the grammar does not target.
+
+    ADR-0041 v1 covers the default identity, a UUID stored as a string, which is what
+    makes the surfaced ``<slug>_id`` an unconstrained string or identifier. Another
+    identity type or strategy is not in the text anywhere, so promotion would restore
+    the default and change how the aggregate's id is generated and stored. Metadata
+    that does not state a setting is taken to be at the default.
+    """
+    for key, default in _DEFAULT_IDENTITY.items():
+        value = domain.get(key, default)
+        if value != default:
+            raise ModelEmitError(
+                f"cluster {cluster_fqn!r} is in a domain with {key}={value!r} rather "
+                f"than {default!r}; the grammar covers the default identity"
+            )
+
+
 def _option_defaults(keyword: str, name: str, domain_name: str) -> dict[str, Any]:
     """The options promotion would fill for an element of this name.
 
@@ -907,36 +942,39 @@ def _check_participant(
     later cannot start being dropped in silence. ``description`` is on the lists
     because it is documentation, the same reason the grammar drops a field's.
     """
+    name = element["name"]
+
+    invariants = element.get("invariants") or {}
+    declared = sorted(invariant for names in invariants.values() for invariant in names)
+    if declared:
+        raise ModelEmitError(
+            f"the {keyword} {name!r} declares the invariants {declared}, which the "
+            "grammar cannot express"
+        )
+
+    if keyword in _DEFAULT_OPTIONS:
+        defaults = _option_defaults(keyword, name, domain_name)
+        options = element.get("options") or {}
+        for key, value in sorted(options.items()):
+            if key not in defaults:
+                raise ModelEmitError(
+                    f"cluster {cluster_fqn!r} sets the {keyword} option {key!r}, "
+                    "which the grammar does not carry"
+                )
+            if value != defaults[key]:
+                raise ModelEmitError(
+                    f"cluster {cluster_fqn!r} sets the {keyword} option "
+                    f"{key}={value!r} rather than {defaults[key]!r}, which the "
+                    "grammar cannot express"
+                )
+
+    # The catch-all, so it reports last and the checks above give their own reasons.
     extra = set(element) - _EXPRESSIBLE_PARTICIPANT_KEYS[keyword]
     if extra:
         raise ModelEmitError(
-            f"cluster {cluster_fqn!r} has a {keyword} carrying {sorted(extra)}, "
-            "which the grammar cannot express"
+            f"the {keyword} {name!r} carries {sorted(extra)}, which the grammar "
+            "cannot express"
         )
-
-    invariants = element.get("invariants") or {}
-    declared = sorted(name for names in invariants.values() for name in names)
-    if declared:
-        raise ModelEmitError(
-            f"cluster {cluster_fqn!r} has a {keyword} with the invariants "
-            f"{declared}, which the grammar cannot express"
-        )
-
-    if keyword not in _DEFAULT_OPTIONS:
-        return
-    defaults = _option_defaults(keyword, element["name"], domain_name)
-    options = element.get("options") or {}
-    for key, value in sorted(options.items()):
-        if key not in defaults:
-            raise ModelEmitError(
-                f"cluster {cluster_fqn!r} sets the {keyword} option {key!r}, which "
-                "the grammar does not carry"
-            )
-        if value != defaults[key]:
-            raise ModelEmitError(
-                f"cluster {cluster_fqn!r} sets the {keyword} option {key}={value!r} "
-                f"rather than {defaults[key]!r}, which the grammar cannot express"
-            )
 
 
 def _emit_block(

@@ -1020,6 +1020,47 @@ class TestEmitter:
         }
         assert "aggregate Order:" in emit_model(ir, "m.Order")
 
+    def test_aggregate_with_a_raising_factory_still_emits(self):
+        # The builder reads ``method_edges`` off the source of an aggregate method
+        # that raises an event, which is exactly the ``create`` factory the generator
+        # writes. It is derived and fails open, so it must not make a slice
+        # ineligible. The slice lives in its own module because the derivation needs
+        # module-level qualnames (see raising_slice_domain).
+        from tests.scaffold.raising_slice_domain import build_ir
+
+        ir = build_ir()
+        fqn = _cluster_fqn(ir)
+        # Guard the premise: without the derived key present this proves nothing.
+        assert "method_edges" in ir["clusters"][fqn]["aggregate"]
+
+        text = emit_model(ir, fqn)
+        assert "aggregate Order:" in text
+        # And it round trips, rather than merely emitting.
+        assert parse_model(text)["aggregate"]["name"] == "Order"
+
+    def test_non_default_identity_type_raises(self):
+        # ADR-0041 v1 covers a UUID stored as a string, which is what makes the
+        # surfaced id an unconstrained string. An integer identity is nowhere in the
+        # text, so promotion would restore the default.
+        ir = _synthetic_ir()
+        ir["domain"]["identity_type"] = "integer"
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "identity_type='integer'" in str(exc.value)
+
+    def test_non_default_identity_strategy_raises(self):
+        ir = _synthetic_ir()
+        ir["domain"]["identity_strategy"] = "function"
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "identity_strategy='function'" in str(exc.value)
+
+    def test_default_identity_emits(self):
+        ir = _synthetic_ir()
+        ir["domain"]["identity_strategy"] = "uuid"
+        ir["domain"]["identity_type"] = "string"
+        assert "aggregate Order:" in emit_model(ir, "m.Order")
+
     def test_custom_stream_category_raises(self):
         # Settable by hand, and an override changes where the slice's events are
         # written, so it is not a derived value the emitter may drop.
