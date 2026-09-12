@@ -37,6 +37,7 @@ from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.scaffold.add_plan import _split_words
+from protean.utils.inflection import underscore
 
 __all__ = ["ModelEmitError", "ModelParseError", "emit_model", "parse_model"]
 
@@ -145,10 +146,12 @@ _EXPRESSIBLE_FIELD_KEYS = frozenset(
 # ``cache`` would emit a model that promotes back to a slice with different runtime
 # behaviour. ADR-0041 lists these among the derived keys promotion fills.
 #
-# ``schema_name`` and ``stream_category`` are left out because promotion derives them
-# from the element's name and the domain's, so they carry no authored choice. An
-# option key absent from a table means the emitter refuses the cluster rather than
-# guess, which is the safe direction when the framework gains an option.
+# ``schema_name`` and ``stream_category`` are not listed here because their defaults
+# are computed from the element and domain names (see ``_option_defaults``). They are
+# still compared: both are also settable by hand, and an override changes persistence
+# or event routing. An option key absent from a table means the emitter refuses the
+# cluster rather than guess, which is the safe direction when the framework gains an
+# option.
 _DEFAULT_OPTIONS: dict[str, dict[str, Any]] = {
     "aggregate": {
         "auto_add_id_field": True,
@@ -166,9 +169,80 @@ _DEFAULT_OPTIONS: dict[str, dict[str, Any]] = {
     },
 }
 
-# Option keys promotion derives from the element's own name, so they hold no choice
-# the grammar could lose.
-_DERIVED_OPTION_KEYS = frozenset({"schema_name", "stream_category"})
+# The keys the grammar accounts for on each participant. ``description`` is
+# documentation, dropped for the same reason a field's is. The identity and locating
+# keys (``fqn``, ``module``, ``element_type``, ``part_of``, ``__type__``,
+# ``__version__``, ``identity_field``) are ones promotion fills, per ADR-0041.
+_EXPRESSIBLE_PARTICIPANT_KEYS: dict[str, frozenset[str]] = {
+    "aggregate": frozenset(
+        {
+            "description",
+            "element_type",
+            "fields",
+            "fqn",
+            "identity_field",
+            "invariants",
+            "module",
+            "name",
+            "options",
+        }
+    ),
+    "command": frozenset(
+        {
+            "__type__",
+            "__version__",
+            "description",
+            "element_type",
+            "fields",
+            "fqn",
+            "invariants",
+            "module",
+            "name",
+            "part_of",
+        }
+    ),
+    "event": frozenset(
+        {
+            "__type__",
+            "__version__",
+            "description",
+            "element_type",
+            "fields",
+            "fqn",
+            "invariants",
+            "is_fact_event",
+            "module",
+            "name",
+            "part_of",
+        }
+    ),
+    "projection": frozenset(
+        {
+            "description",
+            "element_type",
+            "fields",
+            "fqn",
+            "identity_field",
+            "module",
+            "name",
+            "options",
+        }
+    ),
+    "projector": frozenset(
+        {
+            "aggregates",
+            "description",
+            "element_type",
+            "fqn",
+            "handlers",
+            "module",
+            "name",
+            "projector_for",
+            "stream_categories",
+            "subscription",
+        }
+    ),
+}
 
 # A projector's subscription settings as promotion fills them. A projector carries no
 # ``options`` (ADR-0041), so its subscription is what stands in for them here.
@@ -658,7 +732,10 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
         )
     event = next(iter(authored_events.values()))
 
-    _check_options(cluster_fqn, "aggregate", aggregate)
+    domain_name = (ir.get("domain") or {}).get("normalized_name", "")
+    _check_participant(cluster_fqn, "aggregate", aggregate, domain_name)
+    _check_participant(cluster_fqn, "command", command, domain_name)
+    _check_participant(cluster_fqn, "event", event, domain_name)
 
     read_side = _resolve_read_side(ir, cluster_fqn, event.get("__type__"))
 
@@ -669,12 +746,28 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     ]
     if read_side is not None:
         projection, projector = read_side
-        _check_options(cluster_fqn, "projection", projection)
+        _check_participant(cluster_fqn, "projection", projection, domain_name)
+        _check_participant(cluster_fqn, "projector", projector, domain_name)
         subscription = projector.get("subscription")
         if subscription is not None and subscription != _DEFAULT_SUBSCRIPTION:
             raise ModelEmitError(
                 f"projector {projector['name']!r} sets a non-default subscription "
                 f"({subscription}), which the grammar cannot express"
+            )
+        # ``stream_categories`` is derived from ``aggregates`` when unset, but an
+        # explicit value overrides it and changes which streams the projector reads.
+        # The projector spans this one aggregate, so its categories are that
+        # aggregate's category and nothing else.
+        categories = projector.get("stream_categories")
+        expected_categories = [
+            _option_defaults("aggregate", aggregate["name"], domain_name)[
+                "stream_category"
+            ]
+        ]
+        if categories is not None and categories != expected_categories:
+            raise ModelEmitError(
+                f"projector {projector['name']!r} subscribes to {categories} rather "
+                f"than {expected_categories}, which the grammar cannot express"
             )
         blocks.append(
             _emit_block(
@@ -783,19 +876,57 @@ def _resolve_read_side(
     return group["projection"], projector
 
 
-def _check_options(cluster_fqn: str, keyword: str, element: dict[str, Any]) -> None:
-    """Refuse an element whose options the grammar cannot carry.
+def _option_defaults(keyword: str, name: str, domain_name: str) -> dict[str, Any]:
+    """The options promotion would fill for an element of this name.
 
-    The grammar has no option syntax, so it can only express an element promotion
-    would give the framework defaults. Emitting one with a non-default option would
-    return text that promotes back to different behaviour, with nothing in the model
-    to show for it.
+    ``schema_name`` and ``stream_category`` are computed rather than constant, using
+    the same derivations the element classes declare: ``schema_name`` is the
+    underscored class name, and an aggregate's stream category prefixes it with the
+    domain's normalized name.
     """
-    defaults = _DEFAULT_OPTIONS[keyword]
+    defaults = dict(_DEFAULT_OPTIONS[keyword])
+    schema_name = underscore(name)
+    defaults["schema_name"] = schema_name
+    if keyword == "aggregate":
+        defaults["stream_category"] = f"{domain_name}::{schema_name}"
+    return defaults
+
+
+def _check_participant(
+    cluster_fqn: str, keyword: str, element: dict[str, Any], domain_name: str
+) -> None:
+    """Refuse an element carrying anything outside the grammar.
+
+    Three things are checked, all of the same kind: the grammar has no syntax for
+    them, so emitting the element would return text that promotes back to different
+    behaviour with nothing in the model to show for it.
+
+    The key allowlist is the general guard. A key the grammar does not account for
+    (an event's ``published``, which decides whether the event is in the published
+    language) raises rather than being dropped, which also means a key the IR gains
+    later cannot start being dropped in silence. ``description`` is on the lists
+    because it is documentation, the same reason the grammar drops a field's.
+    """
+    extra = set(element) - _EXPRESSIBLE_PARTICIPANT_KEYS[keyword]
+    if extra:
+        raise ModelEmitError(
+            f"cluster {cluster_fqn!r} has a {keyword} carrying {sorted(extra)}, "
+            "which the grammar cannot express"
+        )
+
+    invariants = element.get("invariants") or {}
+    declared = sorted(name for names in invariants.values() for name in names)
+    if declared:
+        raise ModelEmitError(
+            f"cluster {cluster_fqn!r} has a {keyword} with the invariants "
+            f"{declared}, which the grammar cannot express"
+        )
+
+    if keyword not in _DEFAULT_OPTIONS:
+        return
+    defaults = _option_defaults(keyword, element["name"], domain_name)
     options = element.get("options") or {}
     for key, value in sorted(options.items()):
-        if key in _DERIVED_OPTION_KEYS:
-            continue
         if key not in defaults:
             raise ModelEmitError(
                 f"cluster {cluster_fqn!r} sets the {keyword} option {key!r}, which "

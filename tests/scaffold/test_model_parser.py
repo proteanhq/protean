@@ -12,9 +12,11 @@ from pathlib import Path
 import pytest
 
 from protean import Domain, handle
+from protean.core.event import BaseEvent
 from protean.fields import ValueObject
 from protean.fields.simple import Auto, Identifier, String
 from protean.scaffold.model_parser import (
+    _RESERVED_FIELD_NAMES,
     ModelEmitError,
     ModelParseError,
     emit_model,
@@ -382,9 +384,6 @@ class TestParseRejections:
     def test_reserved_names_are_read_off_the_base_classes(self):
         # The reservation is introspected, not listed by hand, so it covers the
         # inherited surface of each block and cannot fall behind it.
-        from protean.core.event import BaseEvent
-        from protean.scaffold.model_parser import _RESERVED_FIELD_NAMES
-
         assert "raise_" in _RESERVED_FIELD_NAMES["aggregate"]
         assert "to_dict" in _RESERVED_FIELD_NAMES["event"]
         assert _inherited_public_members(BaseEvent) <= _RESERVED_FIELD_NAMES["event"]
@@ -1009,16 +1008,120 @@ class TestEmitter:
             emit_model(ir, "m.Order")
         assert "is_event_sourced=True" in str(exc.value)
 
-    def test_name_derived_options_are_not_a_refusal(self):
-        # ``schema_name`` and ``stream_category`` are derived from the element and
-        # domain names, so they carry no authored choice and do not block emission.
+    def test_name_derived_options_at_their_defaults_emit(self):
+        # ``schema_name`` and ``stream_category`` hold no authored choice when they
+        # match what promotion derives: the underscored class name, prefixed with the
+        # domain's normalized name for the stream category.
         ir = _synthetic_ir()
         ir["clusters"]["m.Order"]["aggregate"]["options"] = {
             "provider": "default",
             "schema_name": "order",
-            "stream_category": "ordering::order",
+            "stream_category": "m::order",
         }
         assert "aggregate Order:" in emit_model(ir, "m.Order")
+
+    def test_custom_stream_category_raises(self):
+        # Settable by hand, and an override changes where the slice's events are
+        # written, so it is not a derived value the emitter may drop.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["options"] = {
+            "stream_category": "legacy::orders"
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "stream_category=" in str(exc.value)
+
+    def test_custom_schema_name_raises(self):
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["options"] = {"schema_name": "orders_v2"}
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "schema_name=" in str(exc.value)
+
+    def test_custom_projection_schema_name_raises(self):
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "options": {"schema_name": "summaries"},
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        }
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "schema_name=" in str(exc.value)
+
+    def test_published_event_raises(self):
+        # ``published`` puts the event in the domain's published language. The
+        # grammar cannot carry it, so emitting would quietly make it internal.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["events"]["m.OrderCreated"]["published"] = True
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "published" in str(exc.value)
+
+    def test_aggregate_invariants_raise(self):
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["invariants"] = {
+            "pre": [],
+            "post": ["name_is_not_blank"],
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "name_is_not_blank" in str(exc.value)
+
+    def test_empty_invariants_are_not_a_refusal(self):
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["invariants"] = {"pre": [], "post": []}
+        assert "aggregate Order:" in emit_model(ir, "m.Order")
+
+    def test_description_is_dropped_not_refused(self):
+        # A docstring reaches the IR as ``description``. It is documentation, the
+        # same reason the grammar drops a field's, so it does not block emission.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["description"] = "An order."
+        assert "An order." not in emit_model(ir, "m.Order")
+
+    def test_custom_projector_stream_categories_raises(self):
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        }
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                        "stream_categories": ["legacy::orders"],
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "subscribes to" in str(exc.value)
 
     def test_unknown_aggregate_option_raises(self):
         # An option the table does not know is refused rather than guessed at, so a
@@ -1167,6 +1270,8 @@ def _synthetic_ir(
             }
         },
         "projections": projections or {},
+        # The emitter derives an aggregate's default stream category from this.
+        "domain": {"normalized_name": "m"},
     }
 
 
