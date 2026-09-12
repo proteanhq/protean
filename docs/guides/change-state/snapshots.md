@@ -40,9 +40,9 @@ later loads are fast again.
 A stale snapshot is discarded and logged again on each load, without a fresh one
 being written, in two cases: an `at_version` query whose requested version is at
 or above the snapshot version, and an aggregate holding fewer events than the
-threshold. Rebuild with `protean snapshot create` or `domain.create_snapshots()`
-to stop the repeat. An `as_of` query never reads snapshots, so it neither uses
-nor discards them.
+threshold. Rebuild with `protean snapshot create` or
+`domain.create_snapshots(YourAggregate)` to stop the repeat. An `as_of` query
+never reads snapshots, so it neither uses nor discards them.
 
 Each discard is logged as a WARNING on the
 [`protean.snapshot`](../../reference/logging.md#proteansnapshot) channel, with
