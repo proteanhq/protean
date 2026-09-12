@@ -458,3 +458,17 @@ class TestFullReplayPaging:
 
         assert len(rows) == 1500
         assert [c.kwargs["no_of_messages"] for c in spy.call_args_list] == [1000, 500]
+
+    @pytest.mark.eventstore
+    def test_read_stream_fully_starts_at_given_position(self, test_domain):
+        """``start_position`` begins the read past a snapshot version, and a
+        continuation shorter than one page costs a single read."""
+        store = test_domain.event_store.store
+        page = [{"position": i} for i in range(50, 300)]  # 250 rows, under one page
+
+        with patch.object(store, "_read", side_effect=[page]) as spy:
+            rows = store._read_stream_fully("test::user-x", start_position=50)
+
+        assert len(rows) == 250
+        assert spy.call_count == 1
+        assert spy.call_args_list[0].kwargs["position"] == 50

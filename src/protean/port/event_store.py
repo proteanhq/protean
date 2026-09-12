@@ -443,21 +443,23 @@ class BaseEventStore(metaclass=ABCMeta):
         )
 
     def _read_stream_fully(
-        self, stream: str, max_rows: int | None = None
+        self, stream: str, start_position: int = 0, max_rows: int | None = None
     ) -> deque[dict[str, Any]]:
         """Read the rows of ``stream``, paging past the per-read page size.
 
         A single ``_read`` returns at most one page, and an aggregate that
         warranted a snapshot can hold more events than one page, so a caller that
         needs the whole stream (or a bounded prefix of it) has to page or it
-        rebuilds an incomplete aggregate. ``max_rows`` bounds the read to a
-        prefix, which a temporal query uses to stop at the requested version;
-        ``None`` reads to the end. Reads are inclusive, so each page resumes one
+        rebuilds an incomplete aggregate. ``start_position`` begins the read past
+        a snapshot's version to pick up only later events; ``max_rows`` bounds the
+        read to a prefix, which a temporal query uses to stop at the requested
+        version; ``None`` reads to the end. A continuation shorter than one page
+        still costs a single read. Reads are inclusive, so each page resumes one
         position past the last row seen.
         """
         rows: deque[dict[str, Any]] = deque()
         page_size = 1000  # the default page size of ``_read``
-        position = 0
+        position = start_position
         while max_rows is None or len(rows) < max_rows:
             batch = (
                 page_size if max_rows is None else min(page_size, max_rows - len(rows))
@@ -499,11 +501,12 @@ class BaseEventStore(metaclass=ABCMeta):
                 snapshot_message = None
             else:
                 position_in_snapshot = aggregate._version
-                event_stream = deque(
-                    self._read(
-                        f"{part_of.meta_.stream_category}-{identifier}",
-                        position=aggregate._version + 1,
-                    )
+                # Page from just past the snapshot so a continuation longer than
+                # one read page is not truncated (a short continuation is still
+                # one read).
+                event_stream = self._read_stream_fully(
+                    f"{part_of.meta_.stream_category}-{identifier}",
+                    start_position=aggregate._version + 1,
                 )
                 for event_message in event_stream:
                     event = Message.deserialize(event_message).to_domain_object()
@@ -587,10 +590,10 @@ class BaseEventStore(metaclass=ABCMeta):
                 else:
                     remaining = at_version - aggregate._version
                     if remaining > 0:
-                        event_stream = self._read(
+                        event_stream = self._read_stream_fully(
                             stream,
-                            position=aggregate._version + 1,
-                            no_of_messages=remaining,
+                            start_position=aggregate._version + 1,
+                            max_rows=remaining,
                         )
                         for event_message in event_stream:
                             event = Message.deserialize(
@@ -602,9 +605,7 @@ class BaseEventStore(metaclass=ABCMeta):
         if aggregate is None:
             # No usable snapshot — replay from the beginning up to the requested
             # version, paging so a version beyond one read page is not truncated.
-            event_stream = list(
-                self._read_stream_fully(stream, max_rows=at_version + 1)
-            )
+            event_stream = self._read_stream_fully(stream, max_rows=at_version + 1)
 
             if not event_stream:
                 return None
@@ -673,7 +674,9 @@ class BaseEventStore(metaclass=ABCMeta):
         ``time <= as_of`` are applied.
         """
         stream = f"{part_of.meta_.stream_category}-{identifier}"
-        event_stream = self._read(stream)
+        # Page the whole stream so a timestamp filter over more than one read
+        # page is not applied to a truncated prefix.
+        event_stream = self._read_stream_fully(stream)
 
         if not event_stream:
             return None

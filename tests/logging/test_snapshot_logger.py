@@ -5,12 +5,11 @@ import logging
 import pytest
 
 from protean.integrations.logging import SNAPSHOT_EVENT_DISCARDED, log_snapshot_event
+from protean.utils.logging import _FRAMEWORK_LOGGERS_NORMAL
 
 
 @pytest.mark.no_test_domain
 def test_framework_logger_registered_at_warning():
-    from protean.utils.logging import _FRAMEWORK_LOGGERS_NORMAL
-
     assert _FRAMEWORK_LOGGERS_NORMAL.get("protean.snapshot") == logging.WARNING
 
 
