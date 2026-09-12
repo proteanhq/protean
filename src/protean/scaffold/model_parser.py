@@ -204,22 +204,25 @@ def _parse_header(raw_line: str, lineno: int) -> _Block:
         )
     _validate_name(raw_name, lineno)
     normalized = _normalize_name(raw_name)
-    slug = _slug(raw_name)
-    # Both derived names matter, the way ``plan_add_slice`` checks them: the class
-    # name and the module-level slug. ``class_`` normalizes to the valid class
-    # ``Class`` but the slug ``class``, a keyword the generated module cannot use as
-    # a variable, and it is the slug the projection key is derived from.
-    if (
-        not normalized.isidentifier()
-        or iskeyword(normalized)
-        or not slug.isidentifier()
-        or iskeyword(slug)
-    ):
+    if not normalized.isidentifier() or iskeyword(normalized):
         raise ModelParseError(
-            f"block name {raw_name!r} does not normalize to a valid class name and "
-            f"module variable (got {normalized!r} and {slug!r})",
+            f"block name {raw_name!r} does not normalize to a valid class name "
+            f"(got {normalized!r})",
             lineno,
         )
+    # Only the aggregate's slug is load-bearing in the grammar: it is what the
+    # surfaced ``<slug>_id`` is derived from. ``class_`` gives the valid class
+    # ``Class`` but the slug ``class``, a keyword, the same pair ``plan_add_slice``
+    # rejects at src/protean/scaffold/add_plan.py:117. Slugs for the other blocks
+    # are the generator's to derive and to check.
+    if kw == "aggregate":
+        slug = _slug(raw_name)
+        if not slug.isidentifier() or iskeyword(slug):
+            raise ModelParseError(
+                f"aggregate name {raw_name!r} derives the module variable "
+                f"{slug!r}, which is not a usable Python name",
+                lineno,
+            )
     return _Block(
         keyword=kw,
         name=normalized,
@@ -282,8 +285,12 @@ def _parse_constraints(
     """Parse the parenthesized constraint list into ``(max_length, is_key)``."""
     max_length: int | None = None
     is_key = False
-    if constraints is None or not constraints.strip():
+    if constraints is None:
         return max_length, is_key
+    if not constraints.strip():
+        raise ModelParseError(
+            "empty constraint list; drop the parentheses or name a constraint", lineno
+        )
 
     seen: set[str] = set()
     for part in constraints.split(","):
@@ -306,7 +313,10 @@ def _parse_constraints(
                 raise ModelParseError("duplicate 'max_length' constraint", lineno)
             seen.add("max_length")
             value = length_match.group(1)
-            if not value.isdigit() or int(value) <= 0:
+            # ``isdecimal`` and not ``isdigit``: a Unicode numeric like the
+            # superscript two satisfies ``isdigit`` but ``int()`` then raises a
+            # ValueError, and every violation here reports as a ModelParseError.
+            if not value.isdecimal() or int(value) <= 0:
                 raise ModelParseError("max_length must be a positive integer", lineno)
             if ftype not in ("string", "text"):
                 raise ModelParseError(
@@ -377,6 +387,8 @@ def _finalize(blocks: list[_Block], last_line: int) -> dict[str, Any]:
             present.header_line,
         )
 
+    surfaced_id = _validate_surfaced_id(aggregate, event)
+
     fragment: dict[str, Any] = {
         "aggregate": {"name": aggregate.name, "fields": aggregate.fields},
         "command": {"name": command.name, "fields": command.fields},
@@ -384,7 +396,9 @@ def _finalize(blocks: list[_Block], last_line: int) -> dict[str, Any]:
     }
 
     if has_projection:
-        _validate_read_side(aggregate, event, projections[0], projectors[0])
+        _validate_read_side(
+            aggregate, event, projections[0], projectors[0], surfaced_id
+        )
         fragment["projection"] = {
             "name": projections[0].name,
             "fields": projections[0].fields,
@@ -398,8 +412,47 @@ def _finalize(blocks: list[_Block], last_line: int) -> dict[str, Any]:
     return fragment
 
 
+# The IR field shapes the aggregate's surfaced id reference may take on the event.
+# ADR-0041 v1 has the author surface it as a ``string`` or an ``identifier``; an
+# integer or a date cannot hold the aggregate's id.
+_SURFACED_ID_SHAPES = (("standard", "String"), ("identifier", "Identifier"))
+
+
+def _validate_surfaced_id(aggregate: _Block, event: _Block) -> str:
+    """Check that the event carries the aggregate's surfaced id, and return its name.
+
+    The author writes the ``<slug>_id`` field on the event, and promotion wires the
+    generated ``create`` to set it from the aggregate's id (ADR-0041). The read side
+    reads it from there: an authored projection keys on it, and an omitted one is
+    derived from the event with that field as the key. So it is required either way.
+
+    Its length is not checked. Whether a bound is wide enough to hold an id depends
+    on the domain's ``identity_type`` and ``identity_strategy``, which live in the
+    composition root the grammar does not carry, so that check belongs to promotion.
+    """
+    expected = f"{_slug(aggregate.raw_name)}_id"
+    if expected not in event.fields:
+        raise ModelParseError(
+            f"event {event.name!r} must carry {expected!r}, the aggregate's surfaced "
+            "id, for the read side to key on",
+            event.header_line,
+        )
+    entry = event.fields[expected]
+    if (entry.get("kind"), entry.get("type")) not in _SURFACED_ID_SHAPES:
+        raise ModelParseError(
+            f"the surfaced id {expected!r} must be a string or an identifier, "
+            f"not a {entry.get('type')}",
+            event.field_lines[expected],
+        )
+    return expected
+
+
 def _validate_read_side(
-    aggregate: _Block, event: _Block, projection: _Block, projector: _Block
+    aggregate: _Block,
+    event: _Block,
+    projection: _Block,
+    projector: _Block,
+    surfaced_id: str,
 ) -> None:
     if projector.for_target is None:
         raise ModelParseError(
@@ -436,26 +489,16 @@ def _validate_read_side(
         )
 
     key_name = key_names[0]
-    expected_key = f"{_slug(aggregate.raw_name)}_id"
-    if key_name != expected_key:
+    if key_name != surfaced_id:
         raise ModelParseError(
-            f"projection key must be {expected_key!r} (the aggregate's surfaced "
+            f"projection key must be {surfaced_id!r} (the aggregate's surfaced "
             f"id), not {key_name!r}",
             projection.field_lines[key_name],
         )
 
-    # The key is the surfaced aggregate id, and promotion populates the projection
-    # from the event with no other source (ADR-0041), so the event has to carry it.
-    # Its shape is not compared: the ADR has the event surface the reference as an
-    # unconstrained ``string`` or ``identifier`` while the projection's key takes the
-    # framework identity default.
-    if key_name not in event.fields:
-        raise ModelParseError(
-            f"projection key {key_name!r} is not on the event {event.name!r}; the "
-            "projector has no source to populate it from",
-            projection.field_lines[key_name],
-        )
-
+    # The key's shape is not compared against the event's. ``_validate_surfaced_id``
+    # has already checked the event carries it as a string or an identifier, while
+    # the projection's key takes the framework identity default.
     for fname, entry in projection.fields.items():
         if fname == key_name:
             continue
@@ -565,20 +608,52 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
 
     # The emitter's contract is that its output reads back: emit and parse are
     # inverses over the covered subset. The parser holds rules the per-field and
-    # per-participant checks above do not (the projection key is the aggregate's
-    # surfaced id, every other projected field is sourced from the event with the
-    # same shape), so read the text back rather than mirror those rules here, where
-    # a second copy would drift from the parser. A cluster whose model does not
-    # re-parse is outside the covered subset, and the parse error says why.
+    # per-participant checks above do not (the event carries the aggregate's surfaced
+    # id, the projection keys on it, every other projected field is sourced from the
+    # event with the same shape), so read the text back rather than mirror those
+    # rules here, where a second copy would drift from the parser. A cluster whose
+    # model does not re-parse is outside the covered subset, and the parse error
+    # says why.
     try:
-        parse_model(text)
+        fragment = parse_model(text)
     except ModelParseError as exc:
         raise ModelEmitError(
             f"cluster {cluster_fqn!r} emits a model the grammar cannot read back "
             f"({exc}); the cluster is outside the covered subset"
         ) from exc
 
+    # Parsing back is not enough on its own: the parser normalizes a block name to
+    # PascalCase, so an IR name that is not already canonical (an aggregate class
+    # written ``order_item``) reads back as a different participant. Text that
+    # renames the cluster is not a faithful emission, so refuse it.
+    for keyword, emitted in (
+        ("aggregate", aggregate["name"]),
+        ("command", command["name"]),
+        ("event", event["name"]),
+    ):
+        _check_name_is_canonical(cluster_fqn, keyword, emitted, fragment)
+    if read_side is not None:
+        _check_name_is_canonical(
+            cluster_fqn, "projection", read_side[0]["name"], fragment
+        )
+        _check_name_is_canonical(
+            cluster_fqn, "projector", read_side[1]["name"], fragment
+        )
+
     return text
+
+
+def _check_name_is_canonical(
+    cluster_fqn: str, keyword: str, emitted: str, fragment: dict[str, Any]
+) -> None:
+    """Refuse an IR name the parser would read back as a different name."""
+    read_back = fragment[keyword]["name"]
+    if read_back != emitted:
+        raise ModelEmitError(
+            f"cluster {cluster_fqn!r} has the {keyword} {emitted!r}, which the "
+            f"grammar reads back as {read_back!r}; the grammar covers names that "
+            "are already in its normal form"
+        )
 
 
 def _resolve_read_side(

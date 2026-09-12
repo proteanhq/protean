@@ -177,6 +177,9 @@ class TestParseWorkedExample:
         assert parse_model(ORDER_MODEL) == ORDER_FRAGMENT
 
     def test_write_side_only_has_no_read_side(self):
+        # The event still carries the surfaced id: with no read side authored, the
+        # generator derives the default projection from the event with that field as
+        # its key (ADR-0041), so the model has to supply it either way.
         model = """aggregate Order:
     field name: string(max_length=100)
 
@@ -184,6 +187,7 @@ command CreateOrder:
     field name: string(max_length=100)
 
 event OrderCreated:
+    field order_id: string
     field name: string(max_length=100)
 """
         fragment = parse_model(model)
@@ -202,6 +206,7 @@ command CreateOrder:
     field name: string(max_length=100)
 
 event OrderCreated:
+    field order_id: string
     field name: string(max_length=100)
 """
         assert parse_model(model)["aggregate"]["name"] == "Order"
@@ -214,6 +219,7 @@ command createOrderItem:
     field name: string(max_length=100)
 
 event order_item_created:
+    field order_item_id: string
     field name: string(max_length=100)
 """
         fragment = parse_model(model)
@@ -241,6 +247,7 @@ command CreateThing:
     field name: string
 
 event ThingCreated:
+    field thing_id: string
     field name: string
 """
         fields = parse_model(model)["aggregate"]["fields"]
@@ -322,10 +329,10 @@ class TestParseRejections:
         assert exc.value.line == 1
         assert "does not normalize to a valid class name" in str(exc.value)
 
-    def test_name_whose_slug_is_a_python_keyword(self):
+    def test_aggregate_name_whose_slug_is_a_python_keyword(self):
         # ``class_`` normalizes to the valid class ``Class`` but to the slug
-        # ``class``, a keyword. ``plan_add_slice`` rejects either derived name being
-        # a keyword, and the slug is what the projection key is built from.
+        # ``class``, a keyword. ``plan_add_slice`` rejects that pair too, and the
+        # aggregate's slug is what the surfaced id is derived from.
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate class_:\n    field name: string\n")
         assert exc.value.line == 1
@@ -364,13 +371,14 @@ class TestParseRejections:
         model = (
             "aggregate Order:\n    field name: string\n\n"
             "command CreateOrder:\n    field name: string\n\n"
-            "event OrderCreated:\n    field create: string\n"
+            "event OrderCreated:\n    field order_id: string\n"
+            "    field create: string\n"
         )
         assert "create" in parse_model(model)["event"]["fields"]
 
-    def test_projection_key_absent_from_the_event(self):
-        # The projector populates the projection from the event with no other
-        # source (ADR-0041), so an event without the surfaced id cannot fill the key.
+    def test_event_without_the_surfaced_id(self):
+        # The read side keys on the surfaced id and has no other source for it
+        # (ADR-0041), so an event that omits it is rejected on the event header.
         model = (
             "aggregate Order:\n    field name: string\n\n"
             "command CreateOrder:\n    field name: string\n\n"
@@ -382,9 +390,70 @@ class TestParseRejections:
         )
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
-        # The 'field order_id: identifier(key)' line is the 11th physical line.
-        assert exc.value.line == 11
-        assert "has no source to populate it from" in str(exc.value)
+        # The 'event OrderCreated:' header is the 7th physical line.
+        assert exc.value.line == 7
+        assert "must carry 'order_id'" in str(exc.value)
+
+    def test_write_side_only_event_without_the_surfaced_id(self):
+        # The rule does not depend on a read side being authored: the generator
+        # derives the default projection from the event and keys it on this field.
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command CreateOrder:\n    field name: string\n\n"
+            "event OrderCreated:\n    field name: string\n"
+        )
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 7
+        assert "must carry 'order_id'" in str(exc.value)
+
+    def test_surfaced_id_of_the_wrong_type(self):
+        # ADR-0041 v1 surfaces the reference as a string or an identifier. An
+        # integer cannot hold the aggregate's id.
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command CreateOrder:\n    field name: string\n\n"
+            "event OrderCreated:\n    field order_id: integer\n"
+        )
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 8
+        assert "must be a string or an identifier" in str(exc.value)
+
+    def test_surfaced_id_may_be_an_identifier(self):
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command CreateOrder:\n    field name: string\n\n"
+            "event OrderCreated:\n    field order_id: identifier\n"
+        )
+        assert parse_model(model)["event"]["fields"]["order_id"]["type"] == "Identifier"
+
+    def test_empty_constraint_list(self):
+        model = "aggregate Order:\n    field name: string()\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "empty constraint list" in str(exc.value)
+
+    def test_max_length_with_a_unicode_numeric(self):
+        # A superscript two satisfies ``isdigit`` but not ``int()``; every violation
+        # has to surface as a ModelParseError, not a raw ValueError.
+        model = "aggregate Order:\n    field name: string(max_length=\u00b2)\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "max_length must be a positive integer" in str(exc.value)
+
+    def test_non_aggregate_name_with_a_keyword_slug_is_accepted(self):
+        # Only the aggregate's slug is load-bearing (it derives the surfaced id).
+        # ``command class_:`` gives the valid class ``Class``, and ADR-0041's grammar
+        # admits any non-keyword identifier as a block name.
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command class_:\n    field name: string\n\n"
+            "event OrderCreated:\n    field order_id: string\n"
+        )
+        assert parse_model(model)["command"]["name"] == "Class"
 
     def test_unknown_field_type(self):
         model = "aggregate Order:\n    field name: str\n"
@@ -777,6 +846,7 @@ class TestEmitter:
 
         @domain.event(part_of="Order")
         class OrderCreated:
+            order_id = String(max_length=None, required=True)
             name = String(max_length=100, required=True)
 
         @domain.aggregate(fact_events=True)
@@ -905,6 +975,9 @@ def _synthetic_ir(
     real ``to_ir()`` will not produce.
     """
     clean = {"name": {"kind": "standard", "type": "String", "required": True}}
+    # Every eligible event carries the aggregate's surfaced id. It goes in first so
+    # a test that passes its own ``order_id`` overrides it.
+    surfaced = {"order_id": {"kind": "standard", "type": "String", "required": True}}
     return {
         "clusters": {
             "m.Order": {
@@ -921,9 +994,14 @@ def _synthetic_ir(
                     "m.OrderCreated": {
                         "name": "OrderCreated",
                         "__type__": "M.OrderCreated.v1",
-                        "fields": event_fields
-                        if event_fields is not None
-                        else dict(clean),
+                        "fields": {
+                            **surfaced,
+                            **(
+                                event_fields
+                                if event_fields is not None
+                                else dict(clean)
+                            ),
+                        },
                     }
                 },
             }
@@ -1071,6 +1149,7 @@ class TestEmitterIneligibility:
 
         @domain.event(part_of=Order)
         class OrderCreated:
+            order_id = String(max_length=None, required=True)
             name = String(max_length=100, required=True)
 
         @domain.command(part_of=Order)
@@ -1157,6 +1236,35 @@ class TestEmitterIneligibility:
         with pytest.raises(ModelEmitError) as exc:
             emit_model(ir, "m.Order")
         assert "cannot read back" in str(exc.value)
+
+    def test_non_canonical_participant_name_raises(self):
+        # A domain class written ``order_item`` gives the IR that name verbatim, and
+        # the parser normalizes a block name to PascalCase, so the emitted text would
+        # read back as a differently named aggregate. Refuse instead of renaming.
+        ir = _synthetic_ir(
+            event_fields={
+                "order_item_id": {
+                    "kind": "standard",
+                    "type": "String",
+                    "required": True,
+                },
+                "name": {"kind": "standard", "type": "String", "required": True},
+            }
+        )
+        ir["clusters"]["m.Order"]["aggregate"]["name"] = "order_item"
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "reads back as 'OrderItem'" in str(exc.value)
+
+    def test_event_without_the_surfaced_id_raises(self):
+        # The guard covers the parser's rules without a second copy of them: an
+        # event missing the surfaced id emits text that does not read back.
+        ir = _synthetic_ir()
+        del ir["clusters"]["m.Order"]["events"]["m.OrderCreated"]["fields"]["order_id"]
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "cannot read back" in str(exc.value)
+        assert "must carry 'order_id'" in str(exc.value)
 
     def test_multi_aggregate_projector_raises(self):
         projections = {
