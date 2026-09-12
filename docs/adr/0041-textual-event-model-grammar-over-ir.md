@@ -39,9 +39,9 @@ grammar is a human authoring surface over the IR: the parser produces a
 generator promotes that fragment to a full IR and then to code. There is no
 separate spec type and no second field vocabulary.
 
-This ADR fixes three things: the grammar, the **authored-IR profile** (which IR
-keys the author supplies and which the generator derives), the **vocabulary map**,
-and the **conformance direction** (IR to text to IR). It does not enumerate the
+This ADR fixes the grammar, the **authored-IR profile** (which IR keys the author
+supplies and which the generator derives), the **vocabulary map**, and the
+**conformance direction** (IR to text to IR). It does not enumerate the
 parser's validation rules, the eligibility cases, or the full promotion output. Those
 are #1471 and #1472's implementation contract, pinned by the IR schema and the worked
 example below and enforced by the conformance test and `protean verify`. The precise
@@ -165,15 +165,13 @@ not by FQN. It is not a schema-valid IR on its own.
 The generator promotes the fragment to a full IR and then to code (#1472). Promotion
 fills the derived keys the author never writes. These include the FQNs and `module`; each
 message's `__type__` and `__version__`; `part_of`; the aggregate's injected identity
-(`id`, IR kind `auto`, `auto_generated: true`); the surfaced `<slug>_id` reference
-the event and projection carry; the aggregate and projection `options` and the
-aggregate's `stream_category`; the projector's `aggregates`, `stream_categories`, and
-`subscription` (a projector carries no `options`);
+(`id`, IR kind `auto`, `auto_generated: true`); the aggregate and projection `options`
+and the aggregate's `stream_category`; the projector's `aggregates`,
+`stream_categories`, and `subscription` (a projector carries no `options`);
 `invariants`; the empty element maps every cluster requires; the domain metadata;
-the elements index; and the checksum. The complete schema-required output (including
-`$schema`, `ir_version`, `contracts`, `flows`, `diagnostics`, and the injected id's
-full `Auto` entry) is #1472's to produce. Promotion is one deterministic step, and it
-is the same step whether the fragment came from a text model or from `protean add`.
+the elements index; and the checksum. The complete builder output is #1472's to
+produce. Promotion is one deterministic step, and it is the same step whether the
+fragment came from a text model or from `protean add`.
 
 Because the fragment is IR field entries plus names, there is one field vocabulary, so
 a field's shape lives in the IR field model alone. Widening the grammar to reach a new
@@ -183,7 +181,10 @@ drift from the IR.
 
 v1 targets the default identity (`identity_type = string`, `identity_strategy =
 uuid`), so the aggregate id is a UUID stored as a string and the surfaced `<slug>_id`
-reference is an unconstrained `string` or `identifier`. The read side is optional;
+reference is an unconstrained `string` or `identifier`. The author writes that
+`<slug>_id` field on the event and projection; promotion does not inject it but wires
+the generated `create` to set it from the aggregate's id, so promotion validates the
+relationship. The read side is optional;
 when omitted, the generator derives a default projection that mirrors the event's
 fields (the `<slug>_id` becoming the `Identifier` key) and a projector that consumes
 the event, so a write-side-only model still passes `protean verify`. The derived-code
@@ -221,10 +222,11 @@ flag). Automations and multi-slice models are a later grammar.
 The grammar stays aligned with the renderer's vocabulary through a structural round
 trip, run as a build-time test, with no live sync between the two.
 
-#1471 adds an **emitter** that reads one cluster of an IR and produces grammar text
+#1471 adds an **emitter** that reads a full IR and a cluster FQN, resolving the
+slice's read side through the top-level `projections` map, and produces grammar text
 for the covered subset: the participants' names, their authored fields, and the
 wiring (`for`, `consumes`). Parsing that text produces an IR fragment. The
-conformance test asserts the fragment matches the cluster on the covered subset.
+conformance test asserts the fragment matches the slice on the covered subset.
 Because both sides are IR, the emitter and parser are inverses over one
 representation, and the check is a property, not a hand-maintained table.
 
