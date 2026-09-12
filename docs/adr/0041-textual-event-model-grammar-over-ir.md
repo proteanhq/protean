@@ -226,9 +226,11 @@ trip, run as a build-time test, with no live sync between the two.
 slice's read side through the top-level `projections` map, and produces grammar text
 for the covered subset: the participants' names, their authored fields, and the
 wiring (`for`, `consumes`). Parsing that text produces an IR fragment. The
-conformance test asserts the fragment matches the slice on the covered subset.
-Because both sides are IR, the emitter and parser are inverses over one
-representation, and the check is a property, not a hand-maintained table.
+conformance test asserts the fragment matches the slice on the covered subset. The
+comparison covers the shared IR element and field shapes plus the authored wiring (the
+grammar's `for` and `consumes` keys, which promotion normalizes to `projector_for` and
+`handlers`). Over that covered subset the emitter and parser are inverses, checked as a
+property.
 
 A cluster is **eligible** when its covered data (the authored fields, the identity,
 and the wiring) is expressible in the grammar: authored fields within the eight types
