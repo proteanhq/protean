@@ -463,6 +463,18 @@ class TestParseRejections:
         )
         assert parse_model(model)["event"]["fields"]["order_id"]["type"] == "Identifier"
 
+    def test_surfaced_id_may_carry_a_bound(self):
+        # A bound on the surfaced id parses. Whether it is wide enough to hold an
+        # id depends on the domain's ``identity_type`` and ``identity_strategy``,
+        # which live in the composition root the model text does not carry, so
+        # promotion owns that check (ADR-0041) and the parser does not guess.
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command CreateOrder:\n    field name: string\n\n"
+            "event OrderCreated:\n    field order_id: string(max_length=5)\n"
+        )
+        assert parse_model(model)["event"]["fields"]["order_id"]["max_length"] == 5
+
     def test_max_length_too_long_to_read(self):
         # A decimal token past CPython's int-from-string digit limit still has to
         # report as a ModelParseError, not escape as a raw ValueError.
@@ -1407,8 +1419,8 @@ class TestEmitterIneligibility:
         assert "optional" in str(exc.value)
 
     def test_hand_set_min_length_raises(self):
-        # ``min_length`` is recorded only when an author sets it; the grammar
-        # cannot carry it, so dropping it would lose the constraint. Raise instead.
+        # A bound other than the implicit 1 is an author constraint the grammar
+        # cannot carry, so dropping it would lose it. Raise instead.
         ir = _synthetic_ir(
             event_fields={
                 "code": {
@@ -1748,6 +1760,22 @@ class TestConformance:
 
         projection = next(iter(ir["projections"].values()))["projection"]
         assert fragment["projection"]["fields"] == _grammar_fields(projection["fields"])
+
+    def test_implicit_min_length_reaches_the_ir_and_is_dropped(self):
+        # The implicit non-empty bound a required string field carries (ADR-0026)
+        # is applied as pydantic ``MinLen(1)`` metadata, so ``IRBuilder`` reads it
+        # back and the IR entry carries ``min_length: 1`` even though the fixture
+        # never sets it. The emitter drops exactly that value: refusing it would
+        # make every required string field ineligible, the ADR worked example
+        # included. A value other than 1 still raises
+        # (``test_hand_set_min_length_raises``).
+        ir = _build_order_domain().to_ir()
+        fqn = _cluster_fqn(ir)
+        authored = ir["clusters"][fqn]["aggregate"]["fields"]["name"]
+        assert authored["min_length"] == 1
+
+        fragment = parse_model(emit_model(ir, fqn))
+        assert "min_length" not in fragment["aggregate"]["fields"]["name"]
 
     def test_write_side_only_round_trip(self):
         ir = _build_write_side_only_domain().to_ir()

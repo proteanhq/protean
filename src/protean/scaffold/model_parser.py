@@ -400,8 +400,8 @@ def _parse_field_line(block: _Block, stripped: str, lineno: int) -> None:
         )
     if fname in _RESERVED_FIELD_NAMES.get(block.keyword, frozenset()):
         raise ModelParseError(
-            f"field name {fname!r} is reserved: a {block.keyword} already declares "
-            f"it, so the field would collide with it",
+            f"field name {fname!r} is reserved: the {block.keyword} block already "
+            f"declares it, so the field would collide with it",
             lineno,
         )
     if ftype not in _TYPE_TABLE:

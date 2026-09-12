@@ -142,11 +142,18 @@ The two constraints map onto the same IR field entry:
 
 Every authored field carries `required: true` in its IR entry. The projection's
 identity `key` is the one field without `required`, since it takes the framework
-identity default. The framework applies an implicit `min_length=1` to required
-string-based fields at runtime (ADR-0026), but the IR field entry does not record it:
-the builder reads the explicit `min_length`, which is unset here, as the required
-`String` field `customer_name` in `ir/examples/ordering-ir.json` shows. So the
-implicit bound stays out of the grammar and out of the round trip.
+identity default.
+
+The framework applies an implicit `min_length=1` to required string-based fields
+(ADR-0026), and that bound does reach the IR: it is applied as pydantic `MinLen(1)`
+metadata, which `IRBuilder` reads back like any other constraint, so every required
+string field's entry carries `min_length: 1` whether or not the author wrote it. The
+grammar has no `min_length` syntax, and its `required` re-derives exactly that bound,
+so the emitter drops a `min_length` of 1 and refuses any other value, including an
+explicit `0` (a required field that accepts the empty string has no grammar form).
+An author who writes `min_length=1` by hand is therefore indistinguishable in the IR
+from one who left it implicit; the two promote to the same field, so the round trip
+holds either way.
 
 ### The authored-IR profile
 
