@@ -100,6 +100,23 @@ the store unset.
 
 **Fix.** Call `domain.init()` before using the event store.
 
+### CONFIG_INVALID_FIELD_DEFAULTS { #config-invalid-field-defaults }
+
+| | |
+|---|---|
+| **Category** | `configuration` |
+| **Level** | `error` |
+| **Exception** | `ConfigurationError` |
+| **Raised by** | `Config2._validate_field_defaults` |
+
+**Why.** `field_defaults.sanitize` decides whether String and Text fields that leave
+`sanitize` unset are cleaned. Reading a malformed value as `false` would turn a typo
+into a silent fail-open, so the value is rejected at load time instead.
+
+**Fix.** Write `[field_defaults]` as a table and give `sanitize` a boolean, or one of
+the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or the empty string, which
+reads as false and is what `${VAR|}` resolves to when the variable is unset.
+
 ### CONFIG_UNRESOLVED_ENV_VAR { #config-unresolved-env-var }
 
 | | |

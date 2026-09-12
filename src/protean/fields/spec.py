@@ -18,12 +18,20 @@ from uuid import uuid4
 from pydantic import AfterValidator, BeforeValidator
 from pydantic import Field as PydanticField
 
+from protean.exceptions import ConfigurationError
 from protean.exceptions import ValidationError as ProteanValidationError
 from protean.fields.base import (
     EMPTY_VALUES,
     normalize_field_renamed_from,
 )
-from protean.utils import _generate_identity, _normalize_deprecated
+from protean.ir.diagnostics import DiagnosticCode
+from protean.utils import (
+    FALSY_FLAG_SPELLINGS,
+    TRUTHY_FLAG_SPELLINGS,
+    _generate_identity,
+    _normalize_deprecated,
+)
+from protean.utils.globals import current_domain
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +108,11 @@ class FieldSpec:
         scale: int | None = None,
         # Container-specific
         content_type: Any = None,  # For List fields
-        # Sanitization
-        sanitize: bool = False,  # For String/Text — runs bleach.clean()
+        # Sanitization — tri-state for String/Text: True (always clean),
+        # False (never), None (unset → consult the domain-level
+        # ``[field_defaults] sanitize`` default, which itself defaults to
+        # False). Other field kinds never expose this and stay unset.
+        sanitize: bool | None = None,  # For String/Text — runs bleach.clean()
         # Lifecycle timestamps (DateTime/Date only) — Django-parity flags that
         # let the persistence layer stamp the field on save.
         auto_now_add: bool = False,  # set to now() on the CREATE save
@@ -313,7 +324,11 @@ class FieldSpec:
             json_extra["referenced_as"] = self.referenced_as
         if self.field_kind != "standard":
             json_extra["field_kind"] = self.field_kind
-        if self.sanitize:
+        # Only an explicit ``sanitize=True`` is recorded in the IR: it is the
+        # declared intent. An unset field (the new default) carries no marker,
+        # because whether it sanitizes depends on the domain default resolved at
+        # validation time, not on anything the field declares.
+        if self.sanitize is True:
             json_extra["sanitize"] = True
         if self.auto_now:
             json_extra["auto_now"] = True
@@ -343,9 +358,15 @@ class FieldSpec:
     def resolve_annotated(self) -> Any:
         """Combine resolved type and field kwargs into ``Annotated[type, Field(...)]``.
 
-        When ``sanitize=True`` or per-field ``validators`` are present, the
-        corresponding ``AfterValidator`` wrappers are appended to the
-        ``Annotated`` metadata.
+        Per-field ``validators`` are appended as ``AfterValidator`` wrappers on
+        the ``Annotated`` metadata. A sanitization ``AfterValidator`` is appended
+        for an explicit ``sanitize=True`` *and* for a String/Text field that
+        leaves ``sanitize`` unset: the unset field cannot decide at build time
+        whether it sanitizes, because that depends on the domain-level
+        ``[field_defaults] sanitize`` default, which is only known at validation
+        time. So the unset field carries the validator and the validator returns
+        the value untouched when the domain default is off. Only an explicit
+        ``sanitize=False`` gets no validator at all.
         """
         resolved_type = self.resolve_type()
         field_kwargs = self.resolve_field_kwargs()
@@ -373,8 +394,24 @@ class FieldSpec:
         # attribute stripping shrinks it). ``choices`` fields are never sanitized:
         # the value must match a declared choice exactly, and HTML-escaping a
         # closed vocabulary would break that match. See ADR-0026.
+        #
+        # The framework default is now ``sanitize=False``: a String/Text
+        # field left unset does not sanitize unless a domain turns it on via
+        # ``[field_defaults] sanitize = true``. So the validator is attached
+        # whenever ``sanitize`` is not explicitly False (explicit True, or unset
+        # on a String/Text field), and it decides at call time whether to clean:
+        #   - explicit True  → always cleans (``always=True``)
+        #   - unset (None)   → cleans only when the active domain's field default
+        #                      is True (``always=False``); with no active domain
+        #                      it falls back to the framework default and does not
+        #                      clean.
+        # Explicit False attaches no validator, so a raw field keeps its
+        # raw-input length behavior and pays no per-value cost.
+        sanitize_applies = self.sanitize is True or (
+            self.sanitize is None and self.field_kind in ("standard", "text")
+        )
         if (
-            self.sanitize
+            sanitize_applies
             and self.choices is None
             and isinstance(self.python_type, type)
             and issubclass(self.python_type, str)
@@ -386,7 +423,11 @@ class FieldSpec:
                 effective_min_length = 1
             extra_validators.append(
                 AfterValidator(
-                    _make_sanitize_validator(effective_min_length, self.max_length)
+                    _make_sanitize_validator(
+                        effective_min_length,
+                        self.max_length,
+                        always=self.sanitize is True,
+                    )
                 )
             )
 
@@ -499,9 +540,13 @@ class FieldSpec:
             parts.append(f"max_value={self.max_value}")
         if self.min_value is not None:
             parts.append(f"min_value={self.min_value}")
-        # Show sanitize only when it deviates from the factory default
-        if factory_name in ("String", "Text") and not self.sanitize:
-            parts.append("sanitize=False")
+        # Show sanitize only when it deviates from the factory default, which is
+        # now unset (``None``). Both explicit values deviate, and they are no
+        # longer interchangeable: under ``[field_defaults] sanitize = true`` an
+        # unset field cleans while an explicit ``sanitize=False`` stays raw, so
+        # hiding the False would make a per-field opt-out invisible.
+        if factory_name in ("String", "Text") and self.sanitize is not None:
+            parts.append(f"sanitize={self.sanitize}")
         # Show increment for Auto fields
         if factory_name == "Auto" and getattr(self, "_increment", False):
             parts.append("increment=True")
@@ -594,8 +639,69 @@ def _sanitize_string(v: str) -> str:
         return v
 
 
+def _domain_default_sanitize() -> bool:
+    """The active domain's ``[field_defaults] sanitize`` default.
+
+    Read at validation time, because a field is baked into a Pydantic
+    annotation before it is registered with any domain, so the domain default
+    is not known when the field is built. With no active domain (a value object
+    or entity constructed outside a domain context, as several tests do), there
+    is no default to read, so this returns the framework default (``False``):
+    do not sanitize. A missing ``field_defaults``/``sanitize`` key reads the
+    same way.
+
+    Only a *missing* key falls back. A malformed section is rejected at config
+    load time by ``Config2._validate_field_defaults``, so it never reaches here;
+    if one does (a config mutated in place after load), the resulting
+    ``TypeError`` propagates rather than being read as "do not sanitize". A
+    typo must not silently fail open on a security-relevant setting.
+    """
+    # ``has_domain_context`` reads the context stack without emitting the
+    # "working outside of domain context" warning that a bare ``current_domain``
+    # truthiness check would. Imported locally to avoid a domain <-> fields
+    # import cycle, matching the other call sites in the codebase.
+    from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+    if not has_domain_context():
+        return False
+    try:
+        raw = current_domain.config["field_defaults"]["sanitize"]
+    except KeyError:
+        return False
+    return _coerce_sanitize_flag(raw)
+
+
+def _coerce_sanitize_flag(raw: Any) -> bool:
+    """Read a ``field_defaults.sanitize`` config value as a bool.
+
+    A real bool passes straight through. Config env-var interpolation only ever
+    yields strings, so ``[field_defaults] sanitize = "${SANITIZE|false}"`` with
+    the var unset resolves to the string ``"false"``; a plain ``bool(...)`` on
+    that reads True and would silently sanitize, the opposite of what the
+    operator wrote. Parse the recognized string spellings instead
+    (case-insensitive), which are the same set the config validator accepts.
+
+    Anything else is malformed. ``Config2._validate_field_defaults`` rejects it
+    at load, so it only reaches here from a config mutated in place after load;
+    raise rather than read it as "do not sanitize".
+    """
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip().lower()
+        if text in TRUTHY_FLAG_SPELLINGS:
+            return True
+        if text in FALSY_FLAG_SPELLINGS:
+            return False
+    raise ConfigurationError(
+        f"`field_defaults.sanitize` must be a boolean, got {raw!r}",
+        code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
+        location="Config2 ([field_defaults] sanitize)",
+    )
+
+
 def _make_sanitize_validator(
-    min_length: int | None, max_length: int | None
+    min_length: int | None, max_length: int | None, always: bool
 ) -> Callable[[Any], Any]:
     """Build the sanitization validator, re-enforcing the field's length bounds
     on the *sanitized* value.
@@ -609,9 +715,18 @@ def _make_sanitize_validator(
     against the sanitized (stored) form, keeps the field self-consistent: the
     stored value always satisfies its length bounds, so it round-trips. See
     ADR-0026.
+
+    When *always* is False the field left the ``sanitize`` option unset, so the
+    validator cleans only when the active domain turns sanitization on via
+    ``[field_defaults] sanitize = true``; otherwise it returns the value
+    untouched and the length re-enforcement is skipped, so an unsanitized field
+    keeps its raw-input bounds behavior. When *always* is True (an explicit
+    ``sanitize=True``) it always cleans.
     """
 
     def _sanitize(v: Any) -> Any:
+        if not always and not _domain_default_sanitize():
+            return v
         cleaned = _sanitize_string(v)
         if isinstance(cleaned, str):
             length = len(cleaned)

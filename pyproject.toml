@@ -60,8 +60,10 @@ classifiers = [
 # The lean runtime core. Install-time-optional concerns (the web/ASGI stack, the
 # interactive shell, the project scaffolder) live behind the extras below so a
 # plain `pip install protean` does not drag them onto every consumer. `bleach`
-# stays here: String/Text fields sanitize by default, so it is a genuine runtime
-# need for nearly every domain. `werkzeug` was removed: the context locals are
+# stays here even though String/Text no longer sanitize by default: it backs the
+# opt-in `sanitize=True` path and the `[field_defaults] sanitize` domain default,
+# either of which can be turned on without installing anything, so it has to be
+# present. `werkzeug` was removed: the context locals are
 # now backed by stdlib `contextvars` (see ADR-0029 and #1375).
 dependencies = [
     "bleach>=6.1.0",

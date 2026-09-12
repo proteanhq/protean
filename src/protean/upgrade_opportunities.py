@@ -12,7 +12,12 @@ detector is import-gated to ``sqlalchemy``. The middleware detector matches a
 ``BaseHTTPMiddleware`` subclass or a ``dispatch`` method, and an
 ``add_middleware`` call that names something outside the framework's own set. The
 queue-status detector reads a ``status`` or ``state`` field with two or more
-queue-vocabulary choices. Every run gives the same verdict. Judgment-heavy advice
+queue-vocabulary choices. The default-sanitize detector reads ``String(...)`` /
+``Text(...)`` calls that pass no ``sanitize=`` keyword; it is the one detector
+here that reports a behavior change (the 0.18.0 sanitize-default flip) rather
+than a capability the domain hand-rolls, but it works the same way: a
+deterministic source scan gated on the release. Every run gives the same
+verdict. Judgment-heavy advice
 ("this orchestration
 is really a process manager") stays out of OSS; that lives in the commercial
 Domain Assessment surface, on the non-deterministic side of the open-core
@@ -34,8 +39,9 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
+from protean.fields.spec import _coerce_sanitize_flag
 from protean.ir.analysis.source_provider import SourceProvider
 from protean.upgrade import UpgradeFinding, _summarise
 from protean.upgrade_uow import _root_name
@@ -46,7 +52,10 @@ if TYPE_CHECKING:
 # A parsed module, as yielded by SourceProvider.iter_trees().
 Tree = tuple[str, ast.Module]
 Version = tuple[int, int, int]
-Detector = Callable[[list[Tree], Version], list[UpgradeFinding]]
+# Detectors take the domain as well as its parsed source: a behavior-change
+# detector has to know what the domain's config already does about the change
+# before it reports a migration site.
+Detector = Callable[[list[Tree], Version, "Domain"], list[UpgradeFinding]]
 
 # ---------------------------------------------------------------------------
 # Release catalog
@@ -64,6 +73,11 @@ _QUERY_API_RELEASE = "0.16.0"
 _MIDDLEWARE_RELEASE = "0.15.0"
 # The outbox processor (retry, backoff, DLQ).
 _OUTBOX_RELEASE = "0.14.0"
+# The release that flipped the String/Text ``sanitize`` default from True to
+# False. Unlike the other constants, this does not mark a capability the domain
+# owns; it marks a behavior change, so the detector below reports the sites that
+# relied on the old default once the domain is on this release or later.
+_SANITIZE_DEFAULT_RELEASE = "0.18.0"
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +179,9 @@ def _raw_sql_sites(trees: list[Tree]) -> list[str]:
     return sites
 
 
-def _detect_raw_sql(trees: list[Tree], pinned: Version) -> list[UpgradeFinding]:
+def _detect_raw_sql(
+    trees: list[Tree], pinned: Version, domain: Domain
+) -> list[UpgradeFinding]:
     if not _owned(_QUERY_API_RELEASE, pinned):
         return []
     sites = _raw_sql_sites(trees)
@@ -224,6 +240,11 @@ _FRAMEWORK_MIDDLEWARES = frozenset(
 # from one of these, so restricting alias mapping to them keeps a user's own
 # class named like a standard one (imported from their package) flaggable.
 _MIDDLEWARE_MODULE_ROOTS = frozenset({"starlette", "fastapi", "uvicorn", "protean"})
+
+# Field factories are only Protean's; a ``String`` imported from anywhere else
+# (SQLAlchemy has one) is a different symbol and not a field declaration.
+_FIELD_MODULE_ROOT = "protean"
+_FIELD_MODULE = "protean.fields"
 
 
 def _symbol_name(node: ast.expr) -> str | None:
@@ -308,7 +329,7 @@ def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
 
 
 def _detect_custom_middleware(
-    trees: list[Tree], pinned: Version
+    trees: list[Tree], pinned: Version, domain: Domain
 ) -> list[UpgradeFinding]:
     if not _owned(_MIDDLEWARE_RELEASE, pinned):
         return []
@@ -416,7 +437,9 @@ def _queue_status_sites(trees: list[Tree]) -> list[str]:
     return sites
 
 
-def _detect_queue_status(trees: list[Tree], pinned: Version) -> list[UpgradeFinding]:
+def _detect_queue_status(
+    trees: list[Tree], pinned: Version, domain: Domain
+) -> list[UpgradeFinding]:
     if not _owned(_OUTBOX_RELEASE, pinned):
         return []
     sites = _queue_status_sites(trees)
@@ -444,6 +467,472 @@ def _detect_queue_status(trees: list[Tree], pinned: Version) -> list[UpgradeFind
 
 
 # ---------------------------------------------------------------------------
+# Detector 4: String/Text fields that relied on the old sanitize-by-default
+# ---------------------------------------------------------------------------
+
+# The field factories the flip touches.
+_FIELD_FACTORIES = frozenset({"String", "Text"})
+
+# Container factories whose arguments are content specs, not field declarations.
+# ``List(String(max_length=50))`` types the list's items: the container only
+# reads the inner spec's type and choices and never attaches its sanitization
+# validator, so the inner ``String`` was not sanitized before the flip either
+# and is not a migration site.
+_CONTENT_SPEC_FACTORIES = frozenset({"List", "Dict"})
+
+# Every symbol whose Protean binding the scan resolves.
+_TRACKED_SYMBOLS = _FIELD_FACTORIES | _CONTENT_SPEC_FACTORIES
+
+# The positional slot ``sanitize`` occupies in each factory's signature. It is
+# positional-or-keyword in both, so ``Text(True)`` and ``String(255, None, True)``
+# are explicit opt-ins that a keyword-only scan would miss.
+_SANITIZE_POSITION = {"String": 2, "Text": 0}
+
+
+def _domain_sanitize_default(domain: Domain) -> bool:
+    """The domain's ``[field_defaults] sanitize`` default.
+
+    Reads through the same coercion the field layer uses, so a string spelling
+    from env-var interpolation (``"${SANITIZE|true}"`` resolving to ``"true"``)
+    is read the same way in both places. A domain with no such key uses the
+    framework default, ``False``.
+
+    Only a missing key falls back. A malformed section raises, and
+    ``run_opportunity_checks`` turns that into a ``CHECK_FAILED`` finding, which
+    says the report may be incomplete. That is the honest answer: the detector
+    cannot tell whether these sites need migrating without knowing the default.
+    """
+    try:
+        raw = domain.config["field_defaults"]["sanitize"]
+    except KeyError:
+        return False
+    return _coerce_sanitize_flag(raw)
+
+
+def _module_is_fields(path: str) -> bool:
+    """Whether a dotted module path is Protean's field module or below it."""
+    return path == _FIELD_MODULE or path.startswith(_FIELD_MODULE + ".")
+
+
+def _dotted_prefix(node: ast.Attribute) -> tuple[str, list[str]] | None:
+    """The root name and intermediate attributes of ``a.b.c.Sym``: ``("a", ["b", "c"])``."""
+    parts: list[str] = []
+    current: ast.expr = node.value
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.reverse()
+    return current.id, parts
+
+
+def _apply_import(
+    node: ast.Import | ast.ImportFrom,
+    factories: dict[str, str],
+    modules: dict[str, str],
+) -> None:
+    """Fold one import statement into a scope's binding maps.
+
+    Matching on the trailing symbol alone gets this wrong both ways:
+    ``from protean.fields import String as StringField`` is a field declaration
+    that the trailing name misses, and ``from sqlalchemy import String`` is not
+    one but the trailing name matches it. Both matter here, because this detector
+    is the migration safety net for a silent behavior change.
+
+    A binding replaces whatever the name held before, so a later import shadows
+    an earlier one the way Python does. Module paths are recorded in full rather
+    than by root package, so ``import protean`` reaches ``protean.fields.String``
+    but not ``protean.other.String``.
+    """
+    if isinstance(node, ast.ImportFrom):
+        module = node.module or ""
+        for alias in node.names:
+            if alias.name == "*":
+                # ``from protean.fields import *`` binds every name the module
+                # exports, so assume the tracked ones under their own spelling.
+                # Leaving them unbound would drop the whole module from the
+                # migration checklist without saying so.
+                if _module_is_fields(module):
+                    factories.update({name: name for name in _TRACKED_SYMBOLS})
+                    continue
+                # A star import from anywhere else may or may not export these
+                # names, and the scan cannot tell. Drop the tracked bindings
+                # rather than keep one that may have been overwritten, the same
+                # way an unreadable argument skips a site.
+                for name in _TRACKED_SYMBOLS:
+                    factories.pop(name, None)
+                    modules.pop(name, None)
+                continue
+            local = alias.asname or alias.name
+            factories.pop(local, None)
+            modules.pop(local, None)
+            if _module_is_fields(module) and alias.name in _TRACKED_SYMBOLS:
+                factories[local] = alias.name
+                continue
+            # ``from protean import fields`` names a submodule, reached by
+            # attribute access at the call site.
+            path = f"{module}.{alias.name}" if module else alias.name
+            if _module_is_fields(path):
+                modules[local] = path
+        return
+
+    for alias in node.names:
+        # ``import a.b.c`` binds ``a``; ``import a.b.c as x`` binds ``x`` to the
+        # full path.
+        local = alias.asname or alias.name.split(".")[0]
+        path = alias.name if alias.asname else alias.name.split(".")[0]
+        factories.pop(local, None)
+        modules.pop(local, None)
+        # The root package still reaches the fields module by attribute access,
+        # so keep it and check the full path at the call site.
+        if path == _FIELD_MODULE_ROOT or _module_is_fields(path):
+            modules[local] = path
+
+
+class _Scope(NamedTuple):
+    """One nested lexical scope: its body, and the names it binds on entry."""
+
+    body: list[ast.stmt]
+    bound: frozenset[str]
+
+
+def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[_Scope], set[str]]:
+    """The nodes in one statement, its nested scopes, and the names it rebinds.
+
+    Returns the nodes that execute in the current scope, the scopes nested
+    inside it, and the names this statement binds. A nested scope gets its own
+    binding maps, so an import inside a helper cannot reach back out and shadow
+    a name the module bound at the top.
+
+    Functions, classes, lambdas and comprehensions all open a scope. The parts
+    that evaluate in the enclosing scope stay in the current scope: decorators,
+    base classes, argument defaults, and the iterables a comprehension walks.
+    """
+    own: list[ast.AST] = []
+    nested: list[_Scope] = []
+    bound: set[str] = set()
+    stack: list[ast.AST] = [stmt]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            # The decorators, base classes and default arguments run in the
+            # enclosing scope; only the body opens a new one. The name itself is
+            # bound out here.
+            bound.add(node.name)
+            stack.extend(node.decorator_list)
+            if isinstance(node, ast.ClassDef):
+                nested.append(_Scope(node.body, frozenset()))
+                stack.extend(node.bases)
+                stack.extend(keyword.value for keyword in node.keywords)
+            else:
+                nested.append(_Scope(node.body, _parameter_names(node.args)))
+                stack.extend(ast.iter_child_nodes(node.args))
+            continue
+        if isinstance(node, ast.Lambda):
+            # ``lambda String: String()`` shadows the name for its body, and the
+            # scan cannot know what the caller passes.
+            nested.append(
+                _Scope([_as_statement(node.body)], _parameter_names(node.args))
+            )
+            stack.extend(ast.iter_child_nodes(node.args))
+            continue
+        if isinstance(
+            node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
+        ):
+            targets: set[str] = set()
+            body: list[ast.stmt] = []
+            for generator in node.generators:
+                targets.update(_stored_names(generator.target))
+                # The iterables are evaluated outside the comprehension's own
+                # scope, so they keep the enclosing bindings.
+                stack.append(generator.iter)
+                body.extend(_as_statement(test) for test in generator.ifs)
+            if isinstance(node, ast.DictComp):
+                body.append(_as_statement(node.key))
+                body.append(_as_statement(node.value))
+            else:
+                body.append(_as_statement(node.elt))
+            nested.append(_Scope(body, frozenset(targets)))
+            continue
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            bound.add(node.id)
+        own.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    return own, nested, bound
+
+
+def _as_statement(expr: ast.expr) -> ast.stmt:
+    """Wrap an expression so a scope body is uniformly a list of statements."""
+    return ast.copy_location(ast.Expr(value=expr), expr)
+
+
+def _stored_names(target: ast.expr) -> set[str]:
+    """Every name a comprehension or assignment target binds."""
+    return {
+        node.id
+        for node in ast.walk(target)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    }
+
+
+def _parameter_names(args: ast.arguments) -> frozenset[str]:
+    """Every name a function signature binds in its own scope."""
+    names = {arg.arg for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]}
+    for extra in (args.vararg, args.kwarg):
+        if extra is not None:
+            names.add(extra.arg)
+    return frozenset(names)
+
+
+def _resolved_symbol(
+    func: ast.expr, factories: dict[str, str], modules: dict[str, str]
+) -> str | None:
+    """The Protean symbol a call names, or ``None`` if it names something else."""
+    if isinstance(func, ast.Name):
+        return factories.get(func.id)
+    if isinstance(func, ast.Attribute) and func.attr in _TRACKED_SYMBOLS:
+        prefix = _dotted_prefix(func)
+        if prefix is None:
+            return None
+        root, parts = prefix
+        base = modules.get(root)
+        if base is None:
+            return None
+        path = ".".join([base, *parts])
+        if _module_is_fields(path):
+            return func.attr
+    return None
+
+
+def _content_spec_calls(
+    nodes: list[ast.AST], factories: dict[str, str], modules: dict[str, str]
+) -> set[int]:
+    """``id()`` of every call passed as a content spec to a container factory.
+
+    The container is resolved the same way the field factories are, so
+    ``from protean.fields import List as StringList`` is still recognised as a
+    container and its inner spec is still skipped.
+    """
+    nested: set[int] = set()
+    for node in nodes:
+        if not isinstance(node, ast.Call):
+            continue
+        if (
+            _resolved_symbol(node.func, factories, modules)
+            not in _CONTENT_SPEC_FACTORIES
+        ):
+            continue
+        # Containers nest: ``List(List(String(max_length=50)))`` is a supported
+        # shape, and the innermost spec is no more sanitized than the outer one,
+        # so shield the whole chain rather than only the immediate argument.
+        pending = [*node.args, *(kw.value for kw in node.keywords)]
+        while pending:
+            arg = pending.pop()
+            if not isinstance(arg, ast.Call):
+                continue
+            nested.add(id(arg))
+            if (
+                _resolved_symbol(arg.func, factories, modules)
+                in _CONTENT_SPEC_FACTORIES
+            ):
+                pending.extend([*arg.args, *(kw.value for kw in arg.keywords)])
+    return nested
+
+
+def _is_explicit_value(node: ast.expr) -> bool:
+    """Whether an argument expression declares something other than ``None``.
+
+    ``sanitize=None`` and ``choices=None`` mean exactly what leaving the argument
+    out means: ``FieldSpec`` reads both as unset. So neither counts as a
+    declaration. Anything the scan cannot read (a name, a call, an attribute) is
+    treated as a declaration, so an unreadable expression skips the site rather
+    than reporting a field that may well have declared itself.
+    """
+    return not (isinstance(node, ast.Constant) and node.value is None)
+
+
+def _declares_sanitize(node: ast.Call, factory: str) -> bool:
+    """Whether a call declares ``sanitize``, by keyword or position.
+
+    ``sanitize`` is positional-or-keyword in both factories, so ``Text(True)``
+    and ``String(255, None, True)`` are explicit opt-ins that a keyword-only
+    scan would report as relying on the old default.
+    """
+    for keyword in node.keywords:
+        if keyword.arg == "sanitize":
+            return _is_explicit_value(keyword.value)
+    position = _SANITIZE_POSITION[factory]
+    if len(node.args) > position:
+        return _is_explicit_value(node.args[position])
+    return False
+
+
+def _declares_choices(node: ast.Call) -> bool:
+    """Whether a call declares a real ``choices`` constraint."""
+    return any(
+        keyword.arg == "choices" and _is_explicit_value(keyword.value)
+        for keyword in node.keywords
+    )
+
+
+def _relies_on_the_old_default(node: ast.Call, factory: str, nested: set[int]) -> bool:
+    """Whether one resolved ``String``/``Text`` call left ``sanitize`` unset."""
+    if id(node) in nested:
+        return False
+    if _declares_sanitize(node, factory) or _declares_choices(node):
+        return False
+    # A ``**kwargs`` splat (``String(**opts)``) shows up as a keyword with
+    # ``arg is None``; a ``*args`` splat shows up as ``ast.Starred``. Neither is
+    # readable by a static scan, so ``sanitize`` or ``choices`` could be hidden
+    # inside. Skip rather than report a false positive.
+    if any(keyword.arg is None for keyword in node.keywords):
+        return False
+    return not any(isinstance(arg, ast.Starred) for arg in node.args)
+
+
+def _scan_scope(
+    module_name: str,
+    body: list[ast.stmt],
+    factories: dict[str, str],
+    modules: dict[str, str],
+    sites: list[str],
+) -> None:
+    """Collect reliant sites in one lexical scope, then recurse into nested ones.
+
+    Statements are read in order, so an import takes effect from where it appears
+    and a name resolves to whatever it held at that point. Each nested scope
+    starts from a copy of the enclosing bindings, so a helper-local
+    ``from sqlalchemy import String`` shadows the name inside that helper without
+    touching the module-level field declarations around it.
+
+    Two places this approximates Python rather than matching it, both only
+    reachable by code no working domain contains:
+
+    - A name bound anywhere in a function is local to the whole function, not
+      just from its binding onward. A call above a function-local import of the
+      same name therefore raises ``UnboundLocalError`` at runtime; this reads it
+      positionally instead and reports it.
+    - A class body's bindings are not visible to functions or classes nested
+      inside it. This copies them in, so a class-body import would shadow the
+      name for a nested class too.
+
+    Both are read positionally on purpose: modelling them exactly costs a full
+    symbol table, and the shapes that tell the difference (an import buried in a
+    class body, a name used before its function-local import) are broken or
+    pathological code rather than field declarations anyone writes.
+    """
+    factories = dict(factories)
+    modules = dict(modules)
+
+    for stmt in body:
+        own, nested_scopes, bound = _split_scopes(stmt)
+
+        # Imports anywhere in this statement take effect, not just a bare
+        # ``import`` at the top. A conditional or guarded import
+        # (``try: from protean.fields import String``) binds the name for
+        # everything after it, and skipping those dropped their fields from the
+        # checklist silently.
+        # Imports and calls are interleaved by source position, not batched.
+        # An import anywhere in this statement takes effect from where it
+        # appears, so a guarded import (``try: from protean.fields import
+        # String``) binds the name for what follows, while a call that sits
+        # above a later import still resolves against the binding it actually
+        # had.
+        interesting = [
+            node
+            for node in own
+            if isinstance(node, (ast.Import, ast.ImportFrom, ast.Call))
+        ]
+        interesting.sort(key=lambda node: (node.lineno, node.col_offset))
+        spec_calls = _content_spec_calls(own, factories, modules)
+        for node in interesting:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                _apply_import(node, factories, modules)
+                continue
+            factory = _resolved_symbol(node.func, factories, modules)
+            if factory not in _FIELD_FACTORIES:
+                continue
+            if _relies_on_the_old_default(node, factory, spec_calls):
+                sites.append(f"{module_name}:{node.lineno}")
+
+        for scope in nested_scopes:
+            # A parameter named after a tracked symbol shadows it inside the
+            # function, and the scan cannot know what the caller passes.
+            _scan_scope(
+                module_name,
+                scope.body,
+                {k: v for k, v in factories.items() if k not in scope.bound},
+                {k: v for k, v in modules.items() if k not in scope.bound},
+                sites,
+            )
+
+        # A name rebound by anything other than an import (``String =
+        # make_factory()``, a ``for`` target, a ``with ... as``) is no longer the
+        # factory it was imported as. Applied after this statement's own calls,
+        # because the right-hand side is evaluated first.
+        for name in bound:
+            factories.pop(name, None)
+            modules.pop(name, None)
+
+
+def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
+    """``module:line`` for each ``String(...)`` / ``Text(...)`` that left
+    ``sanitize`` unset and so relied on the pre-flip default.
+
+    A ``choices=`` field is skipped: a choices field was never sanitized (the
+    value must match a declared choice exactly), so it never relied on the old
+    default. A field that declares ``sanitize`` either way, by keyword or
+    positionally, declared its intent explicitly and is unaffected by the flip,
+    so it is skipped too. Source parsing is required here: after the flip a live
+    domain cannot tell an unset field from an explicit ``sanitize=False``; only
+    the source distinguishes them.
+    """
+    sites: list[str] = []
+    for module_name, tree in trees:
+        _scan_scope(module_name, tree.body, {}, {}, sites)
+    return sites
+
+
+def _detect_default_sanitize(
+    trees: list[Tree], pinned: Version, domain: Domain
+) -> list[UpgradeFinding]:
+    if not _owned(_SANITIZE_DEFAULT_RELEASE, pinned):
+        return []
+    # With ``[field_defaults] sanitize = true`` the domain has already opted
+    # every unset field back into the old behavior, so nothing changed for them
+    # and there is no migration to do.
+    if _domain_sanitize_default(domain):
+        return []
+    sites = _sanitize_reliant_sites(trees)
+    if not sites:
+        return []
+    return [
+        UpgradeFinding(
+            code="SANITIZE_DEFAULT_CHANGED",
+            level="info",
+            title=f"{len(sites)} String/Text field(s) relying on the old sanitize default",
+            detail=(
+                f"{_SANITIZE_DEFAULT_RELEASE} flipped the String/Text `sanitize` "
+                "default from True to False: a field declared without an explicit "
+                "`sanitize=` kwarg no longer runs `bleach.clean()`, so the stored "
+                "value is now the raw input. Fields that relied on the old default "
+                # Listed in full, not summarised: this is the migration checklist,
+                # and a site left off it is a site nobody reviews.
+                f"are at: {', '.join(sorted(sites))}."
+            ),
+            remediation=(
+                "Sanitization is a display-layer concern, so the real fix is to "
+                "encode output where these values are rendered as HTML. To restore "
+                "the previous behavior across the domain instead, set "
+                "`[field_defaults] sanitize = true`; to restore it for one field, "
+                "pass `sanitize=True` on that field."
+            ),
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -451,6 +940,7 @@ _DETECTORS: tuple[Detector, ...] = (
     _detect_raw_sql,
     _detect_custom_middleware,
     _detect_queue_status,
+    _detect_default_sanitize,
 )
 
 
@@ -474,7 +964,7 @@ def run_opportunity_checks(domain: Domain, pinned_version: str) -> list[UpgradeF
     findings: list[UpgradeFinding] = []
     for detector in _DETECTORS:
         try:
-            findings.extend(detector(trees, pinned))
+            findings.extend(detector(trees, pinned, domain))
         except Exception as exc:
             findings.append(
                 UpgradeFinding(

@@ -4,6 +4,14 @@
 
 **Date:** August 2026
 
+> **Update (0.18.0):** the String/Text `sanitize` default flipped from `True` to
+> `False` (issue #1455), so `bleach` no longer runs for nearly every domain by
+> default; it runs only where a field opts in. `bleach` still ships in core (it
+> is not behind an extra), because a field that sets `sanitize=True` or a domain
+> that sets `[field_defaults] sanitize = true` must not hit a missing-package
+> error at runtime. The present-tense "sanitize by default" claims below are
+> historical.
+
 ## Context
 
 A plain `pip install protean` used to pull a web server, an ASGI stack, a Jinja
@@ -149,6 +157,10 @@ document the change in the 0.18 migration guide. The actionable error plus the
   the `sanitize` default to `False`, a separate and security-relevant behavioral
   break (string fields silently stop HTML-escaping) that does not belong in a
   packaging change. bleach stays in core; revisit if that default ever flips.
+  (The default did flip to `False` in 0.18.0 via issue #1455, decided on its own
+  merits, not as a packaging change. bleach still stays in core: a field or
+  domain that opts back in must not hit a missing-package error at runtime, so
+  the packaging conclusion here is unchanged.)
 - **Detect the missing package from `ImportError.name` instead of `find_spec`.**
   Simpler, but wrong for the case that matters most: a package that is installed
   but broken raises an `ImportError` naming itself, so a name check would tell the

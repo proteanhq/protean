@@ -251,6 +251,39 @@ Applies only when aggregates are event sourced.
 
 Default: `10`
 
+### `field_defaults`
+
+Domain-level defaults applied to fields that leave an option unset. Today it
+holds one key, `sanitize`, the default for String and Text fields declared
+without an explicit `sanitize=` kwarg.
+
+```toml
+[field_defaults]
+sanitize = false
+```
+
+The framework default is `false`: a String/Text field with no `sanitize=`
+kwarg stores the raw input (sanitization is a display-layer concern, encoded
+where output is rendered). Set `sanitize = true` to sanitize every unset
+String/Text field across the domain instead.
+
+Precedence is field kwarg > this domain default > framework default. A field
+that passes `sanitize=True` or `sanitize=False` always wins over the domain
+default, so a domain default of `true` still lets a single field opt out with
+`sanitize=False`.
+
+The value is checked when the domain loads its config. `sanitize` must be a
+boolean, or one of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or
+the empty string, which reads as false. The string spellings are there because
+env-var interpolation always yields a string: `sanitize = "${SANITIZE|false}"`
+arrives as `"false"`, and `"${SANITIZE|}"` with the variable unset arrives as
+`""`. Anything else raises
+[`CONFIG_INVALID_FIELD_DEFAULTS`](../init-diagnostics.md#config-invalid-field-defaults).
+A typo is rejected rather than read as "do not sanitize", so it cannot quietly
+turn sanitization off.
+
+Default: `{ sanitize = false }`
+
 ## Adapter Configuration
 
 ### `databases`

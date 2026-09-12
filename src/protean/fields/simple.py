@@ -26,12 +26,17 @@ from protean.fields.spec import FieldSpec
 def String(  # pyright: ignore[reportRedeclaration]
     max_length: int = 255,
     min_length: int | None = None,
-    sanitize: bool = True,
+    sanitize: bool | None = None,
     **kwargs: Any,
 ) -> FieldSpec:
     """A string field with optional length constraints.
 
-    Defaults: ``max_length=255``, ``sanitize=True``.
+    Defaults: ``max_length=255``. ``sanitize`` is off by default: the stored
+    value is the raw input. Sanitization is a display-layer concern, so the real
+    control is encoding output where it is rendered; pass ``sanitize=True`` only
+    for a value rendered as HTML without output encoding. Leaving ``sanitize``
+    unset defers to the domain-level ``[field_defaults] sanitize`` default (also
+    False). Precedence: field kwarg > domain default > framework default.
     """
     return FieldSpec(
         str,
@@ -43,11 +48,13 @@ def String(  # pyright: ignore[reportRedeclaration]
 
 
 def Text(  # pyright: ignore[reportRedeclaration]
-    sanitize: bool = True, **kwargs: Any
+    sanitize: bool | None = None, **kwargs: Any
 ) -> FieldSpec:
     """An unbounded text field (maps to ``sa.Text`` in SQLAlchemy).
 
-    Like ``String`` but without a ``max_length`` constraint.
+    Like ``String`` but without a ``max_length`` constraint. ``sanitize`` is off
+    by default; see [`String`][protean.fields.simple.String] for the precedence
+    rules and when to opt in.
     """
     return FieldSpec(str, field_kind="text", sanitize=sanitize, **kwargs)
 
@@ -217,11 +224,11 @@ if TYPE_CHECKING:
     def String(  # type: ignore[misc]
         max_length: int = 255,
         min_length: int | None = None,
-        sanitize: bool = True,
+        sanitize: bool | None = None,
         **kwargs: Any,
     ) -> str: ...
 
-    def Text(sanitize: bool = True, **kwargs: Any) -> str: ...  # type: ignore[misc]
+    def Text(sanitize: bool | None = None, **kwargs: Any) -> str: ...  # type: ignore[misc]
 
     def Integer(  # type: ignore[misc]
         min_value: int | None = None,

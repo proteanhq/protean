@@ -8,7 +8,13 @@ from typing import Any
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import DEFAULT_REDACT_KEYS
 from protean.ir.diagnostics import DiagnosticCode
-from protean.utils import IdentityStrategy, IdentityType, Processing
+from protean.utils import (
+    FALSY_FLAG_SPELLINGS,
+    TRUTHY_FLAG_SPELLINGS,
+    IdentityStrategy,
+    IdentityType,
+    Processing,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +35,15 @@ def _default_config() -> dict[str, Any]:
         "source_uri": None,
         "identity_strategy": IdentityStrategy.UUID.value,
         "identity_type": IdentityType.STRING.value,
+        # Domain-level defaults applied to fields that leave an option unset.
+        # ``sanitize`` is the default for String/Text fields declared without an
+        # explicit ``sanitize=`` kwarg. The framework default is False (the
+        # stored value is the raw input); set this to True to restore
+        # sanitize-by-default across the domain. Precedence: field kwarg >
+        # this domain default > framework default.
+        "field_defaults": {
+            "sanitize": False,
+        },
         "databases": {
             "default": {"provider": "memory"},
             "memory": {"provider": "memory"},
@@ -287,6 +302,74 @@ class ConfigAttribute:
         obj.config[self.__name__] = value
 
 
+# The keys ``[field_defaults]`` recognises. Anything else is a typo, and a
+# typo in this section fails silently unless it is rejected: the merged
+# default stays in force and the operator's intent is dropped.
+_FIELD_DEFAULT_KEYS = frozenset({"sanitize"})
+
+
+def _validate_field_defaults(config: dict[str, Any]) -> None:
+    """Reject a malformed ``[field_defaults]`` section at config load time.
+
+    ``field_defaults.sanitize`` decides whether String/Text fields that leave
+    ``sanitize`` unset run ``bleach.clean()``. A malformed section (``field_defaults
+    = false``, ``sanitize = "maybe"``) must not be read as "do not sanitize": that
+    turns an operator's typo into a silent fail-open on a security-relevant
+    setting. Fail here instead, at load, naming the key and the accepted values.
+
+    Run after env-var substitution, so a ``${VAR}`` placeholder is judged by the
+    value it resolves to.
+    """
+    if "field_defaults" not in config:
+        return
+
+    section = config["field_defaults"]
+    if not isinstance(section, dict):
+        raise ConfigurationError(
+            f"`field_defaults` must be a table, got {type(section).__name__}",
+            code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
+            location="Config2 ([field_defaults])",
+        )
+
+    # Rendered as text before sorting: ``load_from_dict`` takes arbitrary
+    # dictionaries, so a key can be a non-string (or a mix of types, which
+    # ``sorted`` alone would refuse to order). Every malformed section has to
+    # come out of here as a ConfigurationError, not a raw TypeError.
+    unknown = sorted(str(key) for key in set(section) - _FIELD_DEFAULT_KEYS)
+    if unknown:
+        # A typo lands here: `sanitze = true` leaves `sanitize` at the merged
+        # default of False, so the sanitization the operator asked for silently
+        # never happens. Name the key rather than ignore it.
+        raise ConfigurationError(
+            f"`field_defaults` has no key(s) {', '.join(unknown)}. "
+            f"Known keys: {', '.join(sorted(_FIELD_DEFAULT_KEYS))}.",
+            code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
+            location="Config2 ([field_defaults])",
+        )
+
+    if "sanitize" not in section:
+        return
+
+    raw = section["sanitize"]
+    if isinstance(raw, bool):
+        return
+    if isinstance(raw, str):
+        spelling = raw.strip().lower()
+        if spelling in TRUTHY_FLAG_SPELLINGS or spelling in FALSY_FLAG_SPELLINGS:
+            return
+
+    accepted = ", ".join(
+        sorted(TRUTHY_FLAG_SPELLINGS) + sorted(FALSY_FLAG_SPELLINGS - {""})
+    )
+    raise ConfigurationError(
+        f"`field_defaults.sanitize` must be a boolean, got {raw!r}. "
+        f"Accepted string spellings: {accepted}, and the empty string "
+        "(what `${VAR|}` resolves to), which reads as false.",
+        code=DiagnosticCode.CONFIG_INVALID_FIELD_DEFAULTS,
+        location="Config2 ([field_defaults] sanitize)",
+    )
+
+
 class Config2(dict[str, Any]):
     ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
@@ -303,12 +386,20 @@ class Config2(dict[str, Any]):
                 if key.isupper():
                     self[key.lower()] = getattr(obj, key)
 
+        # This is a config bootstrap path of its own, so it gets the same check
+        # the load paths get. Without it a class or dict config could set a
+        # malformed `field_defaults` and only be caught much later, when an unset
+        # field validates, or not at all if no such field is ever built.
+        _validate_field_defaults(self)
+
     @classmethod
     def load_from_dict(cls, config: dict[str, Any] | None = None) -> "Config2":
         """Load configuration from a dictionary."""
         if config is None:
             config = _default_config()
-        return cls(**cls._normalize_config(config))
+        normalized = cls._normalize_config(config)
+        _validate_field_defaults(normalized)
+        return cls(**normalized)
 
     @classmethod
     def load_from_path(cls, path: str) -> "Config2":
@@ -353,6 +444,10 @@ class Config2(dict[str, Any]):
 
         # Load environment variables
         config_dict = cls._load_env_vars(config_dict)
+
+        # Validated after env substitution, so a ``${VAR}`` placeholder is
+        # checked by the value it resolves to, not by the placeholder text.
+        _validate_field_defaults(config_dict)
 
         return cls(**config_dict)
 
