@@ -282,6 +282,10 @@ event ThingCreated:
 # ---------------------------------------------------------------------------
 
 
+def _inherited_public_members(cls: type) -> frozenset[str]:
+    return frozenset(name for name in dir(cls) if not name.startswith("_"))
+
+
 def _write_side(*extra_blocks: str) -> str:
     """A minimal valid write side, plus any extra blocks appended."""
     base = """aggregate Order:
@@ -364,6 +368,38 @@ class TestParseRejections:
             parse_model(model)
         assert exc.value.line == 5
         assert "is reserved" in str(exc.value)
+
+    def test_reserved_inherited_member_field_name(self):
+        # ``raise_`` is a method every aggregate inherits, and the generated
+        # ``create`` calls it to publish the event. A field of that name shadows it
+        # on the instance, so ``self.raise_(event)`` would be a string.
+        model = "aggregate Order:\n    field raise_: string\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "is reserved" in str(exc.value)
+
+    def test_reserved_names_are_read_off_the_base_classes(self):
+        # The reservation is introspected, not listed by hand, so it covers the
+        # inherited surface of each block and cannot fall behind it.
+        from protean.core.event import BaseEvent
+        from protean.scaffold.model_parser import _RESERVED_FIELD_NAMES
+
+        assert "raise_" in _RESERVED_FIELD_NAMES["aggregate"]
+        assert "to_dict" in _RESERVED_FIELD_NAMES["event"]
+        assert _inherited_public_members(BaseEvent) <= _RESERVED_FIELD_NAMES["event"]
+        # Nothing underscore-prefixed needs reserving: no field name may start with
+        # one, so those are left out of the table.
+        assert not any(n.startswith("_") for n in _RESERVED_FIELD_NAMES["aggregate"])
+
+    def test_leading_underscore_field_name(self):
+        # The namespace scan skips a leading underscore, so an authored ``_token``
+        # never reaches the model: the field would vanish on promotion.
+        model = "aggregate Order:\n    field _token: string\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "may not start with an underscore" in str(exc.value)
 
     def test_reserved_name_is_allowed_where_it_is_not_declared(self):
         # ``create`` is reserved on the aggregate, not on the event: the reservation

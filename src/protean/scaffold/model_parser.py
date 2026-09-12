@@ -32,6 +32,10 @@ from dataclasses import dataclass, field
 from keyword import iskeyword
 from typing import Any
 
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
+from protean.core.projection import BaseProjection
 from protean.scaffold.add_plan import _split_words
 
 __all__ = ["ModelEmitError", "ModelParseError", "emit_model", "parse_model"]
@@ -83,20 +87,36 @@ _BLOCK_KEYWORDS = frozenset(
     {"aggregate", "command", "event", "projection", "projector"}
 )
 
-# Field names the generated slice already declares, per block. A model field of the
-# same name would shadow generated code or be shadowed by it, so the parser refuses
-# it instead of letting promotion lose the authored field.
+
+def _inherited_members(cls: type) -> frozenset[str]:
+    """The public members a block's base class already declares.
+
+    Read off the class rather than listed by hand, so the set cannot fall behind
+    the base classes. Underscore-prefixed members are left out because no field
+    name may start with an underscore at all (see ``_parse_field_line``).
+    """
+    return frozenset(name for name in dir(cls) if not name.startswith("_"))
+
+
+# Field names a block already declares, so an authored field of the same name
+# collides. Promotion writes model fields as class attributes, and a field that
+# collides with an inherited member breaks in one of three ways, all of them quiet:
+# the field value shadows the method on the instance (a ``raise_`` field makes
+# ``self.raise_(event)`` a string, so the generated ``create`` cannot publish its
+# event), or the inherited descriptor wins and the field value is lost (``state_``),
+# or the field is dropped from the model altogether (``meta_``).
 #
-# ``id`` on an aggregate is the framework's injected identity: an aggregate that
-# declares its own ``id`` has it replaced by the injected ``Auto`` field, so the
-# authored declaration disappears from the IR entirely. ``create`` is the generated
-# aggregate factory and ``Meta`` the nested options class (ADR-0035, ADR-0041). The
-# generator owns the rest of the enumeration.
+# The three added on top of the inherited members are the grammar's own. ``id`` on an
+# aggregate: identity injection only stands down when the class declares a field
+# marked ``identifier``, so a plain authored ``id`` does not stop it, and the injected
+# ``Auto`` overwrites the authored declaration, which then does not reach the IR.
+# ``create`` is the generated aggregate factory and ``Meta`` the nested options class
+# (ADR-0035, ADR-0041).
 _RESERVED_FIELD_NAMES: dict[str, frozenset[str]] = {
-    "aggregate": frozenset({"Meta", "create", "id"}),
-    "command": frozenset({"Meta"}),
-    "event": frozenset({"Meta"}),
-    "projection": frozenset({"Meta"}),
+    "aggregate": _inherited_members(BaseAggregate) | {"Meta", "create", "id"},
+    "command": _inherited_members(BaseCommand) | {"Meta"},
+    "event": _inherited_members(BaseEvent) | {"Meta"},
+    "projection": _inherited_members(BaseProjection) | {"Meta"},
 }
 
 # Field-entry keys the grammar can express or safely ignore. ``max_length`` and
@@ -213,8 +233,7 @@ def _parse_header(raw_line: str, lineno: int) -> _Block:
     # Only the aggregate's slug is load-bearing in the grammar: it is what the
     # surfaced ``<slug>_id`` is derived from. ``class_`` gives the valid class
     # ``Class`` but the slug ``class``, a keyword, the same pair ``plan_add_slice``
-    # rejects at src/protean/scaffold/add_plan.py:117. Slugs for the other blocks
-    # are the generator's to derive and to check.
+    # rejects. Slugs for the other blocks are the generator's to derive and check.
     if kw == "aggregate":
         slug = _slug(raw_name)
         if not slug.isidentifier() or iskeyword(slug):
@@ -248,10 +267,16 @@ def _parse_field_line(block: _Block, stripped: str, lineno: int) -> None:
         raise ModelParseError(f"field name {fname!r} is not a valid name", lineno)
     if iskeyword(fname):
         raise ModelParseError(f"field name {fname!r} is a Python keyword", lineno)
+    if fname.startswith("_"):
+        # Promotion writes the field as a class attribute, and the namespace scan
+        # skips a leading underscore, so the field would not reach the model at all.
+        raise ModelParseError(
+            f"field name {fname!r} may not start with an underscore", lineno
+        )
     if fname in _RESERVED_FIELD_NAMES.get(block.keyword, frozenset()):
         raise ModelParseError(
-            f"field name {fname!r} is reserved: the generated {block.keyword} "
-            f"already declares it",
+            f"field name {fname!r} is reserved: a {block.keyword} already declares "
+            f"it, so the field would collide with it",
             lineno,
         )
     if ftype not in _TYPE_TABLE:
