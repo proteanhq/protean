@@ -395,10 +395,12 @@ adapters read raw messages and return `Message` objects. Upcasting happens when
 Snapshot-based aggregate loading (`part_of(**snapshot_data)`) bypasses
 `Message.to_domain_object()` and constructs the aggregate directly, so upcasting
 does **not** apply to snapshots. A snapshot taken under an old schema constructs
-only when the current class still accepts its payload. A renamed, removed, or
-newly required field makes construction raise, with no fallback to event replay
-today. The [schema-evolution ladder](../../adr/0040-schema-evolution-ladder.md)
-documents this snapshot gap.
+only when the current class still accepts its payload. When a renamed, removed,
+or newly required field makes construction raise, Protean discards the stale
+snapshot, rebuilds the aggregate by replaying the event stream (where upcasting
+does apply), and logs a warning on the `protean.snapshot` channel. See
+[Snapshots and schema changes](../../guides/change-state/snapshots.md#snapshots-and-schema-changes)
+and the [schema-evolution ladder](../../adr/0040-schema-evolution-ladder.md).
 
 ### `domain.init()` Ordering
 
