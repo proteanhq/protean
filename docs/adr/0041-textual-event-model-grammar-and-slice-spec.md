@@ -75,7 +75,10 @@ The rules:
 - A **block header** is `<keyword> <Name>:` at column zero. The keyword is one of
   `aggregate`, `command`, `event`, `projection`, `projector`. `<Name>` is a valid
   Python identifier that is not a Python keyword, read verbatim and used as the
-  generated class name.
+  generated class name. The aggregate name also derives a snake_case `<slug>` by the
+  word split `add_plan.py` uses, and the slug must itself be a valid non-keyword
+  identifier; the parser rejects a name whose slug is not, such as `Class`, whose
+  slug `class` is a keyword.
 - A **body line** is indented under its header. A blank line and a line whose
   first non-space character is `#` are ignored, so comments and spacing are free.
 - A **field line** is `field <name>: <type>` with an optional parenthesized
@@ -85,12 +88,16 @@ The rules:
   a duplicate is an error. A field name may not start with an underscore or use the
   pydantic `model_` prefix, and it may not shadow a member the generated class
   carries in its block, whether the template defines it (`id` and `create` in an
-  `aggregate`, `Meta` in a `projection`) or the framework base provides it (`raise_`
-  and the rest of `BaseAggregate` and `BaseProjection`). The parser checks the name
-  against the generated class's own and inherited members in code, so the reserved
-  set follows the templates and their base classes and does not drift from a list
-  written here. `<type>` is one of the eight primitive types below, and fields keep
-  their declaration order for generation.
+  `aggregate`, `Meta` in a `projection`) or the block's framework base provides it:
+  `BaseAggregate` for an aggregate (including `raise_`), `BaseMessageType` for a
+  command and an event (including `payload`), and `BaseProjection` for a projection.
+  The parser checks each field name against the full member set of its block's
+  generated class in code, so the reserved set follows the templates and their base
+  classes and does not drift from a list written here. An `aggregate` also reserves
+  `<slug>_id`, the identity reference the generator injects into the event, so an
+  aggregate cannot declare a field that the id wiring already fills. `<type>` is one
+  of the eight primitive types below, and fields keep their declaration order for
+  generation.
 - A **field is required and has no default,** and the grammar does not express
   optional fields or author-supplied defaults. `field name: string` maps to a bare
   `str` annotation, a required, unbounded string that the IR records as a `String`
@@ -173,8 +180,9 @@ The serialized form carries a `spec_version` marker, starting at `0.1.0`, so a
 generator built against an older spec meets a newer one and fails at the version
 check. `from_dict` rejects an unknown `spec_version`, an unknown field type, and
 any missing or wrongly-typed required field with a clear `ValueError`, the way
-`load_config` and `from_dict` on the `ChangePlan` reject malformed input. Sparse keys (`max_length`, `identifier`) are omitted when unset,
-matching the IR field entry.
+`load_config` and `from_dict` on the `ChangePlan` reject malformed input. Sparse
+keys (`max_length`, `identifier`) are omitted when unset, matching the IR field
+entry.
 
 The generator (#1472) fills in everything the slice needs that the model does not
 carry: the command handler, the generation-gap base/subclass seam (ADR-0035), the
@@ -182,20 +190,22 @@ package `__init__.py`, and the aggregate's injected identity. It wires fields by
 name: the command handler creates the aggregate from the command's fields, the
 aggregate raises the event with its identity and its same-named fields, and the
 projector copies each projection field from the event field of the same name. The
-aggregate's identity travels as a field named `<slug>_id`, the aggregate's
-snake_case name plus `_id`: the generated `create` raises the event with `<slug>_id`
-set to the aggregate's `id`, and the projection's `key` field is that same
-`<slug>_id`. For this to be total, v1 lines the names up across the slice, the event
-declares `<slug>_id`, and the parser rejects a model that would make the generator
-read a field that does not exist, so generation is a name lookup with no inference.
-Field sets that diverge, such as a denormalizing projection, are a later addition
-with explicit mappings.
+aggregate's identity travels as a field named `<slug>_id`: the generated `create`
+raises the event with `<slug>_id` set to the aggregate's `id`, and the projection's
+`key` is that same `<slug>_id`. The aggregate id is a string (ADR-0021), so
+`<slug>_id` is str-based, a `string` or `identifier`. Every other field shared by
+name across the slice carries the same type and constraints on all sides, so the
+copied value fits. The parser enforces this: it rejects a model whose event omits
+`<slug>_id`, whose `<slug>_id` is not str-based, that declares a non-identity field
+name differently in two blocks, or that would make the generator read a field that
+does not exist. Generation is then a name lookup with no inference. Field sets that diverge, such as a denormalizing
+projection, are a later addition with explicit mappings.
 
 When the read side is `None`, the generator supplies a default projection that
-mirrors the event's fields, with the event's `<slug>_id` field becoming the
-projection's `key` (an `Identifier(identifier=True)`), and a default projector that
-consumes the event and copies each field by name. The derivation reads the event, so
-a write-side model that carries the `<slug>_id` identity field generates a valid read
+mirrors the event's fields, with the event's str-based `<slug>_id` becoming the
+projection's `Identifier(identifier=True)` key, and a default projector that consumes
+the event and copies each field by name. The derivation reads the event, so a
+write-side model that carries the `<slug>_id` identity field generates a valid read
 side, and the project passes `protean verify`.
 
 ### The vocabulary map
@@ -247,11 +257,17 @@ handlers, application services, queries, automations, fact events).
 
 The emitter's precondition is the shape the grammar covers: a cluster with exactly
 one command and one non-fact event, and either no read side or one projection with
-one projector whose `handlers` map routes that one event and nothing else. A cluster
-with more than one command, non-fact event, projection, or projector, or a projector
-that handles no event, several events, or an event from another cluster, is outside
-the grammar, and the emitter raises on it. It never reduces such a cluster to a
-single element, so conformance cannot pass while the emitter drops model elements.
+one projector whose `handlers` map routes that one event and nothing else. The
+elements' short names must be distinct, since the emitter renders by `short_name`
+and the grammar rejects a name shared by two blocks. Every field must be within the
+eight primitive types and the two constraints, required and without a default; the
+IR carries field shapes the grammar does not (`Decimal`, `Status`, containers,
+optional or defaulted fields, other constraints), and emitting one would drop data
+the round trip cannot carry back. A cluster outside any of these, or with more than
+one command, non-fact event, projection, or projector, or a projector that handles
+no event, several events, or an event from another cluster, is outside the grammar,
+and the emitter raises on it. It never reduces such a cluster to a single element, so
+conformance cannot pass while the emitter drops model elements.
 
 `_extract_fields` sorts a cluster's fields by name, so the IR does not keep the
 order the fields were declared in. The emitter emits fields in the IR's order, and
@@ -349,6 +365,12 @@ reproduces the slice `plan_add_slice` emits today byte-for-byte.
 - The read side is optional, so the same generator drives the greenfield path (a
   full model) and the deterministic `add` path (a default spec). One generator
   serves both callers, so the default slice needs no separate code path.
+- This ADR fixes the grammar, the slice spec, the vocabulary map, and the
+  conformance direction, plus the parser and emitter rules that keep those
+  deterministic. The generated code's own validity stays #1472's contract, gated by
+  its requirement that the applied plan passes `protean verify`; the rules here bound
+  the input so that gate is reachable, and the generator's tests cover the code it
+  emits.
 
 ## Alternatives Considered
 
