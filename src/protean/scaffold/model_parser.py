@@ -21,8 +21,8 @@ Three pieces live here:
   test in ``tests/scaffold/test_model_parser.py`` checks as a build-time round trip
   (IR to text to IR), with no live sync.
 
-The generator (#1472) promotes a fragment to a full IR and then to code; this
-module produces and reads the fragment only.
+The generator promotes a fragment to a full IR and then to code; this module
+produces and reads the fragment only.
 """
 
 from __future__ import annotations
@@ -83,6 +83,22 @@ _BLOCK_KEYWORDS = frozenset(
     {"aggregate", "command", "event", "projection", "projector"}
 )
 
+# Field names the generated slice already declares, per block. A model field of the
+# same name would shadow generated code or be shadowed by it, so the parser refuses
+# it instead of letting promotion lose the authored field.
+#
+# ``id`` on an aggregate is the framework's injected identity: an aggregate that
+# declares its own ``id`` has it replaced by the injected ``Auto`` field, so the
+# authored declaration disappears from the IR entirely. ``create`` is the generated
+# aggregate factory and ``Meta`` the nested options class (ADR-0035, ADR-0041). The
+# generator owns the rest of the enumeration.
+_RESERVED_FIELD_NAMES: dict[str, frozenset[str]] = {
+    "aggregate": frozenset({"Meta", "create", "id"}),
+    "command": frozenset({"Meta"}),
+    "event": frozenset({"Meta"}),
+    "projection": frozenset({"Meta"}),
+}
+
 # Field-entry keys the grammar can express or safely ignore. ``max_length`` and
 # ``identifier`` map to the two constraints; ``required`` is the grammar default;
 # ``description`` is documentation metadata, not a validation constraint, so the
@@ -104,8 +120,9 @@ _EXPRESSIBLE_FIELD_KEYS = frozenset(
 )
 
 # The implicit non-empty bound a required field carries (ADR-0026). The grammar's
-# ``required`` re-derives it, so the emitter drops a ``min_length`` at or below it
-# but raises on a larger one.
+# ``required`` re-derives exactly this value, so the emitter drops a ``min_length``
+# equal to it and raises on any other, including an explicit ``0``: a required field
+# that accepts the empty string has no grammar form.
 _IMPLICIT_MIN_LENGTH = 1
 
 
@@ -143,7 +160,7 @@ def parse_model(text: str) -> dict[str, Any]:
     carries a read side, ``projection`` and ``projector``. Each of the first four
     is ``{"name": <PascalCase>, "fields": {<name>: <IR field entry>}}``; the
     projector is ``{"name", "for", "consumes"}`` with the grammar terms kept as
-    authored (the generator, #1472, promotes them to references). Field names are
+    authored (the generator promotes them to references). Field names are
     read verbatim; block names are normalized to PascalCase using the same
     word-splitting as ``protean add``.
 
@@ -187,10 +204,20 @@ def _parse_header(raw_line: str, lineno: int) -> _Block:
         )
     _validate_name(raw_name, lineno)
     normalized = _normalize_name(raw_name)
-    if not normalized.isidentifier() or iskeyword(normalized):
+    slug = _slug(raw_name)
+    # Both derived names matter, the way ``plan_add_slice`` checks them: the class
+    # name and the module-level slug. ``class_`` normalizes to the valid class
+    # ``Class`` but the slug ``class``, a keyword the generated module cannot use as
+    # a variable, and it is the slug the projection key is derived from.
+    if (
+        not normalized.isidentifier()
+        or iskeyword(normalized)
+        or not slug.isidentifier()
+        or iskeyword(slug)
+    ):
         raise ModelParseError(
-            f"block name {raw_name!r} does not normalize to a valid class name "
-            f"(got {normalized!r})",
+            f"block name {raw_name!r} does not normalize to a valid class name and "
+            f"module variable (got {normalized!r} and {slug!r})",
             lineno,
         )
     return _Block(
@@ -218,6 +245,12 @@ def _parse_field_line(block: _Block, stripped: str, lineno: int) -> None:
         raise ModelParseError(f"field name {fname!r} is not a valid name", lineno)
     if iskeyword(fname):
         raise ModelParseError(f"field name {fname!r} is a Python keyword", lineno)
+    if fname in _RESERVED_FIELD_NAMES.get(block.keyword, frozenset()):
+        raise ModelParseError(
+            f"field name {fname!r} is reserved: the generated {block.keyword} "
+            f"already declares it",
+            lineno,
+        )
     if ftype not in _TYPE_TABLE:
         allowed = ", ".join(_TYPE_TABLE)
         raise ModelParseError(
@@ -411,6 +444,18 @@ def _validate_read_side(
             projection.field_lines[key_name],
         )
 
+    # The key is the surfaced aggregate id, and promotion populates the projection
+    # from the event with no other source (ADR-0041), so the event has to carry it.
+    # Its shape is not compared: the ADR has the event surface the reference as an
+    # unconstrained ``string`` or ``identifier`` while the projection's key takes the
+    # framework identity default.
+    if key_name not in event.fields:
+        raise ModelParseError(
+            f"projection key {key_name!r} is not on the event {event.name!r}; the "
+            "projector has no source to populate it from",
+            projection.field_lines[key_name],
+        )
+
     for fname, entry in projection.fields.items():
         if fname == key_name:
             continue
@@ -464,7 +509,11 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     hand-set ``min_length``, a non-primitive field kind, a field default or
     choices, more than one command or authored event, or a multi-aggregate /
     multi-handler projector). It never drops a covered participant or field in
-    silence.
+    silence, and it never returns text :func:`parse_model` would reject: the
+    emitted model is read back before it is returned, so a read side that breaks
+    the grammar's contract (a projection keyed on something other than the
+    aggregate's surfaced id, or a projected field the event does not source)
+    raises here rather than producing unreadable text.
     """
     clusters = ir.get("clusters", {})
     if cluster_fqn not in clusters:
@@ -512,7 +561,24 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
             _emit_projector(projector["name"], projection["name"], event["name"])
         )
 
-    return "\n\n".join(blocks) + "\n"
+    text = "\n\n".join(blocks) + "\n"
+
+    # The emitter's contract is that its output reads back: emit and parse are
+    # inverses over the covered subset. The parser holds rules the per-field and
+    # per-participant checks above do not (the projection key is the aggregate's
+    # surfaced id, every other projected field is sourced from the event with the
+    # same shape), so read the text back rather than mirror those rules here, where
+    # a second copy would drift from the parser. A cluster whose model does not
+    # re-parse is outside the covered subset, and the parse error says why.
+    try:
+        parse_model(text)
+    except ModelParseError as exc:
+        raise ModelEmitError(
+            f"cluster {cluster_fqn!r} emits a model the grammar cannot read back "
+            f"({exc}); the cluster is outside the covered subset"
+        ) from exc
+
+    return text
 
 
 def _resolve_read_side(
@@ -565,8 +631,12 @@ def _emit_block(
     lines = []
     for fname in sorted(fields):
         entry = fields[fname]
-        if entry.get("auto_generated") or entry.get("kind") == "auto":
-            # The framework-injected identity is derived, not authored.
+        if entry.get("auto_generated"):
+            # The framework-injected identity is derived, not authored. Only the
+            # marker identifies it: an authored ``Auto`` field (``sequence =
+            # Auto(increment=True)``) also carries IR kind ``auto`` but no marker,
+            # and it reaches ``_emit_field``, which refuses it as inexpressible
+            # rather than drop it.
             continue
         lines.append(_emit_field(fname, entry, in_projection))
     if not lines:
@@ -599,10 +669,12 @@ def _emit_field(name: str, entry: dict[str, Any], in_projection: bool) -> str:
             f"field {name!r} is optional; the grammar expresses only required fields"
         )
 
-    # A hand-set ``min_length`` above the implicit bound cannot round-trip: the
-    # re-parsed field would carry only the implicit bound again, dropping it.
+    # A hand-set ``min_length`` other than the implicit bound cannot round-trip: the
+    # re-parsed field would carry the implicit bound again. That holds below the bound
+    # as well as above it, since an explicit ``min_length=0`` on a required field
+    # accepts the empty string and re-parsing would silently forbid it.
     min_length = entry.get("min_length")
-    if min_length is not None and min_length > _IMPLICIT_MIN_LENGTH:
+    if min_length is not None and min_length != _IMPLICIT_MIN_LENGTH:
         raise ModelEmitError(
             f"field {name!r} sets min_length={min_length}, which the grammar "
             "cannot express"

@@ -13,7 +13,7 @@ import pytest
 
 from protean import Domain, handle
 from protean.fields import ValueObject
-from protean.fields.simple import Identifier, String
+from protean.fields.simple import Auto, Identifier, String
 from protean.scaffold.model_parser import (
     ModelEmitError,
     ModelParseError,
@@ -321,6 +321,70 @@ class TestParseRejections:
             parse_model("aggregate _2fa:\n    field name: string\n")
         assert exc.value.line == 1
         assert "does not normalize to a valid class name" in str(exc.value)
+
+    def test_name_whose_slug_is_a_python_keyword(self):
+        # ``class_`` normalizes to the valid class ``Class`` but to the slug
+        # ``class``, a keyword. ``plan_add_slice`` rejects either derived name being
+        # a keyword, and the slug is what the projection key is built from.
+        with pytest.raises(ModelParseError) as exc:
+            parse_model("aggregate class_:\n    field name: string\n")
+        assert exc.value.line == 1
+        assert "module variable" in str(exc.value)
+
+    def test_reserved_identity_field_name_on_the_aggregate(self):
+        # The framework injects the aggregate's ``id``; an authored ``id`` is
+        # replaced by it, so the declaration here would be lost on promotion.
+        model = "aggregate Order:\n    field id: string\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "is reserved" in str(exc.value)
+
+    def test_reserved_factory_field_name_on_the_aggregate(self):
+        model = "aggregate Order:\n    field create: string\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "is reserved" in str(exc.value)
+
+    def test_reserved_meta_field_name_on_a_command(self):
+        # ``Meta`` is the nested options class the generated element declares.
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command CreateOrder:\n    field Meta: string\n"
+        )
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 5
+        assert "is reserved" in str(exc.value)
+
+    def test_reserved_name_is_allowed_where_it_is_not_declared(self):
+        # ``create`` is reserved on the aggregate, not on the event: the reservation
+        # is per block, so this parses.
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command CreateOrder:\n    field name: string\n\n"
+            "event OrderCreated:\n    field create: string\n"
+        )
+        assert "create" in parse_model(model)["event"]["fields"]
+
+    def test_projection_key_absent_from_the_event(self):
+        # The projector populates the projection from the event with no other
+        # source (ADR-0041), so an event without the surfaced id cannot fill the key.
+        model = (
+            "aggregate Order:\n    field name: string\n\n"
+            "command CreateOrder:\n    field name: string\n\n"
+            "event OrderCreated:\n    field name: string\n\n"
+            "projection OrderSummary:\n    field order_id: identifier(key)\n"
+            "    field name: string\n\n"
+            "projector OrderProjector:\n    for OrderSummary\n"
+            "    consumes OrderCreated\n"
+        )
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        # The 'field order_id: identifier(key)' line is the 11th physical line.
+        assert exc.value.line == 11
+        assert "has no source to populate it from" in str(exc.value)
 
     def test_unknown_field_type(self):
         model = "aggregate Order:\n    field name: str\n"
@@ -974,6 +1038,125 @@ class TestEmitterIneligibility:
         with pytest.raises(ModelEmitError) as exc:
             emit_model(ir, "m.Order")
         assert "min_length" in str(exc.value)
+
+    def test_explicit_min_length_zero_raises(self):
+        # ``min_length=0`` on a required field accepts the empty string. The grammar
+        # re-derives the implicit bound of 1, so emitting it would silently forbid
+        # what the author allowed.
+        ir = _synthetic_ir(
+            event_fields={
+                "note": {
+                    "kind": "standard",
+                    "type": "String",
+                    "min_length": 0,
+                    "required": True,
+                }
+            }
+        )
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "min_length" in str(exc.value)
+
+    def test_authored_auto_field_raises_rather_than_being_dropped(self):
+        # ``IRBuilder`` gives an authored ``Auto`` field IR kind ``auto`` with no
+        # ``auto_generated`` marker, the same kind as the injected identity. Only
+        # the marker means "derived", so this field has to reach the type check and
+        # raise, not be filtered out of the model.
+        domain = Domain(name="Ordering", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=100, required=True)
+            sequence = Auto(increment=True)
+
+        @domain.event(part_of=Order)
+        class OrderCreated:
+            name = String(max_length=100, required=True)
+
+        @domain.command(part_of=Order)
+        class CreateOrder:
+            name = String(max_length=100, required=True)
+
+        domain.init(traverse=False)
+        ir = domain.to_ir()
+        fqn = _cluster_fqn(ir)
+        # Guard the premise: the authored field is kind ``auto`` and unmarked.
+        sequence = ir["clusters"][fqn]["aggregate"]["fields"]["sequence"]
+        assert sequence["kind"] == "auto"
+        assert "auto_generated" not in sequence
+
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, fqn)
+        assert "sequence" in str(exc.value)
+
+    def test_projection_keyed_on_other_than_the_surfaced_id_raises(self):
+        # A projection keyed ``id`` rather than ``order_id`` is emittable field by
+        # field, but the text does not read back, so the emitter refuses it instead
+        # of returning a model ``parse_model`` rejects.
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "fields": {
+                        "id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        }
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "cannot read back" in str(exc.value)
+
+    def test_projected_field_absent_from_the_event_raises(self):
+        # Same contract on the other read-side rule: a projected field the event
+        # does not source makes the emitted text unparseable, so emit refuses.
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        },
+                        "absent": {
+                            "kind": "standard",
+                            "type": "String",
+                            "required": True,
+                        },
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                    }
+                },
+            }
+        }
+        ir = _synthetic_ir(
+            event_fields={
+                "order_id": {"kind": "standard", "type": "String", "required": True},
+                "name": {"kind": "standard", "type": "String", "required": True},
+            },
+            projections=projections,
+        )
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "cannot read back" in str(exc.value)
 
     def test_multi_aggregate_projector_raises(self):
         projections = {
