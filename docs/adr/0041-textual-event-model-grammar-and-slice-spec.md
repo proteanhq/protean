@@ -102,12 +102,12 @@ The rules:
 - A **field is required and has no default,** and the grammar does not express
   optional fields or author-supplied defaults. `field name: string` maps to a bare
   `str` annotation, a required, unbounded string that the IR records as a `String`
-  with no `max_length`. The projection's `key` field carries `identifier=True` on
-  its declared type, and the generator keeps that type: an `identifier` key becomes
+  with no `max_length`. The projection's `key` field is a `string` or `identifier`,
+  and the generator keeps that type: an `identifier` key becomes
   `Identifier(identifier=True)`, whose identity default_factory the framework
-  supplies, and a key of another type becomes that type with `identifier=True` and
-  no default, populated from the event. Optional fields and author defaults are a
-  later addition to the grammar.
+  supplies, while a `string` key becomes `String(identifier=True)`, which is field
+  kind standard and carries no framework default, so the projector populates it from
+  the event. Optional fields and author defaults are a later addition to the grammar.
 - A **constraint list** sits in the parentheses, comma-separated, with insignificant
   whitespace around each entry: `string(max_length=100)`, `identifier(key)`. A
   constraint is either `max_length=<positive-integer>` or the bare flag `key`.
@@ -116,7 +116,9 @@ The rules:
   `max_length` on a non-string field, and rejects a zero or negative value. `key`
   applies only to a str-based field (`string` or `identifier`) of a `projection`,
   where it marks the projection's identity field; the parser rejects `key` on any
-  other type or in any other block.
+  other type or in any other block. A constraint name appears at most once in a
+  list; a duplicate, such as `string(max_length=10, max_length=20)` or
+  `identifier(key, key)`, is an error.
 - A **projector body** is one `for <ProjectionName>` line naming the projection it
   feeds, and one `consumes <EventName>` line naming the event it reads.
 
@@ -138,7 +140,10 @@ checks field names.
 The parse is deterministic and infers nothing. Names are preserved as written. A
 `for` line must name the model's projection, and the `consumes` line must name the
 model's event; a dangling reference is an error. Every error names the one-based
-line number and the reason.
+line number and the reason. An error that has an offending line names it; a
+structural error with no single line (a missing `aggregate`, `command`, `event`, or
+a missing half of the read side) is reported at the line after the input, and a
+cross-block error is anchored to the header line of the block that breaks the rule.
 
 ### The primitive types
 
@@ -156,10 +161,11 @@ The grammar carries eight field types. Each maps to one IR field type (the value
 | `datetime`   | `"datetime"`| `DateTime`      | `DateTime`    |
 | `identifier` | `"identifier"` | `Identifier` | `Identifier`  |
 
-`string` and `text` map to bare `str` annotations, which do not sanitize. The
-sanitizing `String()` and `Text()` factories are not what the generator emits, so an
-IR field that carries a `sanitize` flag is not representable and the emitter rejects
-its cluster.
+`string` maps to a bare `str` annotation (IR type `String`); `text` maps to
+`Text(sanitize=False)` (IR type `Text`), which keeps the text kind. Neither
+sanitizes. The sanitizing `String()` and `Text()` factory defaults are not what the
+generator emits, so an IR field that carries a `sanitize` flag is not representable
+and the emitter rejects its cluster.
 
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
@@ -233,7 +239,10 @@ side, and the project passes `protean verify`.
 ### The vocabulary map
 
 Every grammar construct maps to one slice-spec field, one IR location, and one
-node the renderer draws:
+node the renderer draws. In the IR paths, `C` is a cluster's FQN and `P` is a
+projection group's FQN (`ir/builder.py` keys the group by the projection's own FQN);
+`projections[P]` is that group entry, holding the `projection` element and the
+`projectors` map, so the projector name reads `projections[P].projectors[pr].name`.
 
 | Grammar construct | Slice-spec field | IR location | Renderer node |
 |-------------------|------------------|-------------|---------------|
@@ -284,11 +293,13 @@ identity rules as well as the per-field shape: exactly one command and one non-f
 event; the field-set equality (command equals aggregate, event equals aggregate plus
 `<slug>_id`, projection equals `<slug>_id` plus a subset of the event); either no
 read side or one projection with exactly one identifier field and one projector; a
-projector whose `handlers` route only that event and whose `aggregates` scope is
-exactly the slice's aggregate, with no explicit stream category; distinct element
-short names; and every field within the eight types and two constraints, required and
-without an author default, with the projection's identity `key` the one exception,
-since the framework supplies its identity default. Anything the grammar cannot carry
+projector whose `handlers` route only that event, whose `aggregates` are exactly the
+slice's aggregate, and whose `stream_categories` are the default that aggregate
+derives, with no extra category or subscription override; distinct element short
+names; and every field within the eight types and two constraints, required and
+without an author default, with the projection's `identifier` key the exception that
+carries the framework identity default, while a `string` key stays no-default and is
+populated by the projector. Anything the grammar cannot carry
 makes the cluster ineligible: a richer field type or constraint (`Decimal`, `Status`,
 a container, an optional or defaulted field, a `sanitize` flag), an extra or
 mismatched field, a second projection or projector, a projector wired to another
