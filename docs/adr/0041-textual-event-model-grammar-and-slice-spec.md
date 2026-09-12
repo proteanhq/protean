@@ -84,17 +84,21 @@ The rules:
   generator writes it as a class attribute. Field names are unique within a block;
   a duplicate is an error. A field name may not start with an underscore or use the
   pydantic `model_` prefix, and it may not shadow a member the generated class
-  already defines in its block: `id` and `create` in an `aggregate`, `Meta` in a
-  `projection`. The parser rejects these; the reserved set follows the generated
-  templates and is checked against them in code, so it grows with the generator
-  and does not drift from a list written here. `<type>` is one of the eight
-  primitive types below, and fields keep their declaration order for generation.
+  carries in its block, whether the template defines it (`id` and `create` in an
+  `aggregate`, `Meta` in a `projection`) or the framework base provides it (`raise_`
+  and the rest of `BaseAggregate` and `BaseProjection`). The parser checks the name
+  against the generated class's own and inherited members in code, so the reserved
+  set follows the templates and their base classes and does not drift from a list
+  written here. `<type>` is one of the eight primitive types below, and fields keep
+  their declaration order for generation.
 - A **field is required and has no default,** and the grammar does not express
   optional fields or author-supplied defaults. `field name: string` maps to a bare
   `str` annotation, a required, unbounded string that the IR records as a `String`
-  with no `max_length`. The projection's `key` field is the framework's identity:
-  the generator emits it as `Identifier(identifier=True)`, whose identity
-  default_factory the framework supplies. Optional fields and author defaults are a
+  with no `max_length`. The projection's `key` field carries `identifier=True` on
+  its declared type, and the generator keeps that type: an `identifier` key becomes
+  `Identifier(identifier=True)`, whose identity default_factory the framework
+  supplies, and a key of another type becomes that type with `identifier=True` and
+  no default, populated from the event. Optional fields and author defaults are a
   later addition to the grammar.
 - A **constraint list** sits in the parentheses, comma-separated, with insignificant
   whitespace around each entry: `string(max_length=100)`, `identifier(key)`. A
@@ -177,16 +181,22 @@ carry: the command handler, the generation-gap base/subclass seam (ADR-0035), th
 package `__init__.py`, and the aggregate's injected identity. It wires fields by
 name: the command handler creates the aggregate from the command's fields, the
 aggregate raises the event with its identity and its same-named fields, and the
-projector copies each projection field from the event field of the same name. For
-this to be total, v1 lines the names up across the slice, and the parser rejects a
-model that would make the generator read a field that does not exist, so generation
-is a name lookup with no inference. Field sets that diverge, such as a denormalizing
-projection, are a later addition with explicit mappings.
+projector copies each projection field from the event field of the same name. The
+aggregate's identity travels as a field named `<slug>_id`, the aggregate's
+snake_case name plus `_id`: the generated `create` raises the event with `<slug>_id`
+set to the aggregate's `id`, and the projection's `key` field is that same
+`<slug>_id`. For this to be total, v1 lines the names up across the slice, the event
+declares `<slug>_id`, and the parser rejects a model that would make the generator
+read a field that does not exist, so generation is a name lookup with no inference.
+Field sets that diverge, such as a denormalizing projection, are a later addition
+with explicit mappings.
 
 When the read side is `None`, the generator supplies a default projection that
-mirrors the event and a default projector that consumes the event and copies each
-field by name. The derivation reads the event, so a write-side-only model with any
-field set still generates a read side, and the project passes `protean verify`.
+mirrors the event's fields, with the event's `<slug>_id` field becoming the
+projection's `key` (an `Identifier(identifier=True)`), and a default projector that
+consumes the event and copies each field by name. The derivation reads the event, so
+a write-side model that carries the `<slug>_id` identity field generates a valid read
+side, and the project passes `protean verify`.
 
 ### The vocabulary map
 
