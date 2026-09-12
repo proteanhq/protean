@@ -89,7 +89,7 @@ The rules:
   Python identifier that is not a Python keyword, read verbatim, because the
   generator writes it as a class attribute. Field names are unique within a block;
   a duplicate is an error. A field name may not start with an underscore (pydantic
-  treats an underscore-prefixed attribute as private, not a field) or use the pydantic
+  treats an underscore-prefixed attribute as private, so it never becomes a field) or use the pydantic
   `model_` prefix (a protected namespace that raises). It also may not shadow any name
   its block's generated code binds: a member of the generated class, or a local or
   parameter the template binds around the field, such as the aggregate factory's `cls`
@@ -185,11 +185,15 @@ it declares `max_length`, and the generator chooses a declaration form that reac
 that. `string` uses a bare `str` annotation and `string(max_length=N)` an
 `Annotated[str, Field(max_length=N)]`; `integer`, `float`, `boolean`, `date`, and
 `datetime` use their bare annotation (`int`, `float`, `bool`, `date`, `datetime`),
-each required with no extra keys; `text` uses `Text(required=True)`, `text(max_length=N)`
-a `Text(max_length=N, required=True)`, and a non-key `identifier`
-an `Identifier(required=True)`, all factory forms, since no bare annotation yields
-those IR types. Sanitization is off by default (`String`/`Text` leave `sanitize` unset
-and it reaches the IR only when explicitly `True`), so no form sets it.
+each required with no extra keys; `text` uses `Text(sanitize=False, required=True)`,
+`text(max_length=N)` a `Text(max_length=N, sanitize=False, required=True)`, and a
+non-key `identifier` an `Identifier(sanitize=False, required=True)`, all factory forms,
+since no bare annotation yields those IR types. The generator pins `sanitize=False` on
+these factory forms because an unset `sanitize` defers at runtime to a project's
+`[field_defaults] sanitize`, and a model's plain text field should not start
+sanitizing because a project turned that default on. The pin does not change the IR
+(an unset `sanitize` and a false one both stay absent, so `Text(required=True)`
+round-trips the same), only the runtime value.
 A required string-based factory field (`Text`, `Identifier`, or a `String()` call)
 carries an implicit `min_length=1` from Protean's required-string rule, so a `text`
 field and a required non-key `identifier` are non-empty; the bare-annotation forms
@@ -203,14 +207,15 @@ the implied `1` (including any `min_length` on a `string`), a numeric `min_value
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
 not carry it and the emitter skips it. The grammar supports only an aggregate whose
-identity is that injected id, which the emitter detects by IR `kind == "auto"` on the
-identity field. An aggregate whose identity field is any other kind is outside the
+identity is that injected id, which the emitter detects by `auto_generated: true` on
+the identity field. An aggregate whose identity field lacks that flag is outside the
 grammar, and the emitter rejects that cluster, since serializing the identifier as an
 ordinary field would let the generator inject a fresh auto id and change the identity.
-The name is not the test: an explicit `id = Identifier(identifier=True)` keeps the
-field name `id` while its `kind` is `identifier`, and `identity_field` and
-`auto_add_id_field` read the same as the injected case, so only the `kind` tells them
-apart.
+Neither the name nor the kind alone is the test: an explicit `id =
+Identifier(identifier=True)` keeps the name `id` but is `kind identifier`, and an
+authored `Auto(identifier=True)` is `kind auto` yet carries no `auto_generated` flag,
+so both are authored identities the emitter rejects; only `auto_generated: true` marks
+the injected id.
 
 ### The slice spec
 
@@ -345,8 +350,9 @@ can decide. So the cluster must satisfy the cross-block field-set and identity r
 and the per-field shape: exactly one command and one non-fact event; the field-set
 equality (command equals aggregate, event equals aggregate plus `<slug>_id`,
 projection equals `<slug>_id` plus a subset of the event); an aggregate whose identity
-field is the injected id (`kind == "auto"`); either no read side or one projection
-with exactly one `identifier` field and one projector; a projector whose `handlers`
+field is the injected id (`auto_generated: true`); either no read side or one
+projection with exactly one field marked `key` (`identifier: true`), alongside any
+non-key fields, and one projector; a projector whose `handlers`
 route only that event, whose `aggregates` are exactly the slice's aggregate, whose
 `stream_categories` equal the aggregate's class-derived default
 (`<domain normalized_name>::<underscored aggregate name>`), and whose `subscription`
@@ -371,8 +377,10 @@ projector, a projector wired to another aggregate's events, wired via
 `stream_categories` with an empty `aggregates`, or with a `subscription` other than
 that default, an aggregate whose `stream_category` differs from its class-derived
 default, an aggregate
-whose identity field is not `kind auto`, an identity beyond the default string, or a
-field named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
+whose identity field is not the injected id (no `auto_generated: true`, including an
+authored `Auto(identifier=True)`), a projection with more than one `identifier: true`
+field, an identity beyond the default string, or a field named something the grammar
+reserves. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
 falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
 is `String` in the IR and round-trips as grammar `string`. That collapse is the
