@@ -81,7 +81,11 @@ The rules:
   slice. The class name must be a valid non-keyword identifier for every block. Only
   an `aggregate` derives a slug, and that slug must be a valid non-keyword identifier
   too, so `aggregate Class` is rejected (its slug `class` is a keyword) while
-  `command Class` is fine (class `Class`, no slug).
+  `command Class` is fine (class `Class`, no slug). The spec stores only the canonical
+  class name, so an aggregate name must be slug-recoverable: re-splitting its canonical
+  class name yields the same `<slug>`. `OrderItem` recovers `order_item`, but
+  `ORDER_ITEM` normalizes to class `ORDERITEM`, whose re-split slug is `orderitem`, so
+  it is rejected.
 - A **body line** is indented under its header. A blank line and a line whose
   first non-space character is `#` are ignored, so comments and spacing are free.
 - A **field line** is `field <name>: <type>` with an optional parenthesized
@@ -255,7 +259,9 @@ entry.
 
 The generator (#1472) fills in everything the slice needs that the model does not
 carry: the command handler, the generation-gap base/subclass seam (ADR-0035), the
-package `__init__.py`, and the aggregate's injected identity. It wires fields by
+package `__init__.py`, the aggregate's injected identity, and the projection's
+`Meta.stream_name` (the aggregate `<slug>`), which the spec does not store because it
+is derived. It wires fields by
 name: the command handler creates the aggregate from the command's fields, the
 aggregate raises the event with its identity and its same-named fields, and the
 projector copies each projection field from the event field of the same name. The
