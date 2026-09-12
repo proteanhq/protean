@@ -6,7 +6,7 @@
 
 ## Context
 
-The event-model renderer (`protean docs generate --type=event-model`, ADR-0032)
+The event-model renderer (`protean docs generate --type=event-model --domain=<module>`, ADR-0032)
 draws the domain as an EventModeling slice timeline: one slice per aggregate
 cluster, each reading command -> aggregate -> event -> consumer. It turns code
 into a diagram. The inverse does not exist. A person can write an event model on a
@@ -313,8 +313,8 @@ projection group's FQN (`ir/builder.py` keys the group by the projection's own F
 | `field <n>: <t>` under an element | `<element>.fields[]` | `<element>.fields[<name>]` (a name-keyed dict) | (fields are not drawn; the diff reports `field <n>`) |
 | `command <Name>:` | `SliceSpec.command.name` | `clusters[C].commands[cmd]` | command (trigger), a parallelogram |
 | `event <Name>:` | `SliceSpec.event.name` | `clusters[C].events[evt]`, non-fact | event (result), a stadium |
-| `projection <Name>:` | `SliceSpec.projection.name` | `projections[P].projection.name` | read model, a cylinder |
-| `projector <Name>:` | `SliceSpec.projector.name` | `projections[P].projectors[pr].name` | the read-model node |
+| `projection <Name>:` | `SliceSpec.projection.name` | `projections[P].projection.name` | the projection named in the read-model node's `Projector -> Projection` label (not a node of its own) |
+| `projector <Name>:` | `SliceSpec.projector.name` | `projections[P].projectors[pr].name` | the read-model node, a cylinder (one per projector) |
 | `for <Projection>` | `SliceSpec.projector.projection` | `projectors[pr].projector_for` (an FQN the emitter shortens to the class name) | the `Projector -> Projection` node label |
 | `consumes <Event>` | `SliceSpec.projector.consumes` | `projectors[pr].handlers` (the one event `__type__` key in a one-slice model) | the edge from the event to the read model |
 
