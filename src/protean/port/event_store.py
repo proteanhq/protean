@@ -442,6 +442,28 @@ class BaseEventStore(metaclass=ABCMeta):
             reason=str(error),
         )
 
+    def _read_stream_fully(self, stream: str) -> deque[dict[str, Any]]:
+        """Read every raw row of ``stream``, paging past the per-read page size.
+
+        A single ``_read`` returns at most its page size (1000 by default). An
+        aggregate that warranted a snapshot can hold more events than that, so a
+        full replay reads to the end of the stream or it rebuilds an incomplete
+        aggregate. Reads are inclusive, so each page resumes one position past
+        the last row seen.
+        """
+        rows: deque[dict[str, Any]] = deque()
+        page_size = 1000
+        position = 0
+        while True:
+            page = self._read(stream, position=position, no_of_messages=page_size)
+            if not page:
+                break
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+            position = page[-1]["position"] + 1
+        return rows
+
     def _load_aggregate_current(
         self, part_of: type[BaseAggregate], identifier: str
     ) -> BaseAggregate | None:
@@ -481,9 +503,11 @@ class BaseEventStore(metaclass=ABCMeta):
                     aggregate._apply(event)
 
         if aggregate is None:
-            # No usable snapshot, so initialize aggregate from events
-            event_stream = deque(
-                self._read(f"{part_of.meta_.stream_category}-{identifier}")
+            # No usable snapshot, so initialize aggregate from the full event
+            # stream, paging to the end so a stream larger than one read is not
+            # truncated into an incomplete aggregate.
+            event_stream = self._read_stream_fully(
+                f"{part_of.meta_.stream_category}-{identifier}"
             )
 
             if not event_stream:

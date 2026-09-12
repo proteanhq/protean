@@ -403,3 +403,42 @@ class TestStaleSnapshotSelfHeals:
         assert len(_discard_records(caplog, identifier)) == 2
         current = store._read_last_message(_snapshot_stream(identifier))
         assert "obsolete_field" in current["data"]  # the stale row was not rebuilt
+
+
+# ---------------------------------------------------------------------------
+# Full replay pages the whole stream (a discarded snapshot's aggregate can hold
+# more events than a single read returns)
+# ---------------------------------------------------------------------------
+
+
+class TestFullReplayPaging:
+    # ``_read`` is patched to reach the page boundary without writing 1000+ real
+    # events, which is the only cheap way to exercise the paging loop.
+
+    @pytest.mark.eventstore
+    def test_read_stream_fully_pages_past_the_page_size(self, test_domain):
+        """A stream larger than one read page is read to the end, and each page
+        resumes one position past the last row of the previous one."""
+        store = test_domain.event_store.store
+        page1 = [{"position": i} for i in range(1000)]
+        page2 = [{"position": i} for i in range(1000, 1500)]
+
+        with patch.object(store, "_read", side_effect=[page1, page2]) as spy:
+            rows = store._read_stream_fully("test::user-x")
+
+        assert len(rows) == 1500
+        assert spy.call_count == 2
+        assert spy.call_args_list[1].kwargs["position"] == 1000
+
+    @pytest.mark.eventstore
+    def test_read_stream_fully_stops_on_empty_page(self, test_domain):
+        """A stream that is an exact multiple of the page size terminates on the
+        next, empty read rather than looping."""
+        store = test_domain.event_store.store
+        page1 = [{"position": i} for i in range(1000)]
+
+        with patch.object(store, "_read", side_effect=[page1, []]) as spy:
+            rows = store._read_stream_fully("test::user-x")
+
+        assert len(rows) == 1000
+        assert spy.call_count == 2

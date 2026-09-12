@@ -37,11 +37,11 @@ event stream, which is authoritative. Once the replayed event count reaches the
 threshold, a fresh snapshot in the current schema replaces the stale one, so
 later loads are fast again.
 
-Two cases do not rebuild the snapshot on load. A temporal query (`at_version` or
-`as_of`) never writes snapshots, and an aggregate holding fewer events than the
-threshold stays below the rewrite point. Both keep replaying, and logging the
-discard, on every load until you rebuild the snapshot with `protean snapshot
-create` or `domain.create_snapshots()`.
+An `at_version` query and an aggregate holding fewer events than the threshold
+both discard a stale snapshot on every load without rewriting a fresh one, so the
+warning repeats until you rebuild with `protean snapshot create` or
+`domain.create_snapshots()`. An `as_of` query never reads snapshots, so it
+neither uses nor discards them.
 
 Each discard is logged as a WARNING on the
 [`protean.snapshot`](../../reference/logging.md#proteansnapshot) channel, with
