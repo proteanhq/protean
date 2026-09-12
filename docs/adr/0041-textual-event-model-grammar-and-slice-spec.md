@@ -98,9 +98,11 @@ The rules:
   field never clashes with its own parameter, and the normative `name` field is fine. Every field-carrying block is a pydantic `BaseModel` subclass, so the
   member set is the class's full MRO: the template-defined members, the framework base
   (`BaseAggregate`, `BaseMessageType`, or `BaseProjection`), pydantic's `BaseModel`,
-  and, for an `aggregate`, the injected `id`. The parser reads that set from the
-  generated class and the templates in code, so it tracks the base classes as they
-  change. The check is the only guard: a field that shadows an inherited member does
+  and, for an `aggregate`, the injected `id`. The generator computes this set from the
+  base classes and the templates and hands it to the parser, the same way it hands
+  over the block-name set below; the parser is a pure function of the model text and
+  the sets it is given. The check is the only guard: a field that shadows an inherited
+  member does
   not fail `domain.init()`, it warns and registers, then the generated `create`,
   `raise_`, or serialization breaks at use time, so the slice would register yet fail
   `protean verify`. An `aggregate` also reserves `<slug>_id`, the identity reference
@@ -395,7 +397,11 @@ field, a domain `identity_type` other than the default `string` (a `uuid` type k
 native-UUID storage per ADR-0021, which the spec cannot carry, so it is not the
 default `string` and is out), or an `identity_strategy` other than the default `uuid`
 (the injected id is `kind auto` for every strategy and type, so the domain identity
-config is the only signal), or a field named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
+config is the only signal), or a field name that trips a reservation the emitter can
+derive from the IR and the base classes: a keyword, an underscore or `model_` prefix,
+or a generated-class member. The project-contextual block-name and slug collisions are
+the generator's to enforce at generation time, since the composition-root variable is
+not in the IR, so the emitter does not re-check them. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
 falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
 is `String` in the IR and round-trips as grammar `string`. That collapse is the
