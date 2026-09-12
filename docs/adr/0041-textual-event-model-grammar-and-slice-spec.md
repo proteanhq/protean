@@ -304,15 +304,20 @@ derives, with no extra category or subscription override; distinct element short
 names; and every field within the eight types and two constraints, required and
 without an author default, with the projection's `identifier` key the one exception,
 which carries the framework identity default. Anything the grammar cannot carry
-makes the cluster ineligible: a richer field type or constraint (`Decimal`, `Status`,
-a container, an optional or defaulted field, a `sanitize` flag), an extra or
-mismatched field, a second projection or projector, a projector wired to another
-aggregate's events or a broader subscription, an identity beyond the default string,
-message metadata the grammar has no syntax for (a non-default `__version__`, a
-publication, supersession, or deprecation option), or a field named something the
-grammar reserves. The emitter raises on an ineligible cluster, so it never emits text
-that drops or distorts what the cluster holds, and conformance cannot pass while the
-emitter loses model elements.
+makes the cluster ineligible: a field whose IR `type` is outside the eight (`Status`,
+a `List` or `Dict` container), a constraint or flag the grammar has no syntax for (a
+`sanitize` flag, an optional or defaulted field), an extra or mismatched field, a
+second projection or projector, a projector wired to another aggregate's events or a
+broader subscription, an identity beyond the default string, message metadata the
+grammar has no syntax for (a non-default `__version__`, a publication, supersession,
+or deprecation option), or a field named something the grammar reserves. The emitter
+judges a field on its IR `type`, so a Python type the builder already collapsed to a
+grammar type carries as that type: `IRBuilder._resolve_type_name` falls back to
+`String` for an unmapped type such as `decimal.Decimal`, so that field is `String` in
+the IR and round-trips as grammar `string`. That collapse is the builder's, before
+the emitter, and outside this round trip. The emitter raises on an ineligible cluster,
+so it never emits text that drops or distorts what the cluster holds, and conformance
+cannot pass while the emitter loses model elements.
 
 `_extract_fields` sorts a cluster's fields by name, so the IR does not keep the
 order the fields were declared in. The emitter emits fields in the IR's order, and
