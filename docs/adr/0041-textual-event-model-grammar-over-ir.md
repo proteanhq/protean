@@ -40,10 +40,12 @@ generator promotes that fragment to a full IR and then to code. There is no
 separate spec type and no second field vocabulary.
 
 This ADR fixes three things: the grammar, the **authored-IR profile** (which IR
-keys the author supplies and which the generator derives), and the **conformance
-direction** (IR to text to IR). It does not enumerate the parser's reserved-name
-rules or the generator's per-field code emission. Those live with their
-implementations (#1471, #1472), gated by `protean verify`.
+keys the author supplies and which the generator derives), the **vocabulary map**,
+and the **conformance direction** (IR to text to IR). It does not enumerate the
+parser's validation rules, the eligibility cases, or the full promotion output. Those
+are #1471 and #1472's implementation contract, pinned by the IR schema and the worked
+example below and enforced by the conformance test and `protean verify`. The precise
+contract lives in code and tests, so this ADR stays a decision record.
 
 ### The grammar
 
@@ -98,18 +100,14 @@ The rules:
 
 Cardinality for one slice: exactly one `aggregate`, one `command`, one `event`. The
 read side is optional: at most one `projection` and one `projector`, together or not
-at all. A `projection` contains exactly one `key` field, which is its identity and
-must be the surfaced `<slug>_id`; its other fields are a subset of the event's,
-matched by name, and each carries the same IR type and constraints as the event field
-it copies. The `<slug>_id` key is the one exception: the projection holds it as the
-`Identifier` key, while the event carries it as a `string` or `identifier` reference.
-The parser rejects a projection whose `key` is named other than the `<slug>_id`, that
-declares a field the event does not, or that gives a shared non-key field a type or
-constraint the event field lacks, because promotion copies the projection's fields
-from the event by name and has no other source. A `for` line must name the model's
-projection and a `consumes` line must name its event; a reference to a name the model
-does not declare is an error. The parse is deterministic and infers nothing. Every
-error names the one-based line number and the reason.
+at all. A `projection` has exactly one `key` field, the surfaced `<slug>_id`; its
+other fields are drawn from the event by name and carry the event field's type and
+constraints, so promotion populates the projection from the event with no other
+source. The `for` and `consumes` lines name the model's own projection and event. The
+parse is deterministic, infers nothing, and reports every violation with its line
+number. The specific validation rules (name normalization, reserved names, referential
+integrity, field-shape compatibility) are #1471's, checked by the conformance test and
+by `protean verify` on the generated project.
 
 The exhaustive normalization, reserved-name, and name-collision rules (which
 generated symbols a field or block name may not shadow, how a slug is recovered)
@@ -230,24 +228,16 @@ conformance test asserts the fragment matches the cluster on the covered subset.
 Because both sides are IR, the emitter and parser are inverses over one
 representation, and the check is a property, not a hand-maintained table.
 
-A cluster is **eligible** only when its covered subset is expressible in the
-grammar: fields within the eight types and two constraints; the identity is the
-injected id (`auto_generated: true`); the field-set relationships hold over the
-aggregate's authored fields, excluding that injected `id` (the command's fields equal
-those authored fields, the event's equal them plus `<slug>_id`, the projection's are
-`<slug>_id` plus a subset of the event's); the projector handles exactly the slice's
-one event; and the options, subscription, and stream category are the framework
-defaults. A cluster is ineligible when its covered data (the authored fields, the
-identity, and the wiring) carries something the grammar cannot express: a container or
-`Status` field, a numeric bound, a `choices` or `unique` marker, a custom stream
-category, an authored identity, or a projector that handles more than one event.
-Derived metadata the round trip does not compare (element descriptions from
-docstrings, FQNs, message versions, and the rest) is ignored, so it never makes a
-cluster ineligible. The emitter raises on an ineligible cluster, so it never drops a
-covered participant silently. The precise
-eligibility enumeration and the project-contextual name-collision rules are #1471 and
-#1472 implementation detail; this ADR fixes that eligibility is decided against the
-IR and that the round trip compares the covered subset.
+A cluster is **eligible** when its covered data (the authored fields, the identity,
+and the wiring) is expressible in the grammar: authored fields within the eight types
+and two constraints, the injected-id identity, the field-set relationships between the
+command, event, and projection that the worked example shows, and framework-default
+options. Derived metadata the round trip does not compare (element descriptions from
+docstrings, FQNs, message versions) is ignored, so it never makes a cluster
+ineligible. The emitter raises on an ineligible cluster, so it never drops a covered
+participant silently. The exact eligibility rules are #1471's, enforced by this
+conformance test; the ADR fixes that eligibility is decided against the IR over the
+covered subset.
 
 Field order is not part of the contract. The IR keys fields by name in a map, and
 `IRBuilder` canonicalizes them by name, so a fragment carries no declaration order.
