@@ -112,3 +112,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0038](0038-canonical-field-style-for-mypy-strict.md) | Canonical field-declaration style for mypy-strict domains |
 | [0039](0039-dx-pack-ships-as-package-data.md) | Ship the developer-experience pack as package data |
 | [0040](0040-schema-evolution-ladder.md) | The Schema-Evolution Ladder |
+| [0041](0041-textual-event-model-grammar-over-ir.md) | Textual Event-Model Grammar over the IR |
