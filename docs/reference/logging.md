@@ -517,6 +517,49 @@ stdlib `LogRecord` attributes which are silently dropped.
 
 ---
 
+### `protean.snapshot`
+
+Level: WARNING. A dedicated channel for snapshot lifecycle signals an operator
+may want to act on, such as a snapshot discarded because it predates the current
+aggregate schema.
+
+#### `snapshot_discarded`
+
+Emitted when a stored snapshot no longer constructs against the current
+aggregate schema, so the load path rebuilds the aggregate from its event stream.
+The warning marks snapshots to rebuild with `protean snapshot create`.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `aggregate` | `str` | Aggregate class name. |
+| `aggregate_id` | `str` | Identifier of the aggregate whose snapshot was discarded. |
+| `reason` | `str` | The `ValidationError` message explaining why the snapshot did not construct. |
+| `correlation_id` | `str` | Auto-injected from active context. |
+| `causation_id` | `str` | Auto-injected from active context. |
+
+#### `log_snapshot_event`
+
+```python
+from protean.integrations.logging import (
+    SNAPSHOT_EVENT_DISCARDED,
+    log_snapshot_event,
+)
+
+log_snapshot_event(
+    SNAPSHOT_EVENT_DISCARDED,
+    aggregate="User",
+    aggregate_id="user-1",
+    reason="extra fields not permitted",
+)
+```
+
+Signature: `log_snapshot_event(event_type: str, **fields: Any) -> None`. Emits a
+WARNING on `protean.snapshot`, filling `correlation_id` and `causation_id` from
+the active domain context. Keys that collide with stdlib `LogRecord` attributes
+are silently dropped.
+
+---
+
 ### `protean.server.engine`
 
 Engine lifecycle events. DEBUG-level events are only visible when the root

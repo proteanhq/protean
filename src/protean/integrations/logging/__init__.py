@@ -465,10 +465,11 @@ _DEFAULT_REDACTION_PROCESSOR = make_redaction_processor()
 
 
 # ---------------------------------------------------------------------------
-# Security logger helpers
+# Wide-event logger helpers (security, snapshot)
 # ---------------------------------------------------------------------------
 
 _security_logger = logging.getLogger("protean.security")
+_snapshot_logger = logging.getLogger("protean.snapshot")
 
 #: Event-type constants emitted on the ``protean.security`` logger. Kept as
 #: module constants so call sites never drift typographically from what
@@ -477,6 +478,27 @@ SECURITY_EVENT_INVARIANT_FAILED = "invariant_failed"
 SECURITY_EVENT_VALIDATION_FAILED = "validation_failed"
 SECURITY_EVENT_INVALID_OPERATION = "invalid_operation"
 SECURITY_EVENT_INVALID_STATE = "invalid_state"
+
+#: Event-type constant emitted on the ``protean.snapshot`` logger, kept as a
+#: module constant for the same reason as the security constants above.
+SNAPSHOT_EVENT_DISCARDED = "snapshot_discarded"
+
+
+def _emit_wide_event(
+    logger: logging.Logger, event_type: str, fields: dict[str, Any]
+) -> None:
+    """Emit a WARNING wide event on ``logger``.
+
+    Fills in ``correlation_id`` and ``causation_id`` from the active domain
+    context when the caller has not supplied them, and drops any field whose
+    name collides with a stdlib ``LogRecord`` attribute so the logging
+    contract stays intact.
+    """
+    correlation_id, causation_id = _get_correlation_context()
+    extra = {k: v for k, v in fields.items() if k not in LOG_RECORD_RESERVED_ATTRS}
+    extra.setdefault("correlation_id", correlation_id)
+    extra.setdefault("causation_id", causation_id)
+    logger.warning(event_type, extra=extra)
 
 
 def log_security_event(event_type: str, **fields: Any) -> None:
@@ -492,11 +514,20 @@ def log_security_event(event_type: str, **fields: Any) -> None:
     collide with stdlib ``LogRecord`` attributes are silently dropped to keep
     the logging contract intact.
     """
-    correlation_id, causation_id = _get_correlation_context()
-    extra = {k: v for k, v in fields.items() if k not in LOG_RECORD_RESERVED_ATTRS}
-    extra.setdefault("correlation_id", correlation_id)
-    extra.setdefault("causation_id", causation_id)
-    _security_logger.warning(event_type, extra=extra)
+    _emit_wide_event(_security_logger, event_type, fields)
+
+
+def log_snapshot_event(event_type: str, **fields: Any) -> None:
+    """Emit a WARNING on the ``protean.snapshot`` logger.
+
+    Dedicated channel for snapshot lifecycle signals an operator may want to
+    act on, such as a snapshot discarded because it predates the current
+    aggregate schema. Same context handling as ``log_security_event``:
+    ``correlation_id`` and ``causation_id`` come from the active domain
+    context, and keys colliding with stdlib ``LogRecord`` attributes are
+    dropped.
+    """
+    _emit_wide_event(_snapshot_logger, event_type, fields)
 
 
 __all__ = [
@@ -506,10 +537,12 @@ __all__ = [
     "SECURITY_EVENT_INVALID_STATE",
     "SECURITY_EVENT_INVARIANT_FAILED",
     "SECURITY_EVENT_VALIDATION_FAILED",
+    "SNAPSHOT_EVENT_DISCARDED",
     "OTelTraceContextFilter",
     "ProteanCorrelationFilter",
     "ProteanRedactionFilter",
     "log_security_event",
+    "log_snapshot_event",
     "make_redaction_processor",
     "protean_correlation_processor",
     "protean_otel_processor",

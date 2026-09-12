@@ -14,7 +14,12 @@ if TYPE_CHECKING:
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
+from protean.exceptions import (
+    IncorrectUsageError,
+    ObjectNotFoundError,
+    ValidationError,
+)
+from protean.integrations.logging import SNAPSHOT_EVENT_DISCARDED, log_snapshot_event
 from protean.utils.eventing import Message
 from protean.utils.telemetry import set_span_error
 
@@ -419,6 +424,24 @@ class BaseEventStore(metaclass=ABCMeta):
     # Private helpers for load_aggregate
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _log_snapshot_discarded(
+        part_of: type[BaseAggregate], identifier: str, error: ValidationError
+    ) -> None:
+        """Emit a WARNING that a snapshot was discarded as stale.
+
+        Called from both load paths when a stored snapshot no longer
+        constructs against the current aggregate schema. The aggregate still
+        loads by replaying the event stream; the warning marks snapshots that
+        need rebuilding (``protean snapshot create``).
+        """
+        log_snapshot_event(
+            SNAPSHOT_EVENT_DISCARDED,
+            aggregate=part_of.__name__,
+            aggregate_id=identifier,
+            reason=str(error),
+        )
+
     def _load_aggregate_current(
         self, part_of: type[BaseAggregate], identifier: str
     ) -> BaseAggregate | None:
@@ -427,26 +450,38 @@ class BaseEventStore(metaclass=ABCMeta):
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
 
+        aggregate: BaseAggregate | None = None
         position_in_snapshot: int = 0
+        event_stream: deque[dict[str, Any]] = deque()
+
         if snapshot_message:
-            # We have a snapshot, so initialize aggregate from snapshot
-            #   and apply subsequent events
-            aggregate = part_of(**snapshot_message["data"])
-            position_in_snapshot = aggregate._version
-
-            event_stream = deque(
-                self._read(
-                    f"{part_of.meta_.stream_category}-{identifier}",
-                    position=aggregate._version + 1,
+            try:
+                # We have a snapshot, so initialize aggregate from snapshot
+                #   and apply subsequent events
+                aggregate = part_of(**snapshot_message["data"])
+            except ValidationError as exc:
+                # The snapshot predates the current schema (a field was
+                # renamed, removed, or newly required), so it no longer
+                # constructs. A snapshot is a rebuildable cache over the
+                # authoritative event stream, so discard it, log a warning, and
+                # fall back to a full replay below. Treating it as absent also
+                # lets the threshold check rewrite a fresh snapshot.
+                self._log_snapshot_discarded(part_of, identifier, exc)
+                snapshot_message = None
+            else:
+                position_in_snapshot = aggregate._version
+                event_stream = deque(
+                    self._read(
+                        f"{part_of.meta_.stream_category}-{identifier}",
+                        position=aggregate._version + 1,
+                    )
                 )
-            )
+                for event_message in event_stream:
+                    event = Message.deserialize(event_message).to_domain_object()
+                    aggregate._apply(event)
 
-            events: list[BaseEvent | BaseCommand] = []
-            for event_message in event_stream:
-                event = Message.deserialize(event_message).to_domain_object()
-                aggregate._apply(event)
-        else:
-            # No snapshot, so initialize aggregate from events
+        if aggregate is None:
+            # No usable snapshot, so initialize aggregate from events
             event_stream = deque(
                 self._read(f"{part_of.meta_.stream_category}-{identifier}")
             )
@@ -454,9 +489,10 @@ class BaseEventStore(metaclass=ABCMeta):
             if not event_stream:
                 return None
 
-            events = []
-            for event_message in event_stream:
-                events.append(Message.deserialize(event_message).to_domain_object())
+            events: list[BaseEvent | BaseCommand] = [
+                Message.deserialize(event_message).to_domain_object()
+                for event_message in event_stream
+            ]
 
             aggregate = part_of.from_events(events)
 
@@ -509,19 +545,28 @@ class BaseEventStore(metaclass=ABCMeta):
         if snapshot_message:
             snapshot_version: int = snapshot_message["data"].get("_version", -1)
             if snapshot_version <= at_version:
-                # Snapshot is usable — initialize from it
-                aggregate = part_of(**snapshot_message["data"])
-                remaining = at_version - aggregate._version
-                if remaining > 0:
-                    event_stream = self._read(
-                        stream,
-                        position=aggregate._version + 1,
-                        no_of_messages=remaining,
-                    )
-                    for event_message in event_stream:
-                        event = Message.deserialize(event_message).to_domain_object()
-                        aggregate._apply(event)
-                # else: snapshot is exactly at the requested version
+                try:
+                    # Snapshot is usable: initialize from it
+                    aggregate = part_of(**snapshot_message["data"])
+                except ValidationError as exc:
+                    # Stale snapshot (predates the current schema). Discard it,
+                    # log a warning, and let the full-replay branch below rebuild
+                    # from the authoritative event stream.
+                    self._log_snapshot_discarded(part_of, identifier, exc)
+                else:
+                    remaining = at_version - aggregate._version
+                    if remaining > 0:
+                        event_stream = self._read(
+                            stream,
+                            position=aggregate._version + 1,
+                            no_of_messages=remaining,
+                        )
+                        for event_message in event_stream:
+                            event = Message.deserialize(
+                                event_message
+                            ).to_domain_object()
+                            aggregate._apply(event)
+                    # else: snapshot is exactly at the requested version
 
         if aggregate is None:
             # No usable snapshot — replay from the beginning
