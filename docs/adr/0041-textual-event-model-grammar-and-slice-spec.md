@@ -316,8 +316,10 @@ Two constraints map onto the IR field entry:
 
 The grammar covers the renderer's write-side vocabulary and its read models. It
 does not cover the renderer's **automations** (event handlers and process
-managers, the hexagon nodes), and it does not cover **fact events**, which the
-renderer filters and the framework auto-generates. A one-slice model is a command,
+managers, the hexagon nodes), and it does not cover framework-made events: a **fact
+event** (`is_fact_event`), which the renderer already filters, or any other event
+carrying the `auto_generated` flag, which the emitter also skips. A one-slice model is
+a command,
 an aggregate, an event, and an optional read model. Automations and multi-slice
 models are a later grammar.
 
@@ -359,8 +361,9 @@ Within that covered data the emitter's precondition is one rule over what the IR
 shows: it emits a cluster only when the emitted grammar text would parse back to a
 spec whose covered data matches the cluster, judged against the parser rules the IR
 can decide. So the cluster must satisfy the cross-block field-set and identity rules
-and the per-field shape: exactly one command and one non-fact event; the field-set
-equality (command equals aggregate, event equals aggregate plus `<slug>_id`,
+and the per-field shape: exactly one command and one authored event, where authored
+means `is_fact_event` false and no `auto_generated` flag (an `auto_generated` event is
+framework-made, and the grammar's `event` is authored); the field-set equality (command equals aggregate, event equals aggregate plus `<slug>_id`,
 projection equals `<slug>_id` plus a subset of the event); an aggregate whose identity
 field is the injected id (`auto_generated: true`); either no read side or one
 projection with exactly one field marked `key` (`identifier: true`), alongside any
