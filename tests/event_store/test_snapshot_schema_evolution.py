@@ -392,7 +392,7 @@ class TestStaleSnapshotSelfHeals:
         """Below the snapshot threshold no fresh snapshot is written, so the
         stale row survives and every load re-discards and re-warns."""
         identifier = str(uuid4())
-        # Two events, below the default threshold of 10.
+        # Two events, below the default snapshot threshold.
         store, data = _register_and_snapshot(test_domain, identifier)
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
@@ -412,8 +412,8 @@ class TestStaleSnapshotSelfHeals:
 
 
 class TestFullReplayPaging:
-    # ``_read`` is patched to reach the page boundary without writing 1000+ real
-    # events, which is the only cheap way to exercise the paging loop.
+    # ``_read`` is patched to reach a full-page boundary without writing a full
+    # page of real events, which is the only cheap way to exercise the loop.
 
     @pytest.mark.eventstore
     def test_read_stream_fully_pages_past_the_page_size(self, test_domain):

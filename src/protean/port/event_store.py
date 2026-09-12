@@ -445,14 +445,14 @@ class BaseEventStore(metaclass=ABCMeta):
     def _read_stream_fully(self, stream: str) -> deque[dict[str, Any]]:
         """Read every raw row of ``stream``, paging past the per-read page size.
 
-        A single ``_read`` returns at most its page size (1000 by default). An
-        aggregate that warranted a snapshot can hold more events than that, so a
-        full replay reads to the end of the stream or it rebuilds an incomplete
-        aggregate. Reads are inclusive, so each page resumes one position past
-        the last row seen.
+        A single ``_read`` returns at most one page, and an aggregate that
+        warranted a snapshot can hold more events than one page. A full replay
+        pages to the end of the stream or it rebuilds an incomplete aggregate.
+        Reads are inclusive, so each page resumes one position past the last row
+        seen.
         """
         rows: deque[dict[str, Any]] = deque()
-        page_size = 1000
+        page_size = 1000  # the default page size of ``_read``
         position = 0
         while True:
             page = self._read(stream, position=position, no_of_messages=page_size)

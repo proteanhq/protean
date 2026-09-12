@@ -494,6 +494,13 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
+            # Pydantic skips ``model_post_init`` when validation fails, so the
+            # init-context entry pushed above is never popped there. Pop it here
+            # to keep the thread-local stack balanced on the failure path;
+            # otherwise a caller that catches the error in a loop leaks one entry
+            # per failed construction.
+            if stack:
+                stack.pop()
             collected_errors.update(convert_pydantic_errors(e))
 
         # Check required descriptor fields (ValueObject, Reference, etc.)
