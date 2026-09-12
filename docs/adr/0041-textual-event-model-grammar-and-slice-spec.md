@@ -88,21 +88,22 @@ The rules:
   constraint list: `field name: string(max_length=100)`. `<name>` is a valid
   Python identifier that is not a Python keyword, read verbatim, because the
   generator writes it as a class attribute. Field names are unique within a block;
-  a duplicate is an error. A field name may not start with an underscore or use the
-  pydantic `model_` prefix, and it may not shadow a member the generated class
-  carries in its block, whether the template defines it (`id` and `create` in an
-  `aggregate`, `Meta` in a `projection`) or the block's framework base provides it:
-  `BaseAggregate` for an aggregate (including `raise_`), `BaseMessageType` for a
-  command and an event (including `payload`), and `BaseProjection` for a projection.
-  It also may not collide with a name the template binds locally around the field,
-  such as the `create` factory's `cls` parameter. The parser checks each field name
-  against every name its block's generated code binds, in code, so the reserved set
-  follows the templates and does not drift from a list written here. An `aggregate`
-  also reserves `<slug>_id`, the identity reference the generator injects into the
-  event, so an aggregate cannot declare a field that the id wiring already fills.
-  `<type>` is one of the eight primitive types below, and fields keep their
-  declaration order for generation.
-- A **field is required and has no default,** and the grammar does not express
+  a duplicate is an error. A field name may not shadow any member its block's
+  generated class carries. Every field-carrying block is a pydantic `BaseModel`
+  subclass, so that is the class's full MRO: the template-defined members, the
+  framework base (`BaseAggregate`, `BaseMessageType`, or `BaseProjection`), and
+  pydantic's own `BaseModel`. The parser reads that member set from the generated
+  class in code, so it tracks the base classes as they change instead of a list
+  written here. The check is the only guard: a field that shadows an inherited
+  member does not fail `domain.init()`, it warns and registers, then the generated
+  `create`, `raise_`, or serialization breaks at use time, so the slice would
+  register yet fail `protean verify`. An `aggregate` also reserves `<slug>_id`, the
+  identity reference the generator injects. In the write-side-only path the event's
+  fields become the synthesized projection's fields, so the event's field names are
+  checked against the projection's member set too. `<type>` is one of the eight
+  primitive types below, and fields keep their declaration order for generation.
+- A **field is required and has no default,** except the projection's identity `key`,
+  which carries the framework identity default; the grammar does not express other
   optional fields or author-supplied defaults. `field name: string` maps to a bare
   `str` annotation, a required, unbounded string that the IR records as a `String`
   with no `max_length`. The projection's `key` field is an `identifier`, and the
@@ -135,21 +136,18 @@ generated command handler and projector import the aggregate, command, event, an
 projection by their bare class names, and two spellings normalize to one class:
 `aggregate OrderItem` and `command order_item` both become `OrderItem` and collide, so
 that model is an error. A `for` or `consumes` reference resolves on the same canonical
-name. A block name, and the aggregate's
-`<slug>`, also may not collide with a symbol the generated code binds for the project.
-That set is project-contextual and template-derived: the composition-root variable
-resolved from `domain.py`, whatever its name (a project rooted at `myproj` reserves
-`myproj`); the helper and decorator imports (`handle`, `on`); and the command
-handler's locals (`repo`, `command`). The generator computes this set from the project
-and its templates and passes it to the parser, which checks each name and slug against
-it in code. It is not a fixed list here, because the root variable and the templates
-decide it.
-
-The generator's default read-side names, `<Aggregate>Summary` and
-`<Aggregate>Projector`, are reserved only when the read side is omitted and the
-generator synthesizes them: there they must not collide with the declared aggregate,
-command, or event. A model that declares its own projection and projector keeps those
-names, so the normative full model is valid.
+name. A block name, and the aggregate's `<slug>`, also may not collide with a symbol
+the generated modules bind. The generator computes that set from the project and its
+templates and hands it to the parser; it is project-contextual, since the
+composition-root variable read from `domain.py` can be any name, so the ADR does not
+fix it. A block name is a PascalCase class, so it collides with the PascalCase symbols
+a module binds beside a block import: the framework class imports (`Annotated`, `Self`,
+`Field`, `BaseAggregate`) and the always-generated derived classes (`<Aggregate>Base`,
+`<Aggregate>CommandHandler`, and the synthesized `<Aggregate>Summary` and
+`<Aggregate>Projector`). The `<slug>` is lowercase, so it collides with the lowercase
+bindings: the composition-root variable and the command handler's `repo` local. The
+generator checks its own synthesized and derived names against this same set, so a
+project rooted at `OrderSummary` cannot also synthesize an `OrderSummary` projection.
 
 The parse is deterministic and infers nothing. Field names are preserved as written;
 a block name is normalized to its canonical class name and slug (above). A
@@ -176,28 +174,35 @@ The grammar carries eight field types. Each maps to one IR field type (the value
 | `datetime`   | `"datetime"`| `DateTime`      | `DateTime`    |
 | `identifier` | `"identifier"` | `Identifier` | `Identifier`  |
 
-Every generated field is required, unsanitized, and unbounded unless it declares
-`max_length`. The generator pins the field parameters to reach that; it does not lean
-on the `String()`, `Text()`, or `Identifier()` factory defaults, which would add
-`max_length=255`, `sanitize=True`, or an optional `default`. `string` uses a bare
-`str` annotation (IR type `String`), which is already required, unbounded, and
-unsanitized; `text` uses `Text(sanitize=False, required=True)` (IR type `Text`),
-keeping the text kind. A required string-based factory field carries an implicit
-`min_length=1`: Protean adds it to a required `Text` or `Identifier`, so a `text`
-field and a required non-key `identifier` field are non-empty, and a bare-`str`
-`string` field is not. That `min_length=1` is the implied form of a required field of
-those types, so it round-trips without a grammar constraint (the source and the
-generated field both carry it). An IR field that carries a `sanitize` flag, a
-`min_length` other than that implied `1`, or resolves to an optional default is not
-representable, and the emitter rejects its cluster.
+Every generated field is required (the projection `key` aside) and unbounded unless
+it declares `max_length`, and the generator chooses a declaration form that reaches
+that. `string` uses a bare `str` annotation and `string(max_length=N)` an
+`Annotated[str, Field(max_length=N)]`; `integer`, `float`, `boolean`, `date`, and
+`datetime` use their bare annotation (`int`, `float`, `bool`, `date`, `datetime`),
+each required with no extra keys; `text` uses `Text(required=True)` and a non-key
+`identifier` uses `Identifier(required=True)`, the factory forms, since no bare
+annotation yields those IR types. Sanitization is off by default, so no form sets it.
+A required string-based factory field (`Text`, `Identifier`, or a `String()` call)
+carries an implicit `min_length=1` from Protean's required-string rule, so a `text`
+field and a required non-key `identifier` are non-empty; the bare-annotation forms
+carry no `min_length`. The grammar has no syntax for that implicit `1`, and it
+round-trips only because both the source and the generated field of those types carry
+it. An IR field is not representable, and the emitter rejects its cluster, when it
+carries anything the grammar cannot say: a `sanitize` flag, a `min_length` other than
+the implied `1` (including any `min_length` on a `string`), a numeric `min_value` or
+`max_value`, a `choices` or `unique` marker, or an author `default`.
 
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
 not carry it and the emitter skips it. The grammar supports only an aggregate whose
-identity is that injected `id`; an aggregate with an explicit identifier field (its
-`identity_field` is not the auto `id`) is outside the grammar, and the emitter rejects
-that cluster, since serializing the identifier as an ordinary field would let the
-generator inject a different `id` and change the identity.
+identity is that injected id, which the emitter detects by IR `kind == "auto"` on the
+identity field. An aggregate whose identity field is any other kind is outside the
+grammar, and the emitter rejects that cluster, since serializing the identifier as an
+ordinary field would let the generator inject a fresh auto id and change the identity.
+The name is not the test: an explicit `id = Identifier(identifier=True)` keeps the
+field name `id` while its `kind` is `identifier`, and `identity_field` and
+`auto_add_id_field` read the same as the injected case, so only the `kind` tells them
+apart.
 
 ### The slice spec
 
@@ -325,29 +330,38 @@ the injected `id`, element options, and message metadata (an event's `__version_
 its publication or deprecation options) are skipped by design and never make a cluster
 ineligible.
 
-Within that covered data the emitter's precondition is one closed rule: it emits a
-cluster only when the emitted grammar text parses back, under every parser rule above,
-to a spec whose covered data matches the cluster. So the cluster must satisfy the
-cross-block field-set and identity rules as well as the per-field shape: exactly one
-command and one non-fact event; the field-set equality (command equals aggregate,
-event equals aggregate plus `<slug>_id`, projection equals `<slug>_id` plus a subset
-of the event); either no read side or one projection with exactly one identity field,
-of type `identifier`, and one projector; a projector whose `handlers` route only that
-event, whose `aggregates` are exactly the slice's aggregate, and whose
-`stream_categories` are the default that aggregate derives, with no extra category or
-subscription override; distinct element short names; and every field within the eight
-types and two constraints, required and without an author default, with the
-projection's `identifier` key the one exception, which carries the framework identity
-default.
+Within that covered data the emitter's precondition is one rule over what the IR
+shows: it emits a cluster only when the emitted grammar text would parse back to a
+spec whose covered data matches the cluster, judged against the parser rules the IR
+can decide. So the cluster must satisfy the cross-block field-set and identity rules
+and the per-field shape: exactly one command and one non-fact event; the field-set
+equality (command equals aggregate, event equals aggregate plus `<slug>_id`,
+projection equals `<slug>_id` plus a subset of the event); an aggregate whose identity
+field is the injected id (`kind == "auto"`); either no read side or one projection
+with exactly one `identifier` field and one projector; a projector whose `handlers`
+route only that event, whose `aggregates` are exactly the slice's aggregate, whose
+`stream_categories` equal the aggregate's class-derived default
+(`<domain normalized_name>::<underscored aggregate name>`), and whose `subscription`
+is empty; distinct canonical short names; and every field within the eight types and
+two constraints, required and without an author default, with the projection's
+identity `key` the one exception, an `identifier` field carrying no `required` flag.
+
+The project-contextual reserved-name and slug-collision rules are the generator's to
+enforce at generation time, when it holds the project's composition root and
+templates. They read the `domain.py` root variable, which the IR does not carry, so
+the emitter cannot re-check them, and the conformance corpus is built from clusters
+that already satisfy them.
 
 A covered participant that carries data the grammar cannot represent makes the cluster
 ineligible: a field whose IR `type` is outside the eight (`Status`, a `List` or `Dict`
-container), a constraint or flag with no grammar syntax (a `sanitize` flag, an
+container), a constraint or flag with no grammar syntax (a `sanitize` flag, a numeric
+`min_value` or `max_value`, a stray `min_length`, a `choices` or `unique` marker, an
 optional or defaulted field), an extra or mismatched field, a second projection or
-projector, a projector wired to another aggregate's events or a broader subscription,
-an identity beyond the default string, an aggregate with an explicit identifier field
-where the grammar supports only the injected auto `id`, or a field named something the
-grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
+projector, a projector wired to another aggregate's events, wired via
+`stream_categories` with an empty `aggregates`, or with a non-empty `subscription`, an
+aggregate whose `stream_category` differs from its class-derived default, an aggregate
+whose identity field is not `kind auto`, an identity beyond the default string, or a
+field named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
 falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
 is `String` in the IR and round-trips as grammar `string`. That collapse is the
