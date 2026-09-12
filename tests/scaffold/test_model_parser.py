@@ -127,7 +127,9 @@ def _build_order_domain() -> Domain:
     @domain.projection
     class OrderSummary:
         order_id = Identifier(required=True, identifier=True)
-        name = String(max_length=100)
+        # Required, so it emits faithfully: the grammar has no optional form, and
+        # the ADR worked example carries the projection's ``name`` as required.
+        name = String(max_length=100, required=True)
 
     @domain.projector(projector_for=OrderSummary, aggregates=[Order])
     class OrderProjector:
@@ -290,50 +292,87 @@ event OrderCreated:
 
 @pytest.mark.no_test_domain
 class TestParseRejections:
+    # Each test asserts both the reported line and a rule-identifying substring of
+    # the message, so a wrong branch that raises at the same physical line cannot
+    # pass in place of the rule under test.
+
     def test_bad_keyword(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("widget Order:\n    field name: string\n")
         assert exc.value.line == 1
+        assert "unknown block keyword" in str(exc.value)
 
     def test_non_identifier_name(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate 2Bad:\n    field name: string\n")
         assert exc.value.line == 1
+        assert "is not a valid name" in str(exc.value)
 
     def test_python_keyword_name(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate class:\n    field name: string\n")
         assert exc.value.line == 1
+        assert "is a Python keyword" in str(exc.value)
+
+    def test_name_that_normalizes_to_an_invalid_class_name(self):
+        # ``_2fa`` passes ``isidentifier()`` but normalizes to ``2fa``, which is
+        # not a valid class name.
+        with pytest.raises(ModelParseError) as exc:
+            parse_model("aggregate _2fa:\n    field name: string\n")
+        assert exc.value.line == 1
+        assert "does not normalize to a valid class name" in str(exc.value)
 
     def test_unknown_field_type(self):
         model = "aggregate Order:\n    field name: str\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 2
+        assert "unknown field type" in str(exc.value)
 
     def test_python_keyword_field_name(self):
         model = "aggregate Order:\n    field class: string\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 2
+        assert "is a Python keyword" in str(exc.value)
 
     def test_duplicate_field_name(self):
         model = "aggregate Order:\n    field name: string\n    field name: integer\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 3
+        assert "duplicate field" in str(exc.value)
 
     def test_max_length_on_non_string(self):
         model = "aggregate Order:\n    field count: integer(max_length=5)\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 2
+        assert "max_length is valid only on string and text" in str(exc.value)
 
     def test_non_positive_max_length(self):
         model = "aggregate Order:\n    field name: string(max_length=0)\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 2
+        assert "max_length must be a positive integer" in str(exc.value)
+
+    def test_duplicate_max_length_constraint(self):
+        model = "aggregate Order:\n    field name: string(max_length=5, max_length=6)\n"
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == 2
+        assert "duplicate 'max_length' constraint" in str(exc.value)
+
+    def test_duplicate_key_constraint(self):
+        model = _write_side(
+            "\nprojection OrderSummary:\n    field order_id: identifier(key, key)\n"
+        )
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        # The 'field order_id: identifier(key, key)' line is the 12th physical line.
+        assert exc.value.line == 12
+        assert "duplicate 'key' constraint" in str(exc.value)
 
     def test_key_on_non_identifier_field(self):
         # ``key`` in a projection but on a string field.
@@ -347,12 +386,14 @@ class TestParseRejections:
             parse_model(model)
         # The offending 'field name: string(key)' is the 13th physical line.
         assert exc.value.line == 13
+        assert "'key' is valid only on" in str(exc.value)
 
     def test_key_outside_a_projection(self):
         model = "aggregate Order:\n    field order_id: identifier(key)\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 2
+        assert "'key' is valid only on" in str(exc.value)
 
     def test_two_aggregates(self):
         model = _write_side("\naggregate Extra:\n    field name: string\n")
@@ -360,6 +401,35 @@ class TestParseRejections:
             parse_model(model)
         # The second aggregate header is the 11th physical line.
         assert exc.value.line == 11
+        assert "more than one aggregate" in str(exc.value)
+
+    def test_two_commands(self):
+        model = _write_side("\ncommand Second:\n    field name: string\n")
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        # The second command header is the 11th physical line.
+        assert exc.value.line == 11
+        assert "more than one command" in str(exc.value)
+
+    def test_two_events(self):
+        model = _write_side("\nevent Second:\n    field name: string\n")
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        # The second event header is the 11th physical line.
+        assert exc.value.line == 11
+        assert "more than one event" in str(exc.value)
+
+    def test_no_aggregate(self):
+        model = """command CreateOrder:
+    field name: string
+
+event OrderCreated:
+    field name: string
+"""
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == len(model.splitlines())
+        assert "must define exactly one aggregate" in str(exc.value)
 
     def test_no_command(self):
         model = """aggregate Order:
@@ -372,6 +442,37 @@ event OrderCreated:
             parse_model(model)
         # A missing block is reported at the end of the model.
         assert exc.value.line == len(model.splitlines())
+        assert "must define exactly one command" in str(exc.value)
+
+    def test_no_event(self):
+        model = """aggregate Order:
+    field name: string
+
+command CreateOrder:
+    field name: string
+"""
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(model)
+        assert exc.value.line == len(model.splitlines())
+        assert "must define exactly one event" in str(exc.value)
+
+    def test_empty_string(self):
+        with pytest.raises(ModelParseError) as exc:
+            parse_model("")
+        assert exc.value.line == 1
+        assert "must define exactly one aggregate" in str(exc.value)
+
+    def test_whitespace_only(self):
+        with pytest.raises(ModelParseError) as exc:
+            parse_model("   \n  \n")
+        assert exc.value.line == 2
+        assert "must define exactly one aggregate" in str(exc.value)
+
+    def test_non_string_input(self):
+        with pytest.raises(ModelParseError) as exc:
+            parse_model(None)  # type: ignore[arg-type]
+        assert exc.value.line == 1
+        assert "must be a string" in str(exc.value)
 
     def test_projector_without_projection(self):
         model = _write_side(
@@ -382,6 +483,7 @@ event OrderCreated:
             parse_model(model)
         # The projector header (present without a projection) is line 11.
         assert exc.value.line == 11
+        assert "read side needs both a projection and a projector" in str(exc.value)
 
     def test_for_names_an_undefined_projection(self):
         model = _write_side(
@@ -393,6 +495,7 @@ event OrderCreated:
             parse_model(model)
         # The 'for WrongName' line is the 15th physical line.
         assert exc.value.line == 15
+        assert "does not name the model's projection" in str(exc.value)
 
     def test_consumes_names_an_undefined_event(self):
         model = _write_side(
@@ -404,6 +507,7 @@ event OrderCreated:
             parse_model(model)
         # The 'consumes WrongEvent' line is the 16th physical line.
         assert exc.value.line == 16
+        assert "does not name the model's" in str(exc.value)
 
     def test_projection_field_absent_from_event(self):
         model = _write_side(
@@ -416,6 +520,7 @@ event OrderCreated:
             parse_model(model)
         # The 'field missing: string' line is the 13th physical line.
         assert exc.value.line == 13
+        assert "is not on the event" in str(exc.value)
 
     def test_projection_field_shape_mismatch(self):
         # 'name' is on the event as string(max_length=100); here it is max_length=50.
@@ -429,6 +534,7 @@ event OrderCreated:
             parse_model(model)
         # The 'field name: string(max_length=50)' line is line 13.
         assert exc.value.line == 13
+        assert "does not match the shape" in str(exc.value)
 
     def test_projection_with_no_key(self):
         model = _write_side(
@@ -440,6 +546,7 @@ event OrderCreated:
             parse_model(model)
         # Reported at the projection header, line 11.
         assert exc.value.line == 11
+        assert "needs exactly one 'key' field" in str(exc.value)
 
     def test_projection_with_two_keys(self):
         model = _write_side(
@@ -452,6 +559,7 @@ event OrderCreated:
             parse_model(model)
         # The second key field is line 13.
         assert exc.value.line == 13
+        assert "more than one 'key' field" in str(exc.value)
 
     def test_projection_key_must_be_slug_id(self):
         # The only key is 'wrong_id', not the aggregate's surfaced 'order_id'.
@@ -464,54 +572,64 @@ event OrderCreated:
             parse_model(model)
         # The 'field wrong_id' key line is line 12.
         assert exc.value.line == 12
+        assert "projection key must be" in str(exc.value)
 
     def test_indented_line_before_any_header(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("    field name: string\n")
         assert exc.value.line == 1
+        assert "indented line appears before any block header" in str(exc.value)
 
     def test_malformed_header_without_colon(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate Order\n    field name: string\n")
         assert exc.value.line == 1
+        assert "malformed block header" in str(exc.value)
 
     def test_non_identifier_field_name(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate Order:\n    field 2x: string\n")
         assert exc.value.line == 2
+        assert "is not a valid name" in str(exc.value)
 
     def test_body_line_that_is_not_a_field(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate Order:\n    not a field line\n")
         assert exc.value.line == 2
+        assert "expected a field line" in str(exc.value)
 
     def test_empty_max_length_constraint(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate Order:\n    field name: string(max_length=)\n")
         assert exc.value.line == 2
+        assert "malformed constraint" in str(exc.value)
 
     def test_unknown_constraint(self):
         with pytest.raises(ModelParseError) as exc:
             parse_model("aggregate Order:\n    field name: string(weird)\n")
         assert exc.value.line == 2
+        assert "unknown constraint" in str(exc.value)
 
     def test_duplicate_for_line(self):
         model = "projector P:\n    for A\n    for B\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 3
+        assert "duplicate 'for' line" in str(exc.value)
 
     def test_duplicate_consumes_line(self):
         model = "projector P:\n    consumes A\n    consumes B\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 3
+        assert "duplicate 'consumes' line" in str(exc.value)
 
     def test_projector_body_line_that_is_neither_for_nor_consumes(self):
         model = "projector P:\n    field x: string\n"
         with pytest.raises(ModelParseError) as exc:
             parse_model(model)
         assert exc.value.line == 2
+        assert "expected 'for <Projection>' or 'consumes <Event>'" in str(exc.value)
 
     def test_two_projections(self):
         model = _write_side(
@@ -524,6 +642,7 @@ event OrderCreated:
             parse_model(model)
         # The second projection header is line 14.
         assert exc.value.line == 14
+        assert "more than one projection" in str(exc.value)
 
     def test_two_projectors(self):
         model = _write_side(
@@ -536,6 +655,7 @@ event OrderCreated:
             parse_model(model)
         # The second projector header is line 18.
         assert exc.value.line == 18
+        assert "more than one projector" in str(exc.value)
 
     def test_projector_missing_for_line(self):
         model = _write_side(
@@ -546,6 +666,7 @@ event OrderCreated:
             parse_model(model)
         # Reported at the projector header, line 14.
         assert exc.value.line == 14
+        assert "needs a 'for" in str(exc.value)
 
     def test_projector_missing_consumes_line(self):
         model = _write_side(
@@ -556,6 +677,7 @@ event OrderCreated:
             parse_model(model)
         # Reported at the projector header, line 14.
         assert exc.value.line == 14
+        assert "needs a 'consumes" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -818,11 +940,40 @@ class TestEmitterIneligibility:
                     "kind": "standard",
                     "type": "String",
                     "choices": ["A", "B"],
+                    "required": True,
                 }
             }
         )
-        with pytest.raises(ModelEmitError):
+        with pytest.raises(ModelEmitError) as exc:
             emit_model(ir, "m.Order")
+        assert "choices" in str(exc.value)
+
+    def test_optional_field_raises(self):
+        # No ``required`` flag: the grammar has no optional form, so the emitter
+        # raises rather than emit the field as required and change its meaning.
+        ir = _synthetic_ir(
+            event_fields={"note": {"kind": "standard", "type": "String"}}
+        )
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "optional" in str(exc.value)
+
+    def test_hand_set_min_length_raises(self):
+        # ``min_length`` is recorded only when an author sets it; the grammar
+        # cannot carry it, so dropping it would lose the constraint. Raise instead.
+        ir = _synthetic_ir(
+            event_fields={
+                "code": {
+                    "kind": "standard",
+                    "type": "String",
+                    "min_length": 3,
+                    "required": True,
+                }
+            }
+        )
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "min_length" in str(exc.value)
 
     def test_multi_aggregate_projector_raises(self):
         projections = {
@@ -868,6 +1019,40 @@ class TestEmitterIneligibility:
         with pytest.raises(ModelEmitError):
             emit_model(_synthetic_ir(projections=projections), "m.Order")
 
+    def test_single_event_multi_method_projector_raises(self):
+        # One event, but the projector handles it with two methods: still a
+        # multi-handler projector the grammar cannot express.
+        projections = {
+            "m.Report": {
+                "projection": {"name": "OrderSummary", "fields": {}},
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": ["m.Order"],
+                        "handlers": {"M.OrderCreated.v1": ["on_created", "on_again"]},
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError):
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+
+    def test_auto_generated_event_is_filtered(self):
+        # A cluster carrying an authored event and an auto-generated one emits the
+        # authored event only; the auto-generated event is not counted as a second.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["events"]["m.OrderDefaulted"] = {
+            "name": "OrderDefaulted",
+            "__type__": "M.OrderDefaulted.v1",
+            "auto_generated": True,
+            "fields": {
+                "name": {"kind": "standard", "type": "String", "required": True}
+            },
+        }
+        text = emit_model(ir, "m.Order")
+        assert "event OrderCreated:" in text
+        assert "OrderDefaulted" not in text
+
     def test_two_projectors_for_one_cluster_raises(self):
         one = {
             "name": "OrderProjector",
@@ -912,12 +1097,60 @@ class TestEmitterIneligibility:
 # ---------------------------------------------------------------------------
 
 
+# Field-entry keys the grammar carries. The round trip is an inverse over these;
+# everything else (``min_length``, ``description``, the injected identity) is
+# outside the grammar by ADR-0041.
+_GRAMMAR_KEYS = {"kind", "type", "max_length", "identifier", "required"}
+
+
+def _grammar_visible(entry: dict) -> dict:
+    """Reduce an IR field entry to what the grammar carries.
+
+    Keeps only the grammar keys, and drops ``required`` from the projection key
+    (it takes the framework identity default, which the parser writes as
+    ``identifier`` with no ``required``).
+    """
+    visible = {k: v for k, v in entry.items() if k in _GRAMMAR_KEYS}
+    if visible.get("identifier"):
+        visible.pop("required", None)
+    return visible
+
+
+def _grammar_fields(fields: dict) -> dict:
+    """The grammar-visible fields of an IR participant, minus the injected id."""
+    return {
+        name: _grammar_visible(entry)
+        for name, entry in fields.items()
+        if not (entry.get("auto_generated") or entry.get("kind") == "auto")
+    }
+
+
 @pytest.mark.no_test_domain
 class TestConformance:
     def test_order_slice_round_trip(self):
         ir = _build_order_domain().to_ir()
         text = emit_model(ir, _cluster_fqn(ir))
         assert parse_model(text) == ORDER_FRAGMENT
+
+    def test_round_trip_matches_the_source_ir(self):
+        # Compare the parsed fragment against the source IR's own field entries,
+        # not a hand-written constant, so any emitter loss (a dropped constraint,
+        # an optional field coerced to required) reddens this test.
+        ir = _build_order_domain().to_ir()
+        fqn = _cluster_fqn(ir)
+        cluster = ir["clusters"][fqn]
+        fragment = parse_model(emit_model(ir, fqn))
+
+        command = next(iter(cluster["commands"].values()))
+        event = next(iter(cluster["events"].values()))
+        assert fragment["aggregate"]["fields"] == _grammar_fields(
+            cluster["aggregate"]["fields"]
+        )
+        assert fragment["command"]["fields"] == _grammar_fields(command["fields"])
+        assert fragment["event"]["fields"] == _grammar_fields(event["fields"])
+
+        projection = next(iter(ir["projections"].values()))["projection"]
+        assert fragment["projection"]["fields"] == _grammar_fields(projection["fields"])
 
     def test_write_side_only_round_trip(self):
         ir = _build_write_side_only_domain().to_ir()

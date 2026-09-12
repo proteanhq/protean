@@ -3,16 +3,16 @@
 This module implements the textual event-model grammar of ADR-0041. The grammar
 is a human authoring surface over the IR (ADR-0005): a person writes a small
 one-slice model as text, and :func:`parse_model` reads it into a **slice-shaped IR
-fragment** that reuses the IR's own field model. There is no second field
-vocabulary; a field's shape is an IR field entry, exactly as ``IRBuilder`` emits it.
+fragment** that reuses the IR's own field model. A field's shape is an IR field
+entry, exactly as ``IRBuilder`` emits it.
 
 Three pieces live here:
 
 - :func:`parse_model` turns model text into a fragment: a dict with ``aggregate``,
   ``command``, ``event``, and an optional ``projection`` and ``projector``. Each
   element carries its authored name and a ``fields`` map of IR field entries. The
-  parse is deterministic, infers nothing, and reports every violation with the
-  1-based physical line of the offending token via :class:`ModelParseError`.
+  parse is deterministic, infers nothing, and reports every violation with its
+  1-based line number via :class:`ModelParseError`.
 - :func:`emit_model` reads a full IR and a cluster FQN and produces grammar text
   for the covered subset (the participants' names, their authored fields, and the
   read-side wiring). On a cluster the grammar cannot express it raises
@@ -43,8 +43,8 @@ __all__ = ["ModelEmitError", "ModelParseError", "emit_model", "parse_model"]
 
 
 class ModelParseError(Exception):
-    """A model that does not parse. ``line`` is the 1-based physical line of the
-    offending token, so the message a person reads names where to look."""
+    """A model that does not parse. ``line`` is the 1-based line number the
+    violation is reported at."""
 
     def __init__(self, message: str, line: int) -> None:
         self.line = line
@@ -85,9 +85,12 @@ _BLOCK_KEYWORDS = frozenset(
 
 # Field-entry keys the grammar can express or safely ignore. ``max_length`` and
 # ``identifier`` map to the two constraints; ``required`` is the grammar default;
-# ``min_length`` is the framework's implicit bound (ADR-0026), which the grammar
-# does not carry (ADR-0041), and ``description`` is derived metadata. Any other
-# key means the field carries something the grammar cannot express.
+# ``description`` is documentation metadata, not a validation constraint, so the
+# grammar drops it. ``min_length`` needs a value check (see ``_emit_field``): a
+# required field carries the implicit ``min_length: 1`` bound (ADR-0026), which the
+# grammar's ``required`` re-derives, but a larger hand-set bound is an author
+# constraint the grammar cannot carry. Any other key means the field carries
+# something the grammar cannot express.
 _EXPRESSIBLE_FIELD_KEYS = frozenset(
     {
         "kind",
@@ -99,6 +102,11 @@ _EXPRESSIBLE_FIELD_KEYS = frozenset(
         "description",
     }
 )
+
+# The implicit non-empty bound a required field carries (ADR-0026). The grammar's
+# ``required`` re-derives it, so the emitter drops a ``min_length`` at or below it
+# but raises on a larger one.
+_IMPLICIT_MIN_LENGTH = 1
 
 
 # ---------------------------------------------------------------------------
@@ -134,13 +142,16 @@ def parse_model(text: str) -> dict[str, Any]:
     Returns a dict with ``aggregate``, ``command``, ``event`` and, when the model
     carries a read side, ``projection`` and ``projector``. Each of the first four
     is ``{"name": <PascalCase>, "fields": {<name>: <IR field entry>}}``; the
-    projector is ``{"name", "for", "consumes"}`` with the grammar terms kept
-    (promotion resolves them later). Field names are read verbatim; block names
-    normalize the way ``protean add`` does.
+    projector is ``{"name", "for", "consumes"}`` with the grammar terms kept as
+    authored (the generator, #1472, promotes them to references). Field names are
+    read verbatim; block names are normalized to PascalCase using the same
+    word-splitting as ``protean add``.
 
-    Raises :class:`ModelParseError` with the 1-based physical line of the offending
-    token on any grammar or referential violation.
+    Raises :class:`ModelParseError` with its 1-based line number on any grammar or
+    referential violation.
     """
+    if not isinstance(text, str):
+        raise ModelParseError("model text must be a string", 1)
     lines = text.splitlines()
     blocks: list[_Block] = []
     current: _Block | None = None
@@ -175,9 +186,16 @@ def _parse_header(raw_line: str, lineno: int) -> _Block:
             f"unknown block keyword {kw!r}; expected one of {allowed}", lineno
         )
     _validate_name(raw_name, lineno)
+    normalized = _normalize_name(raw_name)
+    if not normalized.isidentifier() or iskeyword(normalized):
+        raise ModelParseError(
+            f"block name {raw_name!r} does not normalize to a valid class name "
+            f"(got {normalized!r})",
+            lineno,
+        )
     return _Block(
         keyword=kw,
-        name=_normalize_name(raw_name),
+        name=normalized,
         raw_name=raw_name,
         header_line=lineno,
     )
@@ -234,9 +252,13 @@ def _parse_constraints(
     if constraints is None or not constraints.strip():
         return max_length, is_key
 
+    seen: set[str] = set()
     for part in constraints.split(","):
         token = part.strip()
         if token == "key":
+            if "key" in seen:
+                raise ModelParseError("duplicate 'key' constraint", lineno)
+            seen.add("key")
             if ftype != "identifier" or keyword != "projection":
                 raise ModelParseError(
                     "'key' is valid only on an identifier field of a projection",
@@ -247,6 +269,9 @@ def _parse_constraints(
             length_match = _MAX_LENGTH_RE.match(token)
             if length_match is None:
                 raise ModelParseError(f"malformed constraint {token!r}", lineno)
+            if "max_length" in seen:
+                raise ModelParseError("duplicate 'max_length' constraint", lineno)
+            seen.add("max_length")
             value = length_match.group(1)
             if not value.isdigit() or int(value) <= 0:
                 raise ModelParseError("max_length must be a positive integer", lineno)
@@ -431,14 +456,15 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     Reads a full IR and a cluster FQN, resolves the slice's read side through the
     top-level ``projections`` map, and produces the model text: the participants'
     names, their authored fields (name-sorted; field order is non-normative), and
-    the ``for``/``consumes`` wiring. The framework-injected identity, the
-    implicit ``min_length`` bound, and derived metadata are filtered.
+    the ``for``/``consumes`` wiring. The framework-injected identity and a field's
+    ``description`` are filtered.
 
     Raises :class:`ModelEmitError` on a cluster the grammar cannot express (a
-    field outside the eight types and two constraints, a non-primitive field
-    kind, a field default or choices, more than one command or authored event, or
-    a multi-aggregate / multi-handler projector). It never drops a covered
-    participant in silence.
+    field outside the eight types and two constraints, an optional field, a
+    hand-set ``min_length``, a non-primitive field kind, a field default or
+    choices, more than one command or authored event, or a multi-aggregate /
+    multi-handler projector). It never drops a covered participant or field in
+    silence.
     """
     clusters = ir.get("clusters", {})
     if cluster_fqn not in clusters:
@@ -562,6 +588,24 @@ def _emit_field(name: str, entry: dict[str, Any], in_projection: bool) -> str:
     if extra:
         raise ModelEmitError(
             f"field {name!r} carries {sorted(extra)}, which the grammar cannot express"
+        )
+
+    # Every grammar field is required; the projection key is the one exception, and
+    # it carries the framework identity default rather than ``required``. An
+    # optional field has no grammar form, so the emitter raises rather than emit it
+    # as required and silently change its meaning.
+    if not entry.get("identifier") and not entry.get("required"):
+        raise ModelEmitError(
+            f"field {name!r} is optional; the grammar expresses only required fields"
+        )
+
+    # A hand-set ``min_length`` above the implicit bound cannot round-trip: the
+    # re-parsed field would carry only the implicit bound again, dropping it.
+    min_length = entry.get("min_length")
+    if min_length is not None and min_length > _IMPLICIT_MIN_LENGTH:
+        raise ModelEmitError(
+            f"field {name!r} sets min_length={min_length}, which the grammar "
+            "cannot express"
         )
 
     constraints: list[str] = []
