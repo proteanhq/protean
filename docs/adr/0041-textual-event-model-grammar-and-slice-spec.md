@@ -113,16 +113,17 @@ The rules:
   `max_length` applies only to `string` and `text`, and its value is a positive
   integer; the parser rejects it on any other type, because Protean drops
   `max_length` on a non-string field, and rejects a zero or negative value. `key`
-  applies only to a field of a `projection`, where it marks the projection's
-  identity field, whatever that field's type; the parser rejects `key` in any other
-  block.
+  applies only to a str-based field (`string` or `identifier`) of a `projection`,
+  where it marks the projection's identity field; the parser rejects `key` on any
+  other type or in any other block.
 - A **projector body** is one `for <ProjectionName>` line naming the projection it
   feeds, and one `consumes <EventName>` line naming the event it reads.
 
 Cardinality for one slice: exactly one `aggregate`, one `command`, and one
-`event`. A `projection` carries exactly one `key` field. The read side is optional
-and all-or-nothing: a model has both a `projection` and a `projector`, or neither.
-A `projector` without a `projection` to feed, or the reverse, is an error. Block
+`event`. The read side is optional: a model has at most one `projection` and one
+`projector`, together or not at all. A `projection` without a `projector`, the
+reverse, or a second `projection` or `projector`, is an error, since the spec holds
+one of each. A `projection` carries exactly one `key` field. Block
 names are unique across the slice, because the generated command handler and
 projector import the aggregate, command, event, and projection by their bare class
 names; a name shared by two blocks is an error.
@@ -192,14 +193,21 @@ aggregate raises the event with its identity and its same-named fields, and the
 projector copies each projection field from the event field of the same name. The
 aggregate's identity travels as a field named `<slug>_id`: the generated `create`
 raises the event with `<slug>_id` set to the aggregate's `id`, and the projection's
-`key` is that same `<slug>_id`. The aggregate id is a string (ADR-0021), so
-`<slug>_id` is str-based, a `string` or `identifier`. Every other field shared by
-name across the slice carries the same type and constraints on all sides, so the
-copied value fits. The parser enforces this: it rejects a model whose event omits
-`<slug>_id`, whose `<slug>_id` is not str-based, that declares a non-identity field
-name differently in two blocks, or that would make the generator read a field that
-does not exist. Generation is then a name lookup with no inference. Field sets that diverge, such as a denormalizing
-projection, are a later addition with explicit mappings.
+`key` is that same `<slug>_id`. v1 targets the default string (UUID) identity; a
+project configured for integer identity (ADR-0021) is out of scope. The aggregate id
+is then a string, so `<slug>_id` is an unconstrained `string` or `identifier`, with
+no `max_length`, since the id is a UUID. The command declares the aggregate's
+authored fields, the event declares those fields plus `<slug>_id`, and the projection
+declares `<slug>_id` and a subset of the event's fields. The identity `<slug>_id` is
+the one field allowed to differ across blocks, str-based on each side (a `string` on
+the event, the projection's `identifier` key). Every other field shared by name
+carries the same type and constraints on all sides, so the copied value fits. The
+parser enforces all of this: it rejects a model whose event omits `<slug>_id`, whose
+`<slug>_id` is not an unconstrained `string` or `identifier`, whose command and
+aggregate fields differ, whose projection reads a field the event does not declare,
+or that declares a shared non-identity field name differently in two blocks.
+Generation is then a name lookup with no inference. Field sets that diverge further, such as a
+denormalizing projection, are a later addition with explicit mappings.
 
 When the read side is `None`, the generator supplies a default projection that
 mirrors the event's fields, with the event's str-based `<slug>_id` becoming the
@@ -220,7 +228,7 @@ node the renderer draws:
 | `command <Name>:` | `SliceSpec.command.name` | `clusters[C].commands[cmd]` | command (trigger), a parallelogram |
 | `event <Name>:` | `SliceSpec.event.name` | `clusters[C].events[evt]`, non-fact | event (result), a stadium |
 | `projection <Name>:` | `SliceSpec.projection.name` | `projections[P].projection.name` | read model, a cylinder |
-| `projector <Name>:` | `SliceSpec.projector.name` | `projections[P].projectors[pr]` | the read-model node |
+| `projector <Name>:` | `SliceSpec.projector.name` | `projections[P].projectors[pr].name` | the read-model node |
 | `for <Projection>` | `SliceSpec.projector.projection` | `projectors[pr].projector_for` (an FQN the emitter shortens to the class name) | the `Projector -> Projection` node label |
 | `consumes <Event>` | `SliceSpec.projector.consumes` | `projectors[pr].handlers` (the one event `__type__` key in a one-slice model) | the edge from the event to the read model |
 
@@ -255,19 +263,23 @@ event. It skips the injected `id`, element options, and every element the gramma
 does not carry (entities, value objects, repositories, database models, command
 handlers, application services, queries, automations, fact events).
 
-The emitter's precondition is the shape the grammar covers: a cluster with exactly
-one command and one non-fact event, and either no read side or one projection with
-one projector whose `handlers` map routes that one event and nothing else. The
-elements' short names must be distinct, since the emitter renders by `short_name`
-and the grammar rejects a name shared by two blocks. Every field must be within the
-eight primitive types and the two constraints, required and without a default; the
-IR carries field shapes the grammar does not (`Decimal`, `Status`, containers,
-optional or defaulted fields, other constraints), and emitting one would drop data
-the round trip cannot carry back. A cluster outside any of these, or with more than
-one command, non-fact event, projection, or projector, or a projector that handles
-no event, several events, or an event from another cluster, is outside the grammar,
-and the emitter raises on it. It never reduces such a cluster to a single element, so
-conformance cannot pass while the emitter drops model elements.
+The emitter's precondition is one closed rule: it emits a cluster only when the
+grammar and the slice spec can carry the cluster back without loss. The shape that
+satisfies it is a cluster with exactly one command and one non-fact event; either no
+read side or one projection with exactly one identifier field and one projector; a
+projector whose `handlers` route only that event and whose `aggregates` scope is
+exactly the slice's aggregate, with no explicit stream category; distinct element
+short names; and every field within the eight types and two constraints, required and
+without an author default, with the projection's identity `key` the one exception,
+since the framework supplies its identity default. Anything the grammar cannot carry
+makes the cluster ineligible: a richer field type or constraint (`Decimal`, `Status`,
+a container, an optional or defaulted field), an extra field, a second projection or
+projector, a projector wired to another aggregate's events or a broader subscription,
+an identity beyond the default string, or a field named something the grammar reserves
+(a keyword, a `model_` or underscore name, an inherited member such as `payload` or
+`raise_`, the aggregate's `<slug>_id`). The emitter raises on an ineligible cluster,
+so it never emits text that drops or distorts what the cluster holds, and conformance
+cannot pass while the emitter loses model elements.
 
 `_extract_fields` sorts a cluster's fields by name, so the IR does not keep the
 order the fields were declared in. The emitter emits fields in the IR's order, and
