@@ -442,24 +442,31 @@ class BaseEventStore(metaclass=ABCMeta):
             reason=str(error),
         )
 
-    def _read_stream_fully(self, stream: str) -> deque[dict[str, Any]]:
-        """Read every raw row of ``stream``, paging past the per-read page size.
+    def _read_stream_fully(
+        self, stream: str, max_rows: int | None = None
+    ) -> deque[dict[str, Any]]:
+        """Read the rows of ``stream``, paging past the per-read page size.
 
         A single ``_read`` returns at most one page, and an aggregate that
-        warranted a snapshot can hold more events than one page. A full replay
-        pages to the end of the stream or it rebuilds an incomplete aggregate.
-        Reads are inclusive, so each page resumes one position past the last row
-        seen.
+        warranted a snapshot can hold more events than one page, so a caller that
+        needs the whole stream (or a bounded prefix of it) has to page or it
+        rebuilds an incomplete aggregate. ``max_rows`` bounds the read to a
+        prefix, which a temporal query uses to stop at the requested version;
+        ``None`` reads to the end. Reads are inclusive, so each page resumes one
+        position past the last row seen.
         """
         rows: deque[dict[str, Any]] = deque()
         page_size = 1000  # the default page size of ``_read``
         position = 0
-        while True:
-            page = self._read(stream, position=position, no_of_messages=page_size)
+        while max_rows is None or len(rows) < max_rows:
+            batch = (
+                page_size if max_rows is None else min(page_size, max_rows - len(rows))
+            )
+            page = self._read(stream, position=position, no_of_messages=batch)
             if not page:
                 break
             rows.extend(page)
-            if len(page) < page_size:
+            if len(page) < batch:
                 break
             position = page[-1]["position"] + 1
         return rows
@@ -593,10 +600,10 @@ class BaseEventStore(metaclass=ABCMeta):
                     # else: snapshot is exactly at the requested version
 
         if aggregate is None:
-            # No usable snapshot — replay from the beginning
-            event_stream = self._read(
-                stream,
-                no_of_messages=at_version + 1,
+            # No usable snapshot — replay from the beginning up to the requested
+            # version, paging so a version beyond one read page is not truncated.
+            event_stream = list(
+                self._read_stream_fully(stream, max_rows=at_version + 1)
             )
 
             if not event_stream:
@@ -717,9 +724,11 @@ class BaseEventStore(metaclass=ABCMeta):
                 f"`{part_of.__name__}` is not an event-sourced aggregate"
             )
 
-        # Read ALL events (fresh reconstruction, not from existing snapshot)
-        event_stream = deque(
-            self._read(f"{part_of.meta_.stream_category}-{identifier}")
+        # Read ALL events (fresh reconstruction, not from existing snapshot),
+        # paging the whole stream so the snapshot reflects the head state even
+        # when the stream is longer than one read page.
+        event_stream = self._read_stream_fully(
+            f"{part_of.meta_.stream_category}-{identifier}"
         )
 
         if not event_stream:

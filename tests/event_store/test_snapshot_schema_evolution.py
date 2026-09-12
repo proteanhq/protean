@@ -442,3 +442,19 @@ class TestFullReplayPaging:
 
         assert len(rows) == 1000
         assert spy.call_count == 2
+
+    @pytest.mark.eventstore
+    def test_read_stream_fully_bounds_to_max_rows(self, test_domain):
+        """``max_rows`` stops the read at a prefix (the temporal-query case) and
+        shrinks the last request so it never reads past the bound."""
+        store = test_domain.event_store.store
+
+        def fake_read(stream, sql=None, position=0, no_of_messages=1000):
+            # An adapter that honors ``no_of_messages`` over an endless stream.
+            return [{"position": position + k} for k in range(no_of_messages)]
+
+        with patch.object(store, "_read", side_effect=fake_read) as spy:
+            rows = store._read_stream_fully("test::user-x", max_rows=1500)
+
+        assert len(rows) == 1500
+        assert [c.kwargs["no_of_messages"] for c in spy.call_args_list] == [1000, 500]
