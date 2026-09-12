@@ -708,16 +708,33 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     the ``for``/``consumes`` wiring. The framework-injected identity and a field's
     ``description`` are filtered.
 
-    Raises :class:`ModelEmitError` on a cluster the grammar cannot express (a
-    field outside the eight types and two constraints, an optional field, a
-    hand-set ``min_length``, a non-primitive field kind, a field default or
-    choices, more than one command or authored event, or a multi-aggregate /
-    multi-handler projector). It never drops a covered participant or field in
-    silence, and it never returns text :func:`parse_model` would reject: the
-    emitted model is read back before it is returned, so a read side that breaks
-    the grammar's contract (a projection keyed on something other than the
-    aggregate's surfaced id, or a projected field the event does not source)
-    raises here rather than producing unreadable text.
+    Raises :class:`ModelEmitError` on a cluster the grammar cannot express, rather
+    than emit a model that promotes back to something else. What it refuses:
+
+    - a field outside the eight types and two constraints, an optional field, a
+      non-primitive field kind, a hand-set ``min_length``, or a field default or
+      choices;
+    - a shape the grammar has no room for: more than one command or authored
+      event, a multi-aggregate or multi-handler projector, or a participant name
+      that is not already in the grammar's normal form (the parser would read it
+      back as a differently named participant);
+    - behaviour the grammar carries no syntax for: a non-default element option
+      (``is_event_sourced``, ``fact_events``, a projection's ``cache``, a custom
+      ``provider``, ``schema_name`` or ``stream_category``), a projector's custom
+      stream categories or subscription, a declared invariant, a participant key
+      outside the expressible set (an event's ``published``), or a domain identity
+      other than the UUID-as-string one ADR-0041 v1 targets.
+
+    Two things are dropped on purpose, because neither holds an authored choice: a
+    ``description``, which is documentation, and a key the builder derives (the
+    framework-injected identity, and ``method_edges``, read off an element's source
+    by a derivation that fails open).
+
+    It never returns text :func:`parse_model` would reject either. The emitted model
+    is read back before it is returned, which is what enforces the parser's own rules
+    here (the event carries the aggregate's surfaced id, the projection keys on it,
+    every other projected field is sourced from the event) without a second copy of
+    them to drift.
     """
     clusters = ir.get("clusters", {})
     if cluster_fqn not in clusters:
