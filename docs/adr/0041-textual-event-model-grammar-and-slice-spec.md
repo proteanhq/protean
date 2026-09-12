@@ -148,14 +148,15 @@ templates and hands it to the parser; it is project-contextual, since the
 composition-root variable read from `domain.py` can be any name, so the ADR does not
 fix it. A block name is a PascalCase class, so it collides with the PascalCase symbols
 a module binds beside a block import: the framework class imports (`Annotated`, `Self`,
-`Field`, `BaseAggregate`) and the always-generated derived classes (`<Aggregate>Base`,
-`<Aggregate>CommandHandler`, and the synthesized `<Aggregate>Summary` and
-`<Aggregate>Projector`). The `<slug>` is lowercase, so it collides with the lowercase
-bindings: the composition-root variable, the aggregate factory's `cls` parameter (so
-an `aggregate Cls` is rejected), and the command handler's `repo` local and `command`
-parameter (so an `aggregate Command` is rejected). The generator checks its own
-synthesized and derived names against this same set, so a project rooted at
-`OrderSummary` cannot also synthesize an `OrderSummary` projection.
+`Field`, `BaseAggregate`) and the always-generated derived classes `<Aggregate>Base`
+and `<Aggregate>CommandHandler`. The `<slug>` is lowercase, so it collides with the
+lowercase bindings: the composition-root variable, the aggregate factory's `cls`
+parameter (so an `aggregate Cls` is rejected), and the command handler's `repo` local
+and `command` parameter (so an `aggregate Command` is rejected). When the read side is
+omitted, the generator synthesizes `<Aggregate>Summary` and `<Aggregate>Projector`,
+which then must not collide with the declared blocks; a model that declares its own
+projection and projector names them from the spec, so the normative full model is
+fine.
 
 The parse is deterministic and infers nothing. Field names are preserved as written;
 a block name is normalized to its canonical class name and slug (above). A
@@ -258,10 +259,11 @@ aggregate raises the event with its identity and its same-named fields, and the
 projector copies each projection field from the event field of the same name. The
 aggregate's identity travels as a field named `<slug>_id`: the generated `create`
 raises the event with `<slug>_id` set to the aggregate's `id`, and the projection's
-`key` is that same `<slug>_id`. v1 targets the default string (UUID) identity; a
-project configured for integer identity (ADR-0021) is out of scope. The aggregate id
-is then a string, so `<slug>_id` is an unconstrained `string` or `identifier`, with
-no `max_length`, since the id is a UUID. The command declares the aggregate's
+`key` is that same `<slug>_id`. v1 targets the default identity (`identity_type =
+string`, `identity_strategy = uuid`); a project configured for `integer` or `uuid`
+identity, or a non-uuid strategy (ADR-0021), is out of scope. The aggregate id is then
+a UUID stored as a string, so `<slug>_id` is an unconstrained `string` or
+`identifier`, with no `max_length`. The command declares the aggregate's
 authored fields, the event declares those fields plus `<slug>_id`, and the projection
 declares `<slug>_id` and a subset of the event's fields. The identity `<slug>_id` is
 the one field allowed to differ across blocks: the event's `<slug>_id` is an
@@ -389,10 +391,11 @@ that default, an aggregate whose `stream_category` differs from its class-derive
 default, an aggregate
 whose identity field is not the injected id (no `auto_generated: true`, including an
 authored `Auto(identifier=True)`), a projection with more than one `identifier: true`
-field, a domain `identity_type` other than the default string or uuid, or an
-`identity_strategy` other than the default `uuid` (the injected id is `kind auto` for
-every strategy and type, so the domain identity config is the only signal), or a field
-named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
+field, a domain `identity_type` other than the default `string` (a `uuid` type keeps
+native-UUID storage per ADR-0021, which the spec cannot carry, so it is not the
+default `string` and is out), or an `identity_strategy` other than the default `uuid`
+(the injected id is `kind auto` for every strategy and type, so the domain identity
+config is the only signal), or a field named something the grammar reserves. The emitter judges a field on its IR `type`, so a Python type the builder
 already collapsed to a grammar type carries as that type: `IRBuilder._resolve_type_name`
 falls back to `String` for an unmapped type such as `decimal.Decimal`, so that field
 is `String` in the IR and round-trips as grammar `string`. That collapse is the
