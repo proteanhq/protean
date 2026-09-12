@@ -76,11 +76,12 @@ The rules:
   `aggregate`, `command`, `event`, `projection`, `projector`. `<Name>` is a valid
   Python identifier that is not a Python keyword. The generator normalizes it the way
   `plan_add_slice` does, through the `_split_words` split `add_plan.py` uses: the
-  class name is the PascalCase join and the aggregate's `<slug>` is the snake_case
-  join, so `order_item`, `orderItem`, and `OrderItem` all name the same slice. Both
-  the class name and the slug must be valid non-keyword identifiers; the parser
-  rejects a name that derives an invalid one, such as `Class`, whose slug `class` is a
-  keyword.
+  class name is the PascalCase join and, for an `aggregate`, the `<slug>` is the
+  snake_case join, so `order_item`, `orderItem`, and `OrderItem` all name the same
+  slice. The class name must be a valid non-keyword identifier for every block. Only
+  an `aggregate` derives a slug, and that slug must be a valid non-keyword identifier
+  too, so `aggregate Class` is rejected (its slug `class` is a keyword) while
+  `command Class` is fine (class `Class`, no slug).
 - A **body line** is indented under its header. A blank line and a line whose
   first non-space character is `#` are ignored, so comments and spacing are free.
 - A **field line** is `field <name>: <type>` with an optional parenthesized
@@ -138,12 +139,17 @@ name. A block name, and the aggregate's
 `<slug>`, also may not collide with a symbol the generated code binds for the project.
 That set is project-contextual and template-derived: the composition-root variable
 resolved from `domain.py`, whatever its name (a project rooted at `myproj` reserves
-`myproj`); the helper and decorator imports (`handle`, `on`); the command handler's
-locals (`repo`, `command`); and the names the generator supplies for an omitted read
-side (`<Aggregate>Summary`, `<Aggregate>Projector`). The generator computes this set
-from the project and its templates and passes it to the parser, which checks each
-name and slug against it in code. It is not a fixed list here, because the root
-variable and the templates decide it.
+`myproj`); the helper and decorator imports (`handle`, `on`); and the command
+handler's locals (`repo`, `command`). The generator computes this set from the project
+and its templates and passes it to the parser, which checks each name and slug against
+it in code. It is not a fixed list here, because the root variable and the templates
+decide it.
+
+The generator's default read-side names, `<Aggregate>Summary` and
+`<Aggregate>Projector`, are reserved only when the read side is omitted and the
+generator synthesizes them: there they must not collide with the declared aggregate,
+command, or event. A model that declares its own projection and projector keeps those
+names, so the normative full model is valid.
 
 The parse is deterministic and infers nothing. Field names are preserved as written;
 a block name is normalized to its canonical class name and slug (above). A
@@ -176,8 +182,14 @@ on the `String()`, `Text()`, or `Identifier()` factory defaults, which would add
 `max_length=255`, `sanitize=True`, or an optional `default`. `string` uses a bare
 `str` annotation (IR type `String`), which is already required, unbounded, and
 unsanitized; `text` uses `Text(sanitize=False, required=True)` (IR type `Text`),
-keeping the text kind. An IR field that carries a `sanitize` flag or resolves to an
-optional default is not representable, and the emitter rejects its cluster.
+keeping the text kind. A required string-based factory field carries an implicit
+`min_length=1`: Protean adds it to a required `Text` or `Identifier`, so a `text`
+field and a required non-key `identifier` field are non-empty, and a bare-`str`
+`string` field is not. That `min_length=1` is the implied form of a required field of
+those types, so it round-trips without a grammar constraint (the source and the
+generated field both carry it). An IR field that carries a `sanitize` flag, a
+`min_length` other than that implied `1`, or resolves to an optional default is not
+representable, and the emitter rejects its cluster.
 
 The auto-generated `id` an aggregate carries (IR kind `auto`, type `Auto`) is not
 a grammar type. The framework injects it, no one writes it, so the grammar does
@@ -298,9 +310,13 @@ consumes. It renders every name by its short form, the same `short_name` the
 renderer applies: `projector_for` is stored as a full projection FQN, and the
 emitter shortens it to the class name the `for` line carries. It recovers the
 `consumes` name by matching the projector's `handlers` key back to the slice's
-event. It skips the injected `id`, element options, and every element the grammar
-does not carry (entities, value objects, repositories, database models, command
-handlers, application services, queries, automations, fact events).
+event. Because the parser canonicalizes names, the emitter requires each
+participant's short name to already be canonical (its `_split_words` PascalCase form);
+a source class whose name is not canonical, such as `order_item`, makes the cluster
+ineligible, since emitting it verbatim would parse back to a different name. It skips
+the injected `id`, element options, and every element the grammar does not carry
+(entities, value objects, repositories, database models, command handlers,
+application services, queries, automations, fact events).
 
 The conformance compares only the **vocabulary-covered data**: the participants'
 names, their authored fields, and the wiring (`for`, `consumes`). Everything else is
