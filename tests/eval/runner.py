@@ -127,7 +127,10 @@ def run(
         for call in turn.tool_calls:
             result = execute_tool_call(workspace, call)
             results.append(result)
-            if call.name == "run_verify":
+            # A malformed run_verify call (extra args) comes back as a plain
+            # error dict with no "verdict"; keep only real VerifyResults, so a
+            # later verify_results[-1]["verdict"] read cannot KeyError.
+            if call.name == "run_verify" and "verdict" in result:
                 verify_results.append(result)
         conversation.messages.append(Message(role="tool", tool_results=tuple(results)))
     else:

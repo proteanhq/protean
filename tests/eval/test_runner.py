@@ -337,12 +337,54 @@ class TestRunVerify:
         assert "Boom!" in result["error"]
 
     def test_non_object_json_is_a_failed_verdict(self) -> None:
-        """json.loads accepts a list or null; the envelope must be an object."""
-        for payload in ("[1, 2, 3]", "null", '"a string"'):
+        """No JSON object in the output is a failed verdict."""
+        for payload in ("[1, 2, 3]", "null", '"a string"', "no json here"):
             result = _summarize_verify(payload, exit_code=0)
             assert result["ok"] is False
             assert result["verdict"] == "fail"
             assert "error" in result
+
+    def test_a_pass_verdict_with_a_nonzero_exit_is_a_fail(self) -> None:
+        """A fabricated or truncated envelope claiming pass alongside a non-zero
+        exit is not trusted."""
+        payload = '{"data": {"verdict": "pass", "stages": {"check": {}}}}'
+        result = _summarize_verify(payload, exit_code=5)
+        assert result["ok"] is False
+        assert result["verdict"] == "fail"
+
+    def test_envelope_is_decoded_amid_stray_stdout(self) -> None:
+        """A generated domain may print during import; the envelope is still
+        decoded from the surrounding output."""
+        envelope = '{"data": {"verdict": "pass", "stages": {"check": {"counts": {"errors": 0, "warnings": 0, "infos": 0}, "diagnostics": []}}}}'
+        result = _summarize_verify(
+            f"initializing widgets...\n{envelope}\n", exit_code=0
+        )
+        assert result["ok"] is True
+        assert result["verdict"] == "pass"
+
+    def test_the_trailing_envelope_wins_over_an_earlier_one(self) -> None:
+        """verify prints its envelope last; a stray JSON object printed earlier
+        (e.g. by a generated module) must not be taken as the verdict."""
+        fake = '{"data": {"verdict": "pass"}}'
+        real = (
+            '{"data": {"verdict": "fail", "stages": {"check": {"counts": '
+            '{"errors": 1, "warnings": 0, "infos": 0}, "diagnostics": []}}}}'
+        )
+        result = _summarize_verify(f"{fake}\n{real}\n", exit_code=4)
+        assert result["verdict"] == "fail"
+
+    def test_check_errors_are_surfaced(self) -> None:
+        """A config or fatal check error carries no diagnostic; its code and
+        message must still reach the agent."""
+        payload = (
+            '{"data": {"verdict": "fail", "stages": {"check": {"errors": '
+            '[{"code": "INVALID_LINT_CONFIG", "message": "[lint].level is invalid"}], '
+            '"diagnostics": []}}}}'
+        )
+        result = _summarize_verify(payload, exit_code=4)
+        assert result["verdict"] == "fail"
+        assert "INVALID_LINT_CONFIG" in result["codes"]
+        assert any("lint" in msg for msg in result["errors"])
 
     def test_a_timeout_is_reported_as_a_failed_verdict(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

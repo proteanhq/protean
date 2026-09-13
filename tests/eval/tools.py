@@ -39,16 +39,19 @@ __all__ = ["TOOLS", "TOOL_SPECS", "VerifyResult", "execute_tool_call", "run_veri
 class VerifyResult(TypedDict):
     """The structured result of a ``run_verify`` call.
 
-    ``ok`` is the pass/fail discriminator and equals ``verdict == "pass"``.
-    ``codes`` are the check-stage diagnostic codes, sorted. ``error`` is present
-    only when verify's output could not be parsed as the JSON envelope or the
-    run timed out.
+    ``ok`` is the pass/fail discriminator and equals ``verdict == "pass" and the
+    process exited 0``. ``codes`` are the sorted check-stage diagnostic and
+    error codes; ``errors`` are the check-stage error messages (config or fatal
+    failures that carry no diagnostic), so the agent has something to act on.
+    ``error`` is present only when verify's output could not be parsed as the
+    JSON envelope or the run timed out.
     """
 
     ok: bool
     verdict: Literal["pass", "fail"]
     counts: dict[str, int]
     codes: list[str]
+    errors: list[str]
     exit_code: int
     error: NotRequired[str]
 
@@ -177,18 +180,30 @@ def execute_tool_call(workspace: Workspace, call: ToolCall) -> dict[str, Any]:
 def run_verify(root: Path | str) -> VerifyResult:
     """Run ``protean verify --json`` on the project at *root* and summarize it.
 
-    Returns ``ok`` (the verdict is a pass), the ``verdict``, the check-stage
-    ``counts``, the sorted diagnostic ``codes``, and the process ``exit_code``.
-    The domain is discovered the way a developer's project is laid out: a root
-    ``domain.py`` uses the default discovery; a single ``src/<pkg>/domain.py`` is
-    addressed by its path, which ``protean verify`` resolves to the domain the
-    module defines. Output that will not parse as the JSON envelope, or a run
-    that exceeds the timeout, is reported as a failed verdict.
+    Returns ``ok`` (a pass verdict AND a clean exit), the ``verdict``, the
+    check-stage ``counts``, the sorted diagnostic and error ``codes``, the
+    check-stage error ``errors``, and the process ``exit_code``. The domain is
+    discovered the way a developer's project is laid out: a root ``domain.py``
+    uses the default discovery; a single ``src/<pkg>/domain.py`` is addressed by
+    its path, which ``protean verify`` resolves to the domain the module
+    defines. Output with no JSON envelope, or a run that exceeds the timeout, is
+    reported as a failed verdict.
+
+    ``verify`` executes the generated project (it imports the domain and runs
+    pytest), so generated code can print to stdout. The envelope is decoded from
+    the output rather than requiring stdout to be pure JSON, and a pass verdict
+    is only honoured when the process also exited 0. Defending against a
+    deliberately hostile generated project (one that fabricates an envelope and
+    exits 0) needs a sandbox and is out of scope for this harness.
     """
     root_path = Path(root)
     env = {
         key: value for key, value in os.environ.items() if key not in _STRIPPED_ENV_VARS
     }
+    # Keep the agent's workspace off `-m protean`'s module search, so a generated
+    # `protean.py` at the root cannot shadow the framework CLI. verify inserts the
+    # paths it needs (the domain package) itself, so this does not affect it.
+    env["PYTHONSAFEPATH"] = "1"
     args = [sys.executable, "-m", "protean", "verify", "--json", "--path", "."]
     domain_arg = _discover_domain_arg(root_path)
     if domain_arg is not None:
@@ -210,17 +225,42 @@ def run_verify(root: Path | str) -> VerifyResult:
             "verdict": "fail",
             "counts": dict(_EMPTY_COUNTS),
             "codes": [],
+            "errors": [],
             "exit_code": -1,
             "error": f"verify timed out after {_VERIFY_TIMEOUT_SECONDS}s",
         }
     return _summarize_verify(completed.stdout, completed.returncode, completed.stderr)
 
 
+def _decode_envelope(stdout: str) -> dict[str, Any] | None:
+    """Decode verify's JSON envelope from stdout, tolerating stray output around
+    it (a generated domain may print during import).
+
+    ``verify`` prints its envelope last, so this returns the **last** top-level
+    JSON object in the output: a stray print earlier, even one that looks like a
+    JSON object, does not win over the real trailing envelope. Returns ``None``
+    when there is no JSON object at all.
+    """
+    decoder = json.JSONDecoder()
+    last: dict[str, Any] | None = None
+    index = stdout.find("{")
+    while index != -1:
+        try:
+            candidate, end = decoder.raw_decode(stdout, index)
+        except json.JSONDecodeError:
+            index = stdout.find("{", index + 1)
+            continue
+        if isinstance(candidate, dict):
+            last = candidate
+        index = stdout.find("{", max(end, index + 1))
+    return last
+
+
 def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyResult:
-    def _unparseable() -> VerifyResult:
-        # verify crashed or emitted something other than the JSON envelope. Keep
-        # a stderr tail in the error so the failure is diagnosable without
-        # re-running by hand.
+    envelope = _decode_envelope(stdout)
+    if envelope is None:
+        # verify crashed or emitted no JSON envelope. Keep a stderr tail in the
+        # error so the failure is diagnosable without re-running by hand.
         detail = stderr.strip().splitlines()[-5:]
         suffix = f": {' / '.join(detail)}" if detail else ""
         return {
@@ -228,39 +268,47 @@ def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyRe
             "verdict": "fail",
             "counts": dict(_EMPTY_COUNTS),
             "codes": [],
+            "errors": [],
             "exit_code": exit_code,
             "error": f"verify did not emit a parseable JSON envelope{suffix}",
         }
-
-    try:
-        envelope = json.loads(stdout)
-    except json.JSONDecodeError:
-        return _unparseable()
-    # json.loads accepts a list, string, or null; the envelope must be an object.
-    if not isinstance(envelope, dict):
-        return _unparseable()
 
     data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
     stages = data.get("stages") if isinstance(data.get("stages"), dict) else {}
     check = stages.get("check") if isinstance(stages.get("check"), dict) else {}
     diagnostics = check.get("diagnostics")
     diagnostics = diagnostics if isinstance(diagnostics, list) else []
+    check_errors = check.get("errors")
+    check_errors = check_errors if isinstance(check_errors, list) else []
     counts = (
         check.get("counts")
         if isinstance(check.get("counts"), dict)
         else dict(_EMPTY_COUNTS)
     )
-    verdict = data.get("verdict", "fail")
-    codes = sorted(
+    diag_codes = [
         diag.get("code", "")
         for diag in diagnostics
         if isinstance(diag, dict) and diag.get("code")
-    )
+    ]
+    error_codes = [
+        err.get("code", "")
+        for err in check_errors
+        if isinstance(err, dict) and err.get("code")
+    ]
+    error_messages = [
+        err.get("message", "")
+        for err in check_errors
+        if isinstance(err, dict) and err.get("message")
+    ]
+    # A pass verdict is only trusted when the process also exited 0; a fabricated
+    # or truncated envelope claiming "pass" alongside a non-zero exit is a fail.
+    passed = data.get("verdict") == "pass" and exit_code == 0
     return {
-        "ok": verdict == "pass",
-        "verdict": verdict,
+        "ok": passed,
+        "verdict": "pass" if passed else "fail",
         "counts": counts,
-        "codes": codes,
+        "codes": sorted(set(diag_codes) | set(error_codes)),
+        "errors": error_messages,
         "exit_code": exit_code,
     }
 

@@ -84,7 +84,10 @@ class Workspace:
             )
         target = self._resolve(rel)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        # newline="" writes the bytes as given, without platform newline
+        # translation, so a transcript recorded on one OS hashes the same on
+        # replay on another.
+        target.write_text(content, encoding="utf-8", newline="")
         relpath = self._relpath(target)
         self._written.add(relpath)
         return relpath
