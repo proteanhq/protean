@@ -176,6 +176,26 @@ class TestWorkspace:
         (tmp_path / "__pycache__" / "junk.pyc").write_bytes(b"\x00\x01")
         assert workspace.project_hash() == tracked
 
+    def test_project_hash_skips_a_symlinked_tracked_file(self, tmp_path: Path) -> None:
+        """A tracked file swapped for a symlink (a generated test could point it
+        at a host file) is skipped, so the hash never reflects outside data."""
+        outside = tmp_path / "outside.txt"
+        outside.write_text("host secret", encoding="utf-8")
+        ws_dir = tmp_path / "ws"
+        ws_dir.mkdir()
+        workspace = Workspace(ws_dir)
+        workspace.write("keep.py", "x = 1\n")
+        workspace.write("swapped.py", "y = 2\n")
+        (ws_dir / "swapped.py").unlink()
+        (ws_dir / "swapped.py").symlink_to(outside)
+
+        survivor_dir = tmp_path / "only"
+        survivor_dir.mkdir()
+        survivor = Workspace(survivor_dir)
+        survivor.write("keep.py", "x = 1\n")
+
+        assert workspace.project_hash() == survivor.project_hash()
+
     def test_project_hash_skips_a_tracked_file_deleted_out_of_band(
         self, tmp_path: Path
     ) -> None:

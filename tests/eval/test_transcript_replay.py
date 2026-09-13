@@ -39,14 +39,19 @@ def test_a_transcript_exists_for_the_current_pack_version() -> None:
 @pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
 def test_transcript_pack_version_matches_its_directory(transcript_path: Path) -> None:
     """A transcript's internal ``pack_version`` must equal the installed
-    ``PACK_VERSION`` and its directory. Otherwise a stale fixture dropped into
+    ``PACK_VERSION`` and its directory, and its ``task_id`` must equal the
+    filename. Otherwise a stale or misfiled fixture dropped into
     ``transcripts/{PACK_VERSION}/`` would satisfy the existence guard and replay
-    against the wrong pack."""
+    against the wrong pack or under the wrong task."""
     transcript = Transcript.load(transcript_path)
     assert transcript.pack_version == PACK_VERSION == transcript_path.parent.name, (
         f"transcript {transcript.task_id!r} records pack_version "
         f"{transcript.pack_version!r} but sits under {transcript_path.parent.name!r} "
         f"for installed pack {PACK_VERSION!r}; re-record it."
+    )
+    assert transcript.task_id == transcript_path.stem, (
+        f"transcript at {transcript_path.name} records task_id "
+        f"{transcript.task_id!r}; the canonical key is <task_id>.json."
     )
 
 
