@@ -92,6 +92,34 @@ _OPTIONS_CLASS = "Meta"
 # the factory; one named ``cls`` gives the factory two parameters of that name.
 _AGGREGATE_GENERATED_NAMES = frozenset({"create", "cls"})
 
+# The names the renderers import into the generated modules. A class named for one of
+# these rebinds the import in the module that carries both: an event named
+# ``BaseAggregate`` makes the generated base inherit the event, and one named for the
+# project's domain variable makes the projector register against the event.
+_IMPORTED_SYMBOLS = frozenset(
+    {
+        "Annotated",
+        "BaseAggregate",
+        "Field",
+        "Identifier",
+        "Self",
+        "Text",
+        "date",
+        "datetime",
+        "handle",
+        "on",
+    }
+)
+
+# The two locals the renderers bind and then read again, so a name that takes one of
+# them changes what the later line refers to. The command handler holds its repository
+# in ``repo`` and adds the aggregate through it, and the projector builds the
+# projection into ``summary`` before asking the domain for that projection's
+# repository. Every other generated local is written once and never read back, so a
+# name may take it safely.
+_HANDLER_LOCAL = "repo"
+_PROJECTOR_LOCAL = "summary"
+
 
 class SliceGeneratorError(Exception):
     """A fragment the generator cannot promote to a slice: an unsupported field
@@ -168,17 +196,20 @@ def generate_slice_plan(
     Returns a plan of :class:`CreateFileOperation`\\ s at the canonical ADR-0030 paths
     under ``src/<package>/<slug>/``. Touches no files.
 
-    Raises :class:`SliceGeneratorError` when an element or field name is not a usable
-    Python name, when two of the slice's classes share a name, when a field name is
-    reserved by the framework or by the code the generator writes, when a field has an
-    unsupported type, when the event does not declare the surfaced ``<slug>_id``
-    identity field in a shape that can hold the aggregate's id, when an explicit
-    projection is not keyed on that field, or when the read side is only half present
-    or wired to a participant the slice does not define.
+    Raises :class:`SliceGeneratorError` when a name the generated code carries would
+    not work: an element name, field name, or derived slug that is not a usable Python
+    name; two of the slice's classes sharing a name, counting the read side the
+    generator derives; a name that collides with a symbol the generated modules import
+    or with a local they read back; or a field name reserved by the framework or by
+    the code the generator writes. It also raises when a field has an unsupported
+    type, when the event does not declare the surfaced ``<slug>_id`` identity field in
+    a shape that can hold the aggregate's id, when an explicit projection is not keyed
+    on that field or carries a field the event does not, and when the read side is
+    only half present or wired to a participant the slice does not define.
     """
     name = fragment.aggregate.name
     slug = _slug_for(name)
-    _validate(fragment, slug)
+    _validate(fragment, slug, domain_var)
 
     projection = fragment.projection or _derive_projection(fragment.event, name, slug)
     projector = fragment.projector or _derive_projector(
@@ -313,9 +344,22 @@ def _carries_aggregate_id(ir_field: IRField) -> bool:
     return ir_field.type == "String" and ir_field.max_length is None
 
 
-def _validate(fragment: SliceFragment, slug: str) -> None:
+def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
     """Reject a fragment that would render code that does not compile or verify."""
     id_name = f"{slug}_id"
+
+    _check_python_name(
+        slug,
+        f"The slug derived from the aggregate name {fragment.aggregate.name!r}:",
+    )
+    if slug in {_HANDLER_LOCAL, domain_var}:
+        raise SliceGeneratorError(
+            f"The aggregate name {fragment.aggregate.name!r} derives the slug "
+            f"{slug!r}, which the generated command handler already binds: it holds "
+            f"the repository in {_HANDLER_LOCAL!r} and reaches the domain through "
+            f"{domain_var!r}. The handler would then call the wrong object. Choose "
+            "another aggregate name."
+        )
 
     elements: list[tuple[str, SliceElement]] = [
         ("aggregate", fragment.aggregate),
@@ -325,7 +369,7 @@ def _validate(fragment: SliceFragment, slug: str) -> None:
     if fragment.projection is not None:
         elements.append(("projection", fragment.projection))
 
-    _validate_names(fragment, elements)
+    _validate_names(fragment, elements, domain_var)
 
     for role, element in elements:
         reserved = _reserved_field_names(role)
@@ -376,6 +420,7 @@ def _validate(fragment: SliceFragment, slug: str) -> None:
 
     if fragment.projector is not None and fragment.projection is not None:
         _validate_projection_key(fragment.projection, id_name)
+        _validate_projection_fields(fragment.projection, fragment.event, id_name)
         if fragment.projector.for_ != fragment.projection.name:
             raise SliceGeneratorError(
                 f"The projector's 'for' names {fragment.projector.for_!r}, but the "
@@ -389,11 +434,18 @@ def _validate(fragment: SliceFragment, slug: str) -> None:
 
 
 def _validate_names(
-    fragment: SliceFragment, elements: list[tuple[str, SliceElement]]
+    fragment: SliceFragment,
+    elements: list[tuple[str, SliceElement]],
+    domain_var: str,
 ) -> None:
-    """Every element name has to be a usable Python name, and the class names the
-    slice defines have to be distinct: they all land in one package, and the command
-    handler and projector import several of them into one module."""
+    """Check the class names the slice defines.
+
+    Each has to be a usable Python name, has to stay clear of the names the generated
+    modules import, and has to be distinct from the others: they all land in one
+    package, and the command handler and projector import several of them into one
+    module. The read side counts even when the fragment omits it, because the
+    generator then derives a projection and projector that carry names of their own.
+    """
     for role, element in elements:
         _check_python_name(element.name, f"The {role} name")
     if fragment.projector is not None:
@@ -403,6 +455,35 @@ def _validate_names(
     defined.append(("aggregate base", f"{fragment.aggregate.name}Base"))
     if fragment.projector is not None:
         defined.append(("projector", fragment.projector.name))
+    if fragment.projection is None and fragment.projector is None:
+        defined.append(
+            ("derived projection", _derived_projection_name(fragment.aggregate.name))
+        )
+        defined.append(
+            ("derived projector", _derived_projector_name(fragment.aggregate.name))
+        )
+
+    for role, class_name in defined:
+        if class_name in _IMPORTED_SYMBOLS or class_name == domain_var:
+            raise SliceGeneratorError(
+                f"The slice's {role} is named {class_name!r}, which the generated "
+                "code imports under that name. The class would replace the import in "
+                "the module that carries both, so the slice would inherit from, "
+                "register against, or be keyed on the wrong object. Rename it."
+            )
+
+    projection_name = (
+        fragment.projection.name
+        if fragment.projection is not None
+        else _derived_projection_name(fragment.aggregate.name)
+    )
+    if projection_name == _PROJECTOR_LOCAL:
+        raise SliceGeneratorError(
+            f"The slice's projection is named {projection_name!r}, which the "
+            "generated projector binds to the projection it just built. The next "
+            "line asks the domain for that projection's repository and would pass "
+            "the instance instead of the class. Rename the projection."
+        )
 
     seen: dict[str, str] = {}
     for role, class_name in defined:
@@ -412,6 +493,32 @@ def _validate_names(
                 f"and as its {role}. Each of the slice's classes needs its own name."
             )
         seen[class_name] = role
+
+
+def _validate_projection_fields(
+    projection: SliceElement, event: SliceElement, id_name: str
+) -> None:
+    """A projection's non-key fields are drawn from the event by name and carry the
+    event field's type and constraints (ADR-0041). The generated projector copies each
+    one straight off the event, so a field the event does not carry, or one whose
+    shape differs, fails when the projector handles the event."""
+    for field_name, ir_field in projection.fields.items():
+        if field_name == id_name:
+            continue
+        event_field = event.fields.get(field_name)
+        if event_field is None:
+            raise SliceGeneratorError(
+                f"The projection {projection.name!r} declares {field_name!r}, which "
+                f"the event {event.name!r} does not carry. The generated projector "
+                f"reads every projection field off the event, so handling "
+                f"{event.name!r} would fail. Drop the field or add it to the event."
+            )
+        if ir_field != event_field:
+            raise SliceGeneratorError(
+                f"The projection {projection.name!r} declares {field_name!r} in a "
+                f"different shape from the event {event.name!r}, which the projector "
+                "copies it from. Declare it the way the event does."
+            )
 
 
 def _validate_projection_key(projection: SliceElement, id_name: str) -> None:
@@ -443,6 +550,16 @@ def _validate_projection_key(projection: SliceElement, id_name: str) -> None:
         )
 
 
+def _derived_projection_name(aggregate_name: str) -> str:
+    """The name the generator gives a read side the fragment omits."""
+    return f"{aggregate_name}Summary"
+
+
+def _derived_projector_name(aggregate_name: str) -> str:
+    """The name the generator gives a projector the fragment omits."""
+    return f"{aggregate_name}Projector"
+
+
 def _derive_projection(event: SliceElement, name: str, slug: str) -> SliceElement:
     """The default projection for a write-side-only fragment: the event's fields with
     the surfaced ``<slug>_id`` promoted to the projection's ``Identifier`` key."""
@@ -455,7 +572,7 @@ def _derive_projection(event: SliceElement, name: str, slug: str) -> SliceElemen
             )
         else:
             fields[field_name] = ir_field
-    return SliceElement(name=f"{name}Summary", fields=fields)
+    return SliceElement(name=_derived_projection_name(name), fields=fields)
 
 
 def _derive_projector(
@@ -464,7 +581,7 @@ def _derive_projector(
     """The default projector for a write-side-only fragment: it reads the event into
     the derived projection."""
     return SliceProjector(
-        name=f"{name}Projector", for_=projection_name, consumes=event_name
+        name=_derived_projector_name(name), for_=projection_name, consumes=event_name
     )
 
 

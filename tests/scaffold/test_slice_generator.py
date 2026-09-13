@@ -447,6 +447,170 @@ def test_explicit_projection_key_must_be_an_identifier():
     assert "Identifier" in str(exc_info.value)
 
 
+def test_slug_that_is_not_a_usable_name_raises():
+    """The slug is a local variable, a method suffix, and the id-field prefix, so it
+    has to be a usable Python name even when the aggregate name is. ``class_`` is a
+    valid element name whose slug is the keyword ``class``."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("class_", {"name": _STR_100}),
+        command=SliceElement("CreateThing", {"name": _STR_100}),
+        event=SliceElement("ThingCreated", {"class_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "usable Python name" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("aggregate_name", "domain_var"),
+    [("Repo", "myproj"), ("Domain", "domain")],
+)
+def test_slug_colliding_with_a_handler_local_raises(aggregate_name, domain_var):
+    """The generated command handler holds its repository in ``repo`` and reaches the
+    domain through the project's domain variable, and reads both back. A slug that
+    takes either name makes the handler call the wrong object: ``Repo`` gives
+    ``repo.add(repo)`` and ``Domain`` gives ``domain.repository_for`` on the
+    aggregate."""
+    slug = aggregate_name.lower()
+    fragment = SliceFragment(
+        aggregate=SliceElement(aggregate_name, {"name": _STR_100}),
+        command=SliceElement(f"Create{aggregate_name}", {"name": _STR_100}),
+        event=SliceElement(
+            f"{aggregate_name}Created",
+            {f"{slug}_id": _STR_PLAIN, "name": _STR_100},
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", domain_var)
+
+    assert slug in str(exc_info.value)
+
+
+@pytest.mark.parametrize("clashing_name", ["OrderSummary", "OrderProjector"])
+def test_clash_with_a_derived_read_side_name_raises(clashing_name):
+    """A fragment that omits its read side still defines ``<Aggregate>Summary`` and
+    ``<Aggregate>Projector``, because the generator derives them. An event named
+    ``OrderSummary`` would have ``projectors.py`` import that name from both
+    ``events`` and ``projection``."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement(clashing_name, {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert clashing_name in str(exc_info.value)
+
+
+@pytest.mark.parametrize("clashing_name", ["BaseAggregate", "Identifier", "handle"])
+def test_element_name_clashing_with_a_generated_import_raises(clashing_name):
+    """The generated modules import these names, so a class named for one replaces the
+    import in the module carrying both. An event named ``BaseAggregate`` makes
+    ``class OrderBase(BaseAggregate)`` inherit the event instead of the aggregate
+    base, leaving the create path without ``raise_``."""
+    fragment = _fragment_with(
+        event=SliceElement(clashing_name, {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert clashing_name in str(exc_info.value)
+
+
+def test_element_name_clashing_with_the_domain_variable_raises():
+    """The generated modules import the project's domain variable by name, so a class
+    that takes it would be what the decorators resolve to."""
+    fragment = _fragment_with(command=SliceElement("domain", {"name": _STR_100}))
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "domain")
+
+    assert "domain" in str(exc_info.value)
+
+
+def test_projection_named_for_the_projector_local_raises():
+    """The projector builds the projection into ``summary`` and then asks the domain
+    for that projection's repository. A projection named ``summary`` would have the
+    second line pass the instance instead of the class."""
+    fragment = _fragment_with(
+        projection=SliceElement(
+            "summary",
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                ),
+                "name": _STR_100,
+            },
+        ),
+        projector=SliceProjector(
+            name="OrderProjector", for_="summary", consumes="OrderCreated"
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "summary" in str(exc_info.value)
+
+
+def _explicit_read_side(projection_fields) -> SliceFragment:
+    return _fragment_with(
+        projection=SliceElement("OrderView", projection_fields),
+        projector=SliceProjector(
+            name="OrderViewProjector", for_="OrderView", consumes="OrderCreated"
+        ),
+    )
+
+
+_PROJECTION_KEY = IRField(kind="identifier", type="Identifier", identifier=True)
+
+
+def test_projection_field_the_event_does_not_carry_raises():
+    """The projector reads every projection field straight off the event (ADR-0041),
+    so a field the event does not carry raises when the event is handled."""
+    fragment = _explicit_read_side({"order_id": _PROJECTION_KEY, "extra": _STR_100})
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "extra" in str(exc_info.value)
+
+
+def test_projection_field_shaped_differently_from_the_event_raises():
+    """A projection's non-key fields carry the event field's type and constraints
+    (ADR-0041); the projector copies the value across unchanged."""
+    fragment = _explicit_read_side(
+        {
+            "order_id": _PROJECTION_KEY,
+            "name": IRField(kind="standard", type="Integer", required=True),
+        }
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "name" in str(exc_info.value)
+
+
+def test_aggregate_field_named_id_is_accepted():
+    """``id`` on an aggregate is not a collision: the framework keeps auto-injecting
+    the identity and the declared field stays the tracked identifier, so the generated
+    ``{slug}.id`` still resolves."""
+    fragment = _fragment_with(
+        aggregate=SliceElement("Order", {"id": _STR_PLAIN, "name": _STR_100})
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "id: str" in _content_for(plan, "aggregate_base.py")
+
+
 def test_half_present_read_side_raises(tmp_path):
     """A projection without a projector (or the reverse) is rejected: the read side is
     both together or neither."""
