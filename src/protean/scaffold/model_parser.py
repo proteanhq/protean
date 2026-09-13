@@ -797,17 +797,21 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
                 f"projector {projector['name']!r} sets a non-default subscription "
                 f"({subscription}), which the grammar cannot express"
             )
-        # ``stream_categories`` is derived from ``aggregates`` when unset, but an
-        # explicit value overrides it and changes which streams the projector reads.
-        # The projector spans this one aggregate, so its categories are that
-        # aggregate's category and nothing else.
-        categories = projector.get("stream_categories")
+        # ``stream_categories`` decides which streams the projector reads. Unset, it
+        # derives from ``aggregates``, already pinned to this aggregate above. A
+        # projector that binds by category names its streams directly, and they have to
+        # be this aggregate's default category and nothing else: promotion re-derives
+        # exactly that from the single-aggregate wiring, so any other value would emit a
+        # model that reads different streams.
         expected_categories = [
             _option_defaults("aggregate", aggregate["name"], domain_name)[
                 "stream_category"
             ]
         ]
-        if categories is not None and categories != expected_categories:
+        categories = projector.get("stream_categories")
+        if categories is None:
+            categories = expected_categories if projector.get("aggregates") else []
+        if categories != expected_categories:
             raise ModelEmitError(
                 f"projector {projector['name']!r} subscribes to {categories} rather "
                 f"than {expected_categories}, which the grammar cannot express"
@@ -904,11 +908,16 @@ def _resolve_read_side(
         )
 
     group, projector = matches[0]
-    if projector.get("aggregates", []) != [cluster_fqn]:
+    # A projector binds to this aggregate's stream either by naming it in
+    # ``aggregates`` or by setting ``stream_categories`` directly. A non-empty
+    # ``aggregates`` list that names anything other than this aggregate spans a wider
+    # slice than the grammar covers. An empty list means the binding is by category,
+    # which the caller checks against this aggregate's default.
+    aggregates = projector.get("aggregates", [])
+    if aggregates not in ([], [cluster_fqn]):
         raise ModelEmitError(
             f"projector {projector['name']!r} spans aggregates "
-            f"{projector.get('aggregates', [])}; the grammar covers a "
-            "single-aggregate projector"
+            f"{aggregates}; the grammar covers a single-aggregate projector"
         )
     handlers = projector.get("handlers", {})
     if list(handlers) != [event_type] or any(len(v) != 1 for v in handlers.values()):

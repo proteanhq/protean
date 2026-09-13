@@ -1218,6 +1218,103 @@ class TestEmitter:
             emit_model(_synthetic_ir(projections=projections), "m.Order")
         assert "subscribes to" in str(exc.value)
 
+    def test_projector_binding_by_default_stream_category_emits(self):
+        # A projector may bind to this aggregate's stream through an explicit
+        # ``stream_categories`` value and an empty ``aggregates`` list. When that value
+        # is the aggregate's default category (``m::order`` here), the slice reads the
+        # same stream as one that names the aggregate, so the emitter emits it: an empty
+        # ``aggregates`` list is not a wider slice.
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        },
+                        "name": {
+                            "kind": "standard",
+                            "type": "String",
+                            "required": True,
+                        },
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": [],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                        "stream_categories": ["m::order"],
+                    }
+                },
+            }
+        }
+        text = emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "projector OrderProjector:" in text
+        assert "for OrderSummary" in text
+        assert "consumes OrderCreated" in text
+
+    def test_projector_binding_by_non_default_stream_category_raises(self):
+        # The same empty-``aggregates`` binding is refused when the explicit category is
+        # not this aggregate's default: it reads a different stream than promotion would
+        # rebuild from the wiring.
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        }
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": [],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                        "stream_categories": ["legacy::orders"],
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "subscribes to" in str(exc.value)
+
+    def test_projector_without_aggregates_or_stream_categories_raises(self):
+        # A projector binds to a stream through ``aggregates`` or ``stream_categories``.
+        # An IR that carries neither names no stream for this slice, so the emitter
+        # refuses it instead of emitting a projector with no binding.
+        projections = {
+            "m.Report": {
+                "projection": {
+                    "name": "OrderSummary",
+                    "fields": {
+                        "order_id": {
+                            "kind": "identifier",
+                            "type": "Identifier",
+                            "identifier": True,
+                        }
+                    },
+                },
+                "projectors": {
+                    "m.OrderProjector": {
+                        "name": "OrderProjector",
+                        "aggregates": [],
+                        "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                    }
+                },
+            }
+        }
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "subscribes to" in str(exc.value)
+
     def test_unknown_aggregate_option_raises(self):
         # An option the table does not know is refused rather than guessed at, so a
         # new framework option cannot start being dropped in silence.

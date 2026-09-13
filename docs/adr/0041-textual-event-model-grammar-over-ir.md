@@ -244,11 +244,13 @@ and the wiring) is expressible in the grammar: authored fields within the eight 
 and two constraints, the injected-id identity, the field-set relationships between the
 command, event, and projection that the worked example shows, and framework-default
 options. Derived metadata the round trip does not compare (element descriptions from
-docstrings, FQNs, message versions) is ignored, so it never makes a cluster
-ineligible. The emitter raises on an ineligible cluster, so it never drops a covered
-participant silently. The exact eligibility rules are #1471's, enforced by this
-conformance test; the ADR fixes that eligibility is decided against the IR over the
-covered subset.
+docstrings, FQNs) is ignored, so it never makes a cluster ineligible. A message's
+version is also outside the grammar, but the covered subset is version-1 messages:
+the grammar has no version syntax, so promotion recreates a version-1 message, and a
+command or event at any other version is ineligible. The emitter raises on an
+ineligible cluster, so it never drops a covered participant silently. The exact
+eligibility rules are #1471's, enforced by this conformance test; the ADR fixes that
+eligibility is decided against the IR over the covered subset.
 
 Field order is not part of the contract. The IR keys fields by name in a map, and
 `IRBuilder` canonicalizes them by name, so a fragment carries no declaration order.
