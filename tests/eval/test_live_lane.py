@@ -55,6 +55,10 @@ def test_live_lane_records_a_replayable_green_transcript(
     workspace = Workspace(tmp_path)
     result = replay(transcript, workspace=workspace)
     assert result.project_hash == transcript.project_hash
+    # The recorded run must itself have verified green (the task asks the agent
+    # to run verify), and a fresh verify of the produced tree must also pass.
+    assert result.verify_results, "the live run recorded no run_verify call"
+    assert result.verify_results[-1]["verdict"] == "pass"
     assert run_verify(workspace.root)["verdict"] == "pass"
 
     transcript.save(eval_root())  # the live lane doubles as the recorder

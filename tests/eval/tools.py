@@ -200,11 +200,12 @@ def run_verify(root: Path | str) -> VerifyResult:
     env = {
         key: value for key, value in os.environ.items() if key not in _STRIPPED_ENV_VARS
     }
-    # Keep the agent's workspace off `-m protean`'s module search, so a generated
-    # `protean.py` at the root cannot shadow the framework CLI. verify inserts the
-    # paths it needs (the domain package) itself, so this does not affect it.
-    env["PYTHONSAFEPATH"] = "1"
-    args = [sys.executable, "-m", "protean", "verify", "--json", "--path", "."]
+    # `-P` keeps the agent's workspace off this interpreter's module search, so a
+    # generated `protean.py` at the root cannot shadow the framework CLI on
+    # `-m protean`. It is a flag on the outer interpreter, not an inherited env
+    # var, so verify's nested `python -m pytest` still sees the workspace on its
+    # path and a root-layout project's own tests still import their modules.
+    args = [sys.executable, "-P", "-m", "protean", "verify", "--json", "--path", "."]
     domain_arg = _discover_domain_arg(root_path)
     if domain_arg is not None:
         args += ["-d", domain_arg]
@@ -246,12 +247,12 @@ def _decode_envelope(stdout: str) -> dict[str, Any] | None:
     index = stdout.find("{")
     while index != -1:
         try:
+            # Scanning only from "{", so a successful decode is always an object.
             candidate, end = decoder.raw_decode(stdout, index)
         except json.JSONDecodeError:
             index = stdout.find("{", index + 1)
             continue
-        if isinstance(candidate, dict):
-            last = candidate
+        last = candidate
         index = stdout.find("{", max(end, index + 1))
     return last
 
@@ -275,7 +276,13 @@ def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyRe
 
     data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
     stages = data.get("stages") if isinstance(data.get("stages"), dict) else {}
-    check = stages.get("check") if isinstance(stages.get("check"), dict) else {}
+
+    def _stage(name: str) -> dict[str, Any]:
+        stage = stages.get(name)
+        return stage if isinstance(stage, dict) else {}
+
+    init, check, tests = _stage("init"), _stage("check"), _stage("tests")
+
     diagnostics = check.get("diagnostics")
     diagnostics = diagnostics if isinstance(diagnostics, list) else []
     check_errors = check.get("errors")
@@ -285,30 +292,44 @@ def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyRe
         if isinstance(check.get("counts"), dict)
         else dict(_EMPTY_COUNTS)
     )
-    diag_codes = [
-        diag.get("code", "")
+    codes = {
+        diag["code"]
         for diag in diagnostics
         if isinstance(diag, dict) and diag.get("code")
-    ]
-    error_codes = [
-        err.get("code", "")
-        for err in check_errors
-        if isinstance(err, dict) and err.get("code")
-    ]
-    error_messages = [
-        err.get("message", "")
+    } | {
+        err["code"] for err in check_errors if isinstance(err, dict) and err.get("code")
+    }
+
+    # Surface every stage's failure detail, not just check's: an init import
+    # error (exit 3) or a failing test suite (exit 5) is the actionable feedback
+    # run_verify exists to give the agent.
+    errors: list[str] = []
+    if init.get("status") == "fail" and init.get("error"):
+        errors.append(str(init["error"]))
+    errors.extend(
+        str(err["message"])
         for err in check_errors
         if isinstance(err, dict) and err.get("message")
-    ]
-    # A pass verdict is only trusted when the process also exited 0; a fabricated
-    # or truncated envelope claiming "pass" alongside a non-zero exit is a fail.
-    passed = data.get("verdict") == "pass" and exit_code == 0
+    )
+    if tests.get("status") == "fail":
+        errors.append(
+            f"tests failed (returncode {tests.get('returncode')}, "
+            f"{tests.get('failed')} failed)"
+        )
+
+    # A pass is derived from the stage tree, not the top-level verdict field:
+    # every stage must report pass and the process must have exited 0. A
+    # truncated envelope missing a stage, or one claiming pass alongside a
+    # non-zero exit, is a fail.
+    passed = exit_code == 0 and all(
+        stage.get("status") == "pass" for stage in (init, check, tests)
+    )
     return {
         "ok": passed,
         "verdict": "pass" if passed else "fail",
         "counts": counts,
-        "codes": sorted(set(diag_codes) | set(error_codes)),
-        "errors": error_messages,
+        "codes": sorted(codes),
+        "errors": errors,
         "exit_code": exit_code,
     }
 

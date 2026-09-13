@@ -113,7 +113,9 @@ class Transcript:
         return that path, creating the pack-version directory if needed."""
         path = transcript_path(eval_root, self.pack_version, self.task_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.dumps(), encoding="utf-8")
+        # newline="" keeps the canonical LF bytes from dumps(), so a transcript
+        # saved on one OS is byte-identical to the same run saved on another.
+        path.write_text(self.dumps(), encoding="utf-8", newline="")
         return path
 
 

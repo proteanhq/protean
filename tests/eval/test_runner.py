@@ -237,6 +237,16 @@ class TestTools:
         assert result["ok"] is False
         assert "string" in result["error"]
 
+    def test_nul_byte_in_path_is_feedback(self, tmp_path: Path) -> None:
+        """A NUL byte in a path reaches the filesystem as a ValueError; it must
+        come back as feedback, not crash the run."""
+        workspace = Workspace(tmp_path)
+        result = execute_tool_call(
+            workspace, ToolCall("write_file", {"path": "a\x00b.py", "content": "x"})
+        )
+        assert result["ok"] is False
+        assert "NUL" in result["error"]
+
     def test_reading_a_binary_file_is_feedback(self, tmp_path: Path) -> None:
         """A read_file on a non-UTF-8 byproduct comes back as feedback."""
         workspace = Workspace(tmp_path)
@@ -355,12 +365,42 @@ class TestRunVerify:
     def test_envelope_is_decoded_amid_stray_stdout(self) -> None:
         """A generated domain may print during import; the envelope is still
         decoded from the surrounding output."""
-        envelope = '{"data": {"verdict": "pass", "stages": {"check": {"counts": {"errors": 0, "warnings": 0, "infos": 0}, "diagnostics": []}}}}'
+        envelope = (
+            '{"data": {"verdict": "pass", "stages": {'
+            '"init": {"status": "pass"}, '
+            '"check": {"status": "pass", "counts": {"errors": 0, "warnings": 0, "infos": 0}, "diagnostics": []}, '
+            '"tests": {"status": "pass"}}}}'
+        )
         result = _summarize_verify(
             f"initializing widgets...\n{envelope}\n", exit_code=0
         )
         assert result["ok"] is True
         assert result["verdict"] == "pass"
+
+    def test_a_missing_stage_is_not_a_pass(self) -> None:
+        """A pass is derived from the stage tree; an envelope claiming pass with
+        a stage missing (or not itself pass) is a fail even at exit 0."""
+        payload = (
+            '{"data": {"verdict": "pass", "stages": {'
+            '"init": {"status": "pass"}, "check": {"status": "pass"}}}}'
+        )
+        result = _summarize_verify(payload, exit_code=0)
+        assert result["ok"] is False
+        assert result["verdict"] == "fail"
+
+    def test_init_and_test_stage_failures_are_surfaced(self) -> None:
+        """An init import error or a failing test suite is the actionable
+        feedback run_verify must hand back."""
+        payload = (
+            '{"data": {"verdict": "fail", "stages": {'
+            '"init": {"status": "fail", "error": "cannot import name Widget"}, '
+            '"check": {"status": "pass"}, '
+            '"tests": {"status": "fail", "returncode": 1, "failed": 2}}}}'
+        )
+        result = _summarize_verify(payload, exit_code=3)
+        assert result["verdict"] == "fail"
+        assert any("import name Widget" in msg for msg in result["errors"])
+        assert any("tests failed" in msg for msg in result["errors"])
 
     def test_the_trailing_envelope_wins_over_an_earlier_one(self) -> None:
         """verify prints its envelope last; a stray JSON object printed earlier

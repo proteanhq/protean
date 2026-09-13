@@ -56,6 +56,10 @@ class Workspace:
         """
         if not isinstance(rel, str):
             raise WorkspaceError(f"path must be a string, got {type(rel).__name__}")
+        # A NUL byte reaches the filesystem as a ValueError, which the tool layer
+        # does not treat as feedback; reject it here as a WorkspaceError.
+        if "\x00" in rel:
+            raise WorkspaceError(f"path contains a NUL byte: {rel!r}")
         candidate = Path(rel.strip())
         if candidate.is_absolute():
             raise WorkspaceError(f"path must be relative to the workspace: {rel!r}")
