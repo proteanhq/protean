@@ -22,6 +22,7 @@ from protean.scaffold.model_parser import (
     emit_model,
     parse_model,
 )
+from tests.scaffold.raising_slice_domain import build_ir
 
 # The normative worked example (ADR-0041, the Order slice text and its fragment).
 ORDER_MODEL = """aggregate Order:
@@ -1038,8 +1039,6 @@ class TestEmitter:
         # writes. It is derived and fails open, so it must not make a slice
         # ineligible. The slice lives in its own module because the derivation needs
         # module-level qualnames (see raising_slice_domain).
-        from tests.scaffold.raising_slice_domain import build_ir
-
         ir = build_ir()
         fqn = _cluster_fqn(ir)
         # Guard the premise: without the derived key present this proves nothing.
@@ -1072,6 +1071,28 @@ class TestEmitter:
         ir["domain"]["identity_strategy"] = "uuid"
         ir["domain"]["identity_type"] = "string"
         assert "aggregate Order:" in emit_model(ir, "m.Order")
+
+    def test_versioned_command_raises(self):
+        # ADR-0041 v1 has no version syntax. A command at ``__version__ = 2`` emits
+        # text that promotes back to v1, changing the command's identity, so the
+        # emitter refuses it rather than drop the version in silence.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["commands"]["m.CreateOrder"]["__version__"] = 2
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "version 2" in str(exc.value)
+
+    def test_versioned_event_type_raises(self):
+        # The same for the event, keyed off the ``vN`` suffix of ``__type__``: a v2
+        # type would promote back to v1, changing the event's routing and its
+        # upcaster chain.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["events"]["m.OrderCreated"]["__type__"] = (
+            "M.OrderCreated.v2"
+        )
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "M.OrderCreated.v2" in str(exc.value)
 
     def test_custom_stream_category_raises(self):
         # Settable by hand, and an override changes where the slice's events are

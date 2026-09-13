@@ -173,6 +173,8 @@ _DEFAULT_OPTIONS: dict[str, dict[str, Any]] = {
 # documentation, dropped for the same reason a field's is. The identity and locating
 # keys (``fqn``, ``module``, ``element_type``, ``part_of``, ``__type__``,
 # ``__version__``, ``identity_field``) are ones promotion fills, per ADR-0041.
+# ``__type__`` and ``__version__`` are only safe to drop for a version-1 message,
+# because promotion recreates one; ``_check_message_version`` refuses any other.
 #
 # ``method_edges`` is derived too, and dropping it loses nothing authored: the builder
 # reads it off the element's source (an aggregate method that raises an event, a
@@ -304,9 +306,10 @@ def parse_model(text: str) -> dict[str, Any]:
     Returns a dict with ``aggregate``, ``command``, ``event`` and, when the model
     carries a read side, ``projection`` and ``projector``. Each of the first four
     is ``{"name": <PascalCase>, "fields": {<name>: <IR field entry>}}``; the
-    projector is ``{"name", "for", "consumes"}`` with the grammar terms kept as
-    authored (the generator promotes them to references). Field names are
-    read verbatim; block names are normalized to PascalCase using the same
+    projector is ``{"name", "for", "consumes"}``, where ``for`` and ``consumes``
+    are the normalized PascalCase names of the projection and event it references,
+    not the spellings as authored. Field names are read verbatim; block names (and
+    those two references) are normalized to PascalCase using the same
     word-splitting as ``protean add``.
 
     Raises :class:`ModelParseError` with its 1-based line number on any grammar or
@@ -722,8 +725,9 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
       (``is_event_sourced``, ``fact_events``, a projection's ``cache``, a custom
       ``provider``, ``schema_name`` or ``stream_category``), a projector's custom
       stream categories or subscription, a declared invariant, a participant key
-      outside the expressible set (an event's ``published``), or a domain identity
-      other than the UUID-as-string one ADR-0041 v1 targets.
+      outside the expressible set (an event's ``published``), a command or event
+      above version 1, or a domain identity other than the UUID-as-string one
+      ADR-0041 v1 targets.
 
     Two things are dropped on purpose, because neither holds an authored choice: a
     ``description``, which is documentation, and a key the builder derives (the
@@ -944,6 +948,30 @@ def _option_defaults(keyword: str, name: str, domain_name: str) -> dict[str, Any
     return defaults
 
 
+def _check_message_version(keyword: str, element: dict[str, Any]) -> None:
+    """Refuse a command or event that is not a version-1 message.
+
+    The grammar has no version syntax, so a message's ``__version__`` and the ``vN``
+    suffix of its ``__type__`` are dropped on emit and promotion recreates a v1
+    message. Emitting a v2 message would silently change its identity, which drives
+    its routing and its upcaster chain. A v1 message is the only one in the subset,
+    so anything else is refused. Metadata that states no version is taken to be v1.
+    """
+    name = element["name"]
+    version = element.get("__version__", 1)
+    if version != 1:
+        raise ModelEmitError(
+            f"the {keyword} {name!r} is version {version!r}, which the grammar "
+            "cannot express; it covers version-1 messages"
+        )
+    type_string = element.get("__type__", "")
+    if type_string and not type_string.endswith(".v1"):
+        raise ModelEmitError(
+            f"the {keyword} {name!r} has the message type {type_string!r}, which is "
+            "not version 1; the grammar covers version-1 messages"
+        )
+
+
 def _check_participant(
     cluster_fqn: str, keyword: str, element: dict[str, Any], domain_name: str
 ) -> None:
@@ -968,6 +996,9 @@ def _check_participant(
             f"the {keyword} {name!r} declares the invariants {declared}, which the "
             "grammar cannot express"
         )
+
+    if keyword in ("command", "event"):
+        _check_message_version(keyword, element)
 
     if keyword in _DEFAULT_OPTIONS:
         defaults = _option_defaults(keyword, name, domain_name)
