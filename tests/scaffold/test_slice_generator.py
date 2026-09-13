@@ -106,8 +106,8 @@ def test_default_fragment_reproduces_plan_add_slice(tmp_path):
 
 def test_rich_fragment_is_reflected_in_every_file(tmp_path):
     """A fragment richer than the default declares each field in its per-type form,
-    across all eight primitive types and both constraints, and every planned file is
-    valid Python."""
+    across every supported primitive type and both constraints, and every planned file
+    is valid Python."""
     fields = {
         "title": IRField(kind="standard", type="String", required=True, max_length=200),
         "body": IRField(kind="text", type="Text", required=True),
@@ -476,9 +476,7 @@ def test_explicit_projection_key_must_be_an_identifier():
         projection=SliceElement(
             "OrderView",
             {
-                "order_id": IRField(
-                    kind="standard", type="String", required=True, identifier=True
-                ),
+                "order_id": IRField(kind="standard", type="String", identifier=True),
                 "name": _STR_100,
             },
         ),
@@ -777,6 +775,28 @@ def test_projection_named_for_a_projector_local_raises(projection_name):
     assert projection_name in str(exc_info.value)
 
 
+@pytest.mark.parametrize("aggregate_name", ["self", "command", "repo"])
+def test_aggregate_named_for_a_handler_local_raises(aggregate_name):
+    """The handler method binds ``self``, ``command`` and ``repo``, and reads the
+    aggregate class by name in the same method, to call ``create`` and to ask for its
+    repository. An aggregate named ``command`` renders
+    ``order = command.create(...)``, which calls the method on the command instance,
+    so the slice cannot create the aggregate."""
+    fragment = SliceFragment(
+        aggregate=SliceElement(aggregate_name, {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+        # A supplied slug keeps the name clear of the slug it would derive, so the
+        # handler-local collision is what this exercises.
+        slug="order",
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert aggregate_name in str(exc_info.value)
+
+
 def test_event_field_reserved_on_the_derived_projection_raises():
     """A fragment with no read side has its projection derived from the event, so the
     event's field names have to clear the projection's reserved set too. ``defaults``
@@ -1006,6 +1026,47 @@ def test_identity_key_marked_outside_a_projection_raises(role):
         generate_slice_plan(_fragment_with(**{role: element}), "myproj", "myproj")
 
     assert "user_id" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("role", ["aggregate", "command", "event"])
+def test_optional_authored_field_raises(role):
+    """Every authored field is required (ADR-0041) and the generator renders it that
+    way: a ``Text`` field comes out ``Text(required=True)`` whatever the fragment says.
+    A fragment asking for an optional field would get a required one without a word,
+    so the generator rejects it instead."""
+    optional = IRField(kind="text", type="Text", required=False)
+    element = {
+        "aggregate": SliceElement("Order", {"name": _STR_100, "note": optional}),
+        "command": SliceElement("CreateOrder", {"name": _STR_100, "note": optional}),
+        "event": SliceElement(
+            "OrderCreated", {"order_id": _STR_PLAIN, "note": optional}
+        ),
+    }[role]
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(**{role: element}), "myproj", "myproj")
+
+    assert "note" in str(exc_info.value)
+
+
+def test_projection_key_marked_required_raises():
+    """The projection's identity key is the one field ADR-0041 leaves without the
+    required flag, since it takes the framework identity default. The key renders as
+    ``Identifier(identifier=True)``, which carries no required flag, so a key marked
+    required would be rendered without it."""
+    fragment = _explicit_read_side(
+        {
+            "order_id": IRField(
+                kind="identifier", type="Identifier", required=True, identifier=True
+            ),
+            "name": _STR_100,
+        }
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "order_id" in str(exc_info.value)
 
 
 def test_field_named_for_an_imported_field_factory_is_accepted():

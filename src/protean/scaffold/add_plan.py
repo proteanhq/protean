@@ -130,7 +130,9 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
     # Express today's default slice as a write-side-only fragment and route it
     # through the shared generator (ADR-0041). The read side is omitted, so the
     # generator derives the default projection and projector; the result is the
-    # same eight files ``add`` has always emitted. The only field is the
+    # canonical slice ``add`` has always emitted: the package initializer, the
+    # aggregate and its generated base, the command, the event, the command
+    # handler, the projection, and the projector. The only field is the
     # name-only aggregate's ``name`` (a bounded String); the event carries the
     # surfaced ``<slug>_id`` reference (a plain String) plus that name.
     name_field = IRField(kind="standard", type="String", required=True, max_length=100)

@@ -155,10 +155,12 @@ class IRField:
     them, and the projection's identity key is the one field that is not (it takes
     the framework identity default), which is why the default is ``False``.
 
-    ``_declare`` does not read ``required`` today. Every authored field renders as a
-    plain annotation with no default, which is already a required field. The one
-    thing that form does not carry is the non-empty floor Protean puts on a required
-    ``String`` (``min_length=1``, ``protean.fields.spec``), so a generated ``String``
+    ``_validate`` pins the flag to those two shapes, so ``_declare`` does not have to
+    read it: an authored field renders as a plain annotation with no default, which is
+    already a required field, and the projection's key renders as
+    ``Identifier(identifier=True)``, which takes the identity default. The one thing
+    the plain annotation does not carry is the non-empty floor Protean puts on a
+    required ``String`` (``min_length=1``, ``protean.fields.spec``), so a ``String``
     field accepts the empty string. That is the output ``protean add`` has always
     written and this generator keeps it; changing it would change every generated
     slice. ``Text`` fields use the field factory and do carry ``required=True``.
@@ -229,7 +231,9 @@ def generate_slice_plan(
     generator derives; a name that collides, in a module that carries it, with a
     symbol that module imports, or with a local the generated methods read back; or a
     field name reserved by the framework or by the code the generator writes. It also
-    raises when a field has an unsupported type, when the event does not declare the
+    raises when a field has an unsupported type, when a field's required flag is not
+    the one ADR-0041 gives it (every authored field required, the projection's key
+    not), when the event does not declare the
     surfaced ``<slug>_id`` identity field in a shape that can hold the aggregate's id,
     when an explicit projection is not keyed on that field or carries a field the
     event does not, and when the read side is only half present or wired to a
@@ -462,6 +466,20 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
                     "other element the flag has no meaning, and when the generator "
                     "derives the read side it would carry across and give the "
                     "projection a second key. Drop the flag."
+                )
+            if ir_field.identifier and ir_field.required:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} is the projection's "
+                    "identity key and is also marked required. The key takes the "
+                    "framework identity default, so ADR-0041 leaves it without the "
+                    "flag and the generator renders it without one. Drop the flag."
+                )
+            if not ir_field.identifier and not ir_field.required:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} is not marked "
+                    "required. Every authored field is required (ADR-0041), and the "
+                    "generator renders it that way, so an optional field would come "
+                    "out required without a word. Mark it required."
                 )
             if ir_field.type not in _BASE_ANNOTATION:
                 supported = ", ".join(sorted(_BASE_ANNOTATION))
@@ -781,6 +799,15 @@ def _validate_names(
                     "that module, so the slice would inherit from, register against, "
                     "be keyed on, or be typed as the wrong object. Rename it."
                 )
+
+    if fragment.aggregate.name in _HANDLER_LOCALS:
+        raise SliceGeneratorError(
+            f"The slice's aggregate is named {fragment.aggregate.name!r}, which the "
+            "generated command handler binds inside the method that creates it. The "
+            "method reads the aggregate class by that name, to call ``create`` on it "
+            "and to ask the domain for its repository, so it would get the local "
+            "instead. Rename the aggregate."
+        )
 
     projection_name = (
         fragment.projection.name
