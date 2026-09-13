@@ -490,3 +490,24 @@ def test_domain_variable_the_generator_rejects_arrives_as_an_add_plan_error(tmp_
         plan_add_slice(str(tmp_path), "aggregate", "Order")
 
     assert "repo" in str(exc_info.value)
+
+
+def test_default_add_output_matches_the_pre_refactor_golden(tmp_path):
+    """``add``'s default slice is byte-for-byte what it was before the generator
+    refactor.
+
+    The other tests in this module assert snippets, so a renderer change could alter
+    whitespace, ordering, wording, or an import group and still pass all of them.
+    ``golden_add_order.txt`` was captured by running ``plan_add_slice`` on the commit
+    before this refactor, so it is an independent oracle rather than a re-record of
+    current behaviour. Update it only together with a deliberate decision to change
+    what every generated slice looks like.
+    """
+    _write_project(tmp_path, "myproj", "myproj")
+
+    plan = plan_add_slice(str(tmp_path), "aggregate", "Order")
+
+    rendered = "".join(f"===== {op.path} =====\n{op.content}" for op in plan.operations)
+    golden = (Path(__file__).parent / "golden_add_order.txt").read_text()
+
+    assert rendered == golden

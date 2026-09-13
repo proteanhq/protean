@@ -55,7 +55,7 @@ __all__ = [
     "generate_slice_plan",
 ]
 
-# The eight grammar primitive types, keyed by their IR field ``type`` (ADR-0041's
+# The grammar's primitive types, keyed by their IR field ``type`` (ADR-0041's
 # vocabulary table), mapped to the plain Python annotation the type resolves to. The
 # generated ``create`` factory uses this base annotation for its parameters, and a
 # field with no rendered constraint (a plain ``String`` reference such as the event's
@@ -124,6 +124,27 @@ _AGGREGATE_BASE_LOCALS = frozenset({"cls"})
 # parameters that are already bound where the slug line reads them, so a slug may
 # take those names.
 _HANDLER_LOCAL = "repo"
+
+
+# ADR-0041's vocabulary map pairs each IR field ``type`` with exactly one ``kind``.
+# The generator reads both when it renders a declaration, so a mismatched pair would
+# render something the fragment does not say: a ``standard``/``Identifier`` entry
+# renders as a plain ``str`` and an ``identifier``/``String`` entry as an
+# ``Identifier``, in both cases without a word.
+_KIND_FOR_TYPE: dict[str, str] = {
+    "String": "standard",
+    "Text": "text",
+    "Integer": "standard",
+    "Float": "standard",
+    "Boolean": "standard",
+    "Date": "standard",
+    "DateTime": "standard",
+    "Identifier": "identifier",
+}
+
+# ``max_length`` is a constraint on the string-based types only (ADR-0041). On any
+# other type the renderers drop it.
+_BOUNDED_TYPES = frozenset({"String", "Text"})
 
 
 class SliceGeneratorError(Exception):
@@ -425,6 +446,22 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
                     f"Field {field_name!r} on {element.name!r} has unsupported type "
                     f"{ir_field.type!r}. Supported types: {supported}."
                 )
+            expected_kind = _KIND_FOR_TYPE[ir_field.type]
+            if ir_field.kind != expected_kind:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} pairs kind "
+                    f"{ir_field.kind!r} with type {ir_field.type!r}. ADR-0041 pairs "
+                    f"{ir_field.type!r} with kind {expected_kind!r}, and the "
+                    "generator reads both, so the pair would render a field the "
+                    "fragment does not describe."
+                )
+            if ir_field.max_length is not None and ir_field.type not in _BOUNDED_TYPES:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} sets max_length on a "
+                    f"{ir_field.type!r}, which takes no length bound. The renderers "
+                    "would drop it. Remove it, or declare the field as a String or "
+                    "Text."
+                )
 
     if id_name in fragment.aggregate.fields:
         raise SliceGeneratorError(
@@ -517,6 +554,7 @@ def _validate_names(
 
     defined = [(role, element.name) for role, element in elements]
     defined.append(("aggregate base", f"{fragment.aggregate.name}Base"))
+    defined.append(("command handler", f"{fragment.aggregate.name}CommandHandler"))
     if fragment.projector is not None:
         defined.append(("projector", fragment.projector.name))
     if fragment.projection is None and fragment.projector is None:
@@ -1031,6 +1069,18 @@ def _render_projectors(
         f"            {field_name}=event.{field_name},"
         for field_name in _ordered_names(projection.fields, slug)
     )
+
+    # Name the handler after the event it consumes, the way the framework's own
+    # projector examples do. For the default ``<Name>Created`` event this is the same
+    # ``on_<slug>_created`` the renderer has always written; for any other event the
+    # old fixed suffix named the method for something that did not happen.
+    handler = f"on_{_slug_for(event.name)}"
+    created_by_default = event.name == f"{name}Created"
+    summary_doc = (
+        f"Create a {projection.name} when a {name} is created."
+        if created_by_default
+        else f"Create a {projection.name} on {event.name}."
+    )
     return f'''"""Projector that keeps {projection.name} up to date."""
 
 from protean.core.projector import on
@@ -1047,8 +1097,8 @@ class {projector.name}:
     """Update the {projection.name} projection from {name} events."""
 
     @on({event.name})
-    def on_{slug}_created(self, event: {event.name}) -> None:
-        """Create a {projection.name} when a {name} is created."""
+    def {handler}(self, event: {event.name}) -> None:
+        """{summary_doc}"""
         summary = {projection.name}(
 {summary_args}
         )

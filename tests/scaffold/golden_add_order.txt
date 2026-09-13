@@ -1,0 +1,164 @@
+===== src/myproj/order/__init__.py =====
+"""The Order slice.
+
+Modules are discovered independently by ``domain.init()``. Keep this
+package initializer side-effect free so relative imports during
+traversal cannot create partially initialized-module cycles.
+"""
+===== src/myproj/order/aggregate_base.py =====
+"""Generated base for the Order aggregate.
+
+``protean add`` generates this file and refreshes it on every re-run, so do not
+edit it. Put your invariants and behavior in ``aggregate.py``, the hand-owned
+subclass a re-run never overwrites (the generation-gap seam, ADR-0035).
+"""
+
+from typing import Annotated, Self
+
+from pydantic import Field
+
+from protean.core.aggregate import BaseAggregate
+
+from .events import OrderCreated
+
+
+class OrderBase(BaseAggregate):
+    """Generated structure and wiring for Order. Edit the subclass, not this."""
+
+    name: Annotated[str, Field(max_length=100)]
+
+    @classmethod
+    def create(cls, name: str) -> Self:
+        """Create a new Order and raise OrderCreated."""
+        order = cls(name=name)
+
+        order.raise_(
+            OrderCreated(
+                order_id=order.id,
+                name=order.name,
+            )
+        )
+
+        return order
+===== src/myproj/order/aggregate.py =====
+"""The Order aggregate.
+
+Your own logic lives here. ``protean add`` never overwrites this file, so add
+invariants (``@invariant.post``) and behavior as methods on the class below. The
+generated structure and wiring sit in ``aggregate_base.py`` (the generation-gap
+seam, ADR-0035).
+"""
+
+from myproj.domain import myproj
+
+from .aggregate_base import OrderBase
+
+
+@myproj.aggregate
+class Order(OrderBase):
+    """The Order aggregate root."""
+===== src/myproj/order/commands.py =====
+"""Commands for the Order aggregate."""
+
+from typing import Annotated
+
+from pydantic import Field
+
+from myproj.domain import myproj
+
+
+@myproj.command(part_of="Order")
+class CreateOrder:
+    """Command to create a new Order."""
+
+    name: Annotated[str, Field(max_length=100)]
+===== src/myproj/order/events.py =====
+"""Events emitted by the Order aggregate."""
+
+from typing import Annotated
+
+from pydantic import Field
+
+from myproj.domain import myproj
+
+
+@myproj.event(part_of="Order")
+class OrderCreated:
+    """Event emitted when a Order is created."""
+
+    order_id: str
+    name: Annotated[str, Field(max_length=100)]
+===== src/myproj/order/command_handlers.py =====
+"""Command handlers for the Order aggregate."""
+
+from protean import handle
+
+from myproj.domain import myproj
+
+from .aggregate import Order
+from .commands import CreateOrder
+
+
+@myproj.command_handler(part_of="Order")
+class OrderCommandHandler:
+    """Handle commands for the Order aggregate."""
+
+    @handle(CreateOrder)
+    def handle_create_order(self, command: CreateOrder) -> str:
+        """Create a Order from the command and persist it.
+
+        Returns the new aggregate's id so a synchronous caller can look it up
+        right after ``domain.process``.
+        """
+        order = Order.create(name=command.name)
+
+        repo = myproj.repository_for(Order)
+        repo.add(order)
+
+        return order.id
+===== src/myproj/order/projection.py =====
+"""Read-model projection for the Order aggregate."""
+
+from typing import Annotated
+
+from protean.fields import Identifier
+from pydantic import Field
+
+from myproj.domain import myproj
+
+
+@myproj.projection
+class OrderSummary:
+    """A read-optimized view of Order aggregates."""
+
+    order_id: Identifier(identifier=True)
+    name: Annotated[str, Field(max_length=100)]
+
+    class Meta:
+        stream_name = "order"
+===== src/myproj/order/projectors.py =====
+"""Projector that keeps OrderSummary up to date."""
+
+from protean.core.projector import on
+
+from myproj.domain import myproj
+
+from .aggregate import Order
+from .events import OrderCreated
+from .projection import OrderSummary
+
+
+@myproj.projector(projector_for=OrderSummary, aggregates=[Order])
+class OrderProjector:
+    """Update the OrderSummary projection from Order events."""
+
+    @on(OrderCreated)
+    def on_order_created(self, event: OrderCreated) -> None:
+        """Create a OrderSummary when a Order is created."""
+        summary = OrderSummary(
+            order_id=event.order_id,
+            name=event.name,
+        )
+
+        repo = myproj.repository_for(OrderSummary)
+        repo.add(summary)

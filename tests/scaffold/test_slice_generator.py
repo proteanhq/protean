@@ -782,6 +782,98 @@ def test_field_named_for_an_imported_field_factory_is_accepted():
     assert "note: Text(required=True)" in events
 
 
+def test_domain_variable_named_for_the_generated_handler_raises():
+    """``command_handlers.py`` imports the domain and defines
+    ``<Aggregate>CommandHandler`` in the same module, and the handler method reads the
+    domain by name. A project binding its domain to that name gets the handler class
+    instead."""
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(), "myproj", "OrderCommandHandler")
+
+    assert "OrderCommandHandler" in str(exc_info.value)
+
+
+def test_element_clashing_with_the_generated_handler_name_raises():
+    """The generated command handler is one of the slice's class names, so another
+    element cannot take it either."""
+    fragment = _fragment_with(
+        command=SliceElement("OrderCommandHandler", {"name": _STR_100})
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "OrderCommandHandler" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "ir_field",
+    [
+        IRField(kind="standard", type="Identifier", required=True),
+        IRField(kind="identifier", type="String", required=True),
+        IRField(kind="standard", type="Text", required=True),
+        IRField(kind="text", type="String", required=True),
+    ],
+)
+def test_mismatched_kind_and_type_raises(ir_field):
+    """ADR-0041 pairs each type with one kind, and the generator reads both. A
+    mismatched pair renders a field the fragment does not describe: standard over
+    ``Identifier`` comes out a plain ``str``, identifier over ``String`` comes out an
+    ``Identifier``. Rejected rather than rendered silently."""
+    fragment = _fragment_with(aggregate=SliceElement("Order", {"ref": ir_field}))
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "ref" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("field_type", ["Integer", "Date", "Identifier"])
+def test_max_length_on_a_type_that_takes_no_bound_raises(field_type):
+    """``max_length`` is a string-only constraint. The renderers drop it on any other
+    type, so the fragment would be honoured in part and in silence."""
+    kind = "identifier" if field_type == "Identifier" else "standard"
+    fragment = _fragment_with(
+        aggregate=SliceElement(
+            "Order",
+            {"ref": IRField(kind=kind, type=field_type, required=True, max_length=10)},
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "max_length" in str(exc_info.value)
+
+
+def test_projector_handler_is_named_after_the_event():
+    """The grammar allows any event name, so the handler is named for the event it
+    consumes rather than for creation. An ``OrderPlaced`` event used to generate
+    ``on_order_created``, documented as handling creation."""
+    fragment = _fragment_with(
+        event=SliceElement("OrderPlaced", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    projectors = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "projectors.py"
+    )
+
+    assert "def on_order_placed(self, event: OrderPlaced)" in projectors
+    assert "on_order_created" not in projectors
+    assert "is created" not in projectors
+
+
+def test_projector_handler_name_is_unchanged_for_the_default_event():
+    """Deriving the name from the event has to leave the default slice alone:
+    ``OrderCreated`` still gives ``on_order_created`` and the same docstring."""
+    projectors = _content_for(
+        generate_slice_plan(_fragment_with(), "myproj", "myproj"), "projectors.py"
+    )
+
+    assert "def on_order_created(self, event: OrderCreated)" in projectors
+    assert "Create a OrderSummary when a Order is created." in projectors
+
+
 def test_half_present_read_side_raises(tmp_path):
     """A projection without a projector (or the reverse) is rejected: the read side is
     both together or neither."""
