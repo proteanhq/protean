@@ -531,12 +531,14 @@ def test_clash_with_a_derived_read_side_name_raises(clashing_name):
     assert clashing_name in str(exc_info.value)
 
 
-@pytest.mark.parametrize("clashing_name", ["BaseAggregate", "Identifier", "handle"])
+@pytest.mark.parametrize("clashing_name", ["BaseAggregate", "Self", "Annotated", "on"])
 def test_element_name_clashing_with_a_generated_import_raises(clashing_name):
-    """The generated modules import these names, so a class named for one replaces the
-    import in the module carrying both. An event named ``BaseAggregate`` makes
-    ``class OrderBase(BaseAggregate)`` inherit the event instead of the aggregate
-    base, leaving the create path without ``raise_``."""
+    """A class named for a symbol imported by a module that also carries the class
+    replaces that import. ``aggregate_base.py`` imports the event alongside
+    ``BaseAggregate``, ``Self`` and (for a bounded String field) ``Annotated``, and
+    ``projectors.py`` imports it alongside ``on``. An event named ``BaseAggregate``
+    makes ``class OrderBase(BaseAggregate)`` inherit the event instead of the
+    aggregate base, leaving the create path without ``raise_``."""
     fragment = _fragment_with(
         event=SliceElement(clashing_name, {"order_id": _STR_PLAIN, "name": _STR_100}),
     )
@@ -545,6 +547,64 @@ def test_element_name_clashing_with_a_generated_import_raises(clashing_name):
         generate_slice_plan(fragment, "myproj", "myproj")
 
     assert clashing_name in str(exc_info.value)
+
+
+def test_name_clashing_with_another_module_only_is_allowed():
+    """A name is only taken over where both bindings land in the same module.
+    ``BaseAggregate`` is imported by ``aggregate_base.py``, which imports neither the
+    command nor the project's domain, so a command of that name renders."""
+    fragment = _fragment_with(command=SliceElement("BaseAggregate", {"name": _STR_100}))
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "class BaseAggregate:" in _content_for(plan, "commands.py")
+    assert "from .commands import BaseAggregate" in _content_for(
+        plan, "command_handlers.py"
+    )
+    assert "class OrderBase(BaseAggregate):" in _content_for(plan, "aggregate_base.py")
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
+def test_domain_variable_clashing_with_the_generated_base_only_is_allowed():
+    """``aggregate_base.py`` is the one generated module that does not import the
+    project's domain, so the names it imports are free for the domain variable. A
+    project binding ``BaseAggregate = Domain(...)`` renders."""
+    plan = generate_slice_plan(_fragment_with(), "myproj", "BaseAggregate")
+
+    base = _content_for(plan, "aggregate_base.py")
+    assert "from protean.core.aggregate import BaseAggregate" in base
+    assert "class OrderBase(BaseAggregate):" in base
+    assert "from myproj.domain import BaseAggregate" in _content_for(
+        plan, "aggregate.py"
+    )
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
+def test_domain_variable_named_for_a_type_only_the_aggregate_declares_is_allowed():
+    """The imports are per module, so a ``date`` the aggregate alone declares is
+    imported by ``aggregate_base.py`` alone. A project binding ``date = Domain(...)``
+    renders, because no module imports both."""
+    fragment = _fragment_with(
+        aggregate=SliceElement(
+            "Order",
+            {
+                "name": _STR_100,
+                "due_on": IRField(kind="standard", type="Date", required=True),
+            },
+        ),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "date")
+
+    assert "from datetime import date" in _content_for(plan, "aggregate_base.py")
+    assert "from myproj.domain import date" in _content_for(plan, "commands.py")
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
 
 
 def test_element_name_clashing_with_the_domain_variable_raises():
@@ -957,6 +1017,92 @@ def test_default_event_handler_is_named_for_the_slug_not_the_event():
     )
 
     assert "def on_a_b_created(self, event: ABCreated)" in projectors
+
+
+def test_command_handler_method_is_named_after_the_command():
+    """The grammar allows any command name, so the handler method is named for the
+    command it dispatches, which is the framework's ``handle_<command_slug>``
+    convention. A ``PlaceOrder`` command used to generate ``handle_create_order``."""
+    fragment = _fragment_with(command=SliceElement("PlaceOrder", {"name": _STR_100}))
+
+    handlers = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "command_handlers.py"
+    )
+
+    assert "def handle_place_order(self, command: PlaceOrder) -> str:" in handlers
+    assert "handle_create_order" not in handlers
+    assert "Create a Order from PlaceOrder and persist it." in handlers
+
+
+def test_command_handler_method_is_unchanged_for_the_default_command():
+    """Deriving the name from the command has to leave the default slice alone:
+    ``CreateOrder`` still gives ``handle_create_order`` and the same docstring."""
+    handlers = _content_for(
+        generate_slice_plan(_fragment_with(), "myproj", "myproj"),
+        "command_handlers.py",
+    )
+
+    assert "def handle_create_order(self, command: CreateOrder) -> str:" in handlers
+    assert "Create a Order from the command and persist it." in handlers
+
+
+def test_default_command_handler_method_is_named_for_the_slug_not_the_command():
+    """The aggregate name and the command name do not always give the same slug:
+    ``aB`` normalizes to class ``AB`` and slug ``a_b``, while ``CreateAB`` gives
+    ``create_ab``. The default command keeps the handler name ``add`` has always
+    written, which is built from the aggregate's slug."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("AB", {"name": _STR_100}),
+        command=SliceElement("CreateAB", {"name": _STR_100}),
+        event=SliceElement("ABCreated", {"a_b_id": _STR_PLAIN, "name": _STR_100}),
+        slug="a_b",
+    )
+
+    handlers = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "command_handlers.py"
+    )
+
+    assert "def handle_create_a_b(self, command: CreateAB) -> str:" in handlers
+
+
+def test_command_docstring_is_accurate_for_a_non_creation_command():
+    """Only the default ``Create<Name>`` command can be described as creation, so any
+    other name gets wording that stays true."""
+    fragment = _fragment_with(command=SliceElement("PlaceOrder", {"name": _STR_100}))
+
+    commands = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "commands.py"
+    )
+
+    assert '"""Command for the Order aggregate."""' in commands
+    assert "create a new" not in commands
+
+
+def test_command_docstring_is_unchanged_for_the_default_command():
+    """The default slice keeps the wording it has always had."""
+    commands = _content_for(
+        generate_slice_plan(_fragment_with(), "myproj", "myproj"), "commands.py"
+    )
+
+    assert '"""Command to create a new Order."""' in commands
+
+
+def test_explicitly_empty_slug_raises():
+    """``None`` is the absence value for the slug override, so an empty string is a
+    bad slug rather than a request to derive one. It goes into the slice's paths, the
+    handler's local and the event's id field, so the generator rejects it instead of
+    planning a slice for a different slug."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+        slug="",
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "usable Python name" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("bad_name", ["__class__", "__init__", "__evt"])
@@ -1382,3 +1528,53 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
         f"the generated slice must run:\n{driven.stdout}\n{driven.stderr}"
     )
     assert "READ_BACK thing-1 a b" in driven.stdout
+
+
+def test_slice_whose_command_takes_a_framework_import_name_runs(tmp_path):
+    """A class name only collides where the name is bound in the same module, so a
+    command named ``BaseAggregate`` is valid: ``aggregate_base.py`` imports the core
+    ``BaseAggregate`` but not the command, and ``command_handlers.py`` imports the
+    command but not the core class. Run rather than reasoned about: the slice is
+    materialized into a real ``protean new`` project, which then passes
+    ``protean verify``."""
+    project = _generate_project(tmp_path)
+
+    fields = {"name": _STR_100}
+    fragment = SliceFragment(
+        aggregate=SliceElement("Crate", dict(fields)),
+        command=SliceElement("BaseAggregate", dict(fields)),
+        event=SliceElement("CrateCreated", {"crate_id": _STR_PLAIN, **fields}),
+    )
+    plan = generate_slice_plan(fragment, _VERIFY_PACKAGE, _VERIFY_PACKAGE)
+    _materialize(project, plan)
+
+    assert (
+        "class BaseAggregate:"
+        in (project / "src/scaffolded/crate/commands.py").read_text()
+    )
+    assert (
+        "class CrateBase(BaseAggregate):"
+        in (project / "src/scaffolded/crate/aggregate_base.py").read_text()
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "protean",
+            "verify",
+            "-d",
+            "src/scaffolded/domain.py:scaffolded",
+            "--path",
+            ".",
+        ],
+        cwd=project,
+        env=_subprocess_env(project),
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    assert completed.returncode == 0, (
+        "protean verify must pass on a slice whose command takes a framework import "
+        f"name:\n{completed.stdout}\n{completed.stderr}"
+    )

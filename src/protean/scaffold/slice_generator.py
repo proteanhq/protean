@@ -92,12 +92,6 @@ _OPTIONS_CLASS = "Meta"
 # the factory; one named ``cls`` gives the factory two parameters of that name.
 _AGGREGATE_GENERATED_NAMES = frozenset({"create", "cls"})
 
-# The names every slice's modules read at module level, whatever its fields are: the
-# aggregate base it inherits, the ``Self`` its factory returns, and the two decorators
-# the handler and projector register with. The rest depend on the fields, so
-# :func:`_emitted_names` adds them per fragment.
-_ALWAYS_EMITTED = frozenset({"BaseAggregate", "Self", "handle", "on"})
-
 # The names each generated method binds, as parameters or by assignment. Assigning a
 # name anywhere in a Python function makes it local for the whole function, so a
 # module-level name the method reads cannot be one of these: the read resolves to the
@@ -230,16 +224,20 @@ def generate_slice_plan(
     Raises :class:`SliceGeneratorError` when a name the generated code carries would
     not work: an element name, field name, or derived slug that is not a usable Python
     name; two of the slice's classes sharing a name, counting the read side the
-    generator derives; a name that collides with a symbol the generated modules import
-    or with a local they read back; or a field name reserved by the framework or by
-    the code the generator writes. It also raises when a field has an unsupported
-    type, when the event does not declare the surfaced ``<slug>_id`` identity field in
-    a shape that can hold the aggregate's id, when an explicit projection is not keyed
-    on that field or carries a field the event does not, and when the read side is
-    only half present or wired to a participant the slice does not define.
+    generator derives; a name that collides, in a module that carries it, with a
+    symbol that module imports, or with a local the generated methods read back; or a
+    field name reserved by the framework or by the code the generator writes. It also
+    raises when a field has an unsupported type, when the event does not declare the
+    surfaced ``<slug>_id`` identity field in a shape that can hold the aggregate's id,
+    when an explicit projection is not keyed on that field or carries a field the
+    event does not, and when the read side is only half present or wired to a
+    participant the slice does not define.
     """
     name = fragment.aggregate.name
-    slug = fragment.slug or _slug_for(name)
+    # ``None`` is the documented absence value, so an explicit override is used as
+    # given: an empty one is a bad slug, not a request to derive one, and the slug
+    # goes into paths, locals and field names.
+    slug = _slug_for(name) if fragment.slug is None else fragment.slug
     _validate(fragment, slug, domain_var)
 
     projection = fragment.projection or _derive_projection(fragment.event, name, slug)
@@ -390,10 +388,13 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
     """Reject a fragment that would render code that does not compile or verify."""
     id_name = f"{slug}_id"
 
-    _check_python_name(
-        slug,
-        f"The slug derived from the aggregate name {fragment.aggregate.name!r}:",
+    # A caller that normalized upstream supplies the slug, so say which one is bad.
+    slug_label = (
+        "The slug supplied for the aggregate"
+        if fragment.slug is not None
+        else "The slug derived from the aggregate name"
     )
+    _check_python_name(slug, f"{slug_label} {fragment.aggregate.name!r}:")
     if slug == fragment.aggregate.name:
         raise SliceGeneratorError(
             f"The aggregate is named {fragment.aggregate.name!r}, which is also the "
@@ -484,9 +485,16 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
                     "which is what the renderers write into the generated field."
                 )
 
-    emitted = _emitted_names(fragment)
-    _validate_domain_var(domain_var, emitted)
-    _validate_names(fragment, elements, domain_var, emitted, slug)
+    if (fragment.projection is None) != (fragment.projector is None):
+        raise SliceGeneratorError(
+            "A slice's read side is a projection and a projector together, or "
+            "neither. Provide both or omit both; when both are omitted the generator "
+            "derives the default read side from the event."
+        )
+
+    modules = _generated_modules(fragment, slug)
+    _validate_domain_var(domain_var, modules)
+    _validate_names(fragment, elements, domain_var, modules, slug)
 
     if id_name in fragment.aggregate.fields:
         raise SliceGeneratorError(
@@ -512,15 +520,6 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
             f"with no max_length or one of at least {_IDENTITY_LENGTH}."
         )
 
-    has_projection = fragment.projection is not None
-    has_projector = fragment.projector is not None
-    if has_projection != has_projector:
-        raise SliceGeneratorError(
-            "A slice's read side is a projection and a projector together, or "
-            "neither. Provide both or omit both; when both are omitted the generator "
-            "derives the default read side from the event."
-        )
-
     if fragment.projector is not None and fragment.projection is not None:
         _validate_projection_key(fragment.projection, id_name)
         _validate_projection_fields(fragment.projection, fragment.event, id_name)
@@ -536,42 +535,117 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
             )
 
 
-def _emitted_names(fragment: SliceFragment) -> frozenset[str]:
-    """The module-level names this fragment's generated modules actually bind.
+@dataclass(frozen=True)
+class _GeneratedModule:
+    """One module the generator writes, described by the names it binds at module
+    level: *imported* is what it reads from outside the slice (imports and the
+    annotations its field declarations read), *classes* the slice's own classes it
+    defines or imports, each with the role the error messages call it, and
+    *imports_domain* whether it imports the project's domain variable."""
 
-    A class or the project's domain variable named for one of these takes the name
-    over in the module carrying both, so an event named ``BaseAggregate`` makes the
-    generated base inherit the event and one named ``str`` makes a ``name: str``
-    declaration resolve to the event class.
+    filename: str
+    imported: frozenset[str]
+    classes: tuple[tuple[str, str], ...]
+    imports_domain: bool
 
-    The set is per fragment rather than the union of everything the renderers can
-    emit. A slice with no date field imports no ``date``, so a project that binds its
-    domain to ``date`` renders fine and must keep working.
-    """
-    names = set(_ALWAYS_EMITTED)
 
-    elements = [fragment.aggregate, fragment.command, fragment.event]
-    if fragment.projection is not None:
-        elements.append(fragment.projection)
-    else:
-        # The derived projection always carries an ``Identifier`` key.
-        names.add("Identifier")
-
-    for element in elements:
-        for ir_field in element.fields.values():
-            names.add(_BASE_ANNOTATION[ir_field.type])
-            if ir_field.kind == "identifier":
-                names.add("Identifier")
-            elif ir_field.type == "Text":
-                names.add("Text")
-            if ir_field.type == "Date":
-                names.add("date")
-            elif ir_field.type == "DateTime":
-                names.add("datetime")
-            if ir_field.type == "String" and ir_field.max_length is not None:
-                names.update({"Annotated", "Field"})
-
+def _field_level_names(fields: Mapping[str, IRField]) -> frozenset[str]:
+    """The names a module binds or reads to declare *fields*: the field factories and
+    typing helpers it imports, and the annotations the declarations read."""
+    names: set[str] = set()
+    for ir_field in fields.values():
+        names.add(_BASE_ANNOTATION[ir_field.type])
+        if ir_field.kind == "identifier":
+            names.add("Identifier")
+        elif ir_field.type == "Text":
+            names.add("Text")
+        if ir_field.type == "Date":
+            names.add("date")
+        elif ir_field.type == "DateTime":
+            names.add("datetime")
+        if ir_field.type == "String" and ir_field.max_length is not None:
+            names.update({"Annotated", "Field"})
     return frozenset(names)
+
+
+def _generated_modules(
+    fragment: SliceFragment, slug: str
+) -> tuple[_GeneratedModule, ...]:
+    """The slice's modules and the names each of them binds.
+
+    A name is only taken over where both bindings land in the same module, so the
+    collision check is per module and not across the fragment. ``BaseAggregate`` is
+    bound in ``aggregate_base.py``, which is the one generated module that never
+    imports the project's domain, so a project binding its domain to
+    ``BaseAggregate`` renders fine; an event of that name does not, because that
+    module imports the event as well.
+
+    The names are per fragment too: a slice with no date field imports no ``date``,
+    so a project that binds its domain to ``date`` renders fine and must keep
+    working.
+    """
+    name = fragment.aggregate.name
+    projection = fragment.projection or _derive_projection(fragment.event, name, slug)
+    aggregate_entry = ("aggregate", name)
+    base_entry = ("aggregate base", f"{name}Base")
+    command_entry = ("command", fragment.command.name)
+    event_entry = ("event", fragment.event.name)
+    handler_entry = ("command handler", f"{name}CommandHandler")
+    projection_entry = (
+        ("projection" if fragment.projection is not None else "derived projection"),
+        projection.name,
+    )
+    projector_entry = (
+        ("projector", fragment.projector.name)
+        if fragment.projector is not None
+        else ("derived projector", _derived_projector_name(name))
+    )
+
+    return (
+        _GeneratedModule(
+            "aggregate_base.py",
+            frozenset({"BaseAggregate", "Self"})
+            | _field_level_names(fragment.aggregate.fields),
+            (base_entry, event_entry),
+            imports_domain=False,
+        ),
+        _GeneratedModule(
+            "aggregate.py",
+            frozenset(),
+            (aggregate_entry, base_entry),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "commands.py",
+            _field_level_names(fragment.command.fields),
+            (command_entry,),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "events.py",
+            _field_level_names(fragment.event.fields),
+            (event_entry,),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "command_handlers.py",
+            frozenset({"handle"}),
+            (handler_entry, aggregate_entry, command_entry),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "projection.py",
+            _field_level_names(projection.fields),
+            (projection_entry,),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "projectors.py",
+            frozenset({"on"}),
+            (projector_entry, aggregate_entry, event_entry, projection_entry),
+            imports_domain=True,
+        ),
+    )
 
 
 def _check_public_name(value: str, what: str) -> None:
@@ -598,13 +672,15 @@ def _check_public_name(value: str, what: str) -> None:
         )
 
 
-def _validate_domain_var(domain_var: str, emitted: frozenset[str]) -> None:
-    """The generated modules import the project's domain variable and read it inside
-    the handler and projector methods. A domain variable that takes one of those
-    methods' local names, or one of the names the renderers import, is read as the
-    local or the other import instead: a project whose composition root binds
-    ``repo = Domain(...)`` renders ``repo = repo.repository_for(...)``, which raises
-    ``UnboundLocalError``."""
+def _validate_domain_var(
+    domain_var: str, modules: tuple[_GeneratedModule, ...]
+) -> None:
+    """Most of the generated modules import the project's domain variable, and the
+    handler and projector read it inside their methods. A domain variable that takes
+    one of those methods' local names, or a name imported by a module that imports
+    the domain, is read as the local or the other import instead: a project whose
+    composition root binds ``repo = Domain(...)`` renders
+    ``repo = repo.repository_for(...)``, which raises ``UnboundLocalError``."""
     _check_public_name(domain_var, "This project's domain variable")
     if domain_var in _HANDLER_LOCALS | _PROJECTOR_LOCALS:
         raise SliceGeneratorError(
@@ -613,28 +689,30 @@ def _validate_domain_var(domain_var: str, emitted: frozenset[str]) -> None:
             "generated code reads the domain by that name, so it would get the local "
             "instead. Rename the domain variable in the composition root."
         )
-    if domain_var in emitted:
-        raise SliceGeneratorError(
-            f"This project binds its domain to {domain_var!r}, which the generated "
-            "code already reads under that name, as an import or as a field "
-            "annotation. Importing the domain would take the name over in that "
-            "module. Rename the domain variable in the composition root."
-        )
+    for module in modules:
+        if module.imports_domain and domain_var in module.imported:
+            raise SliceGeneratorError(
+                f"This project binds its domain to {domain_var!r}, which the "
+                f"generated {module.filename} already reads under that name, as an "
+                "import or as a field annotation. Importing the domain would take "
+                "the name over in that module. Rename the domain variable in the "
+                "composition root."
+            )
 
 
 def _validate_names(
     fragment: SliceFragment,
     elements: list[tuple[str, SliceElement]],
     domain_var: str,
-    emitted: frozenset[str],
+    modules: tuple[_GeneratedModule, ...],
     slug: str,
 ) -> None:
     """Check the class names the slice defines.
 
-    Each has to be a usable Python name, has to stay clear of the names the generated
-    modules import, and has to be distinct from the others: they all land in one
-    package, and the command handler and projector import several of them into one
-    module. The read side counts even when the fragment omits it, because the
+    Each has to be a usable Python name, has to stay clear of the names imported by
+    the modules that carry it, and has to be distinct from the others: they all land
+    in one package, and the command handler and projector import several of them into
+    one module. The read side counts even when the fragment omits it, because the
     generator then derives a projection and projector that carry names of their own.
     """
     for role, element in elements:
@@ -655,15 +733,30 @@ def _validate_names(
             ("derived projector", _derived_projector_name(fragment.aggregate.name))
         )
 
+    # Every one of the slice's classes is defined or imported in a module that also
+    # imports the domain, so a class named for the domain variable always collides.
     for role, class_name in defined:
-        if class_name in emitted or class_name == domain_var:
+        if class_name == domain_var:
             raise SliceGeneratorError(
-                f"The slice's {role} is named {class_name!r}, which the generated "
-                "code already reads under that name, as an import or as a field "
-                "annotation. The class would take the name over in the module that "
-                "carries both, so the slice would inherit from, register against, be "
-                "keyed on, or be typed as the wrong object. Rename it."
+                f"The slice's {role} is named {class_name!r}, which is also this "
+                "project's domain variable. The module that carries the class imports "
+                "the domain under that name, so one would take the name over from the "
+                "other. Rename it."
             )
+
+    # A name is only taken over where both bindings land in the same module, so the
+    # check runs per module: a command named ``BaseAggregate`` is fine, because the
+    # module that imports the core ``BaseAggregate`` does not import the command.
+    for module in modules:
+        for role, class_name in module.classes:
+            if class_name in module.imported:
+                raise SliceGeneratorError(
+                    f"The slice's {role} is named {class_name!r}, which the generated "
+                    f"{module.filename} already reads under that name, as an import "
+                    "or as a field annotation. The class would take the name over in "
+                    "that module, so the slice would inherit from, register against, "
+                    "be keyed on, or be typed as the wrong object. Rename it."
+                )
 
     projection_name = (
         fragment.projection.name
@@ -994,6 +1087,14 @@ def _render_commands(
 ) -> str:
     field_lines = _field_block(command.fields, slug)
     imports = _message_imports(command.fields, package, domain_var)
+    # The grammar allows any command name, so only the default ``Create<Name>``
+    # command can be described as creation. Anything else gets wording that stays
+    # true, the way the event renderer does.
+    command_doc = (
+        f"Command to create a new {name}."
+        if command.name == f"Create{name}"
+        else f"Command for the {name} aggregate."
+    )
     return f'''"""Commands for the {name} aggregate."""
 
 {imports}
@@ -1001,7 +1102,7 @@ def _render_commands(
 
 @{domain_var}.command(part_of="{name}")
 class {command.name}:
-    """Command to create a new {name}."""
+    """{command_doc}"""
 
 {field_lines}
 '''
@@ -1075,6 +1176,24 @@ def _render_command_handlers(
         f"{field_name}=command.{field_name}"
         for field_name in _ordered_names(aggregate.fields, slug)
     )
+
+    # Name the handler after the command it handles, which is the framework's
+    # ``handle_<command_slug>`` convention (see ``protean.core.command_handler``).
+    # The default ``Create<Name>`` command keeps the ``handle_create_<slug>`` the
+    # renderer has always written, and takes the name from the slug rather than from
+    # the command: the two do not always agree, because an aggregate named ``aB`` has
+    # the slug ``a_b`` and the command ``CreateAB``, whose own slug is ``create_ab``.
+    creates_by_default = command.name == f"Create{name}"
+    handler = (
+        f"handle_create_{slug}"
+        if creates_by_default
+        else f"handle_{_slug_for(command.name)}"
+    )
+    handler_doc = (
+        f"Create a {name} from the command and persist it."
+        if creates_by_default
+        else f"Create a {name} from {command.name} and persist it."
+    )
     return f'''"""Command handlers for the {name} aggregate."""
 
 from protean import handle
@@ -1090,8 +1209,8 @@ class {name}CommandHandler:
     """Handle commands for the {name} aggregate."""
 
     @handle({command.name})
-    def handle_create_{slug}(self, command: {command.name}) -> str:
-        """Create a {name} from the command and persist it.
+    def {handler}(self, command: {command.name}) -> str:
+        """{handler_doc}
 
         Returns the new aggregate's id so a synchronous caller can look it up
         right after ``domain.process``.
