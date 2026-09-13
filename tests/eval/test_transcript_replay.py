@@ -1,0 +1,84 @@
+"""The replay lane and the pack-staleness guard.
+
+These run in core CI with no model access. The staleness guard asserts a
+transcript exists for the installed pack version; the replay test replays each
+committed transcript and asserts it lands the recorded project and verifies
+green.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from protean.dx.pack import PACK_VERSION
+from tests.eval.runner import eval_root, read_task, replay
+from tests.eval.tools import run_verify
+from tests.eval.transcript import Transcript, list_transcripts
+from tests.eval.workspace import Workspace
+
+pytestmark = pytest.mark.no_test_domain
+
+# The transcripts committed for the installed pack version. Empty means the pack
+# moved and nothing has been re-recorded, which the staleness guard reports.
+_CURRENT_TRANSCRIPTS = list_transcripts(eval_root(), PACK_VERSION)
+_IDS = [p.stem for p in _CURRENT_TRANSCRIPTS]
+
+
+def test_a_transcript_exists_for_the_current_pack_version() -> None:
+    """The staleness guard: the pack version must have at least one transcript,
+    or the replay lane has nothing to run."""
+    assert _CURRENT_TRANSCRIPTS, (
+        f"stale pack, re-record: no transcript under "
+        f"transcripts/{PACK_VERSION}/. Run the live lane "
+        f"(`pytest tests/eval -m live`) and commit the new fixture."
+    )
+
+
+@pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
+def test_replay_is_deterministic_and_verifies_green(
+    transcript_path: Path, tmp_path: Path
+) -> None:
+    """Replaying a committed transcript lands the recorded project and verifies
+    green: the produced tree hashes to the recorded value, the recorded run
+    exercised verify, and a fresh verify of the produced tree passes."""
+    transcript = Transcript.load(transcript_path)
+    workspace = Workspace(tmp_path)
+
+    result = replay(transcript, workspace=workspace)
+
+    assert result.project_hash == transcript.project_hash, (
+        "stale transcript: replaying the recorded turns produced a different "
+        "project tree than the recorded hash. Re-record this transcript."
+    )
+    assert result.verify_results, (
+        "the transcript records no run_verify call, so 'verify is green' was "
+        "never checked during the run"
+    )
+    # Authoritative: verify the tree the replay actually produced, so a
+    # transcript that verifies mid-run and then breaks the project cannot pass.
+    final = run_verify(workspace.root)
+    assert final["verdict"] == "pass", (
+        f"the produced project does not verify green: {final}"
+    )
+
+
+@pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
+def test_transcript_is_stored_canonically(transcript_path: Path) -> None:
+    """A committed transcript's bytes equal its own canonical serialization, so
+    a recorder that wrote non-canonical JSON (churning diffs) is caught."""
+    transcript = Transcript.load(transcript_path)
+    assert transcript_path.read_text(encoding="utf-8") == transcript.dumps()
+
+
+@pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
+def test_transcript_matches_its_task_prompt(transcript_path: Path) -> None:
+    """A transcript's recorded task input must equal its task's current
+    ``task.md``, so editing a prompt without re-recording is caught."""
+    transcript = Transcript.load(transcript_path)
+    assert transcript.task_input == read_task(transcript.task_id), (
+        f"transcript {transcript.task_id!r} was recorded against a different "
+        f"task prompt than tasks/{transcript.task_id}/task.md holds now; "
+        f"re-record it."
+    )
