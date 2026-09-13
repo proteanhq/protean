@@ -92,11 +92,12 @@ _OPTIONS_CLASS = "Meta"
 # the factory; one named ``cls`` gives the factory two parameters of that name.
 _AGGREGATE_GENERATED_NAMES = frozenset({"create", "cls"})
 
-# The names the renderers import into the generated modules. A class named for one of
-# these rebinds the import in the module that carries both: an event named
-# ``BaseAggregate`` makes the generated base inherit the event, and one named for the
-# project's domain variable makes the projector register against the event.
-_IMPORTED_SYMBOLS = frozenset(
+# The names the generated modules read at module level: the symbols the renderers
+# import, and the plain annotations the field declarations resolve to. A class named
+# for one of these is bound in the same module and takes the name over, so an event
+# named ``BaseAggregate`` makes the generated base inherit the event, and one named
+# ``str`` makes every ``name: str`` declaration resolve to the event class.
+_MODULE_LEVEL_NAMES = frozenset(
     {
         "Annotated",
         "BaseAggregate",
@@ -104,12 +105,10 @@ _IMPORTED_SYMBOLS = frozenset(
         "Identifier",
         "Self",
         "Text",
-        "date",
-        "datetime",
         "handle",
         "on",
     }
-)
+) | frozenset(_BASE_ANNOTATION.values())
 
 # The names each generated method binds, as parameters or by assignment. Assigning a
 # name anywhere in a Python function makes it local for the whole function, so a
@@ -412,12 +411,29 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
                     f"the {label} already uses it, so the field would shadow it and "
                     "the slice would not work. Rename the field."
                 )
+            if ir_field.identifier and role != "projection":
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} is marked as an "
+                    "identity key, which only a projection has (ADR-0041). On any "
+                    "other element the flag has no meaning, and when the generator "
+                    "derives the read side it would carry across and give the "
+                    "projection a second key. Drop the flag."
+                )
             if ir_field.type not in _BASE_ANNOTATION:
                 supported = ", ".join(sorted(_BASE_ANNOTATION))
                 raise SliceGeneratorError(
                     f"Field {field_name!r} on {element.name!r} has unsupported type "
                     f"{ir_field.type!r}. Supported types: {supported}."
                 )
+
+    if id_name in fragment.aggregate.fields:
+        raise SliceGeneratorError(
+            f"The aggregate {fragment.aggregate.name!r} declares {id_name!r}, which "
+            "is the name the event uses for the aggregate's own id. The generated "
+            f"create factory raises the event with {id_name}={slug}.id, so the "
+            "authored field's value would be dropped without a word. Rename the "
+            "field, or drop it and let the framework identity stand."
+        )
 
     event_id_field = fragment.event.fields.get(id_name)
     if event_id_field is None:
@@ -472,11 +488,12 @@ def _validate_domain_var(domain_var: str) -> None:
             "generated code reads the domain by that name, so it would get the local "
             "instead. Rename the domain variable in the composition root."
         )
-    if domain_var in _IMPORTED_SYMBOLS:
+    if domain_var in _MODULE_LEVEL_NAMES:
         raise SliceGeneratorError(
             f"This project binds its domain to {domain_var!r}, which the generated "
-            "code already imports under that name. The two imports would collide in "
-            "the same module. Rename the domain variable in the composition root."
+            "code already reads under that name, as an import or as a field "
+            "annotation. Importing the domain would take the name over in that "
+            "module. Rename the domain variable in the composition root."
         )
 
 
@@ -511,12 +528,13 @@ def _validate_names(
         )
 
     for role, class_name in defined:
-        if class_name in _IMPORTED_SYMBOLS or class_name == domain_var:
+        if class_name in _MODULE_LEVEL_NAMES or class_name == domain_var:
             raise SliceGeneratorError(
                 f"The slice's {role} is named {class_name!r}, which the generated "
-                "code imports under that name. The class would replace the import in "
-                "the module that carries both, so the slice would inherit from, "
-                "register against, or be keyed on the wrong object. Rename it."
+                "code already reads under that name, as an import or as a field "
+                "annotation. The class would take the name over in the module that "
+                "carries both, so the slice would inherit from, register against, be "
+                "keyed on, or be typed as the wrong object. Rename it."
             )
 
     projection_name = (

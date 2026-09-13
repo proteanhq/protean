@@ -699,6 +699,89 @@ def test_event_named_for_a_create_factory_local_raises(event_name):
     assert event_name in str(exc_info.value)
 
 
+@pytest.mark.parametrize("clashing_name", ["str", "int", "float", "bool"])
+def test_element_named_for_a_field_annotation_raises(clashing_name):
+    """The field declarations resolve their plain annotations at module level. An
+    event named ``str`` is imported into ``aggregate_base.py``, where the create
+    factory's ``name: str`` parameter then resolves to the event class."""
+    fragment = _fragment_with(
+        event=SliceElement(clashing_name, {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert clashing_name in str(exc_info.value)
+
+
+def test_domain_variable_named_for_a_field_annotation_raises():
+    """Same collision from the other side: importing the domain as ``bool`` takes the
+    name over in a module whose declarations use it as an annotation."""
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(), "myproj", "bool")
+
+    assert "bool" in str(exc_info.value)
+
+
+def test_aggregate_declaring_the_surfaced_id_raises():
+    """The create factory raises the event with ``<slug>_id=<slug>.id``, so an
+    aggregate field of that name would be set on the aggregate and then dropped when
+    the event is built. Rejected rather than silently discarded."""
+    fragment = _fragment_with(
+        aggregate=SliceElement("Order", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "order_id" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("role", ["aggregate", "command", "event"])
+def test_identity_key_marked_outside_a_projection_raises(role):
+    """The ``key`` flag is valid only on a projection's identifier field (ADR-0041).
+    An event carrying an identifier reference such as ``user_id`` marked as a key would
+    give the derived projection a second identity key."""
+    marked = IRField(
+        kind="identifier", type="Identifier", required=True, identifier=True
+    )
+    element = {
+        "aggregate": SliceElement("Order", {"name": _STR_100, "user_id": marked}),
+        "command": SliceElement("CreateOrder", {"name": _STR_100, "user_id": marked}),
+        "event": SliceElement(
+            "OrderCreated", {"order_id": _STR_PLAIN, "user_id": marked}
+        ),
+    }[role]
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(**{role: element}), "myproj", "myproj")
+
+    assert "user_id" in str(exc_info.value)
+
+
+def test_field_named_for_an_imported_field_factory_is_accepted():
+    """``Text`` and ``Identifier`` are imported factories, but a field declaration is a
+    bare annotation, which does not bind the name in the class body. A field named
+    ``Text`` alongside another ``Text`` field declares and constructs fine, so the
+    generator does not reserve them."""
+    fragment = _fragment_with(
+        event=SliceElement(
+            "OrderCreated",
+            {
+                "order_id": _STR_PLAIN,
+                "Text": IRField(kind="text", type="Text", required=True),
+                "note": IRField(kind="text", type="Text", required=True),
+            },
+        ),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    events = _content_for(plan, "events.py")
+    assert "Text: Text(required=True)" in events
+    assert "note: Text(required=True)" in events
+
+
 def test_half_present_read_side_raises(tmp_path):
     """A projection without a projector (or the reverse) is rejected: the read side is
     both together or neither."""
