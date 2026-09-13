@@ -1334,6 +1334,21 @@ def test_event_named_for_an_overridden_slug_raises():
     assert "custom" in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    "bad_package", ["../outside", "my proj", "my.proj", "class", "", "src/myproj"]
+)
+def test_package_that_is_not_a_usable_name_raises(bad_package):
+    """``generate_slice_plan`` is exported and takes the package directly, so it
+    cannot assume a caller resolved a real one. The package is both the directory the
+    slice is planned under and the first segment of every generated import, so
+    ``../outside`` would plan files outside the package and ``my.proj`` would write
+    ``src/my.proj/order/`` with an import that points somewhere else."""
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(), bad_package, "myproj")
+
+    assert "package" in str(exc_info.value)
+
+
 @pytest.mark.parametrize("bad_var", ["not-a-name", "class", "__class__", ""])
 def test_domain_variable_that_is_not_a_usable_name_raises(bad_var):
     """``generate_slice_plan`` is exported and takes the domain variable directly, so
@@ -1394,11 +1409,13 @@ def test_event_docstring_is_unchanged_for_the_default_event():
 
 
 def test_required_strings_keep_the_plain_annotation_form():
-    """A required ``String`` renders as a bare annotation. Pydantic reads that as a
-    required field, but it does not carry the non-empty floor Protean puts on a
-    required ``String`` (``min_length=1``), so the field accepts ``""``. That is the
-    output ``protean add`` has always written and the generator keeps it. ``Text``
-    goes through the field factory and does carry ``required=True``."""
+    """A required ``String`` renders as an annotation, bare or wrapped in
+    ``Annotated[..., Field(max_length=N)]``. Pydantic reads either as a required
+    field, and neither carries the non-empty floor Protean puts on a required
+    ``String`` (``min_length=1``), which comes with the ``String(...)`` field factory:
+    both forms accept ``""``. That is the output ``protean add`` has always written
+    and the generator keeps it, for the bounded and the unbounded field alike.
+    ``Text`` goes through the field factory and does carry ``required=True``."""
     fragment = _fragment_with(
         aggregate=SliceElement(
             "Order",

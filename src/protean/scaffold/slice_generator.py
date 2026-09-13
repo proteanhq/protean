@@ -158,12 +158,15 @@ class IRField:
     ``_validate`` pins the flag to those two shapes, so ``_declare`` does not have to
     read it: an authored field renders as a plain annotation with no default, which is
     already a required field, and the projection's key renders as
-    ``Identifier(identifier=True)``, which takes the identity default. The one thing
-    the plain annotation does not carry is the non-empty floor Protean puts on a
-    required ``String`` (``min_length=1``, ``protean.fields.spec``), so a ``String``
-    field accepts the empty string. That is the output ``protean add`` has always
-    written and this generator keeps it; changing it would change every generated
-    slice. ``Text`` fields use the field factory and do carry ``required=True``.
+    ``Identifier(identifier=True)``, which takes the identity default. What no
+    annotation form carries, bounded or not, is the non-empty floor Protean puts on a
+    required ``String`` (``min_length=1``, ``protean.fields.spec``): that floor comes
+    with the ``String(...)`` field factory, so both ``str`` and
+    ``Annotated[str, Field(max_length=N)]`` accept the empty string. That is the output
+    ``protean add`` has always written and this generator keeps it; changing it would
+    change every generated slice, and it would have to change both forms together to
+    stay consistent. ``Text`` fields use the field factory and do carry
+    ``required=True``.
     """
 
     kind: str
@@ -226,9 +229,9 @@ def generate_slice_plan(
     under ``src/<package>/<slug>/``. Touches no files.
 
     Raises :class:`SliceGeneratorError` when a name the generated code carries would
-    not work: an element name, field name, or derived slug that is not a usable Python
-    name; two of the slice's classes sharing a name, counting the read side the
-    generator derives; a name that collides, in a module that carries it, with a
+    not work: an element name, field name, derived slug, or project package that is
+    not a usable Python name; two of the slice's classes sharing a name, counting the
+    read side the generator derives; a name that collides, in a module that carries it, with a
     symbol that module imports, or with a local the generated methods read back; or a
     field name reserved by the framework or by the code the generator writes. It also
     raises when a field has an unsupported type, when a field's required flag is not
@@ -244,7 +247,7 @@ def generate_slice_plan(
     # given: an empty one is a bad slug, not a request to derive one, and the slug
     # goes into paths, locals and field names.
     slug = _slug_for(name) if fragment.slug is None else fragment.slug
-    _validate(fragment, slug, domain_var)
+    _validate(fragment, slug, package, domain_var)
 
     projection = fragment.projection or _derive_projection(fragment.event, name, slug)
     projector = fragment.projector or _derive_projector(
@@ -397,9 +400,13 @@ def _carries_aggregate_id(ir_field: IRField) -> bool:
     return ir_field.max_length is None or ir_field.max_length >= _IDENTITY_LENGTH
 
 
-def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
+def _validate(
+    fragment: SliceFragment, slug: str, package: str, domain_var: str
+) -> None:
     """Reject a fragment that would render code that does not compile or verify."""
     id_name = f"{slug}_id"
+
+    _validate_package(package)
 
     # A caller that normalized upstream supplies the slug, so say which one is bad.
     slug_label = (
@@ -712,6 +719,17 @@ def _check_public_name(value: str, what: str) -> None:
             f"``_Class{value}`` and never finds it, and where a name such as "
             "``__class__`` is already bound to something else."
         )
+
+
+def _validate_package(package: str) -> None:
+    """The project's import root. It is the ``src/<package>/`` the slice is written
+    under and the first segment of every ``from <package>.<module> import ...`` line
+    the generated modules carry, so it has to be one usable Python name. ``add`` reads
+    it off the single ``src/<package>/domain.py`` it finds, which always is one; a
+    direct caller of the exported generator can pass anything, and a value such as
+    ``../outside`` or ``a.b`` would plan files outside the package and write an import
+    that does not parse."""
+    _check_python_name(package, "This project's package")
 
 
 def _validate_domain_var(
