@@ -913,11 +913,12 @@ def test_projector_handler_name_is_unchanged_for_the_default_event():
     assert "Create a OrderSummary when a Order is created." in projectors
 
 
-@pytest.mark.parametrize("bad_name", ["__class__", "_Order", "__init__"])
-def test_element_name_starting_with_an_underscore_raises(bad_name):
-    """``str.isidentifier`` accepts a dunder, and the compiler binds ``__class__`` in
-    every method that mentions it, so an event named ``__class__`` would have the
-    create factory raise the enclosing aggregate class instead of the event."""
+@pytest.mark.parametrize("bad_name", ["__class__", "__init__", "__evt"])
+def test_element_name_with_two_underscores_raises(bad_name):
+    """The generated code reads these names inside a class body. Python mangles a
+    ``__name`` reference to ``_Class__name`` so the read misses, and the compiler
+    binds ``__class__`` in any method that mentions it, so an event of that name has
+    the create factory raise the enclosing aggregate class."""
     fragment = _fragment_with(
         event=SliceElement(bad_name, {"order_id": _STR_PLAIN, "name": _STR_100}),
     )
@@ -926,6 +927,35 @@ def test_element_name_starting_with_an_underscore_raises(bad_name):
         generate_slice_plan(fragment, "myproj", "myproj")
 
     assert bad_name in str(exc_info.value)
+
+
+@pytest.mark.parametrize("private_name", ["_Order", "_domain"])
+def test_single_underscore_names_are_accepted(private_name):
+    """One leading underscore is an ordinary private name, not a mangled one.
+    ``_domain = Domain(...)`` is a composition root the planner has always accepted,
+    and ``from pkg.domain import _domain`` with ``@_domain.aggregate`` renders and
+    runs, so the generator must not reject it."""
+    plan = generate_slice_plan(_fragment_with(), "myproj", private_name)
+
+    assert f"@{private_name}.aggregate" in _content_for(plan, "aggregate.py")
+
+
+def test_event_named_for_an_overridden_slug_raises():
+    """The aggregate-base collision check has to use the slug the renderer receives,
+    not one re-derived from the aggregate name. With a ``slug`` override the two
+    differ, and an event named for the override would be called as the aggregate
+    instance the factory just built."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("custom", {"custom_id": _STR_PLAIN, "name": _STR_100}),
+        slug="custom",
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "custom" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("bad_var", ["not-a-name", "class", "__class__", ""])

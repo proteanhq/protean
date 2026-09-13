@@ -511,3 +511,40 @@ def test_default_add_output_matches_the_pre_refactor_golden(tmp_path):
     golden = (Path(__file__).parent / "golden_add_order.txt").read_text()
 
     assert rendered == golden
+
+
+@pytest.mark.parametrize(
+    ("name", "domain_var", "expected_slug"),
+    [
+        ("Order", "myproj", "order"),
+        ("OrderItem", "myproj", "order_item"),
+        ("orderItem", "myproj", "order_item"),
+        ("order_item", "myproj", "order_item"),
+        ("aB", "myproj", "a_b"),
+        ("XMLHttp", "myproj", "xml_http"),
+        ("Order", "domain", "order"),
+        ("Order", "_domain", "order"),
+        ("Order", "date", "order"),
+        ("Order", "app", "order"),
+    ],
+)
+def test_names_and_domain_variables_add_has_always_accepted(
+    tmp_path, name, domain_var, expected_slug
+):
+    """``add`` keeps planning every name and composition root it planned before the
+    generator took over.
+
+    The generator rejects fragments it cannot render correctly, and each rejection
+    rule risks turning a working project into a failure. Three did during review:
+    ``aB`` (whose class and slug do not round-trip), a domain bound to ``date``
+    (a name the default slice never emits), and a domain bound to ``_domain`` (an
+    ordinary private name, not a mangled one). This pins the accepted set so the
+    next rule cannot quietly narrow it.
+    """
+    _write_project(tmp_path, "myproj", domain_var)
+
+    plan = plan_add_slice(str(tmp_path), "aggregate", name)
+
+    assert plan.operations[0].path == f"src/myproj/{expected_slug}/__init__.py"
+    for op in plan.operations:
+        compile(op.content, op.path, "exec")

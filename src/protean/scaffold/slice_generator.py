@@ -464,7 +464,7 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
 
     emitted = _emitted_names(fragment)
     _validate_domain_var(domain_var, emitted)
-    _validate_names(fragment, elements, domain_var, emitted)
+    _validate_names(fragment, elements, domain_var, emitted, slug)
 
     if id_name in fragment.aggregate.fields:
         raise SliceGeneratorError(
@@ -553,20 +553,26 @@ def _emitted_names(fragment: SliceFragment) -> frozenset[str]:
 
 
 def _check_public_name(value: str, what: str) -> None:
-    """A class name or the domain variable, checked the way a field name is.
+    """A class name or the domain variable.
 
-    ``str.isidentifier`` accepts a dunder, and a dunder is not just ugly here: the
-    compiler puts ``__class__`` in every method that mentions it, so an event named
-    ``__class__`` makes the create factory raise the enclosing aggregate class
-    instead of the event.
+    ``str.isidentifier`` accepts a double-underscore name, and the generated code
+    reads these names inside a class body, where two rules bite. Python mangles a
+    ``__name`` reference to ``_Class__name``, so the read misses. And the compiler
+    binds ``__class__`` in any method that mentions it, so an event named
+    ``__class__`` has the create factory raise the enclosing aggregate class instead
+    of the event.
+
+    A single leading underscore is fine and stays allowed: ``_domain = Domain(...)``
+    is an ordinary private composition root, and ``from pkg.domain import _domain``
+    with ``@_domain.aggregate`` renders and runs.
     """
     _check_python_name(value, what)
-    if value.startswith("_"):
+    if value.startswith("__"):
         raise SliceGeneratorError(
-            f"{what} {value!r} starts with an underscore. Python and the framework "
-            "keep that namespace for their own names, and a dunder such as "
-            "``__class__`` is bound inside the generated methods, so the generated "
-            "code would read it instead of this one."
+            f"{what} {value!r} starts with two underscores. The generated code reads "
+            "it inside a class body, where Python mangles the reference to "
+            f"``_Class{value}`` and never finds it, and where a name such as "
+            "``__class__`` is already bound to something else."
         )
 
 
@@ -599,6 +605,7 @@ def _validate_names(
     elements: list[tuple[str, SliceElement]],
     domain_var: str,
     emitted: frozenset[str],
+    slug: str,
 ) -> None:
     """Check the class names the slice defines.
 
@@ -650,9 +657,7 @@ def _validate_names(
         )
 
     aggregate_base_locals = (
-        _AGGREGATE_BASE_LOCALS
-        | {_slug_for(fragment.aggregate.name)}
-        | set(fragment.aggregate.fields)
+        _AGGREGATE_BASE_LOCALS | {slug} | set(fragment.aggregate.fields)
     )
     if fragment.event.name in aggregate_base_locals:
         raise SliceGeneratorError(
