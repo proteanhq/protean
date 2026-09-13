@@ -134,6 +134,11 @@ _KIND_FOR_TYPE: dict[str, str] = {
 # other type the renderers drop it.
 _BOUNDED_TYPES = frozenset({"String", "Text"})
 
+# The length of the id the create factory assigns to the event's surfaced reference.
+# The identity default ADR-0041's v1 targets is a UUID4 string, which is 36
+# characters, so a bounded String holds it only from that bound up.
+_IDENTITY_LENGTH = 36
+
 
 class SliceGeneratorError(Exception):
     """A fragment the generator cannot promote to a slice: an unsupported field
@@ -147,16 +152,20 @@ class IRField:
     """One field's IR entry, from ADR-0041's field vocabulary.
 
     ``kind`` is ``"standard"``, ``"text"``, or ``"identifier"``; ``type`` is one of
-    the eight primitive type names (``"String"``, ``"Integer"``, ...). ``max_length``
-    is set only on ``String``/``Text``; ``identifier`` marks the projection's identity
-    key. ``required`` records the IR entry's required flag: the grammar makes every
-    authored field required, so callers set ``required=True`` on them, and the
-    projection's identity key is the one field that is not (it takes the framework
-    identity default), which is why the default is ``False``.
+    the primitive type names in ``_BASE_ANNOTATION`` (``"String"``, ``"Integer"``,
+    ...). ``max_length`` is set only on ``String``/``Text``; ``identifier`` marks the
+    projection's identity key. ``required`` records the IR entry's required flag: the
+    grammar makes every authored field required, so callers set ``required=True`` on
+    them, and the projection's identity key is the one field that is not (it takes
+    the framework identity default), which is why the default is ``False``.
 
-    The create-only slice renders every authored field as required, so ``_declare``
-    does not read ``required`` today. The flag is kept so the fragment stays a
-    faithful IR field entry for the model parser, which produces it.
+    ``_declare`` does not read ``required`` today. Every authored field renders as a
+    plain annotation with no default, which is already a required field. The one
+    thing that form does not carry is the non-empty floor Protean puts on a required
+    ``String`` (``min_length=1``, ``protean.fields.spec``), so a generated ``String``
+    field accepts the empty string. That is the output ``protean add`` has always
+    written and this generator keeps it; changing it would change every generated
+    slice. ``Text`` fields use the field factory and do carry ``required=True``.
     """
 
     kind: str
@@ -355,15 +364,26 @@ def _check_python_name(value: str, what: str) -> None:
         )
 
 
+def _is_positive_int(value: object) -> bool:
+    """Whether a constraint value is a positive integer. :class:`IRField` is a plain
+    dataclass, so it does not enforce its annotations: a fragment can carry a float or
+    a string bound, and ``bool`` is an ``int`` that would render as ``max_length=True``.
+    Checking the value here keeps every bad bound inside the generator's error
+    contract."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
 def _carries_aggregate_id(ir_field: IRField) -> bool:
     """Whether a field can hold the aggregate's id. The generated create factory
     assigns the aggregate's id, a UUID string under the identity default ADR-0041's
-    v1 targets, so the field has to be an ``Identifier`` or an unconstrained
-    ``String``. A bounded ``String`` rejects the 36-character value and any other
-    type rejects a string outright."""
+    v1 targets, so the field has to be an ``Identifier`` or a ``String``. Any other
+    type rejects a string outright. ADR-0041 allows a ``max_length`` on any string
+    field, and a bound that fits the id is fine; one shorter than it is not."""
     if ir_field.kind == "identifier":
         return ir_field.type == "Identifier"
-    return ir_field.type == "String" and ir_field.max_length is None
+    if ir_field.type != "String":
+        return False
+    return ir_field.max_length is None or ir_field.max_length >= _IDENTITY_LENGTH
 
 
 def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
@@ -455,11 +475,13 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
                     "would drop it. Remove it, or declare the field as a String or "
                     "Text."
                 )
-            if ir_field.max_length is not None and ir_field.max_length < 1:
+            if ir_field.max_length is not None and not _is_positive_int(
+                ir_field.max_length
+            ):
                 raise SliceGeneratorError(
                     f"Field {field_name!r} on {element.name!r} sets max_length to "
-                    f"{ir_field.max_length}. ADR-0041 takes a positive integer, and "
-                    "a required field cannot hold a value that short anyway."
+                    f"{ir_field.max_length!r}. ADR-0041 takes a positive integer, "
+                    "which is what the renderers write into the generated field."
                 )
 
     emitted = _emitted_names(fragment)
@@ -486,8 +508,8 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
         raise SliceGeneratorError(
             f"The event {fragment.event.name!r} declares {id_name!r} as a field that "
             "cannot hold the aggregate's id, which the generated create factory "
-            f"assigns to it. Declare {id_name!r} as an Identifier or as a String "
-            "with no max_length."
+            f"assigns to it. Declare {id_name!r} as an Identifier, or as a String "
+            f"with no max_length or one of at least {_IDENTITY_LENGTH}."
         )
 
     has_projection = fragment.projection is not None
@@ -1144,11 +1166,16 @@ def _render_projectors(
     )
 
     # Name the handler after the event it consumes, the way the framework's own
-    # projector examples do. For the default ``<Name>Created`` event this is the same
-    # ``on_<slug>_created`` the renderer has always written; for any other event the
-    # old fixed suffix named the method for something that did not happen.
-    handler = f"on_{_slug_for(event.name)}"
+    # projector examples do. The old fixed suffix named the method for something that
+    # did not happen. The default ``<Name>Created`` event keeps the
+    # ``on_<slug>_created`` the renderer has always written, and takes the name from
+    # the slug rather than from the event: the two do not always agree, because an
+    # aggregate named ``aB`` has the slug ``a_b`` and the event ``ABCreated``, whose
+    # own slug is ``ab``.
     created_by_default = event.name == f"{name}Created"
+    handler = (
+        f"on_{slug}_created" if created_by_default else f"on_{_slug_for(event.name)}"
+    )
     summary_doc = (
         f"Create a {projection.name} when a {name} is created."
         if created_by_default

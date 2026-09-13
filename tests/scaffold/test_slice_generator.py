@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -350,8 +351,8 @@ def test_duplicate_class_name_raises(clashing_name):
 )
 def test_event_id_that_cannot_hold_the_aggregate_id_raises(id_field):
     """The create factory assigns the aggregate's id, a UUID string, to the event's
-    surfaced ``<slug>_id``. A non-string type rejects it and a bounded String is too
-    short for the 36-character value, so the generator rejects the shape up front."""
+    surfaced ``<slug>_id``. A non-string type rejects it, and so does a String bounded
+    below the 36-character value, so the generator rejects the shape up front."""
     fragment = _fragment_with(
         event=SliceElement("OrderCreated", {"order_id": id_field, "name": _STR_100}),
     )
@@ -380,6 +381,29 @@ def test_event_id_as_identifier_is_accepted():
     plan = generate_slice_plan(fragment, "myproj", "myproj")
 
     assert "order_id: Identifier(required=True)" in _content_for(plan, "events.py")
+
+
+def test_event_id_as_a_string_long_enough_for_the_id_is_accepted():
+    """ADR-0041 allows a ``max_length`` on any string field, and the id the create
+    factory assigns is a 36-character UUID string. A bound that fits it holds the
+    value, so only a shorter one is rejected."""
+    fragment = _fragment_with(
+        event=SliceElement(
+            "OrderCreated",
+            {
+                "order_id": IRField(
+                    kind="standard", type="String", required=True, max_length=36
+                ),
+                "name": _STR_100,
+            },
+        ),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "order_id: Annotated[str, Field(max_length=36)]" in _content_for(
+        plan, "events.py"
+    )
 
 
 @pytest.mark.parametrize(
@@ -599,9 +623,12 @@ def test_projection_field_shaped_differently_from_the_event_raises():
 
 
 def test_aggregate_field_named_id_is_accepted():
-    """``id`` on an aggregate is not a collision: the framework keeps auto-injecting
-    the identity and the declared field stays the tracked identifier, so the generated
-    ``{slug}.id`` still resolves."""
+    """``id`` on an aggregate is not a collision. The generator writes the field on
+    the generated base and registers the hand-owned subclass, and the framework
+    injects its identity on that subclass, so ``id`` stays the tracked identifier and
+    the generated ``{slug}.id`` resolves.
+    ``test_slice_whose_fields_take_framework_names_verifies_green`` runs the slice to
+    prove it."""
     fragment = _fragment_with(
         aggregate=SliceElement("Order", {"id": _STR_PLAIN, "name": _STR_100})
     )
@@ -913,6 +940,25 @@ def test_projector_handler_name_is_unchanged_for_the_default_event():
     assert "Create a OrderSummary when a Order is created." in projectors
 
 
+def test_default_event_handler_is_named_for_the_slug_not_the_event():
+    """The aggregate name and the event name do not always give the same slug: ``aB``
+    normalizes to class ``AB`` and slug ``a_b``, while ``ABCreated`` is one word plus
+    ``Created`` and gives ``ab_created``. The default event keeps the handler name
+    ``add`` has always written, which is built from the aggregate's slug."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("AB", {"name": _STR_100}),
+        command=SliceElement("CreateAB", {"name": _STR_100}),
+        event=SliceElement("ABCreated", {"a_b_id": _STR_PLAIN, "name": _STR_100}),
+        slug="a_b",
+    )
+
+    projectors = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "projectors.py"
+    )
+
+    assert "def on_a_b_created(self, event: ABCreated)" in projectors
+
+
 @pytest.mark.parametrize("bad_name", ["__class__", "__init__", "__evt"])
 def test_element_name_with_two_underscores_raises(bad_name):
     """The generated code reads these names inside a class body. Python mangles a
@@ -969,10 +1015,13 @@ def test_domain_variable_that_is_not_a_usable_name_raises(bad_var):
     assert "domain variable" in str(exc_info.value)
 
 
-@pytest.mark.parametrize("bound", [0, -1])
-def test_non_positive_max_length_raises(bound):
-    """ADR-0041's ``max_length`` is a positive integer. A zero or negative bound
-    renders a declaration a required field can never satisfy."""
+@pytest.mark.parametrize("bound", [0, -1, 1.5, True, "20"])
+def test_max_length_that_is_not_a_positive_integer_raises(bound):
+    """ADR-0041's ``max_length`` is a positive integer, and ``IRField`` is a plain
+    dataclass that does not enforce its annotations. A zero or negative bound renders
+    a declaration a required field can never satisfy; a float, a bool, or a string
+    renders a bound that is not one, or used to raise a ``TypeError`` from the
+    comparison instead of the generator's own error."""
     fragment = _fragment_with(
         aggregate=SliceElement(
             "Order",
@@ -1012,6 +1061,32 @@ def test_event_docstring_is_unchanged_for_the_default_event():
     )
 
     assert '"""Event emitted when a Order is created."""' in events
+
+
+def test_required_strings_keep_the_plain_annotation_form():
+    """A required ``String`` renders as a bare annotation. Pydantic reads that as a
+    required field, but it does not carry the non-empty floor Protean puts on a
+    required ``String`` (``min_length=1``), so the field accepts ``""``. That is the
+    output ``protean add`` has always written and the generator keeps it. ``Text``
+    goes through the field factory and does carry ``required=True``."""
+    fragment = _fragment_with(
+        aggregate=SliceElement(
+            "Order",
+            {
+                "name": _STR_100,
+                "code": _STR_PLAIN,
+                "body": IRField(kind="text", type="Text", required=True),
+            },
+        ),
+    )
+
+    base = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "aggregate_base.py"
+    )
+
+    assert "code: str" in base
+    assert "name: Annotated[str, Field(max_length=100)]" in base
+    assert "body: Text(required=True)" in base
 
 
 def test_fragment_slug_overrides_the_name_derived_one():
@@ -1213,3 +1288,97 @@ def test_fragment_driven_slice_verifies_green(tmp_path):
         "protean verify must pass on a fragment-driven slice:\n"
         f"{completed.stdout}\n{completed.stderr}"
     )
+
+
+def test_slice_whose_fields_take_framework_names_runs(tmp_path):
+    """Two field names the generator deliberately does not reserve, run rather than
+    reasoned about: an aggregate field named ``id``, and a field named ``Text``
+    alongside another ``Text`` field.
+
+    ``id`` on the generated base leaves the framework's identity injection to the
+    hand-owned subclass, which is the class that gets registered, so ``id`` stays the
+    tracked identifier. ``Text`` is an imported field factory, but a field declaration
+    is a bare annotation, which does not bind the name in the class body, so the next
+    declaration still reads the factory.
+
+    The slice is materialized into a real ``protean new`` project, which then runs
+    ``protean verify`` and drives the generated command through ``domain.process``, so
+    the aggregate is created, its event raised, and the aggregate read back by the id
+    the authored field holds.
+    """
+    project = _generate_project(tmp_path)
+
+    fields = {
+        "id": _STR_PLAIN,
+        "name": _STR_100,
+        "Text": IRField(kind="text", type="Text", required=True),
+        "note": IRField(kind="text", type="Text", required=True),
+    }
+    fragment = SliceFragment(
+        aggregate=SliceElement("Thing", dict(fields)),
+        command=SliceElement("CreateThing", dict(fields)),
+        event=SliceElement(
+            "ThingCreated",
+            {"thing_id": _STR_PLAIN, **{k: v for k, v in fields.items() if k != "id"}},
+        ),
+    )
+    plan = generate_slice_plan(fragment, _VERIFY_PACKAGE, _VERIFY_PACKAGE)
+    _materialize(project, plan)
+
+    base = (project / "src/scaffolded/thing/aggregate_base.py").read_text()
+    assert "id: str" in base
+    assert "Text: Text(required=True)" in base
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "protean",
+            "verify",
+            "-d",
+            "src/scaffolded/domain.py:scaffolded",
+            "--path",
+            ".",
+        ],
+        cwd=project,
+        env=_subprocess_env(project),
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    assert completed.returncode == 0, (
+        "protean verify must pass on a slice whose fields take framework names:\n"
+        f"{completed.stdout}\n{completed.stderr}"
+    )
+
+    # ``verify`` proves the elements register. Driving the command proves they work:
+    # the aggregate is read back by the id its authored ``id`` field holds, which is
+    # what tracking the identity means.
+    drive = textwrap.dedent(
+        """
+        from scaffolded.domain import scaffolded
+        from scaffolded.thing.aggregate import Thing
+        from scaffolded.thing.commands import CreateThing
+
+        scaffolded.init()
+        with scaffolded.domain_context():
+            scaffolded.process(
+                CreateThing(id="thing-1", name="a name", Text="a", note="b")
+            )
+            found = scaffolded.repository_for(Thing).get("thing-1")
+            print("READ_BACK", found.id, found.Text, found.note)
+        """
+    )
+    driven = subprocess.run(
+        [sys.executable, "-c", drive],
+        cwd=project,
+        env=_subprocess_env(project),
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+
+    assert driven.returncode == 0, (
+        f"the generated slice must run:\n{driven.stdout}\n{driven.stderr}"
+    )
+    assert "READ_BACK thing-1 a b" in driven.stdout
