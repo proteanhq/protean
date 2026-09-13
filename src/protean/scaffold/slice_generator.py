@@ -572,11 +572,11 @@ def _validate(
 @dataclass(frozen=True)
 class _GeneratedModule:
     """One module the generator writes, described by the names it binds at module
-    level: *imported* is what it reads from outside the slice (its imports and the
-    annotations it writes, whether on a field declaration or on a method), *classes*
-    the slice's own classes it defines or imports, each with the role the error
-    messages call it, and *imports_domain* whether it imports the project's domain
-    variable."""
+    level: *imported* is what it reads from outside the slice (its imports, the
+    annotations it writes, whether on a field declaration or on a method, and the
+    builtins it reads by bare name), *classes* the slice's own classes it defines or
+    imports, each with the role the error messages call it, and *imports_domain*
+    whether it imports the project's domain variable."""
 
     filename: str
     imported: frozenset[str]
@@ -650,7 +650,12 @@ def _generated_modules(
     return (
         _GeneratedModule(
             "aggregate_base.py",
-            frozenset({"BaseAggregate", "Self"})
+            # ``classmethod`` is a builtin, not an import, but the module reads it by
+            # bare name to decorate the create factory, so a module-level binding of
+            # that name takes it over: ``from .events import classmethod`` leaves
+            # ``@classmethod`` calling the event class, and importing the generated
+            # base raises instead of defining the aggregate.
+            frozenset({"BaseAggregate", "Self", "classmethod"})
             | _field_level_names(fragment.aggregate.fields)
             | _create_parameter_names(fragment.aggregate.fields),
             (base_entry, event_entry),
@@ -812,10 +817,11 @@ def _validate_names(
             if class_name in module.imported:
                 raise SliceGeneratorError(
                     f"The slice's {role} is named {class_name!r}, which the generated "
-                    f"{module.filename} already reads under that name, as an import "
-                    "or as an annotation. The class would take the name over in "
-                    "that module, so the slice would inherit from, register against, "
-                    "be keyed on, or be typed as the wrong object. Rename it."
+                    f"{module.filename} already reads under that name, as an "
+                    "import, an annotation or a builtin. The class would take the "
+                    "name over in that module, so the slice would inherit from, "
+                    "register against, be keyed on, be typed as, or be decorated "
+                    "with the wrong object. Rename it."
                 )
 
     if fragment.aggregate.name in _HANDLER_LOCALS:

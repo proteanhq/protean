@@ -569,6 +569,37 @@ def test_element_name_clashing_with_a_generated_import_raises(clashing_name):
     assert clashing_name in str(exc_info.value)
 
 
+def test_event_named_for_a_builtin_the_generated_base_reads_raises():
+    """``aggregate_base.py`` decorates its create factory with ``@classmethod``, a
+    builtin it reads by bare name. The module also imports the event, so an event
+    named ``classmethod`` renders ``from .events import classmethod`` above the class
+    and leaves ``@classmethod`` calling the event class: importing the generated base
+    raises instead of defining the aggregate."""
+    fragment = _fragment_with(
+        event=SliceElement("classmethod", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "classmethod" in str(exc_info.value)
+    assert "aggregate_base.py" in str(exc_info.value)
+
+
+def test_command_named_for_a_builtin_only_the_base_reads_is_allowed():
+    """The builtins are tracked per module like the imports are. ``commands.py``
+    never reads ``classmethod``, so a command of that name renders and runs."""
+    fragment = _fragment_with(command=SliceElement("classmethod", {"name": _STR_100}))
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "class classmethod:" in _content_for(plan, "commands.py")
+    assert "@classmethod" in _content_for(plan, "aggregate_base.py")
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
 def test_name_clashing_with_another_module_only_is_allowed():
     """A name is only taken over where both bindings land in the same module.
     ``BaseAggregate`` is imported by ``aggregate_base.py``, which imports neither the
