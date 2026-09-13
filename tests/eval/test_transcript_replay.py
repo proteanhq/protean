@@ -37,6 +37,20 @@ def test_a_transcript_exists_for_the_current_pack_version() -> None:
 
 
 @pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
+def test_transcript_pack_version_matches_its_directory(transcript_path: Path) -> None:
+    """A transcript's internal ``pack_version`` must equal the installed
+    ``PACK_VERSION`` and its directory. Otherwise a stale fixture dropped into
+    ``transcripts/{PACK_VERSION}/`` would satisfy the existence guard and replay
+    against the wrong pack."""
+    transcript = Transcript.load(transcript_path)
+    assert transcript.pack_version == PACK_VERSION == transcript_path.parent.name, (
+        f"transcript {transcript.task_id!r} records pack_version "
+        f"{transcript.pack_version!r} but sits under {transcript_path.parent.name!r} "
+        f"for installed pack {PACK_VERSION!r}; re-record it."
+    )
+
+
+@pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
 def test_replay_is_deterministic_and_verifies_green(
     transcript_path: Path, tmp_path: Path
 ) -> None:

@@ -3,6 +3,7 @@ transcript format, verify discovery, and live-driver resolution."""
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -210,6 +211,24 @@ class TestTools:
         assert result["ok"] is False
         assert "escape" in result["error"] or "workspace" in result["error"]
 
+    def test_non_string_path_is_feedback(self, tmp_path: Path) -> None:
+        """A schema-invalid path type is a correctable error, not a crash."""
+        workspace = Workspace(tmp_path)
+        result = execute_tool_call(
+            workspace, ToolCall("write_file", {"path": 1, "content": "x"})
+        )
+        assert result["ok"] is False
+        assert "string" in result["error"]
+
+    def test_non_string_content_is_feedback(self, tmp_path: Path) -> None:
+        """A schema-invalid content type is a correctable error, not a crash."""
+        workspace = Workspace(tmp_path)
+        result = execute_tool_call(
+            workspace, ToolCall("write_file", {"path": "a.py", "content": None})
+        )
+        assert result["ok"] is False
+        assert "string" in result["error"]
+
     def test_list_dir_on_a_file_is_feedback(self, tmp_path: Path) -> None:
         workspace = Workspace(tmp_path)
         workspace.write("domain.py", "")
@@ -298,6 +317,19 @@ class TestRunVerify:
         result = _summarize_verify("garbage", exit_code=3, stderr="Traceback\nBoom!")
         assert result["ok"] is False
         assert "Boom!" in result["error"]
+
+    def test_a_timeout_is_reported_as_a_failed_verdict(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _timeout(*args: object, **kwargs: object) -> None:
+            raise subprocess.TimeoutExpired(cmd="protean verify", timeout=1)
+
+        monkeypatch.setattr(tools_module.subprocess, "run", _timeout)
+        (tmp_path / "domain.py").write_text(GREEN_DOMAIN, encoding="utf-8")
+        result = run_verify(tmp_path)
+        assert result["ok"] is False
+        assert result["verdict"] == "fail"
+        assert "timed out" in result["error"]
 
 
 class TestDomainDiscovery:

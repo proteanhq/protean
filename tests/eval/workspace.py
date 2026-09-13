@@ -49,7 +49,13 @@ class Workspace:
 
         *allow_root* permits the workspace root itself (for ``list_dir(".")``);
         a file operation never allows it.
+
+        A non-string path is rejected as a :class:`WorkspaceError` (not an
+        ``AttributeError``), so a schema-invalid tool input becomes agent
+        feedback rather than crashing the run.
         """
+        if not isinstance(rel, str):
+            raise WorkspaceError(f"path must be a string, got {type(rel).__name__}")
         candidate = Path(rel.strip())
         if candidate.is_absolute():
             raise WorkspaceError(f"path must be relative to the workspace: {rel!r}")
@@ -68,8 +74,14 @@ class Workspace:
     def write(self, rel: str, content: str) -> str:
         """Write *content* to *rel* (creating parent directories) and track it.
 
-        Returns the tracked, workspace-relative POSIX path.
+        Returns the tracked, workspace-relative POSIX path. A non-string
+        *content* is rejected as a :class:`WorkspaceError`, so a schema-invalid
+        tool input becomes agent feedback rather than crashing the run.
         """
+        if not isinstance(content, str):
+            raise WorkspaceError(
+                f"content must be a string, got {type(content).__name__}"
+            )
         target = self._resolve(rel)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")

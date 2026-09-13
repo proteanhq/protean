@@ -56,8 +56,10 @@ class VerifyResult(TypedDict):
 # Env vars dropped before the verify subprocess, mirroring the scaffold-test
 # harness: VIRTUAL_ENV so a leaked value cannot point the child at a different
 # source tree than sys.executable, and PROTEAN_ENV/PROTEAN_DEBUG so a value
-# exported in the parent shell does not leak into the verify run.
-_STRIPPED_ENV_VARS = ("VIRTUAL_ENV", "PROTEAN_ENV", "PROTEAN_DEBUG")
+# exported in the parent shell does not leak into the verify run. PROTEAN_DOMAIN
+# too: `protean verify` gives it precedence over the `-d` argument, so a leaked
+# value would make verify init an unrelated domain instead of the one at root.
+_STRIPPED_ENV_VARS = ("VIRTUAL_ENV", "PROTEAN_ENV", "PROTEAN_DEBUG", "PROTEAN_DOMAIN")
 
 # A ceiling on the verify subprocess. The live lane runs model-generated code
 # through pytest, whose import or a test could hang; the cap keeps a hung run

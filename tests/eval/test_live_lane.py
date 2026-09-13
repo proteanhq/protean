@@ -34,9 +34,12 @@ def test_live_lane_records_a_replayable_green_transcript(tmp_path: Path) -> None
     assert driver is not None  # the env var is set, so resolution returns one
 
     transcript = record("place_order", driver)
-    transcript.save(eval_root())  # the live lane doubles as the recorder
 
+    # Validate before saving: a non-replayable or non-green run must not leave a
+    # bad fixture in the checkout for a later replay to pick up.
     result = replay(transcript, workspace=Workspace(tmp_path))
     assert result.project_hash == transcript.project_hash
     assert result.verify_results, "the live run recorded no run_verify call"
     assert result.verify_results[-1]["verdict"] == "pass"
+
+    transcript.save(eval_root())  # the live lane doubles as the recorder
