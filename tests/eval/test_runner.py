@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from protean.dx.pack import PACK_VERSION
+from protean.dx.pack import PACK_VERSION, iter_skills
 from tests.eval import tools as tools_module
 from tests.eval.drivers import (
     LIVE_DRIVER_ENV_VAR,
@@ -426,18 +426,40 @@ class TestRunVerify:
         assert "INVALID_LINT_CONFIG" in result["codes"]
         assert any("lint" in msg for msg in result["errors"])
 
-    def test_a_timeout_is_reported_as_a_failed_verdict(
+    def test_a_timeout_fails_and_kills_the_process_tree(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        def _timeout(*args: object, **kwargs: object) -> None:
-            raise subprocess.TimeoutExpired(cmd="protean verify", timeout=1)
+        """A hung verify times out to a failed verdict and its process group is
+        killed, so the nested pytest cannot outlive the call."""
+        killed: dict[str, int] = {}
 
-        monkeypatch.setattr(tools_module.subprocess, "run", _timeout)
+        class _FakePopen:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.pid = 4242
+                self.returncode: int | None = None
+                self._calls = 0
+
+            def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+                self._calls += 1
+                if self._calls == 1:
+                    raise subprocess.TimeoutExpired(cmd="verify", timeout=timeout)
+                return ("", "")
+
+        monkeypatch.setattr(tools_module.subprocess, "Popen", _FakePopen)
+        monkeypatch.setattr(tools_module.os, "getpgid", lambda pid: pid)
+        monkeypatch.setattr(
+            tools_module.os,
+            "killpg",
+            lambda pgid, sig: killed.__setitem__("pgid", pgid),
+        )
         (tmp_path / "domain.py").write_text(GREEN_DOMAIN, encoding="utf-8")
+
         result = run_verify(tmp_path)
+
         assert result["ok"] is False
         assert result["verdict"] == "fail"
         assert "timed out" in result["error"]
+        assert killed["pgid"] == 4242
 
 
 class TestDomainDiscovery:
@@ -660,8 +682,6 @@ class TestRecordAndReplay:
 
 class TestPackPrompt:
     def test_prompt_includes_agents_and_every_skill(self) -> None:
-        from protean.dx.pack import iter_skills
-
         prompt = build_pack_prompt()
         assert prompt.strip()
         skills = iter_skills()

@@ -21,9 +21,11 @@ a real bug and propagates.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import os
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
@@ -210,17 +212,23 @@ def run_verify(root: Path | str) -> VerifyResult:
     if domain_arg is not None:
         args += ["-d", domain_arg]
 
+    # Run in its own session (a new process group) so a timeout can kill the
+    # whole tree. verify launches pytest as a child; killing only the parent
+    # would leave a hung generated test running and holding the workspace.
+    process = subprocess.Popen(
+        args,
+        cwd=root_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        env=env,
+        start_new_session=True,
+    )
     try:
-        completed = subprocess.run(
-            args,
-            cwd=root_path,
-            capture_output=True,
-            text=True,
-            errors="replace",
-            env=env,
-            timeout=_VERIFY_TIMEOUT_SECONDS,
-        )
+        stdout, stderr = process.communicate(timeout=_VERIFY_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
+        _terminate_tree(process)
         return {
             "ok": False,
             "verdict": "fail",
@@ -230,7 +238,25 @@ def run_verify(root: Path | str) -> VerifyResult:
             "exit_code": -1,
             "error": f"verify timed out after {_VERIFY_TIMEOUT_SECONDS}s",
         }
-    return _summarize_verify(completed.stdout, completed.returncode, completed.stderr)
+    return _summarize_verify(stdout, process.returncode, stderr)
+
+
+def _terminate_tree(process: subprocess.Popen) -> None:
+    """Kill the timed-out verify process and its children, then reap it.
+
+    ``start_new_session`` made the process a group leader, so on POSIX one
+    ``killpg`` takes down verify and its nested pytest together. Platforms
+    without process groups fall back to killing the direct process."""
+    try:
+        if hasattr(os, "killpg") and hasattr(os, "getpgid"):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        else:  # pragma: no cover - exercised only on non-POSIX platforms
+            process.kill()
+    except (ProcessLookupError, PermissionError, OSError):  # pragma: no cover
+        process.kill()
+    finally:
+        with contextlib.suppress(subprocess.TimeoutExpired, ValueError, OSError):
+            process.communicate(timeout=5)
 
 
 def _decode_envelope(stdout: str) -> dict[str, Any] | None:
