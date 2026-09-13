@@ -136,10 +136,14 @@ class Workspace:
         lines: list[str] = []
         for relpath in sorted(self._written):
             path = self._root / relpath
-            # write() never creates a symlink, so a tracked path that is one was
-            # swapped out of band (a generated test could point it at a host
-            # file). Skip it rather than hash data from outside the workspace.
-            if path.is_symlink() or not path.is_file():
+            if not path.is_file():
+                continue
+            # Only hash a file whose real location is still inside the workspace.
+            # write() never creates a symlink, so a tracked path (or a parent
+            # component) that resolves outside was swapped out of band (a
+            # generated test could point it at a host file); skip it rather than
+            # hash data from outside the workspace.
+            if not path.resolve().is_relative_to(self._root):
                 continue
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             lines.append(f"{relpath}\n{digest}")

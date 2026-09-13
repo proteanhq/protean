@@ -196,6 +196,30 @@ class TestWorkspace:
 
         assert workspace.project_hash() == survivor.project_hash()
 
+    def test_project_hash_skips_a_file_under_a_symlinked_directory(
+        self, tmp_path: Path
+    ) -> None:
+        """A symlink anywhere in the path (here a tracked file's parent dir
+        swapped for a symlink to an outside dir) must not pull in host data."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "keep.py").write_text("host secret\n", encoding="utf-8")
+        ws_dir = tmp_path / "ws"
+        ws_dir.mkdir()
+        workspace = Workspace(ws_dir)
+        workspace.write("root.py", "x = 1\n")
+        workspace.write("pkg/keep.py", "real\n")
+        (ws_dir / "pkg" / "keep.py").unlink()
+        (ws_dir / "pkg").rmdir()
+        (ws_dir / "pkg").symlink_to(outside, target_is_directory=True)
+
+        survivor_dir = tmp_path / "only"
+        survivor_dir.mkdir()
+        survivor = Workspace(survivor_dir)
+        survivor.write("root.py", "x = 1\n")
+
+        assert workspace.project_hash() == survivor.project_hash()
+
     def test_project_hash_skips_a_tracked_file_deleted_out_of_band(
         self, tmp_path: Path
     ) -> None:
