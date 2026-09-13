@@ -146,8 +146,9 @@ identity default.
 
 The framework applies an implicit `min_length=1` to required string-based fields
 (ADR-0026), and that bound does reach the IR: it is applied as pydantic `MinLen(1)`
-metadata, which `IRBuilder` reads back like any other constraint, so every required
-string field's entry carries `min_length: 1` whether or not the author wrote it. The
+metadata, which `IRBuilder` reads back like any other constraint, so a required
+string field with no other bound carries `min_length: 1` whether or not the author
+wrote it. An explicit `min_length` of any other value stays in the IR as written. The
 grammar has no `min_length` syntax, and its `required` re-derives exactly that bound,
 so the emitter drops a `min_length` of 1 and refuses any other value, including an
 explicit `0` (a required field that accepts the empty string has no grammar form).
