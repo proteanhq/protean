@@ -611,6 +611,94 @@ def test_aggregate_field_named_id_is_accepted():
     assert "id: str" in _content_for(plan, "aggregate_base.py")
 
 
+def test_aggregate_named_as_its_own_slug_raises():
+    """An already-snake-case aggregate name equals its slug, so the handler renders
+    ``order_item = order_item.create(...)``. Python makes the name local for the whole
+    method, so reading the imported class raises ``UnboundLocalError``. The message
+    points at the PascalCase name to use instead."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("order_item", {"name": _STR_100}),
+        command=SliceElement("CreateOrderItem", {"name": _STR_100}),
+        event=SliceElement(
+            "OrderItemCreated", {"order_item_id": _STR_PLAIN, "name": _STR_100}
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "OrderItem" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("domain_var", ["repo", "summary", "event", "command", "on"])
+def test_domain_variable_colliding_with_generated_code_raises(domain_var):
+    """The generated modules import the project's domain variable and read it inside
+    the handler and projector. A project binding ``repo = Domain(...)`` renders
+    ``repo = repo.repository_for(...)``, an ``UnboundLocalError``; one binding ``on``
+    collides with the projector's imported decorator."""
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(), "myproj", domain_var)
+
+    assert domain_var in str(exc_info.value)
+
+
+@pytest.mark.parametrize("projection_name", ["summary", "repo", "event", "self"])
+def test_projection_named_for_a_projector_local_raises(projection_name):
+    """The projector method binds ``self``, ``event``, ``summary`` and ``repo``, and
+    reads the projection class by name in the same method. A projection named for any
+    of them resolves to the local instead."""
+    fragment = _fragment_with(
+        projection=SliceElement(
+            projection_name,
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                ),
+                "name": _STR_100,
+            },
+        ),
+        projector=SliceProjector(
+            name="OrderProjector", for_=projection_name, consumes="OrderCreated"
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert projection_name in str(exc_info.value)
+
+
+def test_event_field_reserved_on_the_derived_projection_raises():
+    """A fragment with no read side has its projection derived from the event, so the
+    event's field names have to clear the projection's reserved set too. ``defaults``
+    is free on an event and a member of ``BaseProjection``."""
+    fragment = _fragment_with(
+        event=SliceElement(
+            "OrderCreated", {"order_id": _STR_PLAIN, "defaults": _STR_100}
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "defaults" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("event_name", ["cls", "name"])
+def test_event_named_for_a_create_factory_local_raises(event_name):
+    """The create factory binds ``cls``, the slug, and one parameter per aggregate
+    field, and reads the event class by name to raise it. An event named ``cls`` or
+    after an aggregate field resolves to the local instead."""
+    fragment = _fragment_with(
+        event=SliceElement(event_name, {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert event_name in str(exc_info.value)
+
+
 def test_half_present_read_side_raises(tmp_path):
     """A projection without a projector (or the reverse) is rejected: the read side is
     both together or neither."""

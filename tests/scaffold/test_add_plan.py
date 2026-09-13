@@ -467,3 +467,26 @@ def test_domain_py_with_non_name_call_target_raises(tmp_path):
         plan_add_slice(str(tmp_path / "proj"), "aggregate", "Order")
 
     assert "Domain" in str(exc_info.value)
+
+
+def test_generator_rejection_arrives_as_an_add_plan_error(tmp_path):
+    """``add`` is a CLI boundary: its callers catch ``AddPlanError`` and print a usage
+    error. A name the generator rejects has to arrive as one rather than as an
+    uncaught ``SliceGeneratorError`` traceback."""
+    _write_project(tmp_path, "myproj", "domain")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(tmp_path), "aggregate", "BaseAggregate")
+
+    assert "BaseAggregate" in str(exc_info.value)
+
+
+def test_domain_variable_the_generator_rejects_arrives_as_an_add_plan_error(tmp_path):
+    """The same boundary covers a project whose composition root binds the domain to a
+    name the generated handler and projector use as a local."""
+    _write_project(tmp_path, "myproj", "repo")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(tmp_path), "aggregate", "Order")
+
+    assert "repo" in str(exc_info.value)

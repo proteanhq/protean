@@ -111,14 +111,20 @@ _IMPORTED_SYMBOLS = frozenset(
     }
 )
 
-# The two locals the renderers bind and then read again, so a name that takes one of
-# them changes what the later line refers to. The command handler holds its repository
-# in ``repo`` and adds the aggregate through it, and the projector builds the
-# projection into ``summary`` before asking the domain for that projection's
-# repository. Every other generated local is written once and never read back, so a
-# name may take it safely.
+# The names each generated method binds, as parameters or by assignment. Assigning a
+# name anywhere in a Python function makes it local for the whole function, so a
+# module-level name the method reads cannot be one of these: the read resolves to the
+# local and raises ``UnboundLocalError``, or picks up the wrong object.
+_HANDLER_LOCALS = frozenset({"self", "command", "repo"})
+_PROJECTOR_LOCALS = frozenset({"self", "event", "summary", "repo"})
+_AGGREGATE_BASE_LOCALS = frozenset({"cls"})
+
+# The handler local the slug itself has to stay clear of: the handler holds its
+# repository in ``repo`` and adds the aggregate through it, so a slug of ``repo``
+# would make it add the repository to itself. The handler's other locals are
+# parameters that are already bound where the slug line reads them, so a slug may
+# take those names.
 _HANDLER_LOCAL = "repo"
-_PROJECTOR_LOCAL = "summary"
 
 
 class SliceGeneratorError(Exception):
@@ -352,6 +358,15 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
         slug,
         f"The slug derived from the aggregate name {fragment.aggregate.name!r}:",
     )
+    if slug == fragment.aggregate.name:
+        raise SliceGeneratorError(
+            f"The aggregate is named {fragment.aggregate.name!r}, which is also the "
+            f"slug it derives. The generated command handler then reads the aggregate "
+            f"class and binds the local on one line, {slug!r} = {slug!r}.create(...), "
+            "so the read resolves to the local. Give the aggregate its class name "
+            f"({''.join(word[:1].upper() + word[1:] for word in _split_words(fragment.aggregate.name))!r})."
+        )
+    _validate_domain_var(domain_var)
     if slug in {_HANDLER_LOCAL, domain_var}:
         raise SliceGeneratorError(
             f"The aggregate name {fragment.aggregate.name!r} derives the slug "
@@ -371,7 +386,17 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
 
     _validate_names(fragment, elements, domain_var)
 
-    for role, element in elements:
+    # (role, element, what the message calls it). The derived projection mirrors the
+    # event's fields, so when the fragment omits its read side those names have to
+    # clear the projection's reserved set as well as the event's: ``defaults`` is free
+    # on an event and a member of BaseProjection.
+    checks = [(role, element, f"generated {role}") for role, element in elements]
+    if fragment.projection is None:
+        checks.append(
+            ("projection", fragment.event, "projection the generator derives from it")
+        )
+
+    for role, element, label in checks:
         reserved = _reserved_field_names(role)
         for field_name, ir_field in element.fields.items():
             _check_python_name(field_name, f"Field name on {element.name!r}:")
@@ -384,8 +409,8 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
             if field_name in reserved:
                 raise SliceGeneratorError(
                     f"Field {field_name!r} on {element.name!r} is a reserved name: "
-                    f"the generated {role} already uses it, so the field would "
-                    "shadow it and the slice would not work. Rename the field."
+                    f"the {label} already uses it, so the field would shadow it and "
+                    "the slice would not work. Rename the field."
                 )
             if ir_field.type not in _BASE_ANNOTATION:
                 supported = ", ".join(sorted(_BASE_ANNOTATION))
@@ -433,6 +458,28 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
             )
 
 
+def _validate_domain_var(domain_var: str) -> None:
+    """The generated modules import the project's domain variable and read it inside
+    the handler and projector methods. A domain variable that takes one of those
+    methods' local names, or one of the names the renderers import, is read as the
+    local or the other import instead: a project whose composition root binds
+    ``repo = Domain(...)`` renders ``repo = repo.repository_for(...)``, which raises
+    ``UnboundLocalError``."""
+    if domain_var in _HANDLER_LOCALS | _PROJECTOR_LOCALS:
+        raise SliceGeneratorError(
+            f"This project binds its domain to {domain_var!r}, which the generated "
+            "command handler and projector bind as a local or a parameter. The "
+            "generated code reads the domain by that name, so it would get the local "
+            "instead. Rename the domain variable in the composition root."
+        )
+    if domain_var in _IMPORTED_SYMBOLS:
+        raise SliceGeneratorError(
+            f"This project binds its domain to {domain_var!r}, which the generated "
+            "code already imports under that name. The two imports would collide in "
+            "the same module. Rename the domain variable in the composition root."
+        )
+
+
 def _validate_names(
     fragment: SliceFragment,
     elements: list[tuple[str, SliceElement]],
@@ -477,12 +524,25 @@ def _validate_names(
         if fragment.projection is not None
         else _derived_projection_name(fragment.aggregate.name)
     )
-    if projection_name == _PROJECTOR_LOCAL:
+    if projection_name in _PROJECTOR_LOCALS:
         raise SliceGeneratorError(
             f"The slice's projection is named {projection_name!r}, which the "
-            "generated projector binds to the projection it just built. The next "
-            "line asks the domain for that projection's repository and would pass "
-            "the instance instead of the class. Rename the projection."
+            "generated projector binds inside the method that builds the projection. "
+            "The method reads the projection class by that name, so it would get the "
+            "local instead. Rename the projection."
+        )
+
+    aggregate_base_locals = (
+        _AGGREGATE_BASE_LOCALS
+        | {_slug_for(fragment.aggregate.name)}
+        | set(fragment.aggregate.fields)
+    )
+    if fragment.event.name in aggregate_base_locals:
+        raise SliceGeneratorError(
+            f"The slice's event is named {fragment.event.name!r}, which the generated "
+            "create factory already binds as a local or a parameter. The factory "
+            "reads the event class by that name to raise it, so it would get the "
+            "local instead. Rename the event."
         )
 
     seen: dict[str, str] = {}

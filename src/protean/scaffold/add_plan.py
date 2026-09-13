@@ -41,6 +41,7 @@ from protean.scaffold.slice_generator import (
     IRField,
     SliceElement,
     SliceFragment,
+    SliceGeneratorError,
     _split_words,
     generate_slice_plan,
 )
@@ -71,9 +72,10 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
     canonical ADR-0030 paths under ``src/<package>/<slug>/``. Touches no files.
 
     Raises :class:`AddPlanError` on an unsupported element type, a name that is
-    not a valid identifier or that derives no valid class name and slug, or a
-    project the planner cannot resolve (no ``src/<package>/domain.py``, more than
-    one candidate, or a ``domain.py`` that does not construct a ``Domain``).
+    not a valid identifier or that derives no valid class name and slug, a project
+    the planner cannot resolve (no ``src/<package>/domain.py``, more than one
+    candidate, or a ``domain.py`` that does not construct a ``Domain``), or a name
+    the generator rejects for the slice it would render.
     """
     normalized_type = element_type.lower()
     if normalized_type not in SUPPORTED_ELEMENT_TYPES:
@@ -142,7 +144,15 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
         ),
     )
 
-    return generate_slice_plan(fragment, package, domain_var)
+    try:
+        return generate_slice_plan(fragment, package, domain_var)
+    except SliceGeneratorError as exc:
+        # ``add`` is a CLI boundary: its callers catch AddPlanError and turn it into a
+        # usage error, so a generator rejection has to arrive as one rather than as a
+        # traceback. It reaches here for a name the default fragment cannot use, such
+        # as an aggregate named for a symbol the generated code imports, or a project
+        # whose domain variable collides with a generated local.
+        raise AddPlanError(str(exc)) from exc
 
 
 def _resolve_project(project_path: str) -> tuple[str, str]:
