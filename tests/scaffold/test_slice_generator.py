@@ -821,6 +821,107 @@ def test_domain_variable_named_for_a_field_annotation_raises():
     assert "bool" in str(exc_info.value)
 
 
+_IDENTIFIER = IRField(kind="identifier", type="Identifier", required=True)
+_TEXT = IRField(kind="text", type="Text", required=True)
+
+
+def _factory_backed_fragment() -> SliceFragment:
+    """A fragment whose fields all render through a field factory (``Identifier(...)``
+    or ``Text(...)``), so no generated module declares a field with a plain ``str``
+    annotation."""
+    return SliceFragment(
+        aggregate=SliceElement("Order", {"body": _TEXT}),
+        command=SliceElement("CreateOrder", {"body": _TEXT}),
+        event=SliceElement("OrderCreated", {"order_id": _IDENTIFIER, "body": _TEXT}),
+    )
+
+
+def test_domain_variable_named_str_raises():
+    """The command handler returns the new aggregate's id, so ``command_handlers.py``
+    writes ``-> str`` whatever the slice's fields are. A project binding
+    ``str = Domain(...)`` has that module import the domain as ``str``, and the return
+    annotation then resolves to the domain instead of the built-in."""
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_factory_backed_fragment(), "myproj", "str")
+
+    message = str(exc_info.value)
+    assert "str" in message
+    assert "command_handlers.py" in message
+
+
+def test_command_named_str_raises():
+    """Same collision from the other side: ``command_handlers.py`` imports the command
+    by name, so a command named ``str`` takes over the handler's return annotation."""
+    fragment = _factory_backed_fragment()
+    fragment = SliceFragment(
+        aggregate=fragment.aggregate,
+        command=SliceElement("str", {"body": _TEXT}),
+        event=fragment.event,
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    message = str(exc_info.value)
+    assert "str" in message
+    assert "command_handlers.py" in message
+
+
+def test_element_named_str_is_allowed_where_no_module_writes_str():
+    """The collision set follows the forms a module actually emits. An ``Integer``
+    slice annotates nothing ``str``: ``aggregate_base.py`` carries the event alongside
+    ``qty: int`` create parameters, and ``command_handlers.py`` does not import the
+    event at all. So an event named ``str`` renders."""
+    qty = IRField(kind="standard", type="Integer", required=True)
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"qty": qty}),
+        command=SliceElement("CreateOrder", {"qty": qty}),
+        event=SliceElement("str", {"order_id": _IDENTIFIER, "qty": qty}),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "class str:" in _content_for(plan, "events.py")
+    assert "from .events import str" in _content_for(plan, "aggregate_base.py")
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
+def test_identifier_and_text_fields_leave_str_free_in_their_own_module():
+    """``Identifier`` and ``Text`` fields render through a field factory, so the module
+    that declares them reads no plain annotation. ``projection.py`` here declares
+    nothing but those two forms and carries no other ``str``, so a projection named
+    ``str`` renders. Only the modules that do write the name (the aggregate base's
+    create parameters, the handler's return annotation) reject a class of that name,
+    and neither of them carries the projection."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"body": _TEXT}),
+        command=SliceElement("CreateOrder", {"body": _TEXT}),
+        event=SliceElement("OrderCreated", {"order_id": _IDENTIFIER, "body": _TEXT}),
+        projection=SliceElement(
+            "str",
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                ),
+                "body": _TEXT,
+            },
+        ),
+        projector=SliceProjector(
+            name="OrderViewProjector", for_="str", consumes="OrderCreated"
+        ),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "class str:" in _content_for(plan, "projection.py")
+    assert "projector_for=str" in _content_for(plan, "projectors.py")
+    for op in plan.operations:
+        assert isinstance(op, CreateFileOperation)
+        compile(op.content, op.path, "exec")
+
+
 @pytest.mark.parametrize("domain_var", ["date", "datetime", "int", "Text"])
 def test_domain_variable_a_slice_does_not_emit_is_accepted(domain_var):
     """The collision set is built per fragment, not from everything the renderers can

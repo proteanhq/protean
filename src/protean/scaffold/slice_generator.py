@@ -538,10 +538,11 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
 @dataclass(frozen=True)
 class _GeneratedModule:
     """One module the generator writes, described by the names it binds at module
-    level: *imported* is what it reads from outside the slice (imports and the
-    annotations its field declarations read), *classes* the slice's own classes it
-    defines or imports, each with the role the error messages call it, and
-    *imports_domain* whether it imports the project's domain variable."""
+    level: *imported* is what it reads from outside the slice (its imports and the
+    annotations it writes, whether on a field declaration or on a method), *classes*
+    the slice's own classes it defines or imports, each with the role the error
+    messages call it, and *imports_domain* whether it imports the project's domain
+    variable."""
 
     filename: str
     imported: frozenset[str]
@@ -551,21 +552,32 @@ class _GeneratedModule:
 
 def _field_level_names(fields: Mapping[str, IRField]) -> frozenset[str]:
     """The names a module binds or reads to declare *fields*: the field factories and
-    typing helpers it imports, and the annotations the declarations read."""
+    typing helpers it imports, and the annotations the declarations read.
+
+    Each field contributes only the names its own form in :func:`_declare` writes. An
+    identifier field renders ``Identifier(...)`` and a text field ``Text(...)``, and
+    neither reads a plain annotation, so a module whose fields are all of those two
+    forms never mentions ``str`` and leaves that name free.
+    """
     names: set[str] = set()
     for ir_field in fields.values():
-        names.add(_BASE_ANNOTATION[ir_field.type])
         if ir_field.kind == "identifier":
             names.add("Identifier")
         elif ir_field.type == "Text":
             names.add("Text")
-        if ir_field.type == "Date":
-            names.add("date")
-        elif ir_field.type == "DateTime":
-            names.add("datetime")
-        if ir_field.type == "String" and ir_field.max_length is not None:
-            names.update({"Annotated", "Field"})
+        elif ir_field.type == "String" and ir_field.max_length is not None:
+            names.update({"Annotated", "Field", "str"})
+        else:
+            names.add(_BASE_ANNOTATION[ir_field.type])
     return frozenset(names)
+
+
+def _create_parameter_names(fields: Mapping[str, IRField]) -> frozenset[str]:
+    """The annotations the generated ``create`` factory's parameters read. The factory
+    takes every field as a plain value, so it uses the field's base annotation whatever
+    form the field itself declares: an ``Identifier`` field declares
+    ``Identifier(...)`` but arrives as ``str``."""
+    return frozenset(_BASE_ANNOTATION[ir_field.type] for ir_field in fields.values())
 
 
 def _generated_modules(
@@ -605,7 +617,8 @@ def _generated_modules(
         _GeneratedModule(
             "aggregate_base.py",
             frozenset({"BaseAggregate", "Self"})
-            | _field_level_names(fragment.aggregate.fields),
+            | _field_level_names(fragment.aggregate.fields)
+            | _create_parameter_names(fragment.aggregate.fields),
             (base_entry, event_entry),
             imports_domain=False,
         ),
@@ -629,7 +642,9 @@ def _generated_modules(
         ),
         _GeneratedModule(
             "command_handlers.py",
-            frozenset({"handle"}),
+            # The handler method returns the new aggregate's id, so the module reads
+            # ``str`` as its return annotation even though it declares no fields.
+            frozenset({"handle", "str"}),
             (handler_entry, aggregate_entry, command_entry),
             imports_domain=True,
         ),
@@ -694,7 +709,7 @@ def _validate_domain_var(
             raise SliceGeneratorError(
                 f"This project binds its domain to {domain_var!r}, which the "
                 f"generated {module.filename} already reads under that name, as an "
-                "import or as a field annotation. Importing the domain would take "
+                "import or as an annotation. Importing the domain would take "
                 "the name over in that module. Rename the domain variable in the "
                 "composition root."
             )
@@ -753,7 +768,7 @@ def _validate_names(
                 raise SliceGeneratorError(
                     f"The slice's {role} is named {class_name!r}, which the generated "
                     f"{module.filename} already reads under that name, as an import "
-                    "or as a field annotation. The class would take the name over in "
+                    "or as an annotation. The class would take the name over in "
                     "that module, so the slice would inherit from, register against, "
                     "be keyed on, or be typed as the wrong object. Rename it."
                 )
