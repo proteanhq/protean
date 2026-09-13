@@ -142,6 +142,11 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
             name=f"{class_name}Created",
             fields={f"{slug}_id": id_field, "name": name_field},
         ),
+        # ``add`` already normalized the name it was given, and the class and the slug
+        # do not always round-trip: ``aB`` gives class ``AB`` and slug ``a_b``, while
+        # ``AB`` on its own is one word and gives ``ab``. Hand the generator the slug
+        # computed here so both agree on the slice directory and the id-field prefix.
+        slug=slug,
     )
 
     try:

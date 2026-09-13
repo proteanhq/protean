@@ -92,23 +92,11 @@ _OPTIONS_CLASS = "Meta"
 # the factory; one named ``cls`` gives the factory two parameters of that name.
 _AGGREGATE_GENERATED_NAMES = frozenset({"create", "cls"})
 
-# The names the generated modules read at module level: the symbols the renderers
-# import, and the plain annotations the field declarations resolve to. A class named
-# for one of these is bound in the same module and takes the name over, so an event
-# named ``BaseAggregate`` makes the generated base inherit the event, and one named
-# ``str`` makes every ``name: str`` declaration resolve to the event class.
-_MODULE_LEVEL_NAMES = frozenset(
-    {
-        "Annotated",
-        "BaseAggregate",
-        "Field",
-        "Identifier",
-        "Self",
-        "Text",
-        "handle",
-        "on",
-    }
-) | frozenset(_BASE_ANNOTATION.values())
+# The names every slice's modules read at module level, whatever its fields are: the
+# aggregate base it inherits, the ``Self`` its factory returns, and the two decorators
+# the handler and projector register with. The rest depend on the fields, so
+# :func:`_emitted_names` adds them per fragment.
+_ALWAYS_EMITTED = frozenset({"BaseAggregate", "Self", "handle", "on"})
 
 # The names each generated method binds, as parameters or by assignment. Assigning a
 # name anywhere in a Python function makes it local for the whole function, so a
@@ -206,6 +194,14 @@ class SliceFragment:
     event: SliceElement
     projection: SliceElement | None = None
     projector: SliceProjector | None = None
+    slug: str | None = None
+    """The aggregate's snake_case slug, when the caller has already normalized the
+    name it came from. Normalization happens upstream (ADR-0041), and a name can
+    normalize to a class and a slug that do not round-trip through each other:
+    ``aB`` gives the class ``AB`` and the slug ``a_b``, while ``AB`` on its own is
+    one word and gives ``ab``. A caller that normalized passes the slug it computed
+    so the generator uses the same one; otherwise the generator derives it from the
+    aggregate name."""
 
 
 def generate_slice_plan(
@@ -234,7 +230,7 @@ def generate_slice_plan(
     only half present or wired to a participant the slice does not define.
     """
     name = fragment.aggregate.name
-    slug = _slug_for(name)
+    slug = fragment.slug or _slug_for(name)
     _validate(fragment, slug, domain_var)
 
     projection = fragment.projection or _derive_projection(fragment.event, name, slug)
@@ -386,7 +382,6 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
             "so the read resolves to the local. Give the aggregate its class name "
             f"({''.join(word[:1].upper() + word[1:] for word in _split_words(fragment.aggregate.name))!r})."
         )
-    _validate_domain_var(domain_var)
     if slug in {_HANDLER_LOCAL, domain_var}:
         raise SliceGeneratorError(
             f"The aggregate name {fragment.aggregate.name!r} derives the slug "
@@ -403,8 +398,6 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
     ]
     if fragment.projection is not None:
         elements.append(("projection", fragment.projection))
-
-    _validate_names(fragment, elements, domain_var)
 
     # (role, element, what the message calls it). The derived projection mirrors the
     # event's fields, so when the fragment omits its read side those names have to
@@ -462,6 +455,16 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
                     "would drop it. Remove it, or declare the field as a String or "
                     "Text."
                 )
+            if ir_field.max_length is not None and ir_field.max_length < 1:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} sets max_length to "
+                    f"{ir_field.max_length}. ADR-0041 takes a positive integer, and "
+                    "a required field cannot hold a value that short anyway."
+                )
+
+    emitted = _emitted_names(fragment)
+    _validate_domain_var(domain_var, emitted)
+    _validate_names(fragment, elements, domain_var, emitted)
 
     if id_name in fragment.aggregate.fields:
         raise SliceGeneratorError(
@@ -511,13 +514,70 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
             )
 
 
-def _validate_domain_var(domain_var: str) -> None:
+def _emitted_names(fragment: SliceFragment) -> frozenset[str]:
+    """The module-level names this fragment's generated modules actually bind.
+
+    A class or the project's domain variable named for one of these takes the name
+    over in the module carrying both, so an event named ``BaseAggregate`` makes the
+    generated base inherit the event and one named ``str`` makes a ``name: str``
+    declaration resolve to the event class.
+
+    The set is per fragment rather than the union of everything the renderers can
+    emit. A slice with no date field imports no ``date``, so a project that binds its
+    domain to ``date`` renders fine and must keep working.
+    """
+    names = set(_ALWAYS_EMITTED)
+
+    elements = [fragment.aggregate, fragment.command, fragment.event]
+    if fragment.projection is not None:
+        elements.append(fragment.projection)
+    else:
+        # The derived projection always carries an ``Identifier`` key.
+        names.add("Identifier")
+
+    for element in elements:
+        for ir_field in element.fields.values():
+            names.add(_BASE_ANNOTATION[ir_field.type])
+            if ir_field.kind == "identifier":
+                names.add("Identifier")
+            elif ir_field.type == "Text":
+                names.add("Text")
+            if ir_field.type == "Date":
+                names.add("date")
+            elif ir_field.type == "DateTime":
+                names.add("datetime")
+            if ir_field.type == "String" and ir_field.max_length is not None:
+                names.update({"Annotated", "Field"})
+
+    return frozenset(names)
+
+
+def _check_public_name(value: str, what: str) -> None:
+    """A class name or the domain variable, checked the way a field name is.
+
+    ``str.isidentifier`` accepts a dunder, and a dunder is not just ugly here: the
+    compiler puts ``__class__`` in every method that mentions it, so an event named
+    ``__class__`` makes the create factory raise the enclosing aggregate class
+    instead of the event.
+    """
+    _check_python_name(value, what)
+    if value.startswith("_"):
+        raise SliceGeneratorError(
+            f"{what} {value!r} starts with an underscore. Python and the framework "
+            "keep that namespace for their own names, and a dunder such as "
+            "``__class__`` is bound inside the generated methods, so the generated "
+            "code would read it instead of this one."
+        )
+
+
+def _validate_domain_var(domain_var: str, emitted: frozenset[str]) -> None:
     """The generated modules import the project's domain variable and read it inside
     the handler and projector methods. A domain variable that takes one of those
     methods' local names, or one of the names the renderers import, is read as the
     local or the other import instead: a project whose composition root binds
     ``repo = Domain(...)`` renders ``repo = repo.repository_for(...)``, which raises
     ``UnboundLocalError``."""
+    _check_public_name(domain_var, "This project's domain variable")
     if domain_var in _HANDLER_LOCALS | _PROJECTOR_LOCALS:
         raise SliceGeneratorError(
             f"This project binds its domain to {domain_var!r}, which the generated "
@@ -525,7 +585,7 @@ def _validate_domain_var(domain_var: str) -> None:
             "generated code reads the domain by that name, so it would get the local "
             "instead. Rename the domain variable in the composition root."
         )
-    if domain_var in _MODULE_LEVEL_NAMES:
+    if domain_var in emitted:
         raise SliceGeneratorError(
             f"This project binds its domain to {domain_var!r}, which the generated "
             "code already reads under that name, as an import or as a field "
@@ -538,6 +598,7 @@ def _validate_names(
     fragment: SliceFragment,
     elements: list[tuple[str, SliceElement]],
     domain_var: str,
+    emitted: frozenset[str],
 ) -> None:
     """Check the class names the slice defines.
 
@@ -548,9 +609,9 @@ def _validate_names(
     generator then derives a projection and projector that carry names of their own.
     """
     for role, element in elements:
-        _check_python_name(element.name, f"The {role} name")
+        _check_public_name(element.name, f"The {role} name")
     if fragment.projector is not None:
-        _check_python_name(fragment.projector.name, "The projector name")
+        _check_public_name(fragment.projector.name, "The projector name")
 
     defined = [(role, element.name) for role, element in elements]
     defined.append(("aggregate base", f"{fragment.aggregate.name}Base"))
@@ -566,7 +627,7 @@ def _validate_names(
         )
 
     for role, class_name in defined:
-        if class_name in _MODULE_LEVEL_NAMES or class_name == domain_var:
+        if class_name in emitted or class_name == domain_var:
             raise SliceGeneratorError(
                 f"The slice's {role} is named {class_name!r}, which the generated "
                 "code already reads under that name, as an import or as a field "
@@ -924,6 +985,13 @@ def _render_events(
 ) -> str:
     field_lines = _field_block(event.fields, slug)
     imports = _message_imports(event.fields, package, domain_var)
+    # The grammar allows any event name, so only the default ``<Name>Created`` event
+    # can be described as creation. Anything else gets wording that stays true.
+    event_doc = (
+        f"Event emitted when a {name} is created."
+        if event.name == f"{name}Created"
+        else f"Event emitted by the {name} aggregate."
+    )
     return f'''"""Events emitted by the {name} aggregate."""
 
 {imports}
@@ -931,7 +999,7 @@ def _render_events(
 
 @{domain_var}.event(part_of="{name}")
 class {event.name}:
-    """Event emitted when a {name} is created."""
+    """{event_doc}"""
 
 {field_lines}
 '''

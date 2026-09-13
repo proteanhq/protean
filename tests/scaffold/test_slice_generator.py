@@ -699,13 +699,18 @@ def test_event_named_for_a_create_factory_local_raises(event_name):
     assert event_name in str(exc_info.value)
 
 
-@pytest.mark.parametrize("clashing_name", ["str", "int", "float", "bool"])
-def test_element_named_for_a_field_annotation_raises(clashing_name):
+@pytest.mark.parametrize(
+    ("clashing_name", "field_type"),
+    [("str", "String"), ("int", "Integer"), ("float", "Float"), ("bool", "Boolean")],
+)
+def test_element_named_for_a_field_annotation_raises(clashing_name, field_type):
     """The field declarations resolve their plain annotations at module level. An
     event named ``str`` is imported into ``aggregate_base.py``, where the create
     factory's ``name: str`` parameter then resolves to the event class."""
+    typed = IRField(kind="standard", type=field_type, required=True)
     fragment = _fragment_with(
-        event=SliceElement(clashing_name, {"order_id": _STR_PLAIN, "name": _STR_100}),
+        aggregate=SliceElement("Order", {"value": typed}),
+        event=SliceElement(clashing_name, {"order_id": _STR_PLAIN, "value": typed}),
     )
 
     with pytest.raises(SliceGeneratorError) as exc_info:
@@ -717,10 +722,44 @@ def test_element_named_for_a_field_annotation_raises(clashing_name):
 def test_domain_variable_named_for_a_field_annotation_raises():
     """Same collision from the other side: importing the domain as ``bool`` takes the
     name over in a module whose declarations use it as an annotation."""
+    flag = IRField(kind="standard", type="Boolean", required=True)
+    fragment = _fragment_with(
+        aggregate=SliceElement("Order", {"active": flag}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "active": flag}),
+    )
+
     with pytest.raises(SliceGeneratorError) as exc_info:
-        generate_slice_plan(_fragment_with(), "myproj", "bool")
+        generate_slice_plan(fragment, "myproj", "bool")
 
     assert "bool" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("domain_var", ["date", "datetime", "int", "Text"])
+def test_domain_variable_a_slice_does_not_emit_is_accepted(domain_var):
+    """The collision set is built per fragment, not from everything the renderers can
+    emit. A String-only slice imports no ``date`` and annotates nothing ``int``, so a
+    project that binds its domain to one of those names still plans, the way it did
+    before the generator took over ``add``."""
+    plan = generate_slice_plan(_fragment_with(), "myproj", domain_var)
+
+    assert f"from myproj.domain import {domain_var}" in _content_for(
+        plan, "commands.py"
+    )
+
+
+def test_domain_variable_a_slice_does_emit_is_rejected():
+    """The same name is a real collision once the slice carries a field that needs it:
+    a Date field imports ``date`` into the module that imports the domain."""
+    when = IRField(kind="standard", type="Date", required=True)
+    fragment = _fragment_with(
+        aggregate=SliceElement("Order", {"due": when}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "due": when}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "date")
+
+    assert "date" in str(exc_info.value)
 
 
 def test_aggregate_declaring_the_surfaced_id_raises():
@@ -872,6 +911,95 @@ def test_projector_handler_name_is_unchanged_for_the_default_event():
 
     assert "def on_order_created(self, event: OrderCreated)" in projectors
     assert "Create a OrderSummary when a Order is created." in projectors
+
+
+@pytest.mark.parametrize("bad_name", ["__class__", "_Order", "__init__"])
+def test_element_name_starting_with_an_underscore_raises(bad_name):
+    """``str.isidentifier`` accepts a dunder, and the compiler binds ``__class__`` in
+    every method that mentions it, so an event named ``__class__`` would have the
+    create factory raise the enclosing aggregate class instead of the event."""
+    fragment = _fragment_with(
+        event=SliceElement(bad_name, {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert bad_name in str(exc_info.value)
+
+
+@pytest.mark.parametrize("bad_var", ["not-a-name", "class", "__class__", ""])
+def test_domain_variable_that_is_not_a_usable_name_raises(bad_var):
+    """``generate_slice_plan`` is exported and takes the domain variable directly, so
+    it cannot assume a caller resolved a real one: ``not-a-name`` would render
+    ``from myproj.domain import not-a-name``."""
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(), "myproj", bad_var)
+
+    assert "domain variable" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("bound", [0, -1])
+def test_non_positive_max_length_raises(bound):
+    """ADR-0041's ``max_length`` is a positive integer. A zero or negative bound
+    renders a declaration a required field can never satisfy."""
+    fragment = _fragment_with(
+        aggregate=SliceElement(
+            "Order",
+            {
+                "name": IRField(
+                    kind="standard", type="String", required=True, max_length=bound
+                )
+            },
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "max_length" in str(exc_info.value)
+
+
+def test_event_docstring_is_accurate_for_a_non_creation_event():
+    """Only the default ``<Name>Created`` event can be described as creation. The
+    scaffold's own documentation has to stay true for any other event name."""
+    fragment = _fragment_with(
+        event=SliceElement("OrderPlaced", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    events = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "events.py"
+    )
+
+    assert '"""Event emitted by the Order aggregate."""' in events
+    assert "is created" not in events
+
+
+def test_event_docstring_is_unchanged_for_the_default_event():
+    """The default slice keeps the wording it has always had."""
+    events = _content_for(
+        generate_slice_plan(_fragment_with(), "myproj", "myproj"), "events.py"
+    )
+
+    assert '"""Event emitted when a Order is created."""' in events
+
+
+def test_fragment_slug_overrides_the_name_derived_one():
+    """A caller that already normalized passes its slug, because a name's class and
+    slug do not always round-trip: ``aB`` normalizes to class ``AB`` and slug ``a_b``,
+    while ``_slug_for('AB')`` is ``ab``. Without this the generator would look for the
+    wrong id field and reject a slice ``add`` used to plan."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("AB", {"name": _STR_100}),
+        command=SliceElement("CreateAB", {"name": _STR_100}),
+        event=SliceElement("ABCreated", {"a_b_id": _STR_PLAIN, "name": _STR_100}),
+        slug="a_b",
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert plan.operations[0].path == "src/myproj/a_b/__init__.py"
+    assert "a_b_id=a_b.id" in _content_for(plan, "aggregate_base.py")
 
 
 def test_half_present_read_side_raises(tmp_path):
