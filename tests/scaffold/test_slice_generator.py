@@ -2,7 +2,7 @@
 to the same create-only :class:`ChangePlan` ``protean add`` emits.
 
 The generator is the shared machinery behind both ``protean add`` (which builds a
-default fragment from a name) and #1471's ``protean new --from-model`` (which parses
+default fragment from a name) and ``protean new --from-model`` (which parses
 one from text). These tests drive it directly with fragments and assert the planned
 files reflect the fragment's fields, that a write-side-only fragment derives its read
 side, that the default fragment reproduces today's slice, and that a fragment-driven
@@ -241,6 +241,210 @@ def test_event_without_surfaced_id_raises(tmp_path):
         generate_slice_plan(fragment, "myproj", "myproj")
 
     assert "order_id" in str(exc_info.value)
+
+
+def _fragment_with(**overrides) -> SliceFragment:
+    """The valid fragment with one participant replaced, for the rejection tests."""
+    parts = {
+        "aggregate": SliceElement("Order", {"name": _STR_100}),
+        "command": SliceElement("CreateOrder", {"name": _STR_100}),
+        "event": SliceElement(
+            "OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}
+        ),
+    }
+    parts.update(overrides)
+    return SliceFragment(**parts)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "role"),
+    [
+        ("create", "aggregate"),
+        ("cls", "aggregate"),
+        ("raise_", "aggregate"),
+        ("to_dict", "aggregate"),
+        ("Meta", "event"),
+        ("copy", "command"),
+    ],
+)
+def test_reserved_field_name_raises(field_name, role):
+    """A field that takes the name of a framework member or of a symbol the generator
+    writes shadows it, and the slice then cannot create or project. The generator
+    rejects the fragment instead of rendering the broken class.
+
+    ``create`` replaces the generated factory, ``cls`` collides with its first
+    parameter, ``raise_`` and ``to_dict`` shadow ``BaseAggregate`` members, ``Meta``
+    collides with the nested options class, and ``copy`` shadows a pydantic method.
+    """
+    element = {
+        "aggregate": SliceElement("Order", {field_name: _STR_100}),
+        "command": SliceElement("CreateOrder", {field_name: _STR_100}),
+        "event": SliceElement(
+            "OrderCreated", {"order_id": _STR_PLAIN, field_name: _STR_100}
+        ),
+    }[role]
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(_fragment_with(**{role: element}), "myproj", "myproj")
+
+    assert field_name in str(exc_info.value)
+    assert "reserved" in str(exc_info.value)
+
+
+def test_underscore_field_name_raises():
+    """The framework and pydantic own the underscore namespace, so a field cannot
+    take a name in it."""
+    fragment = _fragment_with(aggregate=SliceElement("Order", {"_name": _STR_100}))
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "_name" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("bad_name", ["class", "order-id", "2nd", ""])
+def test_unusable_field_name_raises(bad_name):
+    """The generator writes a field name into the generated class as written, so a
+    keyword or a name that is not an identifier would not compile."""
+    fragment = _fragment_with(aggregate=SliceElement("Order", {bad_name: _STR_100}))
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "usable Python name" in str(exc_info.value)
+
+
+def test_unusable_element_name_raises():
+    """An element name is written as a class name and imported by name, so it has the
+    same constraint."""
+    fragment = _fragment_with(command=SliceElement("Create-Order", {"name": _STR_100}))
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "Create-Order" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("clashing_name", ["OrderCreated", "OrderBase"])
+def test_duplicate_class_name_raises(clashing_name):
+    """The slice's classes land in one package and the command handler and projector
+    import several into one module, so two of them cannot share a name. ``OrderBase``
+    is the generated aggregate base, which is a name the slice defines too."""
+    fragment = _fragment_with(
+        command=SliceElement(clashing_name, {"name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert clashing_name in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "id_field",
+    [
+        IRField(kind="standard", type="Integer", required=True),
+        IRField(kind="standard", type="String", required=True, max_length=20),
+        IRField(kind="standard", type="DateTime", required=True),
+    ],
+)
+def test_event_id_that_cannot_hold_the_aggregate_id_raises(id_field):
+    """The create factory assigns the aggregate's id, a UUID string, to the event's
+    surfaced ``<slug>_id``. A non-string type rejects it and a bounded String is too
+    short for the 36-character value, so the generator rejects the shape up front."""
+    fragment = _fragment_with(
+        event=SliceElement("OrderCreated", {"order_id": id_field, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "order_id" in str(exc_info.value)
+
+
+def test_event_id_as_identifier_is_accepted():
+    """ADR-0041 allows the surfaced reference as an ``identifier`` as well as an
+    unconstrained ``string``."""
+    fragment = _fragment_with(
+        event=SliceElement(
+            "OrderCreated",
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", required=True
+                ),
+                "name": _STR_100,
+            },
+        ),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "order_id: Identifier(required=True)" in _content_for(plan, "events.py")
+
+
+@pytest.mark.parametrize(
+    ("projection_fields", "reason"),
+    [
+        ({"order_id": _STR_PLAIN, "name": _STR_100}, "no key at all"),
+        (
+            {
+                "order_id": _STR_PLAIN,
+                "name": IRField(kind="identifier", type="Identifier", identifier=True),
+            },
+            "the key on the wrong field",
+        ),
+        (
+            {
+                "order_id": IRField(
+                    kind="identifier", type="Identifier", identifier=True
+                ),
+                "name": IRField(kind="identifier", type="Identifier", identifier=True),
+            },
+            "two keys",
+        ),
+    ],
+)
+def test_explicit_projection_without_the_surfaced_key_raises(projection_fields, reason):
+    """A projection is keyed on exactly one field, the surfaced ``<slug>_id``
+    (ADR-0041). The framework rejects a projection with no identifier outright, and a
+    key on any other field reads the projection on the wrong value, so the generator
+    checks the explicit read side rather than rendering it."""
+    fragment = _fragment_with(
+        projection=SliceElement("OrderView", projection_fields),
+        projector=SliceProjector(
+            name="OrderViewProjector", for_="OrderView", consumes="OrderCreated"
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "OrderView" in str(exc_info.value), reason
+
+
+def test_explicit_projection_key_must_be_an_identifier():
+    """A key marked on a plain ``String`` renders without the ``identifier=True``
+    declaration, so the framework would reject the projection. The generator catches
+    it first."""
+    fragment = _fragment_with(
+        projection=SliceElement(
+            "OrderView",
+            {
+                "order_id": IRField(
+                    kind="standard", type="String", required=True, identifier=True
+                ),
+                "name": _STR_100,
+            },
+        ),
+        projector=SliceProjector(
+            name="OrderViewProjector", for_="OrderView", consumes="OrderCreated"
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "Identifier" in str(exc_info.value)
 
 
 def test_half_present_read_side_raises(tmp_path):
