@@ -127,11 +127,11 @@ class Workspace:
     def project_hash(self) -> str:
         """Return a stable hash of the files written into the workspace.
 
-        For each written file, one line ``path + "\\n" + hex(sha256(content))``.
-        The lines are sorted by path and joined with newlines, and that whole
-        blob is hashed once. A file written and then deleted out of band is
-        skipped. The result is prefixed ``sha256:`` so the algorithm is legible
-        in the stored transcript.
+        Each written file contributes two lines, its path then the hex
+        ``sha256`` of its bytes. The per-file blocks are sorted by path, joined
+        with newlines, and that whole blob is hashed once. A file written and
+        then deleted out of band is skipped. The result is prefixed ``sha256:``
+        so the algorithm is legible in the stored transcript.
         """
         lines: list[str] = []
         for relpath in sorted(self._written):

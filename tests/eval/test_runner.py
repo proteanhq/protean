@@ -690,6 +690,10 @@ def make_uncallable_driver(
     return _NonCallableNextTurn()
 
 
+# A module attribute that is not callable, so it cannot be a driver factory.
+not_a_factory = 42
+
+
 class TestLiveDriverResolution:
     def test_unset_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(LIVE_DRIVER_ENV_VAR, raising=False)
@@ -725,6 +729,13 @@ class TestLiveDriverResolution:
         monkeypatch.setenv(
             LIVE_DRIVER_ENV_VAR, "tests.eval.test_runner:make_uncallable_driver"
         )
+        with pytest.raises(LiveDriverError):
+            resolve_live_driver("prompt", TOOL_SPECS)
+
+    def test_a_non_callable_factory_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(LIVE_DRIVER_ENV_VAR, "tests.eval.test_runner:not_a_factory")
         with pytest.raises(LiveDriverError):
             resolve_live_driver("prompt", TOOL_SPECS)
 

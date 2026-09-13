@@ -121,6 +121,11 @@ def resolve_live_driver(
         )
     module = importlib.import_module(module_name)
     factory = getattr(module, attribute)
+    if not callable(factory):
+        raise LiveDriverError(
+            f"{spec!r} names {factory!r}, which is not callable; it must be a "
+            f"factory(system_prompt, tool_specs) -> Driver"
+        )
     driver = factory(system_prompt, tool_specs)
     # A runtime-checkable Protocol confirms the attribute exists, not that it is
     # callable, so a stub like next_turn=1 would pass. Check both.
