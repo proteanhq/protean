@@ -109,6 +109,14 @@ class TestWorkspace:
         with pytest.raises(WorkspaceError):
             workspace.read("missing.py")
 
+    def test_read_binary_file_raises(self, tmp_path: Path) -> None:
+        """A non-UTF-8 byproduct (a .pyc, say) is a WorkspaceError, not an
+        uncaught UnicodeDecodeError."""
+        workspace = Workspace(tmp_path)
+        (tmp_path / "blob.pyc").write_bytes(b"\x00\x01\xfe\xff")
+        with pytest.raises(WorkspaceError):
+            workspace.read("blob.pyc")
+
     def test_list_dir_marks_directories(self, tmp_path: Path) -> None:
         workspace = Workspace(tmp_path)
         workspace.write("src/pkg/domain.py", "")
@@ -229,6 +237,16 @@ class TestTools:
         assert result["ok"] is False
         assert "string" in result["error"]
 
+    def test_reading_a_binary_file_is_feedback(self, tmp_path: Path) -> None:
+        """A read_file on a non-UTF-8 byproduct comes back as feedback."""
+        workspace = Workspace(tmp_path)
+        (tmp_path / "blob.pyc").write_bytes(b"\x00\x01\xfe\xff")
+        result = execute_tool_call(
+            workspace, ToolCall("read_file", {"path": "blob.pyc"})
+        )
+        assert result["ok"] is False
+        assert "UTF-8" in result["error"]
+
     def test_list_dir_on_a_file_is_feedback(self, tmp_path: Path) -> None:
         workspace = Workspace(tmp_path)
         workspace.write("domain.py", "")
@@ -317,6 +335,14 @@ class TestRunVerify:
         result = _summarize_verify("garbage", exit_code=3, stderr="Traceback\nBoom!")
         assert result["ok"] is False
         assert "Boom!" in result["error"]
+
+    def test_non_object_json_is_a_failed_verdict(self) -> None:
+        """json.loads accepts a list or null; the envelope must be an object."""
+        for payload in ("[1, 2, 3]", "null", '"a string"'):
+            result = _summarize_verify(payload, exit_code=0)
+            assert result["ok"] is False
+            assert result["verdict"] == "fail"
+            assert "error" in result
 
     def test_a_timeout_is_reported_as_a_failed_verdict(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -572,6 +598,16 @@ def make_bad_driver(system_prompt: str, tool_specs: list[dict]) -> str:
     return "not a driver"
 
 
+class _NonCallableNextTurn:
+    next_turn = 1  # present but not callable
+
+
+def make_uncallable_driver(
+    system_prompt: str, tool_specs: list[dict]
+) -> _NonCallableNextTurn:
+    return _NonCallableNextTurn()
+
+
 class TestLiveDriverResolution:
     def test_unset_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(LIVE_DRIVER_ENV_VAR, raising=False)
@@ -597,6 +633,15 @@ class TestLiveDriverResolution:
     ) -> None:
         monkeypatch.setenv(
             LIVE_DRIVER_ENV_VAR, "tests.eval.test_runner:make_bad_driver"
+        )
+        with pytest.raises(LiveDriverError):
+            resolve_live_driver("prompt", TOOL_SPECS)
+
+    def test_a_non_callable_next_turn_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            LIVE_DRIVER_ENV_VAR, "tests.eval.test_runner:make_uncallable_driver"
         )
         with pytest.raises(LiveDriverError):
             resolve_live_driver("prompt", TOOL_SPECS)

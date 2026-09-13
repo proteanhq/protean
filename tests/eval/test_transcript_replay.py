@@ -70,6 +70,10 @@ def test_replay_is_deterministic_and_verifies_green(
         "the transcript records no run_verify call, so 'verify is green' was "
         "never checked during the run"
     )
+    assert result.verify_results[-1]["verdict"] == "pass", (
+        "the run's last recorded verify was not green; the transcript ends on a "
+        f"failing project: {result.verify_results[-1]}"
+    )
     # Authoritative: verify the tree the replay actually produced, so a
     # transcript that verifies mid-run and then breaks the project cannot pass.
     final = run_verify(workspace.root)

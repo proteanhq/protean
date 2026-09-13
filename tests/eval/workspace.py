@@ -90,11 +90,17 @@ class Workspace:
         return relpath
 
     def read(self, rel: str) -> str:
-        """Return the text of *rel*. Raises :class:`WorkspaceError` if missing."""
+        """Return the text of *rel*. Raises :class:`WorkspaceError` if the file
+        is missing or is not UTF-8 text (a binary byproduct such as a ``.pyc``),
+        so a bad ``read_file`` becomes agent feedback rather than crashing the
+        run (``UnicodeDecodeError`` is a ``ValueError``, not an ``OSError``)."""
         target = self._resolve(rel)
         if not target.is_file():
             raise WorkspaceError(f"no such file in the workspace: {rel!r}")
-        return target.read_text(encoding="utf-8")
+        try:
+            return target.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise WorkspaceError(f"file is not UTF-8 text: {rel!r}") from exc
 
     def list_dir(self, rel: str = ".") -> list[str]:
         """Return the sorted entries of directory *rel* (default the root).

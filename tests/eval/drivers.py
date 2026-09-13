@@ -39,8 +39,8 @@ __all__ = [
 
 LIVE_DRIVER_ENV_VAR = "PROTEAN_EVAL_LIVE_DRIVER"
 
-# The three conversation roles. A user message states the task, an assistant
-# message carries text and tool calls, a tool message carries their results.
+# The conversation roles. A user message states the task, an assistant message
+# carries text and tool calls, a tool message carries their results.
 Role = Literal["user", "assistant", "tool"]
 
 
@@ -107,7 +107,7 @@ def resolve_live_driver(
     called with the pack *system_prompt* and the *tool_specs* and must return a
     :class:`Driver`. Returns ``None`` when the variable is unset, so the live
     lane skips. Raises :class:`LiveDriverError` when the variable is malformed
-    or the factory returns something without a ``next_turn`` method. When the
+    or the factory returns something without a callable ``next_turn``. When the
     variable names a module or attribute that cannot be imported, that error
     propagates so a misconfigured driver fails loudly.
     """
@@ -122,8 +122,10 @@ def resolve_live_driver(
     module = importlib.import_module(module_name)
     factory = getattr(module, attribute)
     driver = factory(system_prompt, tool_specs)
-    if not isinstance(driver, Driver):
+    # A runtime-checkable Protocol confirms the attribute exists, not that it is
+    # callable, so a stub like next_turn=1 would pass. Check both.
+    if not isinstance(driver, Driver) or not callable(driver.next_turn):
         raise LiveDriverError(
-            f"{spec!r} returned {driver!r}, which is not a Driver (no next_turn)"
+            f"{spec!r} returned {driver!r}, which is not a Driver (no callable next_turn)"
         )
     return driver

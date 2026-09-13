@@ -57,9 +57,16 @@ class VerifyResult(TypedDict):
 # harness: VIRTUAL_ENV so a leaked value cannot point the child at a different
 # source tree than sys.executable, and PROTEAN_ENV/PROTEAN_DEBUG so a value
 # exported in the parent shell does not leak into the verify run. PROTEAN_DOMAIN
-# too: `protean verify` gives it precedence over the `-d` argument, so a leaked
-# value would make verify init an unrelated domain instead of the one at root.
-_STRIPPED_ENV_VARS = ("VIRTUAL_ENV", "PROTEAN_ENV", "PROTEAN_DEBUG", "PROTEAN_DOMAIN")
+# and DOMAIN_ROOT_PATH too: verify honours the former over the `-d` argument and
+# the latter as a Domain root, so either leaked value would steer verification
+# away from the workspace and make the result depend on the outer environment.
+_STRIPPED_ENV_VARS = (
+    "VIRTUAL_ENV",
+    "PROTEAN_ENV",
+    "PROTEAN_DEBUG",
+    "PROTEAN_DOMAIN",
+    "DOMAIN_ROOT_PATH",
+)
 
 # A ceiling on the verify subprocess. The live lane runs model-generated code
 # through pytest, whose import or a test could hang; the cap keeps a hung run
@@ -210,11 +217,10 @@ def run_verify(root: Path | str) -> VerifyResult:
 
 
 def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyResult:
-    try:
-        envelope = json.loads(stdout)
-    except json.JSONDecodeError:
-        # verify crashed or leaked non-JSON onto stdout. Keep a stderr tail in
-        # the error so the failure is diagnosable without re-running by hand.
+    def _unparseable() -> VerifyResult:
+        # verify crashed or emitted something other than the JSON envelope. Keep
+        # a stderr tail in the error so the failure is diagnosable without
+        # re-running by hand.
         detail = stderr.strip().splitlines()[-5:]
         suffix = f": {' / '.join(detail)}" if detail else ""
         return {
@@ -225,18 +231,35 @@ def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyRe
             "exit_code": exit_code,
             "error": f"verify did not emit a parseable JSON envelope{suffix}",
         }
-    data = envelope.get("data", {})
-    check = data.get("stages", {}).get("check", {})
+
+    try:
+        envelope = json.loads(stdout)
+    except json.JSONDecodeError:
+        return _unparseable()
+    # json.loads accepts a list, string, or null; the envelope must be an object.
+    if not isinstance(envelope, dict):
+        return _unparseable()
+
+    data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+    stages = data.get("stages") if isinstance(data.get("stages"), dict) else {}
+    check = stages.get("check") if isinstance(stages.get("check"), dict) else {}
+    diagnostics = check.get("diagnostics")
+    diagnostics = diagnostics if isinstance(diagnostics, list) else []
+    counts = (
+        check.get("counts")
+        if isinstance(check.get("counts"), dict)
+        else dict(_EMPTY_COUNTS)
+    )
     verdict = data.get("verdict", "fail")
     codes = sorted(
         diag.get("code", "")
-        for diag in check.get("diagnostics", [])
-        if diag.get("code")
+        for diag in diagnostics
+        if isinstance(diag, dict) and diag.get("code")
     )
     return {
         "ok": verdict == "pass",
         "verdict": verdict,
-        "counts": check.get("counts", dict(_EMPTY_COUNTS)),
+        "counts": counts,
         "codes": codes,
         "exit_code": exit_code,
     }
