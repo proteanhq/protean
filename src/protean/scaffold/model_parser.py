@@ -277,10 +277,15 @@ _IMPLICIT_MIN_LENGTH = 1
 # Parser
 # ---------------------------------------------------------------------------
 
-_HEADER_RE = re.compile(r"^(\w+)\s+(\w+)\s*:\s*$")
-_FIELD_RE = re.compile(r"^field\s+(\w+)\s*:\s*(\w+)\s*(?:\((.*)\))?\s*$")
-_FOR_RE = re.compile(r"^for\s+(\w+)\s*$")
-_CONSUMES_RE = re.compile(r"^consumes\s+(\w+)\s*$")
+# The name captures are a run of non-space (and, before the colon, non-colon)
+# characters, not ``\w+``: ``\w`` misses characters a Python identifier may carry
+# (a combining mark, say), so anchoring on it would reject a valid name here as a
+# malformed line before ``isidentifier`` and the keyword check could rule on it. The
+# keyword and type stay ``\w+`` because both are matched against a fixed ASCII set.
+_HEADER_RE = re.compile(r"^(\w+)\s+([^\s:]+)\s*:\s*$")
+_FIELD_RE = re.compile(r"^field\s+([^\s:]+)\s*:\s*(\w+)\s*(?:\((.*)\))?\s*$")
+_FOR_RE = re.compile(r"^for\s+(\S+)\s*$")
+_CONSUMES_RE = re.compile(r"^consumes\s+(\S+)\s*$")
 _MAX_LENGTH_RE = re.compile(r"^max_length\s*=\s*(\w+)$")
 
 
@@ -1073,7 +1078,13 @@ def _emit_field(name: str, entry: dict[str, Any], in_projection: bool) -> str:
     # A hand-set ``min_length`` other than the implicit bound cannot round-trip: the
     # re-parsed field would carry the implicit bound again. That holds below the bound
     # as well as above it, since an explicit ``min_length=0`` on a required field
-    # accepts the empty string and re-parsing would silently forbid it.
+    # accepts the empty string and re-parsing would silently forbid it. The value 1 is
+    # the implicit non-empty bound every reachable field here carries: a required
+    # field gets it, and so does an identity key (an ``identifier`` entry never records
+    # ``required``, and ``Identifier(required=True)`` and ``Identifier(min_length=1)``
+    # produce the identical entry). An optional non-identifier field never reaches this
+    # point; it is refused above. So dropping exactly 1 is lossless, and promotion
+    # re-derives it; any other value is authored and refused.
     min_length = entry.get("min_length")
     if min_length is not None and min_length != _IMPLICIT_MIN_LENGTH:
         raise ModelEmitError(

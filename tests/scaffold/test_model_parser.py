@@ -230,6 +230,27 @@ event order_item_created:
         assert fragment["command"]["name"] == "CreateOrderItem"
         assert fragment["event"]["name"] == "OrderItemCreated"
 
+    def test_name_with_a_combining_mark_is_accepted(self):
+        # A combining mark is a valid Python identifier character, so ADR-0041's name
+        # rule accepts it, but it is not a ``\w`` character. The name captures are
+        # non-whitespace tokens rather than ``\w+`` so such a name reaches the
+        # ``isidentifier`` check instead of being rejected as a malformed line first.
+        field = "a\u0301"  # "a" plus a combining acute accent, not the U+00E1 glyph
+        block = "Orde\u0301r"  # a combining mark mid-word, which \w does not match
+        assert field.isidentifier() and block.isidentifier()
+        model = (
+            "aggregate Order:\n"
+            f"    field {field}: string(max_length=5)\n"
+            f"command {block}:\n"
+            f"    field {field}: string(max_length=5)\n"
+            "event OrderCreated:\n"
+            "    field order_id: string\n"
+            f"    field {field}: string(max_length=5)\n"
+        )
+        fragment = parse_model(model)
+        assert field in fragment["aggregate"]["fields"]
+        assert fragment["command"]["name"] == block
+
 
 @pytest.mark.no_test_domain
 class TestParseEveryPrimitive:
@@ -1349,6 +1370,34 @@ def _synthetic_ir(
     }
 
 
+def _order_read_side(*, key_extra: dict | None = None) -> dict:
+    """A valid Order read side for the default synthetic IR, keyed on ``order_id``.
+
+    ``key_extra`` merges into the identity key's IR entry, so a test can put a bound
+    on the key and check how the emitter treats it.
+    """
+    key = {"kind": "identifier", "type": "Identifier", "identifier": True}
+    key.update(key_extra or {})
+    return {
+        "m.Report": {
+            "projection": {
+                "name": "OrderSummary",
+                "fields": {
+                    "order_id": key,
+                    "name": {"kind": "standard", "type": "String", "required": True},
+                },
+            },
+            "projectors": {
+                "m.OrderProjector": {
+                    "name": "OrderProjector",
+                    "aggregates": ["m.Order"],
+                    "handlers": {"M.OrderCreated.v1": ["on_order_created"]},
+                }
+            },
+        }
+    }
+
+
 @pytest.mark.no_test_domain
 class TestEmitterIneligibility:
     def test_two_authored_events_raises(self):
@@ -1473,6 +1522,26 @@ class TestEmitterIneligibility:
         with pytest.raises(ModelEmitError) as exc:
             emit_model(ir, "m.Order")
         assert "min_length" in str(exc.value)
+
+    def test_identity_key_carrying_the_implicit_min_length_still_emits(self):
+        # An identity key carries the implicit non-empty bound as ``min_length: 1``.
+        # The framework records the identical entry whether the author wrote
+        # ``Identifier(required=True)`` or ``Identifier(min_length=1)`` (an identifier
+        # entry never keeps ``required``), and promotion re-derives the bound, so the
+        # emitter drops it and the key emits as ``identifier(key)``.
+        projections = _order_read_side(key_extra={"min_length": 1})
+        text = emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "field order_id: identifier(key)" in text
+        assert "min_length" not in text
+
+    def test_identity_key_with_a_wider_min_length_raises(self):
+        # A bound other than the implicit 1 is an authored constraint the grammar
+        # cannot carry, so a key that sets one is refused rather than emitted without
+        # it and silently weakened on the round trip.
+        projections = _order_read_side(key_extra={"min_length": 5})
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(_synthetic_ir(projections=projections), "m.Order")
+        assert "min_length=5" in str(exc.value)
 
     def test_authored_auto_field_raises_rather_than_being_dropped(self):
         # ``IRBuilder`` gives an authored ``Auto`` field IR kind ``auto`` with no
@@ -1763,9 +1832,13 @@ class TestConformance:
         assert parse_model(text) == ORDER_FRAGMENT
 
     def test_round_trip_matches_the_source_ir(self):
-        # Compare the parsed fragment against the source IR's own field entries,
-        # not a hand-written constant, so any emitter loss (a dropped constraint,
-        # an optional field coerced to required) reddens this test.
+        # Compare the parsed fragment against the source IR's own entries, not a
+        # hand-written constant, so any emitter loss (a dropped constraint, an
+        # optional field coerced to required) reddens this test. Names and the
+        # projector's wiring are asserted from the source too, not only the field
+        # maps, so a regression that emitted the wrong participant or wired the
+        # projector to the wrong projection or event is caught here rather than only
+        # against the hand-written ``ORDER_FRAGMENT``.
         ir = _build_order_domain().to_ir()
         fqn = _cluster_fqn(ir)
         cluster = ir["clusters"][fqn]
@@ -1773,14 +1846,23 @@ class TestConformance:
 
         command = next(iter(cluster["commands"].values()))
         event = next(iter(cluster["events"].values()))
+        assert fragment["aggregate"]["name"] == cluster["aggregate"]["name"]
+        assert fragment["command"]["name"] == command["name"]
+        assert fragment["event"]["name"] == event["name"]
         assert fragment["aggregate"]["fields"] == _grammar_fields(
             cluster["aggregate"]["fields"]
         )
         assert fragment["command"]["fields"] == _grammar_fields(command["fields"])
         assert fragment["event"]["fields"] == _grammar_fields(event["fields"])
 
-        projection = next(iter(ir["projections"].values()))["projection"]
+        group = next(iter(ir["projections"].values()))
+        projection = group["projection"]
+        source_projector = next(iter(group["projectors"].values()))
+        assert fragment["projection"]["name"] == projection["name"]
         assert fragment["projection"]["fields"] == _grammar_fields(projection["fields"])
+        assert fragment["projector"]["name"] == source_projector["name"]
+        assert fragment["projector"]["for"] == projection["name"]
+        assert fragment["projector"]["consumes"] == event["name"]
 
     def test_implicit_min_length_reaches_the_ir_and_is_dropped(self):
         # The implicit non-empty bound a required string field carries (ADR-0026)
