@@ -41,10 +41,10 @@ __all__ = ["TOOLS", "TOOL_SPECS", "VerifyResult", "execute_tool_call", "run_veri
 class VerifyResult(TypedDict):
     """The structured result of a ``run_verify`` call.
 
-    ``ok`` is the pass/fail discriminator and equals ``verdict == "pass" and the
-    process exited 0``. ``codes`` are the sorted check-stage diagnostic and
-    error codes; ``errors`` are the check-stage error messages (config or fatal
-    failures that carry no diagnostic), so the agent has something to act on.
+    ``ok`` is the pass/fail discriminator and equals every stage passing with a
+    clean exit. ``codes`` are the sorted check-stage diagnostic and error codes;
+    ``errors`` are stage failure messages (an init import error, a check config
+    or fatal error, a failing test suite), so the agent has something to act on.
     ``error`` is present only when verify's output could not be parsed as the
     JSON envelope or the run timed out.
     """
@@ -166,6 +166,10 @@ def execute_tool_call(workspace: Workspace, call: ToolCall) -> dict[str, Any]:
     only a genuine binding failure is reported as "bad arguments"; an unexpected
     exception from inside a tool is a real bug and propagates.
     """
+    # A non-string (unhashable) name would raise on the dict lookup; treat it as
+    # a malformed call, like an unknown tool.
+    if not isinstance(call.name, str):
+        return {"ok": False, "error": f"tool name must be a string: {call.name!r}"}
     tool = TOOLS.get(call.name)
     if tool is None:
         return {"ok": False, "error": f"unknown tool: {call.name!r}"}
@@ -246,7 +250,9 @@ def _terminate_tree(process: subprocess.Popen) -> None:
 
     ``start_new_session`` made the process a group leader, so on POSIX one
     ``killpg`` takes down verify and its nested pytest together. Platforms
-    without process groups fall back to killing the direct process."""
+    without process groups fall back to killing the direct process only, so a
+    nested pytest could outlive the timeout there; this harness is maintainer-
+    side and runs on POSIX, so that fallback is a known, accepted limitation."""
     try:
         if hasattr(os, "killpg") and hasattr(os, "getpgid"):
             os.killpg(os.getpgid(process.pid), signal.SIGKILL)

@@ -278,6 +278,14 @@ class TestTools:
         assert result["ok"] is False
         assert "unknown tool" in result["error"]
 
+    def test_non_string_tool_name_is_feedback(self, tmp_path: Path) -> None:
+        """An unhashable (non-string) tool name must not raise on the registry
+        lookup; it comes back as feedback."""
+        workspace = Workspace(tmp_path)
+        result = execute_tool_call(workspace, ToolCall(["not", "a", "name"], {}))
+        assert result["ok"] is False
+        assert "tool name must be a string" in result["error"]
+
     def test_bad_arguments_are_feedback(self, tmp_path: Path) -> None:
         workspace = Workspace(tmp_path)
         # write_file needs content; omitting it must come back as a bad call.
