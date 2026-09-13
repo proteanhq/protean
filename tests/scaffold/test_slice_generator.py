@@ -1621,15 +1621,17 @@ def test_fragment_driven_slice_verifies_green(tmp_path):
 
 
 def test_slice_whose_fields_take_framework_names_runs(tmp_path):
-    """Two field names the generator deliberately does not reserve, run rather than
-    reasoned about: an aggregate field named ``id``, and a field named ``Text``
-    alongside another ``Text`` field.
+    """Field names the generator deliberately does not reserve, run rather than
+    reasoned about: an aggregate field named ``id``, a field named ``Text`` alongside
+    another ``Text`` field, and a field named ``Identifier`` alongside another
+    ``Identifier`` field.
 
     ``id`` on the generated base leaves the framework's identity injection to the
     hand-owned subclass, which is the class that gets registered, so ``id`` stays the
-    tracked identifier. ``Text`` is an imported field factory, but a field declaration
-    is a bare annotation, which does not bind the name in the class body, so the next
-    declaration still reads the factory.
+    tracked identifier. ``Text`` and ``Identifier`` are imported field factories, but
+    a field declaration is a bare annotation with no ``=``, which does not bind the
+    name in the class body, so the next declaration still reads the factory rather
+    than the field in front of it.
 
     The slice is materialized into a real ``protean new`` project, which then runs
     ``protean verify`` and drives the generated command through ``domain.process``, so
@@ -1643,6 +1645,8 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
         "name": _STR_100,
         "Text": IRField(kind="text", type="Text", required=True),
         "note": IRField(kind="text", type="Text", required=True),
+        "Identifier": IRField(kind="identifier", type="Identifier", required=True),
+        "ref": IRField(kind="identifier", type="Identifier", required=True),
     }
     fragment = SliceFragment(
         aggregate=SliceElement("Thing", dict(fields)),
@@ -1658,6 +1662,7 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
     base = (project / "src/scaffolded/thing/aggregate_base.py").read_text()
     assert "id: str" in base
     assert "Text: Text(required=True)" in base
+    assert "Identifier: Identifier(required=True)" in base
 
     completed = subprocess.run(
         [
@@ -1693,10 +1698,24 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
         scaffolded.init()
         with scaffolded.domain_context():
             scaffolded.process(
-                CreateThing(id="thing-1", name="a name", Text="a", note="b")
+                CreateThing(
+                    id="thing-1",
+                    name="a name",
+                    Text="a",
+                    note="b",
+                    Identifier="i",
+                    ref="r",
+                )
             )
             found = scaffolded.repository_for(Thing).get("thing-1")
-            print("READ_BACK", found.id, found.Text, found.note)
+            print(
+                "READ_BACK",
+                found.id,
+                found.Text,
+                found.note,
+                found.Identifier,
+                found.ref,
+            )
         """
     )
     driven = subprocess.run(
@@ -1711,7 +1730,7 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
     assert driven.returncode == 0, (
         f"the generated slice must run:\n{driven.stdout}\n{driven.stderr}"
     )
-    assert "READ_BACK thing-1 a b" in driven.stdout
+    assert "READ_BACK thing-1 a b i r" in driven.stdout
 
 
 def test_slice_whose_command_takes_a_framework_import_name_runs(tmp_path):
