@@ -30,6 +30,7 @@ from protean.scaffold.slice_generator import (
     SliceGeneratorError,
     SliceProjector,
     generate_slice_plan,
+    split_words,
 )
 
 pytestmark = pytest.mark.no_test_domain
@@ -37,6 +38,27 @@ pytestmark = pytest.mark.no_test_domain
 # Reused field entries, exactly ADR-0041's field vocabulary.
 _STR_100 = IRField(kind="standard", type="String", required=True, max_length=100)
 _STR_PLAIN = IRField(kind="standard", type="String", required=True)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("order_item", ["order", "item"]),
+        ("orderItem", ["order", "Item"]),
+        ("OrderItem", ["Order", "Item"]),
+        ("Order", ["Order"]),
+        ("XMLHttp", ["XML", "Http"]),
+        ("HTTPServer", ["HTTP", "Server"]),
+        ("HTTPS", ["HTTPS"]),
+        ("__", []),
+    ],
+)
+def test_split_words_splits_on_underscores_and_case_changes(name, expected):
+    """``add`` shares this helper with the generator, so both derive the same class
+    name and slug from a name. A run of capitals stays one word except for the last
+    capital, which starts the next one, and each word keeps its original casing, so
+    joining them back gives ``HTTPServer`` and not ``HttpServer``."""
+    assert split_words(name) == expected
 
 
 def _content_for(plan, suffix: str) -> str:

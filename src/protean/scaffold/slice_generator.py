@@ -34,6 +34,7 @@ from __future__ import annotations
 import keyword
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cache
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -53,6 +54,7 @@ __all__ = [
     "SliceGeneratorError",
     "SliceProjector",
     "generate_slice_plan",
+    "split_words",
 ]
 
 # The grammar's primitive types, keyed by their IR field ``type`` (ADR-0041's
@@ -305,7 +307,7 @@ def generate_slice_plan(
     )
 
 
-def _split_words(name: str) -> list[str]:
+def split_words(name: str) -> list[str]:
     """Split an identifier into the words its generated names are built from.
 
     Underscores separate words, and so does a case change, so ``order_item``,
@@ -314,6 +316,9 @@ def _split_words(name: str) -> list[str]:
     one word except for the last capital, which starts the next one (``XMLHttp``
     gives ``["XML", "Http"]``). The rest of each word keeps its original casing,
     which is what keeps ``HTTPServer`` from becoming ``HttpServer``.
+
+    Public within the package: ``add`` splits the name it is given with this same
+    function, so its class name and slug match the ones the generator derives.
     """
     words: list[str] = []
     current = ""
@@ -337,13 +342,17 @@ def _split_words(name: str) -> list[str]:
 
 def _slug_for(name: str) -> str:
     """The snake_case slug for an aggregate name, e.g. ``OrderItem`` -> ``order_item``."""
-    return "_".join(word.lower() for word in _split_words(name))
+    return "_".join(word.lower() for word in split_words(name))
 
 
+@cache
 def _reserved_field_names(role: str) -> frozenset[str]:
     """The names a field on *role* may not take: the nested options class, every
     public member of the element's framework base class, and, on the aggregate, the
-    symbols the generated create factory occupies."""
+    symbols the generated create factory occupies.
+
+    Cached: the base classes are fixed at import, so the set for a role never
+    changes, and ``_validate`` asks for it once per role per element."""
     reserved = {_OPTIONS_CLASS} | {
         member for member in dir(_BASE_CLASSES[role]) if not member.startswith("_")
     }
@@ -401,7 +410,7 @@ def _validate(fragment: SliceFragment, slug: str, domain_var: str) -> None:
             f"slug it derives. The generated command handler then reads the aggregate "
             f"class and binds the local on one line, {slug!r} = {slug!r}.create(...), "
             "so the read resolves to the local. Give the aggregate its class name "
-            f"({''.join(word[:1].upper() + word[1:] for word in _split_words(fragment.aggregate.name))!r})."
+            f"({''.join(word[:1].upper() + word[1:] for word in split_words(fragment.aggregate.name))!r})."
         )
     if slug in {_HANDLER_LOCAL, domain_var}:
         raise SliceGeneratorError(

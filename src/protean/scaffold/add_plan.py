@@ -42,8 +42,8 @@ from protean.scaffold.slice_generator import (
     SliceElement,
     SliceFragment,
     SliceGeneratorError,
-    _split_words,
     generate_slice_plan,
+    split_words,
 )
 
 __all__ = ["SUPPORTED_ELEMENT_TYPES", "AddPlanError", "plan_add_slice"]
@@ -96,7 +96,7 @@ def plan_add_slice(project_path: str, element_type: str, name: str) -> ChangePla
     # snake_case form, so ``Order`` lands in ``order/`` (ADR-0030) and
     # ``OrderItem`` in ``order_item/``. Both are derived from the same word split,
     # so ``order_item``, ``orderItem`` and ``OrderItem`` all plan the same slice.
-    words = _split_words(name)
+    words = split_words(name)
     if not words:
         raise AddPlanError(
             f"Invalid name {name!r}: an element name must contain at least one "
