@@ -1597,6 +1597,33 @@ def test_max_length_that_is_not_a_positive_integer_raises(bound):
     assert "max_length" in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    ("flag_name", "value"),
+    [
+        ("required", "false"),
+        ("required", 1),
+        ("required", None),
+        ("identifier", "yes"),
+        ("identifier", 1),
+    ],
+)
+def test_field_flag_that_is_not_a_boolean_raises(flag_name, value):
+    """``required`` and ``identifier`` are true-or-false flags, and ``IRField`` is a
+    plain dataclass that does not enforce its annotations. The guards that read them
+    test truthiness, so ``required="false"`` would come out a required field and a
+    truthy ``identifier`` would make the field the projection's key, both without a
+    word. Only a real boolean gets past."""
+    field = IRField(
+        kind="standard", type="String", **{"required": True, flag_name: value}
+    )
+    fragment = _fragment_with(aggregate=SliceElement("Order", {"name": field}))
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert flag_name in str(exc_info.value)
+
+
 def test_event_docstring_is_accurate_for_a_non_creation_event():
     """Only the default ``<Name>Created`` event can be described as creation. The
     scaffold's own documentation has to stay true for any other event name."""
@@ -1955,6 +1982,28 @@ def test_parser_and_generator_derive_the_same_slug():
         ),
         (
             {
+                "aggregate": {
+                    "name": "Order",
+                    "fields": {7: {"kind": "standard", "type": "String"}},
+                },
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "keyed by 7",
+        ),
+        (
+            {
+                "aggregate": {
+                    "name": "Order",
+                    "fields": {None: {"kind": "standard", "type": "String"}},
+                },
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "keyed by None",
+        ),
+        (
+            {
                 "aggregate": {"name": "Order", "fields": {}},
                 "command": {"name": "CreateOrder", "fields": {}},
                 "event": {"name": "OrderCreated", "fields": {}},
@@ -1982,10 +2031,11 @@ def test_parser_and_generator_derive_the_same_slug():
 def test_mapping_that_is_not_a_fragment_raises(mapping, expected):
     """The adapter reads the shape only, and rejects rather than drop what it cannot
     read: a field entry carrying ``min_length`` is a field the generator does not
-    render, so promoting it would write a field the fragment does not describe. An
-    element or a projector carrying a key past its own goes the same way, at every
-    level of the mapping, so a caller never gets a fragment that says less than the
-    mapping it passed in."""
+    render, so promoting it would write a field the fragment does not describe. A
+    field keyed by something that is not a string goes the same way: coercing the key
+    would name a field the fragment does not. An element or a projector carrying a key
+    past its own is rejected too, at every level of the mapping, so a caller never gets
+    a fragment that says less than the mapping it passed in."""
     with pytest.raises(SliceGeneratorError) as exc_info:
         SliceFragment.from_mapping(mapping)
 

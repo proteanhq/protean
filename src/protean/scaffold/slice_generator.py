@@ -340,10 +340,18 @@ def _element_from_mapping(role: str, data: object) -> SliceElement:
             f"The {role} {name!r} carries a 'fields' of {type(fields).__name__}, not "
             "a map of field name to IR field entry."
         )
+    for field_name in fields:
+        if not isinstance(field_name, str):
+            raise SliceGeneratorError(
+                f"The {role} {name!r} carries a field keyed by {field_name!r}, which "
+                "is not a string. The generator writes a field name into the "
+                "generated code as written, and coercing the key would promote a "
+                "field the fragment does not name."
+            )
     return SliceElement(
         name=name,
         fields={
-            str(field_name): _field_from_mapping(name, field_name, entry)
+            field_name: _field_from_mapping(name, field_name, entry)
             for field_name, entry in fields.items()
         },
     )
@@ -662,6 +670,23 @@ def _validate(
                     f"the {label} already uses it, so the field would shadow it and "
                     "the slice would not work. Rename the field."
                 )
+            # The two flags drive the guards below and the declaration form
+            # ``_declare`` writes, and ``IRField`` is a plain dataclass, so a fragment
+            # can carry a non-boolean that reads truthy. Checking them first keeps
+            # ``required="false"`` from rendering a required field, and a truthy
+            # non-boolean ``identifier`` from becoming the projection's key.
+            for flag_name, flag in (
+                ("required", ir_field.required),
+                ("identifier", ir_field.identifier),
+            ):
+                if not isinstance(flag, bool):
+                    raise SliceGeneratorError(
+                        f"Field {field_name!r} on {element.name!r} sets {flag_name} "
+                        f"to {flag!r}. ADR-0041 takes a true or false flag, and the "
+                        "generator reads it to decide the field's declaration form, "
+                        f"so a {type(flag).__name__} would render a field the "
+                        "fragment does not describe."
+                    )
             if ir_field.identifier and role != "projection":
                 raise SliceGeneratorError(
                     f"Field {field_name!r} on {element.name!r} is marked as an "
