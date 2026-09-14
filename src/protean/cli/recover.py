@@ -311,12 +311,12 @@ def recover(
     # A second class of beyond-head violation: a subscription's recovery pass
     # tracks failed positions the restore rolled off the end of the stream, which
     # it would re-read and retry forever. This is read-only. A finding is either
-    # a stale entry ("beyond_head") or a subscription whose recovery streams could
-    # not be read ("unknown"), reported so it is not silently passed as clean.
+    # a stale entry ("stale") or a subscription whose recovery streams could not
+    # be read ("unknown"), reported so it is not silently passed as clean.
     recovery_findings = collect_recovery_checkpoint_statuses(
         derived_domain, event_store_statuses
     )
-    recovery_stale = [f for f in recovery_findings if f.verdict == "beyond_head"]
+    recovery_stale = [f for f in recovery_findings if f.verdict == "stale"]
     recovery_unknown = [f for f in recovery_findings if f.verdict == "unknown"]
 
     # Only --reset-beyond-head writes; a plain --verify-checkpoints run never

@@ -15,9 +15,10 @@ failed positions the restored store no longer holds. The recovery pass keeps a
 `recovery-checkpoint` (a watermark and an `unresolved` snapshot of positions
 still awaiting retry) and a `failed-positions` stream of `Failed`/`Resolved`/
 `Exhausted` records, and rebuilds the set of positions to retry from them on
-every restart. When a rolled-back category stream drops the message a tracked
-position names, the recovery pass re-reads it, finds nothing, and retries it on
-every pass without ever resolving it. `--verify-checkpoints` also reports those
+every restart. When a restore drops the message a tracked position names (it
+rolled the category stream back, or removed the specific aggregate stream the
+position points at), the recovery pass re-reads it, finds nothing, and retries it
+on every pass without ever resolving it. `--verify-checkpoints` also reports those
 stale entries, and `--reset-beyond-head` clears them.
 
 ## Commands
@@ -53,24 +54,29 @@ apart from the consistent ones rather than folded in as "consistent". Unknown is
 not a violation (the store may be offline), so it does not change the exit code.
 
 Alongside the checkpoint table, the run also reports any recovery-tracking
-entries past the restored head. For each event-store subscription it rebuilds the
-set of positions the recovery pass would retry (the `recovery-checkpoint`
-snapshot merged with the `failed-positions` records after the checkpoint
-watermark, the same way the subscription rebuilds it on restart) and names every
-entry whose `global_position` is strictly past `stream_head_position(category)`:
+entries whose message a restore removed. For each event-store subscription it
+rebuilds the set of positions the recovery pass would retry (the
+`recovery-checkpoint` snapshot merged with the `failed-positions` records after
+the checkpoint watermark, the same way the subscription rebuilds it on restart),
+then re-reads each the way the recovery pass does (the record's specific stream
+and position when present, else the category stream at the global position) and
+names every one whose message the restored store no longer holds:
 
 ```
 1 recovery-tracking entry(ies) across 1 subscription(s) point past the restored head. Reset them before starting the engine.
   OrderProjector (order): 12
 ```
 
-A stale recovery entry fails the run the same way a beyond-head checkpoint does
-(exit `1`). An entry at or below the head is left unreported. A subscription
-whose recovery streams could not be read (the store failed, or a restore left a
-corrupt checkpoint record) is reported apart as unverified so it is never read as
-clean; like an unknown checkpoint, that does not change the exit code. The check
-is read-only: a `--verify-checkpoints` run never writes to a recovery-tracking
-stream.
+Re-reading each position, rather than only comparing it to the stream head,
+catches a restore that removed one aggregate's stream while another aggregate has
+a later event: the removed position then sits below the category head, so a head
+comparison alone would miss it. A stale recovery entry fails the run the same way
+a beyond-head checkpoint does (exit `1`). A position whose message is still
+present is left unreported. A subscription whose recovery streams could not be
+read (the store failed, or a restore left a corrupt checkpoint record) is
+reported apart as unverified so it is never read as clean; like an unknown
+checkpoint, that does not change the exit code. The check is read-only: a
+`--verify-checkpoints` run never writes to a recovery-tracking stream.
 
 Without `--verify-checkpoints` the command prints a hint and exits `0`.
 
@@ -270,8 +276,8 @@ none of `data.reset`, `data.reset_failures`, `summary.reset`, or
 When the run finds a recovery-tracking entry, the envelope gains a
 `data.recovery` list (each entry carries the subscription `name`,
 `handler_name`, `stream_category`, `recovery_checkpoint_stream`, the
-`head_position` compared against, a `verdict` of `beyond_head` or `unknown`, and
-the `stale_positions` past the head) and `summary.recovery_stale` /
+`head_position` reported as context, a `verdict` of `stale` or `unknown`, and the
+`stale_positions` whose message is gone) and `summary.recovery_stale` /
 `summary.recovery_stale_positions` / `summary.recovery_unknown` counts. `status`
 is `fail` (exit `1`) when a stale entry is present without `--reset-beyond-head`;
 an `unknown` entry alone keeps `status` `pass`.

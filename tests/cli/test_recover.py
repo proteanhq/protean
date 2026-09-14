@@ -63,7 +63,7 @@ def _make_recovery_finding(
     stream_category: str = "order",
     stale_positions: list[int] | None = None,
     head_position: int = 5,
-    verdict: str = "beyond_head",
+    verdict: str = "stale",
 ) -> RecoveryCheckpointStatus:
     positions = [10, 12] if stale_positions is None else stale_positions
     return RecoveryCheckpointStatus(
@@ -920,7 +920,7 @@ class TestRecoverRecoveryVerifyJson:
                 "stream_category": "order",
                 "recovery_checkpoint_stream": "recovery-checkpoint-OrderProjector-order",
                 "head_position": 5,
-                "verdict": "beyond_head",
+                "verdict": "stale",
                 "stale_positions": [10, 12],
             }
         ]

@@ -27,6 +27,7 @@ from uuid import uuid4
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.event_store_subscription import (
+    read_recovery_message,
     reconstruct_unresolved,
     write_recovery_checkpoint_record,
 )
@@ -1017,14 +1018,15 @@ class RecoveryCheckpointStatus:
     the snapshot merged with the failed-stream records after the watermark, then
     re-reads and retries each.
 
-    A restore that rolls a category stream back can leave that set naming
-    positions the restored store no longer holds: their ``global_position`` is
-    past ``stream_head_position(category)``. The recovery pass re-reads each,
-    finds nothing, and retries it every pass without ever resolving it. A
-    ``"beyond_head"`` finding names those stale positions in ``stale_positions``;
-    :func:`reset_recovery_checkpoint` drops them. A ``"unknown"`` finding means
-    the recovery streams could not be read (the store failed, or a restore left a
-    corrupt checkpoint record), so the subscription could not be verified.
+    A restore can leave that set naming positions whose message the restored
+    store no longer holds, either because it rolled the category stream back or
+    because it removed the specific aggregate stream a position points at. The
+    recovery pass re-reads each, finds nothing, and retries it every pass without
+    ever resolving it. A ``"stale"`` finding names those positions in
+    ``stale_positions``; :func:`reset_recovery_checkpoint` drops them. A
+    ``"unknown"`` finding means the recovery streams could not be read (the store
+    failed, or a restore left a corrupt checkpoint record), so the subscription
+    could not be verified.
     """
 
     name: str
@@ -1034,21 +1036,22 @@ class RecoveryCheckpointStatus:
     """Short class name (e.g. ``"OrderProjector"``)."""
 
     stream_category: str
-    """The category stream whose head the entries are compared against."""
+    """The category stream the failed positions belong to."""
 
     recovery_checkpoint_stream: str
     """The durable recovery-checkpoint stream the reset rewrites."""
 
     head_position: int
-    """The stream head the entries were compared against."""
+    """The category stream head at collection time, reported as context (staleness
+    is decided by re-reading each position, not by comparing it to this head)."""
 
     verdict: str
-    """``"beyond_head"`` when the subscription tracks a stale position past the
-    head, ``"unknown"`` when its recovery streams could not be read."""
+    """``"stale"`` when the subscription tracks a position whose message is gone,
+    ``"unknown"`` when its recovery streams could not be read."""
 
     stale_positions: list[int]
-    """The ``unresolved`` ``global_position`` values strictly past the head,
-    sorted ascending. Empty for a ``"unknown"`` finding."""
+    """The ``unresolved`` ``global_position`` values whose message the restored
+    store no longer holds, sorted ascending. Empty for a ``"unknown"`` finding."""
 
     unresolved: dict[int, dict[str, Any]] = field(repr=False, compare=False)
     """The full reconstructed unresolved set (``global_position`` -> info),
@@ -1064,19 +1067,23 @@ class RecoveryCheckpointStatus:
 def _collect_one_recovery_checkpoint(
     domain: Domain, status: SubscriptionStatus
 ) -> RecoveryCheckpointStatus | None:
-    """Find the recovery-tracking entries a restore left past the stream head.
+    """Find the recovery-tracking entries a restore left pointing at a gone message.
 
-    Returns a ``"beyond_head"`` :class:`RecoveryCheckpointStatus` when the
-    subscription tracks at least one unresolved position whose ``global_position``
-    is strictly past its stream head, and a ``"unknown"`` one when the recovery
-    streams could not be read (the store failed mid-collection, or a restore left
-    a corrupt checkpoint record), so an unverifiable subscription is reported
-    rather than silently passed as clean.
+    Returns a ``"stale"`` :class:`RecoveryCheckpointStatus` when the
+    subscription tracks at least one unresolved position whose message the
+    restored store no longer holds: it re-reads each the same way the recovery
+    pass does (the record's specific stream and position when present, else the
+    category stream at the global position) and flags every one that comes back
+    empty. That catches both a rolled-back category and a removed specific stream
+    that still sits below the category head. A ``"unknown"`` finding means the
+    recovery streams could not be read (the store failed mid-collection, or a
+    restore left a corrupt checkpoint record), so an unverifiable subscription is
+    reported rather than silently passed as clean.
 
     Returns ``None`` when there is nothing to report: the subscription is not an
     event-store one, its head or streams are unknown (an unreachable store the
-    read-position pass already reports as unknown), or it tracks no beyond-head
-    position.
+    read-position pass already reports as unknown), or every tracked position's
+    message is still present.
     """
     if status.subscription_type != "event_store":
         return None
@@ -1096,12 +1103,21 @@ def _collect_one_recovery_checkpoint(
                 status.recovery_checkpoint_stream,
                 status.failed_positions_stream,
             )
+            # A position is stale when the recovery pass's own re-read would find
+            # nothing. Comparing the global position to the category head alone
+            # would miss a removed specific stream whose position still sits below
+            # the head (another aggregate has a later event).
+            stale_positions = sorted(
+                pos
+                for pos, info in unresolved.items()
+                if not read_recovery_message(store, status.stream_category, pos, info)
+            )
     except Exception as exc:
-        # The recovery read is a bulk read of a different stream than the
-        # read-position check, so it can fail on its own (a store error, or a
-        # corrupt checkpoint record left by a partial restore). Report it as
-        # unverified rather than folding it into "clean", which is the exact
-        # falsehood this command exists to catch.
+        # The recovery reads hit a different stream than the read-position check,
+        # so they can fail on their own (a store error, or a corrupt checkpoint
+        # record left by a partial restore). Report it as unverified rather than
+        # folding it into "clean", which is the exact falsehood this command
+        # exists to catch.
         logger.warning(
             "Could not verify recovery tracking for %s (stream %s): %s",
             status.name,
@@ -1110,7 +1126,6 @@ def _collect_one_recovery_checkpoint(
         )
         return _recovery_unknown(status, head)
 
-    stale_positions = sorted(pos for pos in unresolved if pos > head)
     if not stale_positions:
         return None
 
@@ -1120,7 +1135,7 @@ def _collect_one_recovery_checkpoint(
         stream_category=status.stream_category,
         recovery_checkpoint_stream=status.recovery_checkpoint_stream,
         head_position=head,
-        verdict="beyond_head",
+        verdict="stale",
         stale_positions=stale_positions,
         unresolved=unresolved,
         watermark=_watermark,
@@ -1150,8 +1165,8 @@ def collect_recovery_checkpoint_statuses(
 ) -> list[RecoveryCheckpointStatus]:
     """Return the recovery-tracking findings across the given subscriptions.
 
-    One :class:`RecoveryCheckpointStatus` per event-store subscription that has a
-    beyond-head unresolved position (verdict ``"beyond_head"``) or whose recovery
+    One :class:`RecoveryCheckpointStatus` per event-store subscription that tracks
+    a position whose message is gone (verdict ``"stale"``) or whose recovery
     streams could not be read (verdict ``"unknown"``); a subscription that
     verifies clean is omitted. This is read-only: it never writes to any
     recovery-tracking stream.
@@ -1197,7 +1212,7 @@ def reset_recovery_checkpoint(
 
     Args:
         domain: An initialised Protean domain.
-        finding: A ``"beyond_head"`` recovery finding, from
+        finding: A ``"stale"`` recovery finding, from
             :func:`collect_recovery_checkpoint_statuses`.
 
     Returns:

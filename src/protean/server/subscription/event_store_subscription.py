@@ -156,6 +156,31 @@ def write_recovery_checkpoint_record(
     )
 
 
+def read_recovery_message(
+    store: BaseEventStore,
+    stream_category: str,
+    global_position: int,
+    info: dict[str, Any],
+) -> list[Message]:
+    """Re-read the message a failed position names, the way the recovery pass does.
+
+    Uses the record's specific ``stream_name`` and ``stream_position`` when both
+    are present, and otherwise falls back to the category stream at the
+    ``global_position``. Returns the message(s) found, empty when the restored
+    store no longer holds the message. Both ``run_recovery_pass`` and
+    ``protean recover`` locate the message through this one function, so the
+    command flags exactly the positions the recovery pass would fail to find (a
+    position whose specific stream a restore removed can sit below the
+    category-wide head, so comparing the global position to the head alone would
+    miss it).
+    """
+    stream_name = info.get("stream_name")
+    stream_position = info.get("stream_position")
+    if stream_name and stream_position is not None:
+        return store.read(stream_name, position=stream_position, no_of_messages=1)
+    return store.read(stream_category, position=global_position, no_of_messages=1)
+
+
 class EventStoreSubscription(BaseSubscription):
     """Subscription to an event store stream with failed position recovery.
 
@@ -1134,23 +1159,13 @@ class EventStoreSubscription(BaseSubscription):
                 )
                 continue
 
-            # Re-read the original message from the event store.
-            # Use the specific stream name and per-stream position if available,
-            # otherwise fall back to reading from the category stream.
-            if stream_name and stream_position is not None:
-                messages = await asyncio.to_thread(
-                    self.store.read,
-                    stream_name,
-                    position=stream_position,
-                    no_of_messages=1,
-                )
-            else:
-                messages = await asyncio.to_thread(
-                    self.store.read,
-                    self.stream_category,
-                    position=position,
-                    no_of_messages=1,
-                )
+            # Re-read the original message from the event store, using the record's
+            # specific stream/position when present and otherwise the category
+            # stream. ``protean recover`` reads through the same helper, so it
+            # flags exactly the positions this re-read cannot find.
+            messages = await asyncio.to_thread(
+                read_recovery_message, self.store, self.stream_category, position, info
+            )
 
             if not messages:
                 logger.warning(
