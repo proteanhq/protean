@@ -20,14 +20,19 @@ import contextlib
 import json
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, overload
 from uuid import uuid4
 
 from protean.server.subscription.config_resolver import ConfigResolver
+from protean.server.subscription.event_store_subscription import (
+    reconstruct_unresolved,
+    write_recovery_checkpoint_record,
+)
 from protean.server.subscription.profiles import SubscriptionType
 from protean.utils import ensure_utc_aware, fqn
+from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
 from protean.utils.eventing import MessageType
 
 if TYPE_CHECKING:
@@ -123,6 +128,21 @@ class SubscriptionStatus:
     command handlers. This is the stream ``protean recover --reset-beyond-head``
     writes a fresh position to."""
 
+    recovery_checkpoint_stream: str | None = None
+    """The durable recovery-checkpoint stream
+    (``recovery-checkpoint-{subscriber_name}-{category}``) for an event-store
+    subscription, ``None`` for other subscription types and when the store was
+    unreachable. It holds the ``watermark`` and the ``unresolved`` snapshot of
+    failed positions the recovery pass rebuilds from on restart. This is the
+    stream ``protean recover --reset-beyond-head`` prunes stale entries from."""
+
+    failed_positions_stream: str | None = None
+    """The durable failed-positions stream
+    (``failed-{subscriber_name}-{category}``) for an event-store subscription,
+    ``None`` for other subscription types and when the store was unreachable. It
+    holds the ``Failed``/``Resolved``/``Exhausted`` records the recovery pass
+    merges after the checkpoint watermark to reconstruct the unresolved set."""
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -182,6 +202,8 @@ def _collect_event_store_status(
     """Query the event store for a subscription's position and head."""
     subscriber_name = subscriber_name or fqn(handler_cls)
     position_stream = f"position-{subscriber_name}-{stream_category}"
+    recovery_stream = recovery_checkpoint_stream(subscriber_name, stream_category)
+    failed_stream = failed_positions_stream(subscriber_name, stream_category)
 
     try:
         with domain.domain_context():
@@ -224,6 +246,8 @@ def _collect_event_store_status(
                 last_updated=last_updated,
                 lag_seconds=lag_seconds,
                 position_stream=position_stream,
+                recovery_checkpoint_stream=recovery_stream,
+                failed_positions_stream=failed_stream,
             )
     except Exception as exc:
         logger.debug(
@@ -973,6 +997,235 @@ def reset_checkpoint_to_head(domain: Domain, status: SubscriptionStatus) -> int:
             },
         )
     return head
+
+
+# ---------------------------------------------------------------------------
+# Recovery-tracking checkpoints
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RecoveryCheckpointStatus:
+    """A recovery-tracking finding for one event-store subscription.
+
+    An event-store subscription retries a failed position across restarts using
+    two durable streams: the ``recovery-checkpoint-{subscriber_name}-{category}``
+    stream (a ``watermark`` and an ``unresolved`` snapshot of failed positions
+    keyed by ``global_position``) and the ``failed-{subscriber_name}-{category}``
+    stream (the ``Failed``/``Resolved``/``Exhausted`` records). On restart the
+    subscription reconstructs the set of positions still awaiting recovery from
+    the snapshot merged with the failed-stream records after the watermark, then
+    re-reads and retries each.
+
+    A restore that rolls a category stream back can leave that set naming
+    positions the restored store no longer holds: their ``global_position`` is
+    past ``stream_head_position(category)``. The recovery pass re-reads each,
+    finds nothing, and retries it every pass without ever resolving it. A
+    ``"beyond_head"`` finding names those stale positions in ``stale_positions``;
+    :func:`reset_recovery_checkpoint` drops them. A ``"unknown"`` finding means
+    the recovery streams could not be read (the store failed, or a restore left a
+    corrupt checkpoint record), so the subscription could not be verified.
+    """
+
+    name: str
+    """Subscription key (matches ``SubscriptionStatus.name``)."""
+
+    handler_name: str
+    """Short class name (e.g. ``"OrderProjector"``)."""
+
+    stream_category: str
+    """The category stream whose head the entries are compared against."""
+
+    recovery_checkpoint_stream: str
+    """The durable recovery-checkpoint stream the reset rewrites."""
+
+    head_position: int
+    """The stream head the entries were compared against."""
+
+    verdict: str
+    """``"beyond_head"`` when the subscription tracks a stale position past the
+    head, ``"unknown"`` when its recovery streams could not be read."""
+
+    stale_positions: list[int]
+    """The ``unresolved`` ``global_position`` values strictly past the head,
+    sorted ascending. Empty for a ``"unknown"`` finding."""
+
+    unresolved: dict[int, dict[str, Any]] = field(repr=False, compare=False)
+    """The full reconstructed unresolved set (``global_position`` -> info),
+    carried so the reset can rewrite the checkpoint without a second store read.
+    Kept out of reprs and equality, and not part of the reported payload."""
+
+    watermark: int = field(repr=False, compare=False)
+    """The failed-stream position the reconstruction read up to, written back so
+    the next restart's rebuild resumes past the records already read. Kept out of
+    reprs and equality, and not part of the reported payload."""
+
+
+def _collect_one_recovery_checkpoint(
+    domain: Domain, status: SubscriptionStatus
+) -> RecoveryCheckpointStatus | None:
+    """Find the recovery-tracking entries a restore left past the stream head.
+
+    Returns a ``"beyond_head"`` :class:`RecoveryCheckpointStatus` when the
+    subscription tracks at least one unresolved position whose ``global_position``
+    is strictly past its stream head, and a ``"unknown"`` one when the recovery
+    streams could not be read (the store failed mid-collection, or a restore left
+    a corrupt checkpoint record), so an unverifiable subscription is reported
+    rather than silently passed as clean.
+
+    Returns ``None`` when there is nothing to report: the subscription is not an
+    event-store one, its head or streams are unknown (an unreachable store the
+    read-position pass already reports as unknown), or it tracks no beyond-head
+    position.
+    """
+    if status.subscription_type != "event_store":
+        return None
+    if not status.recovery_checkpoint_stream or not status.failed_positions_stream:
+        return None
+    head = _parse_position(status.head_position)
+    if head is None:
+        return None
+
+    try:
+        with domain.domain_context():
+            store = domain.event_store.store
+            if store is None:
+                return _recovery_unknown(status, head)
+            unresolved, _watermark, _read = reconstruct_unresolved(
+                store,
+                status.recovery_checkpoint_stream,
+                status.failed_positions_stream,
+            )
+    except Exception as exc:
+        # The recovery read is a bulk read of a different stream than the
+        # read-position check, so it can fail on its own (a store error, or a
+        # corrupt checkpoint record left by a partial restore). Report it as
+        # unverified rather than folding it into "clean", which is the exact
+        # falsehood this command exists to catch.
+        logger.warning(
+            "Could not verify recovery tracking for %s (stream %s): %s",
+            status.name,
+            status.recovery_checkpoint_stream,
+            exc,
+        )
+        return _recovery_unknown(status, head)
+
+    stale_positions = sorted(pos for pos in unresolved if pos > head)
+    if not stale_positions:
+        return None
+
+    return RecoveryCheckpointStatus(
+        name=status.name,
+        handler_name=status.handler_name,
+        stream_category=status.stream_category,
+        recovery_checkpoint_stream=status.recovery_checkpoint_stream,
+        head_position=head,
+        verdict="beyond_head",
+        stale_positions=stale_positions,
+        unresolved=unresolved,
+        watermark=_watermark,
+    )
+
+
+def _recovery_unknown(
+    status: SubscriptionStatus, head: int
+) -> RecoveryCheckpointStatus:
+    """Build an unverified recovery finding for a subscription whose recovery
+    streams could not be read."""
+    return RecoveryCheckpointStatus(
+        name=status.name,
+        handler_name=status.handler_name,
+        stream_category=status.stream_category,
+        recovery_checkpoint_stream=status.recovery_checkpoint_stream or "",
+        head_position=head,
+        verdict="unknown",
+        stale_positions=[],
+        unresolved={},
+        watermark=0,
+    )
+
+
+def collect_recovery_checkpoint_statuses(
+    domain: Domain, statuses: list[SubscriptionStatus]
+) -> list[RecoveryCheckpointStatus]:
+    """Return the recovery-tracking findings across the given subscriptions.
+
+    One :class:`RecoveryCheckpointStatus` per event-store subscription that has a
+    beyond-head unresolved position (verdict ``"beyond_head"``) or whose recovery
+    streams could not be read (verdict ``"unknown"``); a subscription that
+    verifies clean is omitted. This is read-only: it never writes to any
+    recovery-tracking stream.
+    """
+    findings: list[RecoveryCheckpointStatus] = []
+    for status in statuses:
+        finding = _collect_one_recovery_checkpoint(domain, status)
+        if finding is not None:
+            findings.append(finding)
+    return findings
+
+
+def _parse_position(position: str | None) -> int | None:
+    """Parse a stored position string to an int, or ``None`` if it cannot.
+
+    Event-store positions are numeric strings (``"-1"``, ``"42"``), but this
+    runs against restored or foreign stores, so a position can be missing
+    (``None``) or non-numeric. Either way it cannot be compared, so treat it as
+    unknown instead of raising.
+    """
+    if position is None:
+        return None
+    try:
+        return int(position)
+    except (TypeError, ValueError):
+        return None
+
+
+def reset_recovery_checkpoint(
+    domain: Domain, finding: RecoveryCheckpointStatus
+) -> list[int]:
+    """Drop every beyond-head unresolved position from a subscription's recovery
+    checkpoint.
+
+    Writes one fresh ``Checkpoint`` record to ``finding.recovery_checkpoint_stream``
+    carrying the reconstructed unresolved set with ``finding.stale_positions``
+    removed and ``finding.watermark`` (the failed-stream position the
+    reconstruction read up to). On restart the subscription restores this pruned
+    snapshot and, because the watermark sits past the failed-stream records the
+    reconstruction already read, its rebuild does not re-read the record naming a
+    stale position and re-add it. Every at-or-below-head position the
+    subscription was tracking is preserved.
+
+    Args:
+        domain: An initialised Protean domain.
+        finding: A ``"beyond_head"`` recovery finding, from
+            :func:`collect_recovery_checkpoint_statuses`.
+
+    Returns:
+        The positions removed (``finding.stale_positions``).
+
+    Raises:
+        ValueError: If the domain has no event store configured.
+    """
+    stale = set(finding.stale_positions)
+    pruned = {pos: info for pos, info in finding.unresolved.items() if pos not in stale}
+
+    with domain.domain_context():
+        store = domain.event_store.store
+        if store is None:
+            raise ValueError(
+                f"Cannot reset recovery checkpoint for {finding.name!r}: the "
+                f"domain has no event store configured."
+            )
+
+        write_recovery_checkpoint_record(
+            store,
+            finding.recovery_checkpoint_stream,
+            finding.stream_category,
+            domain.clock.now().isoformat(),
+            finding.watermark,
+            pruned,
+        )
+    return finding.stale_positions
 
 
 # ---------------------------------------------------------------------------

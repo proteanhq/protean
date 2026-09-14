@@ -10,6 +10,16 @@ the restored head and its stale checkpoint. `--verify-checkpoints` reports those
 subscriptions so you can reset them before starting the engine, and
 `--reset-beyond-head` snaps each one back to the stream head for you.
 
+The same restore can leave an event-store subscription's recovery pass tracking
+failed positions the restored store no longer holds. The recovery pass keeps a
+`recovery-checkpoint` (a watermark and an `unresolved` snapshot of positions
+still awaiting retry) and a `failed-positions` stream of `Failed`/`Resolved`/
+`Exhausted` records, and rebuilds the set of positions to retry from them on
+every restart. When a rolled-back category stream drops the message a tracked
+position names, the recovery pass re-reads it, finds nothing, and retries it on
+every pass without ever resolving it. `--verify-checkpoints` also reports those
+stale entries, and `--reset-beyond-head` clears them.
+
 ## Commands
 
 ### `protean recover --verify-checkpoints`
@@ -41,6 +51,26 @@ subscription whose store is unreachable, or whose position is not a number, is
 reported as `unknown`: it could not be verified, so it is counted and reported
 apart from the consistent ones rather than folded in as "consistent". Unknown is
 not a violation (the store may be offline), so it does not change the exit code.
+
+Alongside the checkpoint table, the run also reports any recovery-tracking
+entries past the restored head. For each event-store subscription it rebuilds the
+set of positions the recovery pass would retry (the `recovery-checkpoint`
+snapshot merged with the `failed-positions` records after the checkpoint
+watermark, the same way the subscription rebuilds it on restart) and names every
+entry whose `global_position` is strictly past `stream_head_position(category)`:
+
+```
+1 recovery-tracking entry(ies) across 1 subscription(s) point past the restored head. Reset them before starting the engine.
+  OrderProjector (order): 12
+```
+
+A stale recovery entry fails the run the same way a beyond-head checkpoint does
+(exit `1`). An entry at or below the head is left unreported. A subscription
+whose recovery streams could not be read (the store failed, or a restore left a
+corrupt checkpoint record) is reported apart as unverified so it is never read as
+clean; like an unknown checkpoint, that does not change the exit code. The check
+is read-only: a `--verify-checkpoints` run never writes to a recovery-tracking
+stream.
 
 Without `--verify-checkpoints` the command prints a hint and exits `0`.
 
@@ -86,9 +116,26 @@ the reachable checkpoints, reports the ones it could not, and exits `2`. Each
 successful write is durable on its own, so re-running the command picks up where
 it left off.
 
+`--reset-beyond-head` also clears the stale recovery-tracking entries the run
+found. For each such subscription it writes a fresh `recovery-checkpoint` record
+holding the rebuilt unresolved set with the beyond-head positions removed and a
+watermark past the `failed-positions` records it read, so the next restart
+rebuilds a set without them and the recovery pass stops chasing them. It reports
+what it cleared:
+
+```
+Cleared 1 stale recovery-tracking entry(ies) past the stream head:
+  OrderProjector (order): 12
+```
+
+Only the beyond-head entries are dropped; every at-or-below-head position the
+subscription was tracking is preserved. A recovery reset write that fails is
+named and the run exits `2`, the same as a checkpoint reset failure. A later
+`--verify-checkpoints` run then finds the subscription clean.
+
 `--reset-beyond-head` needs `--verify-checkpoints` (that pass finds what to
 reset). Passing it alone is a usage error (exit `2`). Without it, no run modifies
-any checkpoint.
+any checkpoint or recovery-tracking stream.
 
 Resetting a checkpoint changes which messages the subscription replays: moving it
 back can make a subscription re-process messages. Run it against a stopped
@@ -108,9 +155,9 @@ reset.
 
 | Code | Meaning |
 |------|---------|
-| `0` | All checkpoints are consistent (or no flag / no event-store subscriptions), or `--reset-beyond-head` snapped every beyond-head checkpoint back |
-| `1` | At least one checkpoint points past the restored head (verification only, without `--reset-beyond-head`) |
-| `2` | Usage or environment error: `--reset-beyond-head` without `--verify-checkpoints`, a reset write that failed, or no or unloadable domain **under `--json`** |
+| `0` | All checkpoints are consistent with no stale recovery entries (or no flag / no event-store subscriptions), or `--reset-beyond-head` cleared every beyond-head checkpoint and recovery entry |
+| `1` | At least one checkpoint or recovery-tracking entry points past the restored head (verification only, without `--reset-beyond-head`) |
+| `2` | Usage or environment error: `--reset-beyond-head` without `--verify-checkpoints`, a checkpoint or recovery reset write that failed, or no or unloadable domain **under `--json`** |
 
 With `--reset-beyond-head` the run fixes each beyond-head checkpoint and exits
 `0`. A verification-only run exits `1` when a checkpoint is beyond head. A reset
@@ -219,6 +266,21 @@ write fails the envelope `status` is `error` and the exit code is `2`, and
 A plain `--verify-checkpoints --json` run (without `--reset-beyond-head`) carries
 none of `data.reset`, `data.reset_failures`, `summary.reset`, or
 `summary.reset_failed`.
+
+When the run finds a recovery-tracking entry, the envelope gains a
+`data.recovery` list (each entry carries the subscription `name`,
+`handler_name`, `stream_category`, `recovery_checkpoint_stream`, the
+`head_position` compared against, a `verdict` of `beyond_head` or `unknown`, and
+the `stale_positions` past the head) and `summary.recovery_stale` /
+`summary.recovery_stale_positions` / `summary.recovery_unknown` counts. `status`
+is `fail` (exit `1`) when a stale entry is present without `--reset-beyond-head`;
+an `unknown` entry alone keeps `status` `pass`.
+With `--reset-beyond-head` the envelope also gains a `data.recovery_reset` list
+(each with `name`, `handler_name`, `stream_category`, and the `cleared_positions`
+removed), a `data.recovery_reset_failures` list of any that could not be written,
+and `summary.recovery_reset` / `summary.recovery_reset_failed` counts. A run with
+no stale recovery entry carries none of these keys and keeps the exact shape
+above.
 
 ## See also
 
