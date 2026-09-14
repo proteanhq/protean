@@ -366,6 +366,18 @@ class TestParseRejections:
         assert exc.value.line == 1
         assert "module variable" in str(exc.value)
 
+    def test_aggregate_name_whose_slug_disagrees_with_add(self):
+        # ``add aB`` splits the authored name once and takes both names off it: the
+        # class ``AB`` and the slug ``a_b``. The model carries the class name, and
+        # ``AB`` is one word, so the same slice would land in ``ab/`` with an
+        # ``ab_id``. Rejected rather than written into two directories depending on
+        # which surface authored it.
+        with pytest.raises(ModelParseError) as exc:
+            parse_model("aggregate aB:\n    field name: string\n")
+        assert exc.value.line == 1
+        assert "'protean add aB'" in str(exc.value)
+        assert "Name the aggregate 'AB'" in str(exc.value)
+
     def test_reserved_identity_field_name_on_the_aggregate(self):
         # The framework injects the aggregate's ``id``; an authored ``id`` is
         # replaced by it, so the declaration here would be lost on promotion.

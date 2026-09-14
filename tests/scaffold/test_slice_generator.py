@@ -530,6 +530,26 @@ def test_event_id_as_a_string_long_enough_for_the_id_is_accepted():
     )
 
 
+def test_bounded_event_id_with_an_authored_aggregate_id_raises():
+    """A bound that fits the 36-character identity default fits nothing else. An
+    aggregate that declares its own ``id`` renders ``create(cls, id: str, ...)``, so
+    the id comes from the caller: ``CreateOrder(id="x" * 37)`` builds the aggregate
+    and then fails when the create factory raises the event. The generator rejects
+    the pair rather than render a slice that works for some ids and not others."""
+    bounded_id = IRField(kind="standard", type="String", required=True, max_length=36)
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"id": _STR_PLAIN, "name": _STR_100}),
+        command=SliceElement("CreateOrder", {"id": _STR_PLAIN, "name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": bounded_id, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "order_id" in str(exc_info.value)
+    assert "'id'" in str(exc_info.value)
+
+
 @pytest.mark.parametrize(
     ("projection_fields", "reason"),
     [
@@ -1949,22 +1969,26 @@ def test_parsed_write_side_only_model_derives_its_read_side():
 
 def test_parser_and_generator_derive_the_same_slug():
     """The fragment carries the normalized class name and no slug, so the parser and
-    the generator have to derive the same one from it. ``aB`` is the name that used to
-    split them: the parser derived ``a_b`` from the name as authored, while the
-    generator derives ``ab`` from the class ``AB`` the fragment carries, and the parsed
-    model was then rejected for declaring the wrong id field."""
+    the generator have to derive the same one from it, and it has to be the one
+    ``protean add`` derives from the name as authored. ``orderItem`` is not the class
+    name and all three still land on ``order_item``. The few names where they would
+    not, such as ``aB`` (class ``AB``, slug ``ab``, where ``add aB`` gives ``a_b``),
+    the parser rejects: see
+    ``TestParseRejections.test_aggregate_name_whose_slug_disagrees_with_add``."""
     model = (
-        "aggregate aB:\n    field name: string\n\n"
-        "command CreateAB:\n    field name: string\n\n"
-        "event ABCreated:\n    field ab_id: string\n    field name: string\n"
+        "aggregate orderItem:\n    field name: string\n\n"
+        "command CreateOrderItem:\n    field name: string\n\n"
+        "event OrderItemCreated:\n"
+        "    field order_item_id: string\n"
+        "    field name: string\n"
     )
 
     plan = generate_slice_plan(
         SliceFragment.from_mapping(parse_model(model)), "myproj", "myproj"
     )
 
-    assert plan.operations[0].path == "src/myproj/ab/__init__.py"
-    assert "ab_id=ab.id" in _content_for(plan, "aggregate_base.py")
+    assert plan.operations[0].path == "src/myproj/order_item/__init__.py"
+    assert "order_item_id=order_item.id" in _content_for(plan, "aggregate_base.py")
 
 
 @pytest.mark.parametrize(
@@ -2129,6 +2153,38 @@ def test_mapping_that_is_not_a_fragment_raises(mapping, expected):
         SliceFragment.from_mapping(mapping)
 
     assert expected in str(exc_info.value)
+
+
+def test_field_entry_keyed_by_something_that_is_not_a_string_raises():
+    """Reading an entry's keys through ``str`` would let a key that is not a string,
+    but prints as one, take the place of the entry the mapping carries under that
+    name: the fragment says the field is a ``String`` and the generator would render
+    a ``Text``. The adapter rejects the key instead, the way it rejects a field name
+    that is not a string."""
+
+    class PrintsAsType:
+        def __str__(self) -> str:
+            return "type"
+
+    mapping = {
+        "aggregate": {
+            "name": "Order",
+            "fields": {
+                "name": {
+                    "kind": "standard",
+                    "type": "String",
+                    PrintsAsType(): "Text",
+                }
+            },
+        },
+        "command": {"name": "CreateOrder", "fields": {}},
+        "event": {"name": "OrderCreated", "fields": {}},
+    }
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        SliceFragment.from_mapping(mapping)
+
+    assert "entry keyed by" in str(exc_info.value)
 
 
 # --- Acceptance #2: a fragment-driven slice passes ``protean verify`` ------------

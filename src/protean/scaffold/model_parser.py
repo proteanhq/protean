@@ -376,6 +376,24 @@ def _parse_header(raw_line: str, lineno: int) -> _Block:
                 f"{slug!r}, which is not a usable Python name",
                 lineno,
             )
+        # ``protean add`` splits the name as authored and takes both the class and
+        # the slug off that one split, while the model carries the class name and
+        # the slug is derived from it again. The two land on the same slug for
+        # every name but the few that do not round-trip: ``aB`` gives the class
+        # ``AB``, which is one word and gives the slug ``ab``, where ``add aB``
+        # gives ``a_b``. Rather than write the same slice into two directories
+        # depending on which surface authored it, say so and name the form that
+        # reads back the same on both.
+        authored_slug = _slug(raw_name)
+        if authored_slug != slug:
+            raise ModelParseError(
+                f"aggregate name {raw_name!r} derives the class {normalized!r}, "
+                f"whose slug is {slug!r}, while the name itself gives "
+                f"{authored_slug!r}; 'protean add {raw_name}' would write the slice "
+                f"into {authored_slug!r} and this model writes it into {slug!r}. "
+                f"Name the aggregate {normalized!r}",
+                lineno,
+            )
     return _Block(
         keyword=kw,
         name=normalized,
@@ -701,11 +719,13 @@ def _normalize_name(raw_name: str) -> str:
 def _slug(name: str) -> str:
     """The snake_case slug ``protean add`` derives from an aggregate name.
 
-    Taken off the normalized class name, not the name as authored, because the class
-    name is what the fragment carries: the generator derives the slug from it again,
-    and the two have to land on the same one. They do not always round-trip through
-    the raw name: ``aB`` normalizes to the class ``AB``, whose slug is ``ab``, while
-    ``aB`` itself splits into two words and gives ``a_b``.
+    The parser takes the aggregate's slug off the normalized class name, not the name
+    as authored, because the class name is what the fragment carries: the generator
+    derives the slug from it again, and the two have to land on the same one. The few
+    names where that differs from the slug ``add`` derives from the authored name
+    (``aB`` normalizes to the class ``AB``, whose slug is ``ab``, while ``aB`` itself
+    splits into two words and gives ``a_b``) are rejected in ``_parse_header``, so
+    every name the parser accepts gives the slug ``add`` gives it.
     """
     return "_".join(word.lower() for word in split_words(name))
 

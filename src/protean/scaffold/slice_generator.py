@@ -370,8 +370,21 @@ def _field_from_mapping(element: str, field_name: object, entry: object) -> IRFi
             f"The field {field_name!r} on {element!r} carries "
             f"{type(entry).__name__}, not an IR field entry."
         )
+    # Read the keys as written. Coercing them with ``str`` would let a key that is
+    # not a string, but prints as one, land the value on a field of that name, and
+    # overwrite the entry the mapping really carries under it.
+    attributes: dict[str, Any] = {}
+    for key, value in entry.items():
+        if not isinstance(key, str):
+            raise SliceGeneratorError(
+                f"The field {field_name!r} on {element!r} carries an entry keyed by "
+                f"{key!r}, which is not a string. An entry's keys are the field's "
+                "own, and reading this one as a name it is not would describe a "
+                "field the fragment does not."
+            )
+        attributes[key] = value
     try:
-        return IRField(**{str(key): value for key, value in entry.items()})
+        return IRField(**attributes)
     except TypeError as exc:
         raise SliceGeneratorError(
             f"The field {field_name!r} on {element!r} does not carry an IR field "
@@ -833,6 +846,22 @@ def _validate(
             "cannot hold the aggregate's id, which the generated create factory "
             f"assigns to it. Declare {id_name!r} as an Identifier, or as a String "
             f"with no max_length or one of at least {_IDENTITY_LENGTH}."
+        )
+    # The bound the check above allows is wide enough for the identity default, the
+    # UUID string ADR-0041's v1 targets. It is wide enough for nothing else: an
+    # aggregate that declares its own ``id`` renders a create factory that takes the
+    # id from its caller, and a value past the bound is built onto the aggregate and
+    # then rejected when the factory raises the event.
+    if aggregate_id is not None and event_id_field.max_length is not None:
+        raise SliceGeneratorError(
+            f"The event {fragment.event.name!r} bounds {id_name!r} at "
+            f"{event_id_field.max_length}, and the aggregate "
+            f"{fragment.aggregate.name!r} declares its own 'id', so the id comes "
+            "from whoever calls the generated create factory rather than from the "
+            "framework identity. An id longer than the bound is built onto the "
+            f"aggregate and then rejected when the event is raised. Drop the bound "
+            f"on {id_name!r}, or drop the aggregate's 'id' and let the framework "
+            "identity stand."
         )
 
     # The write side has to line up field for field, because the generated code
