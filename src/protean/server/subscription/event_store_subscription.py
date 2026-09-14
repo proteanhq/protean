@@ -104,12 +104,17 @@ def reconstruct_unresolved(
 
         last = page[-1]
         event_store = last.metadata.event_store if last.metadata else None
-        if (
-            event_store is None or event_store.position is None
-        ):  # pragma: no cover — corruption guard; real store records carry a position
-            # A record with no per-stream position cannot advance the cursor, so
-            # stop rather than re-read the same page forever.
-            break
+        if event_store is None or event_store.position is None:
+            # A record with no per-stream position cannot advance the cursor. A
+            # full page could still have more records after it, so stopping here
+            # would silently return a partial reconstruction as if the stream had
+            # been read to the end. Raise instead, so ``protean recover`` reports
+            # the subscription unverified rather than passing or resetting an
+            # incomplete set.
+            raise ValueError(
+                f"Failed-positions record in {failed_positions_stream!r} carries "
+                f"no per-stream position; cannot page the recovery stream."
+            )
         watermark = event_store.position + 1
         cursor = watermark
         if len(page) < page_size:

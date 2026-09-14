@@ -166,11 +166,13 @@ def _perform_recovery_resets(
     domain: Domain,
     findings: list[RecoveryCheckpointStatus],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Drop every beyond-head recovery-tracking entry from each finding.
+    """Clear the stale recovery-tracking entries from each finding.
 
-    Returns two lists: the resets that succeeded (each naming the subscription
-    and the positions cleared) and the resets that failed (each naming the
-    subscription and the error). A write that fails is recorded and the loop
+    Each finding here is a ``"stale"`` one, so its ``stale_positions`` are the
+    ones whose message the restored store no longer holds. Returns two lists: the
+    resets that succeeded (each naming the subscription and the positions cleared)
+    and the resets that failed (each naming the subscription and the error). A
+    write that fails is recorded and the loop
     moves on, so one unreachable checkpoint does not strand the rest. Each
     successful write is durable on its own, and re-running the command finds
     fewer stale entries.
@@ -244,12 +246,12 @@ def recover(
     With ``--verify-checkpoints`` this reports every event-store subscription
     whose checkpoint points past the head of the stream it consumes, which a
     restore from an inconsistent backup can leave behind. It also reports any
-    subscription whose recovery pass tracks a failed position past the restored
-    head (which the pass would re-read and retry forever), and any whose recovery
-    streams could not be read. It exits ``1`` when a checkpoint or a
-    recovery-tracking entry is beyond head, ``0`` when all are consistent. Only
-    event-store subscriptions track checkpoints, so broker and stream
-    subscriptions are not examined.
+    subscription whose recovery pass tracks a failed position whose message the
+    restored store no longer holds (which the pass would re-read and retry
+    forever), and any whose recovery streams could not be read. It exits ``1``
+    when a checkpoint is beyond head or a recovery-tracking entry is stale, ``0``
+    when all are consistent. Only event-store subscriptions track checkpoints, so
+    broker and stream subscriptions are not examined.
 
     Add ``--reset-beyond-head`` to snap each beyond-head checkpoint back to the
     stream head and clear each stale recovery-tracking entry. The reset run
@@ -308,11 +310,13 @@ def recover(
     unknown = verdicts.count("unknown")
     consistent = verdicts.count("consistent")
 
-    # A second class of beyond-head violation: a subscription's recovery pass
-    # tracks failed positions the restore rolled off the end of the stream, which
-    # it would re-read and retry forever. This is read-only. A finding is either
-    # a stale entry ("stale") or a subscription whose recovery streams could not
-    # be read ("unknown"), reported so it is not silently passed as clean.
+    # A second class of restore damage: a subscription's recovery pass tracks
+    # failed positions whose message the restore removed (a rolled-back category,
+    # or a removed specific aggregate stream that can sit below the category
+    # head), which it would re-read and retry forever. This is read-only. A
+    # finding is either a stale entry ("stale") or a subscription whose recovery
+    # streams could not be read ("unknown"), reported so it is not silently passed
+    # as clean.
     recovery_findings = collect_recovery_checkpoint_statuses(
         derived_domain, event_store_statuses
     )

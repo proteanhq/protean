@@ -2174,6 +2174,31 @@ class TestReconstructUnresolved:
         # Watermark advances past the last record (per-stream positions 0..4 -> 5).
         assert watermark == 5
 
+    def test_record_without_position_raises(self):
+        """A failed record whose last page entry carries no per-stream position
+        cannot advance the cursor. Rather than silently return a partial scan as
+        if complete, it raises so the CLI reports the subscription unverified."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = MagicMock()
+        store._read_last_message.return_value = None  # no checkpoint
+        msg = MagicMock()
+        msg.data.get.side_effect = lambda k, default=None: {
+            "position": 5,
+            "retry_count": 0,
+            "stream_name": None,
+            "stream_position": None,
+        }.get(k, default)
+        msg.metadata.headers.type = "Failed"
+        # A full page (page_size 1) whose only record lacks a per-stream position.
+        msg.metadata.event_store.position = None
+        store.read.return_value = [msg]
+
+        with pytest.raises(ValueError, match="no per-stream position"):
+            reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
+
 
 class TestCollectRecoveryCheckpointStatuses:
     def _seed_order_head(self, store) -> int:
@@ -2719,3 +2744,47 @@ class TestResetRecoveryCheckpoint:
         )
         with pytest.raises(ValueError, match="no event store"):
             reset_recovery_checkpoint(mock_domain, finding)
+
+    def test_refuses_to_reset_an_unknown_finding(self, test_domain):
+        """An unknown finding carries an empty snapshot, so resetting it would
+        wipe the subscription's real recovery state. It is refused, and the real
+        checkpoint is left untouched."""
+        from protean.server.subscription_status import (
+            RecoveryCheckpointStatus,
+            reset_recovery_checkpoint,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=3,
+                unresolved={
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    }
+                },
+            )
+            before = store._read_last_message("recovery-checkpoint-Handler-order")
+
+        finding = RecoveryCheckpointStatus(
+            name="sub",
+            handler_name="Handler",
+            stream_category="order",
+            recovery_checkpoint_stream="recovery-checkpoint-Handler-order",
+            head_position=2,
+            verdict="unknown",
+            stale_positions=[],
+            unresolved={},
+            watermark=0,
+        )
+        with pytest.raises(ValueError, match="not 'stale'"):
+            reset_recovery_checkpoint(test_domain, finding)
+
+        # The real snapshot was not overwritten with the finding's empty one.
+        with test_domain.domain_context():
+            after = store._read_last_message("recovery-checkpoint-Handler-order")
+        assert after["data"] == before["data"]

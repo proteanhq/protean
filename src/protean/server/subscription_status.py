@@ -1219,17 +1219,19 @@ def _parse_position(position: str | None) -> int | None:
 def reset_recovery_checkpoint(
     domain: Domain, finding: RecoveryCheckpointStatus
 ) -> list[int]:
-    """Drop every beyond-head unresolved position from a subscription's recovery
+    """Drop the stale unresolved positions from a subscription's recovery
     checkpoint.
 
-    Writes one fresh ``Checkpoint`` record to ``finding.recovery_checkpoint_stream``
-    carrying the reconstructed unresolved set with ``finding.stale_positions``
-    removed and ``finding.watermark`` (the failed-stream position the
-    reconstruction read up to). On restart the subscription restores this pruned
-    snapshot and, because the watermark sits past the failed-stream records the
-    reconstruction already read, its rebuild does not re-read the record naming a
-    stale position and re-add it. Every at-or-below-head position the
-    subscription was tracking is preserved.
+    ``finding.stale_positions`` are the positions whose message the restored store
+    no longer holds (found by re-reading each, not by comparing to the stream
+    head, so a removed specific aggregate stream below the head counts too). This
+    writes one fresh ``Checkpoint`` record to ``finding.recovery_checkpoint_stream``
+    carrying the reconstructed unresolved set with those positions removed and
+    ``finding.watermark`` (the failed-stream position the reconstruction read up
+    to). On restart the subscription restores this pruned snapshot and, because
+    the watermark sits past the failed-stream records the reconstruction already
+    read, its rebuild does not re-read the record naming a stale position and
+    re-add it. Every position whose message is still present is preserved.
 
     Args:
         domain: An initialised Protean domain.
@@ -1240,8 +1242,19 @@ def reset_recovery_checkpoint(
         The positions removed (``finding.stale_positions``).
 
     Raises:
-        ValueError: If the domain has no event store configured.
+        ValueError: If ``finding`` is not a ``"stale"`` finding (an ``"unknown"``
+            one carries an empty snapshot, so writing it would wipe the
+            subscription's real recovery state), or the domain has no event store.
     """
+    if finding.verdict != "stale":
+        # An "unknown" finding could not be reconstructed, so its `unresolved` is
+        # empty; writing it would replace the subscription's real snapshot with a
+        # blank one. Refuse rather than reset destructively.
+        raise ValueError(
+            f"Cannot reset recovery checkpoint for {finding.name!r}: its verdict "
+            f"is {finding.verdict!r}, not 'stale'."
+        )
+
     stale = set(finding.stale_positions)
     pruned = {pos: info for pos, info in finding.unresolved.items() if pos not in stale}
 

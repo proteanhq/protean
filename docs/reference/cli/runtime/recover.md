@@ -124,8 +124,8 @@ it left off.
 
 `--reset-beyond-head` also clears the stale recovery-tracking entries the run
 found. For each such subscription it writes a fresh `recovery-checkpoint` record
-holding the rebuilt unresolved set with the beyond-head positions removed and a
-watermark past the `failed-positions` records it read, so the next restart
+holding the rebuilt unresolved set with the missing-message positions removed and
+a watermark past the `failed-positions` records it read, so the next restart
 rebuilds a set without them and the recovery pass stops chasing them. It reports
 what it cleared:
 
@@ -161,8 +161,8 @@ reset.
 
 | Code | Meaning |
 |------|---------|
-| `0` | All checkpoints are consistent with no stale recovery entries (or no flag / no event-store subscriptions), or `--reset-beyond-head` cleared every beyond-head checkpoint and recovery entry |
-| `1` | At least one checkpoint or recovery-tracking entry points past the restored head (verification only, without `--reset-beyond-head`) |
+| `0` | All checkpoints are consistent with no stale recovery entries (or no flag / no event-store subscriptions), or `--reset-beyond-head` cleared every beyond-head checkpoint and stale recovery entry |
+| `1` | At least one checkpoint points past the restored head, or a recovery-tracking entry names a message the restored store no longer holds (verification only, without `--reset-beyond-head`) |
 | `2` | Usage or environment error: `--reset-beyond-head` without `--verify-checkpoints`, a checkpoint or recovery reset write that failed, or no or unloadable domain **under `--json`** |
 
 With `--reset-beyond-head` the run fixes each beyond-head checkpoint and exits
@@ -285,8 +285,10 @@ With `--reset-beyond-head` the envelope also gains a `data.recovery_reset` list
 (each with `name`, `handler_name`, `stream_category`, and the `cleared_positions`
 removed), a `data.recovery_reset_failures` list of any that could not be written,
 and `summary.recovery_reset` / `summary.recovery_reset_failed` counts. A run with
-no stale recovery entry carries none of these keys and keeps the exact shape
-above.
+no recovery finding at all (neither stale nor unknown) carries none of these keys
+and keeps the exact shape above; an `unknown`-only finding still adds the
+`data.recovery` keys (and, under `--reset-beyond-head`, empty
+`data.recovery_reset` / `data.recovery_reset_failures` lists).
 
 ## See also
 
