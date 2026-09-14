@@ -23,6 +23,7 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.scaffold import CreateFileOperation
 from protean.scaffold.add_plan import plan_add_slice
+from protean.scaffold.model_parser import parse_model
 from protean.scaffold.slice_generator import (
     IRField,
     SliceElement,
@@ -1037,6 +1038,73 @@ def test_aggregate_declaring_the_surfaced_id_raises():
     assert "order_id" in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    "ir_field",
+    [
+        IRField(kind="standard", type="Date", required=True),
+        IRField(kind="standard", type="DateTime", required=True),
+        IRField(kind="standard", type="Float", required=True),
+        IRField(kind="standard", type="Boolean", required=True),
+        IRField(kind="text", type="Text", required=True),
+    ],
+)
+def test_aggregate_id_the_framework_identity_cannot_hold_raises(ir_field):
+    """``id`` is the aggregate's own identity. The registered subclass takes that
+    field from the framework, which replaces whatever the generated base declares with
+    an identity field holding a string, an integer or a UUID. A ``Date`` id renders a
+    create factory whose ``id`` parameter the aggregate rejects when it is built, and
+    a ``Text`` one renders a declaration the identity field drops. Only ``String``,
+    ``Integer`` and ``Identifier`` describe the field the slice ends up with."""
+    fragment = _fragment_with(
+        aggregate=SliceElement("Order", {"id": ir_field, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'id'" in str(exc_info.value)
+    assert ir_field.type in str(exc_info.value)
+
+
+def test_aggregate_id_with_a_bound_raises():
+    """The identity field replaces the declaration, bound and all, so a bounded ``id``
+    would render a slice that accepts a value past the bound without a word."""
+    fragment = _fragment_with(
+        aggregate=SliceElement("Order", {"id": _STR_100, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "100" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("ir_field", "declaration"),
+    [
+        (_STR_PLAIN, "id: str"),
+        (IRField(kind="standard", type="Integer", required=True), "id: int"),
+        (
+            IRField(kind="identifier", type="Identifier", required=True),
+            "id: Identifier(required=True)",
+        ),
+    ],
+)
+def test_aggregate_id_in_an_identity_shape_is_accepted(ir_field, declaration):
+    """The three shapes the framework identity holds. An authored ``id`` is how a
+    caller supplies the identity instead of taking the generated one, which
+    ``test_slice_whose_fields_take_framework_names_runs`` drives end to end."""
+    fragment = _fragment_with(
+        aggregate=SliceElement("Order", {"id": ir_field, "name": _STR_100}),
+    )
+
+    base = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "aggregate_base.py"
+    )
+
+    assert declaration in base
+
+
 @pytest.mark.parametrize("role", ["aggregate", "command", "event"])
 def test_identity_key_marked_outside_a_projection_raises(role):
     """The ``key`` flag is valid only on a projection's identifier field (ADR-0041).
@@ -1579,6 +1647,210 @@ def test_projector_consuming_the_wrong_event_raises(tmp_path):
     assert "OrderUpdated" in str(exc_info.value)
 
 
+# --- The parser-to-generator path: a parsed fragment is a fragment ---------------
+
+_PARSED_MODEL = """aggregate Order:
+    field name: string(max_length=100)
+
+command CreateOrder:
+    field name: string(max_length=100)
+
+event OrderCreated:
+    field order_id: string
+    field name: string(max_length=100)
+
+projection OrderSummary:
+    field order_id: identifier(key)
+    field name: string(max_length=100)
+
+projector OrderProjector:
+    for OrderSummary
+    consumes OrderCreated
+"""
+
+
+def test_parsed_model_promotes_to_a_plan():
+    """ADR-0041's parser emits the fragment as plain data and the generator works in
+    dataclasses. ``SliceFragment.from_mapping`` is the one step between them, so a
+    parsed model promotes to the slice it describes, read side and all. The
+    projector's ``for`` key is the grammar's word, a Python keyword, and lands in
+    ``for_``."""
+    fragment = SliceFragment.from_mapping(parse_model(_PARSED_MODEL))
+
+    assert fragment.projector is not None
+    assert fragment.projector.for_ == "OrderSummary"
+    assert fragment.projector.consumes == "OrderCreated"
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert [op.path for op in plan.operations] == [
+        f"src/myproj/order/{filename}"
+        for filename in (
+            "__init__.py",
+            "aggregate_base.py",
+            "aggregate.py",
+            "commands.py",
+            "events.py",
+            "command_handlers.py",
+            "projection.py",
+            "projectors.py",
+        )
+    ]
+    assert "name: Annotated[str, Field(max_length=100)]" in _content_for(
+        plan, "aggregate_base.py"
+    )
+    assert "class OrderProjector" in _content_for(plan, "projectors.py")
+    assert "order_id: Identifier(identifier=True)" in _content_for(
+        plan, "projection.py"
+    )
+
+
+def test_parsed_write_side_only_model_derives_its_read_side():
+    """A model with no projection or projector parses to a fragment with neither, so
+    the generator derives the default read side from the event, the same as any other
+    write-side-only fragment."""
+    model = _PARSED_MODEL.split("projection OrderSummary:")[0]
+
+    fragment = SliceFragment.from_mapping(parse_model(model))
+
+    assert fragment.projection is None
+    assert fragment.projector is None
+    assert "class OrderSummary" in _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "projection.py"
+    )
+
+
+def test_parser_and_generator_derive_the_same_slug():
+    """The fragment carries the normalized class name and no slug, so the parser and
+    the generator have to derive the same one from it. ``aB`` is the name that used to
+    split them: the parser derived ``a_b`` from the name as authored, while the
+    generator derives ``ab`` from the class ``AB`` the fragment carries, and the parsed
+    model was then rejected for declaring the wrong id field."""
+    model = (
+        "aggregate aB:\n    field name: string\n\n"
+        "command CreateAB:\n    field name: string\n\n"
+        "event ABCreated:\n    field ab_id: string\n    field name: string\n"
+    )
+
+    plan = generate_slice_plan(
+        SliceFragment.from_mapping(parse_model(model)), "myproj", "myproj"
+    )
+
+    assert plan.operations[0].path == "src/myproj/ab/__init__.py"
+    assert "ab_id=ab.id" in _content_for(plan, "aggregate_base.py")
+
+
+@pytest.mark.parametrize(
+    ("mapping", "expected"),
+    [
+        ("not a fragment", "mapping"),
+        ({"aggregate": {"name": "Order", "fields": {}}}, "'command', 'event'"),
+        (
+            {
+                "aggregate": {"name": "Order", "fields": {}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+                "entity": {"name": "Line", "fields": {}},
+            },
+            "'entity'",
+        ),
+        (
+            {
+                "aggregate": {"fields": {}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "'name'",
+        ),
+        (
+            {
+                "aggregate": {"name": "Order", "fields": []},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "fields",
+        ),
+        (
+            {
+                "aggregate": {
+                    "name": "Order",
+                    "fields": {"name": {"kind": "standard", "min_length": 2}},
+                },
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "'name'",
+        ),
+        (
+            {
+                "aggregate": {"name": "Order", "fields": {}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+                "projection": {"name": "OrderSummary", "fields": {}},
+                "projector": {"name": "OrderProjector", "for": "OrderSummary"},
+            },
+            "'consumes'",
+        ),
+        (
+            {
+                "aggregate": "Order",
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "not an element",
+        ),
+        (
+            {
+                "aggregate": {"name": 7, "fields": {}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "not a string",
+        ),
+        (
+            {
+                "aggregate": {"name": "Order", "fields": {"name": "string"}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "not an IR field entry",
+        ),
+        (
+            {
+                "aggregate": {"name": "Order", "fields": {}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+                "projection": {"name": "OrderSummary", "fields": {}},
+                "projector": "OrderProjector",
+            },
+            "not a projector",
+        ),
+        (
+            {
+                "aggregate": {"name": "Order", "fields": {}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+                "projection": {"name": "OrderSummary", "fields": {}},
+                "projector": {
+                    "name": 7,
+                    "for": "OrderSummary",
+                    "consumes": "OrderCreated",
+                },
+            },
+            "not a string",
+        ),
+    ],
+)
+def test_mapping_that_is_not_a_fragment_raises(mapping, expected):
+    """The adapter reads the shape only, and rejects rather than drop what it cannot
+    read: a field entry carrying ``min_length`` is a field the generator does not
+    render, so promoting it would write a field the fragment does not describe."""
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        SliceFragment.from_mapping(mapping)
+
+    assert expected in str(exc_info.value)
+
+
 # --- Acceptance #2: a fragment-driven slice passes ``protean verify`` ------------
 
 _VERIFY_PACKAGE = "scaffolded"
@@ -1664,6 +1936,67 @@ def test_fragment_driven_slice_verifies_green(tmp_path):
 
     assert completed.returncode == 0, (
         "protean verify must pass on a fragment-driven slice:\n"
+        f"{completed.stdout}\n{completed.stderr}"
+    )
+
+
+def test_parsed_model_slice_verifies_green(tmp_path):
+    """The whole parser-to-code path, run rather than reasoned about: model text
+    parses to a fragment mapping, ``SliceFragment.from_mapping`` reads it, the
+    generator promotes it, and the slice it plans passes ``protean verify`` in a real
+    ``protean new`` project. This is what ``protean new --from-model`` composes."""
+    project = _generate_project(tmp_path)
+    model = textwrap.dedent(
+        """\
+        aggregate Item:
+            field name: string(max_length=100)
+            field quantity: integer
+
+        command CreateItem:
+            field name: string(max_length=100)
+            field quantity: integer
+
+        event ItemCreated:
+            field item_id: string
+            field name: string(max_length=100)
+            field quantity: integer
+
+        projection ItemSummary:
+            field item_id: identifier(key)
+            field name: string(max_length=100)
+
+        projector ItemProjector:
+            for ItemSummary
+            consumes ItemCreated
+        """
+    )
+
+    fragment = SliceFragment.from_mapping(parse_model(model))
+    plan = generate_slice_plan(fragment, _VERIFY_PACKAGE, _VERIFY_PACKAGE)
+    _materialize(project, plan)
+
+    assert (project / "src/scaffolded/item/projectors.py").is_file()
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "protean",
+            "verify",
+            "-d",
+            "src/scaffolded/domain.py:scaffolded",
+            "--path",
+            ".",
+        ],
+        cwd=project,
+        env=_subprocess_env(project),
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+
+    assert completed.returncode == 0, (
+        "protean verify must pass on a slice generated from a parsed model:\n"
         f"{completed.stdout}\n{completed.stderr}"
     )
 

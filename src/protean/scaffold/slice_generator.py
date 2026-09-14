@@ -8,12 +8,14 @@ ADR-0035), its create command, its created event, the command handler that drive
 it, and a projector plus read-model projection that consume the event so
 ``protean verify`` on the applied slice is green.
 
-The fragment is the contract between the parser and the generator. It carries only
-what the text model carries: the element names, their fields (each an IR field entry
-of ``kind``/``type``, the ``required`` flag, and the two constraints ``max_length``
-and ``identifier``), and the read-side wiring (``for`` names the projection,
-``consumes`` names the event). The read side is optional; when it is omitted, the
-generator derives a default projection that mirrors the event (the surfaced
+The fragment is the contract between the parser and the generator: the parser emits
+it as plain data, and :meth:`SliceFragment.from_mapping` reads that mapping into the
+types here. It carries only what the text model carries: the element names, their
+fields (each an IR field entry of ``kind``/``type``, the ``required`` flag, and the
+two constraints ``max_length`` and ``identifier``), and the read-side wiring
+(``for`` names the projection, ``consumes`` names the event). The read side is
+optional; when it is omitted, the generator derives a default projection that
+mirrors the event (the surfaced
 ``<slug>_id`` becoming the ``Identifier`` key) and a projector that consumes the
 event. That derivation makes the read side match the event. The applied slice
 passes ``protean verify`` when the write side is also aligned: the command carries
@@ -35,6 +37,7 @@ import keyword
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
+from typing import Any
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -130,6 +133,18 @@ _KIND_FOR_TYPE: dict[str, str] = {
 # other type the renderers drop it.
 _BOUNDED_TYPES = frozenset({"String", "Text"})
 
+# The shapes an authored ``id`` field on the aggregate may take. ``id`` names the
+# aggregate's own identity, and the registered subclass in ``aggregate.py`` takes that
+# field from the framework: the declaration on the generated base is replaced by an
+# identity field that holds a string, an integer or a UUID. A declaration of any other
+# type therefore renders a create factory whose ``id`` parameter the aggregate rejects
+# at runtime, so only these three render what the fragment says.
+_IDENTITY_SHAPES = (
+    ("standard", "String"),
+    ("standard", "Integer"),
+    ("identifier", "Identifier"),
+)
+
 # The length of the id the create factory assigns to the event's surfaced reference.
 # The identity default ADR-0041's v1 targets is a UUID4 string, which is 36
 # characters, so a bounded String holds it only from that bound up.
@@ -213,6 +228,156 @@ class SliceFragment:
     so the generator uses the same one; otherwise the generator derives it from the
     aggregate name."""
 
+    @classmethod
+    def from_mapping(cls, fragment: Mapping[str, Any]) -> SliceFragment:
+        """Read the nested mapping :func:`~protean.scaffold.parse_model` returns.
+
+        ADR-0041's parser emits the fragment as plain data: each element is
+        ``{"name": ..., "fields": {<name>: <IR field entry>}}`` and the projector is
+        ``{"name": ..., "for": ..., "consumes": ...}``. This is the one place that
+        maps that data onto the generator's types, so the two halves of the contract
+        meet here and ``generate_slice_plan(SliceFragment.from_mapping(parse_model(
+        text)), ...)`` is the whole parser-to-code path.
+
+        The mapping carries no slug: the parser normalizes the aggregate's authored
+        name into the fragment and derives the surfaced ``<slug>_id`` from that same
+        normalized name, which is what the generator derives too, so both agree
+        without one being passed.
+
+        Raises :class:`SliceGeneratorError` when the mapping is not a fragment: a
+        missing or misshapen element, a field entry that is not an IR field entry, or
+        a key the fragment does not have. What the fragment *says* is
+        :func:`generate_slice_plan`'s to check; this reads the shape only.
+        """
+        if not isinstance(fragment, Mapping):
+            raise SliceGeneratorError(
+                f"A fragment is a mapping of element name to element, not "
+                f"{type(fragment).__name__}."
+            )
+        unknown = sorted(set(fragment) - _FRAGMENT_KEYS)
+        if unknown:
+            raise SliceGeneratorError(
+                f"The fragment carries {', '.join(repr(key) for key in unknown)}, "
+                f"which a slice-shaped fragment does not have. Its keys are "
+                f"{', '.join(sorted(_FRAGMENT_KEYS))}."
+            )
+        missing = [
+            key for key in ("aggregate", "command", "event") if key not in fragment
+        ]
+        if missing:
+            raise SliceGeneratorError(
+                f"The fragment has no {', '.join(repr(key) for key in missing)}. A "
+                "slice is exactly one aggregate, one command and one event, with an "
+                "optional read side."
+            )
+
+        projection = fragment.get("projection")
+        projector = fragment.get("projector")
+        return cls(
+            aggregate=_element_from_mapping("aggregate", fragment["aggregate"]),
+            command=_element_from_mapping("command", fragment["command"]),
+            event=_element_from_mapping("event", fragment["event"]),
+            projection=(
+                None
+                if projection is None
+                else _element_from_mapping("projection", projection)
+            ),
+            projector=(
+                None if projector is None else _projector_from_mapping(projector)
+            ),
+        )
+
+
+# The keys a slice-shaped fragment carries (ADR-0041). The read-side pair is
+# optional; the write side is not.
+_FRAGMENT_KEYS = frozenset({"aggregate", "command", "event", "projection", "projector"})
+
+
+def _element_from_mapping(role: str, data: object) -> SliceElement:
+    """One element of a fragment mapping, as the generator's :class:`SliceElement`."""
+    if not isinstance(data, Mapping):
+        raise SliceGeneratorError(
+            f"The fragment's {role} is {type(data).__name__}, not an element. Each "
+            "element is a mapping with a 'name' and a 'fields' map."
+        )
+    missing = [key for key in ("name", "fields") if key not in data]
+    if missing:
+        raise SliceGeneratorError(
+            f"The fragment's {role} has no "
+            f"{', '.join(repr(key) for key in missing)}. Each element is a mapping "
+            "with a 'name' and a 'fields' map."
+        )
+    name = data["name"]
+    if not isinstance(name, str):
+        raise SliceGeneratorError(
+            f"The fragment's {role} is named {name!r}, which is not a string. The "
+            "generator writes the name into the generated code as a class name."
+        )
+    fields = data["fields"]
+    if not isinstance(fields, Mapping):
+        raise SliceGeneratorError(
+            f"The {role} {name!r} carries a 'fields' of {type(fields).__name__}, not "
+            "a map of field name to IR field entry."
+        )
+    return SliceElement(
+        name=name,
+        fields={
+            str(field_name): _field_from_mapping(name, field_name, entry)
+            for field_name, entry in fields.items()
+        },
+    )
+
+
+def _field_from_mapping(element: str, field_name: object, entry: object) -> IRField:
+    """One IR field entry of a fragment mapping, as the generator's :class:`IRField`.
+
+    The entry's keys are the field's own: anything else means the fragment carries a
+    field shape the generator cannot render, and dropping it would render a field the
+    fragment does not describe.
+    """
+    if not isinstance(entry, Mapping):
+        raise SliceGeneratorError(
+            f"The field {field_name!r} on {element!r} carries "
+            f"{type(entry).__name__}, not an IR field entry."
+        )
+    try:
+        return IRField(**{str(key): value for key, value in entry.items()})
+    except TypeError as exc:
+        raise SliceGeneratorError(
+            f"The field {field_name!r} on {element!r} does not carry an IR field "
+            f"entry ({exc}). An entry is a 'kind' and a 'type', with the optional "
+            "'required', 'max_length' and 'identifier'."
+        ) from exc
+
+
+def _projector_from_mapping(data: object) -> SliceProjector:
+    """The read-side wiring of a fragment mapping, as the generator's
+    :class:`SliceProjector`. The grammar's word for the projection a projector reads
+    is ``for``, which is a Python keyword, so the mapping's key is ``for`` and the
+    field it fills is ``for_``."""
+    if not isinstance(data, Mapping):
+        raise SliceGeneratorError(
+            f"The fragment's projector is {type(data).__name__}, not a projector. A "
+            "projector is a mapping with a 'name', a 'for' and a 'consumes'."
+        )
+    missing = [key for key in ("name", "for", "consumes") if key not in data]
+    if missing:
+        raise SliceGeneratorError(
+            f"The fragment's projector has no "
+            f"{', '.join(repr(key) for key in missing)}. A projector names itself, "
+            "the projection it writes ('for') and the event it reads ('consumes')."
+        )
+    for key in ("name", "for", "consumes"):
+        if not isinstance(data[key], str):
+            raise SliceGeneratorError(
+                f"The fragment's projector carries {key!r} as {data[key]!r}, which "
+                "is not a string. The generator writes it into the generated code as "
+                "a class name."
+            )
+    return SliceProjector(
+        name=data["name"], for_=data["for"], consumes=data["consumes"]
+    )
+
 
 def generate_slice_plan(
     fragment: SliceFragment, package: str, domain_var: str
@@ -236,7 +401,8 @@ def generate_slice_plan(
     field name reserved by the framework or by the code the generator writes. It also
     raises when a field has an unsupported type, when a field's required flag is not
     the one ADR-0041 gives it (every authored field required, the projection's key
-    not), when the event does not declare the
+    not), when the aggregate declares an ``id`` field in a shape the framework identity
+    does not hold, when the event does not declare the
     surfaced ``<slug>_id`` identity field in a shape that can hold the aggregate's id,
     when an explicit projection is not keyed on that field or carries a field the
     event does not, and when the read side is only half present or wired to a
@@ -538,6 +704,27 @@ def _validate(
             "authored field's value would be dropped without a word. Rename the "
             "field, or drop it and let the framework identity stand."
         )
+
+    aggregate_id = fragment.aggregate.fields.get("id")
+    if aggregate_id is not None:
+        if (aggregate_id.kind, aggregate_id.type) not in _IDENTITY_SHAPES:
+            raise SliceGeneratorError(
+                f"The aggregate {fragment.aggregate.name!r} declares 'id' as a "
+                f"{aggregate_id.type}. 'id' is the aggregate's own identity, and the "
+                "registered subclass takes that field from the framework: the "
+                "declaration on the generated base is replaced by an identity field "
+                "that holds a string, an integer or a UUID. A Date or a Float id is "
+                "rejected when the aggregate is built, and any other shape is dropped "
+                "without a word. Declare 'id' as a String, an Integer or an "
+                "Identifier, or drop it and let the framework identity stand."
+            )
+        if aggregate_id.max_length is not None:
+            raise SliceGeneratorError(
+                f"The aggregate {fragment.aggregate.name!r} bounds its 'id' field at "
+                f"{aggregate_id.max_length}. The registered subclass takes 'id' from "
+                "the framework identity, which replaces the declaration, so the bound "
+                "would be dropped without a word. Drop the bound."
+            )
 
     event_id_field = fragment.event.fields.get(id_name)
     if event_id_field is None:
