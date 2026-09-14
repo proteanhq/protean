@@ -81,6 +81,23 @@ def _valid_fragment() -> SliceFragment:
     )
 
 
+def _aligned_fragment(fields) -> SliceFragment:
+    """The Order slice with one field map across the whole write side. The generator
+    makes the command carry the aggregate's fields and the event's non-id fields be
+    aggregate fields, so a test that varies the fields varies them everywhere."""
+    return SliceFragment(
+        aggregate=SliceElement("Order", dict(fields)),
+        command=SliceElement("CreateOrder", dict(fields)),
+        event=SliceElement(
+            "OrderCreated",
+            {
+                "order_id": _STR_PLAIN,
+                **{name: entry for name, entry in fields.items() if name != "id"},
+            },
+        ),
+    )
+
+
 def test_default_fragment_reproduces_plan_add_slice(tmp_path):
     """The default fragment ``protean add`` builds, promoted through the generator,
     plans exactly the same operations ``plan_add_slice`` returns.
@@ -250,6 +267,90 @@ def test_unsupported_field_type_raises(tmp_path):
 
     message = str(exc_info.value)
     assert "Decimal" in message and "price" in message
+
+
+@pytest.mark.parametrize("field_type", [["String"], None, 7])
+def test_field_type_that_is_not_a_string_raises(field_type):
+    """``IRField`` is a plain dataclass, so a malformed mapping can put anything in
+    ``type``. An unhashable one would blow the supported-type lookup up with a
+    ``TypeError`` instead of the generator's own error, which is what a caller reads
+    to tell a human what is wrong with their model."""
+    fragment = _aligned_fragment(
+        {"price": IRField(kind="standard", type=field_type, required=True)}
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "price" in str(exc_info.value)
+
+
+def test_command_missing_an_aggregate_field_raises():
+    """The generated handler calls ``create()`` with every aggregate field read off
+    the command, so a field the command does not carry renders ``command.code``,
+    which fails the moment the command is dispatched."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100, "code": _STR_PLAIN}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'code'" in str(exc_info.value)
+
+
+def test_command_field_the_aggregate_does_not_declare_raises():
+    """The handler passes only the aggregate's fields to ``create()``, so a command
+    field the aggregate does not declare is a value the author wrote and the slice
+    drops without a word."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100, "coupon": _STR_PLAIN}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'coupon'" in str(exc_info.value)
+
+
+def test_event_field_the_aggregate_does_not_declare_raises():
+    """The create factory raises the event with every field other than the surfaced
+    id read off the aggregate, so an event field the aggregate does not declare
+    renders ``order.total``, which fails the moment the aggregate is created."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100}),
+        command=SliceElement("CreateOrder", {"name": _STR_100}),
+        event=SliceElement(
+            "OrderCreated",
+            {"order_id": _STR_PLAIN, "name": _STR_100, "total": _STR_PLAIN},
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'total'" in str(exc_info.value)
+
+
+def test_event_carrying_fewer_fields_than_the_aggregate_is_accepted():
+    """The event is the one write-side element that may say less: it carries the
+    surfaced id and whichever aggregate fields the author wants on it."""
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", {"name": _STR_100, "code": _STR_PLAIN}),
+        command=SliceElement("CreateOrder", {"name": _STR_100, "code": _STR_PLAIN}),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN}),
+    )
+
+    base = _content_for(
+        generate_slice_plan(fragment, "myproj", "myproj"), "aggregate_base.py"
+    )
+
+    assert "order_id=order.id," in base
+    assert "code=order.code" not in base
 
 
 def test_event_without_surfaced_id_raises(tmp_path):
@@ -636,27 +737,37 @@ def test_domain_variable_clashing_with_the_generated_base_only_is_allowed():
         compile(op.content, op.path, "exec")
 
 
-def test_domain_variable_named_for_a_type_only_the_aggregate_declares_is_allowed():
-    """The imports are per module, so a ``date`` the aggregate alone declares is
-    imported by ``aggregate_base.py`` alone. A project binding ``date = Domain(...)``
-    renders, because no module imports both."""
-    fragment = _fragment_with(
-        aggregate=SliceElement(
-            "Order",
-            {
-                "name": _STR_100,
-                "due_on": IRField(kind="standard", type="Date", required=True),
-            },
-        ),
-    )
+def test_domain_variable_named_for_a_type_the_slice_does_not_declare_is_allowed():
+    """The imported names are per fragment: a slice with no Date field imports no
+    ``date``, so a project binding ``date = Domain(...)`` renders."""
+    plan = generate_slice_plan(_valid_fragment(), "myproj", "date")
 
-    plan = generate_slice_plan(fragment, "myproj", "date")
-
-    assert "from datetime import date" in _content_for(plan, "aggregate_base.py")
     assert "from myproj.domain import date" in _content_for(plan, "commands.py")
     for op in plan.operations:
         assert isinstance(op, CreateFileOperation)
         compile(op.content, op.path, "exec")
+
+
+def test_field_type_imports_are_per_module():
+    """The imports are per module, and the event is the one write-side element that
+    may carry fewer fields than the aggregate. A Date field the event does not carry
+    leaves ``events.py`` without ``date``, though the two modules that declare it
+    import it."""
+    fields = {
+        "name": _STR_100,
+        "due_on": IRField(kind="standard", type="Date", required=True),
+    }
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", dict(fields)),
+        command=SliceElement("CreateOrder", dict(fields)),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+
+    plan = generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "from datetime import date" in _content_for(plan, "aggregate_base.py")
+    assert "from datetime import date" in _content_for(plan, "commands.py")
+    assert "from datetime import date" not in _content_for(plan, "events.py")
 
 
 def test_element_name_clashing_with_the_domain_variable_raises():
@@ -741,9 +852,7 @@ def test_aggregate_field_named_id_is_accepted():
     the generated ``{slug}.id`` resolves.
     ``test_slice_whose_fields_take_framework_names_verifies_green`` runs the slice to
     prove it."""
-    fragment = _fragment_with(
-        aggregate=SliceElement("Order", {"id": _STR_PLAIN, "name": _STR_100})
-    )
+    fragment = _aligned_fragment({"id": _STR_PLAIN, "name": _STR_100})
 
     plan = generate_slice_plan(fragment, "myproj", "myproj")
 
@@ -1053,11 +1162,8 @@ def test_aggregate_id_the_framework_identity_cannot_hold_raises(ir_field):
     field from the framework, which replaces whatever the generated base declares with
     an identity field holding a string, an integer or a UUID. A ``Date`` id renders a
     create factory whose ``id`` parameter the aggregate rejects when it is built, and
-    a ``Text`` one renders a declaration the identity field drops. Only ``String``,
-    ``Integer`` and ``Identifier`` describe the field the slice ends up with."""
-    fragment = _fragment_with(
-        aggregate=SliceElement("Order", {"id": ir_field, "name": _STR_100}),
-    )
+    a ``Text`` one renders a declaration the identity field drops."""
+    fragment = _aligned_fragment({"id": ir_field, "name": _STR_100})
 
     with pytest.raises(SliceGeneratorError) as exc_info:
         generate_slice_plan(fragment, "myproj", "myproj")
@@ -1066,12 +1172,26 @@ def test_aggregate_id_the_framework_identity_cannot_hold_raises(ir_field):
     assert ir_field.type in str(exc_info.value)
 
 
+def test_aggregate_id_declared_as_an_integer_raises():
+    """The framework identity holds an integer, but the create factory passes the id
+    straight into the event's surfaced ``order_id``, which ADR-0041 makes a String or
+    an Identifier and both hold a string. An ``id: Integer`` renders a factory asking
+    for an ``int`` that a String reference rejects and an Identifier one coerces, so
+    the generator rejects the fragment instead."""
+    integer_id = IRField(kind="standard", type="Integer", required=True)
+    fragment = _aligned_fragment({"id": integer_id, "name": _STR_100})
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'id'" in str(exc_info.value)
+    assert "Integer" in str(exc_info.value)
+
+
 def test_aggregate_id_with_a_bound_raises():
     """The identity field replaces the declaration, bound and all, so a bounded ``id``
     would render a slice that accepts a value past the bound without a word."""
-    fragment = _fragment_with(
-        aggregate=SliceElement("Order", {"id": _STR_100, "name": _STR_100}),
-    )
+    fragment = _aligned_fragment({"id": _STR_100, "name": _STR_100})
 
     with pytest.raises(SliceGeneratorError) as exc_info:
         generate_slice_plan(fragment, "myproj", "myproj")
@@ -1083,7 +1203,6 @@ def test_aggregate_id_with_a_bound_raises():
     ("ir_field", "declaration"),
     [
         (_STR_PLAIN, "id: str"),
-        (IRField(kind="standard", type="Integer", required=True), "id: int"),
         (
             IRField(kind="identifier", type="Identifier", required=True),
             "id: Identifier(required=True)",
@@ -1091,12 +1210,11 @@ def test_aggregate_id_with_a_bound_raises():
     ],
 )
 def test_aggregate_id_in_an_identity_shape_is_accepted(ir_field, declaration):
-    """The three shapes the framework identity holds. An authored ``id`` is how a
-    caller supplies the identity instead of taking the generated one, which
-    ``test_slice_whose_fields_take_framework_names_runs`` drives end to end."""
-    fragment = _fragment_with(
-        aggregate=SliceElement("Order", {"id": ir_field, "name": _STR_100}),
-    )
+    """The two shapes that reach the event's surfaced reference, both of which render
+    as ``str``. An authored ``id`` is how a caller supplies the identity instead of
+    taking the generated one, which ``test_slice_whose_fields_take_framework_names_runs``
+    and ``test_slice_with_an_identifier_id_runs`` drive end to end."""
+    fragment = _aligned_fragment({"id": ir_field, "name": _STR_100})
 
     base = _content_for(
         generate_slice_plan(fragment, "myproj", "myproj"), "aggregate_base.py"
@@ -1173,15 +1291,11 @@ def test_field_named_for_an_imported_field_factory_is_accepted():
     bare annotation, which does not bind the name in the class body. A field named
     ``Text`` alongside another ``Text`` field declares and constructs fine, so the
     generator does not reserve them."""
-    fragment = _fragment_with(
-        event=SliceElement(
-            "OrderCreated",
-            {
-                "order_id": _STR_PLAIN,
-                "Text": IRField(kind="text", type="Text", required=True),
-                "note": IRField(kind="text", type="Text", required=True),
-            },
-        ),
+    fragment = _aligned_fragment(
+        {
+            "Text": IRField(kind="text", type="Text", required=True),
+            "note": IRField(kind="text", type="Text", required=True),
+        }
     )
 
     plan = generate_slice_plan(fragment, "myproj", "myproj")
@@ -1515,15 +1629,12 @@ def test_required_strings_keep_the_plain_annotation_form():
     both forms accept ``""``. That is the output ``protean add`` has always written
     and the generator keeps it, for the bounded and the unbounded field alike.
     ``Text`` goes through the field factory and does carry ``required=True``."""
-    fragment = _fragment_with(
-        aggregate=SliceElement(
-            "Order",
-            {
-                "name": _STR_100,
-                "code": _STR_PLAIN,
-                "body": IRField(kind="text", type="Text", required=True),
-            },
-        ),
+    fragment = _aligned_fragment(
+        {
+            "name": _STR_100,
+            "code": _STR_PLAIN,
+            "body": IRField(kind="text", type="Text", required=True),
+        }
     )
 
     base = _content_for(
@@ -1801,6 +1912,33 @@ def test_parser_and_generator_derive_the_same_slug():
         ),
         (
             {
+                "aggregate": {
+                    "name": "Order",
+                    "fields": {},
+                    "description": "the order",
+                },
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+            },
+            "'description'",
+        ),
+        (
+            {
+                "aggregate": {"name": "Order", "fields": {}},
+                "command": {"name": "CreateOrder", "fields": {}},
+                "event": {"name": "OrderCreated", "fields": {}},
+                "projection": {"name": "OrderSummary", "fields": {}},
+                "projector": {
+                    "name": "OrderProjector",
+                    "for": "OrderSummary",
+                    "consumes": "OrderCreated",
+                    "module": "projectors",
+                },
+            },
+            "'module'",
+        ),
+        (
+            {
                 "aggregate": {"name": 7, "fields": {}},
                 "command": {"name": "CreateOrder", "fields": {}},
                 "event": {"name": "OrderCreated", "fields": {}},
@@ -1844,7 +1982,10 @@ def test_parser_and_generator_derive_the_same_slug():
 def test_mapping_that_is_not_a_fragment_raises(mapping, expected):
     """The adapter reads the shape only, and rejects rather than drop what it cannot
     read: a field entry carrying ``min_length`` is a field the generator does not
-    render, so promoting it would write a field the fragment does not describe."""
+    render, so promoting it would write a field the fragment does not describe. An
+    element or a projector carrying a key past its own goes the same way, at every
+    level of the mapping, so a caller never gets a fragment that says less than the
+    mapping it passed in."""
     with pytest.raises(SliceGeneratorError) as exc_info:
         SliceFragment.from_mapping(mapping)
 
@@ -2112,6 +2253,61 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
         f"the generated slice must run:\n{driven.stdout}\n{driven.stderr}"
     )
     assert "READ_BACK thing-1 a b i r" in driven.stdout
+
+
+def test_slice_with_an_identifier_id_runs(tmp_path):
+    """The other shape an authored ``id`` may take, run rather than reasoned about.
+    ``Identifier`` renders through the field factory where a ``String`` renders as a
+    bare ``str``, and both hold the string the create factory passes into the event's
+    surfaced ``order_id``. (``Integer`` is the shape the generator rejects: the event
+    reference is a string, and an ``int`` id would not reach it.)
+
+    ``protean verify`` is covered by the tests above; this one drives the command, so
+    the id goes through the aggregate, into the raised event, and back out of the
+    repository.
+    """
+    project = _generate_project(tmp_path)
+
+    identifier_id = IRField(kind="identifier", type="Identifier", required=True)
+    fields = {"id": identifier_id, "name": _STR_100}
+    fragment = SliceFragment(
+        aggregate=SliceElement("Order", dict(fields)),
+        command=SliceElement("CreateOrder", dict(fields)),
+        event=SliceElement("OrderCreated", {"order_id": _STR_PLAIN, "name": _STR_100}),
+    )
+    _materialize(
+        project, generate_slice_plan(fragment, _VERIFY_PACKAGE, _VERIFY_PACKAGE)
+    )
+
+    base = (project / "src/scaffolded/order/aggregate_base.py").read_text()
+    assert "id: Identifier(required=True)" in base
+    assert "order_id=order.id," in base
+
+    drive = textwrap.dedent(
+        """
+        from scaffolded.domain import scaffolded
+        from scaffolded.order.aggregate import Order
+        from scaffolded.order.commands import CreateOrder
+
+        scaffolded.init()
+        with scaffolded.domain_context():
+            scaffolded.process(CreateOrder(id="order-1", name="a name"))
+            print("READ_BACK", scaffolded.repository_for(Order).get("order-1").name)
+        """
+    )
+    driven = subprocess.run(
+        [sys.executable, "-c", drive],
+        cwd=project,
+        env=_subprocess_env(project),
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+
+    assert driven.returncode == 0, (
+        f"the generated slice must run:\n{driven.stdout}\n{driven.stderr}"
+    )
+    assert "READ_BACK a name" in driven.stdout
 
 
 def test_slice_whose_command_takes_a_framework_import_name_runs(tmp_path):

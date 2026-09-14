@@ -17,11 +17,11 @@ two constraints ``max_length`` and ``identifier``), and the read-side wiring
 optional; when it is omitted, the generator derives a default projection that
 mirrors the event (the surfaced
 ``<slug>_id`` becoming the ``Identifier`` key) and a projector that consumes the
-event. That derivation makes the read side match the event. The applied slice
-passes ``protean verify`` when the write side is also aligned: the command carries
-the aggregate's fields and the event's non-id fields are aggregate fields. Field-set
-alignment across the aggregate, command, and event is the parser's to check
-(ADR-0041); this generator does not validate it.
+event. That derivation makes the read side match the event. The write side has to
+line up too, and the generator checks it: the command carries exactly the aggregate's
+fields, and the event's non-id fields are aggregate fields. The generated code
+dereferences one element through another, so a mismatch renders an attribute read
+that fails the moment the slice runs.
 
 ``protean add`` routes through the generator too: it expresses its default
 name-only slice as a default fragment and calls :func:`generate_slice_plan`, so the
@@ -138,10 +138,17 @@ _BOUNDED_TYPES = frozenset({"String", "Text"})
 # field from the framework: the declaration on the generated base is replaced by an
 # identity field that holds a string, an integer or a UUID. A declaration of any other
 # type therefore renders a create factory whose ``id`` parameter the aggregate rejects
-# at runtime, so only these three render what the fragment says.
+# at runtime, so only these render what the fragment says.
+#
+# ``Integer`` is not one of them, even though the identity field holds an integer. The
+# create factory passes the id straight into the event's surfaced ``<slug>_id``, which
+# ADR-0041's v1 string-id profile makes a String or an Identifier, and both hold a
+# string (see ``_carries_aggregate_id``). An ``id: Integer`` renders a factory that
+# asks for an ``int``: a String reference rejects it outright, and an Identifier one
+# coerces it, leaving the event and the projection carrying ``"1"`` where the
+# aggregate's id is ``1``.
 _IDENTITY_SHAPES = (
     ("standard", "String"),
-    ("standard", "Integer"),
     ("identifier", "Identifier"),
 )
 
@@ -254,7 +261,7 @@ class SliceFragment:
                 f"A fragment is a mapping of element name to element, not "
                 f"{type(fragment).__name__}."
             )
-        unknown = sorted(set(fragment) - _FRAGMENT_KEYS)
+        unknown = sorted(str(key) for key in set(fragment) - _FRAGMENT_KEYS)
         if unknown:
             raise SliceGeneratorError(
                 f"The fragment carries {', '.join(repr(key) for key in unknown)}, "
@@ -293,12 +300,26 @@ class SliceFragment:
 _FRAGMENT_KEYS = frozenset({"aggregate", "command", "event", "projection", "projector"})
 
 
+# The keys an element and the projector carry (ADR-0041). Anything else describes
+# something the generator does not render, and dropping it would promote a fragment
+# that says less than the mapping the caller passed in.
+_ELEMENT_KEYS = frozenset({"name", "fields"})
+_PROJECTOR_KEYS = frozenset({"name", "for", "consumes"})
+
+
 def _element_from_mapping(role: str, data: object) -> SliceElement:
     """One element of a fragment mapping, as the generator's :class:`SliceElement`."""
     if not isinstance(data, Mapping):
         raise SliceGeneratorError(
             f"The fragment's {role} is {type(data).__name__}, not an element. Each "
             "element is a mapping with a 'name' and a 'fields' map."
+        )
+    unknown = sorted(str(key) for key in set(data) - _ELEMENT_KEYS)
+    if unknown:
+        raise SliceGeneratorError(
+            f"The fragment's {role} carries "
+            f"{', '.join(repr(key) for key in unknown)}, which an element does not "
+            "have. An element is a mapping with a 'name' and a 'fields' map."
         )
     missing = [key for key in ("name", "fields") if key not in data]
     if missing:
@@ -360,6 +381,13 @@ def _projector_from_mapping(data: object) -> SliceProjector:
             f"The fragment's projector is {type(data).__name__}, not a projector. A "
             "projector is a mapping with a 'name', a 'for' and a 'consumes'."
         )
+    unknown = sorted(str(key) for key in set(data) - _PROJECTOR_KEYS)
+    if unknown:
+        raise SliceGeneratorError(
+            f"The fragment's projector carries "
+            f"{', '.join(repr(key) for key in unknown)}, which a projector does not "
+            "have. A projector is a mapping with a 'name', a 'for' and a 'consumes'."
+        )
     missing = [key for key in ("name", "for", "consumes") if key not in data]
     if missing:
         raise SliceGeneratorError(
@@ -401,9 +429,11 @@ def generate_slice_plan(
     field name reserved by the framework or by the code the generator writes. It also
     raises when a field has an unsupported type, when a field's required flag is not
     the one ADR-0041 gives it (every authored field required, the projection's key
-    not), when the aggregate declares an ``id`` field in a shape the framework identity
-    does not hold, when the event does not declare the
+    not), when the aggregate declares an ``id`` field in a shape that cannot reach the
+    event's surfaced reference, when the event does not declare the
     surfaced ``<slug>_id`` identity field in a shape that can hold the aggregate's id,
+    when the write side does not line up (the command's fields are not the
+    aggregate's, or the event carries a non-id field the aggregate does not),
     when an explicit projection is not keyed on that field or carries a field the
     event does not, and when the read side is only half present or wired to a
     participant the slice does not define.
@@ -654,7 +684,14 @@ def _validate(
                     "generator renders it that way, so an optional field would come "
                     "out required without a word. Mark it required."
                 )
-            if ir_field.type not in _BASE_ANNOTATION:
+            # ``IRField`` is a plain dataclass, so a fragment can carry a type that
+            # is not even a string. Checking that first keeps the lookup from
+            # raising ``TypeError`` on an unhashable one instead of the generator's
+            # own error.
+            if (
+                not isinstance(ir_field.type, str)
+                or ir_field.type not in _BASE_ANNOTATION
+            ):
                 supported = ", ".join(sorted(_BASE_ANNOTATION))
                 raise SliceGeneratorError(
                     f"Field {field_name!r} on {element.name!r} has unsupported type "
@@ -711,12 +748,12 @@ def _validate(
             raise SliceGeneratorError(
                 f"The aggregate {fragment.aggregate.name!r} declares 'id' as a "
                 f"{aggregate_id.type}. 'id' is the aggregate's own identity, and the "
-                "registered subclass takes that field from the framework: the "
-                "declaration on the generated base is replaced by an identity field "
-                "that holds a string, an integer or a UUID. A Date or a Float id is "
-                "rejected when the aggregate is built, and any other shape is dropped "
-                "without a word. Declare 'id' as a String, an Integer or an "
-                "Identifier, or drop it and let the framework identity stand."
+                "generated create factory passes it straight to the event's "
+                f"{id_name!r}, which holds a string (ADR-0041). A Date or a Float id "
+                "is rejected when the aggregate is built, an Integer one does not "
+                "reach the event as the integer it asks for, and any other shape is "
+                "dropped without a word. Declare 'id' as a String or an Identifier, "
+                "or drop it and let the framework identity stand."
             )
         if aggregate_id.max_length is not None:
             raise SliceGeneratorError(
@@ -739,6 +776,47 @@ def _validate(
             "cannot hold the aggregate's id, which the generated create factory "
             f"assigns to it. Declare {id_name!r} as an Identifier, or as a String "
             f"with no max_length or one of at least {_IDENTITY_LENGTH}."
+        )
+
+    # The write side has to line up field for field, because the generated code
+    # dereferences one element through another: the handler calls ``create()`` with
+    # every aggregate field read off the command, and the create factory raises the
+    # event with every event field read off the aggregate. A name on one side and not
+    # the other renders an attribute read that fails the moment the slice runs.
+    missing = sorted(set(fragment.aggregate.fields) - set(fragment.command.fields))
+    if missing:
+        raise SliceGeneratorError(
+            f"The command {fragment.command.name!r} does not carry "
+            f"{', '.join(repr(key) for key in missing)}, which the aggregate "
+            f"{fragment.aggregate.name!r} declares. The generated handler calls "
+            f"{fragment.aggregate.name}.create() with every aggregate field read off "
+            "the command, so the slice would fail the moment the command is "
+            "dispatched. Add the field to the command, or drop it from the aggregate."
+        )
+    unused = sorted(set(fragment.command.fields) - set(fragment.aggregate.fields))
+    if unused:
+        raise SliceGeneratorError(
+            f"The command {fragment.command.name!r} carries "
+            f"{', '.join(repr(key) for key in unused)}, which the aggregate "
+            f"{fragment.aggregate.name!r} does not declare. The generated handler "
+            f"passes only the aggregate's fields to {fragment.aggregate.name}"
+            ".create(), so the value the command carries would be dropped without a "
+            "word. Add the field to the aggregate, or drop it from the command."
+        )
+    unknown_on_event = sorted(
+        key
+        for key in fragment.event.fields
+        if key != id_name and key not in fragment.aggregate.fields
+    )
+    if unknown_on_event:
+        raise SliceGeneratorError(
+            f"The event {fragment.event.name!r} carries "
+            f"{', '.join(repr(key) for key in unknown_on_event)}, which the aggregate "
+            f"{fragment.aggregate.name!r} does not declare. The generated create "
+            "factory raises the event with every field other than "
+            f"{id_name!r} read off the aggregate, so the slice would fail the moment "
+            "the aggregate is created. Add the field to the aggregate, or drop it "
+            "from the event."
         )
 
     if fragment.projector is not None and fragment.projection is not None:
