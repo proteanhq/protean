@@ -1573,6 +1573,95 @@ def test_domain_variable_that_is_not_a_usable_name_raises(bad_var):
     assert "domain variable" in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    ("package", "domain_var", "slug", "aggregate_name"),
+    [
+        (["myproj"], "myproj", None, "Order"),
+        (7, "myproj", None, "Order"),
+        ("myproj", ["myproj"], None, "Order"),
+        ("myproj", None, None, "Order"),
+        ("myproj", "myproj", 7, "Order"),
+        ("myproj", "myproj", None, 7),
+    ],
+)
+def test_input_that_is_not_a_string_raises(package, domain_var, slug, aggregate_name):
+    """``generate_slice_plan`` is exported, and nothing between a caller and it
+    enforces the annotations: the CLI and the MCP tool can hand it anything, and a
+    caller can build a ``SliceFragment`` directly rather than through
+    ``from_mapping``. Every one of these names is written into the generated code as
+    written, so a non-string is the generator's own error and not an
+    ``AttributeError`` from ``str.isidentifier`` or a ``TypeError`` from the split
+    that derives the slug."""
+    fragment = _fragment_with(
+        aggregate=SliceElement(aggregate_name, {"name": _STR_100}), slug=slug
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, package, domain_var)
+
+    assert "is not a string" in str(exc_info.value)
+
+
+def test_command_field_shaped_differently_from_the_aggregate_raises():
+    """The generated handler reads each field off the command and passes it to
+    ``create()``, which takes the shape the aggregate declares. A command that carries
+    ``name`` as an Integer renders ``Order.create(name=command.name)`` against a
+    ``name: str`` parameter, so a command the author considers valid fails when the
+    aggregate is built."""
+    fragment = _fragment_with(
+        command=SliceElement(
+            "CreateOrder",
+            {"name": IRField(kind="standard", type="Integer", required=True)},
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'name'" in str(exc_info.value)
+
+
+def test_command_field_bounded_differently_from_the_aggregate_raises():
+    """The same holds for the constraints, not just the type: a command bounded at 200
+    accepts a name the aggregate's 100 rejects, so the slice takes the command and
+    fails on the create."""
+    fragment = _fragment_with(
+        command=SliceElement(
+            "CreateOrder",
+            {
+                "name": IRField(
+                    kind="standard", type="String", required=True, max_length=200
+                )
+            },
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'name'" in str(exc_info.value)
+
+
+def test_event_field_shaped_differently_from_the_aggregate_raises():
+    """The create factory raises the event with each field read straight off the
+    aggregate, so an event that declares ``name`` as an Integer is handed the
+    aggregate's string and fails the moment the aggregate is created."""
+    fragment = _fragment_with(
+        event=SliceElement(
+            "OrderCreated",
+            {
+                "order_id": _STR_PLAIN,
+                "name": IRField(kind="standard", type="Integer", required=True),
+            },
+        ),
+    )
+
+    with pytest.raises(SliceGeneratorError) as exc_info:
+        generate_slice_plan(fragment, "myproj", "myproj")
+
+    assert "'name'" in str(exc_info.value)
+
+
 @pytest.mark.parametrize("bound", [0, -1, 1.5, True, "20"])
 def test_max_length_that_is_not_a_positive_integer_raises(bound):
     """ADR-0041's ``max_length`` is a positive integer, and ``IRField`` is a plain

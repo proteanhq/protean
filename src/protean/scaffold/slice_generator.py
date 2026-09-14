@@ -19,9 +19,10 @@ mirrors the event (the surfaced
 ``<slug>_id`` becoming the ``Identifier`` key) and a projector that consumes the
 event. That derivation makes the read side match the event. The write side has to
 line up too, and the generator checks it: the command carries exactly the aggregate's
-fields, and the event's non-id fields are aggregate fields. The generated code
-dereferences one element through another, so a mismatch renders an attribute read
-that fails the moment the slice runs.
+fields, the event's non-id fields are aggregate fields, and a field two of them share
+is declared the same way on both. The generated code dereferences one element through
+another, so a mismatch renders an attribute read that fails the moment the slice runs,
+or one that copies a value into a field of another shape.
 
 ``protean add`` routes through the generator too: it expresses its default
 name-only slice as a default fragment and calls :func:`generate_slice_plan`, so the
@@ -34,7 +35,7 @@ deterministic name order, with the surfaced ``<slug>_id`` first where it appears
 from __future__ import annotations
 
 import keyword
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cache
 from typing import Any
@@ -441,12 +442,18 @@ def generate_slice_plan(
     event's surfaced reference, when the event does not declare the
     surfaced ``<slug>_id`` identity field in a shape that can hold the aggregate's id,
     when the write side does not line up (the command's fields are not the
-    aggregate's, or the event carries a non-id field the aggregate does not),
+    aggregate's, the event carries a non-id field the aggregate does not, or a shared
+    field is declared in one shape on the aggregate and another on the command or the
+    event),
     when an explicit projection is not keyed on that field or carries a field the
     event does not, and when the read side is only half present or wired to a
     participant the slice does not define.
     """
-    name = fragment.aggregate.name
+    # The slug comes off the aggregate name before ``_validate`` runs, and
+    # ``_slug_for`` reads that name character by character. A caller can build a
+    # ``SliceElement`` directly, so the name is settled as a string here; otherwise a
+    # non-string one raises from the split rather than as the generator's own error.
+    name = _check_string(fragment.aggregate.name, "The aggregate name")
     # ``None`` is the documented absence value, so an explicit override is used as
     # given: an empty one is a bad slug, not a request to derive one, and the slug
     # goes into paths, locals and field names.
@@ -572,14 +579,35 @@ def _reserved_field_names(role: str) -> frozenset[str]:
     return frozenset(reserved)
 
 
-def _check_python_name(value: str, what: str) -> None:
-    """Reject a name the generator cannot write into the generated code verbatim."""
-    if not value.isidentifier() or keyword.iskeyword(value):
+def _check_string(value: object, what: str) -> str:
+    """Reject a name that is not a string, and hand it back as one.
+
+    Every name the generator handles is written into the generated code verbatim, and
+    a direct caller of the exported generator can pass anything. Checking the type
+    before calling a string method keeps a malformed name inside the generator's
+    error contract instead of leaking an ``AttributeError`` or a ``TypeError``."""
+    if not isinstance(value, str):
         raise SliceGeneratorError(
-            f"{what} {value!r} is not a usable Python name. The generator writes it "
+            f"{what} {value!r} is not a string. The generator writes it into the "
+            "generated code as written, so it has to be a valid Python identifier "
+            "that is not a keyword."
+        )
+    return value
+
+
+def _check_python_name(value: object, what: str) -> str:
+    """Reject a name the generator cannot write into the generated code verbatim.
+
+    Returns the name, so a caller that checks it further reads a value already
+    narrowed to a string."""
+    name = _check_string(value, what)
+    if not name.isidentifier() or keyword.iskeyword(name):
+        raise SliceGeneratorError(
+            f"{what} {name!r} is not a usable Python name. The generator writes it "
             "into the generated code as written, so it must be a valid Python "
             "identifier that is not a keyword."
         )
+    return name
 
 
 def _is_positive_int(value: object) -> bool:
@@ -611,6 +639,10 @@ def _validate(
     id_name = f"{slug}_id"
 
     _validate_package(package)
+    # The slug check below puts the domain variable in a set, and a non-string one
+    # can be unhashable, so its type is settled first. Whether the name itself works
+    # is ``_validate_domain_var``'s call, once the modules are known.
+    _check_string(domain_var, "This project's domain variable")
 
     # A caller that normalized upstream supplies the slug, so say which one is bad.
     slug_label = (
@@ -828,6 +860,14 @@ def _validate(
             ".create(), so the value the command carries would be dropped without a "
             "word. Add the field to the aggregate, or drop it from the command."
         )
+    _validate_shared_shapes(
+        fragment.command,
+        fragment.aggregate,
+        fragment.command.fields,
+        "The generated handler reads the field off the command and passes it to "
+        f"{fragment.aggregate.name}.create(), which takes the shape the aggregate "
+        "declares.",
+    )
     unknown_on_event = sorted(
         key
         for key in fragment.event.fields
@@ -843,6 +883,13 @@ def _validate(
             "the aggregate is created. Add the field to the aggregate, or drop it "
             "from the event."
         )
+    _validate_shared_shapes(
+        fragment.event,
+        fragment.aggregate,
+        (key for key in fragment.event.fields if key != id_name),
+        "The generated create factory reads the field off the aggregate and raises "
+        "the event with it, so the event takes whatever the aggregate holds.",
+    )
 
     if fragment.projector is not None and fragment.projection is not None:
         _validate_projection_key(fragment.projection, id_name)
@@ -992,7 +1039,7 @@ def _generated_modules(
     )
 
 
-def _check_public_name(value: str, what: str) -> None:
+def _check_public_name(value: object, what: str) -> None:
     """A class name or the domain variable.
 
     ``str.isidentifier`` accepts a double-underscore name, and the generated code
@@ -1006,17 +1053,17 @@ def _check_public_name(value: str, what: str) -> None:
     is an ordinary private composition root, and ``from pkg.domain import _domain``
     with ``@_domain.aggregate`` renders and runs.
     """
-    _check_python_name(value, what)
-    if value.startswith("__"):
+    name = _check_python_name(value, what)
+    if name.startswith("__"):
         raise SliceGeneratorError(
-            f"{what} {value!r} starts with two underscores. The generated code reads "
+            f"{what} {name!r} starts with two underscores. The generated code reads "
             "it inside a class body, where Python mangles the reference to "
-            f"``_Class{value}`` and never finds it, and where a name such as "
+            f"``_Class{name}`` and never finds it, and where a name such as "
             "``__class__`` is already bound to something else."
         )
 
 
-def _validate_package(package: str) -> None:
+def _validate_package(package: object) -> None:
     """The project's import root. It is the ``src/<package>/`` the slice is written
     under and the first segment of every ``from <package>.<module> import ...`` line
     the generated modules carry, so it has to be one usable Python name. ``add`` reads
@@ -1155,6 +1202,27 @@ def _validate_names(
                 f"and as its {role}. Each of the slice's classes needs its own name."
             )
         seen[class_name] = role
+
+
+def _validate_shared_shapes(
+    element: SliceElement,
+    aggregate: SliceElement,
+    field_names: Iterable[str],
+    copies: str,
+) -> None:
+    """Reject a field two elements of the write side share by name but declare in two
+    shapes. The generated code copies the value across without converting it, so a
+    field declared ``String`` on one and ``Integer`` on the other, or bounded
+    differently, renders an assignment the receiving element rejects when the slice
+    runs, or one that quietly coerces the value into something the fragment does not
+    describe."""
+    for field_name in sorted(field_names):
+        if element.fields[field_name] != aggregate.fields[field_name]:
+            raise SliceGeneratorError(
+                f"{element.name!r} declares {field_name!r} in a different shape from "
+                f"the aggregate {aggregate.name!r}. {copies} Declare the field the "
+                "same way on both."
+            )
 
 
 def _validate_projection_fields(
