@@ -357,7 +357,10 @@ def recover(
                     f"  {r['handler_name']} ({r['stream_category']}): "
                     f"{r['previous_position']} -> {r['new_position']}"
                 )
-        else:
+        elif not reset_failures:
+            # Genuinely nothing beyond head. Say so only when no reset was even
+            # attempted; when every attempt failed the failure block below
+            # reports it, so "none to reset" would contradict it.
             print("\n[green]No beyond-head checkpoints to reset.[/green]")
         if reset_failures:
             print(

@@ -601,6 +601,21 @@ class TestRecoverResetBeyondHead:
         assert "Second" in result.output
         assert "store down" in result.output
 
+    def test_reset_all_writes_fail_does_not_claim_none_to_reset(self):
+        """When every beyond-head write fails, the run reports the failures and
+        does not also claim there was nothing to reset."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Bad", current_position="10", head_position="5"),
+        ]
+        reset_mock = MagicMock(side_effect=RuntimeError("store down"))
+        result = _invoke_reset(statuses, reset_mock)
+
+        assert result.exit_code == 2
+        assert "could not be reset" in result.output
+        assert "No beyond-head checkpoints to reset" not in result.output
+
 
 class TestRecoverResetJson:
     @pytest.fixture(autouse=True)
