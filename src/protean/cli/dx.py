@@ -2,10 +2,11 @@
 
 ``protean dx`` writes the agent-facing files that make a coding agent correct
 and productive with the installed framework version: ``AGENTS.md`` (the
-canonical, cross-agent instructions) and a one-line ``CLAUDE.md`` bridge. Writes
+canonical, cross-agent instructions), a one-line ``CLAUDE.md`` bridge, and a
+``.mcp.json`` registration that points a client at Protean's MCP server. Writes
 go through the idempotent managed-file writer (:mod:`protean.dx.managed_files`),
-so the framework owns a marked block in each file and the user owns everything
-around it.
+so the framework owns a marked block (or, for ``.mcp.json``, its own key-path)
+in each file and the user owns everything around it.
 
 Verbs::
 
@@ -50,11 +51,12 @@ def callback() -> None:
 
 @app.command()
 def install(path: Annotated[str, _PATH_OPTION] = ".") -> None:
-    """Write AGENTS.md and the CLAUDE.md bridge into a project.
+    """Write AGENTS.md, the CLAUDE.md bridge, and the .mcp.json registration.
 
-    Creates a missing file and refreshes the framework's managed block in an
-    existing one, idempotently. A block the user edited by hand is reported as a
-    conflict and left untouched; the command then exits non-zero.
+    Creates a missing file and refreshes the framework's managed region in an
+    existing one, idempotently. An existing ``.mcp.json`` keeps the user's other
+    servers. A region the user edited by hand is reported as a conflict and left
+    untouched; the command then exits non-zero.
     """
     _apply(path)
 

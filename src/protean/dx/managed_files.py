@@ -14,9 +14,13 @@ Two merge modes cover the file shapes ``protean dx`` ships:
   markers and leaves every byte outside untouched. The caller passes the comment
   syntax (``<!-- -->`` for AGENTS.md, ``#`` for a config), so the writer stays
   format-agnostic.
-- **Managed JSON keys**. The rendered dict's top-level keys are the managed keys.
-  A second apply sets those keys and preserves every other key on disk. This is
-  for ``.mcp.json``.
+- **Managed JSON keys**. The rendered dict's keys are the managed keys. A second
+  apply sets those keys and preserves every other key on disk. An optional
+  key-path scopes the merge to a nested object: with a path like
+  ``("mcpServers",)`` the managed keys are set under ``mcpServers`` and every
+  sibling there is preserved, so ``.mcp.json`` manages only its own
+  ``mcpServers.protean`` entry and leaves the user's other servers alone. With no
+  path the managed keys are the top-level ones.
 
 A state file at ``.protean/dx-state.json`` records, per target path, the pack
 version stamp and two hashes: the hash of the whole file the writer last wrote
@@ -59,9 +63,11 @@ Design decisions for v1:
   with different ids, may sit in the same file and are left untouched. A missing,
   duplicated, or reversed marker for the requested id raises rather than silently
   overwriting the whole file.
-- **Shallow JSON merge.** The managed top-level keys are replaced whole; every
-  other key, nested structure included, is preserved. ``.mcp.json`` names its
-  servers at the top level, so a shallow merge is enough.
+- **Key-path JSON merge.** The managed keys are replaced whole at the merge path;
+  every other key, nested structure and sibling under the path included, is
+  preserved. With no path the merge is over the top-level keys; with a key-path it
+  is scoped to the nested object at that path, which is how ``.mcp.json`` manages
+  only ``mcpServers.protean`` and keeps the user's other servers.
 
 Usage::
 
@@ -82,6 +88,7 @@ Usage::
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -253,19 +260,38 @@ class ManagedBlock:
 class ManagedJsonKeys:
     """A managed-JSON-keys apply request.
 
-    ``data`` is the rendered dict. Its top-level keys are the managed keys: a
-    second apply sets them and preserves every other key on disk. ``data`` must
-    be non-empty, since an empty managed set would manage nothing, and every key
-    in it, nested ones included, must be a ``str``.
+    ``data`` is the rendered dict. Its keys are the managed keys: a second apply
+    sets them and preserves every other key on disk. ``data`` must be non-empty,
+    since an empty managed set would manage nothing, and every key in it, nested
+    ones included, must be a ``str``.
+
+    ``path`` scopes the merge to a nested object. When ``path`` is empty (the
+    default), the managed keys are the top-level keys and the merge is the shallow
+    top-level one. When ``path`` names a key-path (say ``("mcpServers",)``), the
+    managed keys are set under that path: the merge sets ``data``'s keys inside
+    the object at ``path``, creates the path if it is absent, and preserves every
+    sibling under the path and every other top-level key. This is how
+    ``.mcp.json`` manages only its own ``mcpServers.protean`` entry and leaves the
+    user's other servers alone. Each path segment must be a non-empty ``str`` with
+    no newline.
     """
 
     target: str
     version: str
     data: Mapping[str, Any]
+    path: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.data:
             raise ValueError("data must name at least one managed key")
+        # A path segment is a JSON object key, so it must be a non-empty string.
+        # A newline in a segment cannot name a real key and only muddies the error
+        # messages that quote the path, so reject it at construction.
+        for segment in self.path:
+            if not isinstance(segment, str) or not segment:
+                raise ValueError("each path segment must be a non-empty string")
+            if "\n" in segment:
+                raise ValueError("a path segment must not contain a newline")
         # The managed values are hashed and written as JSON, so they must be
         # JSON-serializable with string keys. Catch a non-serializable value
         # (a ``set``, ``bytes``) or a bad key here rather than raise a raw
@@ -284,7 +310,7 @@ class ManagedJsonKeys:
 
     @property
     def managed_keys(self) -> tuple[str, ...]:
-        """The managed top-level keys, in the render's order."""
+        """The managed keys under ``path``, in the render's order."""
         return tuple(self.data.keys())
 
 
@@ -593,9 +619,55 @@ def _json_slice_input(source: Mapping[str, Any], keys: tuple[str, ...]) -> str:
     )
 
 
-def _json_disk_slice(disk: dict[str, Any], keys: tuple[str, ...]) -> str:
-    """Canonical hash-input for the managed keys' current on-disk values."""
-    return _json_slice_input(disk, keys)
+def _walk_to_object(
+    disk: dict[str, Any], path: tuple[str, ...], target: str
+) -> dict[str, Any] | None:
+    """Return the object at *path* in *disk*, or ``None`` when the path is absent.
+
+    Walks *path* segment by segment. A segment that is not present returns
+    ``None`` (the managed key-path has no footprint on disk yet). A segment that
+    is present but is not a JSON object raises :exc:`ManagedFileError`, so a merge
+    never clobbers a user's non-object value (``mcpServers`` set to a string, an
+    array, or ``null``) at the path.
+    """
+    node: dict[str, Any] = disk
+    for depth, segment in enumerate(path):
+        if segment not in node:
+            return None
+        child = node[segment]
+        if not isinstance(child, dict):
+            walked = ".".join(path[: depth + 1])
+            raise ManagedFileError(
+                f"Managed-JSON-keys target {target!r} has {walked!r} set to a "
+                f"{type(child).__name__}, but the managed key-path needs it to be a "
+                "JSON object. Refusing to overwrite it."
+            )
+        node = child
+    return node
+
+
+def _json_disk_slice(disk: dict[str, Any], managed: ManagedJsonKeys) -> str:
+    """Canonical hash-input for the managed keys' current on-disk values at the path.
+
+    Walks ``managed.path`` first, then hashes the managed keys of the object
+    found there. An absent path contributes an empty object, so every managed key
+    reads as absent.
+    """
+    sub = _walk_to_object(disk, managed.path, managed.target)
+    source: Mapping[str, Any] = sub if sub is not None else {}
+    return _json_slice_input(source, managed.managed_keys)
+
+
+def _json_disk_keys_absent(disk: dict[str, Any], managed: ManagedJsonKeys) -> bool:
+    """Return ``True`` when every managed key is absent at ``managed.path``.
+
+    The framework then has no footprint at the key-path, so a first install is a
+    safe add rather than a conflict. A present-but-hand-edited managed key makes
+    this ``False``, keeping that case a conflict.
+    """
+    sub = _walk_to_object(disk, managed.path, managed.target)
+    source: Mapping[str, Any] = sub if sub is not None else {}
+    return all(key not in source for key in managed.managed_keys)
 
 
 def _json_new_slice(managed: ManagedJsonKeys) -> str:
@@ -604,18 +676,42 @@ def _json_new_slice(managed: ManagedJsonKeys) -> str:
 
 
 def _merge_json(disk: dict[str, Any], managed: ManagedJsonKeys) -> str:
-    """Shallow-merge the managed keys over *disk* and render the merged file.
+    """Merge the managed keys into *disk* at ``managed.path`` and render the file.
 
-    The managed top-level keys are replaced whole; every other key is preserved.
-    Rendered with two-space indent, sorted keys, and a trailing newline.
+    Deep-copies *disk* so the parsed disk dict is left unmutated, walks down
+    ``managed.path`` (creating an empty object for a missing segment), sets the
+    managed keys there, and preserves every sibling and every other key. With an
+    empty path this is the shallow top-level merge. A path segment that exists but
+    is not a JSON object raises :exc:`ManagedFileError`. Rendered with two-space
+    indent, sorted keys, and a trailing newline.
     """
-    merged = {**disk, **managed.data}
+    merged = copy.deepcopy(disk)
+    node = merged
+    for depth, segment in enumerate(managed.path):
+        if segment not in node:
+            node[segment] = {}
+        elif not isinstance(node[segment], dict):
+            walked = ".".join(managed.path[: depth + 1])
+            raise ManagedFileError(
+                f"Managed-JSON-keys target {managed.target!r} has {walked!r} set to "
+                f"a {type(node[segment]).__name__}, but the managed key-path needs it "
+                "to be a JSON object. Refusing to overwrite it."
+            )
+        node = node[segment]
+    node.update(managed.data)
     return json.dumps(merged, indent=2, sort_keys=True) + "\n"
 
 
 def _create_json(managed: ManagedJsonKeys) -> str:
-    """Render a fresh managed-JSON-keys file from the managed keys alone."""
-    return json.dumps(dict(managed.data), indent=2, sort_keys=True) + "\n"
+    """Render a fresh managed-JSON-keys file: the managed keys wrapped in the path.
+
+    With an empty path this is the managed keys alone; with a path the keys are
+    nested under it (``{"mcpServers": {"protean": ...}}``).
+    """
+    obj: dict[str, Any] = dict(managed.data)
+    for segment in reversed(managed.path):
+        obj = {segment: obj}
+    return json.dumps(obj, indent=2, sort_keys=True) + "\n"
 
 
 def _decide(
@@ -623,6 +719,8 @@ def _decide(
     state_slice_hash: str | None,
     new_slice_hash: str,
     version_match: bool,
+    *,
+    disk_keys_absent: bool = False,
 ) -> ApplyStatus:
     """Classify a re-apply over an existing target.
 
@@ -637,12 +735,21 @@ def _decide(
       write; the second rewrites identical bytes and advances the state file.
     - ``CONFLICT``: neither. The user edited the slice to something the writer did
       not write and the render does not want.
+
+    ``disk_keys_absent`` is the managed-JSON-keys signal that every managed key is
+    absent at the merge path and there is no state entry: the framework has no
+    footprint there, so a first install onto a pre-existing file is a safe add
+    that keeps the user's other keys, not a conflict. It stays ``False`` for the
+    block mode and for a target with a state entry (where an absent managed key is
+    the user deleting one the writer wrote, which is a conflict).
     """
     if disk_slice_hash == new_slice_hash and version_match:
         return ApplyStatus.NO_CHANGE
     if state_slice_hash is not None and disk_slice_hash == state_slice_hash:
         return ApplyStatus.UPDATE
     if disk_slice_hash == new_slice_hash:
+        return ApplyStatus.UPDATE
+    if disk_keys_absent and state_slice_hash is None:
         return ApplyStatus.UPDATE
     return ApplyStatus.CONFLICT
 
@@ -693,8 +800,8 @@ def diff_managed_file(
     Raises :exc:`ManagedFileError` when the target escapes the project root, when
     it is a symlink, when the state directory or state file is a symlink, when the
     target cannot be read, when a managed-block target has a malformed marker,
-    when a managed-JSON-keys target is not a JSON object, or when the state file
-    is corrupt.
+    when a managed-JSON-keys target is not a JSON object or a key-path segment on
+    disk is not a JSON object, or when the state file is corrupt.
     """
     root = Path(project_root)
     target_path = _resolve_target(root, managed_file.target)
@@ -747,12 +854,14 @@ def diff_managed_file(
             f"Could not read target {managed_file.target!r}: {exc}. "
             "Refusing to overwrite it."
         ) from exc
+    disk_keys_absent = False
     if isinstance(managed_file, ManagedBlock):
         disk_slice = _extract_block_body(disk_content, managed_file)
         merged = _merge_block(disk_content, managed_file)
     else:
         disk = _parse_json_object(disk_content, managed_file.target)
-        disk_slice = _json_disk_slice(disk, managed_file.managed_keys)
+        disk_slice = _json_disk_slice(disk, managed_file)
+        disk_keys_absent = _json_disk_keys_absent(disk, managed_file)
         merged = _merge_json(disk, managed_file)
 
     disk_slice_hash = _hash_text(disk_slice)
@@ -766,7 +875,13 @@ def diff_managed_file(
         and disk_slice_hash == entry.slice_hash
     )
 
-    status = _decide(disk_slice_hash, state_slice_hash, new_slice_hash, version_match)
+    status = _decide(
+        disk_slice_hash,
+        state_slice_hash,
+        new_slice_hash,
+        version_match,
+        disk_keys_absent=disk_keys_absent,
+    )
     writes = status is ApplyStatus.UPDATE
     return ApplyResult(
         target=managed_file.target,

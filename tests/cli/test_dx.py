@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,34 @@ def test_install_writes_both_files_and_state(tmp_path: Path) -> None:
     assert claude_text == (
         "<!-- PROTEAN:BEGIN protean -->\n@AGENTS.md\n<!-- PROTEAN:END protean -->\n"
     )
+
+
+def test_install_writes_mcp_json_with_the_registration(tmp_path: Path) -> None:
+    """AC1: install writes .mcp.json with the Protean MCP server registration."""
+    result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    mcp = tmp_path / ".mcp.json"
+    assert mcp.exists()
+    data = json.loads(mcp.read_text(encoding="utf-8"))
+    assert data == {"mcpServers": {"protean": {"command": "protean", "args": ["mcp"]}}}
+
+
+def test_install_preserves_other_servers_in_mcp_json(tmp_path: Path) -> None:
+    """AC2: an existing .mcp.json with another server keeps it and gains protean."""
+    mcp = tmp_path / ".mcp.json"
+    mcp.write_text(
+        json.dumps({"mcpServers": {"other": {"command": "run-other"}}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(mcp.read_text(encoding="utf-8"))
+    # The user's server survived, and Protean's was added alongside it.
+    assert data["mcpServers"]["other"] == {"command": "run-other"}
+    assert data["mcpServers"]["protean"] == {"command": "protean", "args": ["mcp"]}
 
 
 def test_install_is_idempotent(tmp_path: Path) -> None:
@@ -252,6 +281,46 @@ def test_check_fails_when_the_version_advances(tmp_path: Path, monkeypatch) -> N
     # check writes nothing, even on a stale block.
     assert (tmp_path / "AGENTS.md").read_bytes() == agents_before
     assert _state_file(tmp_path).read_bytes() == state_before
+
+
+def test_check_flags_a_drifted_mcp_json(tmp_path: Path) -> None:
+    """AC3: after the managed entry is removed, check reports drift and exits 1."""
+    _install(tmp_path)
+    mcp = tmp_path / ".mcp.json"
+    # The user deletes Protean's managed entry: check must flag the drift.
+    mcp.write_text(json.dumps({"mcpServers": {}}) + "\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    assert "Drift detected" in result.output
+    assert ".mcp.json" in result.output
+
+
+def test_check_flags_a_missing_mcp_json(tmp_path: Path) -> None:
+    """A .mcp.json removed after install reads as drift (a pending create)."""
+    _install(tmp_path)
+    (tmp_path / ".mcp.json").unlink()
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    assert ".mcp.json" in result.output
+
+
+def test_diff_previews_mcp_json_then_install_no_ops(tmp_path: Path) -> None:
+    """diff previews the .mcp.json create; a second install is a no-op."""
+    result = runner.invoke(app, ["diff", "-p", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert ".mcp.json" in result.output
+    assert "+" in result.output  # a unified-diff addition line for the new file
+    assert not (tmp_path / ".mcp.json").exists()  # diff wrote nothing
+
+    _install(tmp_path)
+    second = runner.invoke(app, ["install", "-p", str(tmp_path)])
+    assert second.exit_code == 0, second.output
+    # Every target reports up to date on the second install.
+    assert "created" not in second.output
 
 
 # --- conflict ---------------------------------------------------------------
