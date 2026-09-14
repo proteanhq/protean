@@ -35,16 +35,27 @@ class FailedPositionStatus(StrEnum):
 
 
 def reconstruct_unresolved(
-    store: BaseEventStore, recovery_checkpoint_stream: str, failed_positions_stream: str
+    store: BaseEventStore,
+    recovery_checkpoint_stream: str,
+    failed_positions_stream: str,
+    *,
+    page_size: int = 1000,
 ) -> tuple[dict[int, dict[str, Any]], int, int]:
     """Rebuild the set of failed positions still awaiting recovery.
 
-    Restore the recovery checkpoint's ``unresolved`` snapshot, then merge the
-    failed-positions records written after its watermark: a ``Failed`` record
-    adds or updates an entry, a ``Resolved`` or ``Exhausted`` record removes it.
+    Restore the recovery checkpoint's ``unresolved`` snapshot, then merge every
+    failed-positions record written after its watermark: a ``Failed`` record adds
+    or updates an entry, a ``Resolved`` or ``Exhausted`` record removes it.
     Reading the failed stream too, not just the snapshot, catches a position that
     began failing after the last checkpoint was written and so lives only in the
     failed stream.
+
+    The failed stream is paged through in full in ``page_size`` batches, not read
+    once with a cap, so a subscription with a long failure history rebuilds its
+    whole set (a cap would silently omit later records, and both the rebuild and
+    ``protean recover`` would then miss stale positions in them). Memory stays
+    bounded by the number of distinct unresolved positions, not the record count,
+    because each record only adds or removes one key.
 
     Both the subscription's rebuild on restart and ``protean recover`` read the
     set through this one function, so the CLI reports and clears exactly the
@@ -64,34 +75,47 @@ def reconstruct_unresolved(
         snapshot = checkpoint["data"].get("unresolved", {})
         unresolved = {int(pos): info for pos, info in snapshot.items()}
 
-    messages = store.read(
-        failed_positions_stream, position=watermark, no_of_messages=10000
-    )
-    for msg in messages:
-        pos = msg.data.get("position")
-        headers = msg.metadata.headers if msg.metadata else None
-        record_type = headers.type if headers else None
-        if pos is None or record_type is None:
-            continue
-        if record_type in (
-            FailedPositionStatus.RESOLVED.value,
-            FailedPositionStatus.EXHAUSTED.value,
-        ):
-            unresolved.pop(pos, None)
-        elif record_type == FailedPositionStatus.FAILED.value:
-            unresolved[pos] = {
-                "retry_count": msg.data.get("retry_count", 0),
-                "stream_name": msg.data.get("stream_name"),
-                "stream_position": msg.data.get("stream_position"),
-            }
+    cursor = watermark
+    records_read = 0
+    while True:
+        page = store.read(
+            failed_positions_stream, position=cursor, no_of_messages=page_size
+        )
+        if not page:
+            break
+        for msg in page:
+            pos = msg.data.get("position")
+            headers = msg.metadata.headers if msg.metadata else None
+            record_type = headers.type if headers else None
+            if pos is None or record_type is None:
+                continue
+            if record_type in (
+                FailedPositionStatus.RESOLVED.value,
+                FailedPositionStatus.EXHAUSTED.value,
+            ):
+                unresolved.pop(pos, None)
+            elif record_type == FailedPositionStatus.FAILED.value:
+                unresolved[pos] = {
+                    "retry_count": msg.data.get("retry_count", 0),
+                    "stream_name": msg.data.get("stream_name"),
+                    "stream_position": msg.data.get("stream_position"),
+                }
+        records_read += len(page)
 
-    if messages:
-        last = messages[-1]
+        last = page[-1]
         event_store = last.metadata.event_store if last.metadata else None
-        if event_store is not None and event_store.position is not None:
-            watermark = event_store.position + 1
+        if (
+            event_store is None or event_store.position is None
+        ):  # pragma: no cover — corruption guard; real store records carry a position
+            # A record with no per-stream position cannot advance the cursor, so
+            # stop rather than re-read the same page forever.
+            break
+        watermark = event_store.position + 1
+        cursor = watermark
+        if len(page) < page_size:
+            break
 
-    return unresolved, watermark, len(messages)
+    return unresolved, watermark, records_read
 
 
 def write_recovery_checkpoint_record(

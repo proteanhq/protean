@@ -2113,6 +2113,31 @@ class TestReconstructUnresolved:
         assert set(unresolved) == {4}
         assert watermark == 1
 
+    def test_pages_through_the_whole_stream(self, test_domain):
+        """The failed stream is paged in full, not capped: a record past the first
+        page is still merged, so a long failure history is not silently truncated.
+        """
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            for pos in (4, 5, 6, 7, 8):
+                _seed_failed_record(store, "failed-Handler-order", "Failed", pos)
+            # A tiny page size forces several pages; every record must still merge.
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+                page_size=2,
+            )
+
+        assert set(unresolved) == {4, 5, 6, 7, 8}
+        assert records_read == 5
+        # Watermark advances past the last record (per-stream positions 0..4 -> 5).
+        assert watermark == 5
+
 
 class TestCollectRecoveryCheckpointStatuses:
     def _seed_order_head(self, store) -> int:

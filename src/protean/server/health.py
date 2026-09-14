@@ -107,6 +107,8 @@ _POSITION_FIELDS = (
     "consumer_count",
     "last_updated",
     "position_stream",
+    "recovery_checkpoint_stream",
+    "failed_positions_stream",
 )
 
 
