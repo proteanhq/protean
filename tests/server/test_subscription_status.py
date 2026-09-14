@@ -1833,6 +1833,20 @@ class TestResetCheckpointToHead:
         with pytest.raises(ValueError, match="no checkpoint stream"):
             reset_checkpoint_to_head(test_domain, status)
 
+    def test_raises_when_head_position_unknown(self, test_domain):
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        status = _es_status(head_position=None)
+        with pytest.raises(ValueError, match="stream head is unknown"):
+            reset_checkpoint_to_head(test_domain, status)
+
+    def test_raises_when_head_position_not_numeric(self, test_domain):
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        status = _es_status(head_position="abc")
+        with pytest.raises(ValueError, match="not a number"):
+            reset_checkpoint_to_head(test_domain, status)
+
     def test_raises_when_store_not_configured(self):
         from protean.server.subscription_status import reset_checkpoint_to_head
 

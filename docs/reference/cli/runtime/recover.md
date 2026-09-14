@@ -48,9 +48,11 @@ Without `--verify-checkpoints` the command prints a hint and exits `0`.
 
 Snap each beyond-head checkpoint back to the stream head. Add
 `--reset-beyond-head` to the verification run: it writes a fresh position record
-to the `position-{fqn}-{category}` stream equal to the stream head, so the
-subscription reads forward from just after the restored head instead of skipping
-the events written after the restore.
+to the subscription's checkpoint stream (`position-{subscriber_name}-{category}`,
+where `subscriber_name` is the handler `fqn` for event handlers, projectors and
+process managers, and the dispatcher name for command handlers) equal to the
+stream head, so the subscription reads forward from just after the restored head
+instead of skipping the events written after the restore.
 
 ```bash
 protean recover --verify-checkpoints --reset-beyond-head --domain=my_app
