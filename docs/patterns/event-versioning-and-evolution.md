@@ -484,6 +484,14 @@ and new schemas. Consumers must handle both. This is the normal deployment path;
 a deliberate operator migration (see [Migration Strategies](#migration-strategies))
 is the one thing that rewrites existing events.
 
+### Snapshots and Schema Changes
+
+Snapshots do not go through the upcaster path. A schema-breaking change
+discards the stale snapshot and rebuilds the aggregate by replaying its event
+stream instead. See [Snapshots and schema
+changes](../guides/change-state/snapshots.md#snapshots-and-schema-changes) for
+the full mechanism.
+
 ### Replaying from the Beginning
 
 If you replay an event-sourced aggregate from the beginning of its stream,

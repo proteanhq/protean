@@ -241,7 +241,9 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 Upcasting is especially important for event-sourced aggregates because every
 aggregate reconstruction replays every event from the stream (or from the last
 snapshot). Without upcasting, `@apply` handlers must accommodate every
-historical schema variant.
+historical schema variant. A snapshot itself does not go through this upcaster
+path; see [Snapshots](../../concepts/internals/event-upcasting.md#snapshots)
+for what happens to a snapshot taken under an old schema.
 
 **With upcasting**, `@apply` handlers are clean and only handle the current
 schema:
