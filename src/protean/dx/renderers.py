@@ -1,8 +1,8 @@
 """Renderers that turn the DX pack into the files ``protean dx`` writes.
 
-Each renderer builds a :class:`~protean.dx.managed_files.ManagedBlock` for one
-target file, so the managed-file writer can create it and later refresh it
-without touching the user's own edits. This cut ships two targets:
+Each renderer builds a managed-file request for one target, so the managed-file
+writer can create it and later refresh it without touching the user's own edits.
+This cut ships three targets:
 
 - ``AGENTS.md`` — the canonical, cross-agent instruction file. Its body composes
   two layers: the positive guidance from the packaged AGENTS.md source
@@ -13,27 +13,35 @@ without touching the user's own edits. This cut ships two targets:
   the installed code.
 - ``CLAUDE.md`` — a one-line bridge (``@AGENTS.md``) that points Claude Code at
   the canonical file.
+- ``.mcp.json`` — the MCP server registration a client reads to launch Protean's
+  MCP server. It is a managed-JSON-keys target scoped to the ``mcpServers.protean``
+  key-path, so an existing ``.mcp.json`` keeps the user's other servers.
 
-Both targets are Markdown, so the managed block is wrapped in HTML comment
-markers. The per-editor renderers (Cursor, Copilot, opencode) and the
-``.mcp.json`` renderer are separate sub-issues on the developer-experience epic
-and are not built here.
+The two Markdown targets use a managed block wrapped in HTML comment markers; the
+``.mcp.json`` target uses the key-path JSON merge. The per-editor renderers
+(Cursor, Copilot, opencode) are separate sub-issues on the developer-experience
+epic and are not built here.
 """
 
 from __future__ import annotations
 
-from protean.dx.managed_files import ManagedBlock, ManagedFile
+from protean.dx.managed_files import ManagedBlock, ManagedFile, ManagedJsonKeys
 from protean.dx.pack import load_agents_source
 from protean.ir.generators.agents import generate_agents_md
+from protean.mcp import mcp_registration
 
 __all__ = [
     "AGENTS_TARGET",
     "BLOCK_ID",
     "CLAUDE_BRIDGE_BODY",
     "CLAUDE_BRIDGE_TARGET",
+    "MCP_SERVER_KEY",
+    "MCP_SERVER_NAME",
+    "MCP_TARGET",
     "agents_managed_file",
     "claude_bridge_managed_file",
     "managed_files",
+    "mcp_json_managed_file",
     "render_agents_body",
 ]
 
@@ -43,6 +51,13 @@ __all__ = [
 AGENTS_TARGET = "AGENTS.md"
 CLAUDE_BRIDGE_TARGET = "CLAUDE.md"
 BLOCK_ID = "protean"
+
+# The ``.mcp.json`` target and the key-path it manages: Protean's own entry under
+# ``mcpServers``. Managing only ``mcpServers.protean`` keeps every other server
+# the user configured (see ADR-0037's key-path JSON merge).
+MCP_TARGET = ".mcp.json"
+MCP_SERVER_KEY = "mcpServers"
+MCP_SERVER_NAME = "protean"
 
 # The Markdown comment syntax the managed block uses to frame its region.
 _COMMENT_PREFIX = "<!-- "
@@ -120,13 +135,32 @@ def claude_bridge_managed_file(version: str) -> ManagedBlock:
     return _markdown_block(CLAUDE_BRIDGE_TARGET, version, CLAUDE_BRIDGE_BODY)
 
 
+def mcp_json_managed_file(version: str) -> ManagedJsonKeys:
+    """Return the managed-JSON-keys request for the project's ``.mcp.json``.
+
+    Manages only the ``mcpServers.protean`` key-path, so an existing ``.mcp.json``
+    keeps every other server. The value is the launch shape
+    :func:`~protean.mcp.mcp_registration` defines. The registration is
+    version-independent, but the request still carries *version* as its stamp so
+    its state row advances in step with the other files on an upgrade.
+    """
+    return ManagedJsonKeys(
+        target=MCP_TARGET,
+        version=version,
+        data={MCP_SERVER_NAME: mcp_registration()},
+        path=(MCP_SERVER_KEY,),
+    )
+
+
 def managed_files(version: str) -> tuple[ManagedFile, ...]:
     """Return every managed file ``protean dx`` writes, in a stable order.
 
     AGENTS.md comes first so the CLAUDE.md bridge that points at it is written
-    second. Both are stamped to *version*.
+    second; the ``.mcp.json`` registration comes last. All three are stamped to
+    *version*.
     """
     return (
         agents_managed_file(version),
         claude_bridge_managed_file(version),
+        mcp_json_managed_file(version),
     )

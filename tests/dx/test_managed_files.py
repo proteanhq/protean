@@ -43,8 +43,10 @@ def block(target: str, version: str, body: str) -> ManagedBlock:
     )
 
 
-def json_keys(target: str, version: str, data: dict) -> ManagedJsonKeys:
-    return ManagedJsonKeys(target=target, version=version, data=data)
+def json_keys(
+    target: str, version: str, data: dict, path: tuple[str, ...] = ()
+) -> ManagedJsonKeys:
+    return ManagedJsonKeys(target=target, version=version, data=data, path=path)
 
 
 def state_path(root: Path) -> Path:
@@ -580,6 +582,196 @@ def test_string_keyed_nesting_is_accepted(tmp_path: Path) -> None:
     data = {"servers": [{"name": "a"}, {"name": "b", "env": {"KEY": "v"}}]}
     apply_managed_file(tmp_path, json_keys(".mcp.json", "1", data))
     assert json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8")) == data
+
+
+# --- managed JSON keys: nested key-path merge ------------------------------
+
+
+def _mcp(target: str, version: str, value: dict) -> ManagedJsonKeys:
+    """A ``.mcp.json``-shaped request managing ``mcpServers.protean``."""
+    return json_keys(target, version, {"protean": value}, path=("mcpServers",))
+
+
+def test_json_keypath_merge_preserves_siblings_and_top_level(tmp_path: Path) -> None:
+    """Managing ``mcpServers.protean`` keeps a sibling server and any other key."""
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps({"mcpServers": {"other": {"command": "x"}}, "topKey": 1}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = apply_managed_file(
+        tmp_path, _mcp(".mcp.json", "1", {"command": "protean", "args": ["mcp"]})
+    )
+
+    assert result.status is ApplyStatus.UPDATE
+    merged = json.loads(target.read_text(encoding="utf-8"))
+    assert merged["mcpServers"]["protean"] == {"command": "protean", "args": ["mcp"]}
+    assert merged["mcpServers"]["other"] == {"command": "x"}  # sibling preserved
+    assert merged["topKey"] == 1  # other top-level key preserved
+
+
+def test_json_keypath_first_install_over_existing_file_is_a_safe_add(
+    tmp_path: Path,
+) -> None:
+    """The AC2 path: a pre-existing ``.mcp.json`` with another server and no state.
+
+    Under the plain conflict predicate this classified CONFLICT (no state, and the
+    disk slice differs from the render), which would drop the user's server. An
+    absent managed key-path with no state entry is a safe add instead.
+    """
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps({"mcpServers": {"other": {"command": "x"}}}) + "\n",
+        encoding="utf-8",
+    )
+    assert not state_path(tmp_path).exists()
+
+    proj = _mcp(".mcp.json", "1", {"command": "protean", "args": ["mcp"]})
+    assert diff_managed_file(tmp_path, proj).status is ApplyStatus.UPDATE
+    apply_managed_file(tmp_path, proj)
+
+    merged = json.loads(target.read_text(encoding="utf-8"))
+    assert merged["mcpServers"]["protean"] == {"command": "protean", "args": ["mcp"]}
+    assert merged["mcpServers"]["other"] == {"command": "x"}
+
+
+def test_json_keypath_first_install_creates_the_path_when_absent(
+    tmp_path: Path,
+) -> None:
+    """An existing file without an ``mcpServers`` object at all gets one added."""
+    target = tmp_path / ".mcp.json"
+    target.write_text(json.dumps({"unrelated": True}) + "\n", encoding="utf-8")
+
+    apply_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+
+    merged = json.loads(target.read_text(encoding="utf-8"))
+    assert merged["mcpServers"] == {"protean": {"command": "protean"}}
+    assert merged["unrelated"] is True
+
+
+def test_json_keypath_create_then_rerun_is_no_op(tmp_path: Path) -> None:
+    proj = _mcp(".mcp.json", "1", {"command": "protean"})
+    assert apply_managed_file(tmp_path, proj).status is ApplyStatus.CREATE
+    created = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert created == {"mcpServers": {"protean": {"command": "protean"}}}
+
+    assert apply_managed_file(tmp_path, proj).status is ApplyStatus.NO_CHANGE
+
+
+def test_json_keypath_version_bump_with_identical_content_is_a_safe_update(
+    tmp_path: Path,
+) -> None:
+    apply_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+    result = apply_managed_file(
+        tmp_path, _mcp(".mcp.json", "2", {"command": "protean"})
+    )
+    assert result.status is ApplyStatus.UPDATE
+
+
+def test_json_keypath_hand_edit_of_managed_key_conflicts(tmp_path: Path) -> None:
+    """A hand-edited ``mcpServers.protean`` (present, but not ours) stays a conflict."""
+    apply_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+    target = tmp_path / ".mcp.json"
+    disk = json.loads(target.read_text(encoding="utf-8"))
+    disk["mcpServers"]["protean"] = {"command": "hacked"}
+    target.write_text(json.dumps(disk) + "\n", encoding="utf-8")
+    before = target.read_text(encoding="utf-8")
+
+    proj = _mcp(".mcp.json", "2", {"command": "protean"})
+    assert diff_managed_file(tmp_path, proj).status is ApplyStatus.CONFLICT
+    with pytest.raises(ManagedFileConflict) as excinfo:
+        apply_managed_file(tmp_path, proj)
+    assert excinfo.value.managed == "protean"
+    assert target.read_text(encoding="utf-8") == before  # nothing written
+
+
+def test_json_keypath_sibling_edit_leaves_our_slice_no_change(tmp_path: Path) -> None:
+    """A user adding a sibling server under ``mcpServers`` is not our drift."""
+    apply_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+    target = tmp_path / ".mcp.json"
+    disk = json.loads(target.read_text(encoding="utf-8"))
+    disk["mcpServers"]["other"] = {"command": "x"}
+    target.write_text(json.dumps(disk, indent=2) + "\n", encoding="utf-8")
+
+    result = diff_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+    assert result.status is ApplyStatus.NO_CHANGE
+    assert result.outside_modified is True
+
+
+def test_json_keypath_deleted_managed_key_after_install_conflicts(
+    tmp_path: Path,
+) -> None:
+    """Deleting our key after we installed it is drift, not a fresh safe add.
+
+    The safe-add path only fires when there is no state entry. Once we have
+    recorded state, an absent managed key is the user deleting one we wrote.
+    """
+    apply_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+    target = tmp_path / ".mcp.json"
+    target.write_text(
+        json.dumps({"mcpServers": {"other": {"command": "x"}}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = diff_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+    assert result.status is ApplyStatus.CONFLICT
+
+
+def test_json_keypath_backward_compatible_with_empty_path(tmp_path: Path) -> None:
+    """``path=()`` is exactly the shallow top-level merge, byte for byte."""
+    target = tmp_path / ".mcp.json"
+    target.write_text(json.dumps({"userKey": 1}) + "\n", encoding="utf-8")
+
+    apply_managed_file(tmp_path, json_keys(".mcp.json", "1", {"servers": {"a": 1}}))
+
+    merged = json.loads(target.read_text(encoding="utf-8"))
+    assert merged == {"servers": {"a": 1}, "userKey": 1}
+
+
+def test_json_keypath_non_object_segment_raises(tmp_path: Path) -> None:
+    """``mcpServers`` set to a string or an array cannot be walked into."""
+    target = tmp_path / ".mcp.json"
+    for bad in ('{"mcpServers": "oops"}', '{"mcpServers": [1, 2]}'):
+        target.write_text(bad + "\n", encoding="utf-8")
+        proj = _mcp(".mcp.json", "1", {"command": "protean"})
+        with pytest.raises(ManagedFileError, match="needs it to be a JSON object"):
+            diff_managed_file(tmp_path, proj)
+        assert target.read_text(encoding="utf-8") == bad + "\n"  # untouched
+
+
+def test_json_keypath_does_not_mutate_the_parsed_disk_dict(tmp_path: Path) -> None:
+    """The merge deep-copies its walk, so repeated diffs are stable and pure."""
+    target = tmp_path / ".mcp.json"
+    original = {"mcpServers": {"other": {"command": "x"}}}
+    target.write_text(json.dumps(original) + "\n", encoding="utf-8")
+
+    proj = _mcp(".mcp.json", "1", {"command": "protean"})
+    first = diff_managed_file(tmp_path, proj)
+    second = diff_managed_file(tmp_path, proj)
+    # Two diffs of the same inputs produce the same merged content: the first did
+    # not mutate anything shared into the second.
+    assert first.content == second.content
+    # The user's other server is still in the merged output.
+    assert json.loads(first.content)["mcpServers"]["other"] == {"command": "x"}
+
+
+def test_json_keypath_null_segment_on_disk_conflicts_safely(tmp_path: Path) -> None:
+    """``mcpServers: null`` is not an object, so the merge refuses rather than clobber."""
+    target = tmp_path / ".mcp.json"
+    target.write_text('{"mcpServers": null}\n', encoding="utf-8")
+    with pytest.raises(ManagedFileError, match="needs it to be a JSON object"):
+        diff_managed_file(tmp_path, _mcp(".mcp.json", "1", {"command": "protean"}))
+
+
+def test_json_path_segment_empty_or_newline_rejected() -> None:
+    """A path segment must be a non-empty string with no newline."""
+    with pytest.raises(ValueError, match="non-empty string"):
+        ManagedJsonKeys(target=".mcp.json", version="1", data={"a": 1}, path=("",))
+    with pytest.raises(ValueError, match="must not contain a newline"):
+        ManagedJsonKeys(
+            target=".mcp.json", version="1", data={"a": 1}, path=("bad\nkey",)
+        )
 
 
 # --- state file ------------------------------------------------------------

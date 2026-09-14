@@ -5,7 +5,7 @@ make a coding agent correct with the installed framework version. The files are
 composed from data that ships inside the `protean` package, so an agent reads
 guidance that matches the installed code.
 
-This cut writes two files into a target project:
+This cut writes three files into a target project:
 
 - `AGENTS.md`: the canonical, cross-agent instruction file. Its body has two
   layers. The first is the positive guidance from the packaged AGENTS.md source.
@@ -15,16 +15,22 @@ This cut writes two files into a target project:
   with the installed version.
 - `CLAUDE.md`: a one-line bridge, `@AGENTS.md`, that points Claude Code at the
   canonical file.
+- `.mcp.json`: the registration a client reads to launch Protean's MCP server
+  (`protean mcp`). It is a structured JSON merge scoped to the
+  `mcpServers.protean` key-path, so an existing `.mcp.json` keeps every other
+  server you configured; `install` writes and reconciles only its own entry.
 
-The per-editor rule files (Cursor, Copilot, opencode) and the `.mcp.json`
-registration are separate commands that land later on the same epic.
+The per-editor rule files (Cursor, Copilot, opencode) are separate commands that
+land later on the same epic.
 
 ## Managed blocks
 
-Each file is co-owned. The framework writes a block framed by two HTML comment
-markers, `<!-- PROTEAN:BEGIN protean -->` and `<!-- PROTEAN:END protean -->`, and
-you own every line around it. Re-running `install` or `refresh` rewrites the
-block and preserves your own edits outside it.
+Each file is co-owned. For the Markdown files, the framework writes a block framed
+by two HTML comment markers, `<!-- PROTEAN:BEGIN protean -->` and
+`<!-- PROTEAN:END protean -->`, and you own every line around it. For `.mcp.json`,
+the framework owns only the `mcpServers.protean` key-path and you own every other
+key, including your other servers. Re-running `install` or `refresh` rewrites the
+framework's region and preserves your own edits around it.
 
 A state file at `.protean/dx-state.json` records what the writer last wrote per
 target. It tells a version change (a safe rewrite) apart from an edit you made
@@ -41,7 +47,7 @@ that already carries an unmarked `AGENTS.md`, including one written by an older
 ## Verbs
 
 ```shell
-protean dx install     # write AGENTS.md and the CLAUDE.md bridge
+protean dx install     # write AGENTS.md, the CLAUDE.md bridge, and .mcp.json
 protean dx refresh     # re-render the blocks to the installed version
 protean dx diff        # preview what install would change (unified diff); write nothing
 protean dx check       # exit non-zero when a target has drifted; write nothing
