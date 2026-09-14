@@ -123,9 +123,11 @@ it before a stored `v1` payload fails to read in production. See the [Event
 Upcasting guide](consume-state/event-upcasting.md) for the full mechanism.
 
 !!! note
-    Upcasters run on replayed events, not on snapshots. A schema-breaking change
-    discards the stale snapshot and rebuilds the aggregate by replaying its
-    event stream. See [Snapshots and schema
+    Upcasters run on replayed events, not on snapshots. A snapshot holds
+    aggregate state, so changing an event's schema leaves the snapshot usable as
+    long as the aggregate's own fields still construct from it. When they no
+    longer do, Protean discards the snapshot on load and rebuilds the aggregate
+    by replaying its event stream. See [Snapshots and schema
     changes](change-state/snapshots.md#snapshots-and-schema-changes).
 
 ## Deprecate and supersede an old event
