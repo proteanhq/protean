@@ -2475,6 +2475,77 @@ class TestCollectRecoveryCheckpointStatuses:
         assert len(findings) == 1
         assert findings[0].verdict == "unknown"
 
+    def test_read_error_on_one_position_keeps_confirmed_stale(self, test_domain):
+        """A re-read that raises for one position must not discard the stale
+        entries already confirmed for the same subscription."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            # A metadata-less message makes ``store.read`` raise on that stream.
+            store._write("order-corrupt", "Placed", {"n": 1})
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": "order-removed",
+                        "stream_position": 0,
+                    },
+                    "6": {
+                        "retry_count": 1,
+                        "stream_name": "order-corrupt",
+                        "stream_position": 0,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        # 5 (order-removed) is confirmed gone and reported; 6's read raised, so it
+        # is skipped rather than dropping 5.
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [5]
+
+    def test_read_error_with_no_confirmed_stale_is_unknown(self, test_domain):
+        """When the only re-read that could run raises and nothing is confirmed
+        stale, the subscription is reported unverified rather than clean."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            store._write("order-corrupt", "Placed", {"n": 1})
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "6": {
+                        "retry_count": 1,
+                        "stream_name": "order-corrupt",
+                        "stream_position": 0,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "unknown"
+
     def test_malformed_failed_record_is_skipped(self, test_domain):
         """A failed record missing its position is skipped, not merged as a
         phantom entry."""

@@ -490,7 +490,7 @@ def recover(
             cleared_count = sum(len(r["cleared_positions"]) for r in recovery_resets)
             print(
                 f"\n[green]Cleared {cleared_count} stale recovery-tracking "
-                f"entry(ies) past the stream head:[/green]"
+                f"entry(ies) whose message the restore removed:[/green]"
             )
             for r in recovery_resets:
                 positions = ", ".join(str(p) for p in r["cleared_positions"])
@@ -518,8 +518,9 @@ def recover(
             stale_count = sum(len(f.stale_positions) for f in recovery_stale)
             print(
                 f"\n[red]{stale_count} recovery-tracking entry(ies) across "
-                f"{len(recovery_stale)} subscription(s) point past the restored "
-                f"head.[/red] Reset them before starting the engine."
+                f"{len(recovery_stale)} subscription(s) name a message the "
+                f"restored store no longer holds.[/red] Reset them before "
+                f"starting the engine."
             )
             for finding in recovery_stale:
                 positions = ", ".join(str(p) for p in finding.stale_positions)

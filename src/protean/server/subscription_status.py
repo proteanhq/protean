@@ -1075,10 +1075,12 @@ def _collect_one_recovery_checkpoint(
     pass does (the record's specific stream and position when present, else the
     category stream at the global position) and flags every one that comes back
     empty. That catches both a rolled-back category and a removed specific stream
-    that still sits below the category head. A ``"unknown"`` finding means the
-    recovery streams could not be read (the store failed mid-collection, or a
-    restore left a corrupt checkpoint record), so an unverifiable subscription is
-    reported rather than silently passed as clean.
+    that still sits below the category head. Confirmed stale positions are
+    reported even when a sibling position could not be re-read. A ``"unknown"``
+    finding means the recovery streams could not be read at all (the store failed
+    mid-collection, a restore left a corrupt checkpoint record, or every remaining
+    position's re-read raised), so an unverifiable subscription is reported rather
+    than silently passed as clean.
 
     Returns ``None`` when there is nothing to report: the subscription is not an
     event-store one, its head or streams are unknown (an unreachable store the
@@ -1093,6 +1095,8 @@ def _collect_one_recovery_checkpoint(
     if head is None:
         return None
 
+    stale_positions: list[int] = []
+    any_unverified = False
     try:
         with domain.domain_context():
             store = domain.event_store.store
@@ -1106,18 +1110,32 @@ def _collect_one_recovery_checkpoint(
             # A position is stale when the recovery pass's own re-read would find
             # nothing. Comparing the global position to the category head alone
             # would miss a removed specific stream whose position still sits below
-            # the head (another aggregate has a later event).
-            stale_positions = sorted(
-                pos
-                for pos, info in unresolved.items()
-                if not read_recovery_message(store, status.stream_category, pos, info)
-            )
+            # the head (another aggregate has a later event). Re-read each on its
+            # own: a read error on one position (say a corrupt message in its
+            # stream) must not discard the stale entries already confirmed, which
+            # a plain comprehension would by aborting the whole scan.
+            for pos, info in unresolved.items():
+                try:
+                    found = read_recovery_message(
+                        store, status.stream_category, pos, info
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Could not re-read recovery position %s for %s: %s",
+                        pos,
+                        status.name,
+                        exc,
+                    )
+                    any_unverified = True
+                    continue
+                if not found:
+                    stale_positions.append(pos)
+            stale_positions.sort()
     except Exception as exc:
-        # The recovery reads hit a different stream than the read-position check,
-        # so they can fail on their own (a store error, or a corrupt checkpoint
-        # record left by a partial restore). Report it as unverified rather than
-        # folding it into "clean", which is the exact falsehood this command
-        # exists to catch.
+        # The reconstruction (or a store-wide failure) can raise on its own: a
+        # store error, or a corrupt checkpoint record left by a partial restore.
+        # Report it as unverified rather than folding it into "clean", which is
+        # the exact falsehood this command exists to catch.
         logger.warning(
             "Could not verify recovery tracking for %s (stream %s): %s",
             status.name,
@@ -1126,8 +1144,11 @@ def _collect_one_recovery_checkpoint(
         )
         return _recovery_unknown(status, head)
 
+    # Confirmed stale entries are reported (and reset) even when a sibling could
+    # not be re-read. Only when nothing was confirmed stale does a read error make
+    # the whole subscription unverified.
     if not stale_positions:
-        return None
+        return _recovery_unknown(status, head) if any_unverified else None
 
     return RecoveryCheckpointStatus(
         name=status.name,

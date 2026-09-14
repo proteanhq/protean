@@ -63,7 +63,7 @@ and position when present, else the category stream at the global position) and
 names every one whose message the restored store no longer holds:
 
 ```
-1 recovery-tracking entry(ies) across 1 subscription(s) point past the restored head. Reset them before starting the engine.
+1 recovery-tracking entry(ies) across 1 subscription(s) name a message the restored store no longer holds. Reset them before starting the engine.
   OrderProjector (order): 12
 ```
 
@@ -130,13 +130,13 @@ rebuilds a set without them and the recovery pass stops chasing them. It reports
 what it cleared:
 
 ```
-Cleared 1 stale recovery-tracking entry(ies) past the stream head:
+Cleared 1 stale recovery-tracking entry(ies) whose message the restore removed:
   OrderProjector (order): 12
 ```
 
-Only the beyond-head entries are dropped; every at-or-below-head position the
-subscription was tracking is preserved. A recovery reset write that fails is
-named and the run exits `2`, the same as a checkpoint reset failure. A later
+Only the entries whose message is gone are dropped; every position whose message
+is still present is preserved. A recovery reset write that fails is named and the
+run exits `2`, the same as a checkpoint reset failure. A later
 `--verify-checkpoints` run then finds the subscription clean.
 
 `--reset-beyond-head` needs `--verify-checkpoints` (that pass finds what to
