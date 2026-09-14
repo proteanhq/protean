@@ -306,6 +306,7 @@ markers = [
     "no_test_domain",
     "fastapi",
     "flaky: timing-sensitive or non-deterministic test; run in isolation via `make test-flaky`",
+    "live: opt-in comparison-eval lane that drives a real model; needs PROTEAN_EVAL_LIVE_DRIVER and skips without it",
     "asyncio: mark test as an asyncio coroutine (registered by pytest-asyncio)",
     # Capability-based markers for broker testing
     "basic_pubsub: tests for basic pub/sub capability (publish/subscribe only)",
