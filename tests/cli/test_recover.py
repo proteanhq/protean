@@ -421,3 +421,266 @@ class TestBeyondHead:
             _verdict(_make_status(current_position=None, head_position=None))
             == "unknown"
         )
+
+
+def _invoke_reset(statuses, reset_mock, extra_args=None):
+    """Invoke ``recover --verify-checkpoints --reset-beyond-head`` with the status
+    collector and the checkpoint writer both stubbed."""
+    mock_domain = _mock_domain_for_cli()
+    with (
+        patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
+        patch(
+            "protean.server.subscription_status.collect_subscription_statuses",
+            return_value=statuses,
+        ),
+        patch(
+            "protean.server.subscription_status.reset_checkpoint_to_head",
+            reset_mock,
+        ),
+    ):
+        return runner.invoke(
+            app,
+            [
+                "recover",
+                "--verify-checkpoints",
+                "--reset-beyond-head",
+                "--domain",
+                "publishing7.py",
+            ]
+            + (extra_args or []),
+        )
+
+
+class TestRecoverResetBeyondHead:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_reset_snaps_beyond_head_and_exits_zero(self):
+        """Acceptance: a beyond-head checkpoint is snapped to head, the run
+        reports the change, and it exits 0."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("OrderHandler", current_position="10", head_position="5"),
+        ]
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(statuses, reset_mock)
+
+        assert result.exit_code == 0
+        assert "Reset 1 beyond-head checkpoint" in result.output
+        # The reported change names the transition; the reset line carries the
+        # arrow, the verification table row does not.
+        row = next(
+            line
+            for line in result.output.splitlines()
+            if "OrderHandler" in line and "->" in line
+        )
+        assert "10 -> 5" in row
+        reset_mock.assert_called_once()
+        assert reset_mock.call_args.args[1].handler_name == "OrderHandler"
+
+    def test_reset_leaves_consistent_and_unknown_untouched(self):
+        """Acceptance (scope): only the beyond-head checkpoint is reset; a
+        consistent one and an unknown one are never written."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Good", current_position="5", head_position="5"),
+            _make_status("Bad", current_position="10", head_position="5"),
+            _make_status("Offline", current_position=None, head_position=None),
+        ]
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(statuses, reset_mock)
+
+        assert result.exit_code == 0
+        reset_mock.assert_called_once()
+        assert reset_mock.call_args.args[1].handler_name == "Bad"
+
+    def test_reset_without_beyond_head_reports_nothing_and_writes_nothing(self):
+        """With nothing beyond head, --reset-beyond-head reports it and makes no
+        write."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Good", current_position="5", head_position="5"),
+        ]
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(statuses, reset_mock)
+
+        assert result.exit_code == 0
+        assert "No beyond-head checkpoints to reset" in result.output
+        reset_mock.assert_not_called()
+
+    def test_reset_reports_unverified_alongside_resets(self):
+        """A reset run still surfaces the unverified rows it could not check."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Bad", current_position="10", head_position="5"),
+            _make_status("Offline", current_position=None, head_position=None),
+        ]
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(statuses, reset_mock)
+
+        assert result.exit_code == 0
+        assert "Reset 1 beyond-head checkpoint" in result.output
+        assert "could not be verified" in result.output
+
+    def test_reset_requires_verify_checkpoints(self):
+        """--reset-beyond-head on its own is a usage error and loads no domain."""
+        change_working_directory_to("test7")
+
+        with patch("protean.cli._helpers.derive_domain") as derive:
+            result = runner.invoke(app, ["recover", "--reset-beyond-head"])
+
+        assert result.exit_code == 2
+        assert "requires --verify-checkpoints" in result.output
+        derive.assert_not_called()
+
+    def test_reset_requires_verify_checkpoints_json(self):
+        """The same guard under --json is the error envelope on stdout, exit 2."""
+        from protean.cli.result import EXIT_USAGE
+
+        change_working_directory_to("test7")
+
+        result = runner.invoke(app, ["recover", "--reset-beyond-head", "--json"])
+
+        assert result.exit_code == EXIT_USAGE
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert "requires --verify-checkpoints" in env["data"]["error"]
+
+    def test_plain_verify_never_calls_the_reset_writer(self):
+        """Criterion 2: a --verify-checkpoints run without --reset-beyond-head
+        never invokes the checkpoint writer, even with a beyond-head subscription
+        present."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Bad", current_position="10", head_position="5"),
+        ]
+        mock_domain = _mock_domain_for_cli()
+        with (
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
+            patch(
+                "protean.server.subscription_status.collect_subscription_statuses",
+                return_value=statuses,
+            ),
+            patch(
+                "protean.server.subscription_status.reset_checkpoint_to_head"
+            ) as reset,
+        ):
+            result = runner.invoke(
+                app,
+                ["recover", "--verify-checkpoints", "--domain", "publishing7.py"],
+            )
+
+        assert result.exit_code == 1
+        reset.assert_not_called()
+
+    def test_reset_write_failure_is_reported_and_exits_two(self):
+        """A reset write that fails mid-run: the reachable checkpoint is still
+        reset and reported, the failure is named, and the run exits 2."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("First", current_position="10", head_position="5"),
+            _make_status("Second", current_position="12", head_position="4"),
+        ]
+        reset_mock = MagicMock(side_effect=[5, RuntimeError("store down")])
+        result = _invoke_reset(statuses, reset_mock)
+
+        assert result.exit_code == 2
+        assert "Reset 1 beyond-head checkpoint" in result.output
+        assert "could not be reset" in result.output
+        assert "Second" in result.output
+        assert "store down" in result.output
+
+
+class TestRecoverResetJson:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_json_reset_includes_reset_list_and_passes(self):
+        """--json --reset-beyond-head passes, adds a reset count to the summary,
+        and lists each change under data.reset while still reporting the finding."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("OrderHandler", current_position="10", head_position="5"),
+        ]
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(statuses, reset_mock, ["--json"])
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["summary"] == {
+            "checked": 1,
+            "consistent": 0,
+            "beyond_head": 1,
+            "unknown": 0,
+            "reset": 1,
+            "reset_failed": 0,
+        }
+        assert env["data"]["reset"] == [
+            {
+                "name": "sub-orderhandler",
+                "handler_name": "OrderHandler",
+                "stream_category": "order",
+                "previous_position": "10",
+                "new_position": "5",
+            }
+        ]
+        assert env["data"]["reset_failures"] == []
+        # The finding is still reported so a consumer sees what was reset.
+        assert env["data"]["subscriptions"][0]["verdict"] == "beyond_head"
+
+    def test_json_reset_lists_only_beyond_head(self):
+        """Only the beyond-head subscription appears in data.reset."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("Good", current_position="5", head_position="5"),
+            _make_status("Bad", current_position="10", head_position="5"),
+        ]
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(statuses, reset_mock, ["--json"])
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        assert [r["handler_name"] for r in env["data"]["reset"]] == ["Bad"]
+        assert env["data"]["summary"]["reset"] == 1
+
+    def test_json_reset_write_failure_is_error_envelope(self):
+        """A reset write failure under --json still emits one envelope: status
+        error, exit 2, the successful reset under data.reset and the failed one
+        under data.reset_failures."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status("First", current_position="10", head_position="5"),
+            _make_status("Second", current_position="12", head_position="4"),
+        ]
+        reset_mock = MagicMock(side_effect=[5, RuntimeError("store down")])
+        result = _invoke_reset(statuses, reset_mock, ["--json"])
+
+        assert result.exit_code == 2
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert [r["handler_name"] for r in env["data"]["reset"]] == ["First"]
+        assert len(env["data"]["reset_failures"]) == 1
+        assert env["data"]["reset_failures"][0]["handler_name"] == "Second"
+        assert "store down" in env["data"]["reset_failures"][0]["error"]
+        assert env["data"]["summary"]["reset"] == 1
+        assert env["data"]["summary"]["reset_failed"] == 1

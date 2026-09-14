@@ -8,18 +8,22 @@ Usage::
     # Machine-readable JSON
     protean recover --verify-checkpoints --domain=my_domain --json
 
+    # Snap any beyond-head checkpoint back to the stream head
+    protean recover --verify-checkpoints --reset-beyond-head --domain=my_domain
+
 Restoring an event store from a backup can leave a subscription's checkpoint
 ahead of the stream it consumes: the checkpoint stream was backed up after the
 category stream, so it names a position the restored store no longer holds. Such
 a subscription would skip every event between the head and the stale checkpoint.
 ``--verify-checkpoints`` reports those subscriptions so an operator can reset
-them before starting the engine.
+them before starting the engine. ``--reset-beyond-head`` snaps each beyond-head
+checkpoint back to the stream head. Without it, no run modifies any checkpoint.
 """
 
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich import print
@@ -29,12 +33,19 @@ from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions, load
 from protean.cli.result import (
     EXIT_FAILURE,
     EXIT_OK,
+    EXIT_USAGE,
+    EnvelopeStatus,
     build_envelope,
+    emit_usage_error,
     route_logs_to_stderr,
 )
+from protean.utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from protean.domain import Domain
     from protean.server.subscription_status import SubscriptionStatus
+
+logger = get_logger(__name__)
 
 
 def _parse_position(position: str | None) -> int | None:
@@ -91,6 +102,63 @@ def _verdict(status: SubscriptionStatus) -> str:
     return "beyond_head" if beyond else "consistent"
 
 
+def _perform_resets(
+    domain: Domain,
+    statuses: list[SubscriptionStatus],
+    verdicts: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Snap every beyond-head checkpoint back to its stream head.
+
+    Resets only the ``beyond_head`` subscriptions; a ``consistent`` one needs no
+    reset and an ``unknown`` one was never verified, so neither is touched.
+    Returns two lists: the resets that succeeded (each naming the subscription,
+    its stale checkpoint, and the head it was snapped to) and the resets that
+    failed (each naming the subscription and the error). A write that fails is
+    recorded and the loop moves on, so one unreachable checkpoint does not strand
+    the rest. Each successful write is durable on its own, and re-running the
+    command finds fewer beyond-head checkpoints.
+    """
+    from protean.server.subscription_status import (  # noqa: PLC0415
+        reset_checkpoint_to_head,
+    )
+
+    resets: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    for status, verdict in zip(statuses, verdicts, strict=True):
+        if verdict != "beyond_head":
+            continue
+        try:
+            new_position = reset_checkpoint_to_head(domain, status)
+        except Exception as exc:
+            # A write can fail (store down, IO error). Record it and carry on so
+            # the reachable checkpoints still get reset; the run reports the
+            # failure and exits non-zero.
+            logger.exception(
+                "recover.reset_failed",
+                subscription=status.name,
+                stream=status.stream_category,
+            )
+            failures.append(
+                {
+                    "name": status.name,
+                    "handler_name": status.handler_name,
+                    "stream_category": status.stream_category,
+                    "error": str(exc),
+                }
+            )
+            continue
+        resets.append(
+            {
+                "name": status.name,
+                "handler_name": status.handler_name,
+                "stream_category": status.stream_category,
+                "previous_position": status.current_position,
+                "new_position": str(new_position),
+            }
+        )
+    return resets, failures
+
+
 @handle_cli_exceptions("recover")
 def recover(
     ctx: typer.Context,
@@ -99,6 +167,16 @@ def recover(
         typer.Option(
             "--verify-checkpoints",
             help="Flag checkpoints that point past the restored stream head",
+        ),
+    ] = False,
+    reset_beyond_head: Annotated[
+        bool,
+        typer.Option(
+            "--reset-beyond-head",
+            help=(
+                "Snap each beyond-head checkpoint back to the stream head "
+                "(requires --verify-checkpoints)"
+            ),
         ),
     ] = False,
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
@@ -116,14 +194,28 @@ def recover(
     Only event-store subscriptions track checkpoints, so broker and stream
     subscriptions are not examined.
 
+    Add ``--reset-beyond-head`` to snap each beyond-head checkpoint back to the
+    stream head. The reset run reports what it changed and exits ``0``; a later
+    ``--verify-checkpoints`` run then finds those subscriptions consistent.
+    ``--reset-beyond-head`` needs ``--verify-checkpoints`` (that pass finds what
+    to reset), and without it no run modifies any checkpoint.
+
     Under ``--json`` the result is the shared CLI result envelope, with the
     per-subscription list under ``data.subscriptions`` and counts under
-    ``data.summary``.
+    ``data.summary``. With ``--reset-beyond-head`` the envelope also carries a
+    ``data.reset`` list of what changed and a ``data.summary.reset`` count.
     """
+    if reset_beyond_head and not verify_checkpoints:
+        # The reset acts on what the verification pass finds, so it cannot run on
+        # its own. Fail as a usage error rather than silently doing nothing.
+        emit_usage_error(
+            as_json=output_json,
+            message="--reset-beyond-head requires --verify-checkpoints.",
+        )
+
     if not verify_checkpoints:
-        # ``--verify-checkpoints`` is the only supported action today; the write
-        # path (resetting stale checkpoints) is its own issue. Without the flag
-        # there is nothing to do, so print the hint and exit cleanly.
+        # Verification is the entry action; the reset builds on it. Without the
+        # flag there is nothing to do, so print the hint and exit cleanly.
         print(
             "Nothing to do. Pass --verify-checkpoints to report checkpoints "
             "that point past the restored stream head."
@@ -155,6 +247,31 @@ def recover(
     unknown = verdicts.count("unknown")
     consistent = verdicts.count("consistent")
 
+    # Only --reset-beyond-head writes; a plain --verify-checkpoints run never
+    # modifies a checkpoint.
+    resets: list[dict[str, Any]] = []
+    reset_failures: list[dict[str, Any]] = []
+    if reset_beyond_head:
+        resets, reset_failures = _perform_resets(
+            derived_domain, event_store_statuses, verdicts
+        )
+
+    # Exit/verdict:
+    # - a reset write failure is an environment error -> "error", exit 2;
+    # - a plain verify run flags a beyond-head checkpoint -> "fail", exit 1
+    #   (with --reset-beyond-head those are snapped back, so they do not fail);
+    # - otherwise the run passes -> exit 0.
+    envelope_status: EnvelopeStatus
+    if reset_failures:
+        envelope_status = "error"
+        exit_code = EXIT_USAGE
+    elif beyond > 0 and not reset_beyond_head:
+        envelope_status = "fail"
+        exit_code = EXIT_FAILURE
+    else:
+        envelope_status = "pass"
+        exit_code = EXIT_OK
+
     if output_json:
         subscriptions = [
             {
@@ -168,19 +285,27 @@ def recover(
             }
             for s, v in zip(event_store_statuses, verdicts, strict=True)
         ]
-        summary = {
+        summary: dict[str, Any] = {
             "checked": total,
             "consistent": consistent,
             "beyond_head": beyond,
             "unknown": unknown,
         }
+        data: dict[str, Any] = {"subscriptions": subscriptions, "summary": summary}
+        # Only widen the payload under --reset-beyond-head so a plain
+        # --verify-checkpoints --json run keeps its exact documented shape.
+        if reset_beyond_head:
+            summary["reset"] = len(resets)
+            summary["reset_failed"] = len(reset_failures)
+            data["reset"] = resets
+            data["reset_failures"] = reset_failures
         envelope = build_envelope(
-            status="fail" if beyond else "pass",
-            data={"subscriptions": subscriptions, "summary": summary},
+            status=envelope_status,
+            data=data,
             diagnostics=[],
         )
         typer.echo(json.dumps(envelope, indent=2, sort_keys=True, default=str))
-        raise typer.Exit(code=EXIT_FAILURE if beyond else EXIT_OK)
+        raise typer.Exit(code=exit_code)
 
     if not event_store_statuses:
         print("No event-store subscriptions found in domain.")
@@ -220,6 +345,30 @@ def recover(
         if unknown
         else ""
     )
+
+    if reset_beyond_head:
+        if resets:
+            print(
+                f"\n[green]Reset {len(resets)} beyond-head checkpoint(s) to the "
+                f"stream head:[/green]"
+            )
+            for r in resets:
+                print(
+                    f"  {r['handler_name']} ({r['stream_category']}): "
+                    f"{r['previous_position']} -> {r['new_position']}"
+                )
+        else:
+            print("\n[green]No beyond-head checkpoints to reset.[/green]")
+        if reset_failures:
+            print(
+                f"\n[red]{len(reset_failures)} checkpoint(s) could not be reset:[/red]"
+            )
+            for f in reset_failures:
+                print(f"  {f['handler_name']} ({f['stream_category']}): {f['error']}")
+        if unverified:
+            print(unverified.strip())
+        raise typer.Exit(code=exit_code)
+
     if beyond:
         print(
             f"\n[red]{beyond} of {total} checkpoint(s) point past the "

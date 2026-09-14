@@ -1616,3 +1616,305 @@ class TestInferStreamCategoryEdgeCases:
 
         with pytest.raises(ValueError, match="Cannot infer"):
             _infer_stream_category(handler)
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint stream carried on the status
+# ---------------------------------------------------------------------------
+
+
+class TestPositionStreamField:
+    def test_event_store_status_carries_its_checkpoint_stream(self):
+        """The event-store status names the ``position-{fqn}-{category}`` stream a
+        reset writes to; other subscription types leave it ``None``."""
+        mock_domain = MagicMock()
+        mock_store = MagicMock()
+        mock_domain.event_store.store = mock_store
+        mock_domain.clock.now.return_value = datetime(2026, 1, 1, tzinfo=UTC)
+        mock_store._read_last_message.return_value = {"data": {"position": 5}}
+        mock_store.stream_head_position.return_value = 10
+
+        handler = MagicMock()
+        handler.__name__ = "OrderHandler"
+
+        result = _collect_event_store_status(
+            mock_domain,
+            "order-handler",
+            handler,
+            "order",
+            subscriber_name="my.OrderHandler",
+        )
+
+        assert result.position_stream == "position-my.OrderHandler-order"
+
+    def test_position_stream_falls_back_to_handler_fqn(self):
+        """With no explicit subscriber_name, the checkpoint stream is built from
+        the handler's fqn, matching what an event handler / projector uses."""
+        from protean.utils import fqn
+
+        mock_domain = MagicMock()
+        mock_store = MagicMock()
+        mock_domain.event_store.store = mock_store
+        mock_domain.clock.now.return_value = datetime(2026, 1, 1, tzinfo=UTC)
+        mock_store._read_last_message.return_value = {"data": {"position": 1}}
+        mock_store.stream_head_position.return_value = 5
+
+        class OrderHandler:
+            pass
+
+        result = _collect_event_store_status(mock_domain, "n", OrderHandler, "order")
+
+        assert result.position_stream == f"position-{fqn(OrderHandler)}-order"
+
+    def test_reset_targets_the_stream_the_subscription_reads(self, test_domain):
+        """The stream a reset writes to (status.position_stream) is exactly the
+        stream a live EventStoreSubscription loads its checkpoint from. Binds the
+        two independent ``position-...`` derivations so a drift cannot send the
+        reset to a dead stream the engine never reads."""
+        from protean.server.engine import Engine
+        from protean.server.subscription.event_store_subscription import (
+            EventStoreSubscription,
+        )
+
+        class OrderHandler:
+            pass
+
+        with test_domain.domain_context():
+            engine = Engine(test_domain, test_mode=True)
+            subscription = EventStoreSubscription(engine, "order", OrderHandler)
+
+        status = _collect_event_store_status(
+            test_domain, "order-handler", OrderHandler, "order"
+        )
+
+        assert status.position_stream == subscription.subscriber_stream_name
+
+    def test_unknown_status_has_no_checkpoint_stream(self):
+        assert _unknown_status("n", "H", "event_store", "order").position_stream is None
+
+
+# ---------------------------------------------------------------------------
+# reset_checkpoint_to_head
+# ---------------------------------------------------------------------------
+
+
+def _es_status(
+    *,
+    name: str = "sub",
+    handler_name: str = "Handler",
+    subscription_type: str = "event_store",
+    stream_category: str = "order",
+    current_position: str | None = "999",
+    head_position: str | None = "0",
+    position_stream: str | None = "position-Handler-order",
+) -> SubscriptionStatus:
+    return SubscriptionStatus(
+        name=name,
+        handler_name=handler_name,
+        subscription_type=subscription_type,
+        stream_category=stream_category,
+        lag=0,
+        pending=0,
+        current_position=current_position,
+        head_position=head_position,
+        status="ok",
+        consumer_count=0,
+        dlq_depth=0,
+        position_stream=position_stream,
+    )
+
+
+def _seed_checkpoint(store, position_stream: str, position: int) -> None:
+    """Write a ``Read`` position record, the shape a live subscription writes."""
+    store._write(position_stream, "Read", {"position": position})
+
+
+class TestResetCheckpointToHead:
+    def test_writes_status_head_to_checkpoint_stream(self, test_domain):
+        """The reset writes the head recorded on the status (from verification),
+        readable back from the checkpoint stream, in the same ``Read`` record shape
+        the runtime writes. It uses that recorded head, not a fresh store read, so
+        the live store head deliberately differs here to pin which one is used."""
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # Live store head for `order` is 2; the status carries head 7 from
+            # verification. The reset must write 7, not the live 2.
+            store._write("order-1", "Placed", {"n": 1})
+            store._write("order-1", "Placed", {"n": 2})
+            assert store.stream_head_position("order") == 2
+            # A stale checkpoint sitting well past the head.
+            _seed_checkpoint(store, "position-Handler-order", 99)
+
+        status = _es_status(
+            stream_category="order",
+            current_position="99",
+            head_position="7",
+            position_stream="position-Handler-order",
+        )
+        new_position = reset_checkpoint_to_head(test_domain, status)
+
+        assert new_position == 7
+        with test_domain.domain_context():
+            last = store._read_last_message("position-Handler-order")
+        assert last is not None
+        assert last["data"]["position"] == 7
+        # Same record type the runtime EventStoreSubscription.write_position writes.
+        assert last["type"] == "Read"
+
+    def test_reset_then_verify_reads_consistent(self, test_domain):
+        """Criterion 1 round-trip: after a reset, the subscription verifies as
+        consistent against the same head."""
+        from protean.cli.recover import _verdict
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            store._write("order-1", "Placed", {"n": 1})
+            head = store.stream_head_position("order")
+            _seed_checkpoint(store, "position-RT-order", head + 5)
+
+        stale = _es_status(
+            stream_category="order",
+            current_position=str(head + 5),
+            head_position=str(head),
+            position_stream="position-RT-order",
+        )
+        assert _verdict(stale) == "beyond_head"
+
+        reset_checkpoint_to_head(test_domain, stale)
+
+        with test_domain.domain_context():
+            written = store._read_last_message("position-RT-order")["data"]["position"]
+        verified = _es_status(
+            stream_category="order",
+            current_position=str(written),
+            head_position=str(head),
+            position_stream="position-RT-order",
+        )
+        assert _verdict(verified) == "consistent"
+
+    def test_empty_stream_resets_to_minus_one(self, test_domain):
+        """A restored stream with no events has head ``-1``; the reset writes that,
+        which sends the subscription back to the start of the stream."""
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = store.stream_head_position("empty")
+        assert head == -1
+
+        status = _es_status(
+            stream_category="empty",
+            current_position="4",
+            head_position="-1",
+            position_stream="position-Handler-empty",
+        )
+        new_position = reset_checkpoint_to_head(test_domain, status)
+
+        assert new_position == -1
+        with test_domain.domain_context():
+            last = store._read_last_message("position-Handler-empty")
+        assert last is not None
+        assert last["data"]["position"] == -1
+
+    def test_raises_for_non_event_store_status(self, test_domain):
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        status = _es_status(subscription_type="broker")
+        with pytest.raises(ValueError, match="not an event-store"):
+            reset_checkpoint_to_head(test_domain, status)
+
+    def test_raises_when_checkpoint_stream_missing(self, test_domain):
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        status = _es_status(position_stream=None)
+        with pytest.raises(ValueError, match="no checkpoint stream"):
+            reset_checkpoint_to_head(test_domain, status)
+
+    def test_raises_when_store_not_configured(self):
+        from protean.server.subscription_status import reset_checkpoint_to_head
+
+        mock_domain = MagicMock()
+        mock_domain.event_store.store = None
+
+        status = _es_status()
+        with pytest.raises(ValueError, match="no.*event store"):
+            reset_checkpoint_to_head(mock_domain, status)
+
+
+class TestPerformResetsScope:
+    """End-to-end scope check on real infrastructure: a reset run touches only
+    the beyond-head checkpoints and leaves at-or-below-head and unknown ones
+    alone."""
+
+    def test_only_beyond_head_checkpoint_is_modified(self, test_domain):
+        from protean.cli.recover import _perform_resets
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            store._write("order-1", "Placed", {"n": 1})
+            store._write("payment-1", "Paid", {"n": 1})
+            order_head = store.stream_head_position("order")
+            payment_head = store.stream_head_position("payment")
+
+            # A healthy checkpoint sitting exactly at head, an unknown one, and a
+            # stale one pointing past head.
+            _seed_checkpoint(store, "position-Healthy-payment", payment_head)
+            _seed_checkpoint(store, "position-Unknown-order", 3)
+            _seed_checkpoint(store, "position-Bad-order", order_head + 5)
+            healthy_before = store._read_last_message("position-Healthy-payment")
+            unknown_before = store._read_last_message("position-Unknown-order")
+
+        bad = _es_status(
+            name="bad",
+            handler_name="Bad",
+            stream_category="order",
+            current_position=str(order_head + 5),
+            head_position=str(order_head),
+            position_stream="position-Bad-order",
+        )
+        healthy = _es_status(
+            name="healthy",
+            handler_name="Healthy",
+            stream_category="payment",
+            current_position=str(payment_head),
+            head_position=str(payment_head),
+            position_stream="position-Healthy-payment",
+        )
+        # An unknown row: its positions could not be parsed, so it must be skipped.
+        unknown = _es_status(
+            name="unknown",
+            handler_name="Unknown",
+            stream_category="order",
+            current_position=None,
+            head_position=None,
+            position_stream="position-Unknown-order",
+        )
+
+        resets, failures = _perform_resets(
+            test_domain,
+            [bad, healthy, unknown],
+            ["beyond_head", "consistent", "unknown"],
+        )
+
+        assert failures == []
+        assert len(resets) == 1
+        assert resets[0]["name"] == "bad"
+        assert resets[0]["previous_position"] == str(order_head + 5)
+        assert resets[0]["new_position"] == str(order_head)
+
+        with test_domain.domain_context():
+            bad_after = store._read_last_message("position-Bad-order")
+            healthy_after = store._read_last_message("position-Healthy-payment")
+            unknown_after = store._read_last_message("position-Unknown-order")
+
+        # The beyond-head checkpoint advanced to head.
+        assert bad_after["data"]["position"] == order_head
+        # The healthy and unknown checkpoints got no new record: same
+        # global_position (a stray append would raise it), same value.
+        assert healthy_after["global_position"] == healthy_before["global_position"]
+        assert healthy_after["data"]["position"] == payment_head
+        assert unknown_after["global_position"] == unknown_before["global_position"]
+        assert unknown_after["data"]["position"] == 3
