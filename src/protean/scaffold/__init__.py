@@ -38,6 +38,12 @@ from protean.scaffold.change_plan import (
     Operation,
 )
 from protean.scaffold.create_project import create_project
+from protean.scaffold.model_parser import (
+    ModelEmitError,
+    ModelParseError,
+    emit_model,
+    parse_model,
+)
 from protean.scaffold.preview import render_preview
 from protean.scaffold.slice_generator import (
     IRField,
@@ -62,6 +68,8 @@ __all__ = [
     "CreateFileOperation",
     "EditFileOperation",
     "IRField",
+    "ModelEmitError",
+    "ModelParseError",
     "Operation",
     "SliceElement",
     "SliceFragment",
@@ -69,8 +77,10 @@ __all__ = [
     "SliceProjector",
     "apply_plan",
     "create_project",
+    "emit_model",
     "generate_slice_plan",
     "load_schema",
+    "parse_model",
     "plan_add_slice",
     "render_preview",
 ]
