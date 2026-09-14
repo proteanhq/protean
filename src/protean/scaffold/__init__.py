@@ -45,6 +45,14 @@ from protean.scaffold.model_parser import (
     parse_model,
 )
 from protean.scaffold.preview import render_preview
+from protean.scaffold.slice_generator import (
+    IRField,
+    SliceElement,
+    SliceFragment,
+    SliceGeneratorError,
+    SliceProjector,
+    generate_slice_plan,
+)
 
 __all__ = [
     "OWNERSHIP_GENERATED",
@@ -59,12 +67,18 @@ __all__ = [
     "ConfigOperation",
     "CreateFileOperation",
     "EditFileOperation",
+    "IRField",
     "ModelEmitError",
     "ModelParseError",
     "Operation",
+    "SliceElement",
+    "SliceFragment",
+    "SliceGeneratorError",
+    "SliceProjector",
     "apply_plan",
     "create_project",
     "emit_model",
+    "generate_slice_plan",
     "load_schema",
     "parse_model",
     "plan_add_slice",

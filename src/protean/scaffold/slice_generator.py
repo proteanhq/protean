@@ -1,0 +1,1789 @@
+"""Generate a vertical slice's :class:`ChangePlan` from a slice-shaped IR fragment.
+
+ADR-0041 defines the contract this module implements. A textual event model parses
+to a **slice-shaped IR fragment** that reuses the IR's own field model, and this
+**generator** promotes that fragment to the full vertical slice
+``protean add`` writes today: the aggregate (split by the generation-gap seam of
+ADR-0035), its create command, its created event, the command handler that drives
+it, and a projector plus read-model projection that consume the event so
+``protean verify`` on the applied slice is green.
+
+The fragment is the contract between the parser and the generator: the parser emits
+it as plain data, and :meth:`SliceFragment.from_mapping` reads that mapping into the
+types here. It carries only what the text model carries: the element names, their
+fields (each an IR field entry of ``kind``/``type``, the ``required`` flag, and the
+two constraints ``max_length`` and ``identifier``), and the read-side wiring
+(``for`` names the projection, ``consumes`` names the event). The read side is
+optional; when it is omitted, the generator derives a default projection that
+mirrors the event (the surfaced
+``<slug>_id`` becoming the ``Identifier`` key) and a projector that consumes the
+event. That derivation makes the read side match the event. The write side has to
+line up too, and the generator checks it: the command carries exactly the aggregate's
+fields, the event's non-id fields are aggregate fields, and a field two of them share
+is declared the same way on both. The generated code dereferences one element through
+another, so a mismatch renders an attribute read that fails the moment the slice runs,
+or one that copies a value into a field of another shape.
+
+``protean add`` routes through the generator too: it expresses its default
+name-only slice as a default fragment and calls :func:`generate_slice_plan`, so the
+two authoring surfaces share one promotion step and one set of renderers.
+
+Field order is not part of the contract (ADR-0041): the generator emits fields in a
+deterministic name order, with the surfaced ``<slug>_id`` first where it appears.
+"""
+
+from __future__ import annotations
+
+import keyword
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from functools import cache
+from typing import Any
+
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.event import BaseEvent
+from protean.core.projection import BaseProjection
+from protean.scaffold.change_plan import (
+    OWNERSHIP_GENERATED,
+    OWNERSHIP_HAND_OWNED,
+    ChangePlan,
+    CreateFileOperation,
+)
+
+__all__ = [
+    "IRField",
+    "SliceElement",
+    "SliceFragment",
+    "SliceGeneratorError",
+    "SliceProjector",
+    "generate_slice_plan",
+    "split_words",
+]
+
+# The grammar's primitive types, keyed by their IR field ``type`` (ADR-0041's
+# vocabulary table), mapped to the plain Python annotation the type resolves to. The
+# generated ``create`` factory uses this base annotation for its parameters, and a
+# field with no rendered constraint (a plain ``String`` reference such as the event's
+# ``<slug>_id``) declares itself with it directly.
+_BASE_ANNOTATION: dict[str, str] = {
+    "String": "str",
+    "Text": "str",
+    "Integer": "int",
+    "Float": "float",
+    "Boolean": "bool",
+    "Date": "date",
+    "DateTime": "datetime",
+    "Identifier": "str",
+}
+
+
+# Each element renders as a subclass of one of these, so a field that takes the name
+# of a public member of its base shadows that member. Pydantic warns about exactly
+# this ("shadows an attribute in parent"), and the shadowed member is often one the
+# framework needs: an aggregate field named ``raise_`` leaves the generated create
+# factory unable to raise its event.
+_BASE_CLASSES: dict[str, type] = {
+    "aggregate": BaseAggregate,
+    "command": BaseCommand,
+    "event": BaseEvent,
+    "projection": BaseProjection,
+}
+
+# The nested options class the renderers emit, so no field may take its name.
+_OPTIONS_CLASS = "Meta"
+
+# The symbols the generator writes into the aggregate's generated base: the create
+# factory and the classmethod's first parameter. A field named ``create`` replaces
+# the factory; one named ``cls`` gives the factory two parameters of that name.
+_AGGREGATE_GENERATED_NAMES = frozenset({"create", "cls"})
+
+# The names each generated method binds, as parameters or by assignment. Assigning a
+# name anywhere in a Python function makes it local for the whole function, so a
+# module-level name the method reads cannot be one of these: the read resolves to the
+# local and raises ``UnboundLocalError``, or picks up the wrong object.
+_HANDLER_LOCALS = frozenset({"self", "command", "repo"})
+_PROJECTOR_LOCALS = frozenset({"self", "event", "summary", "repo"})
+_AGGREGATE_BASE_LOCALS = frozenset({"cls"})
+
+# The handler local the slug itself has to stay clear of: the handler holds its
+# repository in ``repo`` and adds the aggregate through it, so a slug of ``repo``
+# would make it add the repository to itself. The handler's other locals are
+# parameters that are already bound where the slug line reads them, so a slug may
+# take those names.
+_HANDLER_LOCAL = "repo"
+
+
+# ADR-0041's vocabulary map pairs each IR field ``type`` with exactly one ``kind``.
+# The generator reads both when it renders a declaration, so a mismatched pair would
+# render something the fragment does not say: a ``standard``/``Identifier`` entry
+# renders as a plain ``str`` and an ``identifier``/``String`` entry as an
+# ``Identifier``, in both cases without a word.
+_KIND_FOR_TYPE: dict[str, str] = {
+    "String": "standard",
+    "Text": "text",
+    "Integer": "standard",
+    "Float": "standard",
+    "Boolean": "standard",
+    "Date": "standard",
+    "DateTime": "standard",
+    "Identifier": "identifier",
+}
+
+# ``max_length`` is a constraint on the string-based types only (ADR-0041). On any
+# other type the renderers drop it.
+_BOUNDED_TYPES = frozenset({"String", "Text"})
+
+# The shapes an authored ``id`` field on the aggregate may take. ``id`` names the
+# aggregate's own identity, and the registered subclass in ``aggregate.py`` takes that
+# field from the framework: the declaration on the generated base is replaced by an
+# identity field that holds a string, an integer or a UUID. A declaration of any other
+# type therefore renders a create factory whose ``id`` parameter the aggregate rejects
+# at runtime, so only these render what the fragment says.
+#
+# ``Integer`` is not one of them, even though the identity field holds an integer. The
+# create factory passes the id straight into the event's surfaced ``<slug>_id``, which
+# ADR-0041's v1 string-id profile makes a String or an Identifier, and both hold a
+# string (see ``_carries_aggregate_id``). An ``id: Integer`` renders a factory that
+# asks for an ``int``: a String reference rejects it outright, and an Identifier one
+# coerces it, leaving the event and the projection carrying ``"1"`` where the
+# aggregate's id is ``1``.
+_IDENTITY_SHAPES = (
+    ("standard", "String"),
+    ("identifier", "Identifier"),
+)
+
+# The length of the id the create factory assigns to the event's surfaced reference.
+# The identity default ADR-0041's v1 targets is a UUID4 string, which is 36
+# characters, so a bounded String holds it only from that bound up.
+_IDENTITY_LENGTH = 36
+
+
+class SliceGeneratorError(Exception):
+    """A fragment the generator cannot promote to a slice: an unsupported field
+    type, an event missing the surfaced identity field, or a read side that is only
+    half present or wired to the wrong participant. The message names the problem so
+    a caller (the CLI, the MCP tool, or the model parser) can surface it to a human."""
+
+
+@dataclass(frozen=True)
+class IRField:
+    """One field's IR entry, from ADR-0041's field vocabulary.
+
+    ``kind`` is ``"standard"``, ``"text"``, or ``"identifier"``; ``type`` is one of
+    the primitive type names in ``_BASE_ANNOTATION`` (``"String"``, ``"Integer"``,
+    ...). ``max_length`` is set only on ``String``/``Text``; ``identifier`` marks the
+    projection's identity key. ``required`` records the IR entry's required flag: the
+    grammar makes every authored field required, so callers set ``required=True`` on
+    them, and the projection's identity key is the one field that is not (it takes
+    the framework identity default), which is why the default is ``False``.
+
+    ``_validate`` pins the flag to those two shapes, so ``_declare`` does not have to
+    read it: an authored field renders as a plain annotation with no default, which is
+    already a required field, and the projection's key renders as
+    ``Identifier(identifier=True)``, which takes the identity default. What no
+    annotation form carries, bounded or not, is the non-empty floor Protean puts on a
+    required ``String`` (``min_length=1``, ``protean.fields.spec``): that floor comes
+    with the ``String(...)`` field factory, so both ``str`` and
+    ``Annotated[str, Field(max_length=N)]`` accept the empty string. That is the output
+    ``protean add`` has always written and this generator keeps it; changing it would
+    change every generated slice, and it would have to change both forms together to
+    stay consistent. ``Text`` fields use the field factory and do carry
+    ``required=True``.
+    """
+
+    kind: str
+    type: str
+    required: bool = False
+    max_length: int | None = None
+    identifier: bool = False
+
+
+@dataclass(frozen=True)
+class SliceElement:
+    """A named element (aggregate, command, event, or projection) and its fields."""
+
+    name: str
+    fields: Mapping[str, IRField]
+
+
+@dataclass(frozen=True)
+class SliceProjector:
+    """The read-side wiring: the projector's name and the grammar's ``for`` and
+    ``consumes`` terms, which name the projection and the event the projector reads."""
+
+    name: str
+    for_: str
+    consumes: str
+
+
+@dataclass(frozen=True)
+class SliceFragment:
+    """One slice: exactly one aggregate, command, and event, and an optional read
+    side (a projection and projector, together or not at all)."""
+
+    aggregate: SliceElement
+    command: SliceElement
+    event: SliceElement
+    projection: SliceElement | None = None
+    projector: SliceProjector | None = None
+    slug: str | None = None
+    """The aggregate's snake_case slug, when the caller has already normalized the
+    name it came from. Normalization happens upstream (ADR-0041), and a name can
+    normalize to a class and a slug that do not round-trip through each other:
+    ``aB`` gives the class ``AB`` and the slug ``a_b``, while ``AB`` on its own is
+    one word and gives ``ab``. A caller that normalized passes the slug it computed
+    so the generator uses the same one; otherwise the generator derives it from the
+    aggregate name."""
+
+    @classmethod
+    def from_mapping(cls, fragment: Mapping[str, Any]) -> SliceFragment:
+        """Read the nested mapping :func:`~protean.scaffold.parse_model` returns.
+
+        ADR-0041's parser emits the fragment as plain data: each element is
+        ``{"name": ..., "fields": {<name>: <IR field entry>}}`` and the projector is
+        ``{"name": ..., "for": ..., "consumes": ...}``. This is the one place that
+        maps that data onto the generator's types, so the two halves of the contract
+        meet here and ``generate_slice_plan(SliceFragment.from_mapping(parse_model(
+        text)), ...)`` is the whole parser-to-code path.
+
+        The mapping carries no slug: the parser normalizes the aggregate's authored
+        name into the fragment and derives the surfaced ``<slug>_id`` from that same
+        normalized name, which is what the generator derives too, so both agree
+        without one being passed.
+
+        Raises :class:`SliceGeneratorError` when the mapping is not a fragment: a
+        missing or misshapen element, a field entry that is not an IR field entry, or
+        a key the fragment does not have. What the fragment *says* is
+        :func:`generate_slice_plan`'s to check; this reads the shape only.
+        """
+        if not isinstance(fragment, Mapping):
+            raise SliceGeneratorError(
+                f"A fragment is a mapping of element name to element, not "
+                f"{type(fragment).__name__}."
+            )
+        unknown = sorted(str(key) for key in set(fragment) - _FRAGMENT_KEYS)
+        if unknown:
+            raise SliceGeneratorError(
+                f"The fragment carries {', '.join(repr(key) for key in unknown)}, "
+                f"which a slice-shaped fragment does not have. Its keys are "
+                f"{', '.join(sorted(_FRAGMENT_KEYS))}."
+            )
+        missing = [
+            key for key in ("aggregate", "command", "event") if key not in fragment
+        ]
+        if missing:
+            raise SliceGeneratorError(
+                f"The fragment has no {', '.join(repr(key) for key in missing)}. A "
+                "slice is exactly one aggregate, one command and one event, with an "
+                "optional read side."
+            )
+
+        projection = fragment.get("projection")
+        projector = fragment.get("projector")
+        return cls(
+            aggregate=_element_from_mapping("aggregate", fragment["aggregate"]),
+            command=_element_from_mapping("command", fragment["command"]),
+            event=_element_from_mapping("event", fragment["event"]),
+            projection=(
+                None
+                if projection is None
+                else _element_from_mapping("projection", projection)
+            ),
+            projector=(
+                None if projector is None else _projector_from_mapping(projector)
+            ),
+        )
+
+
+# The keys a slice-shaped fragment carries (ADR-0041). The read-side pair is
+# optional; the write side is not.
+_FRAGMENT_KEYS = frozenset({"aggregate", "command", "event", "projection", "projector"})
+
+
+# The keys an element and the projector carry (ADR-0041). Anything else describes
+# something the generator does not render, and dropping it would promote a fragment
+# that says less than the mapping the caller passed in.
+_ELEMENT_KEYS = frozenset({"name", "fields"})
+_PROJECTOR_KEYS = frozenset({"name", "for", "consumes"})
+
+
+def _element_from_mapping(role: str, data: object) -> SliceElement:
+    """One element of a fragment mapping, as the generator's :class:`SliceElement`."""
+    if not isinstance(data, Mapping):
+        raise SliceGeneratorError(
+            f"The fragment's {role} is {type(data).__name__}, not an element. Each "
+            "element is a mapping with a 'name' and a 'fields' map."
+        )
+    unknown = sorted(str(key) for key in set(data) - _ELEMENT_KEYS)
+    if unknown:
+        raise SliceGeneratorError(
+            f"The fragment's {role} carries "
+            f"{', '.join(repr(key) for key in unknown)}, which an element does not "
+            "have. An element is a mapping with a 'name' and a 'fields' map."
+        )
+    missing = [key for key in ("name", "fields") if key not in data]
+    if missing:
+        raise SliceGeneratorError(
+            f"The fragment's {role} has no "
+            f"{', '.join(repr(key) for key in missing)}. Each element is a mapping "
+            "with a 'name' and a 'fields' map."
+        )
+    name = data["name"]
+    if not isinstance(name, str):
+        raise SliceGeneratorError(
+            f"The fragment's {role} is named {name!r}, which is not a string. The "
+            "generator writes the name into the generated code as a class name."
+        )
+    fields = data["fields"]
+    if not isinstance(fields, Mapping):
+        raise SliceGeneratorError(
+            f"The {role} {name!r} carries a 'fields' of {type(fields).__name__}, not "
+            "a map of field name to IR field entry."
+        )
+    for field_name in fields:
+        if not isinstance(field_name, str):
+            raise SliceGeneratorError(
+                f"The {role} {name!r} carries a field keyed by {field_name!r}, which "
+                "is not a string. The generator writes a field name into the "
+                "generated code as written, and coercing the key would promote a "
+                "field the fragment does not name."
+            )
+    return SliceElement(
+        name=name,
+        fields={
+            field_name: _field_from_mapping(name, field_name, entry)
+            for field_name, entry in fields.items()
+        },
+    )
+
+
+def _field_from_mapping(element: str, field_name: object, entry: object) -> IRField:
+    """One IR field entry of a fragment mapping, as the generator's :class:`IRField`.
+
+    The entry's keys are the field's own: anything else means the fragment carries a
+    field shape the generator cannot render, and dropping it would render a field the
+    fragment does not describe.
+    """
+    if not isinstance(entry, Mapping):
+        raise SliceGeneratorError(
+            f"The field {field_name!r} on {element!r} carries "
+            f"{type(entry).__name__}, not an IR field entry."
+        )
+    # Read the keys as written. Coercing them with ``str`` would let a key that is
+    # not a string, but prints as one, land the value on a field of that name, and
+    # overwrite the entry the mapping really carries under it.
+    attributes: dict[str, Any] = {}
+    for key, value in entry.items():
+        if not isinstance(key, str):
+            raise SliceGeneratorError(
+                f"The field {field_name!r} on {element!r} carries an entry keyed by "
+                f"{key!r}, which is not a string. An entry's keys are the field's "
+                "own, and reading this one as a name it is not would describe a "
+                "field the fragment does not."
+            )
+        attributes[key] = value
+    try:
+        return IRField(**attributes)
+    except TypeError as exc:
+        raise SliceGeneratorError(
+            f"The field {field_name!r} on {element!r} does not carry an IR field "
+            f"entry ({exc}). An entry is a 'kind' and a 'type', with the optional "
+            "'required', 'max_length' and 'identifier'."
+        ) from exc
+
+
+def _projector_from_mapping(data: object) -> SliceProjector:
+    """The read-side wiring of a fragment mapping, as the generator's
+    :class:`SliceProjector`. The grammar's word for the projection a projector reads
+    is ``for``, which is a Python keyword, so the mapping's key is ``for`` and the
+    field it fills is ``for_``."""
+    if not isinstance(data, Mapping):
+        raise SliceGeneratorError(
+            f"The fragment's projector is {type(data).__name__}, not a projector. A "
+            "projector is a mapping with a 'name', a 'for' and a 'consumes'."
+        )
+    unknown = sorted(str(key) for key in set(data) - _PROJECTOR_KEYS)
+    if unknown:
+        raise SliceGeneratorError(
+            f"The fragment's projector carries "
+            f"{', '.join(repr(key) for key in unknown)}, which a projector does not "
+            "have. A projector is a mapping with a 'name', a 'for' and a 'consumes'."
+        )
+    missing = [key for key in ("name", "for", "consumes") if key not in data]
+    if missing:
+        raise SliceGeneratorError(
+            f"The fragment's projector has no "
+            f"{', '.join(repr(key) for key in missing)}. A projector names itself, "
+            "the projection it writes ('for') and the event it reads ('consumes')."
+        )
+    for key in ("name", "for", "consumes"):
+        if not isinstance(data[key], str):
+            raise SliceGeneratorError(
+                f"The fragment's projector carries {key!r} as {data[key]!r}, which "
+                "is not a string. The generator writes it into the generated code as "
+                "a class name."
+            )
+    return SliceProjector(
+        name=data["name"], for_=data["for"], consumes=data["consumes"]
+    )
+
+
+def generate_slice_plan(
+    fragment: SliceFragment, package: str, domain_var: str
+) -> ChangePlan:
+    """Promote *fragment* to a create-only :class:`ChangePlan` for one slice.
+
+    *package* is the project's import-root package and *domain_var* the variable the
+    composition root binds the ``Domain`` to, the pair
+    :func:`~protean.scaffold.add_plan._resolve_project` reads from ``domain.py``. The
+    aggregate's snake_case ``<slug>`` (the slice directory and the id-field prefix) is
+    derived from the aggregate name the way ``protean add`` derives it.
+
+    Returns a plan of :class:`CreateFileOperation`\\ s at the canonical ADR-0030 paths
+    under ``src/<package>/<slug>/``. Touches no files.
+
+    Raises :class:`SliceGeneratorError` when a name the generated code carries would
+    not work: an element name, field name, derived slug, or project package that is
+    not a usable Python name; two of the slice's classes sharing a name, counting the
+    read side the generator derives; a name that collides, in a module that carries it, with a
+    symbol that module imports, or with a local the generated methods read back; or a
+    field name reserved by the framework or by the code the generator writes. It also
+    raises when a field has an unsupported type, when a field's required flag is not
+    the one ADR-0041 gives it (every authored field required, the projection's key
+    not), when the aggregate declares an ``id`` field in a shape that cannot reach the
+    event's surfaced reference, when the event does not declare the
+    surfaced ``<slug>_id`` identity field in a shape that can hold the aggregate's id,
+    when the write side does not line up (the command's fields are not the
+    aggregate's, the event carries a non-id field the aggregate does not, or a shared
+    field is declared in one shape on the aggregate and another on the command or the
+    event),
+    when an explicit projection is not keyed on that field or carries a field the
+    event does not, and when the read side is only half present or wired to a
+    participant the slice does not define.
+    """
+    # The slug comes off the aggregate name before ``_validate`` runs, and
+    # ``_slug_for`` reads that name character by character. A caller can build a
+    # ``SliceElement`` directly, so the name is settled as a string here; otherwise a
+    # non-string one raises from the split rather than as the generator's own error.
+    name = _check_string(fragment.aggregate.name, "The aggregate name")
+    # ``None`` is the documented absence value, so an explicit override is used as
+    # given: an empty one is a bad slug, not a request to derive one, and the slug
+    # goes into paths, locals and field names.
+    slug = _slug_for(name) if fragment.slug is None else fragment.slug
+    _validate(fragment, slug, package, domain_var)
+
+    projection = fragment.projection or _derive_projection(fragment.event, name, slug)
+    projector = fragment.projector or _derive_projector(
+        name, projection.name, fragment.event.name
+    )
+
+    files: tuple[tuple[str, str, str], ...] = (
+        ("__init__.py", _render_init(name), OWNERSHIP_HAND_OWNED),
+        (
+            "aggregate_base.py",
+            _render_aggregate_base(name, slug, fragment.aggregate, fragment.event),
+            OWNERSHIP_GENERATED,
+        ),
+        (
+            "aggregate.py",
+            _render_aggregate(name, package, domain_var),
+            OWNERSHIP_HAND_OWNED,
+        ),
+        (
+            "commands.py",
+            _render_commands(name, slug, package, domain_var, fragment.command),
+            OWNERSHIP_HAND_OWNED,
+        ),
+        (
+            "events.py",
+            _render_events(name, slug, package, domain_var, fragment.event),
+            OWNERSHIP_HAND_OWNED,
+        ),
+        (
+            "command_handlers.py",
+            _render_command_handlers(
+                name, slug, package, domain_var, fragment.aggregate, fragment.command
+            ),
+            OWNERSHIP_HAND_OWNED,
+        ),
+        (
+            "projection.py",
+            _render_projection(name, slug, package, domain_var, projection),
+            OWNERSHIP_HAND_OWNED,
+        ),
+        (
+            "projectors.py",
+            _render_projectors(
+                name, slug, package, domain_var, projection, projector, fragment.event
+            ),
+            OWNERSHIP_HAND_OWNED,
+        ),
+    )
+
+    base = f"src/{package}/{slug}"
+    operations = tuple(
+        CreateFileOperation(
+            path=f"{base}/{filename}", content=content, ownership=ownership
+        )
+        for filename, content, ownership in files
+    )
+
+    return ChangePlan(
+        operations=operations,
+        description=(
+            f"Add the {name} aggregate slice "
+            f"(aggregate, command, event, command handler, projector, projection)"
+        ),
+    )
+
+
+def split_words(name: str) -> list[str]:
+    """Split an identifier into the words its generated names are built from.
+
+    Underscores separate words, and so does a case change, so ``order_item``,
+    ``orderItem`` and ``OrderItem`` all split into two words and render the same
+    class ``OrderItem`` and the same slug ``order_item``. A run of capitals stays
+    one word except for the last capital, which starts the next one (``XMLHttp``
+    gives ``["XML", "Http"]``). The rest of each word keeps its original casing,
+    which is what keeps ``HTTPServer`` from becoming ``HttpServer``.
+
+    Public within the package: ``add`` splits the name it is given with this same
+    function, so its class name and slug match the ones the generator derives.
+    """
+    words: list[str] = []
+    current = ""
+    for index, char in enumerate(name):
+        if char == "_":
+            if current:
+                words.append(current)
+                current = ""
+            continue
+        if char.isupper() and current:
+            follows_lower = not current[-1].isupper()
+            starts_word = index + 1 < len(name) and name[index + 1].islower()
+            if follows_lower or starts_word:
+                words.append(current)
+                current = ""
+        current += char
+    if current:
+        words.append(current)
+    return words
+
+
+def _slug_for(name: str) -> str:
+    """The snake_case slug for an aggregate name, e.g. ``OrderItem`` -> ``order_item``."""
+    return "_".join(word.lower() for word in split_words(name))
+
+
+@cache
+def _reserved_field_names(role: str) -> frozenset[str]:
+    """The names a field on *role* may not take: the nested options class, every
+    public member of the element's framework base class, and, on the aggregate, the
+    symbols the generated create factory occupies.
+
+    Cached: the base classes are fixed at import, so the set for a role never
+    changes, and ``_validate`` asks for it once per role per element."""
+    reserved = {_OPTIONS_CLASS} | {
+        member for member in dir(_BASE_CLASSES[role]) if not member.startswith("_")
+    }
+    if role == "aggregate":
+        reserved |= _AGGREGATE_GENERATED_NAMES
+    return frozenset(reserved)
+
+
+def _check_string(value: object, what: str) -> str:
+    """Reject a name that is not a string, and hand it back as one.
+
+    Every name the generator handles is written into the generated code verbatim, and
+    a direct caller of the exported generator can pass anything. Checking the type
+    before calling a string method keeps a malformed name inside the generator's
+    error contract instead of leaking an ``AttributeError`` or a ``TypeError``."""
+    if not isinstance(value, str):
+        raise SliceGeneratorError(
+            f"{what} {value!r} is not a string. The generator writes it into the "
+            "generated code as written, so it has to be a valid Python identifier "
+            "that is not a keyword."
+        )
+    return value
+
+
+def _check_python_name(value: object, what: str) -> str:
+    """Reject a name the generator cannot write into the generated code verbatim.
+
+    Returns the name, so a caller that checks it further reads a value already
+    narrowed to a string."""
+    name = _check_string(value, what)
+    if not name.isidentifier() or keyword.iskeyword(name):
+        raise SliceGeneratorError(
+            f"{what} {name!r} is not a usable Python name. The generator writes it "
+            "into the generated code as written, so it must be a valid Python "
+            "identifier that is not a keyword."
+        )
+    return name
+
+
+def _is_positive_int(value: object) -> bool:
+    """Whether a constraint value is a positive integer. :class:`IRField` is a plain
+    dataclass, so it does not enforce its annotations: a fragment can carry a float or
+    a string bound, and ``bool`` is an ``int`` that would render as ``max_length=True``.
+    Checking the value here keeps every bad bound inside the generator's error
+    contract."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
+def _carries_aggregate_id(ir_field: IRField) -> bool:
+    """Whether a field can hold the aggregate's id. The generated create factory
+    assigns the aggregate's id, a UUID string under the identity default ADR-0041's
+    v1 targets, so the field has to be an ``Identifier`` or a ``String``. Any other
+    type rejects a string outright. ADR-0041 allows a ``max_length`` on any string
+    field, and a bound that fits the id is fine; one shorter than it is not."""
+    if ir_field.kind == "identifier":
+        return ir_field.type == "Identifier"
+    if ir_field.type != "String":
+        return False
+    return ir_field.max_length is None or ir_field.max_length >= _IDENTITY_LENGTH
+
+
+def _validate(
+    fragment: SliceFragment, slug: str, package: str, domain_var: str
+) -> None:
+    """Reject a fragment that would render code that does not compile or verify."""
+    id_name = f"{slug}_id"
+
+    _validate_package(package)
+    # The slug check below puts the domain variable in a set, and a non-string one
+    # can be unhashable, so its type is settled first. Whether the name itself works
+    # is ``_validate_domain_var``'s call, once the modules are known.
+    _check_string(domain_var, "This project's domain variable")
+
+    # A caller that normalized upstream supplies the slug, so say which one is bad.
+    slug_label = (
+        "The slug supplied for the aggregate"
+        if fragment.slug is not None
+        else "The slug derived from the aggregate name"
+    )
+    _check_python_name(slug, f"{slug_label} {fragment.aggregate.name!r}:")
+    if slug == fragment.aggregate.name:
+        raise SliceGeneratorError(
+            f"The aggregate is named {fragment.aggregate.name!r}, which is also the "
+            f"slug it derives. The generated command handler then reads the aggregate "
+            f"class and binds the local on one line, {slug!r} = {slug!r}.create(...), "
+            "so the read resolves to the local. Give the aggregate its class name "
+            f"({''.join(word[:1].upper() + word[1:] for word in split_words(fragment.aggregate.name))!r})."
+        )
+    if slug in {_HANDLER_LOCAL, domain_var}:
+        raise SliceGeneratorError(
+            f"The aggregate name {fragment.aggregate.name!r} derives the slug "
+            f"{slug!r}, which the generated command handler already binds: it holds "
+            f"the repository in {_HANDLER_LOCAL!r} and reaches the domain through "
+            f"{domain_var!r}. The handler would then call the wrong object. Choose "
+            "another aggregate name."
+        )
+
+    elements: list[tuple[str, SliceElement]] = [
+        ("aggregate", fragment.aggregate),
+        ("command", fragment.command),
+        ("event", fragment.event),
+    ]
+    if fragment.projection is not None:
+        elements.append(("projection", fragment.projection))
+
+    # (role, element, what the message calls it). The derived projection mirrors the
+    # event's fields, so when the fragment omits its read side those names have to
+    # clear the projection's reserved set as well as the event's: ``defaults`` is free
+    # on an event and a member of BaseProjection.
+    checks = [(role, element, f"generated {role}") for role, element in elements]
+    if fragment.projection is None:
+        checks.append(
+            ("projection", fragment.event, "projection the generator derives from it")
+        )
+
+    for role, element, label in checks:
+        reserved = _reserved_field_names(role)
+        for field_name, ir_field in element.fields.items():
+            _check_python_name(field_name, f"Field name on {element.name!r}:")
+            if field_name.startswith("_"):
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} starts with an "
+                    "underscore. The framework and pydantic keep that namespace for "
+                    "their own attributes, so a field cannot use it."
+                )
+            if field_name in reserved:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} is a reserved name: "
+                    f"the {label} already uses it, so the field would shadow it and "
+                    "the slice would not work. Rename the field."
+                )
+            # The two flags drive the guards below and the declaration form
+            # ``_declare`` writes, and ``IRField`` is a plain dataclass, so a fragment
+            # can carry a non-boolean that reads truthy. Checking them first keeps
+            # ``required="false"`` from rendering a required field, and a truthy
+            # non-boolean ``identifier`` from becoming the projection's key.
+            for flag_name, flag in (
+                ("required", ir_field.required),
+                ("identifier", ir_field.identifier),
+            ):
+                if not isinstance(flag, bool):
+                    raise SliceGeneratorError(
+                        f"Field {field_name!r} on {element.name!r} sets {flag_name} "
+                        f"to {flag!r}. ADR-0041 takes a true or false flag, and the "
+                        "generator reads it to decide the field's declaration form, "
+                        f"so a {type(flag).__name__} would render a field the "
+                        "fragment does not describe."
+                    )
+            if ir_field.identifier and role != "projection":
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} is marked as an "
+                    "identity key, which only a projection has (ADR-0041). On any "
+                    "other element the flag has no meaning, and when the generator "
+                    "derives the read side it would carry across and give the "
+                    "projection a second key. Drop the flag."
+                )
+            if ir_field.identifier and ir_field.required:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} is the projection's "
+                    "identity key and is also marked required. The key takes the "
+                    "framework identity default, so ADR-0041 leaves it without the "
+                    "flag and the generator renders it without one. Drop the flag."
+                )
+            if not ir_field.identifier and not ir_field.required:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} is not marked "
+                    "required. Every authored field is required (ADR-0041), and the "
+                    "generator renders it that way, so an optional field would come "
+                    "out required without a word. Mark it required."
+                )
+            # ``IRField`` is a plain dataclass, so a fragment can carry a type that
+            # is not even a string. Checking that first keeps the lookup from
+            # raising ``TypeError`` on an unhashable one instead of the generator's
+            # own error.
+            if (
+                not isinstance(ir_field.type, str)
+                or ir_field.type not in _BASE_ANNOTATION
+            ):
+                supported = ", ".join(sorted(_BASE_ANNOTATION))
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} has unsupported type "
+                    f"{ir_field.type!r}. Supported types: {supported}."
+                )
+            expected_kind = _KIND_FOR_TYPE[ir_field.type]
+            if ir_field.kind != expected_kind:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} pairs kind "
+                    f"{ir_field.kind!r} with type {ir_field.type!r}. ADR-0041 pairs "
+                    f"{ir_field.type!r} with kind {expected_kind!r}, and the "
+                    "generator reads both, so the pair would render a field the "
+                    "fragment does not describe."
+                )
+            if ir_field.max_length is not None and ir_field.type not in _BOUNDED_TYPES:
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} sets max_length on a "
+                    f"{ir_field.type!r}, which takes no length bound. The renderers "
+                    "would drop it. Remove it, or declare the field as a String or "
+                    "Text."
+                )
+            if ir_field.max_length is not None and not _is_positive_int(
+                ir_field.max_length
+            ):
+                raise SliceGeneratorError(
+                    f"Field {field_name!r} on {element.name!r} sets max_length to "
+                    f"{ir_field.max_length!r}. ADR-0041 takes a positive integer, "
+                    "which is what the renderers write into the generated field."
+                )
+
+    if (fragment.projection is None) != (fragment.projector is None):
+        raise SliceGeneratorError(
+            "A slice's read side is a projection and a projector together, or "
+            "neither. Provide both or omit both; when both are omitted the generator "
+            "derives the default read side from the event."
+        )
+
+    modules = _generated_modules(fragment, slug)
+    _validate_domain_var(domain_var, modules)
+    _validate_names(fragment, elements, domain_var, modules, slug)
+
+    if id_name in fragment.aggregate.fields:
+        raise SliceGeneratorError(
+            f"The aggregate {fragment.aggregate.name!r} declares {id_name!r}, which "
+            "is the name the event uses for the aggregate's own id. The generated "
+            f"create factory raises the event with {id_name}={slug}.id, so the "
+            "authored field's value would be dropped without a word. Rename the "
+            "field, or drop it and let the framework identity stand."
+        )
+
+    aggregate_id = fragment.aggregate.fields.get("id")
+    if aggregate_id is not None:
+        if (aggregate_id.kind, aggregate_id.type) not in _IDENTITY_SHAPES:
+            raise SliceGeneratorError(
+                f"The aggregate {fragment.aggregate.name!r} declares 'id' as a "
+                f"{aggregate_id.type}. 'id' is the aggregate's own identity, and the "
+                "generated create factory passes it straight to the event's "
+                f"{id_name!r}, which holds a string (ADR-0041). A Date or a Float id "
+                "is rejected when the aggregate is built, an Integer one does not "
+                "reach the event as the integer it asks for, and any other shape is "
+                "dropped without a word. Declare 'id' as a String or an Identifier, "
+                "or drop it and let the framework identity stand."
+            )
+        if aggregate_id.max_length is not None:
+            raise SliceGeneratorError(
+                f"The aggregate {fragment.aggregate.name!r} bounds its 'id' field at "
+                f"{aggregate_id.max_length}. The registered subclass takes 'id' from "
+                "the framework identity, which replaces the declaration, so the bound "
+                "would be dropped without a word. Drop the bound."
+            )
+
+    event_id_field = fragment.event.fields.get(id_name)
+    if event_id_field is None:
+        raise SliceGeneratorError(
+            f"The event {fragment.event.name!r} must declare the {id_name!r} field "
+            "that carries the aggregate's identity, so the generated create factory "
+            f"can set it from the aggregate's id. Add a {id_name!r} field to the event."
+        )
+    if not _carries_aggregate_id(event_id_field):
+        raise SliceGeneratorError(
+            f"The event {fragment.event.name!r} declares {id_name!r} as a field that "
+            "cannot hold the aggregate's id, which the generated create factory "
+            f"assigns to it. Declare {id_name!r} as an Identifier, or as a String "
+            f"with no max_length or one of at least {_IDENTITY_LENGTH}."
+        )
+    # The bound the check above allows is wide enough for the identity default, the
+    # UUID string ADR-0041's v1 targets. It is wide enough for nothing else: an
+    # aggregate that declares its own ``id`` renders a create factory that takes the
+    # id from its caller, and a value past the bound is built onto the aggregate and
+    # then rejected when the factory raises the event.
+    if aggregate_id is not None and event_id_field.max_length is not None:
+        raise SliceGeneratorError(
+            f"The event {fragment.event.name!r} bounds {id_name!r} at "
+            f"{event_id_field.max_length}, and the aggregate "
+            f"{fragment.aggregate.name!r} declares its own 'id', so the id comes "
+            "from whoever calls the generated create factory rather than from the "
+            "framework identity. An id longer than the bound is built onto the "
+            f"aggregate and then rejected when the event is raised. Drop the bound "
+            f"on {id_name!r}, or drop the aggregate's 'id' and let the framework "
+            "identity stand."
+        )
+
+    # The write side has to line up field for field, because the generated code
+    # dereferences one element through another: the handler calls ``create()`` with
+    # every aggregate field read off the command, and the create factory raises the
+    # event with every event field read off the aggregate. A name on one side and not
+    # the other renders an attribute read that fails the moment the slice runs.
+    missing = sorted(set(fragment.aggregate.fields) - set(fragment.command.fields))
+    if missing:
+        raise SliceGeneratorError(
+            f"The command {fragment.command.name!r} does not carry "
+            f"{', '.join(repr(key) for key in missing)}, which the aggregate "
+            f"{fragment.aggregate.name!r} declares. The generated handler calls "
+            f"{fragment.aggregate.name}.create() with every aggregate field read off "
+            "the command, so the slice would fail the moment the command is "
+            "dispatched. Add the field to the command, or drop it from the aggregate."
+        )
+    unused = sorted(set(fragment.command.fields) - set(fragment.aggregate.fields))
+    if unused:
+        raise SliceGeneratorError(
+            f"The command {fragment.command.name!r} carries "
+            f"{', '.join(repr(key) for key in unused)}, which the aggregate "
+            f"{fragment.aggregate.name!r} does not declare. The generated handler "
+            f"passes only the aggregate's fields to {fragment.aggregate.name}"
+            ".create(), so the value the command carries would be dropped without a "
+            "word. Add the field to the aggregate, or drop it from the command."
+        )
+    _validate_shared_shapes(
+        fragment.command,
+        fragment.aggregate,
+        fragment.command.fields,
+        "The generated handler reads the field off the command and passes it to "
+        f"{fragment.aggregate.name}.create(), which takes the shape the aggregate "
+        "declares.",
+    )
+    unknown_on_event = sorted(
+        key
+        for key in fragment.event.fields
+        if key != id_name and key not in fragment.aggregate.fields
+    )
+    if unknown_on_event:
+        raise SliceGeneratorError(
+            f"The event {fragment.event.name!r} carries "
+            f"{', '.join(repr(key) for key in unknown_on_event)}, which the aggregate "
+            f"{fragment.aggregate.name!r} does not declare. The generated create "
+            "factory raises the event with every field other than "
+            f"{id_name!r} read off the aggregate, so the slice would fail the moment "
+            "the aggregate is created. Add the field to the aggregate, or drop it "
+            "from the event."
+        )
+    _validate_shared_shapes(
+        fragment.event,
+        fragment.aggregate,
+        (key for key in fragment.event.fields if key != id_name),
+        "The generated create factory reads the field off the aggregate and raises "
+        "the event with it, so the event takes whatever the aggregate holds.",
+    )
+
+    if fragment.projector is not None and fragment.projection is not None:
+        _validate_projection_key(fragment.projection, id_name)
+        _validate_projection_fields(fragment.projection, fragment.event, id_name)
+        if fragment.projector.for_ != fragment.projection.name:
+            raise SliceGeneratorError(
+                f"The projector's 'for' names {fragment.projector.for_!r}, but the "
+                f"slice's projection is {fragment.projection.name!r}. They must match."
+            )
+        if fragment.projector.consumes != fragment.event.name:
+            raise SliceGeneratorError(
+                f"The projector 'consumes' {fragment.projector.consumes!r}, but the "
+                f"slice's event is {fragment.event.name!r}. They must match."
+            )
+
+
+@dataclass(frozen=True)
+class _GeneratedModule:
+    """One module the generator writes, described by the names it binds at module
+    level: *imported* is what it reads from outside the slice (its imports, the
+    annotations it writes, whether on a field declaration or on a method, and the
+    builtins it reads by bare name), *classes* the slice's own classes it defines or
+    imports, each with the role the error messages call it, and *imports_domain*
+    whether it imports the project's domain variable."""
+
+    filename: str
+    imported: frozenset[str]
+    classes: tuple[tuple[str, str], ...]
+    imports_domain: bool
+
+
+def _field_level_names(fields: Mapping[str, IRField]) -> frozenset[str]:
+    """The names a module binds or reads to declare *fields*: the field factories and
+    typing helpers it imports, and the annotations the declarations read.
+
+    Each field contributes only the names its own form in :func:`_declare` writes. An
+    identifier field renders ``Identifier(...)`` and a text field ``Text(...)``, and
+    neither reads a plain annotation, so a module whose fields are all of those two
+    forms never mentions ``str`` and leaves that name free.
+    """
+    names: set[str] = set()
+    for ir_field in fields.values():
+        if ir_field.kind == "identifier":
+            names.add("Identifier")
+        elif ir_field.type == "Text":
+            names.add("Text")
+        elif ir_field.type == "String" and ir_field.max_length is not None:
+            names.update({"Annotated", "Field", "str"})
+        else:
+            names.add(_BASE_ANNOTATION[ir_field.type])
+    return frozenset(names)
+
+
+def _create_parameter_names(fields: Mapping[str, IRField]) -> frozenset[str]:
+    """The annotations the generated ``create`` factory's parameters read. The factory
+    takes every field as a plain value, so it uses the field's base annotation whatever
+    form the field itself declares: an ``Identifier`` field declares
+    ``Identifier(...)`` but arrives as ``str``."""
+    return frozenset(_BASE_ANNOTATION[ir_field.type] for ir_field in fields.values())
+
+
+def _generated_modules(
+    fragment: SliceFragment, slug: str
+) -> tuple[_GeneratedModule, ...]:
+    """The slice's modules and the names each of them binds.
+
+    A name is only taken over where both bindings land in the same module, so the
+    collision check is per module and not across the fragment. ``BaseAggregate`` is
+    bound in ``aggregate_base.py``, which is the one generated module that never
+    imports the project's domain, so a project binding its domain to
+    ``BaseAggregate`` renders fine; an event of that name does not, because that
+    module imports the event as well.
+
+    The names are per fragment too: a slice with no date field imports no ``date``,
+    so a project that binds its domain to ``date`` renders fine and must keep
+    working.
+    """
+    name = fragment.aggregate.name
+    projection = fragment.projection or _derive_projection(fragment.event, name, slug)
+    aggregate_entry = ("aggregate", name)
+    base_entry = ("aggregate base", f"{name}Base")
+    command_entry = ("command", fragment.command.name)
+    event_entry = ("event", fragment.event.name)
+    handler_entry = ("command handler", f"{name}CommandHandler")
+    projection_entry = (
+        ("projection" if fragment.projection is not None else "derived projection"),
+        projection.name,
+    )
+    projector_entry = (
+        ("projector", fragment.projector.name)
+        if fragment.projector is not None
+        else ("derived projector", _derived_projector_name(name))
+    )
+
+    return (
+        _GeneratedModule(
+            "aggregate_base.py",
+            # ``classmethod`` is a builtin, not an import, but the module reads it by
+            # bare name to decorate the create factory, so a module-level binding of
+            # that name takes it over: ``from .events import classmethod`` leaves
+            # ``@classmethod`` calling the event class, and importing the generated
+            # base raises instead of defining the aggregate.
+            frozenset({"BaseAggregate", "Self", "classmethod"})
+            | _field_level_names(fragment.aggregate.fields)
+            | _create_parameter_names(fragment.aggregate.fields),
+            (base_entry, event_entry),
+            imports_domain=False,
+        ),
+        _GeneratedModule(
+            "aggregate.py",
+            frozenset(),
+            (aggregate_entry, base_entry),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "commands.py",
+            _field_level_names(fragment.command.fields),
+            (command_entry,),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "events.py",
+            _field_level_names(fragment.event.fields),
+            (event_entry,),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "command_handlers.py",
+            # The handler method returns the new aggregate's id, so the module reads
+            # ``str`` as its return annotation even though it declares no fields.
+            frozenset({"handle", "str"}),
+            (handler_entry, aggregate_entry, command_entry),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "projection.py",
+            _field_level_names(projection.fields),
+            (projection_entry,),
+            imports_domain=True,
+        ),
+        _GeneratedModule(
+            "projectors.py",
+            frozenset({"on"}),
+            (projector_entry, aggregate_entry, event_entry, projection_entry),
+            imports_domain=True,
+        ),
+    )
+
+
+def _check_public_name(value: object, what: str) -> None:
+    """A class name or the domain variable.
+
+    ``str.isidentifier`` accepts a double-underscore name, and the generated code
+    reads these names inside a class body, where two rules bite. Python mangles a
+    ``__name`` reference to ``_Class__name``, so the read misses. And the compiler
+    binds ``__class__`` in any method that mentions it, so an event named
+    ``__class__`` has the create factory raise the enclosing aggregate class instead
+    of the event.
+
+    A single leading underscore is fine and stays allowed: ``_domain = Domain(...)``
+    is an ordinary private composition root, and ``from pkg.domain import _domain``
+    with ``@_domain.aggregate`` renders and runs.
+    """
+    name = _check_python_name(value, what)
+    if name.startswith("__"):
+        raise SliceGeneratorError(
+            f"{what} {name!r} starts with two underscores. The generated code reads "
+            "it inside a class body, where Python mangles the reference to "
+            f"``_Class{name}`` and never finds it, and where a name such as "
+            "``__class__`` is already bound to something else."
+        )
+
+
+def _validate_package(package: object) -> None:
+    """The project's import root. It is the ``src/<package>/`` the slice is written
+    under and the first segment of every ``from <package>.<module> import ...`` line
+    the generated modules carry, so it has to be one usable Python name. ``add`` reads
+    it off the single ``src/<package>/domain.py`` it finds, which always is one; a
+    direct caller of the exported generator can pass anything, and a value such as
+    ``../outside`` or ``a.b`` would plan files outside the package and write an import
+    that does not parse."""
+    _check_python_name(package, "This project's package")
+
+
+def _validate_domain_var(
+    domain_var: str, modules: tuple[_GeneratedModule, ...]
+) -> None:
+    """Most of the generated modules import the project's domain variable, and the
+    handler and projector read it inside their methods. A domain variable that takes
+    one of those methods' local names, or a name imported by a module that imports
+    the domain, is read as the local or the other import instead: a project whose
+    composition root binds ``repo = Domain(...)`` renders
+    ``repo = repo.repository_for(...)``, which raises ``UnboundLocalError``."""
+    _check_public_name(domain_var, "This project's domain variable")
+    if domain_var in _HANDLER_LOCALS | _PROJECTOR_LOCALS:
+        raise SliceGeneratorError(
+            f"This project binds its domain to {domain_var!r}, which the generated "
+            "command handler and projector bind as a local or a parameter. The "
+            "generated code reads the domain by that name, so it would get the local "
+            "instead. Rename the domain variable in the composition root."
+        )
+    for module in modules:
+        if module.imports_domain and domain_var in module.imported:
+            raise SliceGeneratorError(
+                f"This project binds its domain to {domain_var!r}, which the "
+                f"generated {module.filename} already reads under that name, as an "
+                "import or as an annotation. Importing the domain would take "
+                "the name over in that module. Rename the domain variable in the "
+                "composition root."
+            )
+
+
+def _validate_names(
+    fragment: SliceFragment,
+    elements: list[tuple[str, SliceElement]],
+    domain_var: str,
+    modules: tuple[_GeneratedModule, ...],
+    slug: str,
+) -> None:
+    """Check the class names the slice defines.
+
+    Each has to be a usable Python name, has to stay clear of the names imported by
+    the modules that carry it, and has to be distinct from the others: they all land
+    in one package, and the command handler and projector import several of them into
+    one module. The read side counts even when the fragment omits it, because the
+    generator then derives a projection and projector that carry names of their own.
+    """
+    for role, element in elements:
+        _check_public_name(element.name, f"The {role} name")
+    if fragment.projector is not None:
+        _check_public_name(fragment.projector.name, "The projector name")
+
+    defined = [(role, element.name) for role, element in elements]
+    defined.append(("aggregate base", f"{fragment.aggregate.name}Base"))
+    defined.append(("command handler", f"{fragment.aggregate.name}CommandHandler"))
+    if fragment.projector is not None:
+        defined.append(("projector", fragment.projector.name))
+    if fragment.projection is None and fragment.projector is None:
+        defined.append(
+            ("derived projection", _derived_projection_name(fragment.aggregate.name))
+        )
+        defined.append(
+            ("derived projector", _derived_projector_name(fragment.aggregate.name))
+        )
+
+    # Every one of the slice's classes is defined or imported in a module that also
+    # imports the domain, so a class named for the domain variable always collides.
+    for role, class_name in defined:
+        if class_name == domain_var:
+            raise SliceGeneratorError(
+                f"The slice's {role} is named {class_name!r}, which is also this "
+                "project's domain variable. The module that carries the class imports "
+                "the domain under that name, so one would take the name over from the "
+                "other. Rename it."
+            )
+
+    # A name is only taken over where both bindings land in the same module, so the
+    # check runs per module: a command named ``BaseAggregate`` is fine, because the
+    # module that imports the core ``BaseAggregate`` does not import the command.
+    for module in modules:
+        for role, class_name in module.classes:
+            if class_name in module.imported:
+                raise SliceGeneratorError(
+                    f"The slice's {role} is named {class_name!r}, which the generated "
+                    f"{module.filename} already reads under that name, as an "
+                    "import, an annotation or a builtin. The class would take the "
+                    "name over in that module, so the slice would inherit from, "
+                    "register against, be keyed on, be typed as, or be decorated "
+                    "with the wrong object. Rename it."
+                )
+
+    if fragment.aggregate.name in _HANDLER_LOCALS:
+        raise SliceGeneratorError(
+            f"The slice's aggregate is named {fragment.aggregate.name!r}, which the "
+            "generated command handler binds inside the method that creates it. The "
+            "method reads the aggregate class by that name, to call ``create`` on it "
+            "and to ask the domain for its repository, so it would get the local "
+            "instead. Rename the aggregate."
+        )
+
+    projection_name = (
+        fragment.projection.name
+        if fragment.projection is not None
+        else _derived_projection_name(fragment.aggregate.name)
+    )
+    if projection_name in _PROJECTOR_LOCALS:
+        raise SliceGeneratorError(
+            f"The slice's projection is named {projection_name!r}, which the "
+            "generated projector binds inside the method that builds the projection. "
+            "The method reads the projection class by that name, so it would get the "
+            "local instead. Rename the projection."
+        )
+
+    aggregate_base_locals = (
+        _AGGREGATE_BASE_LOCALS | {slug} | set(fragment.aggregate.fields)
+    )
+    if fragment.event.name in aggregate_base_locals:
+        raise SliceGeneratorError(
+            f"The slice's event is named {fragment.event.name!r}, which the generated "
+            "create factory already binds as a local or a parameter. The factory "
+            "reads the event class by that name to raise it, so it would get the "
+            "local instead. Rename the event."
+        )
+
+    seen: dict[str, str] = {}
+    for role, class_name in defined:
+        if class_name in seen:
+            raise SliceGeneratorError(
+                f"The slice defines {class_name!r} twice, as its {seen[class_name]} "
+                f"and as its {role}. Each of the slice's classes needs its own name."
+            )
+        seen[class_name] = role
+
+
+def _validate_shared_shapes(
+    element: SliceElement,
+    aggregate: SliceElement,
+    field_names: Iterable[str],
+    copies: str,
+) -> None:
+    """Reject a field two elements of the write side share by name but declare in two
+    shapes. The generated code copies the value across without converting it, so a
+    field declared ``String`` on one and ``Integer`` on the other, or bounded
+    differently, renders an assignment the receiving element rejects when the slice
+    runs, or one that quietly coerces the value into something the fragment does not
+    describe."""
+    for field_name in sorted(field_names):
+        if element.fields[field_name] != aggregate.fields[field_name]:
+            raise SliceGeneratorError(
+                f"{element.name!r} declares {field_name!r} in a different shape from "
+                f"the aggregate {aggregate.name!r}. {copies} Declare the field the "
+                "same way on both."
+            )
+
+
+def _validate_projection_fields(
+    projection: SliceElement, event: SliceElement, id_name: str
+) -> None:
+    """A projection's non-key fields are drawn from the event by name and carry the
+    event field's type and constraints (ADR-0041). The generated projector copies each
+    one straight off the event, so a field the event does not carry, or one whose
+    shape differs, fails when the projector handles the event."""
+    for field_name, ir_field in projection.fields.items():
+        if field_name == id_name:
+            continue
+        event_field = event.fields.get(field_name)
+        if event_field is None:
+            raise SliceGeneratorError(
+                f"The projection {projection.name!r} declares {field_name!r}, which "
+                f"the event {event.name!r} does not carry. The generated projector "
+                f"reads every projection field off the event, so handling "
+                f"{event.name!r} would fail. Drop the field or add it to the event."
+            )
+        if ir_field != event_field:
+            raise SliceGeneratorError(
+                f"The projection {projection.name!r} declares {field_name!r} in a "
+                f"different shape from the event {event.name!r}, which the projector "
+                "copies it from. Declare it the way the event does."
+            )
+
+
+def _validate_projection_key(projection: SliceElement, id_name: str) -> None:
+    """A projection's identity is exactly one key, the surfaced ``<slug>_id``
+    (ADR-0041). The framework rejects a projection with no identifier, and a key of
+    any other name leaves the projection keyed on the wrong field."""
+    keys = sorted(
+        field_name
+        for field_name, ir_field in projection.fields.items()
+        if ir_field.identifier
+    )
+    if keys != [id_name]:
+        found = (
+            f"marks {', '.join(repr(key) for key in keys)}" if keys else "marks none"
+        )
+        raise SliceGeneratorError(
+            f"The projection {projection.name!r} must mark exactly one identity key, "
+            f"its {id_name!r} field, but {found}. The framework rejects a projection "
+            "without an identifier, and any other key reads the projection on the "
+            "wrong field."
+        )
+
+    key_field = projection.fields[id_name]
+    if key_field.kind != "identifier" or not _carries_aggregate_id(key_field):
+        raise SliceGeneratorError(
+            f"The projection {projection.name!r} declares its {id_name!r} key as a "
+            "field that cannot hold the aggregate's id, which the projector copies "
+            f"from the event. Declare {id_name!r} as an Identifier."
+        )
+
+
+def _derived_projection_name(aggregate_name: str) -> str:
+    """The name the generator gives a read side the fragment omits."""
+    return f"{aggregate_name}Summary"
+
+
+def _derived_projector_name(aggregate_name: str) -> str:
+    """The name the generator gives a projector the fragment omits."""
+    return f"{aggregate_name}Projector"
+
+
+def _derive_projection(event: SliceElement, name: str, slug: str) -> SliceElement:
+    """The default projection for a write-side-only fragment: the event's fields with
+    the surfaced ``<slug>_id`` promoted to the projection's ``Identifier`` key."""
+    id_name = f"{slug}_id"
+    fields: dict[str, IRField] = {}
+    for field_name, ir_field in event.fields.items():
+        if field_name == id_name:
+            fields[field_name] = IRField(
+                kind="identifier", type="Identifier", identifier=True
+            )
+        else:
+            fields[field_name] = ir_field
+    return SliceElement(name=_derived_projection_name(name), fields=fields)
+
+
+def _derive_projector(
+    name: str, projection_name: str, event_name: str
+) -> SliceProjector:
+    """The default projector for a write-side-only fragment: it reads the event into
+    the derived projection."""
+    return SliceProjector(
+        name=_derived_projector_name(name), for_=projection_name, consumes=event_name
+    )
+
+
+# ---------------------------------------------------------------------------
+# Per-field declaration forms
+# ---------------------------------------------------------------------------
+def _declare(ir_field: IRField) -> str:
+    """The class-attribute annotation for one field (ADR-0041's per-field forms).
+
+    A ``String`` with a ``max_length`` becomes ``Annotated[str, Field(max_length=N)]``
+    and a plain ``String`` becomes ``str``; a projection's identity key becomes
+    ``Identifier(identifier=True)`` and any other identifier reference
+    ``Identifier(required=True)``; ``Text`` uses the ``Text`` field factory; and every
+    other primitive type declares itself with its plain Python annotation.
+    """
+    if ir_field.kind == "identifier":
+        if ir_field.identifier:
+            return "Identifier(identifier=True)"
+        return "Identifier(required=True)"
+    if ir_field.type == "Text":
+        if ir_field.max_length is not None:
+            return f"Text(required=True, max_length={ir_field.max_length})"
+        return "Text(required=True)"
+    if ir_field.type == "String" and ir_field.max_length is not None:
+        return f"Annotated[str, Field(max_length={ir_field.max_length})]"
+    return _BASE_ANNOTATION[ir_field.type]
+
+
+def _ordered_names(fields: Mapping[str, IRField], slug: str) -> list[str]:
+    """Field names in a deterministic order: the surfaced ``<slug>_id`` first where it
+    appears, then the rest by name. Field order is non-normative (ADR-0041)."""
+    id_name = f"{slug}_id"
+    names = sorted(fields)
+    if id_name in fields:
+        names.remove(id_name)
+        return [id_name, *names]
+    return names
+
+
+def _field_block(fields: Mapping[str, IRField], slug: str) -> str:
+    """The indented class body of field declarations, one per line."""
+    return "\n".join(
+        f"    {field_name}: {_declare(fields[field_name])}"
+        for field_name in _ordered_names(fields, slug)
+    )
+
+
+def _event_value(field_name: str, slug: str) -> str:
+    """The expression the create factory assigns to one event field: the aggregate's
+    id for the surfaced ``<slug>_id``, else the aggregate attribute of the same name."""
+    if field_name == f"{slug}_id":
+        return f"{slug}.id"
+    return f"{slug}.{field_name}"
+
+
+# ---------------------------------------------------------------------------
+# Import assembly
+# ---------------------------------------------------------------------------
+def _uses_annotated(fields: Mapping[str, IRField]) -> bool:
+    """Whether any field renders as ``Annotated[str, Field(...)]`` (a bounded String),
+    which is the only form that needs ``typing.Annotated`` and ``pydantic.Field``."""
+    return any(f.type == "String" and f.max_length is not None for f in fields.values())
+
+
+def _datetime_names(fields: Mapping[str, IRField]) -> list[str]:
+    """The ``datetime`` names the fields need (``date`` for Date, ``datetime`` for
+    DateTime), in import order."""
+    names: set[str] = set()
+    for f in fields.values():
+        if f.type == "Date":
+            names.add("date")
+        elif f.type == "DateTime":
+            names.add("datetime")
+    return sorted(names)
+
+
+def _protean_field_names(fields: Mapping[str, IRField]) -> list[str]:
+    """The ``protean.fields`` factory names the fields need (``Identifier`` for an
+    identifier field, ``Text`` for a text field), in import order."""
+    names: set[str] = set()
+    for f in fields.values():
+        if f.kind == "identifier":
+            names.add("Identifier")
+        elif f.type == "Text":
+            names.add("Text")
+    return sorted(names)
+
+
+def _join_groups(groups: list[list[str]]) -> str:
+    """Join non-empty import groups with a blank line between them."""
+    return "\n\n".join("\n".join(group) for group in groups if group)
+
+
+# ---------------------------------------------------------------------------
+# Renderers
+# ---------------------------------------------------------------------------
+def _render_init(name: str) -> str:
+    # ADR-0030 rule 4: the package initializer is side-effect free (docstring
+    # only). A re-export here would run during traversal and risk the
+    # partially-initialized-module cycle that discovery hit before.
+    return (
+        f'"""The {name} slice.\n\n'
+        "Modules are discovered independently by ``domain.init()``. Keep this\n"
+        "package initializer side-effect free so relative imports during\n"
+        "traversal cannot create partially initialized-module cycles.\n"
+        '"""\n'
+    )
+
+
+def _render_aggregate_base(
+    name: str, slug: str, aggregate: SliceElement, event: SliceElement
+) -> str:
+    # The generated side of the seam. Carries structure (fields) and wiring (the
+    # ``create`` factory that raises the created event). A plain, undecorated
+    # ``BaseAggregate`` subclass: it registers nothing on its own, so importing it
+    # during discovery adds no element; only the decorated subclass in
+    # ``aggregate.py`` is registered. A re-run of ``add`` refreshes this file.
+    agg_fields = aggregate.fields
+    ordered_agg = _ordered_names(agg_fields, slug)
+
+    field_lines = _field_block(agg_fields, slug)
+    params = ", ".join(
+        f"{field_name}: {_BASE_ANNOTATION[agg_fields[field_name].type]}"
+        for field_name in ordered_agg
+    )
+    ctor_args = ", ".join(f"{field_name}={field_name}" for field_name in ordered_agg)
+    event_args = "\n".join(
+        f"                {field_name}={_event_value(field_name, slug)},"
+        for field_name in _ordered_names(event.fields, slug)
+    )
+
+    stdlib: list[str] = []
+    dt = _datetime_names(agg_fields)
+    if dt:
+        stdlib.append(f"from datetime import {', '.join(dt)}")
+    typing_names = (["Annotated"] if _uses_annotated(agg_fields) else []) + ["Self"]
+    stdlib.append(f"from typing import {', '.join(typing_names)}")
+
+    third_party = ["from pydantic import Field"] if _uses_annotated(agg_fields) else []
+
+    protean_group = ["from protean.core.aggregate import BaseAggregate"]
+    protean_fields = _protean_field_names(agg_fields)
+    if protean_fields:
+        protean_group.append(f"from protean.fields import {', '.join(protean_fields)}")
+
+    imports = _join_groups(
+        [stdlib, third_party, protean_group, [f"from .events import {event.name}"]]
+    )
+
+    return f'''"""Generated base for the {name} aggregate.
+
+``protean add`` generates this file and refreshes it on every re-run, so do not
+edit it. Put your invariants and behavior in ``aggregate.py``, the hand-owned
+subclass a re-run never overwrites (the generation-gap seam, ADR-0035).
+"""
+
+{imports}
+
+
+class {name}Base(BaseAggregate):
+    """Generated structure and wiring for {name}. Edit the subclass, not this."""
+
+{field_lines}
+
+    @classmethod
+    def create(cls, {params}) -> Self:
+        """Create a new {name} and raise {event.name}."""
+        {slug} = cls({ctor_args})
+
+        {slug}.raise_(
+            {event.name}(
+{event_args}
+            )
+        )
+
+        return {slug}
+'''
+
+
+def _render_aggregate(name: str, package: str, domain_var: str) -> str:
+    # The hand-owned side of the seam. The decorated subclass: this is the
+    # registered aggregate, and where the developer's invariants and behavior
+    # live. A re-run of ``add`` leaves this file as it is, so those edits are safe.
+    # The class body is a docstring only; the developer fills it in.
+    return f'''"""The {name} aggregate.
+
+Your own logic lives here. ``protean add`` never overwrites this file, so add
+invariants (``@invariant.post``) and behavior as methods on the class below. The
+generated structure and wiring sit in ``aggregate_base.py`` (the generation-gap
+seam, ADR-0035).
+"""
+
+from {package}.domain import {domain_var}
+
+from .aggregate_base import {name}Base
+
+
+@{domain_var}.aggregate
+class {name}({name}Base):
+    """The {name} aggregate root."""
+'''
+
+
+def _render_commands(
+    name: str, slug: str, package: str, domain_var: str, command: SliceElement
+) -> str:
+    field_lines = _field_block(command.fields, slug)
+    imports = _message_imports(command.fields, package, domain_var)
+    # The grammar allows any command name, so only the default ``Create<Name>``
+    # command can be described as creation. Anything else gets wording that stays
+    # true, the way the event renderer does.
+    command_doc = (
+        f"Command to create a new {name}."
+        if command.name == f"Create{name}"
+        else f"Command for the {name} aggregate."
+    )
+    return f'''"""Commands for the {name} aggregate."""
+
+{imports}
+
+
+@{domain_var}.command(part_of="{name}")
+class {command.name}:
+    """{command_doc}"""
+
+{field_lines}
+'''
+
+
+def _render_events(
+    name: str, slug: str, package: str, domain_var: str, event: SliceElement
+) -> str:
+    field_lines = _field_block(event.fields, slug)
+    imports = _message_imports(event.fields, package, domain_var)
+    # The grammar allows any event name, so only the default ``<Name>Created`` event
+    # can be described as creation. Anything else gets wording that stays true.
+    event_doc = (
+        f"Event emitted when a {name} is created."
+        if event.name == f"{name}Created"
+        else f"Event emitted by the {name} aggregate."
+    )
+    return f'''"""Events emitted by the {name} aggregate."""
+
+{imports}
+
+
+@{domain_var}.event(part_of="{name}")
+class {event.name}:
+    """{event_doc}"""
+
+{field_lines}
+'''
+
+
+def _message_imports(
+    fields: Mapping[str, IRField], package: str, domain_var: str
+) -> str:
+    """The import block for a command or event: stdlib, pydantic, protean.fields, and
+    the project's ``domain`` module, each its own group."""
+    stdlib: list[str] = []
+    dt = _datetime_names(fields)
+    if dt:
+        stdlib.append(f"from datetime import {', '.join(dt)}")
+    if _uses_annotated(fields):
+        stdlib.append("from typing import Annotated")
+
+    third_party = ["from pydantic import Field"] if _uses_annotated(fields) else []
+
+    protean_fields = _protean_field_names(fields)
+    protean_group = (
+        [f"from protean.fields import {', '.join(protean_fields)}"]
+        if protean_fields
+        else []
+    )
+
+    return _join_groups(
+        [
+            stdlib,
+            third_party,
+            protean_group,
+            [f"from {package}.domain import {domain_var}"],
+        ]
+    )
+
+
+def _render_command_handlers(
+    name: str,
+    slug: str,
+    package: str,
+    domain_var: str,
+    aggregate: SliceElement,
+    command: SliceElement,
+) -> str:
+    create_args = ", ".join(
+        f"{field_name}=command.{field_name}"
+        for field_name in _ordered_names(aggregate.fields, slug)
+    )
+
+    # Name the handler after the command it handles, which is the framework's
+    # ``handle_<command_slug>`` convention (see ``protean.core.command_handler``).
+    # The default ``Create<Name>`` command keeps the ``handle_create_<slug>`` the
+    # renderer has always written, and takes the name from the slug rather than from
+    # the command: the two do not always agree, because an aggregate named ``aB`` has
+    # the slug ``a_b`` and the command ``CreateAB``, whose own slug is ``create_ab``.
+    creates_by_default = command.name == f"Create{name}"
+    handler = (
+        f"handle_create_{slug}"
+        if creates_by_default
+        else f"handle_{_slug_for(command.name)}"
+    )
+    handler_doc = (
+        f"Create a {name} from the command and persist it."
+        if creates_by_default
+        else f"Create a {name} from {command.name} and persist it."
+    )
+    return f'''"""Command handlers for the {name} aggregate."""
+
+from protean import handle
+
+from {package}.domain import {domain_var}
+
+from .aggregate import {name}
+from .commands import {command.name}
+
+
+@{domain_var}.command_handler(part_of="{name}")
+class {name}CommandHandler:
+    """Handle commands for the {name} aggregate."""
+
+    @handle({command.name})
+    def {handler}(self, command: {command.name}) -> str:
+        """{handler_doc}
+
+        Returns the new aggregate's id so a synchronous caller can look it up
+        right after ``domain.process``.
+        """
+        {slug} = {name}.create({create_args})
+
+        repo = {domain_var}.repository_for({name})
+        repo.add({slug})
+
+        return {slug}.id
+'''
+
+
+def _render_projection(
+    name: str, slug: str, package: str, domain_var: str, projection: SliceElement
+) -> str:
+    field_lines = _field_block(projection.fields, slug)
+    imports = _projection_imports(projection.fields, package, domain_var)
+    return f'''"""Read-model projection for the {name} aggregate."""
+
+{imports}
+
+
+@{domain_var}.projection
+class {projection.name}:
+    """A read-optimized view of {name} aggregates."""
+
+{field_lines}
+
+    class Meta:
+        stream_name = "{slug}"
+'''
+
+
+def _projection_imports(
+    fields: Mapping[str, IRField], package: str, domain_var: str
+) -> str:
+    """The import block for a projection. A projection always has an ``Identifier``
+    key, so ``protean.fields`` and ``pydantic`` sit in one group (``protean.fields``
+    first), matching the layout ``protean add`` has always emitted."""
+    stdlib: list[str] = []
+    dt = _datetime_names(fields)
+    if dt:
+        stdlib.append(f"from datetime import {', '.join(dt)}")
+    if _uses_annotated(fields):
+        stdlib.append("from typing import Annotated")
+
+    middle: list[str] = []
+    protean_fields = _protean_field_names(fields)
+    if protean_fields:
+        middle.append(f"from protean.fields import {', '.join(protean_fields)}")
+    if _uses_annotated(fields):
+        middle.append("from pydantic import Field")
+
+    return _join_groups(
+        [stdlib, middle, [f"from {package}.domain import {domain_var}"]]
+    )
+
+
+def _render_projectors(
+    name: str,
+    slug: str,
+    package: str,
+    domain_var: str,
+    projection: SliceElement,
+    projector: SliceProjector,
+    event: SliceElement,
+) -> str:
+    summary_args = "\n".join(
+        f"            {field_name}=event.{field_name},"
+        for field_name in _ordered_names(projection.fields, slug)
+    )
+
+    # Name the handler after the event it consumes, the way the framework's own
+    # projector examples do. The old fixed suffix named the method for something that
+    # did not happen. The default ``<Name>Created`` event keeps the
+    # ``on_<slug>_created`` the renderer has always written, and takes the name from
+    # the slug rather than from the event: the two do not always agree, because an
+    # aggregate named ``aB`` has the slug ``a_b`` and the event ``ABCreated``, whose
+    # own slug is ``ab``.
+    created_by_default = event.name == f"{name}Created"
+    handler = (
+        f"on_{slug}_created" if created_by_default else f"on_{_slug_for(event.name)}"
+    )
+    summary_doc = (
+        f"Create a {projection.name} when a {name} is created."
+        if created_by_default
+        else f"Create a {projection.name} on {event.name}."
+    )
+    return f'''"""Projector that keeps {projection.name} up to date."""
+
+from protean.core.projector import on
+
+from {package}.domain import {domain_var}
+
+from .aggregate import {name}
+from .events import {event.name}
+from .projection import {projection.name}
+
+
+@{domain_var}.projector(projector_for={projection.name}, aggregates=[{name}])
+class {projector.name}:
+    """Update the {projection.name} projection from {name} events."""
+
+    @on({event.name})
+    def {handler}(self, event: {event.name}) -> None:
+        """{summary_doc}"""
+        summary = {projection.name}(
+{summary_args}
+        )
+
+        repo = {domain_var}.repository_for({projection.name})
+        repo.add(summary)
+'''
