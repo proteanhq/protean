@@ -23,10 +23,12 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, overload
+from uuid import uuid4
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.profiles import SubscriptionType
 from protean.utils import ensure_utc_aware, fqn
+from protean.utils.eventing import MessageType
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -112,6 +114,14 @@ class SubscriptionStatus:
     lag_seconds: float | None = None
     """Seconds behind head: ``0.0`` when caught up, time-since-last-update when
     lagging, ``None`` when unknown (event-store subscriptions only)."""
+
+    position_stream: str | None = None
+    """The durable checkpoint stream (``position-{subscriber_name}-{category}``)
+    for an event-store subscription, ``None`` for other subscription types and
+    when the store was unreachable. ``subscriber_name`` is the handler ``fqn`` for
+    event handlers, projectors and process managers, and the dispatcher name for
+    command handlers. This is the stream ``protean recover --reset-beyond-head``
+    writes a fresh position to."""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -213,6 +223,7 @@ def _collect_event_store_status(
                 dlq_depth=0,
                 last_updated=last_updated,
                 lag_seconds=lag_seconds,
+                position_stream=position_stream,
             )
     except Exception as exc:
         logger.debug(
@@ -872,6 +883,96 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
     statuses.extend(_collect_outbox_statuses(domain))
 
     return statuses
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint reset
+# ---------------------------------------------------------------------------
+
+
+def reset_checkpoint_to_head(domain: Domain, status: SubscriptionStatus) -> int:
+    """Snap an event-store subscription's checkpoint back to its stream head.
+
+    Writes a fresh ``Read`` position record to ``status.position_stream`` equal to
+    the stream head recorded on ``status`` (``head_position``, read during
+    verification), the same record shape
+    :meth:`EventStoreSubscription.write_position` writes at runtime, and returns
+    the head position written.
+
+    A backup restore can leave a checkpoint pointing past the restored head. The
+    subscription reads from ``checkpoint + 1``, so it skips every event written
+    after the restore. Snapping the checkpoint to the head makes the subscription
+    read forward from just after the restored head instead. It writes the head
+    observed during verification rather than re-reading a fresh one, so it can
+    only move a checkpoint back: ``status`` is flagged beyond head, so its
+    ``head_position`` is below its ``current_position``, and writing that head can
+    never step the subscription forward over events it has not processed. When the
+    restored stream is empty the head is ``-1``, which sends the subscription back
+    to the start of the stream.
+
+    Args:
+        domain: An initialised Protean domain.
+        status: The event-store subscription to reset, flagged beyond head. Its
+            ``position_stream`` and numeric ``head_position`` are both set for any
+            such subscription read from a reachable store.
+
+    Returns:
+        The head position written to the checkpoint stream.
+
+    Raises:
+        ValueError: If ``status`` is not an event-store subscription, has no known
+            checkpoint stream or head position, or the domain has no event store.
+    """
+    if status.subscription_type != "event_store":
+        raise ValueError(
+            f"Cannot reset checkpoint for {status.name!r}: not an event-store "
+            f"subscription."
+        )
+    if not status.position_stream:
+        raise ValueError(
+            f"Cannot reset checkpoint for {status.name!r}: no checkpoint stream "
+            f"is known for it."
+        )
+    # A beyond-head status always carries a numeric head_position (the verdict
+    # parsed it to decide beyond-head); guard for a directly-constructed status.
+    if status.head_position is None:
+        raise ValueError(
+            f"Cannot reset checkpoint for {status.name!r}: its stream head is unknown."
+        )
+    try:
+        head = int(status.head_position)
+    except ValueError as exc:
+        raise ValueError(
+            f"Cannot reset checkpoint for {status.name!r}: its stream head "
+            f"{status.head_position!r} is not a number."
+        ) from exc
+
+    with domain.domain_context():
+        store = domain.event_store.store
+        if store is None:
+            raise ValueError(
+                f"Cannot reset checkpoint for {status.name!r}: the domain has no "
+                f"event store configured."
+            )
+
+        store._write(
+            status.position_stream,
+            "Read",
+            {"position": head},
+            metadata={
+                "headers": {
+                    "id": str(uuid4()),
+                    "type": "Read",
+                    "time": domain.clock.now().isoformat(),
+                    "stream": status.position_stream,
+                },
+                "domain": {
+                    "kind": MessageType.READ_POSITION.value,
+                    "origin_stream": status.stream_category,
+                },
+            },
+        )
+    return head
 
 
 # ---------------------------------------------------------------------------

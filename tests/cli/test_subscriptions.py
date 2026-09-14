@@ -33,6 +33,7 @@ def _make_status(
     consumer_count: int = 1,
     status: str = "ok",
     lag_seconds: float | None = None,
+    position_stream: str | None = None,
 ) -> SubscriptionStatus:
     return SubscriptionStatus(
         name=f"sub-{handler_name.lower()}",
@@ -47,6 +48,7 @@ def _make_status(
         consumer_count=consumer_count,
         dlq_depth=dlq_depth,
         lag_seconds=lag_seconds,
+        position_stream=position_stream,
     )
 
 
@@ -157,6 +159,42 @@ class TestSubscriptionsStatus:
         assert len(subs) == 1
         assert subs[0]["handler_name"] == "OrderHandler"
         assert subs[0]["lag_seconds"] == 30.0
+
+    def test_json_output_carries_position_stream(self):
+        """position_stream flows through the public subscriptions JSON: the
+        checkpoint stream for an event-store subscription, null for others."""
+        change_working_directory_to("test7")
+
+        statuses = [
+            _make_status(
+                "OrderHandler",
+                "event_store",
+                "order",
+                position_stream="position-my.OrderHandler-order",
+            ),
+            _make_status("BrokerHandler", "broker", "ext"),
+        ]
+        mock_domain = _mock_domain_for_cli()
+
+        with (
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
+            patch(
+                "protean.server.subscription_status.collect_subscription_statuses",
+                return_value=statuses,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["subscriptions", "status", "--domain", "publishing7.py", "--json"],
+            )
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        by_name = {s["handler_name"]: s for s in env["data"]["subscriptions"]}
+        assert by_name["OrderHandler"]["position_stream"] == (
+            "position-my.OrderHandler-order"
+        )
+        assert by_name["BrokerHandler"]["position_stream"] is None
 
     def test_json_output_empty(self):
         change_working_directory_to("test7")

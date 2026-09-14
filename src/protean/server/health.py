@@ -106,6 +106,7 @@ _POSITION_FIELDS = (
     "head_position",
     "consumer_count",
     "last_updated",
+    "position_stream",
 )
 
 

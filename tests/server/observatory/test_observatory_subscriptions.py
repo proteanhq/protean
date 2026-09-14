@@ -40,6 +40,7 @@ def _ok_status(
     handler_name: str = "TestHandler",
     subscription_type: str = "stream",
     stream: str = "test",
+    position_stream: str | None = None,
 ) -> SubscriptionStatus:
     return SubscriptionStatus(
         name=f"sub-{handler_name.lower()}",
@@ -53,6 +54,7 @@ def _ok_status(
         status="ok",
         consumer_count=1,
         dlq_depth=0,
+        position_stream=position_stream,
     )
 
 
@@ -159,6 +161,38 @@ class TestSubscriptionsEndpointUnit:
         assert summary["total_lag"] == 42
         assert summary["total_pending"] == 3
         assert summary["total_dlq"] == 1
+
+    def test_subscription_carries_position_stream(self):
+        """The event-store checkpoint stream flows through /api/subscriptions; a
+        non-event-store subscription reports it as null."""
+        mock_domain = _make_mock_domain("test-domain")
+
+        statuses = [
+            _ok_status(
+                handler_name="OrderProjector",
+                subscription_type="event_store",
+                stream="order",
+                position_stream="position-my.OrderProjector-order",
+            ),
+            _ok_status(handler_name="BrokerHandler", subscription_type="broker"),
+        ]
+
+        with patch(
+            "protean.server.subscription_status.collect_subscription_statuses",
+            return_value=statuses,
+        ):
+            observatory = Observatory(domains=[mock_domain])
+            client = TestClient(observatory.app)
+            response = client.get("/api/subscriptions")
+
+        subs = {
+            s["handler_name"]: s
+            for s in response.json()["test-domain"]["subscriptions"]
+        }
+        assert subs["OrderProjector"]["position_stream"] == (
+            "position-my.OrderProjector-order"
+        )
+        assert subs["BrokerHandler"]["position_stream"] is None
 
     def test_empty_domain_returns_empty_list(self):
         """Domain with no handlers returns empty subscriptions list."""
