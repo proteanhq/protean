@@ -468,14 +468,20 @@ def recover(
     )
     # A subscription whose recovery tracking could not be read is reported apart,
     # so it is never read as "no stale entry". Like an unknown checkpoint, it does
-    # not change the exit code.
-    recovery_unverified = (
-        f"[yellow]{len(recovery_unknown)} recovery-tracking subscription(s) could "
-        f"not be verified (the recovery streams, or a tracked message, could not "
-        f"be read).[/yellow]"
-        if recovery_unknown
-        else ""
-    )
+    # not change the exit code. Name each one, so with more than one an operator
+    # can tell which handler and category to look at.
+    if recovery_unknown:
+        _lines = [
+            f"[yellow]{len(recovery_unknown)} recovery-tracking subscription(s) "
+            f"could not be verified (the recovery streams, or a tracked message, "
+            f"could not be read):[/yellow]"
+        ]
+        _lines += [
+            f"  {f.handler_name} ({f.stream_category})" for f in recovery_unknown
+        ]
+        recovery_unverified = "\n".join(_lines)
+    else:
+        recovery_unverified = ""
 
     if reset_beyond_head:
         if resets:

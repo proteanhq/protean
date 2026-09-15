@@ -840,6 +840,13 @@ class TestRecoverRecoveryVerify:
         assert result.exit_code == 0
         assert "could not be verified" in result.output
         assert "recovery-tracking entry(ies)" not in result.output
+        # The unverified subscription is named, not just counted.
+        row = next(
+            line
+            for line in result.output.splitlines()
+            if "OrderProjector" in line and "order" in line
+        )
+        assert "OrderProjector" in row
 
     def test_stale_and_unknown_recovery_findings_together(self):
         """A stale finding fails the run and an unknown one is still surfaced
