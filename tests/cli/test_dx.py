@@ -352,6 +352,55 @@ def test_hand_edit_inside_the_block_conflicts(tmp_path: Path) -> None:
     assert "CLAUDE.md" in install_result.output
 
 
+def test_mcp_json_conflict_names_the_key_path_not_a_block(tmp_path: Path) -> None:
+    """A .mcp.json conflict points at mcpServers.protean, not at a managed block.
+
+    The JSON target has no marked block, so reporting one would send the user
+    looking for a Markdown region the file does not have.
+    """
+    _install(tmp_path)
+    mcp = tmp_path / ".mcp.json"
+    data = json.loads(mcp.read_text(encoding="utf-8"))
+    # A hand edit inside Protean's own entry: the managed key now differs from
+    # both what the writer wrote and what the render wants.
+    data["mcpServers"]["protean"] = {"command": "my-own-protean"}
+    mcp.write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+    for verb in ("check", "install"):
+        result = runner.invoke(app, [verb, "-p", str(tmp_path)])
+        assert result.exit_code == 1, f"{verb}: {result.output}"
+        # Flatten whitespace: rich wraps the line at the terminal width.
+        flat = " ".join(result.output.split())
+        assert "the managed key 'mcpServers.protean'" in flat, flat
+        assert "managed block" not in flat, flat
+
+    # The write was refused, so the hand edit survived.
+    assert json.loads(mcp.read_text(encoding="utf-8"))["mcpServers"]["protean"] == {
+        "command": "my-own-protean"
+    }
+
+
+def test_edits_outside_the_managed_keys_are_reported_as_keys(tmp_path: Path) -> None:
+    """Another server added to .mcp.json reads as an edit outside the managed keys."""
+    _install(tmp_path)
+    mcp = tmp_path / ".mcp.json"
+    data = json.loads(mcp.read_text(encoding="utf-8"))
+    data["mcpServers"]["other"] = {"command": "run-other"}
+    mcp.write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+    check_result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+    assert check_result.exit_code == 0, check_result.output
+    assert "edited outside the managed keys" in " ".join(check_result.output.split())
+
+    install_result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+    assert install_result.exit_code == 0, install_result.output
+    flat = " ".join(install_result.output.split())
+    assert "your edits outside the managed keys were kept" in flat, flat
+    assert json.loads(mcp.read_text(encoding="utf-8"))["mcpServers"]["other"] == {
+        "command": "run-other"
+    }
+
+
 # --- edits around the block -------------------------------------------------
 
 

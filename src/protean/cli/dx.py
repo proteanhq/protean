@@ -153,13 +153,13 @@ def _apply(path: str) -> None:
             had_conflict = True
             print(
                 f"[red]conflict[/red] {escape(exc.target)} — "
-                f"{escape(_conflict_hint(exc.managed))}"
+                f"{escape(_conflict_hint(managed_file))}"
             )
         except ManagedFileError as exc:
             had_error = True
             print(_error_line(managed_file.target, exc))
         else:
-            print(_applied_line(result))
+            print(_applied_line(result, managed_file))
 
     if had_error:
         raise typer.Exit(code=EXIT_USAGE)
@@ -199,7 +199,7 @@ def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool, bool]:
                 drifted = True
             if result.status is ApplyStatus.CONFLICT:
                 had_conflict = True
-            print(_pending_line(result))
+            print(_pending_line(result, managed_file))
             if show_diff:
                 body = _unified_diff(root, result)
                 if body:
@@ -281,7 +281,35 @@ def _error_line(target: str, exc: Exception) -> str:
     return f"[red]error[/red] {escape(target)} — {escape(str(exc))}"
 
 
-def _applied_line(result: ApplyResult) -> str:
+def _managed_region(managed_file: ManagedFile) -> str:
+    """Name the region *managed_file*'s merge mode owns, for a diagnostic line.
+
+    A managed-block target owns a marked block, named by its block id. A
+    managed-JSON-keys target has no block at all: it owns a key-path, so name the
+    full path (``mcpServers.protean``) instead of pointing the user at a Markdown
+    region that does not exist in the file.
+    """
+    from protean.dx import ManagedBlock  # noqa: PLC0415
+
+    if isinstance(managed_file, ManagedBlock):
+        return f"the managed block {managed_file.block_id!r}"
+    keys = ", ".join(
+        repr(".".join((*managed_file.path, key))) for key in managed_file.managed_keys
+    )
+    plural = "keys" if len(managed_file.managed_keys) > 1 else "key"
+    return f"the managed {plural} {keys}"
+
+
+def _outside_region(managed_file: ManagedFile) -> str:
+    """Name where an edit outside the managed region sits, per merge mode."""
+    from protean.dx import ManagedBlock  # noqa: PLC0415
+
+    if isinstance(managed_file, ManagedBlock):
+        return "around the block"
+    return "outside the managed keys"
+
+
+def _applied_line(result: ApplyResult, managed_file: ManagedFile) -> str:
     """Render one target's outcome after an apply, in the past tense."""
     from protean.dx import ApplyStatus  # noqa: PLC0415
 
@@ -294,11 +322,11 @@ def _applied_line(result: ApplyResult) -> str:
     }
     line = messages[result.status]
     if result.outside_modified:
-        line += " (your edits around the block were kept)"
+        line += f" (your edits {_outside_region(managed_file)} were kept)"
     return line
 
 
-def _pending_line(result: ApplyResult) -> str:
+def _pending_line(result: ApplyResult, managed_file: ManagedFile) -> str:
     """Render one target's status for ``diff``/``check``, describing the change."""
     from protean.dx import ApplyStatus  # noqa: PLC0415
 
@@ -308,17 +336,23 @@ def _pending_line(result: ApplyResult) -> str:
         ApplyStatus.UPDATE: f"[yellow]update[/yellow] {target} — block is stale",
         ApplyStatus.NO_CHANGE: f"[green]ok[/green] {target} — up to date",
         ApplyStatus.CONFLICT: (
-            f"[red]conflict[/red] {target} — the managed block was edited by hand"
+            f"[red]conflict[/red] {target} — "
+            f"{_managed_region(managed_file)} was edited by hand"
         ),
     }
     line = messages[result.status]
     if result.outside_modified and result.status is ApplyStatus.NO_CHANGE:
-        line += " (edited around the block)"
+        line += f" (edited {_outside_region(managed_file)})"
     return line
 
 
-def _conflict_hint(managed: str) -> str:
-    """Explain a conflict on apply: the block was edited and the write was refused."""
+def _conflict_hint(managed_file: ManagedFile) -> str:
+    """Explain a conflict on apply: the region was edited and the write was refused.
+
+    Names the region the target's merge mode owns, so a ``.mcp.json`` conflict
+    points at its key-path rather than at a managed block it does not have.
+    """
     return (
-        f"the managed block {managed!r} was edited by hand; resolve the edit and re-run"
+        f"{_managed_region(managed_file)} was edited by hand; "
+        "resolve the edit and re-run"
     )
