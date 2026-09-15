@@ -34,8 +34,10 @@ framework's region and preserves your own edits around it.
 
 A state file at `.protean/dx-state.json` records what the writer last wrote per
 target. It tells a version change (a safe rewrite) apart from an edit you made
-inside the block (a conflict the writer refuses to overwrite). Commit the state
-file so the conflict check works across machines. The design is recorded in
+inside the framework's region (a conflict the writer refuses to overwrite). The
+conflict line names the region it means: the managed block for a Markdown file,
+the managed key `mcpServers.protean` for `.mcp.json`. Commit the state file so
+the conflict check works across machines. The design is recorded in
 [ADR-0037](../../../adr/0037-idempotent-file-projection.md).
 
 `install` refuses a pre-existing `AGENTS.md` that has no `PROTEAN` markers and
@@ -70,8 +72,8 @@ non-zero when any has drifted.
 ### Exit codes
 
 - `0`: the command succeeded. For `check`, every target is up to date.
-- `1`: for `check`, a target has drifted. For `install` and `refresh`, a block
-  conflicts with a hand edit and was left untouched.
+- `1`: for `check`, a target has drifted. For `install` and `refresh`, a managed
+  region conflicts with a hand edit and was left untouched.
 - `2`: a filesystem error, such as an unreadable or malformed target, a `--path`
   that is not a directory, or a pack that cannot render.
 

@@ -19,6 +19,7 @@ from protean.dx.managed_files import (
     ManagedFileState,
     ManagedJsonKeys,
     MergeMode,
+    _merge_json,
     apply_managed_file,
     diff_managed_file,
     load_state,
@@ -747,8 +748,6 @@ def test_merge_json_refuses_a_non_object_segment_directly() -> None:
     ``_merge_json``. Call the merge directly to cover its own defensive branch on
     a non-object path segment, and confirm the object case merges under the path.
     """
-    from protean.dx.managed_files import _merge_json
-
     managed = ManagedJsonKeys(
         target=".mcp.json",
         version="1",
