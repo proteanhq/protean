@@ -57,6 +57,11 @@ def reconstruct_unresolved(
     bounded by the number of distinct unresolved positions, not the record count,
     because each record only adds or removes one key.
 
+    If a restore left the checkpoint watermark ahead of the restored failed
+    stream (a stale-high watermark), the snapshot is dropped and the set is
+    rebuilt from the start of the stream, so a failure appended after the restore
+    at a lower position is not skipped.
+
     Both the subscription's rebuild on restart and ``protean recover`` read the
     set through this one function, so the CLI reports and clears exactly the
     positions the recovery pass would chase.
@@ -71,9 +76,25 @@ def reconstruct_unresolved(
 
     checkpoint = store._read_last_message(recovery_checkpoint_stream)
     if checkpoint:
-        watermark = checkpoint["data"].get("watermark", 0)
-        snapshot = checkpoint["data"].get("unresolved", {})
-        unresolved = {int(pos): info for pos, info in snapshot.items()}
+        stored_watermark = checkpoint["data"].get("watermark", 0)
+        # Reconcile the watermark against the restored failed-positions tail. A
+        # backup can capture the checkpoint after the failed stream, so a restore
+        # can leave the stored watermark ahead of the restored stream's tail.
+        # Paging forward from a stale-high watermark reads nothing and returns it
+        # unchanged; a Failed record appended after the restore then lands at a
+        # lower per-stream position than the watermark, so every later rebuild
+        # starts past it and skips the new failure. When the watermark sits past
+        # the tail the checkpoint's snapshot is stale too, so drop both and
+        # rebuild the whole set from the start of the restored stream (the
+        # watermark advances back to the real tail as the stream is paged).
+        last_failed = store._read_last_message(failed_positions_stream)
+        tail = last_failed.get("position") if last_failed else None
+        if not isinstance(tail, int):
+            tail = -1
+        if stored_watermark <= tail + 1:
+            watermark = stored_watermark
+            snapshot = checkpoint["data"].get("unresolved", {})
+            unresolved = {int(pos): info for pos, info in snapshot.items()}
 
     cursor = watermark
     records_read = 0

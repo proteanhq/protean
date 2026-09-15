@@ -416,3 +416,61 @@ class TestMessageDBEventStore:
         # The stale entry is cleared and the healthy one preserved, so a later
         # scan is clean.
         assert collect_recovery_checkpoint_statuses(test_domain, [status]) == []
+
+    def test_reconstruct_reconciles_stale_high_watermark(self, test_domain):
+        """A stale-high watermark (a restore left the checkpoint ahead of the
+        restored failed stream) is reconciled to the real tail against a live
+        MessageDB store, so the adapter's tail-read of the failed stream is
+        exercised, not only the in-memory one."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        failed_stream = "failed-Handler-order"
+        rec_stream = "recovery-checkpoint-Handler-order"
+        record_meta = {
+            "domain": {
+                "kind": MessageType.READ_POSITION.value,
+                "origin_stream": "order",
+            }
+        }
+        # One Failed record survived the restore, at per-stream position 0.
+        store._write(
+            failed_stream,
+            "Failed",
+            {
+                "position": 5,
+                "retry_count": 1,
+                "stream_name": None,
+                "stream_position": None,
+            },
+            record_meta,
+        )
+        # A checkpoint whose watermark (10) sits past the failed-stream tail (0),
+        # with a snapshot naming a position the restored stream no longer holds.
+        store._write(
+            rec_stream,
+            "Checkpoint",
+            {
+                "watermark": 10,
+                "unresolved": {
+                    "99": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            },
+            record_meta,
+        )
+
+        unresolved, watermark, records_read = reconstruct_unresolved(
+            store, rec_stream, failed_stream
+        )
+
+        # Stale snapshot (99) dropped; surviving Failed record (5) rebuilt from the
+        # start; watermark reconciled to the tail (0 -> 1), not the stale 10.
+        assert set(unresolved) == {5}
+        assert watermark == 1
+        assert records_read == 1

@@ -2172,6 +2172,86 @@ class TestReconstructUnresolved:
         # Watermark advances past the last record (per-stream positions 0..4 -> 5).
         assert watermark == 5
 
+    def test_stale_high_watermark_is_reconciled(self, test_domain):
+        """A restore can leave the checkpoint watermark ahead of the restored
+        failed stream. Reading forward from that stale watermark finds nothing, so
+        a Failed record appended below it would be skipped on every later rebuild.
+        Reconstruction detects the watermark is past the tail, drops the stale
+        snapshot, and rebuilds from the start, so the record is caught and the
+        watermark reconciles to the real tail."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # One Failed record survived the restore, at per-stream position 0.
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 5)
+            # The checkpoint watermark (10) is well past that tail (0), as a backup
+            # captured after the failed stream would leave it; its snapshot (99) is
+            # stale too, naming a position the restored stream no longer holds.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=10,
+                unresolved={
+                    "99": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        # Stale snapshot (99) dropped; the surviving Failed record (5) rebuilt from
+        # the start; watermark reconciled to the tail (0 -> 1), not the stale 10.
+        assert set(unresolved) == {5}
+        assert watermark == 1
+        assert records_read == 1
+
+    def test_watermark_at_tail_keeps_snapshot(self, test_domain):
+        """A watermark exactly at the failed stream's tail+1 is the normal case:
+        the checkpoint was written after reading to the end. It is not stale, so
+        the snapshot is kept and not rebuilt from zero. Guards the reconciliation
+        boundary against retiring a valid checkpoint."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # Two failed-stream records -> tail per-stream position 1.
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 7)
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 8)
+            # Watermark 2 == tail(1)+1: the checkpoint already accounts for both.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=2,
+                unresolved={
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        # Snapshot kept (5); nothing past the watermark to read; watermark unchanged.
+        assert set(unresolved) == {5}
+        assert watermark == 2
+        assert records_read == 0
+
     @pytest.mark.no_test_domain
     def test_record_without_position_raises(self):
         """A failed record whose last page entry carries no per-stream position
