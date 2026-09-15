@@ -1847,6 +1847,7 @@ class TestResetCheckpointToHead:
         with pytest.raises(ValueError, match="not a number"):
             reset_checkpoint_to_head(test_domain, status)
 
+    @pytest.mark.no_test_domain
     def test_raises_when_store_not_configured(self):
         from protean.server.subscription_status import reset_checkpoint_to_head
 
@@ -2174,6 +2175,7 @@ class TestReconstructUnresolved:
         # Watermark advances past the last record (per-stream positions 0..4 -> 5).
         assert watermark == 5
 
+    @pytest.mark.no_test_domain
     def test_record_without_position_raises(self):
         """A failed record whose last page entry carries no per-stream position
         cannot advance the cursor. Rather than silently return a partial scan as
@@ -2455,6 +2457,7 @@ class TestCollectRecoveryCheckpointStatuses:
         )
         assert findings == []
 
+    @pytest.mark.no_test_domain
     def test_store_read_failure_is_reported_unknown(self):
         """A store read that raises is reported as an unverified finding, not
         crashed and not silently folded into clean."""
@@ -2471,6 +2474,7 @@ class TestCollectRecoveryCheckpointStatuses:
         assert findings[0].verdict == "unknown"
         assert findings[0].stale_positions == []
 
+    @pytest.mark.no_test_domain
     def test_store_not_configured_is_reported_unknown(self):
         """A domain with no event store yields an unverified finding, not silence
         and not a raise."""
@@ -2484,6 +2488,7 @@ class TestCollectRecoveryCheckpointStatuses:
         assert len(findings) == 1
         assert findings[0].verdict == "unknown"
 
+    @pytest.mark.no_test_domain
     def test_corrupt_checkpoint_record_is_reported_unknown(self):
         """A restore can leave a checkpoint record whose ``data`` is malformed;
         the reconstruction raises and the subscription is reported unverified."""

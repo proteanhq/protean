@@ -72,11 +72,12 @@ catches a restore that removed one aggregate's stream while another aggregate ha
 a later event: the removed position then sits below the category head, so a head
 comparison alone would miss it. A stale recovery entry fails the run the same way
 a beyond-head checkpoint does (exit `1`). A position whose message is still
-present is left unreported. A subscription whose recovery streams could not be
-read (the store failed, or a restore left a corrupt checkpoint record) is
-reported apart as unverified so it is never read as clean; like an unknown
-checkpoint, that does not change the exit code. The check is read-only: a
-`--verify-checkpoints` run never writes to a recovery-tracking stream.
+present is left unreported. A subscription that could not be verified (the
+recovery streams could not be read, a restore left a corrupt checkpoint record,
+or a tracked message's re-read failed) is reported apart as unverified so it is
+never read as clean; like an unknown checkpoint, that does not change the exit
+code. The check is read-only: a `--verify-checkpoints` run never writes to a
+recovery-tracking stream.
 
 Without `--verify-checkpoints` the command prints a hint and exits `0`.
 
