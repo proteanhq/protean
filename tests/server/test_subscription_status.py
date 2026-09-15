@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -24,6 +25,7 @@ from protean.server.subscription_status import (
     _unknown_status,
     collect_subscription_statuses,
 )
+from protean.utils.eventing import MessageType
 
 # ---------------------------------------------------------------------------
 # SubscriptionStatus dataclass
@@ -1938,10 +1940,6 @@ class TestPerformResetsScope:
 # Recovery-tracking checkpoints
 # ---------------------------------------------------------------------------
 
-from uuid import uuid4  # noqa: E402
-
-from protean.utils.eventing import MessageType  # noqa: E402
-
 
 def _rec_status(
     *,
@@ -2425,13 +2423,15 @@ class TestCollectRecoveryCheckpointStatuses:
 
         assert findings == []
 
-    def test_non_event_store_subscription_skipped(self, test_domain):
+    @pytest.mark.no_test_domain
+    def test_non_event_store_subscription_skipped(self):
+        # A broker subscription is skipped before any domain access.
         from protean.server.subscription_status import (
             collect_recovery_checkpoint_statuses,
         )
 
         findings = collect_recovery_checkpoint_statuses(
-            test_domain, [_rec_status(subscription_type="broker")]
+            None, [_rec_status(subscription_type="broker")]
         )
         assert findings == []
 
@@ -2472,13 +2472,15 @@ class TestCollectRecoveryCheckpointStatuses:
         # The head was read from the store, not taken from the (unknown) status.
         assert findings[0].head_position == head
 
-    def test_missing_recovery_streams_skipped(self, test_domain):
+    @pytest.mark.no_test_domain
+    def test_missing_recovery_streams_skipped(self):
+        # A status with no recovery streams is skipped before any domain access.
         from protean.server.subscription_status import (
             collect_recovery_checkpoint_statuses,
         )
 
         findings = collect_recovery_checkpoint_statuses(
-            test_domain, [_rec_status(recovery_checkpoint_stream=None)]
+            None, [_rec_status(recovery_checkpoint_stream=None)]
         )
         assert findings == []
 
