@@ -55,7 +55,7 @@ An MCP client discovers the server from a `.mcp.json` file in the project:
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "protean": {
       "command": "protean",
       "args": ["mcp"]
@@ -64,8 +64,11 @@ An MCP client discovers the server from a `.mcp.json` file in the project:
 }
 ```
 
-Create the file by hand as shown, or point your client at the `.mcp.json` shipped
-at the root of the Protean repository, which carries the same entry.
+Run [`protean dx install`](../project/dx.md) to write that entry for you. It
+manages only the `mcpServers.protean` key-path, so an existing `.mcp.json` keeps
+every other server you configured. You can also create the file by hand as shown,
+or point your client at the `.mcp.json` shipped at the root of the Protean
+repository, which carries the same entry.
 
 ## The tools
 

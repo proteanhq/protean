@@ -53,8 +53,11 @@ CLAUDE_BRIDGE_TARGET = "CLAUDE.md"
 BLOCK_ID = "protean"
 
 # The ``.mcp.json`` target and the key-path it manages: Protean's own entry under
-# ``mcpServers``. Managing only ``mcpServers.protean`` keeps every other server
-# the user configured (see ADR-0037's key-path JSON merge).
+# ``mcpServers``, the top-level key an MCP client reads a project ``.mcp.json``
+# from. Managing only ``mcpServers.protean`` keeps every other server the user
+# configured (see ADR-0037's key-path JSON merge). The repo's own ``.mcp.json``
+# and the snippet in the MCP reference carry the same key; the renderer tests
+# pin all three together.
 MCP_TARGET = ".mcp.json"
 MCP_SERVER_KEY = "mcpServers"
 MCP_SERVER_NAME = "protean"
