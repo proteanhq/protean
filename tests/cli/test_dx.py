@@ -278,6 +278,14 @@ def test_check_fails_when_the_version_advances(tmp_path: Path, monkeypatch) -> N
 
     assert result.exit_code == 1, result.output
     assert "update" in result.output
+    # Each stale line names the region that target's merge mode owns: a block for
+    # the Markdown files, the key-path for .mcp.json, which has no block at all.
+    # Flatten whitespace: rich wraps the line at the terminal width.
+    flat = " ".join(result.output.split())
+    assert "update AGENTS.md — the managed block 'protean' is stale" in flat, flat
+    assert "update .mcp.json — the managed key 'mcpServers.protean' is stale" in flat, (
+        flat
+    )
     # check writes nothing, even on a stale block.
     assert (tmp_path / "AGENTS.md").read_bytes() == agents_before
     assert _state_file(tmp_path).read_bytes() == state_before
