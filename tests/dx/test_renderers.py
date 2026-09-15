@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from protean.dx.managed_files import ManagedBlock, ManagedJsonKeys
@@ -26,6 +32,9 @@ from protean.mcp import mcp_registration
 
 # The renderers are pure functions over package data and never touch a domain.
 pytestmark = pytest.mark.no_test_domain
+
+# Repo root: tests/dx/test_renderers.py → parents[2] is the repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _h1_lines(text: str) -> list[str]:
@@ -128,9 +137,6 @@ def test_mcp_registration_imports_without_the_mcp_extra() -> None:
     not, and that ``mcp`` never lands in ``sys.modules`` proves nothing pulled it
     in transitively.
     """
-    import subprocess
-    import sys
-
     code = (
         "import sys, importlib.abc\n"
         "class Block(importlib.abc.MetaPathFinder):\n"
@@ -183,3 +189,33 @@ def test_strip_leading_h1_leaves_text_without_an_h1_unchanged() -> None:
 def test_strip_leading_h1_does_not_touch_an_h2() -> None:
     text = "## Subheading\nbody\n"
     assert _strip_leading_h1(text) == text
+
+
+def test_repo_mcp_json_matches_what_the_renderer_writes() -> None:
+    """The repository's own ``.mcp.json`` carries the shape ``dx install`` writes.
+
+    The repo ships a ``.mcp.json`` and the MCP docs print one by hand. If either
+    drifts from the renderer, a user gets two contradictory registration formats
+    and a client reading one of them never finds the server. Pin all three to the
+    same key-path and value here.
+    """
+    repo_mcp_json = json.loads((_REPO_ROOT / MCP_TARGET).read_text(encoding="utf-8"))
+
+    assert repo_mcp_json[MCP_SERVER_KEY][MCP_SERVER_NAME] == mcp_registration()
+
+
+def test_mcp_docs_snippet_matches_what_the_renderer_writes() -> None:
+    """The hand-written snippet in the MCP reference matches the renderer too."""
+    page = (_REPO_ROOT / "docs/reference/cli/runtime/mcp.md").read_text(
+        encoding="utf-8"
+    )
+    snippets = re.findall(r"```json\n(.*?)```", page, flags=re.DOTALL)
+    registrations = [
+        json.loads(snippet)
+        for snippet in snippets
+        if MCP_SERVER_KEY in json.loads(snippet)
+    ]
+
+    assert registrations, "the MCP reference no longer prints a registration snippet"
+    for registration in registrations:
+        assert registration[MCP_SERVER_KEY][MCP_SERVER_NAME] == mcp_registration()
