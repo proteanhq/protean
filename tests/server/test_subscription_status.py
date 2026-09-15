@@ -2200,6 +2200,33 @@ class TestReconstructUnresolved:
         with pytest.raises(ValueError, match="no per-stream position"):
             reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
 
+    @pytest.mark.no_test_domain
+    def test_non_advancing_cursor_raises(self):
+        """A full page whose last record does not move the cursor forward (a
+        non-monotonic or duplicate position) would loop forever; it raises so the
+        CLI reports the subscription unverified instead of hanging."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = MagicMock()
+        store._read_last_message.return_value = None  # cursor starts at 0
+        msg = MagicMock()
+        msg.data.get.side_effect = lambda k, default=None: {
+            "position": 9,
+            "retry_count": 0,
+            "stream_name": None,
+            "stream_position": None,
+        }.get(k, default)
+        msg.metadata.headers.type = "Failed"
+        # position + 1 == 0, not greater than the starting cursor 0: no progress.
+        msg.metadata.event_store.position = -1
+        # A full page that always comes back the same would loop without the guard.
+        store.read.return_value = [msg]
+
+        with pytest.raises(ValueError, match="did not advance"):
+            reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
+
 
 class TestCollectRecoveryCheckpointStatuses:
     def _seed_order_head(self, store) -> int:

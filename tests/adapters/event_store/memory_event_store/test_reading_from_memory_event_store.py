@@ -118,15 +118,16 @@ def test_read_last_message_when_there_are_no_messages(test_domain):
     assert message is None
 
 
-def test_read_last_message_past_the_thousand_row_page(test_domain):
-    """A stream longer than the adapter's 1,000-row read page must still return
-    its newest record. An earlier implementation read the first 1,000 rows and
-    took the last, so the append-only recovery-checkpoint stream returned a stale
-    record once it passed 1,000 messages (the long-restart failure this guards).
+def test_read_last_message_past_the_read_page_limit(test_domain):
+    """A stream longer than the adapter's bounded read page must still return its
+    newest record. An earlier implementation read one page and took its last row,
+    so the append-only recovery-checkpoint stream returned a stale record once it
+    outgrew a single page (the long-restart failure this guards). ``total`` is one
+    past ``repo.read``'s default page size so the naive read would miss the tail.
 
     Seeded through the repository's ``add`` rather than ``_write``: ``_write``
     re-reads the whole stream to compute the next version on every call, which is
-    O(n^2) and far too slow for a thousand rows.
+    O(n^2) and far too slow for this many rows.
     """
     repo = cast(MemoryMessageRepository, test_domain.repository_for(MemoryMessage))
     total = 1_001

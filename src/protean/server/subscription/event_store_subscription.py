@@ -115,8 +115,18 @@ def reconstruct_unresolved(
                 f"Failed-positions record in {failed_positions_stream!r} carries "
                 f"no per-stream position; cannot page the recovery stream."
             )
-        watermark = event_store.position + 1
-        cursor = watermark
+        next_cursor = event_store.position + 1
+        if next_cursor <= cursor:
+            # The cursor did not move forward (a non-monotonic or duplicate
+            # position). On a full page that would re-read the same page forever,
+            # so raise rather than loop; the caller reports the subscription
+            # unverified.
+            raise ValueError(
+                f"Failed-positions stream {failed_positions_stream!r} did not "
+                f"advance past position {cursor}; cannot page the recovery stream."
+            )
+        watermark = next_cursor
+        cursor = next_cursor
         if len(page) < page_size:
             break
 
