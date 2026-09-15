@@ -172,9 +172,10 @@ reset.
 | `1` | At least one checkpoint points past the restored head, or a recovery-tracking entry names a message the restored store no longer holds (verification only, without `--reset-beyond-head`) |
 | `2` | Usage or environment error: `--reset-beyond-head` without `--verify-checkpoints`, a checkpoint or recovery reset write that failed, or no or unloadable domain **under `--json`** |
 
-With `--reset-beyond-head` the run fixes each beyond-head checkpoint and exits
-`0`. A verification-only run exits `1` when a checkpoint is beyond head. A reset
-that could not write some checkpoints exits `2`.
+With `--reset-beyond-head` the run fixes each beyond-head checkpoint and stale
+recovery entry and exits `0`. A verification-only run exits `1` when a checkpoint
+is beyond head or a recovery-tracking entry is stale. A reset that could not
+write some checkpoints or recovery entries exits `2`.
 
 A domain that cannot be loaded exits `2` under `--json` (with the error
 envelope). On the default human path the same failure aborts with exit `1`.

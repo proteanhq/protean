@@ -2,22 +2,26 @@
 
 Usage::
 
-    # Flag checkpoints that point past the restored stream head
+    # Flag beyond-head checkpoints and stale recovery-tracking entries
     protean recover --verify-checkpoints --domain=my_domain
 
     # Machine-readable JSON
     protean recover --verify-checkpoints --domain=my_domain --json
 
-    # Snap any beyond-head checkpoint back to the stream head
+    # Reset each beyond-head checkpoint and clear each stale recovery entry
     protean recover --verify-checkpoints --reset-beyond-head --domain=my_domain
 
 Restoring an event store from a backup can leave a subscription's checkpoint
 ahead of the stream it consumes: the checkpoint stream was backed up after the
 category stream, so it names a position the restored store no longer holds. Such
 a subscription would skip every event between the head and the stale checkpoint.
-``--verify-checkpoints`` reports those subscriptions so an operator can reset
-them before starting the engine. ``--reset-beyond-head`` snaps each beyond-head
-checkpoint back to the stream head. Without it, no run modifies any checkpoint.
+The same restore can leave an event-store subscription's recovery pass tracking
+failed positions whose message the restored store no longer holds, which it would
+re-read and retry forever. ``--verify-checkpoints`` reports both so an operator
+can reset them before starting the engine. ``--reset-beyond-head`` snaps each
+beyond-head checkpoint back to the stream head and clears each stale
+recovery-tracking entry. Without it, no run modifies any checkpoint or
+recovery-tracking stream.
 """
 
 from __future__ import annotations
@@ -285,7 +289,7 @@ def recover(
         # flag there is nothing to do, so print the hint and exit cleanly.
         print(
             "Nothing to do. Pass --verify-checkpoints to report checkpoints "
-            "that point past the restored stream head."
+            "past the restored head and stale recovery-tracking entries."
         )
         return
 
