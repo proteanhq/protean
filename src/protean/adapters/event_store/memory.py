@@ -183,10 +183,10 @@ class MemoryEventStore(BaseEventStore):
 
         # A true tail read: order descending and take one, so it returns the
         # actual newest record. Reading the stream and taking the last of the
-        # page (``repo.read`` caps at 1000 rows) would silently return the
-        # 1000th-oldest record once a stream holds more than 1000 messages, which
-        # the append-only recovery-checkpoint stream reaches over many restarts.
-        # A category/``$all`` read orders by ``global_position`` (ADR-0024), a
+        # page would return the newest of only the first page once the stream is
+        # longer than ``repo.read``'s row cap, and the append-only
+        # recovery-checkpoint stream grows past that over many restarts. A
+        # category/``$all`` read orders by ``global_position`` (ADR-0024), a
         # specific stream by its own per-stream ``position``.
         if stream_name == "$all" or repo.is_category(stream_name):
             q = repo._dao.query.order_by("-global_position")

@@ -1847,7 +1847,6 @@ class TestResetCheckpointToHead:
         with pytest.raises(ValueError, match="not a number"):
             reset_checkpoint_to_head(test_domain, status)
 
-    @pytest.mark.no_test_domain
     def test_raises_when_store_not_configured(self):
         from protean.server.subscription_status import reset_checkpoint_to_head
 
@@ -2409,27 +2408,42 @@ class TestCollectRecoveryCheckpointStatuses:
         )
         assert findings == []
 
-    def test_unknown_head_skipped(self, test_domain):
+    def test_scans_when_read_position_head_is_unknown(self, test_domain):
+        """The recovery lane reads the head itself, so it still runs and flags a
+        stale entry when the read-position collection failed and left the status
+        with no head (an unreadable read-position checkpoint must not hide
+        readable recovery tracking)."""
         from protean.server.subscription_status import (
             collect_recovery_checkpoint_statuses,
         )
 
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)  # store is readable
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    str(head + 3): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+
+        # head_position None models a read-position collection that failed but
+        # still carried the derived recovery stream names.
         findings = collect_recovery_checkpoint_statuses(
             test_domain, [_rec_status(head_position=None)]
         )
-        assert findings == []
 
-    def test_non_numeric_head_skipped(self, test_domain):
-        """A foreign store can hold a non-numeric head; it cannot be compared, so
-        the subscription is skipped rather than crashing the int comparison."""
-        from protean.server.subscription_status import (
-            collect_recovery_checkpoint_statuses,
-        )
-
-        findings = collect_recovery_checkpoint_statuses(
-            test_domain, [_rec_status(head_position="abc")]
-        )
-        assert findings == []
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [head + 3]
+        # The head was read from the store, not taken from the (unknown) status.
+        assert findings[0].head_position == head
 
     def test_missing_recovery_streams_skipped(self, test_domain):
         from protean.server.subscription_status import (
@@ -2469,10 +2483,15 @@ class TestCollectRecoveryCheckpointStatuses:
         mock_domain.event_store.store._read_last_message.side_effect = RuntimeError(
             "boom"
         )
-        findings = collect_recovery_checkpoint_statuses(mock_domain, [_rec_status()])
+        # A non-numeric head (a foreign store) is reported as -1 on the unknown
+        # finding rather than crashing the int parse.
+        findings = collect_recovery_checkpoint_statuses(
+            mock_domain, [_rec_status(head_position="abc")]
+        )
         assert len(findings) == 1
         assert findings[0].verdict == "unknown"
         assert findings[0].stale_positions == []
+        assert findings[0].head_position == -1
 
     @pytest.mark.no_test_domain
     def test_store_not_configured_is_reported_unknown(self):
@@ -2725,6 +2744,7 @@ class TestResetRecoveryCheckpoint:
         assert last["data"]["unresolved"] == {}
         assert collect_recovery_checkpoint_statuses(test_domain, [status]) == []
 
+    @pytest.mark.no_test_domain
     def test_raises_when_store_not_configured(self):
         from protean.server.subscription_status import (
             RecoveryCheckpointStatus,

@@ -256,9 +256,16 @@ def _collect_event_store_status(
             name,
             exc,
         )
-        return _unknown_status(
+        unknown = _unknown_status(
             name, handler_cls.__name__, "event_store", stream_category
         )
+        # Keep the recovery-tracking stream names (derived from the subscriber
+        # name and category, no store read) even when the read-position read
+        # failed, so ``protean recover`` can still scan the recovery streams for
+        # this subscription instead of skipping it as untracked.
+        unknown.recovery_checkpoint_stream = recovery_stream
+        unknown.failed_positions_stream = failed_stream
+        return unknown
 
 
 # ---------------------------------------------------------------------------
@@ -1082,26 +1089,33 @@ def _collect_one_recovery_checkpoint(
     position's re-read raised), so an unverifiable subscription is reported rather
     than silently passed as clean.
 
-    Returns ``None`` when there is nothing to report: the subscription is not an
-    event-store one, its head or streams are unknown (an unreachable store the
-    read-position pass already reports as unknown), or every tracked position's
-    message is still present.
+    It reads the stream head itself rather than taking it from ``status``, so it
+    still runs when the read-position collection failed and left ``status`` with
+    no head (an unreadable read-position checkpoint does not hide readable
+    recovery tracking). Returns ``None`` when there is nothing to report: the
+    subscription is not an event-store one, it has no recovery-tracking streams,
+    or every tracked position's message is still present.
     """
     if status.subscription_type != "event_store":
         return None
     if not status.recovery_checkpoint_stream or not status.failed_positions_stream:
         return None
-    head = _parse_position(status.head_position)
-    if head is None:
-        return None
 
     stale_positions: list[int] = []
     any_unverified = False
+    head = -1
     try:
         with domain.domain_context():
             store = domain.event_store.store
             if store is None:
-                return _recovery_unknown(status, head)
+                return _recovery_unknown(status)
+            # Read the head here, not from ``status``: the recovery lane must run
+            # even when the read-position collection failed (its ``status`` then
+            # carries no head), so a subscription with an unreadable read-position
+            # checkpoint but readable recovery streams is not skipped. The head is
+            # reported context only; staleness is decided by the per-position
+            # re-read below.
+            head = store.stream_head_position(status.stream_category)
             unresolved, _watermark, _read = reconstruct_unresolved(
                 store,
                 status.recovery_checkpoint_stream,
@@ -1142,13 +1156,13 @@ def _collect_one_recovery_checkpoint(
             status.recovery_checkpoint_stream,
             exc,
         )
-        return _recovery_unknown(status, head)
+        return _recovery_unknown(status)
 
     # Confirmed stale entries are reported (and reset) even when a sibling could
     # not be re-read. Only when nothing was confirmed stale does a read error make
     # the whole subscription unverified.
     if not stale_positions:
-        return _recovery_unknown(status, head) if any_unverified else None
+        return _recovery_unknown(status) if any_unverified else None
 
     return RecoveryCheckpointStatus(
         name=status.name,
@@ -1163,17 +1177,20 @@ def _collect_one_recovery_checkpoint(
     )
 
 
-def _recovery_unknown(
-    status: SubscriptionStatus, head: int
-) -> RecoveryCheckpointStatus:
+def _recovery_unknown(status: SubscriptionStatus) -> RecoveryCheckpointStatus:
     """Build an unverified recovery finding for a subscription whose recovery
-    streams could not be read."""
+    tracking could not be read.
+
+    ``head_position`` is reported as context only, so it falls back to the
+    read-position collection's head when one was recorded and to ``-1`` when it
+    was not (an unverifiable head is not what makes the finding ``unknown``)."""
+    head = _parse_position(status.head_position)
     return RecoveryCheckpointStatus(
         name=status.name,
         handler_name=status.handler_name,
         stream_category=status.stream_category,
         recovery_checkpoint_stream=status.recovery_checkpoint_stream or "",
-        head_position=head,
+        head_position=head if head is not None else -1,
         verdict="unknown",
         stale_positions=[],
         unresolved={},
