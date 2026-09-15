@@ -1,3 +1,11 @@
+from typing import cast
+
+from protean.adapters.event_store.memory import (
+    MemoryMessage,
+    MemoryMessageRepository,
+)
+
+
 def _create_test_metadata(stream_name, message_type, message_id=None):
     """Helper to create metadata with required headers for tests."""
     return {
@@ -120,13 +128,6 @@ def test_read_last_message_past_the_thousand_row_page(test_domain):
     re-reads the whole stream to compute the next version on every call, which is
     O(n^2) and far too slow for a thousand rows.
     """
-    from typing import cast
-
-    from protean.adapters.event_store.memory import (
-        MemoryMessage,
-        MemoryMessageRepository,
-    )
-
     repo = cast(MemoryMessageRepository, test_domain.repository_for(MemoryMessage))
     total = 1_001
     for i in range(total):

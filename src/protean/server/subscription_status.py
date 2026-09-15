@@ -1129,9 +1129,11 @@ def _collect_one_recovery_checkpoint(
 
     stale_positions: list[int] = []
     any_unverified = False
-    # A best-effort head, reported as context only. Seed it from the status (the
-    # read-position collection's head, or -1 when that failed), then overwrite it
-    # with a fresh read when one succeeds below.
+    # A best-effort head, reported as context only (the per-position re-reads
+    # decide staleness). Reuse the head the read-position collection already read,
+    # and only read it from the store when that collection did not record one (it
+    # failed), so a domain with many subscriptions on a large category does not
+    # pay a second, potentially expensive head read per subscription.
     parsed_head = _parse_position(status.head_position)
     head = parsed_head if parsed_head is not None else -1
     try:
@@ -1139,17 +1141,18 @@ def _collect_one_recovery_checkpoint(
             store = domain.event_store.store
             if store is None:
                 return _recovery_unknown(status, head)
-            # Read the head here, not only from ``status``: the recovery lane must
-            # run even when the read-position collection failed (its ``status``
-            # then carries no head), so a subscription with an unreadable
-            # read-position checkpoint but readable recovery streams is not
-            # skipped. The head is reported context only and staleness is decided
-            # by the per-position re-read, so a head-read failure must not block
-            # the scan: fall back to the seeded head and carry on.
-            try:
-                head = store.stream_head_position(status.stream_category)
-            except Exception as exc:
-                logger.debug("Could not read stream head for %s: %s", status.name, exc)
+            # Reading the head lets the recovery lane run even when the
+            # read-position collection failed (its ``status`` then carries no
+            # head), so a subscription with an unreadable read-position checkpoint
+            # but readable recovery streams is not skipped. A head-read failure
+            # must not block the scan, so fall back to the seeded head.
+            if parsed_head is None:
+                try:
+                    head = store.stream_head_position(status.stream_category)
+                except Exception as exc:
+                    logger.debug(
+                        "Could not read stream head for %s: %s", status.name, exc
+                    )
             unresolved, _watermark, _read = reconstruct_unresolved(
                 store,
                 status.recovery_checkpoint_stream,

@@ -2495,14 +2495,16 @@ class TestCollectRecoveryCheckpointStatuses:
         assert findings[0].head_position == -1
 
     @pytest.mark.no_test_domain
-    def test_head_read_failure_does_not_block_the_scan(self):
-        """The head is reported context only, so a head-read failure falls back to
-        a best-effort head and the stale entry is still reported."""
+    def test_reuses_status_head_and_skips_the_store_read(self):
+        """When the read-position collection already recorded a head, the recovery
+        lane reuses it and does not pay a second (potentially expensive) store
+        head read; the stale entry is still reported."""
         from protean.server.subscription_status import (
             collect_recovery_checkpoint_statuses,
         )
 
         store = MagicMock()
+        # Would raise if the head were read; the test proves it is not.
         store.stream_head_position.side_effect = RuntimeError("head boom")
         # A checkpoint tracking one position, an empty failed stream, and a
         # re-read of that position that finds nothing (message gone -> stale).
@@ -2529,8 +2531,9 @@ class TestCollectRecoveryCheckpointStatuses:
         assert len(findings) == 1
         assert findings[0].verdict == "stale"
         assert findings[0].stale_positions == [5]
-        # Head read failed, so it fell back to the status head (7), not unknown.
+        # The status head (7) was reused; the store head was never read.
         assert findings[0].head_position == 7
+        store.stream_head_position.assert_not_called()
 
     @pytest.mark.no_test_domain
     def test_store_not_configured_is_reported_unknown(self):

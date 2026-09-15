@@ -72,11 +72,14 @@ catches a restore that removed one aggregate's stream while another aggregate ha
 a later event: the removed position then sits below the category head, so a head
 comparison alone would miss it. A stale recovery entry fails the run the same way
 a beyond-head checkpoint does (exit `1`). A position whose message is still
-present is left unreported. A subscription that could not be verified (the
-recovery streams could not be read, a restore left a corrupt checkpoint record,
-or a tracked message's re-read failed) is reported apart as unverified so it is
-never read as clean; like an unknown checkpoint, that does not change the exit
-code. The check is read-only: a `--verify-checkpoints` run never writes to a
+present is left unreported. When nothing could be verified for a subscription
+(the recovery streams could not be read, a restore left a corrupt checkpoint
+record, or every remaining position's re-read failed) it is reported apart as
+`unknown` so it is never read as clean; like an unknown checkpoint, that does not
+change the exit code. When some positions were confirmed stale and only a sibling
+could not be re-read, the subscription is still reported `stale` (exit `1`) and
+the reset preserves the unreadable sibling rather than reporting `unknown`. The
+check is read-only: a `--verify-checkpoints` run never writes to a
 recovery-tracking stream.
 
 Without `--verify-checkpoints` the command prints a hint and exits `0`.
@@ -185,7 +188,8 @@ protean recover --verify-checkpoints --domain=my_app --json
 ```
 
 The output is the shared [result envelope](../conventions.md). `status` is
-`fail` (exit `1`) when any checkpoint is beyond head and `pass` (exit `0`)
+`fail` (exit `1`) when any checkpoint is beyond head or any recovery-tracking
+entry is stale (see the recovery section below), and `pass` (exit `0`)
 otherwise. The per-subscription list is under `data.subscriptions` and the
 counts are under `data.summary`. Each subscription carries a `verdict` token
 (`beyond_head`, `consistent`, or `unknown`) alongside the `beyond_head` boolean,
