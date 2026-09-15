@@ -740,6 +740,30 @@ def test_json_keypath_non_object_segment_raises(tmp_path: Path) -> None:
         assert target.read_text(encoding="utf-8") == bad + "\n"  # untouched
 
 
+def test_merge_json_refuses_a_non_object_segment_directly() -> None:
+    """``_merge_json`` guards a non-object segment on its own.
+
+    ``diff_managed_file`` walks the disk slice first, so it raises before reaching
+    ``_merge_json``. Call the merge directly to cover its own defensive branch on
+    a non-object path segment, and confirm the object case merges under the path.
+    """
+    from protean.dx.managed_files import _merge_json
+
+    managed = ManagedJsonKeys(
+        target=".mcp.json",
+        version="1",
+        data={"protean": {"command": "x"}},
+        path=("mcpServers",),
+    )
+    with pytest.raises(ManagedFileError, match="needs it to be a JSON object"):
+        _merge_json({"mcpServers": "oops"}, managed)
+
+    rendered = _merge_json({"mcpServers": {"other": 1}}, managed)
+    assert json.loads(rendered) == {
+        "mcpServers": {"other": 1, "protean": {"command": "x"}}
+    }
+
+
 def test_json_keypath_does_not_mutate_the_parsed_disk_dict(tmp_path: Path) -> None:
     """The merge deep-copies its walk, so repeated diffs are stable and pure."""
     target = tmp_path / ".mcp.json"
