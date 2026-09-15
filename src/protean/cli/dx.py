@@ -333,7 +333,10 @@ def _pending_line(result: ApplyResult, managed_file: ManagedFile) -> str:
     target = escape(result.target)
     messages = {
         ApplyStatus.CREATE: f"[cyan]create[/cyan] {target} — not installed yet",
-        ApplyStatus.UPDATE: f"[yellow]update[/yellow] {target} — block is stale",
+        ApplyStatus.UPDATE: (
+            f"[yellow]update[/yellow] {target} — {_managed_region(managed_file)} "
+            "is stale"
+        ),
         ApplyStatus.NO_CHANGE: f"[green]ok[/green] {target} — up to date",
         ApplyStatus.CONFLICT: (
             f"[red]conflict[/red] {target} — "

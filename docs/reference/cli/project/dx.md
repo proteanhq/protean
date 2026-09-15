@@ -55,14 +55,14 @@ protean dx diff        # preview what install would change (unified diff); write
 protean dx check       # exit non-zero when a target has drifted; write nothing
 ```
 
-`install` creates a missing file and refreshes a stale block. `refresh` is the
-same idempotent apply, run after upgrading Protean. `diff` and `check` write
+`install` creates a missing file and refreshes a stale managed region. `refresh`
+is the same idempotent apply, run after upgrading Protean. `diff` and `check` write
 nothing: `diff` is the preview, printing a unified diff of each pending change,
 and `check` is the CI gate.
 
-A target has drifted when it is missing, its block is stale against the installed
-version, or you edited inside the block. `check` reports each target and exits
-non-zero when any has drifted.
+A target has drifted when it is missing, its managed region is stale against the
+installed version, or you edited inside that region. `check` reports each target,
+naming the region it means, and exits non-zero when any has drifted.
 
 ### Options
 
