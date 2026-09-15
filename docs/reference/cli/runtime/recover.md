@@ -156,8 +156,8 @@ reset.
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--verify-checkpoints` | Flag checkpoints that point past the restored stream head | `False` |
-| `--reset-beyond-head` | Snap each beyond-head checkpoint back to the stream head (needs `--verify-checkpoints`) | `False` |
+| `--verify-checkpoints` | Flag checkpoints past the restored head and recovery-tracking entries whose message the restore removed | `False` |
+| `--reset-beyond-head` | Snap each beyond-head checkpoint back to the head and clear each stale recovery-tracking entry (needs `--verify-checkpoints`) | `False` |
 | `--domain` | Domain module path | `.` (current directory) |
 | `--json` | Output raw JSON instead of a table | `False` |
 

@@ -258,8 +258,10 @@ def recover(
 
     Add ``--reset-beyond-head`` to snap each beyond-head checkpoint back to the
     stream head and clear each stale recovery-tracking entry. The reset run
-    reports what it changed and exits ``0``; a later ``--verify-checkpoints`` run
-    then finds those subscriptions consistent. ``--reset-beyond-head`` needs
+    reports what it changed and exits ``0`` when every write succeeds (``2`` if a
+    write fails); a later ``--verify-checkpoints`` run then finds those
+    subscriptions consistent, apart from any still reported ``unknown`` because
+    their tracking could not be read. ``--reset-beyond-head`` needs
     ``--verify-checkpoints`` (that pass finds what to reset), and without it no
     run modifies any checkpoint or recovery-tracking stream.
 
