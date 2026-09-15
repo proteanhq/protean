@@ -2480,11 +2480,12 @@ class TestCollectRecoveryCheckpointStatuses:
         )
 
         mock_domain = MagicMock()
-        mock_domain.event_store.store._read_last_message.side_effect = RuntimeError(
-            "boom"
-        )
-        # A non-numeric head (a foreign store) is reported as -1 on the unknown
-        # finding rather than crashing the int parse.
+        store = mock_domain.event_store.store
+        store._read_last_message.side_effect = RuntimeError("boom")
+        # The head read also fails, so it falls back to the status head; a
+        # non-numeric status head (a foreign store) is reported as -1 rather than
+        # crashing the int parse.
+        store.stream_head_position.side_effect = RuntimeError("head boom")
         findings = collect_recovery_checkpoint_statuses(
             mock_domain, [_rec_status(head_position="abc")]
         )
@@ -2492,6 +2493,44 @@ class TestCollectRecoveryCheckpointStatuses:
         assert findings[0].verdict == "unknown"
         assert findings[0].stale_positions == []
         assert findings[0].head_position == -1
+
+    @pytest.mark.no_test_domain
+    def test_head_read_failure_does_not_block_the_scan(self):
+        """The head is reported context only, so a head-read failure falls back to
+        a best-effort head and the stale entry is still reported."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = MagicMock()
+        store.stream_head_position.side_effect = RuntimeError("head boom")
+        # A checkpoint tracking one position, an empty failed stream, and a
+        # re-read of that position that finds nothing (message gone -> stale).
+        store._read_last_message.return_value = {
+            "data": {
+                "watermark": 0,
+                "unresolved": {
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    }
+                },
+            }
+        }
+        store.read.return_value = []
+        mock_domain = MagicMock()
+        mock_domain.event_store.store = store
+
+        findings = collect_recovery_checkpoint_statuses(
+            mock_domain, [_rec_status(head_position="7")]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [5]
+        # Head read failed, so it fell back to the status head (7), not unknown.
+        assert findings[0].head_position == 7
 
     @pytest.mark.no_test_domain
     def test_store_not_configured_is_reported_unknown(self):

@@ -136,9 +136,12 @@ Cleared 1 stale recovery-tracking entry(ies) whose message the restore removed:
 ```
 
 Only the entries whose message is gone are dropped; every position whose message
-is still present is preserved. A recovery reset write that fails is named and the
-run exits `2`, the same as a checkpoint reset failure. A later
-`--verify-checkpoints` run then finds the subscription clean.
+is still present is preserved, and so is any position whose re-read could not be
+completed (a confirmed-stale entry is cleared even when a sibling could not be
+read). A recovery reset write that fails is named and the run exits `2`, the same
+as a checkpoint reset failure. A later `--verify-checkpoints` run then finds the
+subscription clean, unless a still-unreadable position keeps it reported as
+`unknown`.
 
 `--reset-beyond-head` needs `--verify-checkpoints` (that pass finds what to
 reset). Passing it alone is a usage error (exit `2`). Without it, no run modifies

@@ -222,7 +222,10 @@ def recover(
         bool,
         typer.Option(
             "--verify-checkpoints",
-            help="Flag checkpoints that point past the restored stream head",
+            help=(
+                "Flag checkpoints past the restored head and recovery-tracking "
+                "entries whose message the restore removed"
+            ),
         ),
     ] = False,
     reset_beyond_head: Annotated[
@@ -230,8 +233,8 @@ def recover(
         typer.Option(
             "--reset-beyond-head",
             help=(
-                "Snap each beyond-head checkpoint back to the stream head "
-                "(requires --verify-checkpoints)"
+                "Snap each beyond-head checkpoint back to the head and clear each "
+                "stale recovery-tracking entry (requires --verify-checkpoints)"
             ),
         ),
     ] = False,
