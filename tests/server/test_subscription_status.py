@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -24,6 +25,7 @@ from protean.server.subscription_status import (
     _unknown_status,
     collect_subscription_statuses,
 )
+from protean.utils.eventing import MessageType
 
 # ---------------------------------------------------------------------------
 # SubscriptionStatus dataclass
@@ -1932,3 +1934,1074 @@ class TestPerformResetsScope:
         assert healthy_after["data"]["position"] == payment_head
         assert unknown_after["global_position"] == unknown_before["global_position"]
         assert unknown_after["data"]["position"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Recovery-tracking checkpoints
+# ---------------------------------------------------------------------------
+
+
+def _rec_status(
+    *,
+    name: str = "sub",
+    handler_name: str = "Handler",
+    subscription_type: str = "event_store",
+    stream_category: str = "order",
+    head_position: str | None = "2",
+    recovery_checkpoint_stream: str | None = "recovery-checkpoint-Handler-order",
+    failed_positions_stream: str | None = "failed-Handler-order",
+) -> SubscriptionStatus:
+    return SubscriptionStatus(
+        name=name,
+        handler_name=handler_name,
+        subscription_type=subscription_type,
+        stream_category=stream_category,
+        lag=0,
+        pending=0,
+        current_position=head_position,
+        head_position=head_position,
+        status="ok",
+        consumer_count=0,
+        dlq_depth=0,
+        recovery_checkpoint_stream=recovery_checkpoint_stream,
+        failed_positions_stream=failed_positions_stream,
+    )
+
+
+def _seed_recovery_checkpoint(
+    store, recovery_stream: str, watermark: int, unresolved: dict, category="order"
+) -> None:
+    """Write a ``Checkpoint`` record, the shape a live subscription writes."""
+    store._write(
+        recovery_stream,
+        "Checkpoint",
+        {"watermark": watermark, "unresolved": unresolved},
+        metadata={
+            "headers": {
+                "id": str(uuid4()),
+                "type": "Checkpoint",
+                "time": "2026-01-01T00:00:00+00:00",
+                "stream": recovery_stream,
+            },
+            "domain": {
+                "kind": MessageType.READ_POSITION.value,
+                "origin_stream": category,
+            },
+        },
+    )
+
+
+def _seed_failed_record(
+    store,
+    failed_stream: str,
+    record_type: str,
+    position: int,
+    category="order",
+    stream_name=None,
+    stream_position=None,
+) -> None:
+    """Write a ``Failed``/``Resolved``/``Exhausted`` record to the failed stream.
+
+    ``stream_name``/``stream_position`` default to ``None`` so the recovery re-read
+    falls back to the category stream at ``position``; pass a specific stream to
+    exercise the specific-stream re-read path.
+    """
+    store._write(
+        failed_stream,
+        record_type,
+        {
+            "position": position,
+            "message_type": "Placed",
+            "message_id": "abc",
+            "retry_count": 1,
+            "stream_name": stream_name,
+            "stream_position": stream_position,
+        },
+        metadata={
+            "headers": {
+                "id": str(uuid4()),
+                "type": record_type,
+                "time": "2026-01-01T00:00:00+00:00",
+                "stream": failed_stream,
+            },
+            "domain": {
+                "kind": MessageType.READ_POSITION.value,
+                "origin_stream": category,
+            },
+        },
+    )
+
+
+def _seed_event(
+    store, stream_name: str, event_type: str, data: dict, category="order"
+) -> None:
+    """Write a domain event to a specific stream, with the metadata a real event
+    carries so ``store.read`` can deserialize it back (the recovery re-read does).
+    """
+    store._write(
+        stream_name,
+        event_type,
+        data,
+        metadata={
+            "headers": {
+                "id": str(uuid4()),
+                "type": event_type,
+                "time": "2026-01-01T00:00:00+00:00",
+                "stream": stream_name,
+            },
+            "domain": {
+                "kind": MessageType.EVENT.value,
+                "origin_stream": category,
+            },
+        },
+    )
+
+
+class TestReconstructUnresolved:
+    """The shared reconstruction both the runtime rebuild and ``protean recover``
+    call: checkpoint snapshot merged with failed-stream records after the
+    watermark."""
+
+    def test_snapshot_only(self, test_domain):
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": "order-9",
+                        "stream_position": 0,
+                    },
+                },
+            )
+            unresolved, watermark, _read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        assert set(unresolved) == {5}
+        assert watermark == 0
+
+    def test_failed_stream_after_watermark_is_merged(self, test_domain):
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # Snapshot at watermark 0 with one position; the failed stream adds a
+            # second and a terminal record retires a third.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "3": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                    "8": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 9)
+            _seed_failed_record(store, "failed-Handler-order", "Resolved", 8)
+
+            unresolved, watermark, _read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        # 3 stays (snapshot), 9 added (Failed), 8 removed (Resolved). Watermark
+        # advances past the two failed-stream records read (positions 0, 1 -> 2).
+        assert set(unresolved) == {3, 9}
+        assert watermark == 2
+
+    def test_no_checkpoint_reads_failed_stream_from_zero(self, test_domain):
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 4)
+            unresolved, watermark, _read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        assert set(unresolved) == {4}
+        assert watermark == 1
+
+    def test_pages_through_the_whole_stream(self, test_domain):
+        """The failed stream is paged in full, not capped: a record past the first
+        page is still merged, so a long failure history is not silently truncated.
+        """
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            for pos in (4, 5, 6, 7, 8):
+                _seed_failed_record(store, "failed-Handler-order", "Failed", pos)
+            # A tiny page size forces several pages; every record must still merge.
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+                page_size=2,
+            )
+
+        assert set(unresolved) == {4, 5, 6, 7, 8}
+        assert records_read == 5
+        # Watermark advances past the last record (per-stream positions 0..4 -> 5).
+        assert watermark == 5
+
+    def test_stale_high_watermark_reconciles_cursor_and_keeps_snapshot(
+        self, test_domain
+    ):
+        """A restore can leave the checkpoint watermark ahead of the restored
+        failed stream. Reading forward from that stale watermark finds nothing, so
+        a Failed record appended below it would be skipped on every later rebuild.
+        Reconstruction restarts the merge from the start of the stream, so the
+        record is caught and the watermark reconciles to the real tail. The
+        snapshot is kept, so a position it remembers whose failed record the
+        restore rolled back stays in the set for the CLI to re-read (report or
+        clear a stale one) and the runtime to retry a healthy one."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # A Failed record survived the restore, at per-stream position 0.
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 5)
+            # The checkpoint watermark (10) sits well past that tail (0), as a
+            # backup captured after the failed stream would leave it. Its snapshot
+            # remembers position 99, whose failed record the restore rolled back.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=10,
+                unresolved={
+                    "99": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        # Surviving Failed record (5) caught (not skipped past the stale watermark);
+        # remembered position (99) kept, not dropped; watermark reconciled to the
+        # tail (0 -> 1), not the stale 10.
+        assert set(unresolved) == {5, 99}
+        assert watermark == 1
+        assert records_read == 1
+
+    def test_watermark_at_tail_keeps_snapshot(self, test_domain):
+        """A watermark exactly at the failed stream's tail+1 is the normal case:
+        the checkpoint was written after reading to the end. It is not stale, so
+        the snapshot is kept and not rebuilt from zero. Guards the reconciliation
+        boundary against retiring a valid checkpoint."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # Two failed-stream records -> tail per-stream position 1.
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 7)
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 8)
+            # Watermark 2 == tail(1)+1: the checkpoint already accounts for both.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=2,
+                unresolved={
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        # Snapshot kept (5); nothing past the watermark to read; watermark unchanged.
+        assert set(unresolved) == {5}
+        assert watermark == 2
+        assert records_read == 0
+
+    @pytest.mark.no_test_domain
+    def test_record_without_position_raises(self):
+        """A failed record whose last page entry carries no per-stream position
+        cannot advance the cursor. Rather than silently return a partial scan as
+        if complete, it raises so the CLI reports the subscription unverified."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = MagicMock()
+        store._read_last_message.return_value = None  # no checkpoint
+        msg = MagicMock()
+        msg.data.get.side_effect = lambda k, default=None: {
+            "position": 5,
+            "retry_count": 0,
+            "stream_name": None,
+            "stream_position": None,
+        }.get(k, default)
+        msg.metadata.headers.type = "Failed"
+        # A full page (page_size 1) whose only record lacks a per-stream position.
+        msg.metadata.event_store.position = None
+        store.read.return_value = [msg]
+
+        with pytest.raises(ValueError, match="no per-stream position"):
+            reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
+
+    @pytest.mark.no_test_domain
+    def test_non_advancing_cursor_raises(self):
+        """A full page whose last record does not move the cursor forward (a
+        non-monotonic or duplicate position) would loop forever; it raises so the
+        CLI reports the subscription unverified instead of hanging."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = MagicMock()
+        store._read_last_message.return_value = None  # cursor starts at 0
+        msg = MagicMock()
+        msg.data.get.side_effect = lambda k, default=None: {
+            "position": 9,
+            "retry_count": 0,
+            "stream_name": None,
+            "stream_position": None,
+        }.get(k, default)
+        msg.metadata.headers.type = "Failed"
+        # position + 1 == 0, not greater than the starting cursor 0: no progress.
+        msg.metadata.event_store.position = -1
+        # A full page that always comes back the same would loop without the guard.
+        store.read.return_value = [msg]
+
+        with pytest.raises(ValueError, match="did not advance"):
+            reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
+
+
+class TestCollectRecoveryCheckpointStatuses:
+    def _seed_order_head(self, store) -> int:
+        _seed_event(store, "order-1", "Placed", {"n": 1})
+        _seed_event(store, "order-1", "Placed", {"n": 2})
+        return store.stream_head_position("order")
+
+    def test_flags_beyond_head_unresolved_entry(self, test_domain):
+        """AC1: an unresolved entry past the head is named as stale."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    str(head + 3): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                    "1": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].name == "sub"
+        assert findings[0].handler_name == "Handler"
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [head + 3]
+        assert findings[0].head_position == head
+
+    def test_reports_stale_snapshot_entry_under_stale_high_watermark(self, test_domain):
+        """A restore can leave the checkpoint watermark ahead of the restored
+        failed stream. The snapshot must still be honored: a remembered position
+        whose message is gone is reported stale, not dropped along with the stale
+        watermark. Guards against a reconciliation that clears recovery state
+        before the re-read runs, so verify cannot pass over a stale entry."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            # Watermark 10 sits past the (empty) failed stream's tail: a stale-high
+            # watermark. Its snapshot remembers a position whose message is gone.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=10,
+                unresolved={
+                    str(head + 3): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [head + 3]
+
+    def test_empty_category_head_minus_one_flags_every_tracked_position(
+        self, test_domain
+    ):
+        """The maximal rollback leaves an empty category (head ``-1``); every
+        tracked position is then past the head and flagged."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = store.stream_head_position("order")
+            assert head == -1
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "0": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position="-1")]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].stale_positions == [0]
+
+    def test_entry_at_or_below_head_not_flagged(self, test_domain):
+        """AC4: entries at or below the head are left unreported."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    str(head): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                    "0": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert findings == []
+
+    def test_stale_only_in_failed_stream_is_caught(self, test_domain):
+        """A position that began failing after the last checkpoint lives only in
+        the failed stream; reconstruction merges it and the re-read (no specific
+        stream recorded, so the category stream at its position) finds nothing."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            _seed_recovery_checkpoint(
+                store, "recovery-checkpoint-Handler-order", watermark=0, unresolved={}
+            )
+            _seed_failed_record(store, "failed-Handler-order", "Failed", head + 7)
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].stale_positions == [head + 7]
+
+    def test_removed_specific_stream_below_head_is_flagged(self, test_domain):
+        """A failed record points at a specific stream a restore removed, but
+        another aggregate has a later event so the category head stays above it.
+        Comparing the global position to the head would miss it; re-reading the
+        specific stream catches it."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)  # order-1 holds events; head == 2
+            # A tracked position at global_position 1 (<= head) whose own stream
+            # `order-removed` no longer exists.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "1": {
+                        "retry_count": 1,
+                        "stream_name": "order-removed",
+                        "stream_position": 0,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [1]
+
+    def test_present_specific_stream_is_not_flagged(self, test_domain):
+        """A tracked position whose specific stream still holds its message is
+        healthy and left unreported, even below the head."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)  # order-1 holds events at pos 0, 1
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "1": {
+                        "retry_count": 1,
+                        "stream_name": "order-1",
+                        "stream_position": 0,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert findings == []
+
+    @pytest.mark.no_test_domain
+    def test_non_event_store_subscription_skipped(self):
+        # A broker subscription is skipped before any domain access.
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        findings = collect_recovery_checkpoint_statuses(
+            None, [_rec_status(subscription_type="broker")]
+        )
+        assert findings == []
+
+    def test_scans_when_read_position_head_is_unknown(self, test_domain):
+        """The recovery lane reads the head itself, so it still runs and flags a
+        stale entry when the read-position collection failed and left the status
+        with no head (an unreadable read-position checkpoint must not hide
+        readable recovery tracking)."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)  # store is readable
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    str(head + 3): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+
+        # head_position None models a read-position collection that failed but
+        # still carried the derived recovery stream names.
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=None)]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [head + 3]
+        # The head was read from the store, not taken from the (unknown) status.
+        assert findings[0].head_position == head
+
+    @pytest.mark.no_test_domain
+    def test_missing_recovery_streams_skipped(self):
+        # A status with no recovery streams is skipped before any domain access.
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        findings = collect_recovery_checkpoint_statuses(
+            None, [_rec_status(recovery_checkpoint_stream=None)]
+        )
+        assert findings == []
+
+    def test_no_tracking_returns_no_finding(self, test_domain):
+        """An event-store subscription that never failed a position has no
+        recovery streams to read, so it is not a finding."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+        assert findings == []
+
+    @pytest.mark.no_test_domain
+    def test_store_read_failure_is_reported_unknown(self):
+        """A store read that raises is reported as an unverified finding, not
+        crashed and not silently folded into clean."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        mock_domain = MagicMock()
+        store = mock_domain.event_store.store
+        store._read_last_message.side_effect = RuntimeError("boom")
+        # The head read also fails, so it falls back to the status head; a
+        # non-numeric status head (a foreign store) is reported as -1 rather than
+        # crashing the int parse.
+        store.stream_head_position.side_effect = RuntimeError("head boom")
+        findings = collect_recovery_checkpoint_statuses(
+            mock_domain, [_rec_status(head_position="abc")]
+        )
+        assert len(findings) == 1
+        assert findings[0].verdict == "unknown"
+        assert findings[0].stale_positions == []
+        assert findings[0].head_position == -1
+
+    @pytest.mark.no_test_domain
+    def test_reuses_status_head_and_skips_the_store_read(self):
+        """When the read-position collection already recorded a head, the recovery
+        lane reuses it and does not pay a second (potentially expensive) store
+        head read; the stale entry is still reported."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = MagicMock()
+        # Would raise if the head were read; the test proves it is not.
+        store.stream_head_position.side_effect = RuntimeError("head boom")
+        # A checkpoint tracking one position, an empty failed stream, and a
+        # re-read of that position that finds nothing (message gone -> stale).
+        store._read_last_message.return_value = {
+            "data": {
+                "watermark": 0,
+                "unresolved": {
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    }
+                },
+            }
+        }
+        store.read.return_value = []
+        mock_domain = MagicMock()
+        mock_domain.event_store.store = store
+
+        findings = collect_recovery_checkpoint_statuses(
+            mock_domain, [_rec_status(head_position="7")]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [5]
+        # The status head (7) was reused; the store head was never read.
+        assert findings[0].head_position == 7
+        store.stream_head_position.assert_not_called()
+
+    @pytest.mark.no_test_domain
+    def test_store_not_configured_is_reported_unknown(self):
+        """A domain with no event store yields an unverified finding, not silence
+        and not a raise."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        mock_domain = MagicMock()
+        mock_domain.event_store.store = None
+        findings = collect_recovery_checkpoint_statuses(mock_domain, [_rec_status()])
+        assert len(findings) == 1
+        assert findings[0].verdict == "unknown"
+
+    @pytest.mark.no_test_domain
+    def test_corrupt_checkpoint_record_is_reported_unknown(self):
+        """A restore can leave a checkpoint record whose ``data`` is malformed;
+        the reconstruction raises and the subscription is reported unverified."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        mock_domain = MagicMock()
+        # ``data`` is not a dict, so ``checkpoint["data"].get(...)`` raises.
+        mock_domain.event_store.store._read_last_message.return_value = {
+            "data": "not-a-dict"
+        }
+        findings = collect_recovery_checkpoint_statuses(mock_domain, [_rec_status()])
+        assert len(findings) == 1
+        assert findings[0].verdict == "unknown"
+
+    def test_read_error_on_one_position_keeps_confirmed_stale(self, test_domain):
+        """A re-read that raises for one position must not discard the stale
+        entries already confirmed for the same subscription."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            # A metadata-less message makes ``store.read`` raise on that stream.
+            store._write("order-corrupt", "Placed", {"n": 1})
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": "order-removed",
+                        "stream_position": 0,
+                    },
+                    "6": {
+                        "retry_count": 1,
+                        "stream_name": "order-corrupt",
+                        "stream_position": 0,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        # 5 (order-removed) is confirmed gone and reported; 6's read raised, so it
+        # is skipped rather than dropping 5.
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [5]
+
+    def test_read_error_with_no_confirmed_stale_is_unknown(self, test_domain):
+        """When the only re-read that could run raises and nothing is confirmed
+        stale, the subscription is reported unverified rather than clean."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            store._write("order-corrupt", "Placed", {"n": 1})
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    "6": {
+                        "retry_count": 1,
+                        "stream_name": "order-corrupt",
+                        "stream_position": 0,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "unknown"
+
+    def test_malformed_failed_record_is_skipped(self, test_domain):
+        """A failed record missing its position is skipped, not merged as a
+        phantom entry."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            # A record whose data carries no position at all.
+            store._write(
+                "failed-Handler-order",
+                "Failed",
+                {"position": None, "retry_count": 1},
+                metadata={
+                    "headers": {
+                        "id": "x",
+                        "type": "Failed",
+                        "time": "2026-01-01T00:00:00+00:00",
+                        "stream": "failed-Handler-order",
+                    },
+                    "domain": {
+                        "kind": MessageType.READ_POSITION.value,
+                        "origin_stream": "order",
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+        assert findings == []
+
+    def test_collect_does_not_modify_any_stream(self, test_domain):
+        """AC3: a verify-only collection never writes to the recovery stream."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    str(head + 3): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+            before = store._read_last_message("recovery-checkpoint-Handler-order")
+
+        collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        with test_domain.domain_context():
+            after = store._read_last_message("recovery-checkpoint-Handler-order")
+
+        # No new record appended: same global_position, same content.
+        assert after["global_position"] == before["global_position"]
+        assert after["data"] == before["data"]
+
+
+class TestResetRecoveryCheckpoint:
+    def _seed_order_head(self, store) -> int:
+        _seed_event(store, "order-1", "Placed", {"n": 1})
+        _seed_event(store, "order-1", "Placed", {"n": 2})
+        return store.stream_head_position("order")
+
+    def test_drops_stale_keeps_healthy_and_reverifies_clean(self, test_domain):
+        """AC2 round-trip: the reset drops the beyond-head entries, keeps the
+        at-or-below-head ones, and a later collection finds nothing."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+            reset_recovery_checkpoint,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=0,
+                unresolved={
+                    str(head + 3): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                    "1": {
+                        "retry_count": 2,
+                        "stream_name": "order-1",
+                        "stream_position": 0,
+                    },
+                },
+            )
+
+        status = _rec_status(head_position=str(head))
+        findings = collect_recovery_checkpoint_statuses(test_domain, [status])
+        assert findings[0].stale_positions == [head + 3]
+
+        cleared = reset_recovery_checkpoint(test_domain, findings[0])
+        assert cleared == [head + 3]
+
+        # The healthy entry survived, the stale one is gone.
+        with test_domain.domain_context():
+            last = store._read_last_message("recovery-checkpoint-Handler-order")
+        assert set(last["data"]["unresolved"]) == {"1"}
+
+        # A later collection is clean.
+        assert collect_recovery_checkpoint_statuses(test_domain, [status]) == []
+
+    def test_reset_holds_when_stale_only_in_failed_stream(self, test_domain):
+        """A stale position present only in the failed stream is cleared and the
+        watermark is advanced past it, so a later collection stays clean."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+            reset_recovery_checkpoint,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            _seed_recovery_checkpoint(
+                store, "recovery-checkpoint-Handler-order", watermark=0, unresolved={}
+            )
+            _seed_failed_record(store, "failed-Handler-order", "Failed", head + 7)
+
+        status = _rec_status(head_position=str(head))
+        findings = collect_recovery_checkpoint_statuses(test_domain, [status])
+        assert findings[0].stale_positions == [head + 7]
+
+        reset_recovery_checkpoint(test_domain, findings[0])
+
+        # The rewritten checkpoint carries a watermark past the failed record, so
+        # reconstruction no longer re-reads it.
+        with test_domain.domain_context():
+            last = store._read_last_message("recovery-checkpoint-Handler-order")
+        assert last["data"]["watermark"] == 1
+        assert last["data"]["unresolved"] == {}
+        assert collect_recovery_checkpoint_statuses(test_domain, [status]) == []
+
+    @pytest.mark.no_test_domain
+    def test_raises_when_store_not_configured(self):
+        from protean.server.subscription_status import (
+            RecoveryCheckpointStatus,
+            reset_recovery_checkpoint,
+        )
+
+        mock_domain = MagicMock()
+        mock_domain.event_store.store = None
+
+        finding = RecoveryCheckpointStatus(
+            name="sub",
+            handler_name="Handler",
+            stream_category="order",
+            recovery_checkpoint_stream="recovery-checkpoint-Handler-order",
+            head_position=2,
+            verdict="stale",
+            stale_positions=[5],
+            unresolved={
+                5: {"retry_count": 1, "stream_name": None, "stream_position": None}
+            },
+            watermark=0,
+        )
+        with pytest.raises(ValueError, match="no event store"):
+            reset_recovery_checkpoint(mock_domain, finding)
+
+    def test_refuses_to_reset_an_unknown_finding(self, test_domain):
+        """An unknown finding carries an empty snapshot, so resetting it would
+        wipe the subscription's real recovery state. It is refused, and the real
+        checkpoint is left untouched."""
+        from protean.server.subscription_status import (
+            RecoveryCheckpointStatus,
+            reset_recovery_checkpoint,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=3,
+                unresolved={
+                    "5": {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    }
+                },
+            )
+            before = store._read_last_message("recovery-checkpoint-Handler-order")
+
+        finding = RecoveryCheckpointStatus(
+            name="sub",
+            handler_name="Handler",
+            stream_category="order",
+            recovery_checkpoint_stream="recovery-checkpoint-Handler-order",
+            head_position=2,
+            verdict="unknown",
+            stale_positions=[],
+            unresolved={},
+            watermark=0,
+        )
+        with pytest.raises(ValueError, match="not 'stale'"):
+            reset_recovery_checkpoint(test_domain, finding)
+
+        # The real snapshot was not overwritten with the finding's empty one.
+        with test_domain.domain_context():
+            after = store._read_last_message("recovery-checkpoint-Handler-order")
+        assert after["data"] == before["data"]

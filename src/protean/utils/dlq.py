@@ -79,6 +79,18 @@ def failed_positions_stream(handler_fqn: str, stream_category: str) -> str:
     return f"failed-{handler_fqn}-{stream_category}"
 
 
+def recovery_checkpoint_stream(subscriber_name: str, stream_category: str) -> str:
+    """Return the event-store recovery-checkpoint stream name for a subscription.
+
+    This is the single source of the name the ``EventStoreSubscription`` writes
+    its recovery checkpoint to (the ``watermark`` and ``unresolved`` snapshot the
+    recovery pass rebuilds from on restart; see the subscription's
+    ``recovery_checkpoint_stream`` attribute). The CLI and the subscription both
+    call this so the name cannot drift between the writer and the reader.
+    """
+    return f"recovery-checkpoint-{subscriber_name}-{stream_category}"
+
+
 def _infer_stream_category(handler_cls: type) -> str | None:
     """Infer stream category from a handler class.
 

@@ -13,7 +13,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
 from protean.utils import checkpoint_trace, fqn, recovery_trace
-from protean.utils.dlq import failed_positions_stream
+from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
 from protean.utils.eventing import Message, MessageType
 
 from . import BaseSubscription
@@ -32,6 +32,192 @@ class FailedPositionStatus(StrEnum):
     FAILED = "Failed"
     RESOLVED = "Resolved"
     EXHAUSTED = "Exhausted"
+
+
+def reconstruct_unresolved(
+    store: BaseEventStore,
+    recovery_checkpoint_stream: str,
+    failed_positions_stream: str,
+    *,
+    page_size: int = 1000,
+) -> tuple[dict[int, dict[str, Any]], int, int]:
+    """Rebuild the set of failed positions still awaiting recovery.
+
+    Restore the recovery checkpoint's ``unresolved`` snapshot, then merge every
+    failed-positions record written after its watermark: a ``Failed`` record adds
+    or updates an entry, a ``Resolved`` or ``Exhausted`` record removes it.
+    Reading the failed stream too, not just the snapshot, catches a position that
+    began failing after the last checkpoint was written and so lives only in the
+    failed stream.
+
+    The failed stream is paged through in full in ``page_size`` batches, not read
+    once with a cap, so a subscription with a long failure history rebuilds its
+    whole set (a cap would silently omit later records, and both the rebuild and
+    ``protean recover`` would then miss stale positions in them). Memory stays
+    bounded by the number of distinct unresolved positions, not the record count,
+    because each record only adds or removes one key.
+
+    If a restore left the checkpoint watermark ahead of the restored failed
+    stream (a stale-high watermark), the merge restarts from the start of the
+    stream so a failure appended after the restore at a lower position is not
+    skipped. The snapshot is kept, not dropped: a still-unresolved position it
+    remembers (whose failed record the restore rolled back) stays in the set, so
+    the CLI can re-read it to report or clear a stale one and the runtime can
+    retry a healthy one.
+
+    Both the subscription's rebuild on restart and ``protean recover`` read the
+    set through this one function, so the CLI reports and clears exactly the
+    positions the recovery pass would chase.
+
+    Returns the reconstructed set (``global_position`` -> ``{retry_count,
+    stream_name, stream_position}``), the watermark just past the last
+    failed-stream record read, and the number of failed-stream records read (so a
+    caller can tell whether a checkpoint rewrite is needed).
+    """
+    watermark = 0
+    unresolved: dict[int, dict[str, Any]] = {}
+
+    checkpoint = store._read_last_message(recovery_checkpoint_stream)
+    if checkpoint:
+        snapshot = checkpoint["data"].get("unresolved", {})
+        unresolved = {int(pos): info for pos, info in snapshot.items()}
+        stored_watermark = checkpoint["data"].get("watermark", 0)
+        # Reconcile the read cursor against the restored failed-positions tail. A
+        # backup can capture the checkpoint after the failed stream, so a restore
+        # can leave the stored watermark ahead of the restored stream's tail.
+        # Starting the merge at that stale-high watermark reads nothing, so a
+        # Failed record appended after the restore (at a lower per-stream position)
+        # is skipped on every later rebuild. When the watermark sits past the tail,
+        # re-read the whole surviving stream from position 0 instead; the watermark
+        # reconciles back to the real tail as the stream is paged. The snapshot is
+        # kept: a position it remembers whose failed record the restore rolled back
+        # is not dropped, so the CLI still re-reads it to report or clear a stale
+        # one and the runtime still retries a healthy one.
+        last_failed = store._read_last_message(failed_positions_stream)
+        tail = last_failed.get("position") if last_failed else None
+        if not isinstance(tail, int):
+            tail = -1
+        watermark = stored_watermark if stored_watermark <= tail + 1 else 0
+
+    cursor = watermark
+    records_read = 0
+    while True:
+        page = store.read(
+            failed_positions_stream, position=cursor, no_of_messages=page_size
+        )
+        if not page:
+            break
+        for msg in page:
+            pos = msg.data.get("position")
+            headers = msg.metadata.headers if msg.metadata else None
+            record_type = headers.type if headers else None
+            if pos is None or record_type is None:
+                continue
+            if record_type in (
+                FailedPositionStatus.RESOLVED.value,
+                FailedPositionStatus.EXHAUSTED.value,
+            ):
+                unresolved.pop(pos, None)
+            elif record_type == FailedPositionStatus.FAILED.value:
+                unresolved[pos] = {
+                    "retry_count": msg.data.get("retry_count", 0),
+                    "stream_name": msg.data.get("stream_name"),
+                    "stream_position": msg.data.get("stream_position"),
+                }
+        records_read += len(page)
+
+        last = page[-1]
+        event_store = last.metadata.event_store if last.metadata else None
+        if event_store is None or event_store.position is None:
+            # A record with no per-stream position cannot advance the cursor. A
+            # full page could still have more records after it, so stopping here
+            # would silently return a partial reconstruction as if the stream had
+            # been read to the end. Raise instead, so ``protean recover`` reports
+            # the subscription unverified rather than passing or resetting an
+            # incomplete set.
+            raise ValueError(
+                f"Failed-positions record in {failed_positions_stream!r} carries "
+                f"no per-stream position; cannot page the recovery stream."
+            )
+        next_cursor = event_store.position + 1
+        if next_cursor <= cursor:
+            # The cursor did not move forward (a non-monotonic or duplicate
+            # position). On a full page that would re-read the same page forever,
+            # so raise rather than loop; the caller reports the subscription
+            # unverified.
+            raise ValueError(
+                f"Failed-positions stream {failed_positions_stream!r} did not "
+                f"advance past position {cursor}; cannot page the recovery stream."
+            )
+        watermark = next_cursor
+        cursor = next_cursor
+        if len(page) < page_size:
+            break
+
+    return unresolved, watermark, records_read
+
+
+def write_recovery_checkpoint_record(
+    store: BaseEventStore,
+    recovery_checkpoint_stream: str,
+    stream_category: str,
+    time_iso: str,
+    watermark: int,
+    unresolved: dict[int, dict[str, Any]],
+) -> None:
+    """Write one recovery ``Checkpoint`` record.
+
+    Holds the ``watermark`` and the ``unresolved`` snapshot (its integer keys
+    serialized to strings for JSON). Both the subscription's rebuild and
+    ``protean recover --reset-beyond-head`` write the checkpoint through this one
+    function, so the record shape stays a single definition.
+    """
+    snapshot = {str(pos): info for pos, info in unresolved.items()}
+    store._write(
+        recovery_checkpoint_stream,
+        "Checkpoint",
+        {
+            "watermark": watermark,
+            "unresolved": snapshot,
+        },
+        metadata={
+            "headers": {
+                "id": str(uuid4()),
+                "type": "Checkpoint",
+                "time": time_iso,
+                "stream": recovery_checkpoint_stream,
+            },
+            "domain": {
+                "kind": MessageType.READ_POSITION.value,
+                "origin_stream": stream_category,
+            },
+        },
+    )
+
+
+def read_recovery_message(
+    store: BaseEventStore,
+    stream_category: str,
+    global_position: int,
+    info: dict[str, Any],
+) -> list[Message]:
+    """Re-read the message a failed position names, the way the recovery pass does.
+
+    Uses the record's specific ``stream_name`` and ``stream_position`` when both
+    are present, and otherwise falls back to the category stream at the
+    ``global_position``. Returns the message(s) found, empty when the restored
+    store no longer holds the message. Both ``run_recovery_pass`` and
+    ``protean recover`` locate the message through this one function, so the
+    command flags exactly the positions the recovery pass would fail to find (a
+    position whose specific stream a restore removed can sit below the
+    category-wide head, so comparing the global position to the head alone would
+    miss it).
+    """
+    stream_name = info.get("stream_name")
+    stream_position = info.get("stream_position")
+    if stream_name and stream_position is not None:
+        return store.read(stream_name, position=stream_position, no_of_messages=1)
+    return store.read(stream_category, position=global_position, no_of_messages=1)
 
 
 class EventStoreSubscription(BaseSubscription):
@@ -219,8 +405,8 @@ class EventStoreSubscription(BaseSubscription):
         self.failed_positions_stream = failed_positions_stream(
             self.subscriber_name, stream_category
         )
-        self.recovery_checkpoint_stream = (
-            f"recovery-checkpoint-{self.subscriber_name}-{stream_category}"
+        self.recovery_checkpoint_stream = recovery_checkpoint_stream(
+            self.subscriber_name, stream_category
         )
         # In-memory cache of failed position info (populated from event store on init)
         # Maps global_position -> {"retry_count": int, "stream_name": str|None, "stream_position": int|None}
@@ -879,66 +1065,22 @@ class EventStoreSubscription(BaseSubscription):
         position 0. After processing, a new checkpoint is written so that
         subsequent rebuilds start from where this one left off.
         """
-        # Restore from checkpoint if available
-        watermark = 0
-        checkpoint = await asyncio.to_thread(
-            self.store._read_last_message, self.recovery_checkpoint_stream
-        )
-        if checkpoint:
-            watermark = checkpoint["data"].get("watermark", 0)
-            # Restore the unresolved positions snapshot from the checkpoint
-            snapshot = checkpoint["data"].get("unresolved", {})
-            self._failed_positions = {int(pos): info for pos, info in snapshot.items()}
-            logger.debug(
-                f"[{self.subscriber_class_name}] Restored checkpoint at watermark "
-                f"{watermark} with {len(self._failed_positions)} unresolved position(s)"
-            )
-
-        # Read only new records since the checkpoint
-        messages = await asyncio.to_thread(
-            self.store.read,
+        # Reconstruct the unresolved set the same way ``protean recover`` reads
+        # it, so the CLI reports and clears exactly what this rebuild would chase.
+        (
+            self._failed_positions,
+            new_watermark,
+            records_read,
+        ) = await asyncio.to_thread(
+            reconstruct_unresolved,
+            self.store,
+            self.recovery_checkpoint_stream,
             self.failed_positions_stream,
-            position=watermark,
-            no_of_messages=10000,
         )
 
-        if messages:
-            # Process new records to update state
-            for msg in messages:
-                pos = msg.data.get("position")
-                status = (
-                    msg.metadata.headers.type
-                    if msg.metadata and msg.metadata.headers
-                    else None
-                )
-                if pos is None or status is None:
-                    continue
-
-                if status in (
-                    FailedPositionStatus.RESOLVED.value,
-                    FailedPositionStatus.EXHAUSTED.value,
-                ):
-                    # Terminal — remove from tracking
-                    self._failed_positions.pop(pos, None)
-                elif status == FailedPositionStatus.FAILED.value:
-                    # New or updated failure
-                    self._failed_positions[pos] = {
-                        "retry_count": msg.data.get("retry_count", 0),
-                        "stream_name": msg.data.get("stream_name"),
-                        "stream_position": msg.data.get("stream_position"),
-                    }
-
-            # Compute new watermark: per-stream position after the last record + 1
-            last_msg = messages[-1]
-            new_watermark = (
-                last_msg.metadata.event_store.position + 1
-                if last_msg.metadata
-                and last_msg.metadata.event_store
-                and last_msg.metadata.event_store.position is not None
-                else watermark
-            )
-
-            # Write checkpoint
+        # Write a fresh checkpoint only when new records were merged, so the next
+        # rebuild resumes past them instead of re-reading the whole failed stream.
+        if records_read:
             await self._write_recovery_checkpoint(new_watermark)
 
         if self._failed_positions:
@@ -959,29 +1101,14 @@ class EventStoreSubscription(BaseSubscription):
         Args:
             watermark: The per-stream position to start reading from on next rebuild.
         """
-        # Serialize _failed_positions with string keys for JSON compatibility
-        snapshot = {str(pos): info for pos, info in self._failed_positions.items()}
-
         await asyncio.to_thread(
-            self.store._write,
+            write_recovery_checkpoint_record,
+            self.store,
             self.recovery_checkpoint_stream,
-            "Checkpoint",
-            {
-                "watermark": watermark,
-                "unresolved": snapshot,
-            },
-            metadata={
-                "headers": {
-                    "id": str(uuid4()),
-                    "type": "Checkpoint",
-                    "time": self.engine.domain.clock.now().isoformat(),
-                    "stream": self.recovery_checkpoint_stream,
-                },
-                "domain": {
-                    "kind": MessageType.READ_POSITION.value,
-                    "origin_stream": self.stream_category,
-                },
-            },
+            self.stream_category,
+            self.engine.domain.clock.now().isoformat(),
+            watermark,
+            self._failed_positions,
         )
 
     def _get_unresolved_positions(self) -> dict[int, dict[str, Any]]:
@@ -1071,23 +1198,13 @@ class EventStoreSubscription(BaseSubscription):
                 )
                 continue
 
-            # Re-read the original message from the event store.
-            # Use the specific stream name and per-stream position if available,
-            # otherwise fall back to reading from the category stream.
-            if stream_name and stream_position is not None:
-                messages = await asyncio.to_thread(
-                    self.store.read,
-                    stream_name,
-                    position=stream_position,
-                    no_of_messages=1,
-                )
-            else:
-                messages = await asyncio.to_thread(
-                    self.store.read,
-                    self.stream_category,
-                    position=position,
-                    no_of_messages=1,
-                )
+            # Re-read the original message from the event store, using the record's
+            # specific stream/position when present and otherwise the category
+            # stream. ``protean recover`` reads through the same helper, so it
+            # flags exactly the positions this re-read cannot find.
+            messages = await asyncio.to_thread(
+                read_recovery_message, self.store, self.stream_category, position, info
+            )
 
             if not messages:
                 logger.warning(
