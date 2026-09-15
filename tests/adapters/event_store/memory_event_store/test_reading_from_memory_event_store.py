@@ -108,3 +108,40 @@ def test_read_last_message(test_domain):
 def test_read_last_message_when_there_are_no_messages(test_domain):
     message = test_domain.event_store.store._read_last_message("foo-bar")
     assert message is None
+
+
+def test_read_last_message_past_the_thousand_row_page(test_domain):
+    """A stream longer than the adapter's 1,000-row read page must still return
+    its newest record. An earlier implementation read the first 1,000 rows and
+    took the last, so the append-only recovery-checkpoint stream returned a stale
+    record once it passed 1,000 messages (the long-restart failure this guards).
+
+    Seeded through the repository's ``add`` rather than ``_write``: ``_write``
+    re-reads the whole stream to compute the next version on every call, which is
+    O(n^2) and far too slow for a thousand rows.
+    """
+    from typing import cast
+
+    from protean.adapters.event_store.memory import (
+        MemoryMessage,
+        MemoryMessageRepository,
+    )
+
+    repo = cast(MemoryMessageRepository, test_domain.repository_for(MemoryMessage))
+    total = 1_001
+    for i in range(total):
+        repo.add(
+            MemoryMessage(
+                stream_name="recovery-checkpoint-Handler-order",
+                position=i,
+                type="Checkpoint",
+                data={"watermark": i, "unresolved": {}},
+            )
+        )
+
+    message = test_domain.event_store.store._read_last_message(
+        "recovery-checkpoint-Handler-order"
+    )
+    assert message is not None
+    assert message["position"] == total - 1
+    assert message["data"]["watermark"] == total - 1
