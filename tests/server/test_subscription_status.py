@@ -2172,24 +2172,28 @@ class TestReconstructUnresolved:
         # Watermark advances past the last record (per-stream positions 0..4 -> 5).
         assert watermark == 5
 
-    def test_stale_high_watermark_is_reconciled(self, test_domain):
+    def test_stale_high_watermark_reconciles_cursor_and_keeps_snapshot(
+        self, test_domain
+    ):
         """A restore can leave the checkpoint watermark ahead of the restored
         failed stream. Reading forward from that stale watermark finds nothing, so
         a Failed record appended below it would be skipped on every later rebuild.
-        Reconstruction detects the watermark is past the tail, drops the stale
-        snapshot, and rebuilds from the start, so the record is caught and the
-        watermark reconciles to the real tail."""
+        Reconstruction restarts the merge from the start of the stream, so the
+        record is caught and the watermark reconciles to the real tail. The
+        snapshot is kept, so a position it remembers whose failed record the
+        restore rolled back stays in the set for the CLI to re-read (report or
+        clear a stale one) and the runtime to retry a healthy one."""
         from protean.server.subscription.event_store_subscription import (
             reconstruct_unresolved,
         )
 
         store = test_domain.event_store.store
         with test_domain.domain_context():
-            # One Failed record survived the restore, at per-stream position 0.
+            # A Failed record survived the restore, at per-stream position 0.
             _seed_failed_record(store, "failed-Handler-order", "Failed", 5)
-            # The checkpoint watermark (10) is well past that tail (0), as a backup
-            # captured after the failed stream would leave it; its snapshot (99) is
-            # stale too, naming a position the restored stream no longer holds.
+            # The checkpoint watermark (10) sits well past that tail (0), as a
+            # backup captured after the failed stream would leave it. Its snapshot
+            # remembers position 99, whose failed record the restore rolled back.
             _seed_recovery_checkpoint(
                 store,
                 "recovery-checkpoint-Handler-order",
@@ -2208,9 +2212,10 @@ class TestReconstructUnresolved:
                 "failed-Handler-order",
             )
 
-        # Stale snapshot (99) dropped; the surviving Failed record (5) rebuilt from
-        # the start; watermark reconciled to the tail (0 -> 1), not the stale 10.
-        assert set(unresolved) == {5}
+        # Surviving Failed record (5) caught (not skipped past the stale watermark);
+        # remembered position (99) kept, not dropped; watermark reconciled to the
+        # tail (0 -> 1), not the stale 10.
+        assert set(unresolved) == {5, 99}
         assert watermark == 1
         assert records_read == 1
 
@@ -2349,6 +2354,42 @@ class TestCollectRecoveryCheckpointStatuses:
         assert findings[0].verdict == "stale"
         assert findings[0].stale_positions == [head + 3]
         assert findings[0].head_position == head
+
+    def test_reports_stale_snapshot_entry_under_stale_high_watermark(self, test_domain):
+        """A restore can leave the checkpoint watermark ahead of the restored
+        failed stream. The snapshot must still be honored: a remembered position
+        whose message is gone is reported stale, not dropped along with the stale
+        watermark. Guards against a reconciliation that clears recovery state
+        before the re-read runs, so verify cannot pass over a stale entry."""
+        from protean.server.subscription_status import (
+            collect_recovery_checkpoint_statuses,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            head = self._seed_order_head(store)
+            # Watermark 10 sits past the (empty) failed stream's tail: a stale-high
+            # watermark. Its snapshot remembers a position whose message is gone.
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=10,
+                unresolved={
+                    str(head + 3): {
+                        "retry_count": 1,
+                        "stream_name": None,
+                        "stream_position": None,
+                    },
+                },
+            )
+
+        findings = collect_recovery_checkpoint_statuses(
+            test_domain, [_rec_status(head_position=str(head))]
+        )
+
+        assert len(findings) == 1
+        assert findings[0].verdict == "stale"
+        assert findings[0].stale_positions == [head + 3]
 
     def test_empty_category_head_minus_one_flags_every_tracked_position(
         self, test_domain

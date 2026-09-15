@@ -419,9 +419,9 @@ class TestMessageDBEventStore:
 
     def test_reconstruct_reconciles_stale_high_watermark(self, test_domain):
         """A stale-high watermark (a restore left the checkpoint ahead of the
-        restored failed stream) is reconciled to the real tail against a live
-        MessageDB store, so the adapter's tail-read of the failed stream is
-        exercised, not only the in-memory one."""
+        restored failed stream) reconciles the cursor to the real tail and keeps
+        the snapshot, exercised against a live MessageDB store so the adapter's
+        tail-read of the failed stream is covered, not only the in-memory one."""
         from protean.server.subscription.event_store_subscription import (
             reconstruct_unresolved,
         )
@@ -469,8 +469,8 @@ class TestMessageDBEventStore:
             store, rec_stream, failed_stream
         )
 
-        # Stale snapshot (99) dropped; surviving Failed record (5) rebuilt from the
-        # start; watermark reconciled to the tail (0 -> 1), not the stale 10.
-        assert set(unresolved) == {5}
+        # Surviving Failed record (5) caught from the start; remembered position
+        # (99) kept, not dropped; watermark reconciled to the tail (0 -> 1).
+        assert set(unresolved) == {5, 99}
         assert watermark == 1
         assert records_read == 1
