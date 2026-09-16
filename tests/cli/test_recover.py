@@ -10,7 +10,10 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.exceptions import NoDomainException
-from protean.server.subscription_status import SubscriptionStatus
+from protean.server.subscription_status import (
+    RecoveryCheckpointStatus,
+    SubscriptionStatus,
+)
 from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
@@ -55,13 +58,63 @@ def _mock_domain_for_cli() -> MagicMock:
     return mock_domain
 
 
-def _invoke(statuses, extra_args=None):
+def _make_recovery_finding(
+    handler_name: str = "OrderProjector",
+    stream_category: str = "order",
+    stale_positions: list[int] | None = None,
+    head_position: int = 5,
+    verdict: str = "stale",
+) -> RecoveryCheckpointStatus:
+    positions = [10, 12] if stale_positions is None else stale_positions
+    return RecoveryCheckpointStatus(
+        name=f"sub-{handler_name.lower()}",
+        handler_name=handler_name,
+        stream_category=stream_category,
+        recovery_checkpoint_stream=(
+            f"recovery-checkpoint-{handler_name}-{stream_category}"
+        ),
+        head_position=head_position,
+        verdict=verdict,
+        stale_positions=positions,
+        unresolved={
+            p: {"retry_count": 1, "stream_name": None, "stream_position": None}
+            for p in positions
+        },
+        watermark=0,
+    )
+
+
+def _make_recovery_unknown(
+    handler_name: str = "OrderProjector",
+    stream_category: str = "order",
+    head_position: int = 5,
+) -> RecoveryCheckpointStatus:
+    return RecoveryCheckpointStatus(
+        name=f"sub-{handler_name.lower()}",
+        handler_name=handler_name,
+        stream_category=stream_category,
+        recovery_checkpoint_stream=(
+            f"recovery-checkpoint-{handler_name}-{stream_category}"
+        ),
+        head_position=head_position,
+        verdict="unknown",
+        stale_positions=[],
+        unresolved={},
+        watermark=0,
+    )
+
+
+def _invoke(statuses, extra_args=None, recovery_findings=None):
     mock_domain = _mock_domain_for_cli()
     with (
         patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
         patch(
             "protean.server.subscription_status.collect_subscription_statuses",
             return_value=statuses,
+        ),
+        patch(
+            "protean.server.subscription_status.collect_recovery_checkpoint_statuses",
+            return_value=recovery_findings or [],
         ),
     ):
         return runner.invoke(
@@ -423,9 +476,15 @@ class TestBeyondHead:
         )
 
 
-def _invoke_reset(statuses, reset_mock, extra_args=None):
+def _invoke_reset(
+    statuses,
+    reset_mock,
+    extra_args=None,
+    recovery_findings=None,
+    recovery_reset_mock=None,
+):
     """Invoke ``recover --verify-checkpoints --reset-beyond-head`` with the status
-    collector and the checkpoint writer both stubbed."""
+    collector and both checkpoint writers stubbed."""
     mock_domain = _mock_domain_for_cli()
     with (
         patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
@@ -436,6 +495,15 @@ def _invoke_reset(statuses, reset_mock, extra_args=None):
         patch(
             "protean.server.subscription_status.reset_checkpoint_to_head",
             reset_mock,
+        ),
+        patch(
+            "protean.server.subscription_status.collect_recovery_checkpoint_statuses",
+            return_value=recovery_findings or [],
+        ),
+        patch(
+            "protean.server.subscription_status.reset_recovery_checkpoint",
+            recovery_reset_mock
+            or MagicMock(side_effect=lambda _d, f: f.stale_positions),
         ),
     ):
         return runner.invoke(
@@ -699,3 +767,374 @@ class TestRecoverResetJson:
         assert "store down" in env["data"]["reset_failures"][0]["error"]
         assert env["data"]["summary"]["reset"] == 1
         assert env["data"]["summary"]["reset_failed"] == 1
+
+
+class TestRecoverRecoveryVerify:
+    """Recovery-tracking findings on the human --verify-checkpoints path."""
+
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_stale_recovery_entry_flagged_and_named(self):
+        """AC1: a stale recovery entry fails the run and names the subscription
+        and its positions, even when every read-position checkpoint is fine."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [
+            _make_recovery_finding("OrderProjector", "order", stale_positions=[10, 12])
+        ]
+        result = _invoke(statuses, recovery_findings=findings)
+
+        assert result.exit_code == 1
+        assert "recovery-tracking entry(ies)" in result.output
+        row = next(
+            line
+            for line in result.output.splitlines()
+            if "OrderProjector" in line and "order" in line
+        )
+        assert "10, 12" in row
+
+    def test_recovery_and_checkpoint_both_flagged(self):
+        """A beyond-head checkpoint and a stale recovery entry together both fail
+        the run and are both reported."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Bad", current_position="10", head_position="5")]
+        findings = [
+            _make_recovery_finding("PayProjector", "payment", stale_positions=[8])
+        ]
+        result = _invoke(statuses, recovery_findings=findings)
+
+        assert result.exit_code == 1
+        assert "point past the" in result.output
+        assert "recovery-tracking entry(ies)" in result.output
+        assert "PayProjector" in result.output
+
+    def test_no_recovery_findings_all_consistent(self):
+        """No recovery findings and consistent checkpoints exits 0."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        result = _invoke(statuses, recovery_findings=[])
+
+        assert result.exit_code == 0
+        assert "consistent" in result.output
+        assert "recovery-tracking" not in result.output
+
+    def test_unknown_recovery_finding_is_reported_not_failed(self):
+        """A recovery finding whose streams could not be read is surfaced as
+        unverified and does not fail the run (exit 0), so it is never read as
+        clean."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [_make_recovery_unknown("OrderProjector", "order")]
+        result = _invoke(statuses, recovery_findings=findings)
+
+        assert result.exit_code == 0
+        assert "could not be verified" in result.output
+        assert "recovery-tracking entry(ies)" not in result.output
+        # The unverified subscription is named, not just counted.
+        row = next(
+            line
+            for line in result.output.splitlines()
+            if "OrderProjector" in line and "order" in line
+        )
+        assert "OrderProjector" in row
+
+    def test_stale_and_unknown_recovery_findings_together(self):
+        """A stale finding fails the run and an unknown one is still surfaced
+        alongside it."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [
+            _make_recovery_finding("Stale", "order", stale_positions=[10]),
+            _make_recovery_unknown("Offline", "payment"),
+        ]
+        result = _invoke(statuses, recovery_findings=findings)
+
+        assert result.exit_code == 1
+        assert "recovery-tracking entry(ies)" in result.output
+        assert "could not be verified" in result.output
+
+    def test_plain_verify_never_calls_recovery_reset_writer(self):
+        """AC3: a --verify-checkpoints run without --reset-beyond-head never
+        invokes the recovery reset writer, even with a stale entry present."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [_make_recovery_finding("OrderProjector", "order")]
+        mock_domain = _mock_domain_for_cli()
+        with (
+            patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
+            patch(
+                "protean.server.subscription_status.collect_subscription_statuses",
+                return_value=statuses,
+            ),
+            patch(
+                "protean.server.subscription_status.collect_recovery_checkpoint_statuses",
+                return_value=findings,
+            ),
+            patch(
+                "protean.server.subscription_status.reset_recovery_checkpoint"
+            ) as reset,
+        ):
+            result = runner.invoke(
+                app,
+                ["recover", "--verify-checkpoints", "--domain", "publishing7.py"],
+            )
+
+        assert result.exit_code == 1
+        reset.assert_not_called()
+
+
+class TestRecoverRecoveryVerifyJson:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_json_stale_recovery_entry_fails(self):
+        """--json fails with the recovery findings under data.recovery and the
+        summary counts."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [
+            _make_recovery_finding(
+                "OrderProjector", "order", stale_positions=[10, 12], head_position=5
+            )
+        ]
+        result = _invoke(statuses, ["--json"], recovery_findings=findings)
+
+        assert result.exit_code == 1
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "fail"
+        assert env["data"]["recovery"] == [
+            {
+                "name": "sub-orderprojector",
+                "handler_name": "OrderProjector",
+                "stream_category": "order",
+                "recovery_checkpoint_stream": "recovery-checkpoint-OrderProjector-order",
+                "head_position": 5,
+                "verdict": "stale",
+                "stale_positions": [10, 12],
+            }
+        ]
+        assert env["data"]["summary"]["recovery_stale"] == 1
+        assert env["data"]["summary"]["recovery_stale_positions"] == 2
+        assert env["data"]["summary"]["recovery_unknown"] == 0
+
+    def test_json_no_recovery_findings_keeps_exact_shape(self):
+        """Without a recovery finding, the --json payload carries no recovery
+        keys and the summary is the plain four-key dict."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        result = _invoke(statuses, ["--json"], recovery_findings=[])
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        assert "recovery" not in env["data"]
+        assert env["data"]["summary"] == {
+            "checked": 1,
+            "consistent": 1,
+            "beyond_head": 0,
+            "unknown": 0,
+        }
+
+    def test_json_unknown_recovery_finding_passes_and_is_counted(self):
+        """An unverified recovery finding passes (exit 0) but is counted under
+        summary.recovery_unknown and carries verdict "unknown", so a consumer can
+        tell "could not read" from "checked and clean"."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [_make_recovery_unknown("OrderProjector", "order")]
+        result = _invoke(statuses, ["--json"], recovery_findings=findings)
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["recovery"][0]["verdict"] == "unknown"
+        assert env["data"]["summary"]["recovery_unknown"] == 1
+        assert env["data"]["summary"]["recovery_stale"] == 0
+
+
+class TestRecoverRecoveryReset:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_reset_clears_stale_recovery_entries_and_exits_zero(self):
+        """AC2: --reset-beyond-head clears the stale recovery entries, reports
+        what it cleared, and exits 0."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [
+            _make_recovery_finding("OrderProjector", "order", stale_positions=[10, 12])
+        ]
+        recovery_reset = MagicMock(side_effect=lambda _d, f: f.stale_positions)
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(
+            statuses,
+            reset_mock,
+            recovery_findings=findings,
+            recovery_reset_mock=recovery_reset,
+        )
+
+        assert result.exit_code == 0
+        assert "Cleared 2 stale recovery-tracking entry(ies)" in result.output
+        row = next(
+            line
+            for line in result.output.splitlines()
+            if "OrderProjector" in line and "10, 12" in line
+        )
+        assert "10, 12" in row
+        recovery_reset.assert_called_once()
+        assert recovery_reset.call_args.args[1].handler_name == "OrderProjector"
+
+    def test_reset_both_lanes_together(self):
+        """A single --reset-beyond-head run resets both a beyond-head checkpoint
+        and a stale recovery entry, reporting each in its own block, exit 0."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Bad", current_position="10", head_position="5")]
+        findings = [
+            _make_recovery_finding("OrderProjector", "order", stale_positions=[9])
+        ]
+        recovery_reset = MagicMock(side_effect=lambda _d, f: f.stale_positions)
+        checkpoint_reset = MagicMock(return_value=5)
+        result = _invoke_reset(
+            statuses,
+            checkpoint_reset,
+            recovery_findings=findings,
+            recovery_reset_mock=recovery_reset,
+        )
+
+        assert result.exit_code == 0
+        # Both lanes reported, both writers called.
+        assert "Reset 1 beyond-head checkpoint" in result.output
+        assert "Cleared 1 stale recovery-tracking entry(ies)" in result.output
+        checkpoint_reset.assert_called_once()
+        recovery_reset.assert_called_once()
+
+    def test_reset_recovery_only_suppresses_none_to_reset_line(self):
+        """With no beyond-head checkpoint but a stale recovery entry, the run does
+        not claim there was nothing to reset."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [_make_recovery_finding("OrderProjector", "order")]
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(statuses, reset_mock, recovery_findings=findings)
+
+        assert result.exit_code == 0
+        assert "No beyond-head checkpoints to reset" not in result.output
+        assert "Cleared" in result.output
+        reset_mock.assert_not_called()
+
+    def test_reset_recovery_write_failure_exits_two(self):
+        """A recovery reset write that fails is named and the run exits 2."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [_make_recovery_finding("OrderProjector", "order")]
+        recovery_reset = MagicMock(side_effect=RuntimeError("store down"))
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(
+            statuses,
+            reset_mock,
+            recovery_findings=findings,
+            recovery_reset_mock=recovery_reset,
+        )
+
+        assert result.exit_code == 2
+        assert "recovery checkpoint(s) could not be reset" in result.output
+        assert "store down" in result.output
+
+
+class TestRecoverRecoveryResetJson:
+    @pytest.fixture(autouse=True)
+    def reset_path(self):
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def test_json_reset_recovery_passes_with_reset_data(self):
+        """--json --reset-beyond-head passes and lists what was cleared under
+        data.recovery_reset with a summary count."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [
+            _make_recovery_finding("OrderProjector", "order", stale_positions=[10, 12])
+        ]
+        recovery_reset = MagicMock(side_effect=lambda _d, f: f.stale_positions)
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(
+            statuses,
+            reset_mock,
+            extra_args=["--json"],
+            recovery_findings=findings,
+            recovery_reset_mock=recovery_reset,
+        )
+
+        assert result.exit_code == 0
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "pass"
+        assert env["data"]["recovery_reset"] == [
+            {
+                "name": "sub-orderprojector",
+                "handler_name": "OrderProjector",
+                "stream_category": "order",
+                "cleared_positions": [10, 12],
+            }
+        ]
+        assert env["data"]["recovery_reset_failures"] == []
+        assert env["data"]["summary"]["recovery_reset"] == 2
+        assert env["data"]["summary"]["recovery_reset_failed"] == 0
+
+    def test_json_reset_recovery_write_failure_is_error_envelope(self):
+        """A recovery reset write failure under --json is the error envelope, exit
+        2, with the failure under data.recovery_reset_failures."""
+        change_working_directory_to("test7")
+
+        statuses = [_make_status("Order", current_position="5", head_position="5")]
+        findings = [_make_recovery_finding("OrderProjector", "order")]
+        recovery_reset = MagicMock(side_effect=RuntimeError("store down"))
+        reset_mock = MagicMock(return_value=5)
+        result = _invoke_reset(
+            statuses,
+            reset_mock,
+            extra_args=["--json"],
+            recovery_findings=findings,
+            recovery_reset_mock=recovery_reset,
+        )
+
+        assert result.exit_code == 2
+        env = assert_envelope(result.stdout)
+        assert env["status"] == "error"
+        assert len(env["data"]["recovery_reset_failures"]) == 1
+        assert env["data"]["recovery_reset_failures"][0]["handler_name"] == (
+            "OrderProjector"
+        )
+        assert "store down" in env["data"]["recovery_reset_failures"][0]["error"]
+        assert env["data"]["summary"]["recovery_reset_failed"] == 1

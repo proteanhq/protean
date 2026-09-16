@@ -181,8 +181,22 @@ class MemoryEventStore(BaseEventStore):
     def _read_last_message(self, stream_name: str) -> dict[str, Any] | None:
         repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
 
-        messages = repo.read(stream_name)
-        return messages[-1] if messages else None
+        # A true tail read: order descending and take one, so it returns the
+        # actual newest record. Reading the stream and taking the last of the
+        # page would return the newest of only the first page once the stream is
+        # longer than ``repo.read``'s row cap, and the append-only
+        # recovery-checkpoint stream grows past that over many restarts. A
+        # category/``$all`` read orders by ``global_position`` (ADR-0024), a
+        # specific stream by its own per-stream ``position``.
+        if stream_name == "$all" or repo.is_category(stream_name):
+            q = repo._dao.query.order_by("-global_position")
+            if stream_name != "$all":
+                q = q.filter(stream_name__contains=f"{stream_name}-")
+        else:
+            q = repo._dao.query.filter(stream_name=stream_name).order_by("-position")
+
+        items = q.limit(1).all().items
+        return cast("dict[str, Any]", items[0].to_dict()) if items else None
 
     def _stream_head_position(self, stream_category: str) -> int:
         messages = self._read(stream_category, no_of_messages=1_000_000)

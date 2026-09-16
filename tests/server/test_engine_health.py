@@ -767,6 +767,10 @@ class TestSubscriptionHealthBlock:
                         lag_seconds=12.5,
                         last_updated="2026-01-01T12:00:00Z",
                         position_stream="position-OrderProjector-order",
+                        recovery_checkpoint_stream=(
+                            "recovery-checkpoint-OrderProjector-order"
+                        ),
+                        failed_positions_stream="failed-OrderProjector-order",
                         status="lagging",
                     )
                 ],
@@ -777,9 +781,11 @@ class TestSubscriptionHealthBlock:
             assert detail["lag_seconds"] == 12.5
             # The position cursor is stripped; the seconds-behind is kept.
             assert "last_updated" not in detail
-            # The checkpoint stream is bookkeeping, not health, so the readiness
-            # probe drops it too.
+            # The checkpoint/recovery streams are bookkeeping, not health, so the
+            # readiness probe drops them too and its shape does not change.
             assert "position_stream" not in detail
+            assert "recovery_checkpoint_stream" not in detail
+            assert "failed_positions_stream" not in detail
 
     async def test_unknown_lag_is_reported_as_null_not_zero(self):
         """An unreachable backend must not be reported as zero lag."""

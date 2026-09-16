@@ -68,6 +68,8 @@ per-subscription list under `data.subscriptions`:
         "current_position": "42",
         "head_position": "42",
         "position_stream": "position-OrderProjector-order",
+        "recovery_checkpoint_stream": "recovery-checkpoint-OrderProjector-order",
+        "failed_positions_stream": "failed-OrderProjector-order",
         "status": "ok",
         "consumer_count": 0,
         "dlq_depth": 0
@@ -83,9 +85,12 @@ stays parseable.
 
 For an event-store subscription, `position_stream` is the checkpoint stream
 (`position-{subscriber_name}-{category}`) the position is read from and the
-stream [`protean recover --reset-beyond-head`](recover.md) writes to. It is
-`null` for broker, stream, and outbox subscriptions, which do not track an
-event-store checkpoint.
+stream [`protean recover --reset-beyond-head`](recover.md) writes to. The
+`recovery_checkpoint_stream` (`recovery-checkpoint-{subscriber_name}-{category}`)
+and `failed_positions_stream` (`failed-{subscriber_name}-{category}`) are the
+recovery-pass streams the same command scans and clears. All three are `null` for
+broker, stream, and outbox subscriptions, which do not track event-store
+recovery state.
 
 ## Subscription types
 
