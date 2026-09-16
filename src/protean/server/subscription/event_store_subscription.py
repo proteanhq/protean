@@ -110,12 +110,21 @@ def reconstruct_unresolved(
                     "stream_position": msg.data.get("stream_position"),
                 }
         records_read += len(page)
+        short_page = len(page) < page_size
 
         last = page[-1]
         event_store = last.metadata.event_store if last.metadata else None
         if event_store is None or event_store.position is None:
-            # A record with no per-stream position cannot advance the cursor. A
-            # full page could still have more records after it, so stopping here
+            if short_page:
+                # Pagination is already complete (a short page is the last one),
+                # so there is no next page to fetch and no cursor advance is
+                # needed. Stop with the current watermark: the records here are
+                # already merged, and a next rebuild re-reads from it. This keeps a
+                # single malformed trailing record from failing subscription
+                # startup.
+                break
+            # A full page whose last record has no per-stream position cannot
+            # advance the cursor, and more records could follow. Stopping here
             # would silently return a partial reconstruction as if the stream had
             # been read to the end. Raise instead, so ``protean recover`` reports
             # the subscription unverified rather than passing or resetting an
@@ -136,7 +145,7 @@ def reconstruct_unresolved(
             )
         watermark = next_cursor
         cursor = next_cursor
-        if len(page) < page_size:
+        if short_page:
             break
 
     return unresolved, watermark, records_read
@@ -203,6 +212,41 @@ def read_recovery_message(
     if stream_name and stream_position is not None:
         return store.read(stream_name, position=stream_position, no_of_messages=1)
     return store.read(stream_category, position=global_position, no_of_messages=1)
+
+
+def checkpoint_ahead_of_failed_stream(
+    store: BaseEventStore,
+    recovery_checkpoint_stream: str,
+    failed_positions_stream: str,
+) -> bool:
+    """Report whether the recovery checkpoint sits ahead of the failed stream.
+
+    True when the checkpoint's stored ``watermark`` is past the failed-positions
+    stream's tail (``watermark > tail + 1``), which a restore leaves when it
+    captured the checkpoint stream after the failed stream it references. That
+    state cannot be reconstructed reliably: the failed stream reuses per-stream
+    positions after the truncation and the snapshot has no resolved-position
+    tombstones, so re-reading the surviving records could resurrect a resolved
+    position or miss one appended after the restore. ``protean recover`` reports
+    the subscription ``unknown`` on it; ``_rebuild_retry_counts`` warns and keeps
+    its best-effort set.
+
+    False for the normal case (the checkpoint is written at ``tail + 1``, and the
+    failed stream only grows past it afterwards), for a missing checkpoint, and
+    for a non-integer stored watermark (a corrupt checkpoint the reconstruction
+    handles on its own).
+    """
+    checkpoint = store._read_last_message(recovery_checkpoint_stream)
+    if not checkpoint:
+        return False
+    stored_watermark = checkpoint["data"].get("watermark", 0)
+    if not isinstance(stored_watermark, int):
+        return False
+    last_failed = store._read_last_message(failed_positions_stream)
+    tail = last_failed.get("position") if last_failed else None
+    if not isinstance(tail, int):
+        tail = -1
+    return stored_watermark > tail + 1
 
 
 class EventStoreSubscription(BaseSubscription):
@@ -1062,6 +1106,28 @@ class EventStoreSubscription(BaseSubscription):
             self.recovery_checkpoint_stream,
             self.failed_positions_stream,
         )
+
+        # Surface a restore that left the checkpoint ahead of the failed stream.
+        # The best-effort reconstruction above starts at the stale watermark, so a
+        # failure appended after the restore at a reused position below it is not
+        # read, and recovery tracking is then incomplete. The state cannot be
+        # reconciled reliably (the failed stream reuses positions after the
+        # truncation and the snapshot has no resolved-position tombstones), so warn
+        # and keep running instead of failing startup: refusing would strand the
+        # operator, since ``protean recover`` reports this state ``unknown`` and
+        # its reset refuses an unknown finding.
+        if await asyncio.to_thread(
+            checkpoint_ahead_of_failed_stream,
+            self.store,
+            self.recovery_checkpoint_stream,
+            self.failed_positions_stream,
+        ):
+            logger.warning(
+                f"[{self.subscriber_class_name}] Recovery checkpoint is ahead of "
+                f"its failed-positions stream (a restore left it inconsistent); "
+                f"recovery tracking may be incomplete. Run 'protean recover "
+                f"--verify-checkpoints' to inspect."
+            )
 
         # Write a fresh checkpoint only when new records were merged, so the next
         # rebuild resumes past them instead of re-reading the whole failed stream.

@@ -2283,6 +2283,41 @@ class TestReconstructUnresolved:
             reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
 
     @pytest.mark.no_test_domain
+    def test_record_without_position_on_short_page_does_not_raise(self):
+        """A positionless trailing record on a short (final) page does not raise:
+        pagination is already complete, so no cursor advance is needed. The set is
+        returned best-effort so one malformed trailing record does not fail
+        subscription startup. (A full page in this state still raises.)"""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = MagicMock()
+        store._read_last_message.return_value = None  # no checkpoint
+        msg = MagicMock()
+        msg.data.get.side_effect = lambda k, default=None: {
+            "position": 5,
+            "retry_count": 0,
+            "stream_name": None,
+            "stream_position": None,
+        }.get(k, default)
+        msg.metadata.headers.type = "Failed"
+        # A short page (one record, page_size 2) whose last record has no
+        # per-stream position: pagination is done, so this stops without raising.
+        msg.metadata.event_store.position = None
+        store.read.return_value = [msg]
+
+        unresolved, watermark, records_read = reconstruct_unresolved(
+            store, "rec-stream", "failed-stream", page_size=2
+        )
+
+        # The record is still merged; the watermark does not advance (no position
+        # to advance to); no exception.
+        assert set(unresolved) == {5}
+        assert watermark == 0
+        assert records_read == 1
+
+    @pytest.mark.no_test_domain
     def test_non_advancing_cursor_raises(self):
         """A full page whose last record does not move the cursor forward (a
         non-monotonic or duplicate position) would loop forever; it raises so the
@@ -2308,6 +2343,33 @@ class TestReconstructUnresolved:
 
         with pytest.raises(ValueError, match="did not advance"):
             reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
+
+
+class TestCheckpointAheadOfFailedStream:
+    """The shared inconsistency check both the runtime rebuild and the CLI use."""
+
+    @pytest.mark.no_test_domain
+    def test_no_checkpoint_is_not_ahead(self):
+        from protean.server.subscription.event_store_subscription import (
+            checkpoint_ahead_of_failed_stream,
+        )
+
+        store = MagicMock()
+        store._read_last_message.return_value = None  # no checkpoint
+        assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
+
+    @pytest.mark.no_test_domain
+    def test_non_integer_watermark_is_not_ahead(self):
+        """A corrupt checkpoint whose watermark is not an int is left for the
+        reconstruction to handle, not read as ahead-of-stream (which would compare
+        a string to an int and raise)."""
+        from protean.server.subscription.event_store_subscription import (
+            checkpoint_ahead_of_failed_stream,
+        )
+
+        store = MagicMock()
+        store._read_last_message.return_value = {"data": {"watermark": "oops"}}
+        assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
 
 
 class TestCollectRecoveryCheckpointStatuses:

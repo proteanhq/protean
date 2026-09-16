@@ -27,6 +27,7 @@ from uuid import uuid4
 
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.event_store_subscription import (
+    checkpoint_ahead_of_failed_stream,
     read_recovery_message,
     reconstruct_unresolved,
     write_recovery_checkpoint_record,
@@ -38,7 +39,6 @@ from protean.utils.eventing import MessageType
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.event_store import BaseEventStore
 
 logger = logging.getLogger(__name__)
 
@@ -1154,7 +1154,7 @@ def _collect_one_recovery_checkpoint(
                     logger.debug(
                         "Could not read stream head for %s: %s", status.name, exc
                     )
-            if _checkpoint_ahead_of_failed_stream(
+            if checkpoint_ahead_of_failed_stream(
                 store,
                 status.recovery_checkpoint_stream,
                 status.failed_positions_stream,
@@ -1276,38 +1276,6 @@ def collect_recovery_checkpoint_statuses(
         if finding is not None:
             findings.append(finding)
     return findings
-
-
-def _checkpoint_ahead_of_failed_stream(
-    store: BaseEventStore,
-    recovery_checkpoint_stream: str,
-    failed_positions_stream: str,
-) -> bool:
-    """Report whether the recovery checkpoint sits ahead of the failed stream.
-
-    True when the checkpoint's stored ``watermark`` is past the failed-positions
-    stream's tail (``watermark > tail + 1``), which a restore leaves when it
-    captured the checkpoint stream after the failed stream it references. That
-    state cannot be reconstructed reliably (the failed stream reuses per-stream
-    positions after the truncation and the snapshot has no resolved-position
-    tombstones), so the caller reports the subscription unverifiable.
-
-    False for the normal case (the checkpoint is written at ``tail + 1``, and the
-    failed stream only grows past it afterwards), for a missing checkpoint, and
-    for a non-integer stored watermark (a corrupt checkpoint the reconstruction
-    handles on its own).
-    """
-    checkpoint = store._read_last_message(recovery_checkpoint_stream)
-    if not checkpoint:
-        return False
-    stored_watermark = checkpoint["data"].get("watermark", 0)
-    if not isinstance(stored_watermark, int):
-        return False
-    last_failed = store._read_last_message(failed_positions_stream)
-    tail = last_failed.get("position") if last_failed else None
-    if not isinstance(tail, int):
-        tail = -1
-    return stored_watermark > tail + 1
 
 
 def _parse_position(position: str | None) -> int | None:

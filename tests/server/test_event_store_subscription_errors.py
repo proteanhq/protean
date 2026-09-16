@@ -32,6 +32,7 @@ from protean.server import Engine
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
     FailedPositionStatus,
+    write_recovery_checkpoint_record,
 )
 from protean.utils.eventing import EventStoreMeta, Message, Metadata
 from protean.utils.mixins import handle
@@ -946,6 +947,65 @@ class TestRecoveryCheckpoint:
             sub3.recovery_checkpoint_stream
         )
         assert checkpoint2["data"]["watermark"] > first_watermark
+
+    @pytest.mark.asyncio
+    async def test_rebuild_warns_when_checkpoint_ahead_of_failed_stream(
+        self, test_domain, caplog
+    ):
+        """A restore that leaves the checkpoint watermark ahead of the failed
+        stream is surfaced: the rebuild logs a warning and keeps running
+        best-effort, so the inconsistency is visible instead of silently dropping
+        a failure the stale watermark would skip."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        # One real failed position -> failed stream tail at per-stream position 0.
+        await sub.process_batch([_create_message(global_position=5, stream_position=0)])
+        # Overwrite the checkpoint with a watermark well past that tail (0): a
+        # restore captured the checkpoint after the failed stream it references.
+        write_recovery_checkpoint_record(
+            test_domain.event_store.store,
+            sub.recovery_checkpoint_stream,
+            sub.stream_category,
+            "2026-01-01T00:00:00+00:00",
+            10,
+            {},
+        )
+
+        sub2 = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        with caplog.at_level(
+            logging.WARNING,
+            logger="protean.server.subscription.event_store_subscription",
+        ):
+            await sub2._rebuild_retry_counts()
+
+        assert any(
+            "ahead of" in r.message and "failed-positions stream" in r.message
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_rebuild_does_not_warn_for_consistent_checkpoint(
+        self, test_domain, caplog
+    ):
+        """A consistent checkpoint (watermark at the failed stream's tail) does not
+        trigger the ahead-of-stream warning."""
+        sub = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        await sub.process_batch([_create_message(global_position=5, stream_position=0)])
+        # First rebuild writes a consistent checkpoint (watermark at tail+1).
+        sub2 = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        await sub2._rebuild_retry_counts()
+
+        # A second rebuild reads that consistent checkpoint: no ahead-of warning.
+        sub3 = _make_subscription(test_domain, AlwaysFailingEventHandler)
+        with caplog.at_level(
+            logging.WARNING,
+            logger="protean.server.subscription.event_store_subscription",
+        ):
+            await sub3._rebuild_retry_counts()
+
+        assert not any(
+            "ahead of" in r.message and "failed-positions stream" in r.message
+            for r in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_checkpoint_restores_unresolved_positions(self, test_domain):
