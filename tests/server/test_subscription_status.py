@@ -2256,6 +2256,66 @@ class TestReconstructUnresolved:
         assert watermark == 3
         assert records_read == 1
 
+    def test_float_watermark_is_read_from_zero(self, test_domain):
+        """A corrupt checkpoint with a float watermark is not trusted as a read
+        cursor. Used directly, 1.5 would read from position >= 1.5 and skip the
+        records at positions 0 and 1, returning an incomplete set as if clean.
+        Instead the whole failed stream is re-read from the start."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # Two failed records at per-stream positions 0 and 1.
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 3)
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 4)
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=1.5,
+                unresolved={},
+            )
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        # Both records are read, not skipped; the watermark is a real int again.
+        assert set(unresolved) == {3, 4}
+        assert watermark == 2
+        assert records_read == 2
+
+    def test_bool_watermark_is_read_from_zero(self, test_domain):
+        """``bool`` is an ``int`` subclass, so a ``True`` watermark passes a plain
+        int check yet reads from position >= 1 and skips position 0. It is treated
+        as corrupt and the failed stream is re-read from the start."""
+        from protean.server.subscription.event_store_subscription import (
+            reconstruct_unresolved,
+        )
+
+        store = test_domain.event_store.store
+        with test_domain.domain_context():
+            # One failed record at per-stream position 0.
+            _seed_failed_record(store, "failed-Handler-order", "Failed", 3)
+            _seed_recovery_checkpoint(
+                store,
+                "recovery-checkpoint-Handler-order",
+                watermark=True,
+                unresolved={},
+            )
+            unresolved, watermark, records_read = reconstruct_unresolved(
+                store,
+                "recovery-checkpoint-Handler-order",
+                "failed-Handler-order",
+            )
+
+        # Position 0 is read, not skipped past by True (== 1).
+        assert set(unresolved) == {3}
+        assert watermark == 1
+        assert records_read == 1
+
     @pytest.mark.no_test_domain
     def test_record_without_position_raises(self):
         """A failed record whose last page entry carries no per-stream position

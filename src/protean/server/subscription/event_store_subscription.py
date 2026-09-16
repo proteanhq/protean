@@ -80,7 +80,19 @@ def reconstruct_unresolved(
 
     checkpoint = store._read_last_message(recovery_checkpoint_stream)
     if checkpoint:
-        watermark = checkpoint["data"].get("watermark", 0)
+        stored_watermark = checkpoint["data"].get("watermark", 0)
+        # A corrupt checkpoint can carry a non-integer watermark (a float, a
+        # string, or a bool, which is an int subclass). Used as a read cursor it
+        # would skip failed-position records: a store compares 1.5 or True against
+        # integer positions, so it reads past position 0 (and 1) and returns an
+        # incomplete set as if clean. Treat any non-integer watermark like a
+        # missing one and re-read the whole failed stream from the start, which
+        # rebuilds the set from the authoritative records rather than trusting the
+        # corrupt cursor.
+        if isinstance(stored_watermark, bool) or not isinstance(stored_watermark, int):
+            watermark = 0
+        else:
+            watermark = stored_watermark
         snapshot = checkpoint["data"].get("unresolved", {})
         unresolved = {int(pos): info for pos, info in snapshot.items()}
 
