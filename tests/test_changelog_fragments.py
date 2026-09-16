@@ -100,6 +100,23 @@ def _anchors(text: str) -> set[str]:
     return anchors
 
 
+def _naming_problem(name: str) -> str | None:
+    """What is wrong with a fragment's filename, or `None` if nothing is.
+
+    A slug is allowed for a change with no issue (the Apache-2.0 relicense
+    landed direct to main); everything else names its issue.
+    """
+    parts = name.split(".")
+    if len(parts) != 3:
+        return name
+    stem, category, _ = parts
+    if not (stem.isdigit() or re.fullmatch(r"[a-z][a-z0-9-]*", stem)):
+        return name
+    if category not in VALID_CATEGORIES:
+        return f"{name} (unknown category {category!r})"
+    return None
+
+
 @pytest.fixture(scope="module")
 def fragments() -> list[Path]:
     """Every queued fragment, which is legitimately none.
@@ -119,23 +136,40 @@ def guide() -> str:
 class TestFragmentNaming:
     def test_every_fragment_is_named_for_an_issue_and_category(self, fragments):
         """`<issue>.<category>.md`, per changes/README.md."""
-        bad = []
-        for p in fragments:
-            parts = p.name.split(".")
-            if len(parts) != 3:
-                bad.append(p.name)
-                continue
-            stem, category, _ = parts
-            # A slug is allowed for a change with no issue (the Apache-2.0
-            # relicense landed direct to main); everything else names its issue.
-            if not (stem.isdigit() or re.fullmatch(r"[a-z][a-z0-9-]*", stem)):
-                bad.append(p.name)
-            elif category not in VALID_CATEGORIES:
-                bad.append(f"{p.name} (unknown category {category!r})")
+        bad = [
+            problem
+            for p in fragments
+            if (problem := _naming_problem(p.name)) is not None
+        ]
         assert not bad, (
             f"Fragments must be named <issue>.<category>.md with a category from "
             f"{sorted(VALID_CATEGORIES)}: {bad}"
         )
+
+    @pytest.mark.parametrize(
+        "name",
+        ["752.added.md", "plain-voice.changed.md", "license.changed.md"],
+    )
+    def test_a_slug_is_as_valid_a_stem_as_an_issue_number(self, name):
+        """The sweep above only sees the files that happen to be queued.
+
+        A fragment named for a slug was once deleted as malformed, on the
+        reading that only an issue number is a real name. Both forms are real,
+        so pin that here rather than leaving it to whatever is in `changes/`.
+        """
+        assert _naming_problem(name) is None
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "PlainVoice.changed.md",  # a stem has to be lowercase
+            "plain_voice.changed.md",  # and hyphenated, not underscored
+            "752.md",  # a category is not optional
+            "752.improved.md",  # and has to be one we assemble
+        ],
+    )
+    def test_a_name_outside_the_convention_is_caught(self, name):
+        assert _naming_problem(name) is not None
 
 
 class TestDeclaredBreaksReachTheMigrationGuide:

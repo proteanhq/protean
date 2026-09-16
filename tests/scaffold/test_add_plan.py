@@ -467,3 +467,85 @@ def test_domain_py_with_non_name_call_target_raises(tmp_path):
         plan_add_slice(str(tmp_path / "proj"), "aggregate", "Order")
 
     assert "Domain" in str(exc_info.value)
+
+
+def test_generator_rejection_arrives_as_an_add_plan_error(tmp_path):
+    """``add`` is a CLI boundary: its callers catch ``AddPlanError`` and print a usage
+    error. A name the generator rejects has to arrive as one rather than as an
+    uncaught ``SliceGeneratorError`` traceback. ``Repo`` derives the slug ``repo``,
+    the local the generated handler holds its repository in."""
+    _write_project(tmp_path, "myproj", "domain")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(tmp_path), "aggregate", "Repo")
+
+    assert "repo" in str(exc_info.value)
+
+
+def test_domain_variable_the_generator_rejects_arrives_as_an_add_plan_error(tmp_path):
+    """The same boundary covers a project whose composition root binds the domain to a
+    name the generated handler and projector use as a local."""
+    _write_project(tmp_path, "myproj", "repo")
+
+    with pytest.raises(AddPlanError) as exc_info:
+        plan_add_slice(str(tmp_path), "aggregate", "Order")
+
+    assert "repo" in str(exc_info.value)
+
+
+def test_default_add_output_matches_the_pre_refactor_golden(tmp_path):
+    """``add``'s default slice is byte-for-byte what it was before the generator
+    refactor.
+
+    The other tests in this module assert snippets, so a renderer change could alter
+    whitespace, ordering, wording, or an import group and still pass all of them.
+    ``golden_add_order.txt`` was captured by running ``plan_add_slice`` on the commit
+    before this refactor, so it is an independent oracle rather than a re-record of
+    current behaviour. Update it only together with a deliberate decision to change
+    what every generated slice looks like.
+    """
+    _write_project(tmp_path, "myproj", "myproj")
+
+    plan = plan_add_slice(str(tmp_path), "aggregate", "Order")
+
+    rendered = "".join(f"===== {op.path} =====\n{op.content}" for op in plan.operations)
+    golden = (Path(__file__).parent / "golden_add_order.txt").read_text()
+
+    assert rendered == golden
+
+
+@pytest.mark.parametrize(
+    ("name", "domain_var", "expected_slug"),
+    [
+        ("Order", "myproj", "order"),
+        ("OrderItem", "myproj", "order_item"),
+        ("orderItem", "myproj", "order_item"),
+        ("order_item", "myproj", "order_item"),
+        ("aB", "myproj", "a_b"),
+        ("XMLHttp", "myproj", "xml_http"),
+        ("Order", "domain", "order"),
+        ("Order", "_domain", "order"),
+        ("Order", "date", "order"),
+        ("Order", "app", "order"),
+    ],
+)
+def test_names_and_domain_variables_add_has_always_accepted(
+    tmp_path, name, domain_var, expected_slug
+):
+    """``add`` keeps planning every name and composition root it planned before the
+    generator took over.
+
+    The generator rejects fragments it cannot render correctly, and each rejection
+    rule risks turning a working project into a failure. Three did during review:
+    ``aB`` (whose class and slug do not round-trip), a domain bound to ``date``
+    (a name the default slice never emits), and a domain bound to ``_domain`` (an
+    ordinary private name, not a mangled one). This pins the accepted set so the
+    next rule cannot quietly narrow it.
+    """
+    _write_project(tmp_path, "myproj", domain_var)
+
+    plan = plan_add_slice(str(tmp_path), "aggregate", name)
+
+    assert plan.operations[0].path == f"src/myproj/{expected_slug}/__init__.py"
+    for op in plan.operations:
+        compile(op.content, op.path, "exec")
