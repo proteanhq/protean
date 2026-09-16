@@ -2558,8 +2558,11 @@ class TestCollectRecoveryCheckpointStatuses:
         assert len(findings) == 1
         assert findings[0].stale_positions == [0]
 
-    def test_entry_at_or_below_head_not_flagged(self, test_domain):
-        """AC4: entries at or below the head are left unreported."""
+    def test_category_entries_with_present_messages_not_flagged(self, test_domain):
+        """Entries re-read through the category stream whose messages are still
+        present are not stale. Both a below-head position (0) and an at-head
+        position resolve here because their category messages exist; staleness is
+        decided by the re-read finding nothing, not by comparing to the head."""
         from protean.server.subscription_status import (
             collect_recovery_checkpoint_statuses,
         )
@@ -2997,8 +3000,10 @@ class TestResetRecoveryCheckpoint:
         return store.stream_head_position("order")
 
     def test_drops_stale_keeps_healthy_and_reverifies_clean(self, test_domain):
-        """AC2 round-trip: the reset drops the beyond-head entries, keeps the
-        at-or-below-head ones, and a later collection finds nothing."""
+        """Round-trip: the reset drops the entry whose message is gone (head+3, the
+        category re-read finds nothing) and keeps the one whose message is still
+        present (position 1, re-read from its specific stream order-1), and a later
+        collection finds nothing."""
         from protean.server.subscription_status import (
             collect_recovery_checkpoint_statuses,
             reset_recovery_checkpoint,
