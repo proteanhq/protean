@@ -74,9 +74,10 @@ comparison alone would miss it. A stale recovery entry fails the run the same wa
 a beyond-head checkpoint does (exit `1`). A position whose message is still
 present is left unreported. When nothing could be verified for a subscription
 (the recovery streams could not be read, a restore left a corrupt checkpoint
-record, or every remaining position's re-read failed) it is reported apart as
-`unknown` so it is never read as clean; like an unknown checkpoint, that does not
-change the exit code. When some positions were confirmed stale and only a sibling
+record, every remaining position's re-read failed, or a restore left the
+checkpoint watermark ahead of the failed-positions stream it reads from) it is
+reported apart as `unknown` so it is never read as clean; like an unknown
+checkpoint, that does not change the exit code. When some positions were confirmed stale and only a sibling
 could not be re-read, the subscription is still reported `stale` (exit `1`) and
 the reset preserves the unreadable sibling rather than reporting `unknown`. The
 check is read-only: a `--verify-checkpoints` run never writes to a

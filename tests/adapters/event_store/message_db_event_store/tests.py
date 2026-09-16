@@ -417,15 +417,11 @@ class TestMessageDBEventStore:
         # scan is clean.
         assert collect_recovery_checkpoint_statuses(test_domain, [status]) == []
 
-    def test_reconstruct_reconciles_stale_high_watermark(self, test_domain):
-        """A stale-high watermark (a restore left the checkpoint ahead of the
-        restored failed stream) reconciles the cursor to the real tail and keeps
-        the snapshot, exercised against a live MessageDB store so the adapter's
-        tail-read of the failed stream is covered, not only the in-memory one."""
-        from protean.server.subscription.event_store_subscription import (
-            reconstruct_unresolved,
-        )
-
+    def test_checkpoint_ahead_of_failed_stream_is_unknown(self, test_domain):
+        """A restore that leaves the checkpoint watermark ahead of the failed
+        stream is reported ``unknown``, exercised against a live MessageDB store so
+        the adapter's tail-read of both streams (the ahead-of check) is covered,
+        not only the in-memory one."""
         store = test_domain.event_store.store
         failed_stream = "failed-Handler-order"
         rec_stream = "recovery-checkpoint-Handler-order"
@@ -447,8 +443,8 @@ class TestMessageDBEventStore:
             },
             record_meta,
         )
-        # A checkpoint whose watermark (10) sits past the failed-stream tail (0),
-        # with a snapshot naming a position the restored stream no longer holds.
+        # A checkpoint whose watermark (10) sits past the failed-stream tail (0):
+        # the checkpoint is ahead of the stream it references.
         store._write(
             rec_stream,
             "Checkpoint",
@@ -465,12 +461,23 @@ class TestMessageDBEventStore:
             record_meta,
         )
 
-        unresolved, watermark, records_read = reconstruct_unresolved(
-            store, rec_stream, failed_stream
+        status = SubscriptionStatus(
+            name="sub",
+            handler_name="Handler",
+            subscription_type="event_store",
+            stream_category="order",
+            lag=0,
+            pending=0,
+            current_position="0",
+            head_position="0",
+            status="ok",
+            consumer_count=0,
+            dlq_depth=0,
+            recovery_checkpoint_stream=rec_stream,
+            failed_positions_stream=failed_stream,
         )
 
-        # Surviving Failed record (5) caught from the start; remembered position
-        # (99) kept, not dropped; watermark reconciled to the tail (0 -> 1).
-        assert set(unresolved) == {5, 99}
-        assert watermark == 1
-        assert records_read == 1
+        findings = collect_recovery_checkpoint_statuses(test_domain, [status])
+        assert len(findings) == 1
+        assert findings[0].verdict == "unknown"
+        assert findings[0].stale_positions == []

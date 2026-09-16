@@ -57,13 +57,14 @@ def reconstruct_unresolved(
     bounded by the number of distinct unresolved positions, not the record count,
     because each record only adds or removes one key.
 
-    If a restore left the checkpoint watermark ahead of the restored failed
-    stream (a stale-high watermark), the merge restarts from the start of the
-    stream so a failure appended after the restore at a lower position is not
-    skipped. The snapshot is kept, not dropped: a still-unresolved position it
-    remembers (whose failed record the restore rolled back) stays in the set, so
-    the CLI can re-read it to report or clear a stale one and the runtime can
-    retry a healthy one.
+    This is a best-effort reconstruction: it trusts the checkpoint snapshot as
+    the unresolved set at the watermark and merges only records after it. It does
+    not try to reconcile a restore that left the watermark ahead of the failed
+    stream, because the failed stream reuses per-stream positions after such a
+    truncation and the snapshot carries no record of which positions were already
+    resolved, so re-reading the surviving records cannot tell a rolled-back old
+    record from one appended after the restore. ``protean recover`` detects that
+    inconsistent state separately and reports the subscription as ``unknown``.
 
     Both the subscription's rebuild on restart and ``protean recover`` read the
     set through this one function, so the CLI reports and clears exactly the
@@ -79,25 +80,9 @@ def reconstruct_unresolved(
 
     checkpoint = store._read_last_message(recovery_checkpoint_stream)
     if checkpoint:
+        watermark = checkpoint["data"].get("watermark", 0)
         snapshot = checkpoint["data"].get("unresolved", {})
         unresolved = {int(pos): info for pos, info in snapshot.items()}
-        stored_watermark = checkpoint["data"].get("watermark", 0)
-        # Reconcile the read cursor against the restored failed-positions tail. A
-        # backup can capture the checkpoint after the failed stream, so a restore
-        # can leave the stored watermark ahead of the restored stream's tail.
-        # Starting the merge at that stale-high watermark reads nothing, so a
-        # Failed record appended after the restore (at a lower per-stream position)
-        # is skipped on every later rebuild. When the watermark sits past the tail,
-        # re-read the whole surviving stream from position 0 instead; the watermark
-        # reconciles back to the real tail as the stream is paged. The snapshot is
-        # kept: a position it remembers whose failed record the restore rolled back
-        # is not dropped, so the CLI still re-reads it to report or clear a stale
-        # one and the runtime still retries a healthy one.
-        last_failed = store._read_last_message(failed_positions_stream)
-        tail = last_failed.get("position") if last_failed else None
-        if not isinstance(tail, int):
-            tail = -1
-        watermark = stored_watermark if stored_watermark <= tail + 1 else 0
 
     cursor = watermark
     records_read = 0
