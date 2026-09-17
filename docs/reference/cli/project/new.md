@@ -40,6 +40,11 @@ the project's configuration. Available configuration options include:
 
 - `--defaults`: Use default values for all prompts without interaction
 - `--skip-setup`: Skip running setup commands (useful for testing)
+- `--from-model`: Path to a text event-model file. Builds the whole project from
+the model and verifies it in one step (see
+[Building from a model](#building-from-a-model) below). This is its own
+pipeline: it ignores `--data`, `--pretend`, and `--skip-setup`, and always
+creates the project with the example slice off.
 - `--help`: Shows the help message and exits.
 
 ### Behavior Modifiers
@@ -257,3 +262,41 @@ To quickly create a project with default options:
 ```shell
 protean new my_project --defaults
 ```
+
+### Building from a model
+
+`--from-model` builds a project from a text event model and verifies it in one
+step. Write the model to a file:
+
+```text
+aggregate Item:
+    field name: string(max_length=100)
+    field quantity: integer
+
+command CreateItem:
+    field name: string(max_length=100)
+    field quantity: integer
+
+event ItemCreated:
+    field item_id: string
+    field name: string(max_length=100)
+    field quantity: integer
+```
+
+Then point `protean new` at it:
+
+```shell
+protean new inventory --from-model model.txt
+```
+
+The command parses the model, creates the project (with the example slice off),
+writes the slice the model describes, then runs
+[`protean verify`](../verify.md) (init, check, and the project's tests) and
+reports the verdict. It parses the model first, so an invalid model exits with
+the parser's error (and its line number) before any directory is created.
+
+Unlike a plain `protean new`, this path does not run the post-generation setup
+(`uv sync`, git init, pre-commit). It composes create, generate, apply, and
+verify only. See
+[ADR-0041](../../../adr/0041-textual-event-model-grammar-over-ir.md) for the
+model grammar.

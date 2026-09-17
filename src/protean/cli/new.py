@@ -126,6 +126,85 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
         os.chdir(original_dir)
 
 
+def _run_from_model(project_name: str, output_folder: str, model_file: str) -> None:
+    """Build a verify-green project from a text event model.
+
+    Runs the pipeline in this order: parse the model, create the project (with the
+    example slice off), promote the parsed model to a slice, apply it, then run
+    ``verify`` in-process and report the verdict. Parse comes first so an invalid
+    model aborts before any directory is created. This composes the callable cores
+    only. It does not run ``uv sync``, git init, or pre-commit.
+    """
+    # Local imports keep ``protean --help`` from pulling the parser, the slice
+    # generator, and the IR stack in on every CLI start (the same reason
+    # ``verify`` and ``check`` import their heavy machinery lazily).
+    from pathlib import Path  # noqa: PLC0415
+
+    from protean.cli.result import route_logs_to_stderr  # noqa: PLC0415
+    from protean.cli.verify import run_verify  # noqa: PLC0415
+    from protean.scaffold.add_plan import _resolve_project  # noqa: PLC0415
+    from protean.scaffold.apply import apply_plan  # noqa: PLC0415
+    from protean.scaffold.model_parser import (  # noqa: PLC0415
+        ModelParseError,
+        parse_model,
+    )
+    from protean.scaffold.slice_generator import (  # noqa: PLC0415
+        SliceFragment,
+        generate_slice_plan,
+    )
+
+    # 1. Read and parse the model before anything is written, so a missing or
+    #    unreadable file or a model the grammar rejects aborts here, so no
+    #    directory is left behind.
+    try:
+        model_text = Path(model_file).read_text(encoding="utf-8")
+    except OSError as exc:
+        typer.echo(f"Error: could not read model file {model_file!r}: {exc}")
+        raise typer.Exit(code=2) from exc
+    try:
+        fragment_mapping = parse_model(model_text)
+    except ModelParseError as exc:
+        # ``ModelParseError`` stringifies as "line N: <message>", so this carries
+        # the line number the violation is reported at.
+        typer.echo(f"Error: {exc}")
+        raise typer.Exit(code=2) from exc
+
+    # 2. Create the project with the example slice off, so the generated slice's
+    #    paths are clear, so ``apply_plan`` (create-only) does not hit a target
+    #    that already exists.
+    try:
+        create_project(
+            project_name,
+            output_folder,
+            {"include_example": "false"},
+            defaults=True,
+        )
+    except ImportError as exc:
+        abort_for_missing_dependency("scaffold", "'protean new --from-model'", exc)
+
+    project_directory = os.path.join(output_folder, project_name)
+
+    # 3-6. Promote the parsed model to a slice and write it into the new project.
+    fragment = SliceFragment.from_mapping(fragment_mapping)
+    package, domain_var = _resolve_project(project_directory)
+    plan = generate_slice_plan(fragment, package, domain_var)
+    apply_plan(project_directory, plan)
+
+    # 7. Verify the new project in-process and report the verdict. ``run_verify``
+    #    returns the result instead of exiting, so map its code to this command's
+    #    exit. Route logs to stderr first: ``run_verify`` imports the generated
+    #    domain, whose import-time logs would otherwise land on stdout.
+    route_logs_to_stderr()
+    domain_path = os.path.join(project_directory, "src", package, "domain.py")
+    result = run_verify(f"{domain_path}:{domain_var}", project_directory)
+
+    verdict = "PASS" if result.exit_code == 0 else "FAIL"
+    console.print(f"\n  Protean verify: [bold]{verdict}[/bold]")
+    for stage, info in result.stages.items():
+        console.print(f"    {stage:<7} {info['status']}")
+    raise typer.Exit(code=result.exit_code)
+
+
 def new(
     project_name: Annotated[str, typer.Argument()],
     output_folder: Annotated[
@@ -138,7 +217,22 @@ def new(
     force: Annotated[bool, typer.Option("--force", "-f")] = False,
     defaults: Annotated[bool, typer.Option("--defaults")] = False,
     skip_setup: Annotated[bool, typer.Option("--skip-setup")] = False,
+    from_model: Annotated[
+        str | None,
+        typer.Option(
+            "--from-model",
+            show_default=False,
+            help="Build the project from a text event-model file and verify it",
+        ),
+    ] = None,
 ) -> None:
+    # ``--from-model`` is its own pipeline (parse, create, generate, apply,
+    # verify). It composes the callable cores and skips post-generation setup, so
+    # it does not use the flags below (``--data``, ``--pretend``, ``--skip-setup``).
+    if from_model is not None:
+        _run_from_model(project_name, output_folder, from_model)
+        return
+
     if data is None:
         data = []
 
