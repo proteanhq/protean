@@ -559,3 +559,21 @@ class TestOwnerSubscription:
             assert _owner_subscription(engine, "failed-nobody-owns-this") is None
         finally:
             engine.loop.close()
+
+
+class TestRedriveEngine:
+    def test_construction_failure_does_not_crash_the_finally(self, test_domain):
+        """A raising ``Engine()`` leaves nothing to close; the guard skips it.
+
+        Confirms the loop-leak guard: the engine is built inside the try, so a
+        failed construction still runs the finally without an AttributeError on a
+        None engine.
+        """
+        from protean.cli.eventstore import _redrive_engine
+
+        with (
+            patch("protean.server.Engine", side_effect=RuntimeError("boom")),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            with _redrive_engine(test_domain):
+                pass  # pragma: no cover - Engine() raises before the body runs

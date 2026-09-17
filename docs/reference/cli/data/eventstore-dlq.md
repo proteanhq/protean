@@ -162,9 +162,9 @@ idempotency store, and an exhausted command never recorded a success to
 deduplicate against. The prompt names the target (an event handler, or a command
 with or without an idempotency key) so the operator knows what is being re-run;
 an idempotency key helps only when the handler itself uses it to stay idempotent.
-A command whose deadline has passed is refused, because the engine would skip it
-instead of running it; purge it instead. A handler-level idempotency declaration
-that would let replay refuse a non-idempotent target does not exist yet.
+A command whose deadline has passed is refused, because the engine would skip an
+expired command; purge it instead. A handler-level idempotency declaration that
+would let replay refuse a non-idempotent target does not exist yet.
 
 ## `protean eventstore dlq purge`
 

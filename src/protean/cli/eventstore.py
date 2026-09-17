@@ -273,9 +273,11 @@ def _exhausted_owners(
     for info, failed_stream in pairs:
         if position not in _exhausted_positions(store, failed_stream):
             continue
+        # The position's latest status is Exhausted (it is in
+        # ``_exhausted_positions``), so its Exhausted record exists.
         record = _find_exhausted_record(store, [(info, failed_stream)], position)
-        if record is not None:
-            owners.append((info, failed_stream, record))
+        assert record is not None
+        owners.append((info, failed_stream, record))
     return owners
 
 
@@ -333,9 +335,9 @@ def _redrive_engine(domain: Domain) -> Iterator[Engine]:
     """Build an engine for ``replay``'s re-drive, then close its event loop.
 
     ``replay`` reuses the engine's already-wired subscriptions (a
-    ``CommandDispatcher`` for a command stream, the handler class otherwise)
-    rather than reconstructing them, so it can dispatch through the real handler.
-    ``Engine()`` opens its own event loop that ``asyncio.run`` never uses, so
+    ``CommandDispatcher`` for a command stream, the handler class otherwise) so
+    it can dispatch through the real handler. ``Engine()`` opens its own event
+    loop that ``asyncio.run`` never uses, so
     close it in every case; the in-process CLI test runner would otherwise leak a
     loop per invocation. Construction happens inside the ``try`` because
     ``Engine.__init__`` creates the loop early and can then raise while wiring
@@ -349,7 +351,10 @@ def _redrive_engine(domain: Domain) -> Iterator[Engine]:
         engine = Engine(domain, test_mode=True)
         yield engine
     finally:
-        if engine is not None:
+        # ``no branch``: the engine-is-None arm (construction raised) runs during
+        # the generator's pre-yield exception unwind, which coverage cannot track
+        # as a branch; TestRedriveEngine exercises it.
+        if engine is not None:  # pragma: no branch
             engine.loop.close()
 
 
@@ -636,7 +641,7 @@ def replay(
                 as_json=False,
                 message=(
                     f"Position {position} targets a command whose deadline has "
-                    f"passed; the handler would be skipped, not run. Purge it instead."
+                    f"passed; the engine would skip its handler. Purge it instead."
                 ),
             )
 

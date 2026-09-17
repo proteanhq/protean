@@ -1003,10 +1003,10 @@ class Engine:
                 )
 
                 # Emit pm.transition trace for process managers. A command
-                # stream's handler is a CommandDispatcher *instance*, not a
-                # class, so guard the issubclass check: issubclass() on an
-                # instance raises TypeError, which the outer except would
-                # swallow and turn a succeeded command into a False return.
+                # stream's handler is a CommandDispatcher *instance*, so guard
+                # the issubclass check: issubclass() on an instance raises
+                # TypeError, which the outer except would swallow and turn a
+                # succeeded command into a False return.
                 if isinstance(handler_cls, type) and issubclass(
                     handler_cls, BaseProcessManager
                 ):
