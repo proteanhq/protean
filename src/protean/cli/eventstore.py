@@ -1,12 +1,14 @@
 """CLI commands for the event store.
 
 Provides ``verify`` (event-store integrity check) and a ``dlq`` group that
-surfaces the event-store dead-letter queue.
+manages the event-store dead-letter queue.
 
-``dlq`` shows the positions a subscription retried up to ``max_retries`` and then
-gave up on (``Exhausted`` records in each subscription's ``failed-*`` stream).
-``list`` enumerates those positions per subscription; ``inspect`` re-reads the
-failing event so you can see what could not be processed.
+``dlq`` covers the positions a subscription retried up to ``max_retries`` and
+then gave up on (``Exhausted`` records in each subscription's ``failed-*``
+stream). ``list`` enumerates those positions per subscription; ``inspect``
+re-reads the failing event so you can see what could not be processed;
+``replay`` re-drives one position through its handler; ``purge`` clears one with
+a terminal ``Purged`` marker.
 
 Usage::
 
@@ -25,13 +27,22 @@ Usage::
     # Re-read the failing event behind an exhausted position
     protean eventstore dlq inspect 42 --domain=my_domain
 
+    # Re-drive an exhausted position through its handler
+    protean eventstore dlq replay 42 --domain=my_domain
+
+    # Clear an exhausted position with a terminal Purged marker
+    protean eventstore dlq purge 42 --domain=my_domain
+
     # Machine-readable JSON (the shared CLI result envelope)
     protean eventstore dlq list --domain=my_domain --json
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -50,6 +61,10 @@ from protean.utils.dlq import collect_failed_streams
 if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.port.event_store import BaseEventStore
+    from protean.server.engine import Engine
+    from protean.server.subscription.event_store_subscription import (
+        EventStoreSubscription,
+    )
     from protean.utils.dlq import SubscriptionInfo
     from protean.utils.eventing import Message
 
@@ -134,7 +149,7 @@ def verify(
 
 @dlq_app.callback()
 def dlq_callback() -> None:
-    """Inspect event-store dead-letter (exhausted) positions."""
+    """Manage event-store dead-letter (exhausted) positions."""
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +250,130 @@ def _read_failing_event(
         messages = store.read(origin_stream, position=position, no_of_messages=1)
 
     return messages[0] if messages else None
+
+
+def _exhausted_owners(
+    store: BaseEventStore,
+    pairs: list[tuple[SubscriptionInfo, str]],
+    position: int,
+) -> list[tuple[SubscriptionInfo, str, Message]]:
+    """Return every (subscription, failed-stream, record) whose *latest* status for ``position`` is Exhausted.
+
+    Different handlers on the same stream process the same events, so one global
+    position can be exhausted in more than one subscription's failed stream;
+    ``replay`` and ``purge`` act on a single handler's copy, so the caller uses
+    this to detect that ambiguity.
+
+    Folds last-status-wins (via ``_exhausted_positions``) before reading the
+    record, so a position already resolved or purged is not returned: acting on
+    it again would re-run a handler or re-mark a position the operator already
+    cleared.
+    """
+    owners: list[tuple[SubscriptionInfo, str, Message]] = []
+    for info, failed_stream in pairs:
+        if position not in _exhausted_positions(store, failed_stream):
+            continue
+        record = _find_exhausted_record(store, [(info, failed_stream)], position)
+        if record is not None:
+            owners.append((info, failed_stream, record))
+    return owners
+
+
+def _resolve_exhausted_owner(
+    store: BaseEventStore,
+    domain: Domain,
+    subscription: str | None,
+    handler: str | None,
+    position: int,
+) -> tuple[SubscriptionInfo, str, Message]:
+    """Resolve the single subscription that owns an exhausted ``position``, or abort.
+
+    ``subscription`` filters by stream category and ``handler`` by the handler
+    identity ``list`` prints (its ``subscription_fqn``, or the shorter class
+    name). Aborts with a usage error when ``--subscription`` names no event-store
+    subscription, when no subscription lists the position as exhausted, or when
+    more than one still does after both filters (two handlers on one stream share
+    a category, so ``--handler`` is the one that separates them).
+    """
+    pairs = _select_failed_streams(domain, subscription)
+    if subscription and not pairs:
+        emit_usage_error(
+            as_json=False,
+            message=f"No event-store subscription found for stream category '{subscription}'.",
+        )
+    if handler:
+        pairs = [
+            p for p in pairs if handler in (p[0].subscription_fqn, p[0].handler_name)
+        ]
+        if not pairs:
+            emit_usage_error(
+                as_json=False,
+                message=f"No event-store subscription found for handler '{handler}'.",
+            )
+
+    owners = _exhausted_owners(store, pairs, position)
+    if not owners:
+        emit_usage_error(
+            as_json=False, message=f"No exhausted position {position} found."
+        )
+    if len(owners) > 1:
+        handlers = ", ".join(sorted(o[0].subscription_fqn for o in owners))
+        emit_usage_error(
+            as_json=False,
+            message=(
+                f"Position {position} is exhausted in multiple subscriptions "
+                f"({handlers}). Pass --handler to choose one."
+            ),
+        )
+    return owners[0]
+
+
+@contextmanager
+def _redrive_engine(domain: Domain) -> Iterator[Engine]:
+    """Build an engine for ``replay``'s re-drive, then close its event loop.
+
+    ``replay`` reuses the engine's already-wired subscriptions (a
+    ``CommandDispatcher`` for a command stream, the handler class otherwise)
+    rather than reconstructing them, so it can dispatch through the real handler.
+    ``Engine()`` opens its own event loop that ``asyncio.run`` never uses, so
+    close it in every case; the in-process CLI test runner would otherwise leak a
+    loop per invocation. Construction happens inside the ``try`` because
+    ``Engine.__init__`` creates the loop early and can then raise while wiring
+    subscriptions, and the ``finally`` must still close a half-built engine's
+    loop.
+    """
+    from protean.server import Engine  # noqa: PLC0415
+
+    engine = None
+    try:
+        engine = Engine(domain, test_mode=True)
+        yield engine
+    finally:
+        if engine is not None:
+            engine.loop.close()
+
+
+def _owner_subscription(
+    engine: Engine, failed_stream: str
+) -> EventStoreSubscription | None:
+    """Return the engine's event-store subscription writing to ``failed_stream``.
+
+    Matches on the failed-positions stream name, the one string both the writer
+    (the subscription) and the reader (``collect_failed_streams``) derive, so a
+    command stream resolves to its ``CommandDispatcher`` subscription. Returns
+    ``None`` if no subscription owns the stream.
+    """
+    from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
+        EventStoreSubscription,
+    )
+
+    for sub in engine.subscriptions.values():
+        if (
+            isinstance(sub, EventStoreSubscription)
+            and sub.failed_positions_stream == failed_stream
+        ):
+            return sub
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -406,3 +545,202 @@ def inspect(
     print(f"[bold]Global Position:[/bold]  {global_position}")
     print("\n[bold]Data:[/bold]")
     print(json.dumps(event_data, indent=2, default=str))
+
+
+def _double_apply_line(info: SubscriptionInfo, event: Message, position: int) -> str:
+    """Describe replay's double-apply risk for the confirmation prompt.
+
+    Every replay re-runs the handler and can apply its side effects again: replay
+    dispatches out-of-band and never consults the idempotency store, and an
+    exhausted command never recorded a success to deduplicate against anyway. The
+    line names the target so the operator knows what they are re-running, and
+    calls out an idempotency key where one is present, since it is the only lever
+    the operator has to make the re-run idempotent.
+    """
+    headers = event.metadata.headers if event.metadata else None
+    idempotency_key = headers.idempotency_key if headers else None
+    if info.is_command_handler and idempotency_key:
+        return (
+            f"Position {position} targets a command with an idempotency key. Replay "
+            f"dispatches out-of-band without the idempotency store, so it re-runs "
+            f"the handler; its side effects apply again unless the handler itself "
+            f"honours the key."
+        )
+    if info.is_command_handler:
+        return (
+            f"Position {position} targets a command with no idempotency key. Replay "
+            f"re-runs its handler and can apply side effects a second time."
+        )
+    return (
+        f"Position {position} targets an event handler. Replay re-runs its handler "
+        f"and can apply side effects a second time."
+    )
+
+
+@dlq_app.command()
+@handle_cli_exceptions("eventstore dlq replay")
+def replay(
+    position: Annotated[
+        int, typer.Argument(help="Exhausted global position to replay")
+    ],
+    domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
+    subscription: Annotated[
+        str | None,
+        typer.Option(help="Stream category to search in"),
+    ] = None,
+    handler: Annotated[
+        str | None,
+        typer.Option(
+            help="Handler (its fqn or class name) when a position is exhausted in more than one"
+        ),
+    ] = None,
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt")
+    ] = False,
+) -> None:
+    """Re-drive one exhausted position through its handler.
+
+    Reads the failing event and dispatches it to the handler exactly once. On
+    success it records a resolution so the position stops being listed as
+    exhausted and exits 0; on a repeat failure it reopens the position for the
+    recovery pass and exits 1 (the handler reason is in the logs). The
+    subscription read cursor is never moved.
+
+    Replay re-runs handler side effects, so it confirms first, naming the target
+    (an event handler, or a command with or without an idempotency key). Pass
+    ``--yes`` to skip the prompt.
+    """
+    derived_domain = load_domain(domain)
+
+    with derived_domain.domain_context():
+        store = derived_domain.event_store.store
+        assert store is not None  # guaranteed by load_domain -> init()
+
+        info, failed_stream, record = _resolve_exhausted_owner(
+            store, derived_domain, subscription, handler, position
+        )
+
+        event = _read_failing_event(store, record, position)
+        if event is None:
+            emit_usage_error(
+                as_json=False,
+                message=f"Could not re-read the event for exhausted position {position}.",
+            )
+
+        # A command whose deadline elapsed is skipped by the engine (the handler
+        # never runs) yet reported as handled, so a replay would falsely resolve
+        # it. Refuse and point the operator at purge, before any dispatch.
+        headers = event.metadata.headers if event.metadata else None
+        if headers and headers.is_expired():
+            emit_usage_error(
+                as_json=False,
+                message=(
+                    f"Position {position} targets a command whose deadline has "
+                    f"passed; the handler would be skipped, not run. Purge it instead."
+                ),
+            )
+
+        print(f"[yellow]{_double_apply_line(info, event, position)}[/yellow]")
+        if not yes:
+            typer.confirm(f"Replay exhausted position {position}?", abort=True)
+
+        event_type = (headers.type if headers else None) or "unknown"
+        event_id = (headers.id if headers else None) or "unknown"
+
+        with _redrive_engine(derived_domain) as engine:
+            owner_sub = _owner_subscription(engine, failed_stream)
+            if (
+                owner_sub is None
+            ):  # pragma: no cover (every failed stream has a live subscription)
+                emit_usage_error(
+                    as_json=False,
+                    message=f"No live subscription owns the failed stream for position {position}.",
+                )
+            resolved = asyncio.run(
+                owner_sub.replay_exhausted(
+                    event,
+                    position,
+                    message_type=event_type,
+                    message_id=event_id,
+                    stream_name=record.data.get("stream_name"),
+                    stream_position=record.data.get("stream_position"),
+                    retry_count=record.data.get("retry_count", 0),
+                )
+            )
+
+    if resolved:
+        print(f"Replayed position {position}: handler succeeded, position resolved.")
+        return
+    # Reopened: the handler failed again. Exit non-zero so a script can tell a
+    # reopen from a resolution; the failure reason is in the engine logs.
+    print(
+        f"Replayed position {position}: handler failed again, position reopened "
+        f"for recovery."
+    )
+    raise typer.Exit(code=EXIT_FAILURE)
+
+
+@dlq_app.command()
+@handle_cli_exceptions("eventstore dlq purge")
+def purge(
+    position: Annotated[int, typer.Argument(help="Exhausted global position to purge")],
+    domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
+    subscription: Annotated[
+        str | None,
+        typer.Option(help="Stream category to search in"),
+    ] = None,
+    handler: Annotated[
+        str | None,
+        typer.Option(
+            help="Handler (its fqn or class name) when a position is exhausted in more than one"
+        ),
+    ] = None,
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt")
+    ] = False,
+) -> None:
+    """Clear an exhausted position by appending a terminal Purged marker.
+
+    The ``failed-*`` streams are append-only, so purge keeps the record history
+    and writes a new ``Purged`` record after the ``Exhausted`` one. The position
+    stops being listed as exhausted and a later rebuild does not re-track it.
+    Purge does not re-run the handler, so it needs no engine. Pass ``--yes`` to
+    skip the prompt.
+    """
+    from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
+        FailedPositionStatus,
+        write_recovery_status_record,
+    )
+
+    derived_domain = load_domain(domain)
+
+    with derived_domain.domain_context():
+        store = derived_domain.event_store.store
+        assert store is not None  # guaranteed by load_domain -> init()
+
+        info, failed_stream, record = _resolve_exhausted_owner(
+            store, derived_domain, subscription, handler, position
+        )
+
+        if not yes:
+            typer.confirm(
+                f"Purge exhausted position {position}? This appends a terminal marker; "
+                f"the record history is kept.",
+                abort=True,
+            )
+
+        write_recovery_status_record(
+            store,
+            failed_stream,
+            info.stream_category,
+            derived_domain.clock.now().isoformat(),
+            position,
+            FailedPositionStatus.PURGED,
+            retry_count=record.data.get("retry_count", 0),
+            message_type=record.data.get("message_type", "unknown"),
+            message_id=record.data.get("message_id", "unknown"),
+            stream_name=record.data.get("stream_name"),
+            stream_position=record.data.get("stream_position"),
+        )
+
+    print(f"Purged position {position}.")

@@ -32,6 +32,7 @@ class FailedPositionStatus(StrEnum):
     FAILED = "Failed"
     RESOLVED = "Resolved"
     EXHAUSTED = "Exhausted"
+    PURGED = "Purged"
 
 
 def reconstruct_unresolved(
@@ -45,10 +46,10 @@ def reconstruct_unresolved(
 
     Restore the recovery checkpoint's ``unresolved`` snapshot, then merge every
     failed-positions record written after its watermark: a ``Failed`` record adds
-    or updates an entry, a ``Resolved`` or ``Exhausted`` record removes it.
-    Reading the failed stream too, not just the snapshot, catches a position that
-    began failing after the last checkpoint was written and so lives only in the
-    failed stream.
+    or updates an entry, a ``Resolved``, ``Exhausted``, or ``Purged`` record
+    removes it. Reading the failed stream too, not just the snapshot, catches a
+    position that began failing after the last checkpoint was written and so
+    lives only in the failed stream.
 
     The failed stream is paged through in full in ``page_size`` batches, not read
     once with a cap, so a subscription with a long failure history rebuilds its
@@ -113,6 +114,7 @@ def reconstruct_unresolved(
             if record_type in (
                 FailedPositionStatus.RESOLVED.value,
                 FailedPositionStatus.EXHAUSTED.value,
+                FailedPositionStatus.PURGED.value,
             ):
                 unresolved.pop(pos, None)
             elif record_type == FailedPositionStatus.FAILED.value:
@@ -192,6 +194,57 @@ def write_recovery_checkpoint_record(
                 "type": "Checkpoint",
                 "time": time_iso,
                 "stream": recovery_checkpoint_stream,
+            },
+            "domain": {
+                "kind": MessageType.READ_POSITION.value,
+                "origin_stream": stream_category,
+            },
+        },
+    )
+
+
+def write_recovery_status_record(
+    store: BaseEventStore,
+    failed_positions_stream: str,
+    stream_category: str,
+    time_iso: str,
+    position: int,
+    status: FailedPositionStatus,
+    retry_count: int,
+    message_type: str = "unknown",
+    message_id: str = "unknown",
+    stream_name: str | None = None,
+    stream_position: int | None = None,
+) -> None:
+    """Append one recovery status record (Resolved, Exhausted, or Purged).
+
+    The ``failed-*`` streams are append-only, so a resolution never rewrites or
+    deletes history: it appends a new record whose ``type`` header is the status.
+    ``stream_name``/``stream_position`` mirror the ``Failed`` record so the record
+    still points at the failing event.
+
+    The subscription's ``_write_recovery_status`` delegates here (off a worker
+    thread), and ``protean eventstore dlq purge`` writes its terminal ``Purged``
+    marker through this same function without an engine, so the two paths produce
+    the identical record shape.
+    """
+    store._write(
+        failed_positions_stream,
+        status.value,
+        {
+            "position": position,
+            "message_type": message_type,
+            "message_id": message_id,
+            "retry_count": retry_count,
+            "stream_name": stream_name,
+            "stream_position": stream_position,
+        },
+        metadata={
+            "headers": {
+                "id": str(uuid4()),
+                "type": status.value,
+                "time": time_iso,
+                "stream": failed_positions_stream,
             },
             "domain": {
                 "kind": MessageType.READ_POSITION.value,
@@ -1045,7 +1098,7 @@ class EventStoreSubscription(BaseSubscription):
         stream_name: str | None = None,
         stream_position: int | None = None,
     ) -> None:
-        """Write a recovery status record (Resolved or Exhausted) to the failed-positions stream.
+        """Write a recovery status record (Resolved, Exhausted, or Purged) to the failed-positions stream.
 
         The ``stream_name``/``stream_position`` fields mirror the ``Failed``
         record (``_record_failed_position``) so an ``Exhausted`` record carries
@@ -1064,29 +1117,18 @@ class EventStoreSubscription(BaseSubscription):
             stream_position: The per-stream position of the message.
         """
         await asyncio.to_thread(
-            self.store._write,
+            write_recovery_status_record,
+            self.store,
             self.failed_positions_stream,
-            status.value,
-            {
-                "position": position,
-                "message_type": message_type,
-                "message_id": message_id,
-                "retry_count": retry_count,
-                "stream_name": stream_name,
-                "stream_position": stream_position,
-            },
-            metadata={
-                "headers": {
-                    "id": str(uuid4()),
-                    "type": status.value,
-                    "time": self.engine.domain.clock.now().isoformat(),
-                    "stream": self.failed_positions_stream,
-                },
-                "domain": {
-                    "kind": MessageType.READ_POSITION.value,
-                    "origin_stream": self.stream_category,
-                },
-            },
+            self.stream_category,
+            self.engine.domain.clock.now().isoformat(),
+            position,
+            status,
+            retry_count=retry_count,
+            message_type=message_type,
+            message_id=message_id,
+            stream_name=stream_name,
+            stream_position=stream_position,
         )
 
     # ──────────────────────────────────────────────────────────────────────
@@ -1340,6 +1382,70 @@ class EventStoreSubscription(BaseSubscription):
                 )
 
         return recovered_count
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Operator action: replay one exhausted position (purge is a plain record
+    # append and goes through the module-level write_recovery_status_record).
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def replay_exhausted(
+        self,
+        event: Message,
+        position: int,
+        *,
+        message_type: str,
+        message_id: str,
+        stream_name: str | None,
+        stream_position: int | None,
+        retry_count: int,
+    ) -> bool:
+        """Re-drive one exhausted position out-of-band, then record the outcome.
+
+        Reuses the recovery re-drive primitive: dispatch the already re-read
+        ``event`` to this subscription's handler once. On success, write a
+        ``Resolved`` record so the position stops being listed as exhausted. On
+        failure, write a fresh ``Failed`` record so the position reopens and a
+        later rebuild tracks it again instead of dropping it as ``Exhausted``
+        (``reconstruct_unresolved`` treats ``Exhausted`` as terminal).
+
+        The read cursor (``current_position``) is never moved. The cursor is a
+        shared ``position-*`` stream, so rewinding it would reprocess every
+        event since the failure, not just this one; the event is re-read from
+        its own stream location instead. Idempotency is unchanged from the
+        recovery pass: replay re-runs handler side effects, which is why the
+        CLI confirms first (see ``protean eventstore dlq replay``).
+
+        Returns True when the handler succeeded (the position resolved), False
+        when it failed again (the position reopened).
+        """
+        is_successful = await self.engine.handle_message(
+            self.handler, event, worker_id=self.subscription_id
+        )
+
+        if is_successful:
+            await self._write_recovery_status(
+                position,
+                FailedPositionStatus.RESOLVED,
+                retry_count,
+                message_type=message_type,
+                message_id=message_id,
+                stream_name=stream_name,
+                stream_position=stream_position,
+            )
+        else:
+            # Reopen with a fresh ``Failed`` record. This out-of-band
+            # subscription never rebuilt its cache, so ``_failed_positions`` is
+            # empty and the record's ``retry_count`` resets to 0: the recovery
+            # pass then gets a full retry budget on the reopened position.
+            await self._record_failed_position(
+                position,
+                message_type,
+                message_id,
+                stream_name=stream_name,
+                stream_position=stream_position,
+            )
+
+        return is_successful
 
     async def maybe_run_recovery(self) -> int:
         """Run a recovery pass if enough time has elapsed since the last one.

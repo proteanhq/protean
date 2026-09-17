@@ -6,7 +6,9 @@ import platform
 import signal
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from signal import Signals
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from protean.core.command import BaseCommand
@@ -475,6 +477,19 @@ class Engine:
     def subscription_factory(self) -> SubscriptionFactory:
         """Get the subscription factory used to create subscriptions."""
         return self._subscription_factory
+
+    @property
+    def subscriptions(self) -> "Mapping[str, BaseSubscription]":
+        """The event-store subscriptions this engine manages, keyed by subscription key.
+
+        Read-only view for tooling that needs the already-wired handlers (a
+        ``CommandDispatcher`` for a command stream, the handler class otherwise)
+        without running the engine, such as ``protean eventstore dlq replay``.
+        Broker subscriptions live separately and are not included. The returned
+        ``MappingProxyType`` reflects the live dict but rejects writes, so a
+        caller cannot corrupt the engine's registry through it.
+        """
+        return MappingProxyType(self._subscriptions)
 
     def _register_handler_subscriptions(self) -> None:
         """Register subscriptions for all event handlers, command handlers, and projectors.
@@ -987,8 +1002,14 @@ class Engine:
                     causation_id=causation_id,
                 )
 
-                # Emit pm.transition trace for process managers
-                if issubclass(handler_cls, BaseProcessManager):
+                # Emit pm.transition trace for process managers. A command
+                # stream's handler is a CommandDispatcher *instance*, not a
+                # class, so guard the issubclass check: issubclass() on an
+                # instance raises TypeError, which the outer except would
+                # swallow and turn a succeeded command into a False return.
+                if isinstance(handler_cls, type) and issubclass(
+                    handler_cls, BaseProcessManager
+                ):
                     self.emitter.emit(
                         event="pm.transition",
                         stream=stream,
