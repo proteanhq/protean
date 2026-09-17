@@ -283,8 +283,8 @@ class TestGeneratedProjectShipsAgentsMd:
         expected = generate_agents_md(version=protean.__version__)
         assert (project / "AGENTS.md").read_text(encoding="utf-8") == expected
 
-    def test_pretend_writes_no_agents_md(self, tmp_path):
-        """A --pretend dry run touches nothing, so it writes no AGENTS.md."""
+    def test_dry_run_writes_no_agents_md(self, tmp_path):
+        """A --dry-run touches nothing, so it writes no AGENTS.md."""
         out = tmp_path / "out"
         out.mkdir(parents=True, exist_ok=True)
         result = CliRunner().invoke(
@@ -296,10 +296,10 @@ class TestGeneratedProjectShipsAgentsMd:
                 str(out),
                 "--defaults",
                 "--skip-setup",
-                "--pretend",
+                "--dry-run",
             ],
         )
-        assert result.exit_code == 0, f"protean new --pretend failed: {result.output}"
+        assert result.exit_code == 0, f"protean new --dry-run failed: {result.output}"
         assert not (out / "scaffolded" / "AGENTS.md").exists()
 
 

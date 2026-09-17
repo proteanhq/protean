@@ -562,7 +562,7 @@ def test_non_literal_domain_name_reads_as_drift_against_stored_literal(
 
 
 # --------------------------------------------------------------------------- #
-# CLI wiring — `protean new` writes the manifest, `--pretend` does not         #
+# CLI wiring — `protean new` writes the manifest, `--dry-run` does not        #
 # --------------------------------------------------------------------------- #
 
 
@@ -594,7 +594,7 @@ def test_protean_new_writes_a_loadable_manifest() -> None:
         assert manifest.layout.composition_root == "src/foobar/domain.py"
 
 
-def test_protean_new_pretend_writes_no_manifest() -> None:
+def test_protean_new_dry_run_writes_no_manifest() -> None:
     with isolated_filesystem() as project_dir:
         result = runner.invoke(
             app,
@@ -603,7 +603,7 @@ def test_protean_new_pretend_writes_no_manifest() -> None:
                 "foobar",
                 "-o",
                 project_dir,
-                "--pretend",
+                "--dry-run",
                 "--defaults",
                 "-d",
                 "author_name=John Doe",

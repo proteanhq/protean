@@ -102,13 +102,13 @@ class TestGenerator:
             assert len(os.listdir(current_dir)) > 0
             assert os.path.isfile(f"{current_dir}/{PROJECT_NAME}/README.md")
 
-    def test_pretend_project_generation(self):
+    def test_dry_run_project_generation(self):
         # Create a temporary directory
         with isolated_filesystem() as project_dir:
             args = [
                 "new",
                 "foobar",
-                "--pretend",
+                "--dry-run",
                 "--defaults",
                 "-d",
                 "author_name=John Doe",
@@ -120,6 +120,14 @@ class TestGenerator:
             assert result.exit_code == 0
 
             # Output folder should not exist
+            assert len(os.listdir(project_dir)) == 0
+
+    def test_pretend_is_no_longer_accepted(self):
+        """The dry-run flag is --dry-run; the old --pretend name is gone."""
+        with isolated_filesystem() as project_dir:
+            result = runner.invoke(app, ["new", "foobar", "--pretend", "--defaults"])
+
+            assert result.exit_code == 2
             assert len(os.listdir(project_dir)) == 0
 
     def test_invalid_output_folder_throws_error(self):

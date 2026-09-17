@@ -302,7 +302,7 @@ def new(
     data: Annotated[
         list[str] | None, typer.Option("--data", "-d", show_default=False)
     ] = None,
-    pretend: Annotated[bool, typer.Option("--pretend", "-p")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     force: Annotated[bool, typer.Option("--force", "-f")] = False,
     defaults: Annotated[bool, typer.Option("--defaults")] = False,
     skip_setup: Annotated[bool, typer.Option("--skip-setup")] = False,
@@ -317,7 +317,7 @@ def new(
 ) -> None:
     # ``--from-model`` is its own pipeline (parse, create, generate, apply,
     # verify). It composes the callable cores and skips post-generation setup, so
-    # it does not use the flags below (``--data``, ``--pretend``, ``--skip-setup``).
+    # it does not use the flags below (``--data``, ``--dry-run``, ``--skip-setup``).
     # It does honour ``--force``, threading it into ``create_project`` so an
     # existing target can be overwritten the same way a plain ``new`` does.
     if from_model is not None:
@@ -355,16 +355,16 @@ def new(
             project_name,
             output_folder,
             data_dict,
-            dry_run=pretend,
+            dry_run=dry_run,
             force=force,
             defaults=defaults,
         )
     except ImportError as exc:
         abort_for_missing_dependency("scaffold", "'protean new'", exc)
 
-    # Under --pretend nothing was written; echo the files that would be created
+    # Under --dry-run nothing was written; echo the files that would be created
     # so the user still sees the plan.
-    if pretend:
+    if dry_run:
         for path in planned:
             typer.echo(path)
         return

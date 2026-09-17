@@ -29,7 +29,7 @@ The manifest lives at `.protean/project.json`, a sibling of `ir.json` and
 `config.toml`. It is written by `protean.scaffold.manifest.write_manifest`, which
 `protean new` calls after the template is copied. The manifest writer is the first
 thing to create `.protean/`, and it does not touch a pre-existing `config.toml` or
-`ir.json`. `--pretend` writes nothing.
+`ir.json`. `--dry-run` writes nothing.
 
 **Contract: derived, verifiable, never authoritative.** Every field is recomputed
 from its own source on disk. The stored file is never read to override the code. This

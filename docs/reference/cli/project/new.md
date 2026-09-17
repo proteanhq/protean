@@ -43,17 +43,17 @@ the project's configuration. Available configuration options include:
 - `--from-model`: Path to a text event-model file. Builds the whole project from
 the model and verifies it in one step (see
 [Building from a model](#building-from-a-model) below). This is its own
-pipeline: it ignores `--data`, `--pretend`, and `--skip-setup`, and always
+pipeline: it ignores `--data`, `--dry-run`, and `--skip-setup`, and always
 creates the project with the example slice off. It does honour `--force`, which
 clears an existing target the same way a plain `protean new` does.
 - `--help`: Shows the help message and exits.
 
 ### Behavior Modifiers
 
-- `--pretend`, `-p`: Dry run. Prints the project-relative path of every file
-the command would create, one per line, and writes nothing. The target
-directory is left alone whether or not it already has files in it, and
-`--force` does not clear it under a dry run.
+- `--dry-run`: Prints the project-relative path of every file the command
+would create, one per line, and writes nothing. The target directory is left
+alone whether or not it already has files in it, and `--force` does not clear
+it under a dry run.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
 existing files. The target directory has to sit inside the output directory:
 if `<output-dir>/<name>` is a symlink pointing somewhere else, the command
