@@ -330,6 +330,30 @@ def _resolve_exhausted_owner(
     return owners[0]
 
 
+def _still_exhausted_or_abort(
+    store: BaseEventStore, failed_stream: str, position: int
+) -> None:
+    """Re-read ``failed_stream`` and abort unless ``position`` is still Exhausted.
+
+    ``replay`` and ``purge`` resolve the owner before they prompt, and the
+    operator can sit on that prompt for a while. Another operator's replay or
+    purge can resolve or purge the same position in the meantime, so both
+    commands re-read the latest status here, immediately before they act, and
+    refuse a position that is no longer exhausted. The re-read and the action are
+    still two steps against an append-only stream, so this narrows the window
+    rather than closing it; closing it needs a conditional append the failed
+    streams do not have.
+    """
+    if position not in _exhausted_positions(store, failed_stream):
+        emit_usage_error(
+            as_json=False,
+            message=(
+                f"Position {position} is no longer exhausted: another replay or "
+                f"purge cleared it while this command was waiting. Nothing was done."
+            ),
+        )
+
+
 @contextmanager
 def _redrive_engine(domain: Domain) -> Iterator[Engine]:
     """Build an engine for ``replay``'s re-drive, then close its event loop.
@@ -337,25 +361,18 @@ def _redrive_engine(domain: Domain) -> Iterator[Engine]:
     ``replay`` reuses the engine's already-wired subscriptions (a
     ``CommandDispatcher`` for a command stream, the handler class otherwise) so
     it can dispatch through the real handler. ``Engine()`` opens its own event
-    loop that ``asyncio.run`` never uses, so
-    close it in every case; the in-process CLI test runner would otherwise leak a
-    loop per invocation. Construction happens inside the ``try`` because
-    ``Engine.__init__`` creates the loop early and can then raise while wiring
-    subscriptions, and the ``finally`` must still close a half-built engine's
-    loop.
+    loop that ``asyncio.run`` never uses, so close it in every case; the
+    in-process CLI test runner would otherwise leak a loop per invocation. A
+    construction that fails closes its own loop (``Engine.__init__``), so it
+    needs no handling here.
     """
     from protean.server import Engine  # noqa: PLC0415
 
-    engine = None
+    engine = Engine(domain, test_mode=True)
     try:
-        engine = Engine(domain, test_mode=True)
         yield engine
     finally:
-        # ``no branch``: the engine-is-None arm (construction raised) runs during
-        # the generator's pre-yield exception unwind, which coverage cannot track
-        # as a branch; TestRedriveEngine exercises it.
-        if engine is not None:  # pragma: no branch
-            engine.loop.close()
+        engine.loop.close()
 
 
 def _owner_subscription(
@@ -613,7 +630,9 @@ def replay(
 
     Replay re-runs handler side effects, so it confirms first, naming the target
     (an event handler, or a command with or without an idempotency key). Pass
-    ``--yes`` to skip the prompt.
+    ``--yes`` to skip the prompt. The position's latest status is re-read right
+    before the dispatch, so a position another replay or purge cleared while the
+    prompt was open is refused.
     """
     derived_domain = load_domain(domain)
 
@@ -661,6 +680,7 @@ def replay(
                     as_json=False,
                     message=f"No live subscription owns the failed stream for position {position}.",
                 )
+            _still_exhausted_or_abort(store, failed_stream, position)
             resolved = asyncio.run(
                 owner_sub.replay_exhausted(
                     event,
@@ -710,7 +730,9 @@ def purge(
     and writes a new ``Purged`` record after the ``Exhausted`` one. The position
     stops being listed as exhausted and a later rebuild does not re-track it.
     Purge does not re-run the handler, so it needs no engine. Pass ``--yes`` to
-    skip the prompt.
+    skip the prompt. The position's latest status is re-read right before the
+    marker is appended, so a position another replay or purge cleared while the
+    prompt was open is refused.
     """
     from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
         FailedPositionStatus,
@@ -734,6 +756,7 @@ def purge(
                 abort=True,
             )
 
+        _still_exhausted_or_abort(store, failed_stream, position)
         write_recovery_status_record(
             store,
             failed_stream,

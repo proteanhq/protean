@@ -28,6 +28,7 @@ from protean.server import Engine
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
     FailedPositionStatus,
+    write_recovery_status_record,
 )
 from protean.utils.dlq import collect_failed_streams, failed_positions_stream
 from protean.utils.eventing import EventStoreMeta, Message, MessageType, Metadata
@@ -241,6 +242,33 @@ def _exhaust_command_position(
     )
 
 
+def _toggle_failed_stream(test_domain) -> tuple:
+    """Return (subscription info, failed stream) for ``ToggleEventHandler``."""
+    return next(
+        p
+        for p in collect_failed_streams(test_domain)
+        if p[0].handler_name == "ToggleEventHandler"
+    )
+
+
+def _resolve_concurrently(test_domain, position: int = 1) -> None:
+    """Append a Resolved record, the way another operator's replay would.
+
+    Used from inside a patched confirmation prompt to reproduce the race: the
+    position is cleared between the owner lookup and the action.
+    """
+    info, stream = _toggle_failed_stream(test_domain)
+    write_recovery_status_record(
+        test_domain.event_store.store,
+        stream,
+        info.stream_category,
+        test_domain.clock.now().isoformat(),
+        position,
+        FailedPositionStatus.RESOLVED,
+        retry_count=3,
+    )
+
+
 def _invoke(args, **kwargs):
     with patch("protean.cli.eventstore.load_domain", return_value=kwargs.pop("domain")):
         return runner.invoke(app, args, env=WIDE, **kwargs)
@@ -331,6 +359,34 @@ class TestReplay:
 
         assert "a command with no idempotency key" in result.output
         assert "Aborted" in result.output
+
+    def test_replay_refuses_a_position_cleared_while_the_prompt_was_open(
+        self, test_domain
+    ):
+        # Another operator resolves the position while this command waits on the
+        # prompt. Replay must re-check and refuse, or it would dispatch the
+        # handler a second time.
+        _drive_to_exhaustion(test_domain, ToggleEventHandler)
+        ToggleEventHandler.should_fail = False  # a dispatch would succeed
+        store = test_domain.event_store.store
+        _info, stream = _toggle_failed_stream(test_domain)
+        records_at_confirm = {}
+
+        def _resolve_at_the_prompt(*args, **kwargs):
+            _resolve_concurrently(test_domain)
+            records_at_confirm["count"] = len(list(store.read_all(stream)))
+            return True
+
+        with patch("typer.confirm", side_effect=_resolve_at_the_prompt):
+            result = _invoke(
+                ["eventstore", "dlq", "replay", "1", "--domain", "x.py"],
+                domain=test_domain,
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "no longer exhausted" in result.output
+        # Nothing was dispatched, so nothing was recorded either.
+        assert len(list(store.read_all(stream))) == records_at_confirm["count"]
 
     def test_replay_unknown_position_is_usage_error(self, test_domain):
         _drive_to_exhaustion(test_domain, ToggleEventHandler)
@@ -497,6 +553,33 @@ class TestPurge:
         )
         assert "No exhausted positions." in listing.output
 
+    def test_purge_refuses_a_position_cleared_while_the_prompt_was_open(
+        self, test_domain
+    ):
+        # Another operator resolves the position while this command waits on the
+        # prompt. Purge must re-check and refuse, or it would mark a position
+        # that is no longer exhausted.
+        _drive_to_exhaustion(test_domain, ToggleEventHandler)
+        store = test_domain.event_store.store
+        _info, stream = _toggle_failed_stream(test_domain)
+        records_at_confirm = {}
+
+        def _resolve_at_the_prompt(*args, **kwargs):
+            _resolve_concurrently(test_domain)
+            records_at_confirm["count"] = len(list(store.read_all(stream)))
+            return True
+
+        with patch("typer.confirm", side_effect=_resolve_at_the_prompt):
+            result = _invoke(
+                ["eventstore", "dlq", "purge", "1", "--domain", "x.py"],
+                domain=test_domain,
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "no longer exhausted" in result.output
+        # No Purged marker was appended.
+        assert len(list(store.read_all(stream))) == records_at_confirm["count"]
+
     def test_purged_position_cannot_be_acted_on_again(self, test_domain):
         # After a purge, the latest status is Purged, so replay/purge must not
         # find the position through the stale Exhausted record.
@@ -562,12 +645,21 @@ class TestOwnerSubscription:
 
 
 class TestRedriveEngine:
-    def test_construction_failure_does_not_crash_the_finally(self, test_domain):
-        """A raising ``Engine()`` leaves nothing to close; the guard skips it.
+    def test_closes_the_engine_loop_on_the_way_out(self, test_domain):
+        """The loop the engine opens is closed once the body is done."""
+        from protean.cli.eventstore import _redrive_engine
 
-        Confirms the loop-leak guard: the engine is built inside the try, so a
-        failed construction still runs the finally without an AttributeError on a
-        None engine.
+        with _redrive_engine(test_domain) as engine:
+            assert engine.loop.is_closed() is False
+
+        assert engine.loop.is_closed() is True
+
+    def test_construction_failure_propagates(self, test_domain):
+        """A raising ``Engine()`` raises through, with no loop left to close.
+
+        A half-built engine closes its own loop in ``Engine.__init__``, so the
+        context manager has nothing to clean up (see
+        ``tests/server/test_engine_initialization.py``).
         """
         from protean.cli.eventstore import _redrive_engine
 

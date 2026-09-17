@@ -166,12 +166,18 @@ A command whose deadline has passed is refused, because the engine would skip an
 expired command; purge it instead. A handler-level idempotency declaration that
 would let replay refuse a non-idempotent target does not exist yet.
 
+Both `replay` and `purge` re-read the position's latest status right before they
+act. If another operator's `replay` or `purge` cleared it while the prompt was
+open, the command refuses and does nothing.
+
 ## `protean eventstore dlq purge`
 
 Clears one exhausted position. The `failed-*` streams are append-only, so purge
 keeps the record history and writes a new `Purged` record after the `Exhausted`
 one. The position stops being listed as exhausted and a later engine restart
 does not re-track it. Purge does not re-run the handler, so it needs no engine.
+Like `replay`, it refuses a position that stopped being exhausted while the
+prompt was open.
 
 ```bash
 protean eventstore dlq purge 42 --domain=my_domain
@@ -196,7 +202,7 @@ protean eventstore dlq purge 42 --domain=my_domain --yes
 |------|---------|
 | `0` | Success, including "no exhausted positions", a `replay` that resolves, and a `purge`. |
 | `1` | Human mode (`--json` not set): the domain failed to load; `replay`/`purge` was not confirmed (Typer aborts, the same as every other `protean` command); or a `replay` that reopened the position (the handler failed again). |
-| `2` | Usage or environment error: unknown `--subscription` or `--handler`, unknown position, an event that can no longer be re-read, an expired command, or a position exhausted in more than one subscription with no `--handler` to choose one. Under `--json`, a domain that failed to load also exits `2` and emits the error envelope. |
+| `2` | Usage or environment error: unknown `--subscription` or `--handler`, unknown position, an event that can no longer be re-read, an expired command, a position another command cleared while the prompt was open, or a position exhausted in more than one subscription with no `--handler` to choose one. Under `--json`, a domain that failed to load also exits `2` and emits the error envelope. |
 
 ## Error handling
 
@@ -209,6 +215,7 @@ protean eventstore dlq purge 42 --domain=my_domain --yes
 | `inspect`/`replay` event can no longer be read | "Could not re-read the event ...", exit `2` |
 | `replay` targets a command whose deadline has passed | "Position ... targets a command whose deadline has passed ...", exit `2` |
 | `replay`/`purge` position is exhausted in more than one subscription | "Position ... is exhausted in multiple subscriptions ...", exit `2` |
+| `replay`/`purge` position was cleared while the prompt was open | "Position ... is no longer exhausted ...", exit `2` |
 | `replay`/`purge` confirmation declined | Typer aborts with exit `1` |
 | `replay` handler fails again | "... position reopened for recovery.", exit `1` |
 

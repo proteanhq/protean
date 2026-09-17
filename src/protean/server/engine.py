@@ -333,6 +333,24 @@ class Engine:
         # This avoids fragility when the caller already has a running loop
         self.loop = asyncio.new_event_loop()
 
+        # ``__init__`` can still raise below, while wiring subscriptions, outbox
+        # processors or the DLQ task. The caller never gets a reference to the
+        # half-built engine (the name it assigns to is bound only after
+        # ``__init__`` returns), so nobody else can close the loop opened just
+        # above. Close it here and re-raise.
+        try:
+            self._wire_components()
+        except BaseException:
+            self.loop.close()
+            raise
+
+    def _wire_components(self) -> None:
+        """Wire the health server, subscriptions, outbox processors and DLQ task.
+
+        This is the tail of ``__init__``, split out so a failure in it can be
+        caught and the engine's event loop closed before the exception leaves the
+        constructor.
+        """
         # Health check HTTP server for Kubernetes probes
         self._health_server = HealthServer(self)
 
