@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from protean.cli._helpers import abort_for_missing_dependency
+from protean.cli._helpers import CTX_LOG_CONFIGURED, abort_for_missing_dependency
 from protean.scaffold.create_project import create_project
 
 console = Console()
@@ -324,8 +324,6 @@ def new(
         # Thread the CLI callback's "logging is already configured" flag through,
         # so ``--log-config``/``--log-level``/``--log-format`` survive the
         # stderr-routing call this path makes before it imports the new domain.
-        from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: PLC0415
-
         parent_obj = ctx.obj or {}
         raise typer.Exit(
             code=_run_from_model(
