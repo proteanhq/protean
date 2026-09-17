@@ -126,14 +126,19 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
         os.chdir(original_dir)
 
 
-def _run_from_model(project_name: str, output_folder: str, model_file: str) -> None:
-    """Build a verify-green project from a text event model.
+def _run_from_model(project_name: str, output_folder: str, model_file: str) -> int:
+    """Build a verify-green project from a text event model, return the exit code.
 
     Runs the pipeline in this order: parse the model, create the project (with the
     example slice off), promote the parsed model to a slice, apply it, then run
     ``verify`` in-process and report the verdict. Parse comes first so an invalid
     model aborts before any directory is created. This composes the callable cores
     only. It does not run ``uv sync``, git init, or pre-commit.
+
+    Returns the code the ``new`` command should exit with: 2 for a bad model file,
+    or the verify core's mapped code (0 on pass, otherwise its failure code). The
+    caller raises ``typer.Exit`` with it, so this mirrors ``verify``'s split: the
+    core returns the verdict, the command turns it into an exit.
     """
     # Local imports keep ``protean --help`` from pulling the parser, the slice
     # generator, and the IR stack in on every CLI start (the same reason
@@ -160,14 +165,14 @@ def _run_from_model(project_name: str, output_folder: str, model_file: str) -> N
         model_text = Path(model_file).read_text(encoding="utf-8")
     except OSError as exc:
         typer.echo(f"Error: could not read model file {model_file!r}: {exc}")
-        raise typer.Exit(code=2) from exc
+        return 2
     try:
         fragment_mapping = parse_model(model_text)
     except ModelParseError as exc:
         # ``ModelParseError`` stringifies as "line N: <message>", so this carries
         # the line number the violation is reported at.
         typer.echo(f"Error: {exc}")
-        raise typer.Exit(code=2) from exc
+        return 2
 
     # 2. Create the project with the example slice off, so the generated slice's
     #    paths are clear, so ``apply_plan`` (create-only) does not hit a target
@@ -202,7 +207,7 @@ def _run_from_model(project_name: str, output_folder: str, model_file: str) -> N
     console.print(f"\n  Protean verify: [bold]{verdict}[/bold]")
     for stage, info in result.stages.items():
         console.print(f"    {stage:<7} {info['status']}")
-    raise typer.Exit(code=result.exit_code)
+    return result.exit_code
 
 
 def new(
@@ -230,8 +235,7 @@ def new(
     # verify). It composes the callable cores and skips post-generation setup, so
     # it does not use the flags below (``--data``, ``--pretend``, ``--skip-setup``).
     if from_model is not None:
-        _run_from_model(project_name, output_folder, from_model)
-        return
+        raise typer.Exit(code=_run_from_model(project_name, output_folder, from_model))
 
     if data is None:
         data = []
