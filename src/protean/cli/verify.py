@@ -50,6 +50,13 @@ would read as a false green. Unlike ``check`` and the other commands, ``verify``
 does not use the ``handle_cli_exceptions`` decorator — it owns its exit-code
 contract, so it catches load/init failures itself and maps them to the codes
 above.
+
+The compute is split from the emit. :func:`run_verify` runs the three stages and
+returns a :class:`VerifyResult` (the stage tree, verdict, and mapped exit code)
+without printing or raising ``typer.Exit``. The ``verify`` command is the thin
+wrapper that emits the result (human table or JSON envelope) and exits. A caller
+that composes verify into a larger flow (``protean new --from-model``) calls
+``run_verify`` and maps ``result.exit_code`` itself.
 """
 
 import json
@@ -57,7 +64,8 @@ import os
 import re
 import subprocess
 import sys
-from typing import Annotated, Any, NoReturn
+from dataclasses import dataclass
+from typing import Annotated, Any
 
 import typer
 from rich import print
@@ -98,6 +106,163 @@ _STAGES = ("init", "check", "tests")
 _LINT_LEVELS = frozenset({"error", "warn", "info"})
 
 
+@dataclass
+class VerifyResult:
+    """The outcome of a verify run, computed but not yet emitted.
+
+    :func:`run_verify` returns this; the ``verify`` command turns it into console
+    output and an exit code. Nothing here has printed or exited, so
+    ``protean new --from-model`` can run verify in-process and map
+    ``result.exit_code`` instead of catching a ``typer.Exit``.
+
+    - ``stages`` is the per-stage tree (init/check/tests), the same dict the
+      envelope and the human table read.
+    - ``exit_code`` is the settled code the command exits with (0/2/3/4/5).
+    - ``status`` is the coarse envelope status: ``"pass"`` all green, ``"fail"`` a
+      detected failure, ``"error"`` a usage error caught before any stage ran.
+    - ``tests_output`` is the raw pytest output, kept for the human table only.
+    - ``error_line`` is the red line the command prints to stderr, empty when
+      there is none.
+    - ``envelope_error`` is the ``data.error`` slot: the usage-error message when
+      no stage carries it, empty otherwise.
+    """
+
+    stages: dict[str, dict[str, Any]]
+    exit_code: int
+    status: EnvelopeStatus
+    tests_output: str = ""
+    error_line: str = ""
+    envelope_error: str = ""
+
+
+def run_verify(domain: str, path: str) -> VerifyResult:
+    """Run init + check + tests and return the result, without printing or exiting.
+
+    This is the compute-only core behind ``protean verify``: it discovers and
+    initializes the domain, runs ``Domain.check``, runs the project's pytest suite
+    in ``path``, and maps the outcome to the settled exit code. The early
+    usage/init failures (a bad ``--path``, a domain that is not found or fails to
+    load) become early returns carrying the same stage tree, error line, status
+    class, and exit code they mapped to before. The ``verify`` command emits the
+    result and exits; ``protean new --from-model`` maps ``result.exit_code``.
+
+    Init and check run in the calling process, so this is meant for one call per
+    process (the CLI's use). A second call in the same process for a different
+    project that shares a package name returns the first project's result:
+    ``__import__`` caches the module under its dotted name, so the second call
+    re-inits the first domain. Verifying several projects from one process needs
+    a fresh interpreter per call, or a reset of the module cache between calls.
+    """
+    # Every stage starts "skipped"; a failure before it runs leaves it that way
+    # so the envelope always carries all three keys.
+    stages: dict[str, dict[str, Any]] = {
+        stage: {"status": "skipped"} for stage in _STAGES
+    }
+
+    # ``--path`` is handed to ``subprocess.run(cwd=...)`` for the tests stage;
+    # a missing directory (or a file) would otherwise crash there with an
+    # uncaught ``FileNotFoundError``/``NotADirectoryError`` — and in ``--json``
+    # mode corrupt the envelope with a traceback. Reject it up front as a usage
+    # error, before doing any init work.
+    if not os.path.isdir(path):
+        msg = f"--path is not a directory: {path}"
+        return _early_result(stages, _EXIT_USAGE, msg)
+
+    # --- Init stage -------------------------------------------------------
+    try:
+        derived_domain = derive_domain(domain)
+    except NoDomainException as exc:
+        msg = f"Error loading Protean domain: {exc.args[0]}"
+        stages["init"] = {"status": "fail", "error": msg}
+        # ``locate_domain`` (domain_discovery.py) raises ``NoDomainException``
+        # both when the module can't be found at all, and when it *is* found
+        # but an ``ImportError`` happens while importing it — it wraps the
+        # latter with a "While importing ..." prefix. Only the former is a
+        # usage error (bad ``--domain``); the latter means the domain was
+        # found but failed to load, so it gets the init-failure code instead.
+        exit_code = (
+            _EXIT_INIT
+            if str(exc.args[0]).startswith("While importing ")
+            else _EXIT_USAGE
+        )
+        return _early_result(stages, exit_code, msg)
+    except Exception as exc:
+        # ``derive_domain`` wraps the domain-not-found and most import-error
+        # cases in ``NoDomainException`` (caught above), but a domain module
+        # that raises during import — a ``SyntaxError``, or any exception its
+        # own top-level code throws — comes through as that exception, not
+        # ``NoDomainException``. Treat it as an init failure (3), the same
+        # code a domain that imports fine but blows up in ``.init()`` gets,
+        # rather than letting it crash out as an unhandled traceback.
+        msg = f"Domain failed to initialize: {exc}"
+        stages["init"] = {"status": "fail", "error": msg}
+        return _early_result(stages, _EXIT_INIT, msg)
+
+    # ``derive_domain`` returns ``None`` (rather than raising) when the path is
+    # empty and ``PROTEAN_DOMAIN`` is unset — e.g. ``-d ""`` or ``-d "$PROTEAN_DOMAIN"``
+    # with the var unset. Treat it as domain-not-found, not an ``AssertionError``.
+    if derived_domain is None:
+        msg = "No domain found. Provide --domain or set PROTEAN_DOMAIN."
+        stages["init"] = {"status": "fail", "error": msg}
+        return _early_result(stages, _EXIT_USAGE, msg)
+
+    try:
+        derived_domain.init(traverse=True)
+    except Exception as exc:
+        msg = f"Domain failed to initialize: {exc}"
+        stages["init"] = {"status": "fail", "error": msg}
+        return _early_result(stages, _EXIT_INIT, msg)
+
+    stages["init"] = {"status": "pass", "error": None}
+
+    # --- Check stage ------------------------------------------------------
+    check_failed, stages["check"] = _run_check(derived_domain)
+
+    # --- Tests stage ------------------------------------------------------
+    # Run tests even when check failed, so the envelope carries every stage's
+    # result; exit precedence (check before tests) is applied below.
+    tests_stage, tests_output = _run_tests(path)
+    stages["tests"] = tests_stage
+
+    status: EnvelopeStatus = "pass" if _verdict(stages) == "pass" else "fail"
+
+    # --- Verdict + exit code ----------------------------------------------
+    # Precedence: check (4) before tests (5), 0 when both pass.
+    if check_failed:
+        exit_code = _EXIT_CHECK
+    elif tests_stage["status"] == "fail":
+        exit_code = _EXIT_TESTS
+    else:
+        exit_code = _EXIT_OK
+
+    return VerifyResult(
+        stages=stages,
+        exit_code=exit_code,
+        status=status,
+        tests_output=tests_output,
+    )
+
+
+def _early_result(
+    stages: dict[str, dict[str, Any]], code: int, error_line: str
+) -> VerifyResult:
+    """Build the result for an early exit: a usage or init failure caught before
+    check and tests run. Mirrors what ``verify`` did inline before the core split:
+    the envelope status follows the exit-code class (usage → ``"error"``, a
+    detected failure → ``"fail"``), and the error line lands at ``data.error`` only
+    when no stage already carries it (the up-front ``--path`` check), so it is not
+    duplicated with ``data.stages.init.error``."""
+    status: EnvelopeStatus = "error" if code == _EXIT_USAGE else "fail"
+    envelope_error = error_line if stages["init"]["status"] == "skipped" else ""
+    return VerifyResult(
+        stages=stages,
+        exit_code=code,
+        status=status,
+        error_line=error_line,
+        envelope_error=envelope_error,
+    )
+
+
 def verify(
     ctx: typer.Context,
     domain: Annotated[
@@ -135,86 +300,20 @@ def verify(
         log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED))
     )
 
-    # Every stage starts "skipped"; a failure before it runs leaves it that way
-    # so the envelope always carries all three keys.
-    stages: dict[str, dict[str, Any]] = {
-        stage: {"status": "skipped"} for stage in _STAGES
-    }
+    result = run_verify(domain, path)
 
-    # ``--path`` is handed to ``subprocess.run(cwd=...)`` for the tests stage;
-    # a missing directory (or a file) would otherwise crash there with an
-    # uncaught ``FileNotFoundError``/``NotADirectoryError`` — and in ``--json``
-    # mode corrupt the envelope with a traceback. Reject it up front as a usage
-    # error, before doing any init work.
-    if not os.path.isdir(path):
-        msg = f"--path is not a directory: {path}"
-        _emit_and_exit(json_output, stages, "", _EXIT_USAGE, error_line=msg)
-
-    # --- Init stage -------------------------------------------------------
-    try:
-        derived_domain = derive_domain(domain)
-    except NoDomainException as exc:
-        msg = f"Error loading Protean domain: {exc.args[0]}"
-        stages["init"] = {"status": "fail", "error": msg}
-        # ``locate_domain`` (domain_discovery.py) raises ``NoDomainException``
-        # both when the module can't be found at all, and when it *is* found
-        # but an ``ImportError`` happens while importing it — it wraps the
-        # latter with a "While importing ..." prefix. Only the former is a
-        # usage error (bad ``--domain``); the latter means the domain was
-        # found but failed to load, so it gets the init-failure code instead.
-        exit_code = (
-            _EXIT_INIT
-            if str(exc.args[0]).startswith("While importing ")
-            else _EXIT_USAGE
-        )
-        _emit_and_exit(json_output, stages, "", exit_code, error_line=msg)
-    except Exception as exc:
-        # ``derive_domain`` wraps the domain-not-found and most import-error
-        # cases in ``NoDomainException`` (caught above), but a domain module
-        # that raises during import — a ``SyntaxError``, or any exception its
-        # own top-level code throws — comes through as that exception, not
-        # ``NoDomainException``. Treat it as an init failure (3), the same
-        # code a domain that imports fine but blows up in ``.init()`` gets,
-        # rather than letting it crash out as an unhandled traceback.
-        msg = f"Domain failed to initialize: {exc}"
-        stages["init"] = {"status": "fail", "error": msg}
-        _emit_and_exit(json_output, stages, "", _EXIT_INIT, error_line=msg)
-
-    # ``derive_domain`` returns ``None`` (rather than raising) when the path is
-    # empty and ``PROTEAN_DOMAIN`` is unset — e.g. ``-d ""`` or ``-d "$PROTEAN_DOMAIN"``
-    # with the var unset. Treat it as domain-not-found, not an ``AssertionError``.
-    if derived_domain is None:
-        msg = "No domain found. Provide --domain or set PROTEAN_DOMAIN."
-        stages["init"] = {"status": "fail", "error": msg}
-        _emit_and_exit(json_output, stages, "", _EXIT_USAGE, error_line=msg)
-
-    try:
-        derived_domain.init(traverse=True)
-    except Exception as exc:
-        msg = f"Domain failed to initialize: {exc}"
-        stages["init"] = {"status": "fail", "error": msg}
-        _emit_and_exit(json_output, stages, "", _EXIT_INIT, error_line=msg)
-
-    stages["init"] = {"status": "pass", "error": None}
-
-    # --- Check stage ------------------------------------------------------
-    check_failed, stages["check"] = _run_check(derived_domain)
-
-    # --- Tests stage ------------------------------------------------------
-    # Run tests even when check failed, so the envelope carries every stage's
-    # result; exit precedence (check before tests) is applied at the end.
-    tests_stage, tests_output = _run_tests(path)
-    stages["tests"] = tests_stage
-
-    status: EnvelopeStatus = "pass" if _verdict(stages) == "pass" else "fail"
-    _emit(json_output, stages, tests_output, status)
-
-    # --- Verdict + exit ---------------------------------------------------
-    if check_failed:
-        raise typer.Exit(_EXIT_CHECK)
-    if tests_stage["status"] == "fail":
-        raise typer.Exit(_EXIT_TESTS)
-    raise typer.Exit(_EXIT_OK)
+    # The red error line goes to stderr so ``--json`` stdout stays a single
+    # parseable object.
+    if not json_output and result.error_line:
+        _ERR_CONSOLE.print(f"[red]{escape(result.error_line)}[/red]")
+    _emit(
+        json_output,
+        result.stages,
+        result.tests_output,
+        result.status,
+        error=result.envelope_error,
+    )
+    raise typer.Exit(result.exit_code)
 
 
 def _validate_lint_level(lint_config: dict[str, Any]) -> str | None:
@@ -394,31 +493,6 @@ def _emit(
         _render(stages, tests_output)
 
 
-def _emit_and_exit(
-    json_output: bool,
-    stages: dict[str, dict[str, Any]],
-    tests_output: str,
-    code: int,
-    error_line: str = "",
-) -> NoReturn:
-    """Emit the result and raise ``typer.Exit`` with ``code`` (used on early
-    exits, where check and tests never run).
-
-    The envelope status follows the exit-code class: a usage error (exit 2) is
-    ``"error"``; a detected failure (init, exit 3) is ``"fail"``. The red error
-    line goes to stderr so ``--json`` stdout stays a single parseable object.
-    ``error_line`` also lands in the envelope, but only at ``data.error`` when
-    no stage already carries it — the up-front ``--path`` check, before init
-    has even been attempted — so the message is not duplicated with
-    ``data.stages.init.error`` for the domain-not-found/init-failure cases."""
-    if not json_output and error_line:
-        _ERR_CONSOLE.print(f"[red]{escape(error_line)}[/red]")
-    status: EnvelopeStatus = "error" if code == _EXIT_USAGE else "fail"
-    envelope_error = error_line if stages["init"]["status"] == "skipped" else ""
-    _emit(json_output, stages, tests_output, status, error=envelope_error)
-    raise typer.Exit(code)
-
-
 def _render(stages: dict[str, dict[str, Any]], tests_output: str) -> None:
     """Print a compact per-stage table and an overall verdict line."""
     label = {
@@ -435,10 +509,8 @@ def _render(stages: dict[str, dict[str, Any]], tests_output: str) -> None:
     # Surface the check diagnostics and the tail of the pytest output so the
     # human table is actionable, not just a set of PASS/FAIL labels.
     _render_check_detail(stages["check"])
-    if stages["tests"]["status"] == "fail" and tests_output.strip():
-        print("\n  [bold]pytest output:[/bold]")
-        for line in tests_output.strip().splitlines()[-15:]:
-            print(f"    {line}")
+    if stages["tests"]["status"] == "fail":
+        _render_pytest_tail(tests_output)
 
     verdict = _verdict(stages)
     overall = label.get("pass" if verdict == "pass" else "fail")
@@ -461,6 +533,19 @@ def _stage_detail(stage: str, data: dict[str, Any]) -> str:
         first_line = data["error"].strip().splitlines()[0]
         return f"  ({escape(first_line)})"
     return ""
+
+
+def _render_pytest_tail(tests_output: str) -> None:
+    """Print the last lines of the pytest output, the reason the tests stage failed.
+
+    Shared by ``verify``'s human table and ``protean new --from-model``, so a
+    failed build shows the pytest tail in both. Empty output prints nothing.
+    """
+    if not tests_output.strip():
+        return
+    print("\n  [bold]pytest output:[/bold]")
+    for line in tests_output.strip().splitlines()[-15:]:
+        print(f"    {line}")
 
 
 def _render_check_detail(check: dict[str, Any]) -> None:

@@ -1,12 +1,15 @@
 import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
-from protean.cli._helpers import abort_for_missing_dependency
+from protean.cli._helpers import CTX_LOG_CONFIGURED, abort_for_missing_dependency
 from protean.scaffold.create_project import create_project
 
 console = Console()
@@ -126,7 +129,172 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
         os.chdir(original_dir)
 
 
+def _run_from_model(
+    project_name: str,
+    output_folder: str,
+    model_file: str,
+    force: bool,
+    log_already_configured: bool = False,
+) -> int:
+    """Build a project from a text event model and verify it, return the exit code.
+
+    Runs the pipeline in this order: parse the model, create the project (with the
+    example slice off), promote the parsed model to a slice, apply it, then run
+    ``verify`` in-process and report the verdict. Parse comes first so an invalid
+    model aborts before any directory is created. This composes the callable cores
+    only. It does not run ``uv sync``, git init, or pre-commit.
+
+    Returns the code the ``new`` command should exit with:
+
+    - ``2`` for a bad model file (unreadable, non-UTF-8, or rejected by the
+      grammar) or a create-time usage error (bad name, missing ``-o`` folder, a
+      non-empty target without ``--force``). Nothing is written in these cases,
+      so no directory is left behind.
+    - ``1`` when the model parses but the slice cannot be generated or applied,
+      or when the project package has the same name as a module already imported
+      here, so verifying it in this process would read the wrong code. The
+      project directory was already created, so it is left in place and the
+      message says so.
+    - the verify core's mapped code (0 on pass, otherwise its failure code).
+
+    The create-time ``ImportError`` path (the ``[scaffold]`` extra is missing)
+    does not return: ``abort_for_missing_dependency`` raises ``typer.Exit``.
+    """
+    # Local imports keep ``protean --help`` from pulling the parser, the slice
+    # generator, and the IR stack in on every CLI start (the same reason
+    # ``verify`` and ``check`` import their heavy machinery lazily).
+    from protean.cli.result import route_logs_to_stderr  # noqa: PLC0415
+    from protean.cli.verify import (  # noqa: PLC0415
+        _render_check_detail,
+        _render_pytest_tail,
+        run_verify,
+    )
+    from protean.scaffold.add_plan import (  # noqa: PLC0415
+        AddPlanError,
+        _resolve_project,
+    )
+    from protean.scaffold.apply import ApplyError, apply_plan  # noqa: PLC0415
+    from protean.scaffold.model_parser import (  # noqa: PLC0415
+        ModelParseError,
+        parse_model,
+    )
+    from protean.scaffold.slice_generator import (  # noqa: PLC0415
+        SliceFragment,
+        SliceGeneratorError,
+        generate_slice_plan,
+    )
+
+    # 1. Read and parse the model before anything is written, so a missing or
+    #    unreadable file or a model the grammar rejects aborts here, so no
+    #    directory is left behind. A non-UTF-8 file raises ``UnicodeDecodeError``,
+    #    which is a ``ValueError`` (not an ``OSError``), so catch it too.
+    try:
+        model_text = Path(model_file).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        typer.echo(f"Error: could not read model file {model_file!r}: {exc}")
+        return 2
+    try:
+        fragment_mapping = parse_model(model_text)
+    except ModelParseError as exc:
+        # ``ModelParseError`` stringifies as "line N: <message>", so this carries
+        # the line number the violation is reported at.
+        typer.echo(f"Error: {exc}")
+        return 2
+
+    # 2. Create the project with the example slice off, so the generated slice's
+    #    paths are clear, so ``apply_plan`` (create-only) does not hit a target
+    #    that already exists. ``create_project`` validates the name, the output
+    #    folder, and the target up front and raises before writing anything, so a
+    #    caught failure here leaves no directory behind.
+    try:
+        create_project(
+            project_name,
+            output_folder,
+            {"include_example": "false"},
+            force=force,
+            defaults=True,
+        )
+    except ImportError as exc:
+        abort_for_missing_dependency("scaffold", "'protean new --from-model'", exc)
+    except (ValueError, FileNotFoundError, FileExistsError) as exc:
+        typer.echo(f"Error: {exc}")
+        return 2
+
+    project_directory = os.path.join(output_folder, project_name)
+
+    # 3-6. Promote the parsed model to a slice and write it into the new project.
+    #    The parser is looser than the generator (it does not cross-check a
+    #    command's or event's fields against the aggregate), so a model that
+    #    parses can still be rejected here. The plan does not add rollback, so
+    #    surface a one-line error and say the directory was left in place, rather
+    #    than crashing with a traceback.
+    try:
+        fragment = SliceFragment.from_mapping(fragment_mapping)
+        package, domain_var = _resolve_project(project_directory)
+        plan = generate_slice_plan(fragment, package, domain_var)
+        apply_plan(project_directory, plan)
+    except (SliceGeneratorError, AddPlanError, ApplyError) as exc:
+        typer.echo(f"Error: could not build the slice from the model: {exc}")
+        typer.echo(f"The project directory {project_directory!r} was left in place.")
+        return 1
+
+    # 7. Verify the new project in-process and report the verdict. ``run_verify``
+    #    imports the generated package by its dotted name, so a package that has
+    #    the same name as a module this process already imported (a project named
+    #    ``protean``, ``json``, ``typer``) resolves to the cached module instead
+    #    of the new code, and the verdict would describe that module rather than
+    #    the project just built. Say so instead of reporting a wrong verdict. A
+    #    fresh process does not help for a name the CLI itself imports, so the
+    #    way out is a different project name.
+    if package in sys.modules:
+        typer.echo(
+            f"Error: the project package {package!r} has the same name as a module "
+            "Protean has already imported, so the new project cannot be verified "
+            "in place. Use a different project name."
+        )
+        typer.echo(f"The project directory {project_directory!r} was left in place.")
+        return 1
+
+    # ``run_verify`` returns the result instead of exiting, so map its code to
+    # this command's exit. Route logs to stderr first: ``run_verify`` imports the
+    # generated domain, whose import-time logs would otherwise land on stdout.
+    # Skip that when the CLI's --log-config/--log-level/--log-format callback
+    # already configured logging, so that configuration is not discarded.
+    route_logs_to_stderr(log_already_configured=log_already_configured)
+    domain_path = os.path.join(project_directory, "src", package, "domain.py")
+    # ``derive_domain`` gives ``PROTEAN_DOMAIN`` precedence over the path it is
+    # handed, so a value left in the environment would have verify initialize an
+    # unrelated domain and report a verdict about the wrong project. Drop it for
+    # the call (the tests stage inherits this environment, so the project's own
+    # pytest run is covered too) and put it back afterwards.
+    previous_protean_domain = os.environ.pop("PROTEAN_DOMAIN", None)
+    try:
+        result = run_verify(f"{domain_path}:{domain_var}", project_directory)
+    finally:
+        if previous_protean_domain is not None:
+            os.environ["PROTEAN_DOMAIN"] = previous_protean_domain
+
+    verdict = "PASS" if result.exit_code == 0 else "FAIL"
+    console.print(f"\n  Protean verify: [bold]{verdict}[/bold]")
+    # A usage or init failure carries its reason on ``error_line`` and leaves the
+    # stage detail below empty, so print it first — otherwise a failed build
+    # reports only "FAIL" and "init fail".
+    if result.error_line:
+        console.print(f"    [red]{escape(result.error_line)}[/red]")
+    for stage, info in result.stages.items():
+        console.print(f"    {stage:<7} {info['status']}")
+    # On a failure, print the check diagnostics and the pytest tail, the same
+    # detail ``protean verify`` shows, so the user can act on the failure instead
+    # of seeing only "FAIL".
+    if result.exit_code != 0:
+        _render_check_detail(result.stages.get("check", {}))
+        if result.stages.get("tests", {}).get("status") == "fail":
+            _render_pytest_tail(result.tests_output)
+    return result.exit_code
+
+
 def new(
+    ctx: typer.Context,
     project_name: Annotated[str, typer.Argument()],
     output_folder: Annotated[
         str, typer.Option("--output-dir", "-o", show_default=False)
@@ -134,11 +302,39 @@ def new(
     data: Annotated[
         list[str] | None, typer.Option("--data", "-d", show_default=False)
     ] = None,
-    pretend: Annotated[bool, typer.Option("--pretend", "-p")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
     force: Annotated[bool, typer.Option("--force", "-f")] = False,
     defaults: Annotated[bool, typer.Option("--defaults")] = False,
     skip_setup: Annotated[bool, typer.Option("--skip-setup")] = False,
+    from_model: Annotated[
+        str | None,
+        typer.Option(
+            "--from-model",
+            show_default=False,
+            help="Build the project from a text event-model file and verify it",
+        ),
+    ] = None,
 ) -> None:
+    # ``--from-model`` is its own pipeline (parse, create, generate, apply,
+    # verify). It composes the callable cores and skips post-generation setup, so
+    # it does not use the flags below (``--data``, ``--dry-run``, ``--skip-setup``).
+    # It does honour ``--force``, threading it into ``create_project`` so an
+    # existing target can be overwritten the same way a plain ``new`` does.
+    if from_model is not None:
+        # Thread the CLI callback's "logging is already configured" flag through,
+        # so ``--log-config``/``--log-level``/``--log-format`` survive the
+        # stderr-routing call this path makes before it imports the new domain.
+        parent_obj = ctx.obj or {}
+        raise typer.Exit(
+            code=_run_from_model(
+                project_name,
+                output_folder,
+                from_model,
+                force,
+                log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED)),
+            )
+        )
+
     if data is None:
         data = []
 
@@ -159,16 +355,16 @@ def new(
             project_name,
             output_folder,
             data_dict,
-            dry_run=pretend,
+            dry_run=dry_run,
             force=force,
             defaults=defaults,
         )
     except ImportError as exc:
         abort_for_missing_dependency("scaffold", "'protean new'", exc)
 
-    # Under --pretend nothing was written; echo the files that would be created
+    # Under --dry-run nothing was written; echo the files that would be created
     # so the user still sees the plan.
-    if pretend:
+    if dry_run:
         for path in planned:
             typer.echo(path)
         return

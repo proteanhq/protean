@@ -33,6 +33,7 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.cli.verify import VerifyResult, run_verify
 
 # These build their own domains/projects; the autouse Test domain fixture would
 # construct an unrelated Domain per test for nothing.
@@ -717,3 +718,67 @@ class TestVerifyOnRealScaffold:
             "`protean verify` must run at least one real test, not report "
             f"green on an empty suite: {envelope}"
         )
+
+
+class TestRunVerifyCore:
+    """``run_verify`` computes the same verdict and exit code the command emits,
+    but returns a ``VerifyResult`` instead of printing or raising ``typer.Exit``.
+    This is the callable core ``protean new --from-model`` composes; the command
+    tests above prove the wrapper keeps the exit-code contract on top of it."""
+
+    def test_green_project_returns_pass_no_error_line(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _PASSING_TEST)
+        result = run_verify(_CLEAN_DOMAIN, str(tests_dir))
+        assert isinstance(result, VerifyResult)
+        assert result.exit_code == 0
+        assert result.status == "pass"
+        assert result.error_line == ""
+        assert all(
+            result.stages[s]["status"] == "pass" for s in ("init", "check", "tests")
+        )
+
+    def test_init_failure_returns_code_3_without_raising(self, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = run_verify(_INIT_FAIL_DOMAIN, str(empty))
+        assert result.exit_code == 3
+        assert result.status == "fail"
+        assert result.stages["init"]["status"] == "fail"
+        # An init failure carries its message as the red line the command prints.
+        assert "Domain failed to initialize" in result.error_line
+        # Check and tests never ran.
+        assert result.stages["check"]["status"] == "skipped"
+        assert result.stages["tests"]["status"] == "skipped"
+
+    def test_check_failure_returns_code_4(self, tmp_path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        result = run_verify(_WARN_DOMAIN, str(empty))
+        assert result.exit_code == 4
+        assert result.status == "fail"
+        assert result.stages["check"]["status"] == "fail"
+        assert result.stages["check"]["counts"]["warnings"] > 0
+        # No early-exit error line on a stage failure that ran past init.
+        assert result.error_line == ""
+
+    def test_tests_failure_returns_code_5(self, tmp_path):
+        tests_dir = _write_test(tmp_path / "tests", _FAILING_TEST)
+        result = run_verify(_CLEAN_DOMAIN, str(tests_dir))
+        assert result.exit_code == 5
+        assert result.status == "fail"
+        assert result.stages["tests"]["status"] == "fail"
+        assert result.stages["tests"]["failed"] == 1
+        # Check passed — codes are independent and precedence (check before
+        # tests) is applied in the core.
+        assert result.stages["check"]["status"] == "pass"
+
+    def test_bad_path_is_a_usage_error_with_envelope_error(self, tmp_path):
+        missing = tmp_path / "does-not-exist"
+        result = run_verify(_CLEAN_DOMAIN, str(missing))
+        assert result.exit_code == 2
+        # A usage error caught before any stage ran is envelope status "error",
+        # and the message lands at ``data.error`` (envelope_error), not on a stage.
+        assert result.status == "error"
+        assert "--path is not a directory" in result.error_line
+        assert result.envelope_error == result.error_line
+        assert result.stages["init"]["status"] == "skipped"
