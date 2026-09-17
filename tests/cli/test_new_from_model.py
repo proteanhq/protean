@@ -16,6 +16,8 @@ the failure cases abort before verify runs.
 
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
 import sys
 import textwrap
@@ -397,3 +399,166 @@ def test_non_utf8_model_file_aborts_cleanly(tmp_path):
     assert "could not read model file" in result.output
     assert "Traceback" not in result.output
     assert not (out / "modelapp").exists()
+
+
+def test_from_model_ignores_a_stray_protean_domain_env_var(tmp_path, monkeypatch):
+    """``derive_domain`` gives ``PROTEAN_DOMAIN`` precedence over the path it is
+    handed, so a value left in the environment would have verify initialize an
+    unrelated domain. ``--from-model`` drops it for the verify call, so the verdict
+    describes the project it just built, and restores it afterwards."""
+    from protean.cli.verify import VerifyResult
+
+    verify_module = sys.modules["protean.cli.verify"]
+
+    out = tmp_path / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    model_file = tmp_path / "model.txt"
+    model_file.write_text(_VALID_MODEL, encoding="utf-8")
+
+    monkeypatch.setenv("PROTEAN_DOMAIN", "somewhere.else:domain")
+
+    seen: list[str | None] = []
+
+    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+        seen.append(os.environ.get("PROTEAN_DOMAIN"))
+        return VerifyResult(
+            stages={
+                "init": {"status": "pass"},
+                "check": {"status": "pass"},
+                "tests": {"status": "pass"},
+            },
+            exit_code=0,
+            status="pass",
+        )
+
+    monkeypatch.setattr(verify_module, "run_verify", fake_run_verify)
+
+    result = runner.invoke(
+        app,
+        ["new", "modelapp", "-o", str(out), "--from-model", str(model_file)],
+    )
+
+    assert result.exit_code == 0, result.output
+    # verify ran with the variable cleared, so it used the domain path it was given.
+    assert seen == [None]
+    # The caller's environment is left as it was found.
+    assert os.environ["PROTEAN_DOMAIN"] == "somewhere.else:domain"
+
+
+def test_from_model_refuses_a_package_name_already_imported(tmp_path):
+    """``run_verify`` imports the generated package by its dotted name, so a
+    project package that has the same name as a module this process already
+    imported would resolve to the cached module and the verdict would describe
+    that module. The command refuses to report one, exits 1, and says the
+    directory is left in place."""
+    out = tmp_path / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    model_file = tmp_path / "model.txt"
+    model_file.write_text(_VALID_MODEL, encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["new", "protean", "-o", str(out), "--from-model", str(model_file)],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "has the same name as a module" in result.output
+    assert "was left in place" in result.output
+    assert "PASS" not in result.output
+    assert (out / "protean").is_dir()
+
+
+def test_from_model_reports_the_init_error_line(tmp_path, monkeypatch):
+    """An init or usage failure carries its reason on ``error_line`` and leaves
+    the stage detail empty, so the command prints that line — otherwise a failed
+    build reports only "FAIL" and "init fail"."""
+    from protean.cli.verify import VerifyResult
+
+    verify_module = sys.modules["protean.cli.verify"]
+
+    out = tmp_path / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    model_file = tmp_path / "model.txt"
+    model_file.write_text(_VALID_MODEL, encoding="utf-8")
+
+    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+        return VerifyResult(
+            stages={
+                "init": {"status": "fail"},
+                "check": {"status": "skipped"},
+                "tests": {"status": "skipped"},
+            },
+            exit_code=3,
+            status="fail",
+            error_line="Domain failed to initialize: boom in the domain module",
+        )
+
+    monkeypatch.setattr(verify_module, "run_verify", fake_run_verify)
+
+    result = runner.invoke(
+        app,
+        ["new", "modelapp", "-o", str(out), "--from-model", str(model_file)],
+    )
+
+    assert result.exit_code == 3, result.output
+    assert "boom in the domain module" in result.output
+
+
+def test_from_model_keeps_the_cli_log_configuration(tmp_path, monkeypatch):
+    """``--log-level`` and friends configure logging in the CLI callback.
+    ``--from-model`` routes logs to stderr before importing the generated domain,
+    which would rebuild the root handlers, so it passes the callback's flag
+    through and the routing call becomes a no-op."""
+    from protean.cli.verify import VerifyResult
+
+    result_module = sys.modules["protean.cli.result"]
+    verify_module = sys.modules["protean.cli.verify"]
+
+    out = tmp_path / "out"
+    out.mkdir(parents=True, exist_ok=True)
+    model_file = tmp_path / "model.txt"
+    model_file.write_text(_VALID_MODEL, encoding="utf-8")
+
+    routed: list[bool] = []
+
+    def fake_route(log_already_configured: bool = False) -> None:
+        routed.append(log_already_configured)
+
+    def fake_run_verify(domain: str, path: str) -> VerifyResult:
+        return VerifyResult(
+            stages={
+                "init": {"status": "pass"},
+                "check": {"status": "pass"},
+                "tests": {"status": "pass"},
+            },
+            exit_code=0,
+            status="pass",
+        )
+
+    monkeypatch.setattr(result_module, "route_logs_to_stderr", fake_route)
+    monkeypatch.setattr(verify_module, "run_verify", fake_run_verify)
+
+    # ``--log-level`` really configures the root logger, so put it back afterwards
+    # and leave the rest of the session's logging as it was.
+    root = logging.getLogger()
+    original_level, original_handlers = root.level, root.handlers[:]
+
+    result = runner.invoke(
+        app,
+        [
+            "--log-level",
+            "DEBUG",
+            "new",
+            "modelapp",
+            "-o",
+            str(out),
+            "--from-model",
+            str(model_file),
+        ],
+    )
+
+    root.handlers[:] = original_handlers
+    root.setLevel(original_level)
+
+    assert result.exit_code == 0, result.output
+    assert routed == [True], "the callback's flag must reach route_logs_to_stderr"

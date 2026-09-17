@@ -1,10 +1,13 @@
 import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from protean.cli._helpers import abort_for_missing_dependency
 from protean.scaffold.create_project import create_project
@@ -127,7 +130,11 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
 
 
 def _run_from_model(
-    project_name: str, output_folder: str, model_file: str, force: bool
+    project_name: str,
+    output_folder: str,
+    model_file: str,
+    force: bool,
+    log_already_configured: bool = False,
 ) -> int:
     """Build a project from a text event model and verify it, return the exit code.
 
@@ -143,8 +150,10 @@ def _run_from_model(
       grammar) or a create-time usage error (bad name, missing ``-o`` folder, a
       non-empty target without ``--force``). Nothing is written in these cases,
       so no directory is left behind.
-    - ``1`` when the model parses but the slice cannot be generated or applied.
-      The project directory was already created, so it is left in place and the
+    - ``1`` when the model parses but the slice cannot be generated or applied,
+      or when the project package has the same name as a module already imported
+      here, so verifying it in this process would read the wrong code. The
+      project directory was already created, so it is left in place and the
       message says so.
     - the verify core's mapped code (0 on pass, otherwise its failure code).
 
@@ -154,8 +163,6 @@ def _run_from_model(
     # Local imports keep ``protean --help`` from pulling the parser, the slice
     # generator, and the IR stack in on every CLI start (the same reason
     # ``verify`` and ``check`` import their heavy machinery lazily).
-    from pathlib import Path  # noqa: PLC0415
-
     from protean.cli.result import route_logs_to_stderr  # noqa: PLC0415
     from protean.cli.verify import (  # noqa: PLC0415
         _render_check_detail,
@@ -232,15 +239,48 @@ def _run_from_model(
         return 1
 
     # 7. Verify the new project in-process and report the verdict. ``run_verify``
-    #    returns the result instead of exiting, so map its code to this command's
-    #    exit. Route logs to stderr first: ``run_verify`` imports the generated
-    #    domain, whose import-time logs would otherwise land on stdout.
-    route_logs_to_stderr()
+    #    imports the generated package by its dotted name, so a package that has
+    #    the same name as a module this process already imported (a project named
+    #    ``protean``, ``json``, ``typer``) resolves to the cached module instead
+    #    of the new code, and the verdict would describe that module rather than
+    #    the project just built. Say so instead of reporting a wrong verdict. A
+    #    fresh process does not help for a name the CLI itself imports, so the
+    #    way out is a different project name.
+    if package in sys.modules:
+        typer.echo(
+            f"Error: the project package {package!r} has the same name as a module "
+            "Protean has already imported, so the new project cannot be verified "
+            "in place. Use a different project name."
+        )
+        typer.echo(f"The project directory {project_directory!r} was left in place.")
+        return 1
+
+    # ``run_verify`` returns the result instead of exiting, so map its code to
+    # this command's exit. Route logs to stderr first: ``run_verify`` imports the
+    # generated domain, whose import-time logs would otherwise land on stdout.
+    # Skip that when the CLI's --log-config/--log-level/--log-format callback
+    # already configured logging, so that configuration is not discarded.
+    route_logs_to_stderr(log_already_configured=log_already_configured)
     domain_path = os.path.join(project_directory, "src", package, "domain.py")
-    result = run_verify(f"{domain_path}:{domain_var}", project_directory)
+    # ``derive_domain`` gives ``PROTEAN_DOMAIN`` precedence over the path it is
+    # handed, so a value left in the environment would have verify initialize an
+    # unrelated domain and report a verdict about the wrong project. Drop it for
+    # the call (the tests stage inherits this environment, so the project's own
+    # pytest run is covered too) and put it back afterwards.
+    previous_protean_domain = os.environ.pop("PROTEAN_DOMAIN", None)
+    try:
+        result = run_verify(f"{domain_path}:{domain_var}", project_directory)
+    finally:
+        if previous_protean_domain is not None:
+            os.environ["PROTEAN_DOMAIN"] = previous_protean_domain
 
     verdict = "PASS" if result.exit_code == 0 else "FAIL"
     console.print(f"\n  Protean verify: [bold]{verdict}[/bold]")
+    # A usage or init failure carries its reason on ``error_line`` and leaves the
+    # stage detail below empty, so print it first — otherwise a failed build
+    # reports only "FAIL" and "init fail".
+    if result.error_line:
+        console.print(f"    [red]{escape(result.error_line)}[/red]")
     for stage, info in result.stages.items():
         console.print(f"    {stage:<7} {info['status']}")
     # On a failure, print the check diagnostics and the pytest tail, the same
@@ -254,6 +294,7 @@ def _run_from_model(
 
 
 def new(
+    ctx: typer.Context,
     project_name: Annotated[str, typer.Argument()],
     output_folder: Annotated[
         str, typer.Option("--output-dir", "-o", show_default=False)
@@ -280,8 +321,20 @@ def new(
     # It does honour ``--force``, threading it into ``create_project`` so an
     # existing target can be overwritten the same way a plain ``new`` does.
     if from_model is not None:
+        # Thread the CLI callback's "logging is already configured" flag through,
+        # so ``--log-config``/``--log-level``/``--log-format`` survive the
+        # stderr-routing call this path makes before it imports the new domain.
+        from protean.cli._helpers import CTX_LOG_CONFIGURED  # noqa: PLC0415
+
+        parent_obj = ctx.obj or {}
         raise typer.Exit(
-            code=_run_from_model(project_name, output_folder, from_model, force)
+            code=_run_from_model(
+                project_name,
+                output_folder,
+                from_model,
+                force,
+                log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED)),
+            )
         )
 
     if data is None:

@@ -150,8 +150,8 @@ def run_verify(domain: str, path: str) -> VerifyResult:
     process (the CLI's use). A second call in the same process for a different
     project that shares a package name returns the first project's result:
     ``__import__`` caches the module under its dotted name, so the second call
-    re-inits the first domain. In-process reuse across projects (the #1467 MCP
-    path) needs a fresh interpreter or a per-call reset of the module cache.
+    re-inits the first domain. Verifying several projects from one process needs
+    a fresh interpreter per call, or a reset of the module cache between calls.
     """
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.

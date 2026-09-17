@@ -298,6 +298,12 @@ the parser's error (and its line number) before any directory is created. If the
 model parses but the slice cannot be generated or applied, the command prints the
 error, leaves the created project directory in place, and exits non-zero.
 
+Verification imports the new project's package into the running process, so the
+project name cannot be one Protean itself already imports (`protean`, or a
+standard-library name like `json`). Such a name would import the existing module
+instead of the new code, so the command refuses to report a verdict and asks for
+a different name.
+
 Unlike a plain `protean new`, this path does not run the post-generation setup
 (`uv sync`, git init, pre-commit). It composes create, generate, apply, and
 verify only. See
