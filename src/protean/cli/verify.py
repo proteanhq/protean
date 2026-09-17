@@ -52,11 +52,11 @@ contract, so it catches load/init failures itself and maps them to the codes
 above.
 
 The compute is split from the emit. :func:`run_verify` runs the three stages and
-returns a :class:`VerifyResult` — the stage tree, verdict, and mapped exit code —
+returns a :class:`VerifyResult` (the stage tree, verdict, and mapped exit code)
 without printing or raising ``typer.Exit``. The ``verify`` command is the thin
 wrapper that emits the result (human table or JSON envelope) and exits. A caller
-that composes verify into a larger flow (``protean new --from-model``) uses
-``run_verify`` directly and reads the verdict off the result.
+that composes verify into a larger flow (``protean new --from-model``) calls
+``run_verify`` and maps ``result.exit_code`` itself.
 """
 
 import json
@@ -111,9 +111,9 @@ class VerifyResult:
     """The outcome of a verify run, computed but not yet emitted.
 
     :func:`run_verify` returns this; the ``verify`` command turns it into console
-    output and an exit code. Nothing here has printed or exited. That split is
-    the whole point, so ``protean new --from-model`` can run verify in-process and
-    read the verdict off the result instead of catching a ``typer.Exit``.
+    output and an exit code. Nothing here has printed or exited, so
+    ``protean new --from-model`` can run verify in-process and map
+    ``result.exit_code`` instead of catching a ``typer.Exit``.
 
     - ``stages`` is the per-stage tree (init/check/tests), the same dict the
       envelope and the human table read.
@@ -144,7 +144,14 @@ def run_verify(domain: str, path: str) -> VerifyResult:
     usage/init failures (a bad ``--path``, a domain that is not found or fails to
     load) become early returns carrying the same stage tree, error line, status
     class, and exit code they mapped to before. The ``verify`` command emits the
-    result and exits; ``protean new --from-model`` reads the verdict off it.
+    result and exits; ``protean new --from-model`` maps ``result.exit_code``.
+
+    Init and check run in the calling process, so this is meant for one call per
+    process (the CLI's use). A second call in the same process for a different
+    project that shares a package name returns the first project's result:
+    ``__import__`` caches the module under its dotted name, so the second call
+    re-inits the first domain. In-process reuse across projects (the #1467 MCP
+    path) needs a fresh interpreter or a per-call reset of the module cache.
     """
     # Every stage starts "skipped"; a failure before it runs leaves it that way
     # so the envelope always carries all three keys.
@@ -502,10 +509,8 @@ def _render(stages: dict[str, dict[str, Any]], tests_output: str) -> None:
     # Surface the check diagnostics and the tail of the pytest output so the
     # human table is actionable, not just a set of PASS/FAIL labels.
     _render_check_detail(stages["check"])
-    if stages["tests"]["status"] == "fail" and tests_output.strip():
-        print("\n  [bold]pytest output:[/bold]")
-        for line in tests_output.strip().splitlines()[-15:]:
-            print(f"    {line}")
+    if stages["tests"]["status"] == "fail":
+        _render_pytest_tail(tests_output)
 
     verdict = _verdict(stages)
     overall = label.get("pass" if verdict == "pass" else "fail")
@@ -528,6 +533,19 @@ def _stage_detail(stage: str, data: dict[str, Any]) -> str:
         first_line = data["error"].strip().splitlines()[0]
         return f"  ({escape(first_line)})"
     return ""
+
+
+def _render_pytest_tail(tests_output: str) -> None:
+    """Print the last lines of the pytest output, the reason the tests stage failed.
+
+    Shared by ``verify``'s human table and ``protean new --from-model``, so a
+    failed build shows the pytest tail in both. Empty output prints nothing.
+    """
+    if not tests_output.strip():
+        return
+    print("\n  [bold]pytest output:[/bold]")
+    for line in tests_output.strip().splitlines()[-15:]:
+        print(f"    {line}")
 
 
 def _render_check_detail(check: dict[str, Any]) -> None:

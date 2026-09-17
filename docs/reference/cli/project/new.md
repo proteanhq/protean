@@ -44,7 +44,8 @@ the project's configuration. Available configuration options include:
 the model and verifies it in one step (see
 [Building from a model](#building-from-a-model) below). This is its own
 pipeline: it ignores `--data`, `--pretend`, and `--skip-setup`, and always
-creates the project with the example slice off.
+creates the project with the example slice off. It does honour `--force`, which
+clears an existing target the same way a plain `protean new` does.
 - `--help`: Shows the help message and exits.
 
 ### Behavior Modifiers
@@ -290,10 +291,12 @@ protean new inventory --from-model model.txt
 ```
 
 The command parses the model, creates the project (with the example slice off),
-writes the slice the model describes, then runs
+writes the slice the model describes, then runs the same checks as
 [`protean verify`](../verify.md) (init, check, and the project's tests) and
 reports the verdict. It parses the model first, so an invalid model exits with
-the parser's error (and its line number) before any directory is created.
+the parser's error (and its line number) before any directory is created. If the
+model parses but the slice cannot be generated or applied, the command prints the
+error, leaves the created project directory in place, and exits non-zero.
 
 Unlike a plain `protean new`, this path does not run the post-generation setup
 (`uv sync`, git init, pre-commit). It composes create, generate, apply, and
