@@ -1,0 +1,54 @@
+{
+  "pack_version": "0.17.0",
+  "project_hash": "sha256:b0d4cd0c9bdf62615dd821b5ac6dcbfaa7012a88383165cb5bf22b4a4e806fa6",
+  "task_id": "place_order",
+  "task_input": "Build a small Protean project that models placing an order.\n\nRequirements:\n\n- An `Order` aggregate that holds at least the customer's name and an order\n  status.\n- A `PlaceOrder` command and a command handler that creates an `Order` and\n  persists it.\n- The project must pass `protean verify` with no findings.\n\nWrite the project's files, then run verify to confirm it is green.\n",
+  "turns": [
+    {
+      "text": "I'll model the order slice in a single domain.py: an Order aggregate with an invariant, a PlaceOrder command, and a command handler that creates and persists the order.",
+      "tool_calls": [
+        {
+          "input": {
+            "content": "\"\"\"A minimal, complete Protean domain slice: an aggregate with an invariant, a\ncommand, and the command handler that drives its one write path.\"\"\"\n\nfrom protean import Domain, current_domain, handle, invariant\nfrom protean.exceptions import ValidationError\nfrom protean.fields import String\n\ndomain = Domain(name=\"Store\")\n\n\n@domain.aggregate\nclass Order:\n    customer_name = String(max_length=100, required=True)\n    status = String(max_length=20, default=\"PLACED\")\n\n    @classmethod\n    def place(cls, customer_name: str) -> \"Order\":\n        return cls(customer_name=customer_name)\n\n    @invariant.post\n    def customer_name_is_present(self) -> None:\n        if not self.customer_name:\n            raise ValidationError({\"customer_name\": [\"Customer name is required\"]})\n\n\n@domain.command(part_of=Order)\nclass PlaceOrder:\n    customer_name = String(max_length=100, required=True)\n\n\n@domain.command_handler(part_of=Order)\nclass OrderCommandHandler:\n    @handle(PlaceOrder)\n    def place_order(self, command: PlaceOrder) -> None:\n        order = Order.place(customer_name=command.customer_name)\n        current_domain.repository_for(Order).add(order)\n",
+            "path": "domain.py"
+          },
+          "name": "write_file"
+        }
+      ],
+      "tool_results": [
+        {
+          "ok": true,
+          "path": "domain.py"
+        }
+      ]
+    },
+    {
+      "text": "Now I'll run verify to confirm the project is green.",
+      "tool_calls": [
+        {
+          "input": {},
+          "name": "run_verify"
+        }
+      ],
+      "tool_results": [
+        {
+          "codes": [],
+          "counts": {
+            "errors": 0,
+            "infos": 0,
+            "warnings": 0
+          },
+          "errors": [],
+          "exit_code": 0,
+          "ok": true,
+          "verdict": "pass"
+        }
+      ]
+    },
+    {
+      "text": "Verify passes with no findings. The order-placement slice is complete.",
+      "tool_calls": [],
+      "tool_results": []
+    }
+  ]
+}
