@@ -16,7 +16,8 @@ a broker DLQ; they track failed positions and, on exhaustion, leave the event
 in place in the store.
 
 All commands accept a `--domain` option for the domain module path (defaults to
-the current directory) and a `--json` flag for the shared CLI result envelope.
+the current directory). `list` and `inspect` also accept a `--json` flag for the
+shared CLI result envelope; `replay` and `purge` have no JSON output.
 
 ## Commands
 
@@ -165,8 +166,11 @@ being re-run; replaying a projector position re-applies its projection writes,
 and an idempotency key helps only when the handler itself uses it to stay
 idempotent.
 A command whose deadline has passed is refused, because the engine would skip an
-expired command; purge it instead. A handler-level idempotency declaration that
-would let replay refuse a non-idempotent target does not exist yet.
+expired command; purge it instead. A command whose handler is no longer
+registered is refused as well: the dispatcher would find nothing to route it to,
+and the replay would report the position resolved without running anything. A
+handler-level idempotency declaration that would let replay refuse a
+non-idempotent target does not exist yet.
 
 Both `replay` and `purge` re-read the position's latest status right before they
 act. If another operator's `replay` or `purge` cleared it while the prompt was
@@ -204,7 +208,7 @@ protean eventstore dlq purge 42 --domain=my_domain --yes
 |------|---------|
 | `0` | Success, including "no exhausted positions", a `replay` that resolves, and a `purge`. |
 | `1` | Human mode (`--json` not set): the domain failed to load; `replay`/`purge` was not confirmed (Typer aborts, the same as every other `protean` command); or a `replay` that reopened the position (the handler failed again). |
-| `2` | Usage or environment error: unknown `--subscription` or `--handler`, unknown position, an event that can no longer be re-read, an expired command, a position another command cleared while the prompt was open, or a position exhausted in more than one subscription with no `--handler` to choose one. Under `--json`, a domain that failed to load also exits `2` and emits the error envelope. |
+| `2` | Usage or environment error: unknown `--subscription` or `--handler`, unknown position, an event that can no longer be re-read, an expired command, a command with no registered handler, a position another command cleared while the prompt was open, or a position exhausted in more than one subscription with no `--handler` to choose one. Under `--json`, a domain that failed to load also exits `2` and emits the error envelope. |
 
 ## Error handling
 
@@ -216,6 +220,7 @@ protean eventstore dlq purge 42 --domain=my_domain --yes
 | `inspect`/`replay`/`purge` position is not exhausted | "No exhausted position ... found", exit `2` |
 | `inspect`/`replay` event can no longer be read | "Could not re-read the event ...", exit `2` |
 | `replay` targets a command whose deadline has passed | "Position ... targets a command whose deadline has passed ...", exit `2` |
+| `replay` targets a command with no registered handler | "The command dispatcher has no handler for the message at position ...", exit `2` |
 | `replay`/`purge` position is exhausted in more than one subscription | "Position ... is exhausted in multiple subscriptions ...", exit `2` |
 | `replay`/`purge` position was cleared while the prompt was open | "Position ... is no longer exhausted ...", exit `2` |
 | `replay`/`purge` confirmation declined | Typer aborts with exit `1` |
@@ -228,7 +233,10 @@ position and retries it on each recovery pass. After `max_retries` retries it
 writes an `Exhausted` record and stops retrying. The record carries the failing
 event's `stream_name` and `stream_position` so `inspect` can locate the event;
 records written before this was added fall back to the origin stream, read by
-global position.
+global position. Either read is checked against the position it asked for. Store
+reads are inclusive, so if the message a record names is gone, the read comes
+back with the next one in the stream. `inspect` and `replay` treat that as an
+event they could not re-read.
 
 For the full error-handling guide, see
 [Error Handling](../../../guides/server/error-handling.md). For subscription

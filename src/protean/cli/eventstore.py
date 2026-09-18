@@ -236,20 +236,36 @@ def _read_failing_event(
     record written before enrichment carries neither, so it falls back to the
     origin category stream (on the record's ``domain.origin_stream``) read by
     the global ``position``.
+
+    Store reads are inclusive (``>= position``), so a read whose own message is
+    gone returns the next one instead. The message that comes back is checked
+    against the position asked for, and a mismatch counts as unreadable:
+    ``inspect`` would otherwise print an unrelated event, and ``replay`` would
+    dispatch it and mark the requested position resolved.
     """
     stream_name = record.data.get("stream_name")
     stream_position = record.data.get("stream_position")
 
     if stream_name and stream_position is not None:
+        # A specific stream is read by its own per-stream position.
         messages = store.read(stream_name, position=stream_position, no_of_messages=1)
+        expected, by_global_position = stream_position, False
     else:
         domain_meta = record.metadata.domain if record.metadata else None
         origin_stream = domain_meta.origin_stream if domain_meta else None
         if not origin_stream:
             return None
+        # A category read spans streams, so it is keyed by global position.
         messages = store.read(origin_stream, position=position, no_of_messages=1)
+        expected, by_global_position = position, True
 
-    return messages[0] if messages else None
+    if not messages:
+        return None
+    es_meta = messages[0].metadata.event_store if messages[0].metadata else None
+    if es_meta is None:  # pragma: no cover (a stored row always carries positions)
+        return None
+    actual = es_meta.global_position if by_global_position else es_meta.position
+    return messages[0] if actual == expected else None
 
 
 def _exhausted_owners(
@@ -396,6 +412,38 @@ def _owner_subscription(
         ):
             return sub
     return None
+
+
+def _routable_or_abort(
+    owner_sub: EventStoreSubscription, event: Message, position: int
+) -> None:
+    """Abort unless ``owner_sub`` can route ``event`` to a handler.
+
+    A command stream is served by a ``CommandDispatcher``, which looks the
+    handler up by command type. When that lookup finds nothing, the dispatcher
+    only logs and the engine still reports the message handled, so a replay
+    would write a ``Resolved`` record with no handler having run. That happens
+    when the command's handler was removed or renamed while another handler
+    kept the category's dispatcher alive, and when the stored message can no
+    longer be deserialized. Check the lookup before dispatching. An event
+    handler, a projector, and a process manager route to themselves and have no
+    lookup to check.
+    """
+    from protean.server.engine import CommandDispatcher  # noqa: PLC0415
+
+    handler = owner_sub.handler
+    if not isinstance(handler, CommandDispatcher):
+        return
+    if handler.resolve_handler(event) is None:
+        emit_usage_error(
+            as_json=False,
+            message=(
+                f"The command dispatcher has no handler for the message at "
+                f"position {position}. Replay would report the position resolved "
+                f"without running anything. Restore the handler or purge the "
+                f"position."
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -638,7 +686,9 @@ def replay(
     (an event handler, a projector, or a command with or without an idempotency
     key). Pass ``--yes`` to skip the prompt. The position's latest status is re-read right
     before the dispatch, so a position another replay or purge cleared while the
-    prompt was open is refused.
+    prompt was open is refused. A command whose handler is no longer registered
+    is refused too: dispatching it would report success without running
+    anything.
     """
     derived_domain = load_domain(domain)
 
@@ -686,6 +736,7 @@ def replay(
                     as_json=False,
                     message=f"No live subscription owns the failed stream for position {position}.",
                 )
+            _routable_or_abort(owner_sub, event, position)
             _still_exhausted_or_abort(store, failed_stream, position)
             resolved = asyncio.run(
                 owner_sub.replay_exhausted(

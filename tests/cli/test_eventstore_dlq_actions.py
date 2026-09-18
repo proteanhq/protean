@@ -105,6 +105,16 @@ class PlaceOrder(BaseCommand):
     total = String()
 
 
+class CancelOrder(BaseCommand):
+    """A command on the same category that no handler handles.
+
+    Stands in for a handler that was removed or renamed while the category's
+    other command handlers kept its ``CommandDispatcher`` alive.
+    """
+
+    total = String()
+
+
 class ToggleCommandHandler(BaseCommandHandler):
     """Fails while ``should_fail`` is set; counts every invocation."""
 
@@ -189,10 +199,15 @@ def _create_command_message(
     stream_position: int = 0,
     idempotency_key: str | None = None,
     deadline: datetime | None = None,
+    command_cls: type[BaseCommand] = PlaceOrder,
 ) -> Message:
-    """Build a stored ``PlaceOrder`` command message, ready to be re-read."""
+    """Build a stored command message, ready to be re-read.
+
+    ``command_cls`` defaults to ``PlaceOrder``, the command the dispatcher routes
+    to ``ToggleCommandHandler``; pass ``CancelOrder`` for one it cannot route.
+    """
     return _stamp(
-        Message.from_domain_object(PlaceOrder(total="10")),
+        Message.from_domain_object(command_cls(total="10")),
         global_position=global_position,
         stream_position=stream_position,
         stream_name=stream_name,
@@ -253,6 +268,7 @@ def _exhaust_command_position(
     *,
     idempotency_key: str | None = None,
     deadline: datetime | None = None,
+    command_cls: type[BaseCommand] = PlaceOrder,
 ) -> None:
     """Register a command handler and write an exhausted command position.
 
@@ -261,9 +277,13 @@ def _exhaust_command_position(
     re-readable via the record's stream location and carries ``idempotency_key``
     (or none) and an optional ``deadline``, so the replay confirmation and the
     expired-command guard can be exercised too.
+
+    Pass ``command_cls=CancelOrder`` to exhaust a command the dispatcher has no
+    handler for; ``PlaceOrder``'s handler still keeps the dispatcher alive.
     """
     test_domain.register(Order)
     test_domain.register(PlaceOrder, part_of=Order)
+    test_domain.register(CancelOrder, part_of=Order)
     test_domain.register(ToggleCommandHandler, part_of=Order)
     test_domain.init(traverse=False)
 
@@ -278,6 +298,7 @@ def _exhaust_command_position(
         cmd_stream,
         idempotency_key=idempotency_key,
         deadline=deadline,
+        command_cls=command_cls,
     )
     _write_event_to_store(test_domain, msg)
     test_domain.event_store.store._write(
@@ -285,7 +306,7 @@ def _exhaust_command_position(
         FailedPositionStatus.EXHAUSTED.value,
         {
             "position": position,
-            "message_type": PlaceOrder.__type__,
+            "message_type": msg.metadata.headers.type,
             "message_id": str(uuid4()),
             "retry_count": 3,
             "stream_name": cmd_stream,
@@ -617,6 +638,85 @@ class TestReplay:
 
         assert result.exit_code == EXIT_USAGE
         assert "deadline has passed" in result.output
+
+    def test_replay_refuses_a_command_with_no_registered_handler(self, test_domain):
+        # The command's handler was removed or renamed, but PlaceOrder's handler
+        # keeps the category's dispatcher alive. The dispatcher finds nothing to
+        # route CancelOrder to and only logs, and the engine still reports the
+        # message handled, so replay would write a Resolved record with no
+        # handler having run.
+        _exhaust_command_position(test_domain, 13, command_cls=CancelOrder)
+
+        result = _invoke(
+            ["eventstore", "dlq", "replay", "13", "--domain", "x.py", "--yes"],
+            domain=test_domain,
+        )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "no handler for the message at position 13" in result.output
+        # Nothing ran and the position is still there to purge or fix.
+        assert ToggleCommandHandler.calls == 0
+        listing = _invoke(
+            ["eventstore", "dlq", "list", "--domain", "x.py", "--json"],
+            domain=test_domain,
+        )
+        assert "13" in listing.output
+
+    def test_replay_refuses_when_the_re_read_lands_on_another_message(
+        self, test_domain
+    ):
+        # Store reads are inclusive, so a re-read of a position whose own message
+        # is gone (a partial restore, a global-position gap) comes back with the
+        # next message in the stream. Replay must refuse it: dispatching it would
+        # run a handler on an unrelated event and resolve the requested position.
+        store = test_domain.event_store.store
+        category = User.meta_.stream_category
+        msg = _create_message(stream_name=f"{category}-{uuid4()}")
+        _write_event_to_store(test_domain, msg)
+        stored_at = store.read(category, position=0, no_of_messages=1)[
+            0
+        ].metadata.event_store.global_position
+
+        # A pre-enrichment record (no stream location) at a global position the
+        # category holds no message at; the read lands on ``stored_at`` instead.
+        failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
+        missing = stored_at - 1
+        store._write(
+            failed_stream,
+            FailedPositionStatus.EXHAUSTED.value,
+            {
+                "position": missing,
+                "message_type": "Test.Registered.v1",
+                "message_id": "evt-gone",
+                "retry_count": 3,
+            },
+            metadata={
+                "headers": {
+                    "id": "rec-gone",
+                    "type": FailedPositionStatus.EXHAUSTED.value,
+                    "stream": failed_stream,
+                },
+                "domain": {
+                    "kind": MessageType.READ_POSITION.value,
+                    "origin_stream": category,
+                },
+            },
+        )
+        ToggleEventHandler.should_fail = False  # a dispatch would resolve it
+
+        result = _invoke(
+            ["eventstore", "dlq", "replay", str(missing), "--domain", "x.py", "--yes"],
+            domain=test_domain,
+        )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "Could not re-read the event" in result.output
+        # The position is untouched, so it can still be purged.
+        listing = _invoke(
+            ["eventstore", "dlq", "list", "--domain", "x.py", "--json"],
+            domain=test_domain,
+        )
+        assert str(missing) in listing.output
 
     def test_replay_unreadable_event_is_usage_error(self, test_domain):
         # An Exhausted record with no stream location and no origin stream.
