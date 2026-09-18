@@ -17,14 +17,15 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 __all__ = ["Workspace", "WorkspaceError"]
 
 
 class WorkspaceError(Exception):
-    """A file operation that is not allowed: an absolute path, a path that
-    escapes the workspace root, or a path that resolves to the root itself."""
+    """A file operation that is not allowed: an absolute or drive-qualified
+    path, a path that escapes the workspace root, or a path that resolves to the
+    root itself."""
 
 
 @dataclass
@@ -56,6 +57,13 @@ class Workspace:
         *allow_root* permits the workspace root itself (for ``list_dir(".")``);
         a file operation never allows it.
 
+        Tool paths are canonical POSIX, whichever OS runs the harness: a
+        backslash is read as a separator, and a Windows drive or UNC prefix is
+        rejected. Otherwise the same recorded path would land two different
+        projects, ``src\\pkg\\domain.py`` nesting directories on Windows and
+        becoming one literal filename on POSIX, and a transcript would no longer
+        replay the same tree across machines.
+
         A non-string path is rejected as a :class:`WorkspaceError` (not an
         ``AttributeError``), so a schema-invalid tool input becomes agent
         feedback rather than crashing the run.
@@ -66,10 +74,14 @@ class Workspace:
         # does not treat as feedback; reject it here as a WorkspaceError.
         if "\x00" in rel:
             raise WorkspaceError(f"path contains a NUL byte: {rel!r}")
-        candidate = Path(rel.strip())
-        if candidate.is_absolute():
+        normalized = rel.strip().replace("\\", "/")
+        # The POSIX flavour catches a leading "/" (and a "//server/share" UNC
+        # path, once its backslashes are normalized). The Windows flavour
+        # catches a drive prefix, which POSIX `Path` would otherwise read as an
+        # ordinary directory named "C:".
+        if PurePosixPath(normalized).is_absolute() or PureWindowsPath(normalized).drive:
             raise WorkspaceError(f"path must be relative to the workspace: {rel!r}")
-        target = (self.root / candidate).resolve()
+        target = (self.root / normalized).resolve()
         if target == self.root:
             if allow_root:
                 return target

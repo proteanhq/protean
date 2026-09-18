@@ -60,8 +60,9 @@ def test_replay_is_deterministic_and_verifies_green(
     transcript_path: Path, tmp_path: Path
 ) -> None:
     """Replaying a committed transcript lands the recorded project and verifies
-    green: the produced tree hashes to the recorded value, the recorded run
-    exercised verify, and a fresh verify of the produced tree passes."""
+    green: the produced tree hashes to the recorded value, the re-run tools
+    return what the recording saw, the recorded run exercised verify, and a
+    fresh verify of the produced tree passes."""
     transcript = Transcript.load(transcript_path)
     workspace = Workspace(tmp_path)
 
@@ -70,6 +71,13 @@ def test_replay_is_deterministic_and_verifies_green(
     assert result.project_hash == transcript.project_hash, (
         "stale transcript: replaying the recorded turns produced a different "
         "project tree than the recorded hash. Re-record this transcript."
+    )
+    # The hash covers only the files the agent wrote, so a tool that now answers
+    # differently (a verify verdict, a new diagnostic code) is invisible to it.
+    # The recorded results are the second staleness signal.
+    assert not result.result_divergences, (
+        "stale transcript: the tools no longer return what the recorded run "
+        "saw. Re-record this transcript.\n" + "\n".join(result.result_divergences)
     )
     assert result.verify_results, (
         "the transcript records no run_verify call, so 'verify is green' was "

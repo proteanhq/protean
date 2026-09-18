@@ -33,12 +33,16 @@ scoring live with the comparison eval that consumes these transcripts.
 ## The transcript format
 
 One JSON file per run, holding the pack version, the task id, the task prompt,
-the ordered assistant `turns` (each turn's text plus its `tool_calls` as
-`[{name, input}]`), and a `project_hash` of the produced tree. Recorded tool
-results are not stored: the produced project is a pure function of the assistant
-turns, so replay recomputes every result by re-running the tool. A recomputed
-hash that diverges from the recorded one means the transcript no longer lands
-the same project.
+the ordered assistant `turns` (each turn's text, its `tool_calls` as
+`[{name, input}]`, and the `tool_results` those calls returned), and a
+`project_hash` of the produced tree.
+
+Replay never feeds a recorded result back. It recomputes every one by re-running
+the tool, so the project a transcript lands is a pure function of the assistant
+turns. The recorded results are the second staleness signal: replay compares
+them against the recomputed ones. Either divergence means re-record, the project
+hash or a tool result. The hash covers only the files the agent wrote, so on its
+own it would miss a verify verdict or a diagnostic code that changed.
 
 ## The agent's tools
 

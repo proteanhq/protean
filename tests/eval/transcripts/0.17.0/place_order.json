@@ -14,6 +14,12 @@
           },
           "name": "write_file"
         }
+      ],
+      "tool_results": [
+        {
+          "ok": true,
+          "path": "domain.py"
+        }
       ]
     },
     {
@@ -23,11 +29,26 @@
           "input": {},
           "name": "run_verify"
         }
+      ],
+      "tool_results": [
+        {
+          "codes": [],
+          "counts": {
+            "errors": 0,
+            "infos": 0,
+            "warnings": 0
+          },
+          "errors": [],
+          "exit_code": 0,
+          "ok": true,
+          "verdict": "pass"
+        }
       ]
     },
     {
       "text": "Verify passes with no findings. The order-placement slice is complete.",
-      "tool_calls": []
+      "tool_calls": [],
+      "tool_results": []
     }
   ]
 }

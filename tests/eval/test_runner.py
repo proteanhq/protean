@@ -3,6 +3,7 @@ transcript format, verify discovery, and live-driver resolution."""
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 from pathlib import Path
 
@@ -134,6 +135,24 @@ class TestWorkspace:
         workspace = Workspace(tmp_path)
         with pytest.raises(WorkspaceError):
             workspace.write("/etc/passwd", "boom")
+
+    def test_a_backslash_is_a_separator_not_a_filename(self, tmp_path: Path) -> None:
+        """A recorded Windows-style path lands the same nested file on every OS,
+        so a transcript replays the same tree wherever it runs."""
+        workspace = Workspace(tmp_path)
+        assert workspace.write("src\\pkg\\domain.py", "x = 1\n") == "src/pkg/domain.py"
+        assert (tmp_path / "src" / "pkg" / "domain.py").read_text() == "x = 1\n"
+        assert workspace.read("src/pkg/domain.py") == "x = 1\n"
+
+    @pytest.mark.parametrize("rel", ["C:/pkg/domain.py", "C:pkg", "\\\\host\\share\\x"])
+    def test_a_windows_drive_or_unc_path_is_rejected(
+        self, rel: str, tmp_path: Path
+    ) -> None:
+        """POSIX `Path` reads `C:/pkg` as an ordinary directory named `C:`;
+        neither OS should accept it as a workspace-relative path."""
+        workspace = Workspace(tmp_path)
+        with pytest.raises(WorkspaceError, match="relative to the workspace"):
+            workspace.write(rel, "boom")
 
     def test_traversal_escape_is_rejected(self, tmp_path: Path) -> None:
         workspace = Workspace(tmp_path)
@@ -564,6 +583,45 @@ class TestRunVerify:
         assert "timed out" in result["error"]
         assert killed["pgid"] == 4242
 
+    def test_a_timeout_still_fails_when_the_kill_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A kill that cannot land (the tree exited between the timeout and the
+        signal, or the OS refuses it) must not lose the timeout's failed
+        verdict, and the process is still reaped."""
+        reaped: list[bool] = []
+
+        class _FakePopen:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.pid = 4242
+                self.returncode: int | None = None
+                self._calls = 0
+
+            def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+                self._calls += 1
+                if self._calls == 1:
+                    raise subprocess.TimeoutExpired(cmd="verify", timeout=timeout)
+                reaped.append(True)
+                return ("", "")
+
+            def kill(self) -> None:
+                raise PermissionError("not permitted")
+
+        monkeypatch.setattr(tools_module.subprocess, "Popen", _FakePopen)
+        monkeypatch.setattr(tools_module.os, "getpgid", lambda pid: pid)
+
+        def _killpg(pgid: int, sig: int) -> None:
+            raise ProcessLookupError("no such process group")
+
+        monkeypatch.setattr(tools_module.os, "killpg", _killpg)
+        (tmp_path / "domain.py").write_text(GREEN_DOMAIN, encoding="utf-8")
+
+        result = run_verify(tmp_path)
+
+        assert result["verdict"] == "fail"
+        assert "timed out" in result["error"]
+        assert reaped == [True]
+
 
 class TestDomainDiscovery:
     def test_root_domain_uses_default_discovery(self, tmp_path: Path) -> None:
@@ -652,6 +710,28 @@ class TestRunLoop:
         assert "tool" in seen_roles[1]
         assert captured["last_tool_result"] == ({"ok": True, "path": "a.py"},)
 
+    def test_run_records_each_turns_tool_results(self, tmp_path: Path) -> None:
+        """The returned turns carry what the tools returned, so a recording
+        captures what the agent saw. A driver's own results do not count: the
+        loop ran the tools."""
+        turns = (
+            Turn(
+                "write then read",
+                (
+                    ToolCall("write_file", {"path": "a.py", "content": "y\n"}),
+                    ToolCall("read_file", {"path": "a.py"}),
+                ),
+                tool_results=({"ok": False, "error": "a driver's fiction"},),
+            ),
+            Turn("done", ()),
+        )
+        result = run("task", ReplayDriver(turns), workspace=Workspace(tmp_path))
+        assert result.turns[0].tool_results == (
+            {"ok": True, "path": "a.py"},
+            {"ok": True, "content": "y\n"},
+        )
+        assert result.turns[1].tool_results == ()
+
     def test_a_turn_may_carry_several_tool_calls(self, tmp_path: Path) -> None:
         turns = (
             Turn(
@@ -722,6 +802,17 @@ class TestTranscriptFormat:
         )
         assert Transcript.loads(transcript.dumps()) == transcript
 
+    def test_tool_results_round_trip(self) -> None:
+        """The recorded results survive serialization; they are the second
+        staleness signal, so losing them on save would lose the signal."""
+        turn = Turn(
+            "verify",
+            (ToolCall("run_verify", {}),),
+            tool_results=({"ok": True, "verdict": "pass", "codes": []},),
+        )
+        transcript = Transcript("9.9.9", "demo", "in", (turn,), "sha256:abc")
+        assert Transcript.loads(transcript.dumps()) == transcript
+
     def test_dumps_is_canonical(self) -> None:
         """Sorted keys, two-space indent, trailing newline, so a re-recorded
         transcript diffs cleanly."""
@@ -733,6 +824,7 @@ class TestTranscriptFormat:
     def test_from_dict_tolerates_missing_optional_keys(self) -> None:
         turn = Turn.from_dict({"text": "no tools here"})
         assert turn.tool_calls == ()
+        assert turn.tool_results == ()
 
     def test_save_writes_the_canonical_path(self, tmp_path: Path) -> None:
         transcript = Transcript("1.2.3", "demo", "in", (Turn("t"),), "sha256:z")
@@ -770,8 +862,12 @@ class TestRecordAndReplay:
         assert transcript.pack_version == PACK_VERSION
         assert transcript.task_id == "demo"
         assert transcript.task_input == "build a thing\n"
-        assert transcript.turns == turns
         assert transcript.project_hash.startswith("sha256:")
+        # The recorded turns are the driver's, with the results the tools
+        # returned filled in.
+        assert [turn.text for turn in transcript.turns] == ["write", "done"]
+        assert transcript.turns[0].tool_calls == turns[0].tool_calls
+        assert transcript.turns[0].tool_results == ({"ok": True, "path": "domain.py"},)
 
     def test_record_then_replay_lands_the_same_hash(self, tmp_path: Path) -> None:
         turns = self._write_task(tmp_path)
@@ -781,6 +877,81 @@ class TestRecordAndReplay:
         result = replay(transcript, workspace=Workspace(tmp_path / "replay"))
 
         assert result.project_hash == transcript.project_hash
+        assert result.result_divergences == ()
+
+    def test_replay_flags_a_recorded_result_the_tools_no_longer_return(
+        self, tmp_path: Path
+    ) -> None:
+        """The staleness signal the project hash cannot give: the hash covers
+        only the files the agent wrote, so a tool that now answers differently
+        has to be caught by comparing the recorded result."""
+        turns = self._write_task(tmp_path)
+        transcript = record("demo", ReplayDriver(turns), root=tmp_path)
+        stale = dataclasses.replace(
+            transcript,
+            turns=(
+                dataclasses.replace(
+                    transcript.turns[0],
+                    tool_results=({"ok": True, "path": "somewhere-else.py"},),
+                ),
+                *transcript.turns[1:],
+            ),
+        )
+
+        (tmp_path / "replay").mkdir()
+        result = replay(stale, workspace=Workspace(tmp_path / "replay"))
+
+        # The project still lands: replay runs the recorded calls, not the
+        # recorded results. Only the comparison catches it.
+        assert result.project_hash == transcript.project_hash
+        assert len(result.result_divergences) == 1
+        assert "turn 0 call 0 (write_file)" in result.result_divergences[0]
+        assert "somewhere-else.py" in result.result_divergences[0]
+
+    def test_replay_flags_a_result_count_that_does_not_match(
+        self, tmp_path: Path
+    ) -> None:
+        """A hand-edited transcript whose recorded results do not line up with
+        its calls is stale too, and must not compare position by position."""
+        turns = self._write_task(tmp_path)
+        transcript = record("demo", ReplayDriver(turns), root=tmp_path)
+        stale = dataclasses.replace(
+            transcript,
+            turns=(
+                dataclasses.replace(
+                    transcript.turns[0],
+                    tool_results=({"ok": True}, {"ok": True}),
+                ),
+                *transcript.turns[1:],
+            ),
+        )
+
+        (tmp_path / "replay").mkdir()
+        result = replay(stale, workspace=Workspace(tmp_path / "replay"))
+
+        assert result.result_divergences == (
+            "turn 0: recorded 2 tool results, recomputed 1",
+        )
+
+    def test_replay_without_recorded_results_reports_no_divergence(
+        self, tmp_path: Path
+    ) -> None:
+        """A transcript recorded before results were captured has nothing to
+        compare, so it replays on the hash alone rather than failing."""
+        turns = self._write_task(tmp_path)
+        transcript = record("demo", ReplayDriver(turns), root=tmp_path)
+        bare = dataclasses.replace(
+            transcript,
+            turns=tuple(
+                dataclasses.replace(turn, tool_results=()) for turn in transcript.turns
+            ),
+        )
+
+        (tmp_path / "replay").mkdir()
+        result = replay(bare, workspace=Workspace(tmp_path / "replay"))
+
+        assert result.project_hash == transcript.project_hash
+        assert result.result_divergences == ()
 
 
 class TestPackPrompt:

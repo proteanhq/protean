@@ -6,13 +6,18 @@ A transcript is one JSON file per run, at
 - ``pack_version``: the DX pack version the run was recorded against.
 - ``task_id``: the task directory name under ``tests/eval/tasks/``.
 - ``task_input``: the task prompt (the text of ``task.md``).
-- ``turns``: the ordered assistant turns, each turn's text plus its tool calls
-  as ``[{name, input}]``. Recorded tool *results* are not stored; the produced
-  project is a pure function of these turns, so replay recomputes every result
-  by re-running the tool.
+- ``turns``: the ordered assistant turns, each turn's text, its tool calls as
+  ``[{name, input}]``, and the ``tool_results`` those calls returned, aligned by
+  position. Replay never feeds a recorded result back: it recomputes every one
+  by re-running the tool, so the project a transcript lands stays a pure
+  function of the turns. The recorded copy is a staleness signal, compared
+  against the recomputed one.
 - ``project_hash``: the hash of the project tree the run produced. On replay,
   the recomputed hash must equal this; a divergence means the transcript no
   longer lands the same project (a stale transcript).
+
+Two things can diverge on replay, and either one means re-record: the project
+hash, and a recorded tool result the tools no longer return.
 
 The format is provider-neutral: it records what the agent decided (text and tool
 calls), not any one model's wire format, so a run recorded against any live
@@ -58,16 +63,26 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class Turn:
-    """One assistant turn: its text plus the tool calls it requested. A turn
-    with no tool calls is a final answer, which ends the run."""
+    """One assistant turn: its text, the tool calls it requested, and what those
+    calls returned. A turn with no tool calls is a final answer, which ends the
+    run.
+
+    ``tool_results`` is aligned by position with ``tool_calls`` and holds what
+    the agent saw when the run was recorded. A driver never sets it; the run
+    loop fills it in from the tools it actually ran. Replay recomputes the
+    results rather than reading them back, and compares the two: a recorded
+    result the tools no longer return flags a stale transcript.
+    """
 
     text: str
     tool_calls: tuple[ToolCall, ...] = ()
+    tool_results: tuple[dict[str, Any], ...] = ()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Turn:
         calls = tuple(ToolCall.from_dict(c) for c in data.get("tool_calls", []))
-        return cls(text=data.get("text", ""), tool_calls=calls)
+        results = tuple(dict(r) for r in data.get("tool_results", []))
+        return cls(text=data.get("text", ""), tool_calls=calls, tool_results=results)
 
 
 @dataclass(frozen=True)

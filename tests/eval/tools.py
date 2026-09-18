@@ -252,14 +252,22 @@ def _terminate_tree(process: subprocess.Popen) -> None:
     ``killpg`` takes down verify and its nested pytest together. Platforms
     without process groups fall back to killing the direct process only, so a
     nested pytest could outlive the timeout there; this harness is maintainer-
-    side and runs on POSIX, so that fallback is a known, accepted limitation."""
+    side and runs on POSIX, so that fallback is a known, accepted limitation.
+
+    A kill that fails is swallowed: :func:`run_verify` still has to return the
+    failed ``VerifyResult`` for the timeout, and raising here would lose it. The
+    reap in the ``finally`` runs either way."""
     try:
         if hasattr(os, "killpg") and hasattr(os, "getpgid"):
             os.killpg(os.getpgid(process.pid), signal.SIGKILL)
         else:  # pragma: no cover - exercised only on non-POSIX platforms
             process.kill()
-    except (ProcessLookupError, PermissionError, OSError):  # pragma: no cover
-        process.kill()
+    except OSError:
+        # The group signal failed: the tree exited between the timeout and this
+        # call, or the OS refused the signal. Killing the direct process is the
+        # best remaining effort, and it may fail for the same reason.
+        with contextlib.suppress(OSError):
+            process.kill()
     finally:
         with contextlib.suppress(subprocess.TimeoutExpired, ValueError, OSError):
             process.communicate(timeout=5)
