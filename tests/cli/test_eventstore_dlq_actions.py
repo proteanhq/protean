@@ -25,6 +25,7 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.process_manager import BaseProcessManager
 from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector
 from protean.fields import Identifier, String
@@ -95,6 +96,14 @@ class FailingProjector(BaseProjector):
 
     @handle(Registered)
     def project(self, event):
+        raise RuntimeError("boom")
+
+
+class FailingProcessManager(BaseProcessManager):
+    """Always fails; used to exhaust a position owned by a process manager."""
+
+    @handle(Registered, start=True, correlate="id")
+    def on_registered(self, event):
         raise RuntimeError("boom")
 
 
@@ -358,6 +367,23 @@ def _exhaust_projector_position(test_domain) -> int:
     return msg.metadata.event_store.global_position
 
 
+def _exhaust_process_manager_position(test_domain) -> int:
+    """Register a process manager and drive one position to exhaustion under it.
+
+    A non-partitioned process manager is an event-store subscription too, so the
+    DLQ commands have to reach its exhausted positions. Registering it only here
+    keeps the other tests' owner lookups unchanged. Returns the exhausted global
+    position.
+    """
+    test_domain.register(
+        FailingProcessManager, stream_categories=[User.meta_.stream_category]
+    )
+    test_domain.init(traverse=False)
+
+    msg = _drive_to_exhaustion(test_domain, FailingProcessManager)
+    return msg.metadata.event_store.global_position
+
+
 def _toggle_failed_stream(test_domain) -> tuple:
     """Return (subscription info, failed stream) for ``ToggleEventHandler``."""
     return next(
@@ -492,6 +518,43 @@ class TestReplay:
         assert "projection writes a second time" in result.output
         assert "event handler" not in result.output
         assert "Aborted" in result.output
+
+    def test_replay_names_a_process_manager_target(self, test_domain):
+        # A process manager is an event-store subscription like any other, so its
+        # exhausted position has to be findable and the prompt has to say what is
+        # being re-run: a replay can issue the process manager's commands again.
+        position = _exhaust_process_manager_position(test_domain)
+
+        result = _invoke(
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py"],
+            domain=test_domain,
+            input="n\n",
+        )
+
+        assert "targets a process manager" in result.output
+        assert "commands a second time" in result.output
+        assert "Aborted" in result.output
+
+    def test_replay_reopens_a_process_manager_position(self, test_domain):
+        # The re-drive goes through the engine's process-manager subscription, so
+        # this covers the owner lookup end to end, not just the prompt wording.
+        position = _exhaust_process_manager_position(test_domain)
+
+        result = _invoke(
+            [
+                "eventstore",
+                "dlq",
+                "replay",
+                str(position),
+                "--domain",
+                "x.py",
+                "--yes",
+            ],
+            domain=test_domain,
+        )
+
+        assert result.exit_code == EXIT_FAILURE
+        assert "reopened" in result.output
 
     def test_replay_dispatches_a_command_through_its_handler(self, test_domain):
         # A command stream's subscription handler is a CommandDispatcher, so the

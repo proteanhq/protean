@@ -11,9 +11,9 @@ through its handler; `purge` clears one with a terminal `Purged` marker.
 This is different from [`protean dlq`](./dlq.md). `protean dlq` manages the
 **broker** dead-letter queue (messages a broker subscription failed and moved
 to `{stream_category}:dlq`). `protean eventstore dlq` covers **event-store**
-subscriptions (event handlers, command handlers, projectors), which do not use
-a broker DLQ; they track failed positions and, on exhaustion, leave the event
-in place in the store.
+subscriptions (event handlers, command handlers, projectors, process managers),
+which do not use a broker DLQ; they track failed positions and, on exhaustion,
+leave the event in place in the store.
 
 All commands accept a `--domain` option for the domain module path (defaults to
 the current directory). `list` and `inspect` also accept a `--json` flag for the
@@ -162,10 +162,11 @@ Replay re-runs handler side effects, so it confirms first. Every replay can
 apply its side effects again: it dispatches out-of-band and never consults the
 idempotency store, and an exhausted command never recorded a success to
 deduplicate against. The prompt names the target (an event handler, a projector,
-or a command with or without an idempotency key) so the operator knows what is
-being re-run; replaying a projector position re-applies its projection writes,
-and an idempotency key helps only when the handler itself uses it to stay
-idempotent.
+a process manager, or a command with or without an idempotency key) so the
+operator knows what is being re-run. Replaying a projector position re-applies
+its projection writes, and replaying a process manager position can issue its
+commands again. An idempotency key helps only when the handler itself uses it to
+stay idempotent.
 A command whose deadline has passed is refused, because the engine would skip an
 expired command; purge it instead. The deadline is checked again right before the
 dispatch, so a command whose deadline ran out while the prompt was open is
