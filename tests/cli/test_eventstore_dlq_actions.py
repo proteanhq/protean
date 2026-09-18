@@ -32,6 +32,7 @@ from protean.server.subscription.event_store_subscription import (
     FailedPositionStatus,
     write_recovery_status_record,
 )
+from protean.utils import fqn
 from protean.utils.dlq import collect_failed_streams, failed_positions_stream
 from protean.utils.eventing import EventStoreMeta, Message, MessageType, Metadata
 from protean.utils.mixins import handle
@@ -576,8 +577,6 @@ class TestReplay:
         # An Exhausted record with no stream location and no origin stream.
         store = test_domain.event_store.store
         category = User.meta_.stream_category
-        from protean.utils import fqn
-
         failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
         store._write(
             failed_stream,
