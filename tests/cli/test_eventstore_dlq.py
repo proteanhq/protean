@@ -472,6 +472,136 @@ class TestEventstoreDlqInspect:
         assert result.exit_code == 0, result.output
         assert "old@example.com" in result.output
 
+    def test_inspect_refuses_when_the_stream_stops_short_of_the_position(
+        self, test_domain
+    ):
+        """A record naming a per-stream position past the end of its stream (a
+        restore that dropped the stream's tail) reads as unreadable."""
+        from protean.server.subscription.event_store_subscription import (
+            FailedPositionStatus,
+        )
+        from protean.utils import fqn
+        from protean.utils.dlq import failed_positions_stream
+
+        _register(test_domain)
+        store = test_domain.event_store.store
+        category = User.meta_.stream_category
+        stream = f"{category}-abc"
+
+        store._write(
+            stream,
+            "Test.Registered.v1",
+            {"id": "abc", "email": "only@example.com", "name": "Only"},
+            metadata={
+                "headers": {
+                    "id": "evt-only",
+                    "type": "Test.Registered.v1",
+                    "stream": stream,
+                },
+                "domain": {"kind": "EVENT"},
+            },
+        )
+
+        failed_stream = failed_positions_stream(
+            fqn(AlwaysFailingEventHandler), category
+        )
+        store._write(
+            failed_stream,
+            FailedPositionStatus.EXHAUSTED.value,
+            {
+                "position": 9,
+                "message_type": "Test.Registered.v1",
+                "message_id": "evt-gone",
+                "retry_count": 3,
+                "stream_name": stream,
+                "stream_position": 5,  # the stream only reaches 0
+            },
+            metadata={
+                "headers": {
+                    "id": "rec-short",
+                    "type": FailedPositionStatus.EXHAUSTED.value,
+                    "stream": failed_stream,
+                },
+                "domain": {"kind": "read_position", "origin_stream": category},
+            },
+        )
+
+        with patch("protean.cli.eventstore.load_domain", return_value=test_domain):
+            result = runner.invoke(
+                app, ["eventstore", "dlq", "inspect", "9", "--domain", "x.py"]
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "Could not re-read the event" in result.output
+
+    def test_inspect_refuses_when_the_re_read_lands_on_another_message(
+        self, test_domain
+    ):
+        """A record naming a global position the store no longer holds a message
+        at reads as unreadable, not as the next message in the category.
+
+        Store reads are inclusive, so the read comes back with the message just
+        past the one asked for. Printing it would show an unrelated event under
+        the requested position."""
+        from protean.server.subscription.event_store_subscription import (
+            FailedPositionStatus,
+        )
+        from protean.utils import fqn
+        from protean.utils.dlq import failed_positions_stream
+
+        _register(test_domain)
+        store = test_domain.event_store.store
+        category = User.meta_.stream_category
+
+        store._write(
+            f"{category}-abc",
+            "Test.Registered.v1",
+            {"id": "abc", "email": "later@example.com", "name": "Later"},
+            metadata={
+                "headers": {
+                    "id": "evt-later",
+                    "type": "Test.Registered.v1",
+                    "stream": f"{category}-abc",
+                },
+                "domain": {"kind": "EVENT"},
+            },
+        )
+        stored_at = store.read(category, position=0, no_of_messages=1)[
+            0
+        ].metadata.event_store.global_position
+        missing = stored_at - 1
+
+        failed_stream = failed_positions_stream(
+            fqn(AlwaysFailingEventHandler), category
+        )
+        store._write(
+            failed_stream,
+            FailedPositionStatus.EXHAUSTED.value,
+            {
+                "position": missing,
+                "message_type": "Test.Registered.v1",
+                "message_id": "evt-gone",
+                "retry_count": 3,
+            },
+            metadata={
+                "headers": {
+                    "id": "rec-gone",
+                    "type": FailedPositionStatus.EXHAUSTED.value,
+                    "stream": failed_stream,
+                },
+                "domain": {"kind": "read_position", "origin_stream": category},
+            },
+        )
+
+        with patch("protean.cli.eventstore.load_domain", return_value=test_domain):
+            result = runner.invoke(
+                app, ["eventstore", "dlq", "inspect", str(missing), "--domain", "x.py"]
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "Could not re-read the event" in result.output
+        assert "later@example.com" not in result.output
+
     def test_inspect_unknown_position_is_usage_error(self, test_domain):
         _register(test_domain)
         _drive_to_exhaustion(test_domain)

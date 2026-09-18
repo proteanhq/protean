@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -206,3 +206,35 @@ class TestEngineOutboxSkipsUnmanagedProviders:
             assert any(
                 "default" in name and "external" in name for name in processor_names
             )
+
+
+class TestEngineInitializationFailure:
+    """The engine closes the event loop it opened when wiring then fails."""
+
+    def test_loop_is_closed_when_wiring_raises(self, test_domain):
+        loops = []
+        real_new_event_loop = asyncio.new_event_loop
+
+        def _tracked_new_event_loop():
+            loop = real_new_event_loop()
+            loops.append(loop)
+            return loop
+
+        # __init__ opens the loop before it wires anything, and the caller never
+        # gets a reference to a half-built engine, so a failure past that point
+        # would leak the loop unless __init__ closes it itself.
+        with (
+            patch(
+                "protean.server.engine.asyncio.new_event_loop",
+                side_effect=_tracked_new_event_loop,
+            ),
+            patch(
+                "protean.server.engine.HealthServer",
+                side_effect=RuntimeError("wiring failed"),
+            ),
+            pytest.raises(RuntimeError, match="wiring failed"),
+        ):
+            Engine(test_domain, test_mode=True)
+
+        assert len(loops) == 1
+        assert loops[0].is_closed() is True

@@ -6,7 +6,9 @@ import platform
 import signal
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from signal import Signals
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from protean.core.command import BaseCommand
@@ -331,6 +333,24 @@ class Engine:
         # This avoids fragility when the caller already has a running loop
         self.loop = asyncio.new_event_loop()
 
+        # ``__init__`` can still raise below, while wiring subscriptions, outbox
+        # processors or the DLQ task. The caller never gets a reference to the
+        # half-built engine (the name it assigns to is bound only after
+        # ``__init__`` returns), so nobody else can close the loop opened just
+        # above. Close it here and re-raise.
+        try:
+            self._wire_components()
+        except BaseException:
+            self.loop.close()
+            raise
+
+    def _wire_components(self) -> None:
+        """Wire the health server, subscriptions, outbox processors and DLQ task.
+
+        This is the tail of ``__init__``, split out so a failure in it can be
+        caught and the engine's event loop closed before the exception leaves the
+        constructor.
+        """
         # Health check HTTP server for Kubernetes probes
         self._health_server = HealthServer(self)
 
@@ -475,6 +495,19 @@ class Engine:
     def subscription_factory(self) -> SubscriptionFactory:
         """Get the subscription factory used to create subscriptions."""
         return self._subscription_factory
+
+    @property
+    def subscriptions(self) -> "Mapping[str, BaseSubscription]":
+        """The event-store subscriptions this engine manages, keyed by subscription key.
+
+        Read-only view for tooling that needs the already-wired handlers (a
+        ``CommandDispatcher`` for a command stream, the handler class otherwise)
+        without running the engine, such as ``protean eventstore dlq replay``.
+        Broker subscriptions live separately and are not included. The returned
+        ``MappingProxyType`` reflects the live dict but rejects writes, so a
+        caller cannot corrupt the engine's registry through it.
+        """
+        return MappingProxyType(self._subscriptions)
 
     def _register_handler_subscriptions(self) -> None:
         """Register subscriptions for all event handlers, command handlers, and projectors.
@@ -987,8 +1020,14 @@ class Engine:
                     causation_id=causation_id,
                 )
 
-                # Emit pm.transition trace for process managers
-                if issubclass(handler_cls, BaseProcessManager):
+                # Emit pm.transition trace for process managers. A command
+                # stream's handler is a CommandDispatcher *instance*, so guard
+                # the issubclass check: issubclass() on an instance raises
+                # TypeError, which the outer except would swallow and turn a
+                # succeeded command into a False return.
+                if isinstance(handler_cls, type) and issubclass(
+                    handler_cls, BaseProcessManager
+                ):
                     self.emitter.emit(
                         event="pm.transition",
                         stream=stream,

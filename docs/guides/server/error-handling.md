@@ -73,6 +73,12 @@ when `default_subscription_type = "event_store"` (the default).
 This approach uses the event store's inherent durability. Events are immutable
 and always available for replay.
 
+An exhausted event-store position is its own dead-letter queue. The
+`protean eventstore dlq` commands act on it: `list` enumerates exhausted
+positions, `inspect` re-reads the failing event, `replay` re-drives one through
+its handler, and `purge` clears one with a terminal marker. See
+[`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
+
 ```toml
 [server.event_store_subscription]
 max_retries = 3

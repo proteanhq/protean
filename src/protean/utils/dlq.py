@@ -27,6 +27,8 @@ class SubscriptionInfo:
     backfill_dlq_stream: str | None
     is_broker: bool = False
     is_command_handler: bool = False
+    is_projector: bool = False
+    is_process_manager: bool = False
 
     @property
     def subscription_fqn(self) -> str:
@@ -34,10 +36,10 @@ class SubscriptionInfo:
 
         The engine fans every command handler on a stream category into one
         ``CommandDispatcher`` subscription, so the failed-positions stream is
-        keyed by the dispatcher's fqn, not the handler class. Event handlers and
-        projectors own their stream directly, so it is their own fqn. Reads use
-        this both to key the stream and to name the subscription in CLI output,
-        so the two never diverge.
+        keyed by the dispatcher's fqn, not the handler class. Event handlers,
+        projectors and process managers own their stream directly, so it is
+        their own fqn. Reads use this both to key the stream and to name the
+        subscription in CLI output, so the two never diverge.
         """
         if self.is_command_handler:
             return command_dispatcher_fqn(self.stream_category)
@@ -115,11 +117,34 @@ def _infer_stream_category(handler_cls: type) -> str | None:
     return None
 
 
+def _is_partitioned_process_manager(domain: Domain, pm_cls: type) -> bool:
+    """Whether the engine gives this process manager one partitioned subscription.
+
+    Mirrors ``Engine._is_partitioned_process_manager``: a ``sequential_by``
+    process manager only gets a single ``PartitionedStreamSubscription`` across
+    its categories when the default broker advertises ``STREAM_PARTITIONING``
+    (ADR-0028 decision 8). That subscription reads from the broker, so it writes
+    no failed-positions stream at all, and its one DLQ stream sits on its
+    primary category rather than on each of them. Neither shape fits the
+    per-category pairs discovery returns, so it is left out.
+    """
+    from protean.server.subscription.factory import (  # noqa: PLC0415
+        broker_supports_partitioning,
+    )
+
+    meta = getattr(pm_cls, "meta_", None)
+    if not getattr(meta, "sequential_by", None):
+        return False
+    if not getattr(meta, "stream_categories", None):
+        return False
+    return broker_supports_partitioning(domain)
+
+
 def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     """Walk the domain registry and return subscription metadata.
 
-    Inspects event handlers, command handlers, and projectors to derive
-    their stream categories and DLQ stream names.
+    Inspects event handlers, command handlers, projectors, and process managers
+    to derive their stream categories and DLQ stream names.
     """
     server_config = domain.config.get("server", {})
     lanes_config = server_config.get("priority_lanes", {})
@@ -130,7 +155,12 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     infos: list[SubscriptionInfo] = []
 
     def _add(
-        handler_cls: type, stream_cat: str, *, is_command_handler: bool = False
+        handler_cls: type,
+        stream_cat: str,
+        *,
+        is_command_handler: bool = False,
+        is_projector: bool = False,
+        is_process_manager: bool = False,
     ) -> None:
         key = f"{fqn(handler_cls)}:{stream_cat}"
         if key in seen_streams:
@@ -144,6 +174,8 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
             dlq_stream=f"{stream_cat}:dlq",
             backfill_dlq_stream=backfill_dlq,
             is_command_handler=is_command_handler,
+            is_projector=is_projector,
+            is_process_manager=is_process_manager,
         )
         seen_streams[key] = info
         infos.append(info)
@@ -176,7 +208,24 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
         )
         if stream_categories:
             for stream_cat in stream_categories:
-                _add(handler_cls, stream_cat)
+                _add(handler_cls, stream_cat, is_projector=True)
+
+    # Process managers (one subscription per stream category, like projectors).
+    # A partitioned process manager is the exception: the engine gives it a
+    # single broker-backed subscription across its categories, which writes no
+    # failed-positions stream.
+    for record in domain.registry._elements.get(
+        DomainObjects.PROCESS_MANAGER.value, {}
+    ).values():
+        handler_cls = record.cls
+        if _is_partitioned_process_manager(domain, handler_cls):
+            continue
+        stream_categories = getattr(
+            getattr(handler_cls, "meta_", None), "stream_categories", None
+        )
+        if stream_categories:
+            for stream_cat in stream_categories:
+                _add(handler_cls, stream_cat, is_process_manager=True)
 
     # Subscribers (broker subscriptions with external streams)
     for record in domain.registry._elements.get(
@@ -216,11 +265,11 @@ def collect_dlq_streams(domain: Domain) -> list[str]:
 def collect_failed_streams(domain: Domain) -> list[tuple[SubscriptionInfo, str]]:
     """Return each event-store subscription paired with its failed-positions stream.
 
-    Only event-store subscriptions (event handlers, command handlers, projectors)
-    have a failed-positions stream; broker subscribers do not, so they are
-    excluded. A projector subscribing to several stream categories yields one
-    pair per category, matching how the engine creates one subscription per
-    (handler, category).
+    Only event-store subscriptions (event handlers, command handlers,
+    projectors, process managers) have a failed-positions stream; broker
+    subscribers do not, so they are excluded. A projector or process manager
+    subscribing to several stream categories yields one pair per category,
+    matching how the engine creates one subscription per (handler, category).
 
     Command handlers are the exception: the engine fans every command handler on
     a stream category into a single ``CommandDispatcher`` subscription, so their

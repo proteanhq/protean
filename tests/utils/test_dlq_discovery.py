@@ -1,5 +1,8 @@
 """Tests for DLQ discovery utility."""
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
 from protean import Domain
@@ -7,6 +10,7 @@ from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.utils.dlq import (
     _infer_stream_category,
+    _is_partitioned_process_manager,
     collect_dlq_streams,
     collect_failed_streams,
     command_dispatcher_fqn,
@@ -157,6 +161,118 @@ class TestDiscoverSubscriptions:
         assert proj_info is not None
         assert proj_info.dlq_stream.endswith(":dlq")
         assert "product" in proj_info.stream_category
+        # The kind is carried on the info so CLI output can name the target
+        # correctly; a projector is not a command handler.
+        assert proj_info.is_projector is True
+        assert proj_info.is_command_handler is False
+
+    def test_discover_subscriptions_with_process_managers(self):
+        """A process manager is an event-store subscription per stream category."""
+        domain = Domain(__file__, "TestPM")
+
+        @domain.aggregate
+        class Booking:
+            code: str
+
+        @domain.event(part_of=Booking)
+        class BookingMade:
+            code: str
+
+        @domain.aggregate
+        class Invoice:
+            code: str
+
+        @domain.event(part_of=Invoice)
+        class InvoiceIssued:
+            code: str
+
+        @domain.process_manager(
+            stream_categories=[
+                "test_dlq_discovery::booking",
+                "test_dlq_discovery::invoice",
+            ]
+        )
+        class BookingProcessManager:
+            @handle(BookingMade, start=True, correlate="code")
+            def on_made(self, event):
+                pass
+
+            @handle(InvoiceIssued, correlate="code")
+            def on_issued(self, event):
+                pass
+
+        domain.init(traverse=False)
+
+        infos = [
+            i
+            for i in discover_subscriptions(domain)
+            if i.handler_name == "BookingProcessManager"
+        ]
+        # One per subscribed category, the way the engine wires them.
+        assert {i.stream_category for i in infos} == {
+            "test_dlq_discovery::booking",
+            "test_dlq_discovery::invoice",
+        }
+        for info in infos:
+            assert info.is_process_manager is True
+            assert info.is_command_handler is False
+            # A process manager owns its stream directly, so it names itself.
+            assert info.subscription_fqn == info.handler_fqn
+
+        streams = {stream for _info, stream in collect_failed_streams(domain)}
+        for info in infos:
+            assert (
+                failed_positions_stream(info.handler_fqn, info.stream_category)
+                in streams
+            )
+
+    def test_partitioned_process_manager_is_excluded(self):
+        """A partitioned process manager has no per-category failed stream.
+
+        Under a partitioning broker the engine gives a ``sequential_by`` process
+        manager one broker-backed subscription across its categories, so there is
+        no per-category failed-positions stream for the CLI to read.
+        """
+        domain = Domain(__file__, "TestPartitionedPM")
+
+        @domain.aggregate
+        class Shipment:
+            code: str
+
+        @domain.event(part_of=Shipment)
+        class ShipmentBooked:
+            code: str
+
+        @domain.process_manager(
+            stream_categories=["test_dlq_discovery::shipment"], sequential_by=True
+        )
+        class ShipmentProcessManager:
+            @handle(ShipmentBooked, start=True, correlate="code")
+            def on_booked(self, event):
+                pass
+
+        domain.init(traverse=False)
+
+        # The inline broker does not partition, so the PM is a plain per-category
+        # subscription and discovery keeps it.
+        assert any(
+            i.handler_name == "ShipmentProcessManager"
+            for i in discover_subscriptions(domain)
+        )
+
+        with patch(
+            "protean.server.subscription.factory.broker_supports_partitioning",
+            return_value=True,
+        ):
+            infos = discover_subscriptions(domain)
+            assert not [i for i in infos if i.handler_name == "ShipmentProcessManager"]
+
+            # A PM is partitioned only when it opts in AND has categories to
+            # lease, the same two conditions the engine checks.
+            no_categories = SimpleNamespace(
+                meta_=SimpleNamespace(sequential_by=True, stream_categories=[])
+            )
+            assert _is_partitioned_process_manager(domain, no_categories) is False
 
     def test_discover_subscriptions_with_priority_lanes(self):
         domain = Domain(__file__, "TestLanes")
@@ -360,10 +476,12 @@ class TestCollectFailedStreams:
     def test_matches_engine_subscriptions_across_handler_types(self):
         """The CLI-derived failed streams equal what the engine subscriptions use.
 
-        Covers all three event-store handler kinds at once — an event handler, a
-        command handler, and a projector — because a command handler is fanned
-        into a ``CommandDispatcher`` whose stream name differs from the handler
-        class's, which is where the CLI would otherwise read the wrong stream.
+        Covers every event-store handler kind at once — an event handler, a
+        command handler, a projector, and a process manager — because a command
+        handler is fanned into a ``CommandDispatcher`` whose stream name differs
+        from the handler class's, which is where the CLI would otherwise read
+        the wrong stream, and a handler kind left out of discovery altogether
+        leaves its exhausted positions unreachable.
         """
         domain = Domain(__file__, "TestNoDrift")
 
@@ -400,6 +518,12 @@ class TestCollectFailedStreams:
         class InvoiceProjector:
             @handle(InvoiceRaised)
             def project(self, event):
+                pass
+
+        @domain.process_manager(stream_categories=["test_dlq_discovery::invoice"])
+        class InvoiceProcessManager:
+            @handle(InvoiceRaised, start=True, correlate="amount")
+            def on_raised(self, event):
                 pass
 
         domain.init(traverse=False)
