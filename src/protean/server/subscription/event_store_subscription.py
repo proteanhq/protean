@@ -1406,7 +1406,9 @@ class EventStoreSubscription(BaseSubscription):
         ``Resolved`` record so the position stops being listed as exhausted. On
         failure, write a fresh ``Failed`` record so the position reopens and a
         later rebuild tracks it again instead of dropping it as ``Exhausted``
-        (``reconstruct_unresolved`` treats ``Exhausted`` as terminal).
+        (``reconstruct_unresolved`` treats ``Exhausted`` as terminal). A
+        subscription rebuilds in ``initialize()``, so a server already running
+        picks the reopened position up when it next starts.
 
         The read cursor (``current_position``) is never moved. The cursor is a
         shared ``position-*`` stream, so rewinding it would reprocess every

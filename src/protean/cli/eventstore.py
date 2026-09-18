@@ -369,6 +369,31 @@ def _still_exhausted_or_abort(
         )
 
 
+def _unexpired_or_abort(event: Message, position: int) -> None:
+    """Abort when ``event`` is a command whose deadline has passed.
+
+    The engine skips an expired command: the handler never runs, yet
+    ``handle_message`` reports the message handled, so a replay would write a
+    ``Resolved`` record with nothing having run. ``replay`` checks this twice,
+    once before the confirmation prompt so the operator hears about it early,
+    and again immediately before the dispatch, because a deadline close to now
+    elapses while the operator sits at the prompt or while the engine is being
+    built. The second check and the dispatch are still two steps, so this
+    narrows the window rather than closing it; closing it needs the engine to
+    report a skipped dispatch apart from a successful one. Events carry no
+    deadline, so this is a no-op for them.
+    """
+    headers = event.metadata.headers if event.metadata else None
+    if headers and headers.is_expired():
+        emit_usage_error(
+            as_json=False,
+            message=(
+                f"Position {position} targets a command whose deadline has "
+                f"passed; the engine would skip its handler. Purge it instead."
+            ),
+        )
+
+
 @contextmanager
 def _redrive_engine(domain: Domain) -> Iterator[Engine]:
     """Build an engine for ``replay``'s re-drive, then close its event loop.
@@ -677,17 +702,19 @@ def replay(
 
     Reads the failing event and dispatches it to the handler exactly once. On
     success it records a resolution so the position stops being listed as
-    exhausted and exits 0; on a repeat failure it reopens the position for the
-    recovery pass and exits 1 (the handler reason is in the logs). The
-    subscription read cursor is never moved.
+    exhausted and exits 0; on a repeat failure it reopens the position and exits
+    1 (the handler reason is in the logs). A running server rebuilds its failed
+    positions only at startup, so it retries a reopened position after its next
+    restart. The subscription read cursor is never moved.
 
     Replay re-runs handler side effects, so it confirms first, naming the target
     (an event handler, a projector, or a command with or without an idempotency
-    key). Pass ``--yes`` to skip the prompt. The position's latest status is re-read right
-    before the dispatch, so a position another replay or purge cleared while the
-    prompt was open is refused. A command whose handler is no longer registered
-    is refused too: dispatching it would report success without running
-    anything.
+    key). Pass ``--yes`` to skip the prompt. The position's latest status and a
+    command's deadline are both re-read right before the dispatch, so a position
+    another replay or purge cleared while the prompt was open is refused, and so
+    is a command whose deadline ran out in the meantime. A command whose handler
+    is no longer registered is refused too: dispatching it would report success
+    without running anything.
     """
     derived_domain = load_domain(domain)
 
@@ -706,23 +733,13 @@ def replay(
                 message=f"Could not re-read the event for exhausted position {position}.",
             )
 
-        # A command whose deadline elapsed is skipped by the engine (the handler
-        # never runs) yet reported as handled, so a replay would falsely resolve
-        # it. Refuse and point the operator at purge, before any dispatch.
-        headers = event.metadata.headers if event.metadata else None
-        if headers and headers.is_expired():
-            emit_usage_error(
-                as_json=False,
-                message=(
-                    f"Position {position} targets a command whose deadline has "
-                    f"passed; the engine would skip its handler. Purge it instead."
-                ),
-            )
+        _unexpired_or_abort(event, position)
 
         print(f"[yellow]{_double_apply_line(info, event, position)}[/yellow]")
         if not yes:
             typer.confirm(f"Replay exhausted position {position}?", abort=True)
 
+        headers = event.metadata.headers if event.metadata else None
         event_type = (headers.type if headers else None) or "unknown"
         event_id = (headers.id if headers else None) or "unknown"
 
@@ -736,6 +753,7 @@ def replay(
                     message=f"No live subscription owns the failed stream for position {position}.",
                 )
             _routable_or_abort(owner_sub, event, position)
+            _unexpired_or_abort(event, position)
             _still_exhausted_or_abort(store, failed_stream, position)
             resolved = asyncio.run(
                 owner_sub.replay_exhausted(
@@ -755,8 +773,8 @@ def replay(
     # Reopened: the handler failed again. Exit non-zero so a script can tell a
     # reopen from a resolution; the failure reason is in the engine logs.
     print(
-        f"Replayed position {position}: handler failed again, position reopened "
-        f"for recovery."
+        f"Replayed position {position}: handler failed again, position reopened. "
+        f"A running server retries it after its next restart."
     )
     raise typer.Exit(code=EXIT_FAILURE)
 

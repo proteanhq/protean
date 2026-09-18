@@ -132,10 +132,11 @@ Under `--json` the envelope's `data` carries `position`, `type`,
 Re-drives one exhausted position through its handler. It reads the failing
 event and dispatches it to the handler exactly once. On success it records a
 resolution, the position stops being listed as exhausted, and the command exits
-`0`; on a repeat failure it reopens the position for the recovery pass and exits
-`1` (the handler's reason is in the engine logs). The subscription read cursor is
-never moved, so replaying one position does not re-process every event since the
-failure.
+`0`; on a repeat failure it reopens the position and exits `1` (the handler's
+reason is in the engine logs). A subscription rebuilds its failed positions when
+it starts, so a server that is already running retries a reopened position after
+its next restart. The subscription read cursor is never moved, so replaying one
+position does not re-process every event since the failure.
 
 ```bash
 protean eventstore dlq replay 42 --domain=my_domain
@@ -166,11 +167,13 @@ being re-run; replaying a projector position re-applies its projection writes,
 and an idempotency key helps only when the handler itself uses it to stay
 idempotent.
 A command whose deadline has passed is refused, because the engine would skip an
-expired command; purge it instead. A command whose handler is no longer
-registered is refused as well: the dispatcher would find nothing to route it to,
-and the replay would report the position resolved without running anything. A
-handler-level idempotency declaration that would let replay refuse a
-non-idempotent target does not exist yet.
+expired command; purge it instead. The deadline is checked again right before the
+dispatch, so a command whose deadline ran out while the prompt was open is
+refused too. A command whose handler is no longer registered is refused as well:
+the dispatcher would find nothing to route it to, and the replay would report the
+position resolved without running anything. A handler-level idempotency
+declaration that would let replay refuse a non-idempotent target does not exist
+yet.
 
 Both `replay` and `purge` re-read the position's latest status right before they
 act. If another operator's `replay` or `purge` cleared it while the prompt was
@@ -224,7 +227,7 @@ protean eventstore dlq purge 42 --domain=my_domain --yes
 | `replay`/`purge` position is exhausted in more than one subscription | "Position ... is exhausted in multiple subscriptions ...", exit `2` |
 | `replay`/`purge` position was cleared while the prompt was open | "Position ... is no longer exhausted ...", exit `2` |
 | `replay`/`purge` confirmation declined | Typer aborts with exit `1` |
-| `replay` handler fails again | "... position reopened for recovery.", exit `1` |
+| `replay` handler fails again | "... position reopened. A running server retries it after its next restart.", exit `1` |
 
 ## How positions get exhausted
 

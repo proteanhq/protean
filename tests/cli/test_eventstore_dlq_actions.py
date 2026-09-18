@@ -10,7 +10,7 @@ the one the commands act on.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -38,6 +38,7 @@ from protean.utils import fqn
 from protean.utils.dlq import collect_failed_streams, failed_positions_stream
 from protean.utils.eventing import EventStoreMeta, Message, MessageType, Metadata
 from protean.utils.mixins import handle
+from tests.shared import FrozenClock
 
 runner = CliRunner()
 
@@ -657,6 +658,41 @@ class TestReplay:
 
         assert result.exit_code == EXIT_USAGE
         assert "deadline has passed" in result.output
+
+    def test_replay_refuses_a_command_whose_deadline_passes_at_the_prompt(
+        self, test_domain
+    ):
+        # The deadline is still ahead when the first check runs and passes while
+        # the operator sits at the prompt. Replay re-checks right before the
+        # dispatch: without it the engine would skip the expired command, report
+        # the message handled, and replay would write a Resolved record with no
+        # handler having run.
+        clock = FrozenClock(datetime(2026, 1, 1, tzinfo=UTC))
+        test_domain.clock = clock
+        position = _exhaust_command_position(
+            test_domain, deadline=clock.now() + timedelta(minutes=5)
+        )
+        store = test_domain.event_store.store
+        _info, stream = next(
+            p for p in collect_failed_streams(test_domain) if p[0].is_command_handler
+        )
+        records_before = len(list(store.read_all(stream)))
+
+        def _expire_at_the_prompt(*args, **kwargs):
+            clock.advance(timedelta(minutes=10))
+            return True
+
+        with patch("typer.confirm", side_effect=_expire_at_the_prompt):
+            result = _invoke(
+                ["eventstore", "dlq", "replay", str(position), "--domain", "x.py"],
+                domain=test_domain,
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "deadline has passed" in result.output
+        # Nothing was dispatched, so nothing was recorded either.
+        assert ToggleCommandHandler.calls == 0
+        assert len(list(store.read_all(stream))) == records_before
 
     def test_replay_refuses_a_command_with_no_registered_handler(self, test_domain):
         # The command's handler was removed or renamed, but PlaceOrder's handler
