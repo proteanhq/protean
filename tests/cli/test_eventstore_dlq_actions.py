@@ -21,6 +21,8 @@ from protean import apply
 from protean.cli import app
 from protean.cli.result import EXIT_FAILURE, EXIT_USAGE
 from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
@@ -79,6 +81,27 @@ class SecondFailingHandler(BaseEventHandler):
         raise RuntimeError("boom")
 
 
+class Order(BaseAggregate):
+    total = String()
+
+
+class PlaceOrder(BaseCommand):
+    total = String()
+
+
+class ToggleCommandHandler(BaseCommandHandler):
+    """Fails while ``should_fail`` is set; counts every invocation."""
+
+    should_fail = False
+    calls = 0
+
+    @handle(PlaceOrder)
+    def place(self, command):
+        type(self).calls += 1
+        if type(self).should_fail:
+            raise RuntimeError("boom")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
@@ -87,6 +110,8 @@ class SecondFailingHandler(BaseEventHandler):
 @pytest.fixture(autouse=True)
 def _reset_toggle():
     ToggleEventHandler.should_fail = True
+    ToggleCommandHandler.should_fail = False
+    ToggleCommandHandler.calls = 0
 
 
 @pytest.fixture(autouse=True)
@@ -98,34 +123,66 @@ def register(test_domain):
     test_domain.init(traverse=False)
 
 
-def _create_message(
-    global_position: int = 1,
-    stream_position: int = 0,
-    stream_name: str | None = None,
+def _stamp(
+    message: Message,
+    *,
+    global_position: int,
+    stream_position: int,
+    stream_name: str,
     idempotency_key: str | None = None,
     deadline: datetime | None = None,
 ) -> Message:
-    user_id = str(uuid4())
-    stream_name = stream_name or f"test-{user_id}"
-    user = User(id=user_id, email="test@example.com", name="Test")
-    user.raise_(Registered(id=user_id, email="test@example.com", name="Test"))
-
-    message = Message.from_domain_object(user._events[-1])
+    """Place ``message`` at a stream location, with optional command headers."""
     metadata_dict = message.metadata.to_dict()
     metadata_dict["event_store"] = EventStoreMeta(
         position=stream_position, global_position=global_position
     )
     metadata_dict["domain"]["asynchronous"] = True
-    if metadata_dict.get("headers"):
-        metadata_dict["headers"]["stream"] = stream_name
-    else:
-        metadata_dict["headers"] = {"stream": stream_name}
+    headers = metadata_dict.get("headers") or {}
+    headers["stream"] = stream_name
     if idempotency_key is not None:
-        metadata_dict["headers"]["idempotency_key"] = idempotency_key
+        headers["idempotency_key"] = idempotency_key
     if deadline is not None:
-        metadata_dict["headers"]["deadline"] = deadline
+        headers["deadline"] = deadline
+    metadata_dict["headers"] = headers
     message.metadata = Metadata(**metadata_dict)
     return message
+
+
+def _create_message(
+    global_position: int = 1,
+    stream_position: int = 0,
+    stream_name: str | None = None,
+) -> Message:
+    user_id = str(uuid4())
+    user = User(id=user_id, email="test@example.com", name="Test")
+    user.raise_(Registered(id=user_id, email="test@example.com", name="Test"))
+
+    return _stamp(
+        Message.from_domain_object(user._events[-1]),
+        global_position=global_position,
+        stream_position=stream_position,
+        stream_name=stream_name or f"test-{user_id}",
+    )
+
+
+def _create_command_message(
+    global_position: int,
+    stream_name: str,
+    *,
+    stream_position: int = 0,
+    idempotency_key: str | None = None,
+    deadline: datetime | None = None,
+) -> Message:
+    """Build a stored ``PlaceOrder`` command message, ready to be re-read."""
+    return _stamp(
+        Message.from_domain_object(PlaceOrder(total="10")),
+        global_position=global_position,
+        stream_position=stream_position,
+        stream_name=stream_name,
+        idempotency_key=idempotency_key,
+        deadline=deadline,
+    )
 
 
 def _write_event_to_store(test_domain, msg: Message) -> None:
@@ -183,25 +240,15 @@ def _exhaust_command_position(
 ) -> None:
     """Register a command handler and write an exhausted command position.
 
-    The failing command event is re-readable via the record's stream location and
-    carries ``idempotency_key`` (or none) and an optional ``deadline``, so the
-    replay confirmation and the expired-command guard can be exercised.
+    The stored message is a real ``PlaceOrder`` command, so a replay routes it
+    through the engine's ``CommandDispatcher`` to ``ToggleCommandHandler``. It is
+    re-readable via the record's stream location and carries ``idempotency_key``
+    (or none) and an optional ``deadline``, so the replay confirmation and the
+    expired-command guard can be exercised too.
     """
-
-    @test_domain.aggregate
-    class Order:
-        total: str
-
-    @test_domain.command(part_of=Order)
-    class PlaceOrder:
-        total: str
-
-    @test_domain.command_handler(part_of=Order)
-    class OrderCommandHandler:
-        @handle(PlaceOrder)
-        def place(self, command):
-            pass
-
+    test_domain.register(Order)
+    test_domain.register(PlaceOrder, part_of=Order)
+    test_domain.register(ToggleCommandHandler, part_of=Order)
     test_domain.init(traverse=False)
 
     info, stream = next(
@@ -210,10 +257,9 @@ def _exhaust_command_position(
     category = info.stream_category
     cmd_stream = f"{category}-{uuid4()}"
 
-    msg = _create_message(
-        global_position=position,
-        stream_position=0,
-        stream_name=cmd_stream,
+    msg = _create_command_message(
+        position,
+        cmd_stream,
         idempotency_key=idempotency_key,
         deadline=deadline,
     )
@@ -223,7 +269,7 @@ def _exhaust_command_position(
         FailedPositionStatus.EXHAUSTED.value,
         {
             "position": position,
-            "message_type": "PlaceOrder",
+            "message_type": PlaceOrder.__type__,
             "message_id": str(uuid4()),
             "retry_count": 3,
             "stream_name": cmd_stream,
@@ -359,6 +405,38 @@ class TestReplay:
 
         assert "a command with no idempotency key" in result.output
         assert "Aborted" in result.output
+
+    def test_replay_dispatches_a_command_through_its_handler(self, test_domain):
+        # A command stream's subscription handler is a CommandDispatcher, so the
+        # CLI has to route the stored PlaceOrder through it to reach the handler.
+        _exhaust_command_position(test_domain, 11)
+
+        result = _invoke(
+            ["eventstore", "dlq", "replay", "11", "--domain", "x.py", "--yes"],
+            domain=test_domain,
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "resolved" in result.output
+        assert ToggleCommandHandler.calls == 1
+
+        listing = _invoke(
+            ["eventstore", "dlq", "list", "--domain", "x.py"], domain=test_domain
+        )
+        assert "No exhausted positions." in listing.output
+
+    def test_replay_reopens_a_command_whose_handler_fails_again(self, test_domain):
+        _exhaust_command_position(test_domain, 12)
+        ToggleCommandHandler.should_fail = True  # fault still unfixed
+
+        result = _invoke(
+            ["eventstore", "dlq", "replay", "12", "--domain", "x.py", "--yes"],
+            domain=test_domain,
+        )
+
+        assert result.exit_code == EXIT_FAILURE
+        assert "reopened" in result.output
+        assert ToggleCommandHandler.calls == 1
 
     def test_replay_refuses_a_position_cleared_while_the_prompt_was_open(
         self, test_domain
