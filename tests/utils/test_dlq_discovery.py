@@ -157,6 +157,10 @@ class TestDiscoverSubscriptions:
         assert proj_info is not None
         assert proj_info.dlq_stream.endswith(":dlq")
         assert "product" in proj_info.stream_category
+        # The kind is carried on the info so CLI output can name the target
+        # correctly; a projector is not a command handler.
+        assert proj_info.is_projector is True
+        assert proj_info.is_command_handler is False
 
     def test_discover_subscriptions_with_priority_lanes(self):
         domain = Domain(__file__, "TestLanes")

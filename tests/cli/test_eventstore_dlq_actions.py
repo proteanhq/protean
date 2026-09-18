@@ -25,6 +25,8 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import (
@@ -79,6 +81,19 @@ class SecondFailingHandler(BaseEventHandler):
 
     @handle(Registered)
     def handle_registered(self, event):
+        raise RuntimeError("boom")
+
+
+class UserListing(BaseProjection):
+    id = Identifier(identifier=True)
+    email = String()
+
+
+class FailingProjector(BaseProjector):
+    """Always fails; used to exhaust a position owned by a projector."""
+
+    @handle(Registered)
+    def project(self, event):
         raise RuntimeError("boom")
 
 
@@ -289,6 +304,19 @@ def _exhaust_command_position(
     )
 
 
+def _exhaust_projector_position(test_domain, position: int) -> None:
+    """Register a projector and drive one position to exhaustion under it.
+
+    Projectors are event-store subscriptions too, so the DLQ commands can land on
+    one. Registering it only here keeps the other tests' owner lookups unchanged.
+    """
+    test_domain.register(UserListing)
+    test_domain.register(FailingProjector, projector_for=UserListing, aggregates=[User])
+    test_domain.init(traverse=False)
+
+    _drive_to_exhaustion(test_domain, FailingProjector, global_position=position)
+
+
 def _toggle_failed_stream(test_domain) -> tuple:
     """Return (subscription info, failed stream) for ``ToggleEventHandler``."""
     return next(
@@ -405,6 +433,23 @@ class TestReplay:
         )
 
         assert "a command with no idempotency key" in result.output
+        assert "Aborted" in result.output
+
+    def test_replay_names_a_projector_target(self, test_domain):
+        # A projector owns its failed stream directly, and replaying its position
+        # re-applies the projection writes, so the prompt must not call it an
+        # event handler.
+        _exhaust_projector_position(test_domain, 5)
+
+        result = _invoke(
+            ["eventstore", "dlq", "replay", "5", "--domain", "x.py"],
+            domain=test_domain,
+            input="n\n",
+        )
+
+        assert "targets a projector" in result.output
+        assert "projection writes a second time" in result.output
+        assert "event handler" not in result.output
         assert "Aborted" in result.output
 
     def test_replay_dispatches_a_command_through_its_handler(self, test_domain):

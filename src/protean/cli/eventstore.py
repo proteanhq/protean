@@ -575,9 +575,10 @@ def _double_apply_line(info: SubscriptionInfo, event: Message, position: int) ->
     Every replay re-runs the handler and can apply its side effects again: replay
     dispatches out-of-band and never consults the idempotency store, and an
     exhausted command never recorded a success to deduplicate against anyway. The
-    line names the target so the operator knows what they are re-running, and
-    calls out an idempotency key where one is present, since it is the only lever
-    the operator has to make the re-run idempotent.
+    line names the target (a command, an event handler, or a projector) so the
+    operator knows what they are re-running, and calls out an idempotency key
+    where one is present, since it is the only lever the operator has to make the
+    re-run idempotent.
     """
     headers = event.metadata.headers if event.metadata else None
     idempotency_key = headers.idempotency_key if headers else None
@@ -592,6 +593,11 @@ def _double_apply_line(info: SubscriptionInfo, event: Message, position: int) ->
         return (
             f"Position {position} targets a command with no idempotency key. Replay "
             f"re-runs its handler and can apply side effects a second time."
+        )
+    if info.is_projector:
+        return (
+            f"Position {position} targets a projector. Replay re-runs it and can "
+            f"apply its projection writes a second time."
         )
     return (
         f"Position {position} targets an event handler. Replay re-runs its handler "
@@ -629,8 +635,8 @@ def replay(
     subscription read cursor is never moved.
 
     Replay re-runs handler side effects, so it confirms first, naming the target
-    (an event handler, or a command with or without an idempotency key). Pass
-    ``--yes`` to skip the prompt. The position's latest status is re-read right
+    (an event handler, a projector, or a command with or without an idempotency
+    key). Pass ``--yes`` to skip the prompt. The position's latest status is re-read right
     before the dispatch, so a position another replay or purge cleared while the
     prompt was open is refused.
     """

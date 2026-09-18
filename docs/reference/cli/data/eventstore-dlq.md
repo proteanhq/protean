@@ -159,9 +159,11 @@ protean eventstore dlq replay 42 --domain=my_domain --yes
 Replay re-runs handler side effects, so it confirms first. Every replay can
 apply its side effects again: it dispatches out-of-band and never consults the
 idempotency store, and an exhausted command never recorded a success to
-deduplicate against. The prompt names the target (an event handler, or a command
-with or without an idempotency key) so the operator knows what is being re-run;
-an idempotency key helps only when the handler itself uses it to stay idempotent.
+deduplicate against. The prompt names the target (an event handler, a projector,
+or a command with or without an idempotency key) so the operator knows what is
+being re-run; replaying a projector position re-applies its projection writes,
+and an idempotency key helps only when the handler itself uses it to stay
+idempotent.
 A command whose deadline has passed is refused, because the engine would skip an
 expired command; purge it instead. A handler-level idempotency declaration that
 would let replay refuse a non-idempotent target does not exist yet.

@@ -27,6 +27,7 @@ class SubscriptionInfo:
     backfill_dlq_stream: str | None
     is_broker: bool = False
     is_command_handler: bool = False
+    is_projector: bool = False
 
     @property
     def subscription_fqn(self) -> str:
@@ -130,7 +131,11 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     infos: list[SubscriptionInfo] = []
 
     def _add(
-        handler_cls: type, stream_cat: str, *, is_command_handler: bool = False
+        handler_cls: type,
+        stream_cat: str,
+        *,
+        is_command_handler: bool = False,
+        is_projector: bool = False,
     ) -> None:
         key = f"{fqn(handler_cls)}:{stream_cat}"
         if key in seen_streams:
@@ -144,6 +149,7 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
             dlq_stream=f"{stream_cat}:dlq",
             backfill_dlq_stream=backfill_dlq,
             is_command_handler=is_command_handler,
+            is_projector=is_projector,
         )
         seen_streams[key] = info
         infos.append(info)
@@ -176,7 +182,7 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
         )
         if stream_categories:
             for stream_cat in stream_categories:
-                _add(handler_cls, stream_cat)
+                _add(handler_cls, stream_cat, is_projector=True)
 
     # Subscribers (broker subscriptions with external streams)
     for record in domain.registry._elements.get(
