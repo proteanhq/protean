@@ -1,6 +1,8 @@
 """Tests for operator replay/purge of an exhausted event-store position.
 
-Covers ``EventStoreSubscription.replay_exhausted`` and ``purge_exhausted``:
+Covers ``EventStoreSubscription.replay_exhausted`` and the purge path behind
+``protean eventstore dlq purge``, which appends a ``Purged`` record through
+``write_recovery_status_record``:
 
 - Replay re-invokes the handler exactly once and, on success, resolves the
   position so it stops being listed as exhausted.
