@@ -236,6 +236,35 @@ class TestWorkspace:
 
         assert workspace.project_hash() == survivor.project_hash()
 
+    def test_root_is_resolved_in_place(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A relative root is resolved at construction, so path checks and the
+        verify subprocess stay anchored to the same directory even after the
+        process changes its working directory."""
+        (tmp_path / "ws").mkdir()
+        (tmp_path / "elsewhere").mkdir()
+        monkeypatch.chdir(tmp_path)
+        workspace = Workspace(Path("ws"))
+        monkeypatch.chdir(tmp_path / "elsewhere")
+
+        assert workspace.root == (tmp_path / "ws").resolve()
+        workspace.write("domain.py", "x = 1\n")
+        assert (tmp_path / "ws" / "domain.py").is_file()
+
+    def test_the_written_set_takes_no_constructor_argument(
+        self, tmp_path: Path
+    ) -> None:
+        """Only write() tracks a file, so the hash cannot be seeded with paths
+        the workspace never wrote."""
+        (tmp_path / "preexisting.py").write_text("x = 1\n", encoding="utf-8")
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        with pytest.raises(TypeError):
+            Workspace(tmp_path, {"preexisting.py"})  # type: ignore[call-arg]
+        assert Workspace(tmp_path).project_hash() == Workspace(empty_dir).project_hash()
+
 
 class TestTools:
     def test_write_then_read_via_tool_calls(self, tmp_path: Path) -> None:
@@ -315,6 +344,28 @@ class TestTools:
         workspace.write("domain.py", "")
         result = execute_tool_call(workspace, ToolCall("list_dir", {}))
         assert result == {"ok": True, "entries": ["domain.py"]}
+
+    def test_run_verify_dispatch_uses_the_resolved_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The verify subprocess runs against the workspace's resolved root, so
+        a relative root plus a later chdir cannot verify another directory."""
+        (tmp_path / "ws").mkdir()
+        (tmp_path / "elsewhere").mkdir()
+        monkeypatch.chdir(tmp_path)
+        workspace = Workspace(Path("ws"))
+        monkeypatch.chdir(tmp_path / "elsewhere")
+
+        seen: list[Path] = []
+
+        def _fake_run_verify(root: Path | str) -> dict[str, object]:
+            seen.append(Path(root))
+            return {"ok": True, "verdict": "pass"}
+
+        monkeypatch.setattr(tools_module, "run_verify", _fake_run_verify)
+        execute_tool_call(workspace, ToolCall("run_verify", {}))
+
+        assert seen == [(tmp_path / "ws").resolve()]
 
     def test_unknown_tool_is_feedback(self, tmp_path: Path) -> None:
         workspace = Workspace(tmp_path)

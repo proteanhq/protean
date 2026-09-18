@@ -31,18 +31,24 @@ class WorkspaceError(Exception):
 class Workspace:
     """A sandbox directory plus the set of files written into it.
 
-    *root* must be an existing directory. It is resolved once at construction so
-    later path checks compare against a stable, symlink-free base.
+    *root* must be an existing directory. It is resolved in place at
+    construction, so ``root`` is the one canonical, symlink-free base: path
+    checks and the verify subprocess both use it, and a later change of the
+    current directory cannot point them at different places.
+
+    ``_written`` is internal bookkeeping and takes no constructor argument. Only
+    :meth:`write` adds to it, so the project hash covers exactly the files
+    written through the workspace.
     """
 
     root: Path
-    _root: Path = field(init=False, repr=False)
-    _written: set[str] = field(default_factory=set, repr=False)
+    _written: set[str] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._root = Path(self.root).resolve()
-        if not self._root.is_dir():
+        resolved = Path(self.root).resolve()
+        if not resolved.is_dir():
             raise WorkspaceError(f"workspace root is not a directory: {self.root}")
+        self.root = resolved
 
     def _resolve(self, rel: str, *, allow_root: bool = False) -> Path:
         """Resolve a workspace-relative path, rejecting anything that escapes.
@@ -63,17 +69,17 @@ class Workspace:
         candidate = Path(rel.strip())
         if candidate.is_absolute():
             raise WorkspaceError(f"path must be relative to the workspace: {rel!r}")
-        target = (self._root / candidate).resolve()
-        if target == self._root:
+        target = (self.root / candidate).resolve()
+        if target == self.root:
             if allow_root:
                 return target
             raise WorkspaceError(f"path resolves to the workspace root: {rel!r}")
-        if self._root not in target.parents:
+        if self.root not in target.parents:
             raise WorkspaceError(f"path escapes the workspace: {rel!r}")
         return target
 
     def _relpath(self, target: Path) -> str:
-        return target.relative_to(self._root).as_posix()
+        return target.relative_to(self.root).as_posix()
 
     def write(self, rel: str, content: str) -> str:
         """Write *content* to *rel* (creating parent directories) and track it.
@@ -135,7 +141,7 @@ class Workspace:
         """
         lines: list[str] = []
         for relpath in sorted(self._written):
-            path = self._root / relpath
+            path = self.root / relpath
             if not path.is_file():
                 continue
             # Only hash a file whose real location is still inside the workspace.
@@ -143,7 +149,7 @@ class Workspace:
             # component) that resolves outside was swapped out of band (a
             # generated test could point it at a host file); skip it rather than
             # hash data from outside the workspace.
-            if not path.resolve().is_relative_to(self._root):
+            if not path.resolve().is_relative_to(self.root):
                 continue
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             lines.append(f"{relpath}\n{digest}")
