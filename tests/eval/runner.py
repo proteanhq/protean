@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 from protean.dx.pack import (
     PACK_VERSION,
@@ -217,6 +218,24 @@ def replay(transcript: Transcript, *, workspace: Workspace) -> RunResult:
     )
 
 
+# ``run_verify``'s free-form diagnostic text is not a replay invariant: an init
+# failure quotes a traceback naming files outside the workspace (the installed
+# framework, the interpreter), and those paths differ between the machine that
+# recorded the transcript and the one replaying it. The structured fields carry
+# the staleness signal, so the comparison drops the prose. The text stays in the
+# transcript; it is what the agent saw.
+_VOLATILE_VERIFY_KEYS = frozenset({"errors", "error"})
+
+
+def _comparable(call_name: str, result: dict[str, Any]) -> dict[str, Any]:
+    """The part of a tool result that must match on replay."""
+    if call_name != "run_verify":
+        return result
+    return {
+        key: value for key, value in result.items() if key not in _VOLATILE_VERIFY_KEYS
+    }
+
+
 def _result_divergences(
     recorded: tuple[Turn, ...], recomputed: tuple[Turn, ...]
 ) -> tuple[str, ...]:
@@ -225,10 +244,22 @@ def _result_divergences(
 
     A recorded turn carrying no results at all is skipped: there is nothing to
     compare, which is what a transcript recorded before results were captured
-    looks like. The turns are zipped without ``strict``: a recorded final answer
-    mid-transcript ends the replay early, leaving fewer recomputed turns.
+    looks like.
+
+    A replay that does not cover every recorded turn is itself a divergence, and
+    it is reported before the turns are compared. ``run`` stops at a turn with no
+    tool calls, so a transcript carrying turns after a final answer (hand-edited,
+    or written by an older recorder) leaves the tail unreplayed. Those turns can
+    be read-only calls that change no file, in which case the project hash and
+    the last replayed verify both still pass and nothing else would flag it. The
+    common prefix is still compared, so the mismatch is reported alongside any
+    difference within it.
     """
     lines: list[str] = []
+    if len(recorded) != len(recomputed):
+        lines.append(
+            f"replayed {len(recomputed)} turns of the {len(recorded)} recorded"
+        )
     for index, (before, after) in enumerate(zip(recorded, recomputed, strict=False)):
         if not before.tool_results:
             continue
@@ -240,7 +271,8 @@ def _result_divergences(
             continue
         # after came from run(), so its results are one per tool call.
         for position, call in enumerate(after.tool_calls):
-            was, now = before.tool_results[position], after.tool_results[position]
+            was = _comparable(call.name, before.tool_results[position])
+            now = _comparable(call.name, after.tool_results[position])
             if was != now:
                 lines.append(
                     f"turn {index} call {position} ({call.name}): recorded {was!r}, "

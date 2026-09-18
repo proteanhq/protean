@@ -42,7 +42,14 @@ the tool, so the project a transcript lands is a pure function of the assistant
 turns. The recorded results are the second staleness signal: replay compares
 them against the recomputed ones. Either divergence means re-record, the project
 hash or a tool result. The hash covers only the files the agent wrote, so on its
-own it would miss a verify verdict or a diagnostic code that changed.
+own it would miss a verify verdict or a diagnostic code that changed. A replay
+that stops short of the recorded turns is a divergence too, since the tail then
+goes unchecked.
+
+`run_verify`'s `errors` text is left out of that comparison. An init failure
+puts a traceback in it, naming files outside the workspace whose paths differ
+from machine to machine, so a replay cannot reproduce it. The verdict, the codes,
+the counts and the exit code are, and they are what the comparison checks.
 
 ## The agent's tools
 

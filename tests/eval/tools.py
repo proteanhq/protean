@@ -193,7 +193,9 @@ def run_verify(root: Path | str) -> VerifyResult:
     uses the default discovery; a single ``src/<pkg>/domain.py`` is addressed by
     its path, which ``protean verify`` resolves to the domain the module
     defines. Output with no JSON envelope, or a run that exceeds the timeout, is
-    reported as a failed verdict.
+    reported as a failed verdict. The workspace's own path is rewritten to
+    ``<workspace>`` in the free-form text, so the result does not depend on
+    which directory the run happened in.
 
     ``verify`` executes the generated project (it imports the domain and runs
     pytest), so generated code can print to stdout. The envelope is decoded from
@@ -242,7 +244,37 @@ def run_verify(root: Path | str) -> VerifyResult:
             "exit_code": -1,
             "error": f"verify timed out after {_VERIFY_TIMEOUT_SECONDS}s",
         }
-    return _summarize_verify(stdout, process.returncode, stderr)
+    return _scrub_workspace_paths(
+        _summarize_verify(stdout, process.returncode, stderr), root_path
+    )
+
+
+def _scrub_workspace_paths(result: VerifyResult, root: Path) -> VerifyResult:
+    """Rewrite the workspace's absolute path to ``<workspace>`` in verify's
+    free-form text.
+
+    Verify quotes the paths it resolved: an init ``ImportError`` traceback names
+    the domain module by its full path. That path is never the same twice
+    (``record`` verifies in a temporary directory, a replay in another one), so
+    leaving it in makes the recorded and the recomputed result differ for the
+    same turns, and it commits the recording machine's directory layout into the
+    fixture. The agent addresses files by their workspace-relative path anyway,
+    so the placeholder costs it nothing.
+    """
+    paths = sorted({str(root), str(root.resolve())}, key=len, reverse=True)
+    # A relative root (".") would match text everywhere; only an absolute path
+    # identifies the workspace.
+    paths = [path for path in paths if Path(path).is_absolute()]
+
+    def scrub(text: str) -> str:
+        for path in paths:
+            text = text.replace(path, "<workspace>")
+        return text
+
+    result["errors"] = [scrub(error) for error in result["errors"]]
+    if "error" in result:
+        result["error"] = scrub(result["error"])
+    return result
 
 
 def _terminate_tree(process: subprocess.Popen) -> None:

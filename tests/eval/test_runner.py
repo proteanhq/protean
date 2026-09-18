@@ -451,6 +451,24 @@ class TestRunVerify:
         result = run_verify(workspace.root)
         assert result["verdict"] == "pass"
 
+    def test_an_init_error_names_the_workspace_by_placeholder(
+        self, tmp_path: Path
+    ) -> None:
+        """An init ``ImportError`` traceback quotes the domain module's full
+        path. Recording verifies in a temporary directory and a replay verifies
+        in another, so the absolute path has to be scrubbed or the same turns
+        would report a divergence."""
+        workspace = Workspace(tmp_path)
+        workspace.write("domain.py", "import nosuchmodule_for_the_eval_harness\n")
+
+        result = run_verify(workspace.root)
+
+        assert result["verdict"] == "fail"
+        joined = "\n".join(result["errors"])
+        assert "nosuchmodule_for_the_eval_harness" in joined
+        assert str(workspace.root) not in joined
+        assert "<workspace>/domain.py" in joined
+
     def test_run_verify_accepts_a_path_string(self, tmp_path: Path) -> None:
         (tmp_path / "domain.py").write_text(GREEN_DOMAIN, encoding="utf-8")
         result = run_verify(str(tmp_path))
@@ -932,6 +950,114 @@ class TestRecordAndReplay:
         assert result.result_divergences == (
             "turn 0: recorded 2 tool results, recomputed 1",
         )
+
+    def test_replay_flags_recorded_turns_it_never_replayed(
+        self, tmp_path: Path
+    ) -> None:
+        """A transcript carrying turns after a final answer never replays its
+        tail: ``run`` stops at the final answer. When the tail is read-only, the
+        project hash and the last replayed verify both still pass, so the turn
+        count is the only thing left to catch it."""
+        turns = self._write_task(tmp_path)
+        transcript = record("demo", ReplayDriver(turns), root=tmp_path)
+        stale = dataclasses.replace(
+            transcript,
+            turns=(
+                *transcript.turns,
+                Turn(
+                    "a read the replay never reaches",
+                    (ToolCall("read_file", {"path": "domain.py"}),),
+                    ({"ok": True, "content": "x = 1\n"},),
+                ),
+            ),
+        )
+
+        (tmp_path / "replay").mkdir()
+        result = replay(stale, workspace=Workspace(tmp_path / "replay"))
+
+        assert result.project_hash == transcript.project_hash
+        assert result.result_divergences == ("replayed 2 turns of the 3 recorded",)
+
+    def test_replay_ignores_verify_error_text_it_cannot_reproduce(
+        self, tmp_path: Path
+    ) -> None:
+        """A verify result's free-form text quotes paths from the machine that
+        recorded it, so it is not a replay invariant; the structured fields
+        are."""
+        task_dir = tmp_path / "tasks" / "demo"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.md").write_text("build a thing\n", encoding="utf-8")
+        turns = (
+            Turn(
+                "write and verify",
+                (
+                    ToolCall(
+                        "write_file", {"path": "domain.py", "content": GREEN_DOMAIN}
+                    ),
+                    ToolCall("run_verify", {}),
+                ),
+            ),
+        )
+        transcript = record("demo", ReplayDriver(turns), root=tmp_path)
+        recorded_verify = dict(transcript.turns[0].tool_results[1])
+        assert recorded_verify["verdict"] == "pass"
+        elsewhere = dataclasses.replace(
+            transcript,
+            turns=(
+                dataclasses.replace(
+                    transcript.turns[0],
+                    tool_results=(
+                        transcript.turns[0].tool_results[0],
+                        {**recorded_verify, "errors": ["a traceback from elsewhere"]},
+                    ),
+                ),
+            ),
+        )
+
+        (tmp_path / "replay").mkdir()
+        result = replay(elsewhere, workspace=Workspace(tmp_path / "replay"))
+
+        assert result.result_divergences == ()
+
+    def test_replay_still_flags_a_changed_verify_verdict(self, tmp_path: Path) -> None:
+        """Dropping the free-form text from the comparison keeps the verdict and
+        the diagnostic codes in it."""
+        task_dir = tmp_path / "tasks" / "demo"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.md").write_text("build a thing\n", encoding="utf-8")
+        turns = (
+            Turn(
+                "write and verify",
+                (
+                    ToolCall(
+                        "write_file", {"path": "domain.py", "content": GREEN_DOMAIN}
+                    ),
+                    ToolCall("run_verify", {}),
+                ),
+            ),
+        )
+        transcript = record("demo", ReplayDriver(turns), root=tmp_path)
+        stale = dataclasses.replace(
+            transcript,
+            turns=(
+                dataclasses.replace(
+                    transcript.turns[0],
+                    tool_results=(
+                        transcript.turns[0].tool_results[0],
+                        {
+                            **transcript.turns[0].tool_results[1],
+                            "codes": ["SOME_OLD_CODE"],
+                        },
+                    ),
+                ),
+            ),
+        )
+
+        (tmp_path / "replay").mkdir()
+        result = replay(stale, workspace=Workspace(tmp_path / "replay"))
+
+        assert len(result.result_divergences) == 1
+        assert "SOME_OLD_CODE" in result.result_divergences[0]
 
     def test_replay_without_recorded_results_reports_no_divergence(
         self, tmp_path: Path
