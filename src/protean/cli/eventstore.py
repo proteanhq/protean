@@ -237,11 +237,13 @@ def _read_failing_event(
     origin category stream (on the record's ``domain.origin_stream``) read by
     the global ``position``.
 
-    Store reads are inclusive (``>= position``), so a read whose own message is
-    gone returns the next one instead. The message that comes back is checked
-    against the position asked for, and a mismatch counts as unreadable:
-    ``inspect`` would otherwise print an unrelated event, and ``replay`` would
-    dispatch it and mark the requested position resolved.
+    Either read is checked against the record's global ``position``, which names
+    the message store-wide. Checking the per-stream ordinal instead would let two
+    different messages pass: store reads are inclusive (``>= position``), so a
+    read whose own message is gone returns the next one, and a restore that drops
+    a stream tail lets a later append reuse the dropped ordinal. A mismatch
+    counts as unreadable: ``inspect`` would otherwise print an unrelated event,
+    and ``replay`` would dispatch it and mark the requested position resolved.
     """
     stream_name = record.data.get("stream_name")
     stream_position = record.data.get("stream_position")
@@ -249,7 +251,6 @@ def _read_failing_event(
     if stream_name and stream_position is not None:
         # A specific stream is read by its own per-stream position.
         messages = store.read(stream_name, position=stream_position, no_of_messages=1)
-        expected, by_global_position = stream_position, False
     else:
         domain_meta = record.metadata.domain if record.metadata else None
         origin_stream = domain_meta.origin_stream if domain_meta else None
@@ -257,15 +258,13 @@ def _read_failing_event(
             return None
         # A category read spans streams, so it is keyed by global position.
         messages = store.read(origin_stream, position=position, no_of_messages=1)
-        expected, by_global_position = position, True
 
     if not messages:
         return None
     es_meta = messages[0].metadata.event_store if messages[0].metadata else None
     if es_meta is None:  # pragma: no cover (a stored row always carries positions)
         return None
-    actual = es_meta.global_position if by_global_position else es_meta.position
-    return messages[0] if actual == expected else None
+    return messages[0] if es_meta.global_position == position else None
 
 
 def _exhausted_owners(

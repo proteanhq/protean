@@ -233,9 +233,11 @@ position and retries it on each recovery pass. After `max_retries` retries it
 writes an `Exhausted` record and stops retrying. The record carries the failing
 event's `stream_name` and `stream_position` so `inspect` can locate the event;
 records written before this was added fall back to the origin stream, read by
-global position. Either read is checked against the position it asked for. Store
-reads are inclusive, so if the message a record names is gone, the read comes
-back with the next one in the stream. `inspect` and `replay` treat that as an
+global position. Either read is checked against the record's global position,
+which names the message store-wide. Store reads are inclusive, so if the message
+a record names is gone, the read comes back with the next one in the stream, and
+a restore that dropped a stream's tail can leave a later append sitting at the
+per-stream ordinal the record names. `inspect` and `replay` treat either as an
 event they could not re-read.
 
 For the full error-handling guide, see

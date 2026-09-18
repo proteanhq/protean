@@ -175,64 +175,76 @@ def _stamp(
     return message
 
 
-def _create_message(
-    global_position: int = 1,
-    stream_position: int = 0,
-    stream_name: str | None = None,
-) -> Message:
+def _create_message(stream_name: str | None = None) -> Message:
+    """Build an event message to write to the store.
+
+    The stamped positions are placeholders — the store assigns the real ones on
+    write.
+    """
     user_id = str(uuid4())
     user = User(id=user_id, email="test@example.com", name="Test")
     user.raise_(Registered(id=user_id, email="test@example.com", name="Test"))
 
     return _stamp(
         Message.from_domain_object(user._events[-1]),
-        global_position=global_position,
-        stream_position=stream_position,
+        global_position=0,
+        stream_position=0,
         stream_name=stream_name or f"test-{user_id}",
     )
 
 
 def _create_command_message(
-    global_position: int,
     stream_name: str,
     *,
-    stream_position: int = 0,
     idempotency_key: str | None = None,
     deadline: datetime | None = None,
     command_cls: type[BaseCommand] = PlaceOrder,
 ) -> Message:
-    """Build a stored command message, ready to be re-read.
+    """Build a command message to write to the store.
 
     ``command_cls`` defaults to ``PlaceOrder``, the command the dispatcher routes
     to ``ToggleCommandHandler``; pass ``CancelOrder`` for one it cannot route.
+    The stamped positions are placeholders — the store assigns the real ones on
+    write.
     """
     return _stamp(
         Message.from_domain_object(command_cls(total="10")),
-        global_position=global_position,
-        stream_position=stream_position,
+        global_position=0,
+        stream_position=0,
         stream_name=stream_name,
         idempotency_key=idempotency_key,
         deadline=deadline,
     )
 
 
-def _write_event_to_store(test_domain, msg: Message) -> None:
-    test_domain.event_store.store._write(
-        msg.metadata.headers.stream,
-        msg.metadata.headers.type,
-        msg.data,
-        metadata=msg.metadata.to_dict(),
+def _write_event_to_store(test_domain, msg: Message) -> Message:
+    """Write ``msg`` to the store and return it as stored.
+
+    The store assigns the positions, so the stored copy is what the rest of a
+    test has to work from: a record built off the in-memory message would name a
+    global position no message sits at.
+    """
+    store = test_domain.event_store.store
+    stream = msg.metadata.headers.stream
+    store._write(
+        stream, msg.metadata.headers.type, msg.data, metadata=msg.metadata.to_dict()
     )
+    return store.read(stream, position=0, no_of_messages=1)[0]
 
 
 def _drive_to_exhaustion(
     test_domain,
     handler_cls,
     *,
-    global_position: int = 1,
+    message: Message | None = None,
     max_retries: int = 2,
 ) -> Message:
-    """Record a failed position for ``handler_cls`` and run recovery until it exhausts."""
+    """Record a failed position for ``handler_cls`` and run recovery until it exhausts.
+
+    Writes and drives a fresh event unless ``message`` names one already stored.
+    Pass a returned message back in to exhaust the same event under a second
+    handler, the way two handlers on one stream share a global position.
+    """
     category = User.meta_.stream_category
     engine = Engine(domain=test_domain, test_mode=False)
     sub = EventStoreSubscription(
@@ -247,11 +259,11 @@ def _drive_to_exhaustion(
         retry_delay_seconds=0,
     )
 
-    msg = _create_message(global_position=global_position, stream_position=0)
-    _write_event_to_store(test_domain, msg)
+    if message is None:
+        message = _write_event_to_store(test_domain, _create_message())
 
     async def drive() -> None:
-        await sub.process_batch([msg])
+        await sub.process_batch([message])
         for _ in range(max_retries + 1):
             await sub.run_recovery_pass()
 
@@ -259,17 +271,16 @@ def _drive_to_exhaustion(
         asyncio.run(drive())
     finally:
         engine.loop.close()
-    return msg
+    return message
 
 
 def _exhaust_command_position(
     test_domain,
-    position: int,
     *,
     idempotency_key: str | None = None,
     deadline: datetime | None = None,
     command_cls: type[BaseCommand] = PlaceOrder,
-) -> None:
+) -> int:
     """Register a command handler and write an exhausted command position.
 
     The stored message is a real ``PlaceOrder`` command, so a replay routes it
@@ -280,6 +291,9 @@ def _exhaust_command_position(
 
     Pass ``command_cls=CancelOrder`` to exhaust a command the dispatcher has no
     handler for; ``PlaceOrder``'s handler still keeps the dispatcher alive.
+
+    Returns the global position the store placed the command at, which is the
+    position the ``Exhausted`` record names.
     """
     test_domain.register(Order)
     test_domain.register(PlaceOrder, part_of=Order)
@@ -293,24 +307,26 @@ def _exhaust_command_position(
     category = info.stream_category
     cmd_stream = f"{category}-{uuid4()}"
 
-    msg = _create_command_message(
-        position,
-        cmd_stream,
-        idempotency_key=idempotency_key,
-        deadline=deadline,
-        command_cls=command_cls,
+    stored = _write_event_to_store(
+        test_domain,
+        _create_command_message(
+            cmd_stream,
+            idempotency_key=idempotency_key,
+            deadline=deadline,
+            command_cls=command_cls,
+        ),
     )
-    _write_event_to_store(test_domain, msg)
+    position = stored.metadata.event_store.global_position
     test_domain.event_store.store._write(
         stream,
         FailedPositionStatus.EXHAUSTED.value,
         {
             "position": position,
-            "message_type": msg.metadata.headers.type,
+            "message_type": stored.metadata.headers.type,
             "message_id": str(uuid4()),
             "retry_count": 3,
             "stream_name": cmd_stream,
-            "stream_position": 0,
+            "stream_position": stored.metadata.event_store.position,
         },
         metadata={
             "headers": {
@@ -323,19 +339,22 @@ def _exhaust_command_position(
             },
         },
     )
+    return position
 
 
-def _exhaust_projector_position(test_domain, position: int) -> None:
+def _exhaust_projector_position(test_domain) -> int:
     """Register a projector and drive one position to exhaustion under it.
 
     Projectors are event-store subscriptions too, so the DLQ commands can land on
     one. Registering it only here keeps the other tests' owner lookups unchanged.
+    Returns the exhausted global position.
     """
     test_domain.register(UserListing)
     test_domain.register(FailingProjector, projector_for=UserListing, aggregates=[User])
     test_domain.init(traverse=False)
 
-    _drive_to_exhaustion(test_domain, FailingProjector, global_position=position)
+    msg = _drive_to_exhaustion(test_domain, FailingProjector)
+    return msg.metadata.event_store.global_position
 
 
 def _toggle_failed_stream(test_domain) -> tuple:
@@ -426,11 +445,11 @@ class TestReplay:
         assert '"exhausted": [' in listing.output
 
     def test_replay_names_the_idempotency_key_case(self, test_domain):
-        _exhaust_command_position(test_domain, 7, idempotency_key="idem-123")
+        position = _exhaust_command_position(test_domain, idempotency_key="idem-123")
 
         # Abort before re-drive: only the confirmation classification is under test.
         result = _invoke(
-            ["eventstore", "dlq", "replay", "7", "--domain", "x.py"],
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py"],
             domain=test_domain,
             input="n\n",
         )
@@ -445,10 +464,10 @@ class TestReplay:
     def test_replay_names_double_apply_for_command_without_idempotency_key(
         self, test_domain
     ):
-        _exhaust_command_position(test_domain, 8, idempotency_key=None)
+        position = _exhaust_command_position(test_domain, idempotency_key=None)
 
         result = _invoke(
-            ["eventstore", "dlq", "replay", "8", "--domain", "x.py"],
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py"],
             domain=test_domain,
             input="n\n",
         )
@@ -460,10 +479,10 @@ class TestReplay:
         # A projector owns its failed stream directly, and replaying its position
         # re-applies the projection writes, so the prompt must not call it an
         # event handler.
-        _exhaust_projector_position(test_domain, 5)
+        position = _exhaust_projector_position(test_domain)
 
         result = _invoke(
-            ["eventstore", "dlq", "replay", "5", "--domain", "x.py"],
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py"],
             domain=test_domain,
             input="n\n",
         )
@@ -476,10 +495,10 @@ class TestReplay:
     def test_replay_dispatches_a_command_through_its_handler(self, test_domain):
         # A command stream's subscription handler is a CommandDispatcher, so the
         # CLI has to route the stored PlaceOrder through it to reach the handler.
-        _exhaust_command_position(test_domain, 11)
+        position = _exhaust_command_position(test_domain)
 
         result = _invoke(
-            ["eventstore", "dlq", "replay", "11", "--domain", "x.py", "--yes"],
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py", "--yes"],
             domain=test_domain,
         )
 
@@ -493,11 +512,11 @@ class TestReplay:
         assert "No exhausted positions." in listing.output
 
     def test_replay_reopens_a_command_whose_handler_fails_again(self, test_domain):
-        _exhaust_command_position(test_domain, 12)
+        position = _exhaust_command_position(test_domain)
         ToggleCommandHandler.should_fail = True  # fault still unfixed
 
         result = _invoke(
-            ["eventstore", "dlq", "replay", "12", "--domain", "x.py", "--yes"],
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py", "--yes"],
             domain=test_domain,
         )
 
@@ -568,8 +587,8 @@ class TestReplay:
     def test_replay_ambiguous_owners_asks_for_handler(self, test_domain):
         # Two handlers on the same stream (same category) both exhaust position 1.
         # --subscription can't separate them, so the error asks for --handler.
-        _drive_to_exhaustion(test_domain, ToggleEventHandler, global_position=1)
-        _drive_to_exhaustion(test_domain, SecondFailingHandler, global_position=1)
+        msg = _drive_to_exhaustion(test_domain, ToggleEventHandler)
+        _drive_to_exhaustion(test_domain, SecondFailingHandler, message=msg)
 
         result = _invoke(
             ["eventstore", "dlq", "replay", "1", "--domain", "x.py", "--yes"],
@@ -582,8 +601,8 @@ class TestReplay:
 
     def test_replay_handler_disambiguates(self, test_domain):
         # Same ambiguous setup; --handler picks one and it resolves.
-        _drive_to_exhaustion(test_domain, ToggleEventHandler, global_position=1)
-        _drive_to_exhaustion(test_domain, SecondFailingHandler, global_position=1)
+        msg = _drive_to_exhaustion(test_domain, ToggleEventHandler)
+        _drive_to_exhaustion(test_domain, SecondFailingHandler, message=msg)
         ToggleEventHandler.should_fail = False
 
         result = _invoke(
@@ -629,10 +648,10 @@ class TestReplay:
         # A command whose deadline passed would be skipped, not run, so replay
         # must refuse rather than falsely resolve it.
         past = datetime(2020, 1, 1, tzinfo=UTC)
-        _exhaust_command_position(test_domain, 9, deadline=past)
+        position = _exhaust_command_position(test_domain, deadline=past)
 
         result = _invoke(
-            ["eventstore", "dlq", "replay", "9", "--domain", "x.py", "--yes"],
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py", "--yes"],
             domain=test_domain,
         )
 
@@ -645,22 +664,22 @@ class TestReplay:
         # route CancelOrder to and only logs, and the engine still reports the
         # message handled, so replay would write a Resolved record with no
         # handler having run.
-        _exhaust_command_position(test_domain, 13, command_cls=CancelOrder)
+        position = _exhaust_command_position(test_domain, command_cls=CancelOrder)
 
         result = _invoke(
-            ["eventstore", "dlq", "replay", "13", "--domain", "x.py", "--yes"],
+            ["eventstore", "dlq", "replay", str(position), "--domain", "x.py", "--yes"],
             domain=test_domain,
         )
 
         assert result.exit_code == EXIT_USAGE
-        assert "no handler for the message at position 13" in result.output
+        assert f"no handler for the message at position {position}" in result.output
         # Nothing ran and the position is still there to purge or fix.
         assert ToggleCommandHandler.calls == 0
         listing = _invoke(
             ["eventstore", "dlq", "list", "--domain", "x.py", "--json"],
             domain=test_domain,
         )
-        assert "13" in listing.output
+        assert str(position) in listing.output
 
     def test_replay_refuses_when_the_re_read_lands_on_another_message(
         self, test_domain
@@ -717,6 +736,59 @@ class TestReplay:
             domain=test_domain,
         )
         assert str(missing) in listing.output
+
+    def test_replay_refuses_a_refill_that_reused_the_stream_ordinal(self, test_domain):
+        # A restore dropped a stream's tail and a later append refilled the same
+        # per-stream ordinal. The re-read lands on the refill, whose ordinal
+        # matches the record's but whose global position does not. Replay must
+        # refuse: the refill is a different event.
+        store = test_domain.event_store.store
+        category = User.meta_.stream_category
+        _write_event_to_store(test_domain, _create_message())  # holds global 1
+        stream = f"{category}-{uuid4()}"
+        refill = _write_event_to_store(test_domain, _create_message(stream_name=stream))
+        stored_at = refill.metadata.event_store.global_position
+
+        gone = stored_at - 1  # the global position the dropped event held
+        failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
+        store._write(
+            failed_stream,
+            FailedPositionStatus.EXHAUSTED.value,
+            {
+                "position": gone,
+                "message_type": "Test.Registered.v1",
+                "message_id": "evt-dropped",
+                "retry_count": 3,
+                "stream_name": stream,
+                "stream_position": refill.metadata.event_store.position,
+            },
+            metadata={
+                "headers": {
+                    "id": "rec-dropped",
+                    "type": FailedPositionStatus.EXHAUSTED.value,
+                    "stream": failed_stream,
+                },
+                "domain": {
+                    "kind": MessageType.READ_POSITION.value,
+                    "origin_stream": category,
+                },
+            },
+        )
+        ToggleEventHandler.should_fail = False  # a dispatch would resolve it
+
+        result = _invoke(
+            ["eventstore", "dlq", "replay", str(gone), "--domain", "x.py", "--yes"],
+            domain=test_domain,
+        )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "Could not re-read the event" in result.output
+        # The position is untouched, so it can still be purged.
+        listing = _invoke(
+            ["eventstore", "dlq", "list", "--domain", "x.py", "--json"],
+            domain=test_domain,
+        )
+        assert str(gone) in listing.output
 
     def test_replay_unreadable_event_is_usage_error(self, test_domain):
         # An Exhausted record with no stream location and no origin stream.
