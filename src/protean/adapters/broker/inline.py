@@ -640,15 +640,21 @@ class InlineBroker(BaseBroker):
         cutoff_time = current_time - timeout_seconds
 
         # Find all group keys for this consumer group
+        group_suffix = f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         matching_group_keys = [
             group_key
             for group_key in self._in_flight
-            if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}")
+            if group_key.endswith(group_suffix)
         ]
 
         for group_key in matching_group_keys:
-            # Extract stream name from group key
-            stream = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
+            # Recover the stream by stripping the exact consumer-group suffix.
+            # A stream name can itself contain the separator (aggregate
+            # categories are ``domain::aggregate``, DLQ streams are
+            # ``{stream}:dlq``), so splitting on the first separator would
+            # yield a truncated stream and strand the message under a group
+            # key nothing reads.
+            stream = group_key[: -len(group_suffix)]
 
             owned = group_key in self._subscription_owned_groups
 

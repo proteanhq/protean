@@ -384,17 +384,25 @@ class TestBrokerSubscriptionDLQIntegration:
         # value. next_retry_time == t_nack + delay, and delay <= MAX_BACKOFF_DELAY.
         assert next_retry_time <= after + MAX_BACKOFF_DELAY
 
-    def test_owned_stale_message_is_redelivered_not_dead_lettered(self, test_domain):
+    @pytest.mark.parametrize(
+        "stream",
+        ["owned_stale_stream", "ecommerce::order", "owned_stale_stream:dlq"],
+        ids=["plain", "namespaced", "dlq_stream"],
+    )
+    def test_owned_stale_message_is_redelivered_not_dead_lettered(
+        self, test_domain, stream
+    ):
         """A timed-out in-flight message on an owned group is held, not DLQ'd.
 
         ``_cleanup_stale_messages`` runs on every ``get_next``. For an owned
         group it must not move the message to the native DLQ; it holds it for
-        redelivery instead.
+        redelivery instead. Stream names that carry the group separator
+        themselves (``domain::aggregate``, ``{stream}:dlq``) must be held under
+        their real group key, otherwise the redelivery never happens.
         """
         broker = test_domain.brokers["default"]
         broker._retry_delay = 0
 
-        stream = "owned_stale_stream"
         group = "owned_stale_group"
         broker._mark_subscription_owned(stream, group)
 
