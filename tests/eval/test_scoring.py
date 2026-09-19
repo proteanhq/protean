@@ -576,7 +576,9 @@ class TestContext:
                 "Payment": {"context": "payment"},
             },
         )
-        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
+        result = score_boundary(
+            produced, gold, contexts=DECLARED_CONTEXTS, package="app"
+        )
         assert result.context == 1.0
         assert result.context_expected == 2
         assert set(result.contexts_matched) == {"Order", "Payment"}
@@ -598,7 +600,9 @@ class TestContext:
                 "Payment": {"context": "payment"},
             },
         )
-        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
+        result = score_boundary(
+            produced, gold, contexts=DECLARED_CONTEXTS, package="app"
+        )
         assert result.context == pytest.approx(1 / 2)
         assert result.contexts_mismatched == ("Order",)
         assert result.contexts_matched == ("Payment",)
@@ -606,11 +610,11 @@ class TestContext:
     def test_a_domain_named_other_than_its_package_still_splits_contexts(
         self,
     ) -> None:
-        """The context segment is package-relative, and the package is the import
-        package, not the logical ``Domain(name=...)``. A project packaged as
-        ``ecommerce`` but named ``Ordering`` keeps its two contexts; reading the
-        package off the domain name would strip nothing and collapse both
-        aggregates into one ``ecommerce`` context."""
+        """The context segment is package-relative, and the package is the
+        import package the project is laid out under, which the caller reads off
+        the project. The logical ``Domain(name=...)`` plays no part: a project
+        packaged as ``ecommerce`` but named ``Ordering`` keeps its ``order`` and
+        ``payment`` contexts."""
         gold = boundary_ir(
             package="sales",
             clusters={
@@ -626,17 +630,22 @@ class TestContext:
                 "Payment": {"context": "payment"},
             },
         )
-        assert _context_map(produced) == {"Order": {"order"}, "Payment": {"payment"}}
-        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
+        assert _context_map(produced, "ecommerce") == {
+            "Order": {"order"},
+            "Payment": {"payment"},
+        }
+        result = score_boundary(
+            produced, gold, contexts=DECLARED_CONTEXTS, package="ecommerce"
+        )
         assert result.context == 1.0
         assert set(result.contexts_matched) == {"Order", "Payment"}
 
     def test_a_wrong_decomposition_still_scores_low_under_a_renamed_domain(
         self,
     ) -> None:
-        """The counterpart: deriving the package from the modules must not make
-        every project match. A single-context project scores 0 against a
-        two-context gold even when its domain name differs from its package."""
+        """The counterpart: stripping the package must not make every project
+        match. A single-context project scores 0 against a two-context gold even
+        when its domain name differs from its package."""
         gold = boundary_ir(
             package="sales",
             clusters={
@@ -652,16 +661,18 @@ class TestContext:
                 "Payment": {"context": "shop"},
             },
         )
-        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
+        result = score_boundary(
+            produced, gold, contexts=DECLARED_CONTEXTS, package="ecommerce"
+        )
         assert result.context == 0.0
         assert set(result.contexts_mismatched) == {"Order", "Payment"}
 
     def test_aggregates_under_different_top_level_packages_keep_their_segments(
         self,
     ) -> None:
-        """Nothing is stripped when the aggregate modules share no first segment
-        (contexts as top-level packages), so each module's own first segment is
-        its context."""
+        """A root ``domain.py`` project has no import package, so nothing is
+        stripped and each module's own first segment is its context (the
+        contexts are top-level packages here)."""
         ir = {
             "domain": {"normalized_name": "shop", "name": "shop"},
             "elements": {},
@@ -682,7 +693,7 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(ir) == {"Order": {"order"}, "Payment": {"payment"}}
+        assert _context_map(ir, "") == {"Order": {"order"}, "Payment": {"payment"}}
 
     def test_a_single_segment_module_is_its_own_context(self) -> None:
         """An aggregate defined in a root ``domain.py`` has no package segment to
@@ -700,16 +711,17 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(ir) == {"Order": {"domain"}}
+        assert _context_map(ir, "") == {"Order": {"domain"}}
 
     def test_a_lone_top_level_context_is_not_read_as_the_package(self) -> None:
-        """One aggregate at ``order.aggregate`` is a context holding an
-        ``aggregate.py``, not a package holding a module. A shared first segment
-        is only the package when a context segment and a module segment are left
-        under it, so ``order`` is kept rather than stripped down to
-        ``aggregate``."""
+        """One aggregate at ``order.aggregate`` in a project with no import
+        package is a context holding an ``aggregate.py``, not a package holding a
+        module, so ``order`` is the context rather than ``aggregate``. The domain
+        is named ``order`` here too, which is the case a domain-name tiebreaker
+        would get wrong: the package comes from the project's layout, and this
+        project has none."""
         ir = {
-            "domain": {"normalized_name": "place_order", "name": "place_order"},
+            "domain": {"normalized_name": "order", "name": "Order"},
             "elements": {},
             "clusters": {
                 "order.aggregate.Order": {
@@ -721,7 +733,7 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(ir) == {"Order": {"order"}}
+        assert _context_map(ir, "") == {"Order": {"order"}}
 
     def test_two_aggregates_in_one_top_level_context_keep_that_context(self) -> None:
         """Both aggregates under the top-level ``order`` context share their
@@ -756,38 +768,55 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(produced) == {"Order": {"order"}, "Payment": {"order"}}
+        assert _context_map(produced, "") == {"Order": {"order"}, "Payment": {"order"}}
         result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
         assert result.context == pytest.approx(1 / 2)
         assert result.contexts_matched == ("Order",)
         assert result.contexts_mismatched == ("Payment",)
 
-    def test_a_two_segment_module_under_the_named_package_still_strips(self) -> None:
+    def test_a_two_segment_module_under_the_package_keeps_its_context(self) -> None:
         """The counterpart layout: a project that writes each aggregate straight
-        into ``<package>/<context>.py``. Its modules are two segments deep, so
-        the domain name breaks the tie: ``shop`` is the package here, and the two
-        aggregates keep the contexts ``order`` and ``payment``."""
+        into ``<package>/<context>.py``. Its modules are only two segments deep,
+        which reads the same as a package-less ``<context>/<kind>.py``, so the
+        package the caller discovered is what tells them apart. Here it is
+        ``ecommerce``, whatever the domain is named, and the two aggregates keep
+        the contexts ``order`` and ``payment``."""
         ir = {
-            "domain": {"normalized_name": "shop", "name": "Shop"},
+            "domain": {"normalized_name": "ordering", "name": "Ordering"},
             "elements": {},
             "clusters": {
-                "shop.order.Order": {
+                "ecommerce.order.Order": {
                     "aggregate": {
                         "name": "Order",
-                        "fqn": "shop.order.Order",
-                        "module": "shop.order",
+                        "fqn": "ecommerce.order.Order",
+                        "module": "ecommerce.order",
                     }
                 },
-                "shop.payment.Payment": {
+                "ecommerce.payment.Payment": {
                     "aggregate": {
                         "name": "Payment",
-                        "fqn": "shop.payment.Payment",
-                        "module": "shop.payment",
+                        "fqn": "ecommerce.payment.Payment",
+                        "module": "ecommerce.payment",
                     }
                 },
             },
         }
-        assert _context_map(ir) == {"Order": {"order"}, "Payment": {"payment"}}
+        assert _context_map(ir, "ecommerce") == {
+            "Order": {"order"},
+            "Payment": {"payment"},
+        }
+        gold = boundary_ir(
+            package="sales",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        result = score_boundary(
+            ir, gold, contexts=DECLARED_CONTEXTS, package="ecommerce"
+        )
+        assert result.context == 1.0
+        assert set(result.contexts_matched) == {"Order", "Payment"}
 
     def test_a_single_context_task_is_not_penalized(self) -> None:
         """The negative test for the undeclared-contexts branch: a
@@ -795,7 +824,7 @@ class TestContext:
         context, so context stays 1.0 and does not spuriously fall below 1."""
         gold = boundary_ir(package="gold", clusters={"Order": {"context": "order"}})
         produced = boundary_ir(package="app", clusters={"Order": {"context": "order"}})
-        result = score_boundary(produced, gold)
+        result = score_boundary(produced, gold, package="app")
         assert result.context == 1.0
         assert result.context_expected == 1
 
@@ -857,7 +886,7 @@ class TestContext:
                 "Customer": {"context": "shop"},
             },
         )
-        result = score_boundary(produced, gold)
+        result = score_boundary(produced, gold, package="app")
         assert result.context == 1.0
         assert set(result.contexts_matched) == {"Order", "Customer"}
         assert result.context_expected == 2
@@ -886,6 +915,7 @@ class TestContext:
             produced,
             gold,
             contexts=(("order", ("Order",)), ("customer", ("Customer",))),
+            package="app",
         )
         assert result.context == 0.0
         assert set(result.contexts_mismatched) == {"Order", "Customer"}
@@ -937,8 +967,10 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(produced)["Order"] == {"billing", "order"}
-        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
+        assert _context_map(produced, "app")["Order"] == {"billing", "order"}
+        result = score_boundary(
+            produced, gold, contexts=DECLARED_CONTEXTS, package="app"
+        )
         assert result.context == 1.0
         assert set(result.contexts_matched) == {"Order", "Payment"}
 

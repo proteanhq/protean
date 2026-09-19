@@ -98,14 +98,14 @@ for fields:
   `score_boundary` as `contexts=spec.contexts`. The context an aggregate sits in
   is its package-relative first module segment (`Order` at `shop.order.aggregate`
   is in the `order` context), so a gold under package `sales` and a produced
-  project under `app` still match on `order`. The package is read off the
-  aggregate modules themselves: it is the first segment they all share, kept only
-  when a context segment and a module segment are left under it (the
-  `<package>.<context>.<kind>` the scaffold writes) or when the domain's
-  normalized name is that segment. A project packaged as `ecommerce` whose domain
-  is named `Ordering` still splits into its `order` and `payment` contexts, and a
-  project with no package at all keeps `order` as the context of
-  `order.aggregate`. The spec is the only source of the expectation.
+  project under `app` still match on `order`. The package comes from the project
+  on disk, passed to `score_boundary` as `package=`: `discover_import_package`
+  reads it off the discovered `domain.py`, so a `src/<pkg>/domain.py` project
+  imports as `<pkg>` and a root `domain.py` project has no package at all. The
+  module names alone could not say where the package ends, because
+  `order.aggregate` is either package `order` holding module `aggregate` or
+  context `order` holding `aggregate.py`, and the two read the same. The spec is
+  the only source of the expectation.
   The gold builder puts every aggregate in its own slice module whatever the task
   asked for, so reading those module names back would invent a layout
   requirement. A task that declares no contexts (`place_order`,

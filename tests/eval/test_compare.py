@@ -197,6 +197,19 @@ def test_context_driven_verify_green_describes_the_final_tree(
     assert comparison.context_driven.verify_green is False
 
 
+def _lay_out_package(root: Path, package: str) -> Path:
+    """Write a ``src/<package>/domain.py`` under *root* and return *root*.
+
+    ``compare`` reads a project's import package off its layout, so a stubbed IR
+    has to sit on a project laid out under the same package or the context
+    segment would be read one segment early.
+    """
+    domain_file = root / "src" / package / "domain.py"
+    domain_file.parent.mkdir(parents=True, exist_ok=True)
+    domain_file.write_text("from protean import Domain\n", encoding="utf-8")
+    return root
+
+
 def _context_ir(package: str, placement: dict[str, str]) -> dict[str, Any]:
     """A minimal IR putting each aggregate in the context module named for it.
 
@@ -231,8 +244,7 @@ def test_the_task_contexts_are_scored_against_the_declaration(
     against it. A context-driven project that collapses the two contexts into one
     scores below 1.0; without the declaration reaching the scorer, every recovered
     aggregate would match whatever module it landed in and report 1.0."""
-    replay_dest = tmp_path / "replay"
-    replay_dest.mkdir()
+    replay_dest = _lay_out_package(tmp_path / "replay", "produced")
     spec = TaskSpec(
         task_id="place_order",
         project_name="shop",
@@ -246,7 +258,9 @@ def test_the_task_contexts_are_scored_against_the_declaration(
     monkeypatch.setattr(
         compare_module,
         "build_gold",
-        lambda spec, dest: GoldProject(root=tmp_path / "gold", ir=gold_ir),
+        lambda spec, dest: GoldProject(
+            root=_lay_out_package(tmp_path / "gold", "gold"), ir=gold_ir
+        ),
     )
     monkeypatch.setattr(
         compare_module,

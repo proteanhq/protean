@@ -24,7 +24,8 @@ The pieces:
 The scoring pieces:
 
 - :mod:`tests.eval.discovery`: the shared subprocess setup (env-strip and domain
-  discovery) that ``run_verify`` and ``build_ir`` both use.
+  discovery) that ``run_verify`` and ``build_ir`` both use, plus the import
+  package the scorer reads a project's bounded-context segments against.
 - :mod:`tests.eval.ir_probe`: ``build_ir``, which reads a produced project's IR
   by shelling ``protean ir show`` into it.
 - :mod:`tests.eval.spec`: the per-task sidecar ``spec.json`` (the gold recipe)

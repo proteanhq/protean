@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.eval.discovery import discover_import_package
 from tests.eval.gold import GoldProject, _run_protean, build_gold
 from tests.eval.scoring import _context_map, score, score_boundary
 from tests.eval.spec import read_spec
@@ -124,9 +125,14 @@ def test_two_context_gold_self_scores_context(
     # of 1.0 would say nothing: a single-context collapse (both under one segment)
     # scores context 1.0 against itself just the same. Guard the "two-context" shape
     # so a future scaffold layout change that merged the segments is caught here.
-    assert len(set().union(*_context_map(two_context_gold.ir).values())) == 2
+    package = discover_import_package(two_context_gold.root)
+    assert package == "order_and_payment"
+    assert len(set().union(*_context_map(two_context_gold.ir, package).values())) == 2
     result = score_boundary(
-        two_context_gold.ir, two_context_gold.ir, contexts=spec.contexts
+        two_context_gold.ir,
+        two_context_gold.ir,
+        contexts=spec.contexts,
+        package=package,
     )
     assert result.context == 1.0
     assert result.context_expected == 2

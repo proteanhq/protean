@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from protean.dx.pack import PACK_VERSION
+from tests.eval.discovery import discover_import_package
 from tests.eval.gold import build_gold
 from tests.eval.ir_probe import build_ir
 from tests.eval.runner import RunResult, eval_root, replay
@@ -104,7 +105,9 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
 
     Both recovery scores are taken against the task spec's declared contexts, so
     a task that names a bounded-context grouping has its layout judged instead of
-    matching whatever module each aggregate landed in.
+    matching whatever module each aggregate landed in. Each one passes its own
+    project's import package, read off that project's layout, so the context
+    segment is read after the package whatever package the project chose.
     """
     spec = read_spec(task_id)
     gold = build_gold(spec, gold_dest)
@@ -112,7 +115,12 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     deterministic = ApproachResult(
         verify_green=run_verify(gold.root)["ok"],
         correctness=score(gold.ir, gold.ir),
-        recovery=score_boundary(gold.ir, gold.ir, contexts=spec.contexts),
+        recovery=score_boundary(
+            gold.ir,
+            gold.ir,
+            contexts=spec.contexts,
+            package=discover_import_package(gold.root),
+        ),
     )
 
     transcript = Transcript.load(transcript_path(eval_root(), PACK_VERSION, task_id))
@@ -123,7 +131,12 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     context_driven = ApproachResult(
         verify_green=run_verify(workspace.root)["ok"],
         correctness=score(produced_ir, gold.ir),
-        recovery=score_boundary(produced_ir, gold.ir, contexts=spec.contexts),
+        recovery=score_boundary(
+            produced_ir,
+            gold.ir,
+            contexts=spec.contexts,
+            package=discover_import_package(workspace.root),
+        ),
     )
 
     return Comparison(
