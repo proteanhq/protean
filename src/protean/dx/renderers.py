@@ -2,30 +2,54 @@
 
 Each renderer builds a managed-file request for one target, so the managed-file
 writer can create it and later refresh it without touching the user's own edits.
-This cut ships three targets:
+Six targets ship, split into the canonical set and the per-editor set.
 
-- ``AGENTS.md`` — the canonical, cross-agent instruction file. Its body composes
+The canonical set:
+
+- ``AGENTS.md``: the canonical, cross-agent instruction file. Its body composes
   two layers: the positive guidance from the packaged AGENTS.md source
   (:func:`~protean.dx.pack.load_agents_source`) and the negative hard-rules
   section derived from the diagnostics registry
   (:func:`~protean.ir.generators.agents.generate_agents_md`). Both are stamped to
   the installed framework version, so an agent always reads guidance that matches
   the installed code.
-- ``CLAUDE.md`` — a one-line bridge (``@AGENTS.md``) that points Claude Code at
+- ``CLAUDE.md``: a one-line bridge (``@AGENTS.md``) that points Claude Code at
   the canonical file.
-- ``.mcp.json`` — the MCP server registration a client reads to launch Protean's
+- ``.mcp.json``: the MCP server registration a client reads to launch Protean's
   MCP server. It is a managed-JSON-keys target scoped to the ``mcpServers.protean``
   key-path, so an existing ``.mcp.json`` keeps the user's other servers.
 
-The two Markdown targets use a managed block wrapped in HTML comment markers; the
-``.mcp.json`` target uses the key-path JSON merge. The per-editor renderers
-(Cursor, Copilot, opencode) are separate sub-issues on the developer-experience
-epic and are not built here.
+The per-editor set:
+
+- ``.cursor/rules/protean.mdc``: Cursor's rule file. MDC: YAML frontmatter
+  (``description``, ``globs: "**/*.py"``, ``alwaysApply: false``) at line 1, then
+  a version stamp and the composed guidance body. Cursor reads AGENTS.md natively
+  for the always-on layer, so this rule is scoped to Python files via ``globs``.
+  The frontmatter must be the first bytes of the file, with no marker line above
+  it, so ``dx`` owns and renders the whole file.
+- ``.github/copilot-instructions.md``: Copilot's instructions. Plain Markdown
+  with the guidance in an HTML-comment managed block, so the file stays co-owned
+  with the user's own instructions.
+- ``opencode.json``: opencode's config. A managed-JSON-keys target on the
+  ``mcp.protean`` key-path with opencode's own launch shape (``type: "local"``,
+  ``command`` as a list, ``enabled: true``), which differs from ``.mcp.json``'s
+  shape. opencode reads AGENTS.md natively, so it gets no separate instruction
+  file: this config only supplies the MCP registration.
+
+All six go through the same managed-file writer, so ``dx check`` flags any
+drifted file, per-editor ones included.
 """
 
 from __future__ import annotations
 
-from protean.dx.managed_files import ManagedBlock, ManagedFile, ManagedJsonKeys
+from typing import Any
+
+from protean.dx.managed_files import (
+    ManagedBlock,
+    ManagedFile,
+    ManagedJsonKeys,
+    ManagedWholeFile,
+)
 from protean.dx.pack import load_agents_source
 from protean.ir.generators.agents import generate_agents_md
 from protean.mcp import mcp_registration
@@ -35,14 +59,24 @@ __all__ = [
     "BLOCK_ID",
     "CLAUDE_BRIDGE_BODY",
     "CLAUDE_BRIDGE_TARGET",
+    "COPILOT_TARGET",
+    "CURSOR_TARGET",
     "MCP_SERVER_KEY",
     "MCP_SERVER_NAME",
     "MCP_TARGET",
+    "OPENCODE_MCP_KEY",
+    "OPENCODE_SERVER_NAME",
+    "OPENCODE_TARGET",
     "agents_managed_file",
     "claude_bridge_managed_file",
+    "copilot_managed_file",
+    "cursor_managed_file",
     "managed_files",
     "mcp_json_managed_file",
+    "opencode_managed_file",
+    "opencode_registration",
     "render_agents_body",
+    "render_cursor_body",
 ]
 
 # The files this cut writes and the block id that frames the framework-owned
@@ -61,6 +95,20 @@ BLOCK_ID = "protean"
 MCP_TARGET = ".mcp.json"
 MCP_SERVER_KEY = "mcpServers"
 MCP_SERVER_NAME = "protean"
+
+# The per-editor targets. Cursor's rule file is a
+# whole-file dx-owned render; Copilot's instructions carry the guidance in a
+# managed block; opencode's config manages one ``mcp`` entry via the key-path
+# JSON merge.
+CURSOR_TARGET = ".cursor/rules/protean.mdc"
+COPILOT_TARGET = ".github/copilot-instructions.md"
+OPENCODE_TARGET = "opencode.json"
+
+# opencode's config nests MCP servers under a top-level ``mcp`` object, so the
+# managed key-path is ``mcp.protean``. Managing only that key keeps the user's
+# other opencode keys and other mcp servers.
+OPENCODE_MCP_KEY = "mcp"
+OPENCODE_SERVER_NAME = "protean"
 
 # The Markdown comment syntax the managed block uses to frame its region.
 _COMMENT_PREFIX = "<!-- "
@@ -131,9 +179,9 @@ def agents_managed_file(version: str) -> ManagedBlock:
 def claude_bridge_managed_file(version: str) -> ManagedBlock:
     """Return the managed block for the project's ``CLAUDE.md`` bridge.
 
-    The body is version-independent, but the block still carries *version* as its
-    stamp so its state row advances in step with the AGENTS.md render on an
-    upgrade.
+    The block carries *version* as its stamp so its state row advances in step
+    with the AGENTS.md render on an upgrade. The body text is the same across
+    versions.
     """
     return _markdown_block(CLAUDE_BRIDGE_TARGET, version, CLAUDE_BRIDGE_BODY)
 
@@ -143,9 +191,9 @@ def mcp_json_managed_file(version: str) -> ManagedJsonKeys:
 
     Manages only the ``mcpServers.protean`` key-path, so an existing ``.mcp.json``
     keeps every other server. The value is the launch shape
-    :func:`~protean.mcp.mcp_registration` defines. The registration is
-    version-independent, but the request still carries *version* as its stamp so
-    its state row advances in step with the other files on an upgrade.
+    :func:`~protean.mcp.mcp_registration` defines. The request carries *version*
+    as its stamp so its state row advances in step with the other files on an
+    upgrade. The registration itself is the same across versions.
     """
     return ManagedJsonKeys(
         target=MCP_TARGET,
@@ -155,15 +203,95 @@ def mcp_json_managed_file(version: str) -> ManagedJsonKeys:
     )
 
 
+# Cursor's ``.mdc`` frontmatter. It must be the first bytes of the file (line 1),
+# which is why Cursor is a whole-file target and not a managed block: no marker
+# line can sit above the frontmatter. ``globs`` scopes the rule to Python files,
+# since AGENTS.md (which Cursor reads natively) carries the always-on layer.
+_CURSOR_FRONTMATTER = (
+    "---\n"
+    "description: Protean framework guidance for this project\n"
+    'globs: "**/*.py"\n'
+    "alwaysApply: false\n"
+    "---\n"
+)
+
+
+def render_cursor_body(version: str) -> str:
+    """Compose the whole ``.cursor/rules/protean.mdc`` file for *version*.
+
+    Leads with the MDC frontmatter at line 1, then a version stamp comment, then
+    the same composed guidance :func:`render_agents_body` builds. The stamp lives
+    in the file itself, so a version bump changes the rendered content and ``dx
+    check`` reports staleness. Deterministic for a given *version*, since
+    :func:`render_agents_body` is.
+    """
+    stamp = f"<!-- protean:{version} -->"
+    body = render_agents_body(version)
+    return f"{_CURSOR_FRONTMATTER}{stamp}\n\n{body}\n"
+
+
+def cursor_managed_file(version: str) -> ManagedWholeFile:
+    """Return the whole-file request for the project's ``.cursor/rules/protean.mdc``.
+
+    ``dx`` owns the whole file: MDC frontmatter must start at line 1, so there is
+    no room for a managed-block marker above it. A hand edit anywhere in the file
+    is a conflict.
+    """
+    return ManagedWholeFile(
+        target=CURSOR_TARGET,
+        version=version,
+        body=render_cursor_body(version),
+    )
+
+
+def copilot_managed_file(version: str) -> ManagedBlock:
+    """Return the managed block for the project's ``.github/copilot-instructions.md``.
+
+    Same shape as AGENTS.md: the composed guidance in an HTML-comment managed
+    block, so the file stays co-owned with the user's own Copilot instructions.
+    """
+    return _markdown_block(COPILOT_TARGET, version, render_agents_body(version))
+
+
+def opencode_registration() -> dict[str, Any]:
+    """Return opencode's launch shape for Protean's MCP server.
+
+    opencode's config uses a different shape from ``.mcp.json``: a ``type`` of
+    ``"local"``, ``command`` as an argv list, and an ``enabled`` flag. This is a
+    fresh dict each call, so a caller cannot mutate a shared default.
+    """
+    return {"type": "local", "command": ["protean", "mcp"], "enabled": True}
+
+
+def opencode_managed_file(version: str) -> ManagedJsonKeys:
+    """Return the managed-JSON-keys request for the project's ``opencode.json``.
+
+    Manages only the ``mcp.protean`` key-path, so an existing ``opencode.json``
+    keeps every other opencode key and every other mcp server. The request
+    carries *version* as its stamp so its state row advances in step with the
+    other files on an upgrade. The registration itself is the same across
+    versions.
+    """
+    return ManagedJsonKeys(
+        target=OPENCODE_TARGET,
+        version=version,
+        data={OPENCODE_SERVER_NAME: opencode_registration()},
+        path=(OPENCODE_MCP_KEY,),
+    )
+
+
 def managed_files(version: str) -> tuple[ManagedFile, ...]:
     """Return every managed file ``protean dx`` writes, in a stable order.
 
-    AGENTS.md comes first so the CLAUDE.md bridge that points at it is written
-    second; the ``.mcp.json`` registration comes last. All three are stamped to
-    *version*.
+    The canonical set comes first: AGENTS.md, then the CLAUDE.md bridge that
+    points at it, then the ``.mcp.json`` registration. The per-editor set follows:
+    Cursor, Copilot, opencode. All six are stamped to *version*.
     """
     return (
         agents_managed_file(version),
         claude_bridge_managed_file(version),
         mcp_json_managed_file(version),
+        cursor_managed_file(version),
+        copilot_managed_file(version),
+        opencode_managed_file(version),
     )

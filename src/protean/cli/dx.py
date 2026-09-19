@@ -1,12 +1,15 @@
 """CLI commands for Protean's developer-experience (``dx``) integration.
 
 ``protean dx`` writes the agent-facing files that make a coding agent correct
-and productive with the installed framework version: ``AGENTS.md`` (the
-canonical, cross-agent instructions), a one-line ``CLAUDE.md`` bridge, and a
-``.mcp.json`` registration that points a client at Protean's MCP server. Writes
-go through the idempotent managed-file writer (:mod:`protean.dx.managed_files`),
-so the framework owns a marked block (or, for ``.mcp.json``, its own key-path)
-in each file and the user owns everything around it.
+and productive with the installed framework version. The canonical set:
+``AGENTS.md`` (the canonical, cross-agent instructions), a one-line ``CLAUDE.md``
+bridge, and a ``.mcp.json`` registration that points a client at Protean's MCP
+server. The per-editor set: Cursor's ``.cursor/rules/protean.mdc`` rule file,
+Copilot's ``.github/copilot-instructions.md``, and opencode's ``opencode.json``
+config. Writes go through the idempotent managed-file writer
+(:mod:`protean.dx.managed_files`), so the framework owns a marked block (for
+``.mcp.json`` and ``opencode.json``, its own key-path; for the Cursor rule file,
+the whole file) and the user owns everything around it.
 
 Verbs::
 
@@ -51,12 +54,15 @@ def callback() -> None:
 
 @app.command()
 def install(path: Annotated[str, _PATH_OPTION] = ".") -> None:
-    """Write AGENTS.md, the CLAUDE.md bridge, and the .mcp.json registration.
+    """Write the canonical files and the per-editor files.
 
-    Creates a missing file and refreshes the framework's managed region in an
-    existing one, idempotently. An existing ``.mcp.json`` keeps the user's other
-    servers. A region the user edited by hand is reported as a conflict and left
-    untouched; the command then exits non-zero.
+    The canonical set (AGENTS.md, the CLAUDE.md bridge, the .mcp.json
+    registration) and the per-editor set (the Cursor rule file, the Copilot
+    instructions, the opencode config). Creates a missing file and refreshes the
+    framework's managed region in an existing one, idempotently. An existing
+    ``.mcp.json`` or ``opencode.json`` keeps the user's other servers. A region
+    the user edited by hand is reported as a conflict and left untouched; the
+    command then exits non-zero.
     """
     _apply(path)
 
@@ -285,14 +291,17 @@ def _managed_region(managed_file: ManagedFile) -> str:
     """Name the region *managed_file*'s merge mode owns, for a diagnostic line.
 
     A managed-block target owns a marked block, named by its block id. A
-    managed-JSON-keys target has no block at all: it owns a key-path, so name the
-    full path (``mcpServers.protean``) instead of pointing the user at a Markdown
-    region that does not exist in the file.
+    whole-file target owns the whole file. A managed-JSON-keys target has no block
+    at all: it owns a key-path, so name the full path (``mcpServers.protean``)
+    instead of pointing the user at a Markdown region that does not exist in the
+    file.
     """
-    from protean.dx import ManagedBlock  # noqa: PLC0415
+    from protean.dx import ManagedBlock, ManagedWholeFile  # noqa: PLC0415
 
     if isinstance(managed_file, ManagedBlock):
         return f"the managed block {managed_file.block_id!r}"
+    if isinstance(managed_file, ManagedWholeFile):
+        return "the whole file"
     keys = ", ".join(
         repr(".".join((*managed_file.path, key))) for key in managed_file.managed_keys
     )
@@ -301,11 +310,19 @@ def _managed_region(managed_file: ManagedFile) -> str:
 
 
 def _outside_region(managed_file: ManagedFile) -> str:
-    """Name where an edit outside the managed region sits, per merge mode."""
-    from protean.dx import ManagedBlock  # noqa: PLC0415
+    """Name where an edit outside the managed region sits, per merge mode.
+
+    A whole-file target has no region outside itself, so it never reports outside
+    drift and this never names one for it.
+    """
+    from protean.dx import ManagedBlock, ManagedWholeFile  # noqa: PLC0415
 
     if isinstance(managed_file, ManagedBlock):
         return "around the block"
+    if isinstance(
+        managed_file, ManagedWholeFile
+    ):  # pragma: no cover - a whole-file target has no outside region
+        return "outside the file"
     return "outside the managed keys"
 
 

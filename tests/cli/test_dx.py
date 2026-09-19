@@ -519,3 +519,181 @@ def test_render_failure_reports_a_clean_error(tmp_path: Path, monkeypatch) -> No
     assert "could not render" in result.output
     # Nothing was written: the render failed before any target was touched.
     assert not (tmp_path / "AGENTS.md").exists()
+
+
+# --- per-editor files -------------------------------------------------------
+
+_CURSOR_RULE = ".cursor/rules/protean.mdc"
+_COPILOT_FILE = ".github/copilot-instructions.md"
+_OPENCODE_CONFIG = "opencode.json"
+
+
+def test_install_writes_all_six_files(tmp_path: Path) -> None:
+    """AC1: install writes the three per-editor files alongside the canonical set."""
+    result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    for rel in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".mcp.json",
+        _CURSOR_RULE,
+        _COPILOT_FILE,
+        _OPENCODE_CONFIG,
+    ):
+        assert (tmp_path / rel).exists(), f"{rel} was not written"
+
+    # Cursor's rule starts with the MDC frontmatter at line 1 and carries the stamp.
+    cursor = (tmp_path / _CURSOR_RULE).read_text(encoding="utf-8")
+    assert cursor.startswith("---\n")
+    assert 'globs: "**/*.py"' in cursor
+    assert PACK_VERSION in cursor
+    assert "## Do not break these rules" in cursor
+
+    # Copilot's file carries the guidance in the managed block.
+    copilot = (tmp_path / _COPILOT_FILE).read_text(encoding="utf-8")
+    assert "<!-- PROTEAN:BEGIN protean -->" in copilot
+    assert "## Do not break these rules" in copilot
+
+    # opencode's config carries its own launch shape under mcp.protean.
+    opencode = json.loads((tmp_path / _OPENCODE_CONFIG).read_text(encoding="utf-8"))
+    assert opencode == {
+        "mcp": {
+            "protean": {"type": "local", "command": ["protean", "mcp"], "enabled": True}
+        }
+    }
+
+
+def test_second_install_is_idempotent_across_all_files(tmp_path: Path) -> None:
+    """AC2 (first half): a second install is a no-op for every file, exit 0."""
+    _install(tmp_path)
+    before = {
+        rel: (tmp_path / rel).read_bytes()
+        for rel in (
+            "AGENTS.md",
+            "CLAUDE.md",
+            ".mcp.json",
+            _CURSOR_RULE,
+            _COPILOT_FILE,
+            _OPENCODE_CONFIG,
+        )
+    }
+
+    result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "created" not in result.output  # nothing new; every file already up to date
+    for rel, content in before.items():
+        assert (tmp_path / rel).read_bytes() == content, f"{rel} changed on re-install"
+
+
+def test_check_passes_on_a_fresh_install_of_all_files(tmp_path: Path) -> None:
+    _install(tmp_path)
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Up to date" in result.output
+
+
+def test_install_preserves_other_keys_in_opencode_json(tmp_path: Path) -> None:
+    """An existing opencode.json keeps the user's own keys and other mcp servers."""
+    opencode = tmp_path / _OPENCODE_CONFIG
+    opencode.write_text(
+        json.dumps(
+            {
+                "theme": "dark",
+                "mcp": {"other": {"type": "local", "command": ["run-other"]}},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(opencode.read_text(encoding="utf-8"))
+    assert data["theme"] == "dark"  # unrelated top-level key survived
+    assert data["mcp"]["other"] == {"type": "local", "command": ["run-other"]}
+    assert data["mcp"]["protean"] == {
+        "type": "local",
+        "command": ["protean", "mcp"],
+        "enabled": True,
+    }
+
+
+def test_install_keeps_user_prose_around_the_copilot_block(tmp_path: Path) -> None:
+    """Copilot's file is co-owned: the user's own instructions survive a refresh."""
+    _install(tmp_path)
+    copilot = tmp_path / _COPILOT_FILE
+    copilot.write_text(
+        "# My Copilot rules\nkeep me\n" + copilot.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    text = copilot.read_text(encoding="utf-8")
+    assert "# My Copilot rules" in text
+    assert "keep me" in text
+    assert "<!-- PROTEAN:BEGIN protean -->" in text
+
+
+def test_check_flags_a_drifted_cursor_rule(tmp_path: Path) -> None:
+    """AC2: a hand-edited Cursor rule fails check, naming the whole file as owned."""
+    _install(tmp_path)
+    cursor = tmp_path / _CURSOR_RULE
+    cursor.write_text(
+        cursor.read_text(encoding="utf-8") + "\nHAND EDIT\n", encoding="utf-8"
+    )
+    edited = cursor.read_text(encoding="utf-8")
+
+    check_result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+    assert check_result.exit_code == 1, check_result.output
+    flat = " ".join(check_result.output.split())
+    assert "conflict" in flat
+    assert _CURSOR_RULE in flat, flat
+    assert "the whole file" in flat, flat
+
+    # install refuses the hand-edited whole file and leaves it in place.
+    install_result = runner.invoke(app, ["install", "-p", str(tmp_path)])
+    assert install_result.exit_code == 1, install_result.output
+    assert cursor.read_text(encoding="utf-8") == edited
+
+
+def test_check_flags_a_drifted_copilot_block(tmp_path: Path) -> None:
+    """AC2: an in-block edit to the Copilot file fails check as a conflict."""
+    _install(tmp_path)
+    copilot = tmp_path / _COPILOT_FILE
+    copilot.write_text(
+        copilot.read_text(encoding="utf-8").replace(
+            "# Protean agent guidance", "# Hand edited heading", 1
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    flat = " ".join(result.output.split())
+    assert "conflict" in flat
+    assert _COPILOT_FILE in flat
+    assert "the managed block 'protean'" in flat, flat
+    assert "the whole file" not in flat, flat
+
+
+def test_check_flags_a_drifted_opencode_config(tmp_path: Path) -> None:
+    """AC2: editing opencode's managed mcp.protean entry fails check."""
+    _install(tmp_path)
+    opencode = tmp_path / _OPENCODE_CONFIG
+    data = json.loads(opencode.read_text(encoding="utf-8"))
+    data["mcp"]["protean"] = {"type": "local", "command": ["my-own"]}
+    opencode.write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    flat = " ".join(result.output.split())
+    assert "the managed key 'mcp.protean'" in flat, flat
+    assert "managed block" not in flat, flat

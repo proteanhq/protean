@@ -6,7 +6,7 @@ that :func:`~protean.scaffold.apply.apply_plan` defers: ``apply_plan`` is
 create-only, so this writer composes with it for the create case and adds the
 merge, diff, and conflict-detection the re-apply case needs.
 
-Two merge modes cover the file shapes ``protean dx`` ships:
+Three merge modes cover the file shapes ``protean dx`` ships:
 
 - **Managed block** (text). The framework block sits between two
   sentinel-comment markers, ``PROTEAN:BEGIN <block-id>`` and
@@ -21,6 +21,11 @@ Two merge modes cover the file shapes ``protean dx`` ships:
   sibling there is preserved, so ``.mcp.json`` manages only its own
   ``mcpServers.protean`` entry and leaves the user's other servers alone. With no
   path the managed keys are the top-level ones.
+- **Whole file** (text). The framework owns the entire file, with no user-owned
+  region. The render is the whole content, so the managed slice is the whole file
+  and a hand edit anywhere in it reads as a conflict. This is for a file whose
+  format leaves no room for a marker line above its first byte, such as Cursor's
+  ``.mdc`` rule file, whose YAML frontmatter must start at line 1.
 
 A state file at ``.protean/dx-state.json`` records, per target path, the pack
 version stamp and two hashes: the hash of the whole file the writer last wrote
@@ -53,8 +58,7 @@ as an LF one and a benign platform newline difference never reads as a phantom
 conflict. Writes go back out in whatever line ending the file already uses, so an
 update never rewrites a file's line endings.
 
-See ADR-0037 for the decision record behind the state file and the two merge
-modes.
+See ADR-0037 for the decision record behind the state file and the merge modes.
 
 Design decisions for v1:
 
@@ -68,6 +72,11 @@ Design decisions for v1:
   preserved. With no path the merge is over the top-level keys; with a key-path it
   is scoped to the nested object at that path, which is how ``.mcp.json`` manages
   only ``mcpServers.protean`` and keeps the user's other servers.
+- **Whole-file dx ownership.** A whole-file target has no user-owned region, so its
+  managed slice is the whole file and ``slice_hash`` equals ``file_hash``. Any hand
+  edit makes the on-disk content differ from both the render and the state, so the
+  same slice-based decision reports it as a conflict. This is for a file whose format
+  forbids a marker line above its first byte, such as Cursor's ``.mdc`` rule.
 
 Usage::
 
@@ -118,6 +127,7 @@ __all__ = [
     "ManagedFileError",
     "ManagedFileState",
     "ManagedJsonKeys",
+    "ManagedWholeFile",
     "MergeMode",
     "apply_managed_file",
     "diff_managed_file",
@@ -178,6 +188,10 @@ class MergeMode(StrEnum):
 
     JSON_KEYS = "json_keys"
     """Set the managed top-level keys of a JSON object and preserve the rest."""
+
+    WHOLE_FILE = "whole_file"
+    """Own the entire text file: the render is the whole content, with no
+    user-owned region. A hand edit anywhere in the file is a conflict."""
 
 
 class ApplyStatus(StrEnum):
@@ -314,8 +328,41 @@ class ManagedJsonKeys:
         return tuple(self.data.keys())
 
 
+@dataclass(frozen=True)
+class ManagedWholeFile:
+    """A whole-file (text) apply request: ``dx`` owns the entire file.
+
+    Unlike a managed block, there is no user-owned region: the rendered ``body``
+    is the whole file content. A hand edit anywhere in the file makes the on-disk
+    content differ from both the render and the recorded state, which the diff
+    reads as a conflict. This suits a file whose format has no place for a marker
+    line above its first byte, such as Cursor's ``.mdc`` rule file, whose YAML
+    frontmatter must start at line 1.
+
+    The version stamp lives inside ``body`` (``render_agents_body`` leads with a
+    version-stamped H1, and the Cursor renderer adds an explicit stamp line too),
+    so the file on disk names the pack version that rendered it. Staleness does
+    not depend on that: the state row carries the stamp as well, so a version bump
+    reports ``UPDATE`` even when the rendered body is byte-identical.
+    """
+
+    target: str
+    version: str
+    body: str
+
+    def __post_init__(self) -> None:
+        # An empty body would create an empty file and manage nothing; a real
+        # whole-file render always carries content.
+        if not self.body:
+            raise ValueError("body must be a non-empty string")
+
+    @property
+    def mode(self) -> MergeMode:
+        return MergeMode.WHOLE_FILE
+
+
 # The managed-file union. The writer dispatches on the concrete type.
-ManagedFile = ManagedBlock | ManagedJsonKeys
+ManagedFile = ManagedBlock | ManagedJsonKeys | ManagedWholeFile
 
 
 @dataclass(frozen=True)
@@ -817,6 +864,11 @@ def diff_managed_file(
     if isinstance(managed_file, ManagedBlock):
         new_slice = managed_file.body
         create_content = _create_block(managed_file)
+    elif isinstance(managed_file, ManagedWholeFile):
+        # The whole file is the managed slice, so the slice hash equals the file
+        # hash and any hand edit anywhere reads as a changed slice.
+        new_slice = managed_file.body
+        create_content = managed_file.body
     else:
         new_slice = _json_new_slice(managed_file)
         create_content = _create_json(managed_file)
@@ -858,6 +910,10 @@ def diff_managed_file(
     if isinstance(managed_file, ManagedBlock):
         disk_slice = _extract_block_body(disk_content, managed_file)
         merged = _merge_block(disk_content, managed_file)
+    elif isinstance(managed_file, ManagedWholeFile):
+        # The whole disk content is the slice; the merge is the render, verbatim.
+        disk_slice = disk_content
+        merged = managed_file.body
     else:
         disk = _parse_json_object(disk_content, managed_file.target)
         disk_slice = _json_disk_slice(disk, managed_file)
@@ -921,6 +977,8 @@ def apply_managed_file(
     if result.status is ApplyStatus.CONFLICT:
         if isinstance(managed_file, ManagedBlock):
             managed = managed_file.block_id
+        elif isinstance(managed_file, ManagedWholeFile):
+            managed = "the whole file"
         else:
             managed = ", ".join(managed_file.managed_keys)
         raise ManagedFileConflict(target=managed_file.target, managed=managed)

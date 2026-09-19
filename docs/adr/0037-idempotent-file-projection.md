@@ -34,7 +34,8 @@ artifact, a target path, and a merge mode, and applies it idempotently. It is th
 update-and-merge path `apply_plan` defers, and it calls `apply_plan` for the create
 case so pre-flight and rollback are not re-derived.
 
-**Two merge modes, matching the two file shapes `dx` ships.**
+**Three merge modes, matching the file shapes `dx` ships.** The first two shipped
+with this ADR; the whole-file mode was added for the per-editor renderers (#1474).
 
 - *Managed block*, for co-owned text. The framework's block sits between two
   sentinel comment lines, `PROTEAN:BEGIN <block-id>` and `PROTEAN:END <block-id>`.
@@ -46,6 +47,11 @@ case so pre-flight and rollback are not re-derived.
   managed key's value is replaced whole. An optional key-path scopes the merge to a
   nested object: `.mcp.json` manages only the `mcpServers.protean` key-path, so an
   existing file keeps the user's other servers (the key-path merge landed in #1475).
+- *Whole file*, for a dx-owned text file with no user-owned region. The framework
+  owns the entire file, so the render is the whole content and the managed slice is
+  the whole file. A hand edit anywhere in it reads as a conflict. This is for a file
+  whose format leaves no room for a marker line above its first byte, such as
+  Cursor's `.mdc` rule file, whose YAML frontmatter must start at line 1 (#1474).
 
 **A state file at `.protean/dx-state.json` remembers what was written.** It sits
 beside `project.json` (ADR-0034) and `ir.json`. Per target path it records the pack
@@ -127,10 +133,12 @@ the next run re-derives rather than trusting a stamp for content that never land
 
 ## Alternatives Considered
 
-- **Compare the whole file instead of the managed slice.** Rejected: any user edit
-  anywhere in a co-owned file would then read as a conflict, which is exactly the
-  case the writer exists to allow. The whole-file hash is kept, but only as the
-  informational `outside_modified` signal.
+- **Compare the whole file instead of the managed slice, for co-owned files.**
+  Rejected: any user edit anywhere in a co-owned file would then read as a conflict,
+  which is exactly the case the writer exists to allow. The whole-file hash is kept,
+  but only as the informational `outside_modified` signal. (The whole-file mode added
+  in #1474 is the opposite case: a file dx owns outright, with no user region, where
+  a whole-file conflict is the intended behavior.)
 - **A three-way merge with conflict markers in the file.** Rejected for v1: it writes
   a broken file into the user's project and leaves them to repair it. Refusing to
   write and naming the conflict is a smaller promise the writer can keep.
