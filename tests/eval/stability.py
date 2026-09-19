@@ -7,19 +7,21 @@ one approach and report two things per approach.
 - **How often the produced structure is the same.** Each run reduces to the set
   of IR element signatures it built (the same set the rubric scores on, from
   :func:`tests.eval.scoring.element_signatures`). Two runs are the same result
-  when their signature sets are equal. The identical-result rate is the modal
-  fraction: the size of the largest group of runs sharing one signature set,
-  divided by the run count. It reads ``1.0`` for a perfectly stable approach and
-  needs no reference run.
+  when their signature sets are equal. Signatures match on class name, not on
+  fully-qualified name (see :mod:`tests.eval.scoring`), so the structural axis is
+  class-name equality. The identical-result rate is the modal fraction: the size
+  of the largest group of runs sharing one signature set, divided by the run
+  count. It reads ``1.0`` for a perfectly stable approach and needs no reference
+  run.
 - **How the correctness score spreads.** The mean, population standard deviation,
-  min, and max of the correctness score across the runs. A stable approach reads
-  a standard deviation of exactly ``0.0``.
+  min, and max of the correctness score across the runs. A stable approach has a
+  standard deviation of exactly ``0.0``.
 
-The two axes are independent by design: the identical-result rate reads the
-signature set, the spread reads the score. Under today's scorer the score is a
-function of the signature set against a fixed gold, so they move together, but
-the metric does not assume that, so a future scorer that adds noise to the score
-still reports structural stability correctly.
+The two axes are independent: the identical-result rate reads the signature set,
+the spread reads the score. Under today's scorer the score is a function of the
+signature set against a fixed gold, so the two move together. They are computed
+independently, so a later scorer that adds noise to the score would leave the
+structural rate unchanged.
 
 Stability is measured on the live-model lane. Transcript replay is deterministic
 by construction, so the context-driven variance number comes from the opt-in
@@ -59,7 +61,7 @@ DEFAULT_RUNS = 10
 
 @dataclass(frozen=True)
 class RunOutcome:
-    """One run reduced to what stability reads: its structure and its score.
+    """One run reduced to its structure and its score.
 
     ``signatures`` is the set of IR element signatures the run produced, held as
     a ``frozenset`` so distinct outcomes are hashable and countable. ``score`` is
@@ -79,7 +81,7 @@ class Stability:
     structure. ``distinct_results`` is how many different signature sets appeared.
     ``score_mean``, ``score_stdev`` (population standard deviation), ``score_min``,
     and ``score_max`` describe the correctness score's spread; ``score_stdev`` is
-    ``0.0`` for a single run and for identical runs.
+    ``0.0`` for a single run and for runs that all scored the same.
     """
 
     runs: int
@@ -98,11 +100,11 @@ def measure_stability(outcomes: Sequence[RunOutcome]) -> Stability:
     largest group's size over the run count, and ``distinct_results`` is the
     number of groups. The score fields are the mean, population standard
     deviation, min, and max of the run scores. Population standard deviation
-    (:func:`statistics.pstdev`) reads ``0.0`` for one run and for identical runs,
-    so a stable approach reads exactly zero rather than raising.
+    (:func:`statistics.pstdev`) is defined for one run, so a stable approach
+    reports exactly ``0.0`` for it.
 
-    Raises :class:`ValueError` on empty *outcomes*: zero runs is a caller error,
-    not a stability of zero.
+    Raises :class:`ValueError` on empty *outcomes*, since zero runs is a caller
+    error.
     """
     if not outcomes:
         raise ValueError("measure_stability needs at least one run outcome")
@@ -146,8 +148,9 @@ def deterministic_outcome(spec: TaskSpec, dest: Path | str) -> RunOutcome:
     The deterministic approach scores its own IR against itself, which is ``1.0``
     by construction, and carries one fixed signature set. Re-running it through
     :func:`run_stability` is a real determinism guard: it re-scaffolds the gold
-    each call, so drift in the scaffold's signatures would show up as more than
-    one distinct result or a non-zero spread.
+    each call, so drift in the scaffold's signatures shows up as more than one
+    distinct result. The score cannot move here (each run scores its own gold),
+    so the guard rests on the structural axis.
     """
     gold = build_gold(spec, dest)
     correctness = score(gold.ir, gold.ir)
@@ -169,8 +172,9 @@ def context_driven_outcome(
     Runs the task's prompt through the live driver the same way the recorder
     does, reads the produced project's IR, and scores it against *gold_ir*. The
     returned outcome carries the produced signature set and the correctness
-    score, the two axes stability reads. This helper is exercised only from the
-    live lane; the CI lane reads its variance from the deterministic guard.
+    score, the two stability axes. This helper is exercised from the live lane
+    and from a scripted-driver unit test; the CI variance number comes from the
+    deterministic guard.
     """
     # The run writes the project into the workspace; its RunResult is not needed
     # here, the IR is read back from the tree the run produced.

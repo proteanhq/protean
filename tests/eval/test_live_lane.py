@@ -74,15 +74,17 @@ def test_live_lane_records_a_replayable_green_transcript(
 
 def test_live_lane_reports_context_driven_stability(tmp_path: Path) -> None:
     """Drive the context-driven approach through the live model N times, score
-    each run against the gold, and report its run-to-run stability. This is the
-    only lane that can produce the context-driven variance number: transcript
-    replay is deterministic by construction, so its stability is trivially
-    perfect. It skips without a driver exactly like the recorder test above, so
-    core CI never reaches a model.
+    each run against the gold, and report its run-to-run stability. The
+    context-driven variance number comes from this lane, because transcript
+    replay is deterministic by construction and its stability is always perfect.
+    It skips without a driver exactly like the recorder test above, so core CI
+    never reaches a model.
 
     The variance value itself is not pinned; it depends on the live model. The
     test asserts the shape: ``runs`` matches the run count and every field is in
-    range."""
+    range, and it requires the driver to have produced a scored project on at
+    least one run, so a driver that generates nothing every run fails here
+    instead of reading as perfectly stable."""
     if not os.environ.get(LIVE_DRIVER_ENV_VAR):
         pytest.skip(
             "live lane needs a driver: set "
@@ -111,3 +113,8 @@ def test_live_lane_reports_context_driven_stability(tmp_path: Path) -> None:
     assert stability.score_stdev >= 0.0
     assert 0.0 <= stability.score_min <= stability.score_max <= 1.0
     assert 0.0 <= stability.score_mean <= 1.0
+    # A driver that produces no readable domain on every run scores 0.0 across
+    # the board, which aggregates to the same shape as a perfect approach
+    # (one distinct result, rate 1.0, stdev 0.0). Require at least one run to
+    # have recovered something, so a silent driver failure fails the lane.
+    assert stability.score_max > 0.0

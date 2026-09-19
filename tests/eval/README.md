@@ -111,7 +111,9 @@ report two numbers.
 
 The two axes are independent: the rate reads the signature set, the spread reads
 the score. Under today's scorer the score is a function of the signature set
-against a fixed gold, so they move together, but the code does not assume that.
+against a fixed gold, so the two move together. They are computed independently,
+so a later scorer that adds noise to the score would leave the structural rate
+unchanged.
 
 Stability is measured on the **live lane**. Transcript replay is deterministic by
 construction, so the context-driven variance number comes from the opt-in live
