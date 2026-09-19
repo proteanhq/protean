@@ -24,7 +24,8 @@ The pieces:
 The scoring pieces:
 
 - :mod:`tests.eval.discovery`: the shared subprocess setup (env-strip and domain
-  discovery) that ``run_verify`` and ``build_ir`` both use.
+  discovery) that ``run_verify`` and ``build_ir`` both use, plus the import
+  package the scorer reads a project's bounded-context segments against.
 - :mod:`tests.eval.ir_probe`: ``build_ir``, which reads a produced project's IR
   by shelling ``protean ir show`` into it.
 - :mod:`tests.eval.spec`: the per-task sidecar ``spec.json`` (the gold recipe)
@@ -32,7 +33,8 @@ The scoring pieces:
 - :mod:`tests.eval.gold`: ``build_gold``, which scaffolds a task's deterministic
   gold project from its spec and reads back its IR.
 - :mod:`tests.eval.scoring`: the per-element rubric that scores a produced IR
-  against the gold's.
+  against the gold's, plus ``score_boundary``, the boundary/aggregate recovery
+  layer (placement and context).
 - :mod:`tests.eval.compare`: ``compare``, which runs both approaches over a task
-  and reports each one's verify-green plus correctness.
+  and reports each one's verify-green, correctness, and boundary recovery.
 """

@@ -1,0 +1,4 @@
+{
+  "project_name": "order_and_customer",
+  "aggregates": ["Order", "Customer"]
+}

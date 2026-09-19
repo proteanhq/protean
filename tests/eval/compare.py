@@ -1,7 +1,8 @@
 """Run both approaches over a task and report each one's verify-green + score.
 
 For one task the comparison runs two approaches and reports, per approach, a
-``verify``-green bool and a correctness score against the same gold:
+``verify``-green bool, a base correctness score, and a boundary/aggregate recovery
+score against the same gold:
 
 - **Approach A (deterministic).** Build the gold project from the spec, run
   ``protean verify`` over it, and score its IR against itself. This is 1.0 by
@@ -20,7 +21,8 @@ A replayed transcript is only scored when it still reproduces what it recorded.
 hashes differently than the recording, or when a re-run tool no longer answers
 what the recording saw, rather than publishing a score for a stale transcript.
 
-The score is the base per-element rubric (:mod:`tests.eval.scoring`). Approach
+The base score is the per-element rubric (:mod:`tests.eval.scoring`); the recovery
+score is that module's boundary/aggregate layer (placement and context). Approach
 B's distance from 1.0 is the intended signal: the deterministic scaffold's canned
 command and event names differ from the task's own, so a context-driven project
 recovers some but not all of the gold's elements.
@@ -32,10 +34,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from protean.dx.pack import PACK_VERSION
+from tests.eval.discovery import discover_import_package
 from tests.eval.gold import build_gold
 from tests.eval.ir_probe import build_ir
 from tests.eval.runner import RunResult, eval_root, replay
-from tests.eval.scoring import Correctness, score
+from tests.eval.scoring import Correctness, Recovery, score, score_boundary
 from tests.eval.spec import read_spec
 from tests.eval.tools import run_verify
 from tests.eval.transcript import Transcript, transcript_path
@@ -50,11 +53,12 @@ class StaleTranscriptError(RuntimeError):
 
 @dataclass(frozen=True)
 class ApproachResult:
-    """One approach's outcome on a task: whether it verified green and its
-    correctness against the gold."""
+    """One approach's outcome on a task: whether it verified green, its base
+    correctness against the gold, and its boundary/aggregate recovery."""
 
     verify_green: bool
     correctness: Correctness
+    recovery: Recovery
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,12 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     context-driven project under *replay_dest*. The task's transcript for the
     installed ``PACK_VERSION`` must exist, or replay has nothing to run, and it
     must replay clean or this raises :class:`StaleTranscriptError`.
+
+    Both recovery scores are taken against the task spec's declared contexts, so
+    a task that names a bounded-context grouping has its layout judged instead of
+    matching whatever module each aggregate landed in. Each one passes its own
+    project's import package, read off that project's layout, so the context
+    segment is read after the package whatever package the project chose.
     """
     spec = read_spec(task_id)
     gold = build_gold(spec, gold_dest)
@@ -105,15 +115,28 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     deterministic = ApproachResult(
         verify_green=run_verify(gold.root)["ok"],
         correctness=score(gold.ir, gold.ir),
+        recovery=score_boundary(
+            gold.ir,
+            gold.ir,
+            contexts=spec.contexts,
+            package=discover_import_package(gold.root),
+        ),
     )
 
     transcript = Transcript.load(transcript_path(eval_root(), PACK_VERSION, task_id))
     workspace = Workspace(Path(replay_dest))
     result = replay(transcript, workspace=workspace)
     _reject_stale(transcript, result)
+    produced_ir = build_ir(workspace.root)
     context_driven = ApproachResult(
         verify_green=run_verify(workspace.root)["ok"],
-        correctness=score(build_ir(workspace.root), gold.ir),
+        correctness=score(produced_ir, gold.ir),
+        recovery=score_boundary(
+            produced_ir,
+            gold.ir,
+            contexts=spec.contexts,
+            package=discover_import_package(workspace.root),
+        ),
     )
 
     return Comparison(

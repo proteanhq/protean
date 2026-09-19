@@ -1,0 +1,7 @@
+{
+  "project_name": "order_and_payment",
+  "contexts": {
+    "order": ["Order"],
+    "payment": ["Payment"]
+  }
+}

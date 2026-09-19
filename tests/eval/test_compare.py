@@ -10,6 +10,7 @@ the run quick.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -23,6 +24,7 @@ from tests.eval.compare import (
 )
 from tests.eval.gold import GoldProject
 from tests.eval.runner import RunResult, eval_root
+from tests.eval.spec import TaskSpec
 from tests.eval.transcript import Transcript, transcript_path
 from tests.eval.workspace import Workspace
 
@@ -42,13 +44,23 @@ def test_reports_both_approaches(comparison: Comparison) -> None:
         assert isinstance(approach.verify_green, bool)
         assert 0.0 <= approach.correctness.score <= 1.0
         assert approach.correctness.expected >= 1
+        # AC1: every task run through the harness reports a boundary/aggregate
+        # recovery score, in range alongside the base correctness.
+        assert 0.0 <= approach.recovery.placement <= 1.0
+        assert 0.0 <= approach.recovery.context <= 1.0
 
 
 def test_deterministic_approach_is_green_and_perfect(comparison: Comparison) -> None:
-    """Approach A is the oracle: verify-green and exactly 1.0."""
+    """Approach A is the oracle: verify-green and exactly 1.0, on both the base
+    rubric and the boundary/aggregate recovery layer."""
     assert comparison.deterministic.verify_green is True
     assert comparison.deterministic.correctness.score == 1.0
     assert comparison.deterministic.correctness.missing == ()
+    # The gold scored against itself places every element and matches its own
+    # context, so recovery is 1.0 by construction, and over real elements.
+    assert comparison.deterministic.recovery.placement == 1.0
+    assert comparison.deterministic.recovery.context == 1.0
+    assert comparison.deterministic.recovery.placement_expected >= 1
 
 
 def test_context_driven_approach_verifies_and_scores_in_range(
@@ -183,3 +195,90 @@ def test_context_driven_verify_green_describes_the_final_tree(
     comparison = compare("place_order", tmp_path / "gold_dest", replay_dest)
 
     assert comparison.context_driven.verify_green is False
+
+
+def _lay_out_package(root: Path, package: str) -> Path:
+    """Write a ``src/<package>/domain.py`` under *root* and return *root*.
+
+    ``compare`` reads a project's import package off its layout, so a stubbed IR
+    has to sit on a project laid out under the same package or the context
+    segment would be read one segment early.
+    """
+    domain_file = root / "src" / package / "domain.py"
+    domain_file.parent.mkdir(parents=True, exist_ok=True)
+    domain_file.write_text("from protean import Domain\n", encoding="utf-8")
+    return root
+
+
+def _context_ir(package: str, placement: dict[str, str]) -> dict[str, Any]:
+    """A minimal IR putting each aggregate in the context module named for it.
+
+    *placement* maps an aggregate class name to its context segment, which is all
+    the context score reads: the aggregate's package-relative first module
+    segment.
+    """
+    fqns = {
+        aggregate: f"{package}.{context}.aggregate.{aggregate}"
+        for aggregate, context in placement.items()
+    }
+    return {
+        "elements": {"AGGREGATE": sorted(fqns.values())},
+        "clusters": {
+            fqns[aggregate]: {
+                "aggregate": {
+                    "name": aggregate,
+                    "fqn": fqns[aggregate],
+                    "module": f"{package}.{context}.aggregate",
+                    "fields": {},
+                }
+            }
+            for aggregate, context in placement.items()
+        },
+    }
+
+
+def test_the_task_contexts_are_scored_against_the_declaration(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A task that declares a bounded-context grouping has both approaches scored
+    against it. A context-driven project that collapses the two contexts into one
+    scores below 1.0; without the declaration reaching the scorer, every recovered
+    aggregate would match whatever module it landed in and report 1.0."""
+    replay_dest = _lay_out_package(tmp_path / "replay", "produced")
+    spec = TaskSpec(
+        task_id="place_order",
+        project_name="shop",
+        aggregates=("Order", "Payment"),
+        contexts=(("order", ("Order",)), ("payment", ("Payment",))),
+    )
+    gold_ir = _context_ir("gold", {"Order": "order", "Payment": "payment"})
+    # The collapse: both aggregates written into the one `order` context.
+    produced_ir = _context_ir("produced", {"Order": "order", "Payment": "order"})
+    monkeypatch.setattr(compare_module, "read_spec", lambda task_id: spec)
+    monkeypatch.setattr(
+        compare_module,
+        "build_gold",
+        lambda spec, dest: GoldProject(
+            root=_lay_out_package(tmp_path / "gold", "gold"), ir=gold_ir
+        ),
+    )
+    monkeypatch.setattr(
+        compare_module,
+        "replay",
+        lambda transcript, *, workspace: RunResult(
+            turns=(), project_hash=transcript.project_hash
+        ),
+    )
+    monkeypatch.setattr(compare_module, "build_ir", lambda root: produced_ir)
+    monkeypatch.setattr(compare_module, "run_verify", lambda root: {"ok": True})
+
+    comparison = compare("place_order", tmp_path / "gold_dest", replay_dest)
+
+    b = comparison.context_driven
+    assert b.recovery.context == pytest.approx(1 / 2)
+    assert b.recovery.contexts_mismatched == ("Payment",)
+    assert b.recovery.contexts_matched == ("Order",)
+    # Approach A is the oracle: the gold sits where the spec declares, over both
+    # declared contexts rather than a vacuous denominator.
+    assert comparison.deterministic.recovery.context == 1.0
+    assert comparison.deterministic.recovery.context_expected == 2
