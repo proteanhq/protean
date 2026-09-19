@@ -58,8 +58,7 @@ as an LF one and a benign platform newline difference never reads as a phantom
 conflict. Writes go back out in whatever line ending the file already uses, so an
 update never rewrites a file's line endings.
 
-See ADR-0037 for the decision record behind the state file and the two merge
-modes.
+See ADR-0037 for the decision record behind the state file and the merge modes.
 
 Design decisions for v1:
 
@@ -73,6 +72,11 @@ Design decisions for v1:
   preserved. With no path the merge is over the top-level keys; with a key-path it
   is scoped to the nested object at that path, which is how ``.mcp.json`` manages
   only ``mcpServers.protean`` and keeps the user's other servers.
+- **Whole-file dx ownership.** A whole-file target has no user-owned region, so its
+  managed slice is the whole file and ``slice_hash`` equals ``file_hash``. Any hand
+  edit makes the on-disk content differ from both the render and the state, so the
+  same slice-based decision reports it as a conflict. This is for a file whose format
+  forbids a marker line above its first byte, such as Cursor's ``.mdc`` rule.
 
 Usage::
 

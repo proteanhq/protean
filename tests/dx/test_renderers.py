@@ -217,7 +217,9 @@ def test_cursor_managed_file_is_a_whole_file_target() -> None:
     assert isinstance(managed, ManagedWholeFile)
     assert managed.target == CURSOR_TARGET == ".cursor/rules/protean.mdc"
     assert managed.version == "0.18.0"
-    assert managed.body == render_cursor_body("0.18.0")
+    assert managed.body.startswith("---\n")  # MDC frontmatter at line 1
+    assert "<!-- protean:0.18.0 -->" in managed.body
+    assert "## Do not break these rules" in managed.body
 
 
 # --- Copilot ----------------------------------------------------------------
@@ -232,7 +234,7 @@ def test_copilot_managed_file_is_a_block_with_the_guidance() -> None:
     assert managed.version == "0.18.0"
     assert managed.comment_prefix == "<!-- "
     assert managed.comment_suffix == " -->"
-    assert managed.body == render_agents_body("0.18.0")
+    assert "## Do not break these rules" in managed.body  # composed guidance
 
 
 # --- opencode ---------------------------------------------------------------
@@ -261,7 +263,11 @@ def test_opencode_managed_file_shape() -> None:
     assert managed.version == "0.18.0"
     assert managed.path == (OPENCODE_MCP_KEY,) == ("mcp",)
     assert managed.managed_keys == (OPENCODE_SERVER_NAME,) == ("protean",)
-    assert managed.data[OPENCODE_SERVER_NAME] == opencode_registration()
+    assert managed.data[OPENCODE_SERVER_NAME] == {
+        "type": "local",
+        "command": ["protean", "mcp"],
+        "enabled": True,
+    }
 
 
 def test_opencode_shape_differs_from_mcp_json() -> None:

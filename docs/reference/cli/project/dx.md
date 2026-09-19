@@ -59,11 +59,12 @@ file for the Cursor rule. Commit the state file so the conflict check works acro
 machines. The design is recorded in
 [ADR-0037](../../../adr/0037-idempotent-file-projection.md).
 
-`install` refuses a pre-existing `AGENTS.md` that has no `PROTEAN` markers and
-writes nothing to it, so it never overwrites a file you wrote by hand. A project
-that already carries an unmarked `AGENTS.md`, including one written by an older
-`protean new`, reports an error until you remove or rename that file and run
-`install`, which then writes the managed version.
+For any managed-block Markdown file (`AGENTS.md`, `CLAUDE.md`, and
+`.github/copilot-instructions.md`), `install` refuses a pre-existing file that has
+no `PROTEAN` markers and writes nothing to it, so it never overwrites a file you
+wrote by hand. This covers a `.github/copilot-instructions.md` you already keep, and
+an `AGENTS.md` written by an older `protean new`. It reports an error until you
+remove or rename that file and run `install`, which then writes the managed version.
 
 ## Verbs
 

@@ -6,31 +6,31 @@ Six targets ship, split into the canonical set and the per-editor set.
 
 The canonical set:
 
-- ``AGENTS.md`` — the canonical, cross-agent instruction file. Its body composes
+- ``AGENTS.md``: the canonical, cross-agent instruction file. Its body composes
   two layers: the positive guidance from the packaged AGENTS.md source
   (:func:`~protean.dx.pack.load_agents_source`) and the negative hard-rules
   section derived from the diagnostics registry
   (:func:`~protean.ir.generators.agents.generate_agents_md`). Both are stamped to
   the installed framework version, so an agent always reads guidance that matches
   the installed code.
-- ``CLAUDE.md`` — a one-line bridge (``@AGENTS.md``) that points Claude Code at
+- ``CLAUDE.md``: a one-line bridge (``@AGENTS.md``) that points Claude Code at
   the canonical file.
-- ``.mcp.json`` — the MCP server registration a client reads to launch Protean's
+- ``.mcp.json``: the MCP server registration a client reads to launch Protean's
   MCP server. It is a managed-JSON-keys target scoped to the ``mcpServers.protean``
   key-path, so an existing ``.mcp.json`` keeps the user's other servers.
 
 The per-editor set (see the #1474 decisions):
 
-- ``.cursor/rules/protean.mdc`` — Cursor's rule file. MDC: YAML frontmatter
+- ``.cursor/rules/protean.mdc``: Cursor's rule file. MDC: YAML frontmatter
   (``description``, ``globs: "**/*.py"``, ``alwaysApply: false``) at line 1, then
   a version stamp and the composed guidance body. Cursor reads AGENTS.md natively
   for the always-on layer, so this rule is scoped to Python files via ``globs``.
-  The frontmatter must be the first bytes of the file, so this is a whole-file
-  dx-owned render (no marker line can sit above it) rather than a managed block.
-- ``.github/copilot-instructions.md`` — Copilot's instructions. Plain Markdown
+  The frontmatter must be the first bytes of the file, with no marker line above
+  it, so ``dx`` owns and renders the whole file.
+- ``.github/copilot-instructions.md``: Copilot's instructions. Plain Markdown
   with the guidance in an HTML-comment managed block, so the file stays co-owned
   with the user's own instructions.
-- ``opencode.json`` — opencode's config. A managed-JSON-keys target on the
+- ``opencode.json``: opencode's config. A managed-JSON-keys target on the
   ``mcp.protean`` key-path with opencode's own launch shape (``type: "local"``,
   ``command`` as a list, ``enabled: true``), which differs from ``.mcp.json``'s
   shape. opencode reads AGENTS.md natively, so it gets no separate instruction
@@ -179,9 +179,9 @@ def agents_managed_file(version: str) -> ManagedBlock:
 def claude_bridge_managed_file(version: str) -> ManagedBlock:
     """Return the managed block for the project's ``CLAUDE.md`` bridge.
 
-    The body is version-independent, but the block still carries *version* as its
-    stamp so its state row advances in step with the AGENTS.md render on an
-    upgrade.
+    The block carries *version* as its stamp so its state row advances in step
+    with the AGENTS.md render on an upgrade. The body text is the same across
+    versions.
     """
     return _markdown_block(CLAUDE_BRIDGE_TARGET, version, CLAUDE_BRIDGE_BODY)
 
@@ -191,9 +191,9 @@ def mcp_json_managed_file(version: str) -> ManagedJsonKeys:
 
     Manages only the ``mcpServers.protean`` key-path, so an existing ``.mcp.json``
     keeps every other server. The value is the launch shape
-    :func:`~protean.mcp.mcp_registration` defines. The registration is
-    version-independent, but the request still carries *version* as its stamp so
-    its state row advances in step with the other files on an upgrade.
+    :func:`~protean.mcp.mcp_registration` defines. The request carries *version*
+    as its stamp so its state row advances in step with the other files on an
+    upgrade. The registration itself is the same across versions.
     """
     return ManagedJsonKeys(
         target=MCP_TARGET,
@@ -221,9 +221,9 @@ def render_cursor_body(version: str) -> str:
 
     Leads with the MDC frontmatter at line 1, then a version stamp comment, then
     the same composed guidance :func:`render_agents_body` builds. The stamp lives
-    in the file (not only in the state file), so a version bump changes the
-    rendered content and ``dx check`` reports staleness. Deterministic for a given
-    *version*, since :func:`render_agents_body` is.
+    in the file itself, so a version bump changes the rendered content and ``dx
+    check`` reports staleness. Deterministic for a given *version*, since
+    :func:`render_agents_body` is.
     """
     stamp = f"<!-- protean:{version} -->"
     body = render_agents_body(version)
@@ -267,9 +267,10 @@ def opencode_managed_file(version: str) -> ManagedJsonKeys:
     """Return the managed-JSON-keys request for the project's ``opencode.json``.
 
     Manages only the ``mcp.protean`` key-path, so an existing ``opencode.json``
-    keeps every other opencode key and every other mcp server. The registration
-    is version-independent, but the request still carries *version* as its stamp
-    so its state row advances in step with the other files on an upgrade.
+    keeps every other opencode key and every other mcp server. The request
+    carries *version* as its stamp so its state row advances in step with the
+    other files on an upgrade. The registration itself is the same across
+    versions.
     """
     return ManagedJsonKeys(
         target=OPENCODE_TARGET,

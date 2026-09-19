@@ -653,6 +653,7 @@ def test_check_flags_a_drifted_cursor_rule(tmp_path: Path) -> None:
     assert check_result.exit_code == 1, check_result.output
     flat = " ".join(check_result.output.split())
     assert "conflict" in flat
+    assert _CURSOR_RULE in flat, flat
     assert "the whole file" in flat, flat
 
     # install refuses the hand-edited whole file and leaves it in place.
@@ -678,6 +679,8 @@ def test_check_flags_a_drifted_copilot_block(tmp_path: Path) -> None:
     flat = " ".join(result.output.split())
     assert "conflict" in flat
     assert _COPILOT_FILE in flat
+    assert "the managed block 'protean'" in flat, flat
+    assert "the whole file" not in flat, flat
 
 
 def test_check_flags_a_drifted_opencode_config(tmp_path: Path) -> None:
