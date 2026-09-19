@@ -971,16 +971,27 @@ def classify_changes(
       registered upcaster chain covers has its schema-transformation changes
       downgraded to safe (see :func:`_apply_upcaster_mitigation`). This reads
       ``__version__`` from the IR directly and needs no ``current_version``.
+    - **Event-sourced aggregate replay coverage**: an event-sourced aggregate is
+      rebuilt by replaying its events, so its mitigatable breaking field changes
+      downgrade to safe when every rebuilding event that was version-bumped in
+      this diff is upcaster-covered (see :func:`_apply_es_aggregate_mitigation`).
+      A classic table-backed aggregate is never touched by this path.
     """
     report = CompatibilityReport()
 
     _classify_clusters(diff_result.get("clusters", {}), report, current_version)
     _classify_projections(diff_result.get("projections", {}), report, current_version)
 
+    # Both mitigation passes read event coverage from one source of truth so they
+    # never disagree about whether a given event's version bump is upcaster-covered.
+    coverage = _event_upcaster_coverage(left_ir, right_ir)
     # Downgrade breaking changes on an event whose version bump is covered by a
     # registered upcaster (the upcaster transforms old payloads to the new
     # shape), citing the mitigating coverage.
-    _apply_upcaster_mitigation(report, left_ir, right_ir)
+    _apply_upcaster_mitigation(report, coverage)
+    # Downgrade breaking field changes on an event-sourced aggregate when the
+    # events that rebuild it are all covered.
+    _apply_es_aggregate_mitigation(report, right_ir, coverage)
 
     return report
 
@@ -1005,31 +1016,37 @@ _UPCASTER_MITIGATABLE = frozenset(
     }
 )
 
+# The subset of the above that can arise on an aggregate. An aggregate has no
+# ``__type__`` version string, so ``type_string_changed`` never applies to one.
+_ES_AGGREGATE_MITIGATABLE = frozenset(
+    {
+        "field_removed",
+        "field_type_changed",
+        "required_field_added",
+    }
+)
 
-def _apply_upcaster_mitigation(
-    report: CompatibilityReport,
+
+def _event_upcaster_coverage(
     left_ir: dict[str, Any],
     right_ir: dict[str, Any],
-) -> None:
-    """Downgrade breaking changes on events whose version bump an upcaster covers.
+) -> dict[str, tuple[str, str | None]]:
+    """Whether a registered upcaster chain covers each event's version bump.
 
-    A registered upcaster chain that reaches an event's new ``__version__`` from
-    its old one transforms stored old-version payloads to the new shape, so the
-    schema-transformation changes that make up that version bump (field removals,
-    type changes, required-field additions, the ``__type__`` version-string bump)
-    are no longer breaking. Only those change types are downgraded — an orthogonal
-    change such as a public→internal visibility flip is left breaking. Each
-    downgraded change is moved to ``safe_changes`` with ``mitigated_by`` set to
-    the covering upcaster.
+    Returns a map of event fqn to ``(status, citation)`` for every event that was
+    version-bumped between the two IRs. ``status`` is ``"covered"`` when an
+    upcaster chain reaches the new ``__version__`` from the old one, or ``"gap"``
+    when the version bumped but no chain reaches it (old payloads are stranded).
+    ``citation`` names the covering upcaster for a ``"covered"`` bump (e.g.
+    ``"upcaster OrderPlaced v1->v2"``) and is ``None`` for a ``"gap"``. Events with
+    no version bump are absent from the map — there is nothing for an upcaster to
+    cover. This is the single source of coverage truth both mitigation passes read.
     """
     upcasters = right_ir.get("upcasters", {})
-    if not upcasters or not report.breaking_changes:
-        return
-
     left_events = _events_by_fqn(left_ir)
     right_events = _events_by_fqn(right_ir)
 
-    mitigation: dict[str, str] = {}
+    coverage: dict[str, tuple[str, str | None]] = {}
     for event_fqn, right_entry in right_events.items():
         left_entry = left_events.get(event_fqn)
         if left_entry is None:
@@ -1050,11 +1067,38 @@ def _apply_upcaster_mitigation(
         ]
         # left_v reaches right_v iff it is NOT among the versions with no path.
         if left_v in missing_upcaster_source_versions(edges, right_v):
-            continue
-        mitigation[event_fqn] = (
-            f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}"
-        )
+            coverage[event_fqn] = ("gap", None)
+        else:
+            coverage[event_fqn] = (
+                "covered",
+                f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}",
+            )
+    return coverage
 
+
+def _apply_upcaster_mitigation(
+    report: CompatibilityReport,
+    coverage: dict[str, tuple[str, str | None]],
+) -> None:
+    """Downgrade breaking changes on events whose version bump an upcaster covers.
+
+    A registered upcaster chain that reaches an event's new ``__version__`` from
+    its old one transforms stored old-version payloads to the new shape, so the
+    schema-transformation changes that make up that version bump (field removals,
+    type changes, required-field additions, the ``__type__`` version-string bump)
+    are no longer breaking. Only those change types are downgraded — an orthogonal
+    change such as a public→internal visibility flip is left breaking. Each
+    downgraded change is moved to ``safe_changes`` with ``mitigated_by`` set to
+    the covering upcaster. *coverage* is the map from :func:`_event_upcaster_coverage`.
+    """
+    if not report.breaking_changes:
+        return
+
+    mitigation = {
+        event_fqn: citation
+        for event_fqn, (status, citation) in coverage.items()
+        if status == "covered"
+    }
     if not mitigation:
         return
 
@@ -1064,6 +1108,73 @@ def _apply_upcaster_mitigation(
         # Only downgrade schema-transformation changes the upcaster actually
         # performs; leave orthogonal changes (e.g. a visibility flip) breaking.
         if citation is None or change.change_type not in _UPCASTER_MITIGATABLE:
+            still_breaking.append(change)
+            continue
+        change.severity = "safe"
+        change.mitigated_by = citation
+        report.safe_changes.append(change)
+    report.breaking_changes = still_breaking
+
+
+def _apply_es_aggregate_mitigation(
+    report: CompatibilityReport,
+    right_ir: dict[str, Any],
+    coverage: dict[str, tuple[str, str | None]],
+) -> None:
+    """Downgrade breaking field changes on an event-sourced aggregate whose
+    rebuilding events are all upcaster-covered.
+
+    An event-sourced aggregate stores no schema of its own — it is rebuilt by
+    replaying the events its ``apply_handlers`` name. So its mitigatable breaking
+    field changes (removal, type change, required-field add) are earned-safe on the
+    same terms as those events: downgrade them only when every rebuilding event that
+    was version-bumped in this diff is covered, and at least one was bumped-and-covered.
+    A single uncovered bump (a gap) among the rebuilding events, or no bump at all,
+    leaves the aggregate breaking — nothing was earned. Coverage is at aggregate
+    granularity: the IR carries no per-field provenance, so a covered bump on any
+    rebuilding event downgrades the aggregate's field changes, not only the fields
+    that event happens to populate. A classic (non-event-sourced) aggregate is never
+    touched by this path; its breaking field changes stay breaking, and ``exclude``
+    is the only escape hatch there. *coverage* is the map from
+    :func:`_event_upcaster_coverage`.
+    """
+    if not report.breaking_changes:
+        return
+
+    # Per aggregate fqn, the citation to attach when its field changes are earned-safe.
+    aggregate_citation: dict[str, str] = {}
+    for fqn, cluster in right_ir.get("clusters", {}).items():
+        aggregate = cluster.get("aggregate", {})
+        if not aggregate.get("options", {}).get("is_event_sourced"):
+            continue
+        rebuilding_events = aggregate.get("apply_handlers", {})
+        if not rebuilding_events:
+            continue
+
+        covering_citations: list[str] = []
+        has_gap = False
+        for event_fqn in rebuilding_events:
+            status, citation = coverage.get(event_fqn, ("unchanged", None))
+            if status == "gap":
+                has_gap = True
+                break
+            if status == "covered" and citation is not None:
+                covering_citations.append(citation)
+        # Downgrade only when no rebuilding event has an uncovered bump and at
+        # least one was bumped-and-covered.
+        if has_gap or not covering_citations:
+            continue
+        aggregate_citation[fqn] = ", ".join(sorted(covering_citations))
+
+    if not aggregate_citation:
+        return
+
+    still_breaking: list[CompatibilityChange] = []
+    for change in report.breaking_changes:
+        citation = aggregate_citation.get(change.element_fqn)
+        # Only downgrade field-schema changes replay can reconstruct; leave
+        # orthogonal changes (e.g. the aggregate removed, a visibility flip) breaking.
+        if citation is None or change.change_type not in _ES_AGGREGATE_MITIGATABLE:
             still_breaking.append(change)
             continue
         change.severity = "safe"

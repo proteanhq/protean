@@ -60,27 +60,33 @@ def _make_cluster(
     value_objects: dict | None = None,
     database_models: dict | None = None,
     options: dict | None = None,
+    apply_handlers: dict | None = None,
 ) -> dict:
-    return {
-        "aggregate": {
-            "element_type": "AGGREGATE",
-            "fields": fields or {},
-            "fqn": f"app.{name}",
-            "identity_field": "id",
-            "invariants": {"post": [], "pre": []},
-            "module": "app",
-            "name": name,
-            "options": options
-            or {
-                "auto_add_id_field": True,
-                "fact_events": False,
-                "is_event_sourced": False,
-                "limit": 100,
-                "provider": "default",
-                "schema_name": None,
-                "stream_category": None,
-            },
+    aggregate: dict = {
+        "element_type": "AGGREGATE",
+        "fields": fields or {},
+        "fqn": f"app.{name}",
+        "identity_field": "id",
+        "invariants": {"post": [], "pre": []},
+        "module": "app",
+        "name": name,
+        "options": options
+        or {
+            "auto_add_id_field": True,
+            "fact_events": False,
+            "is_event_sourced": False,
+            "limit": 100,
+            "provider": "default",
+            "schema_name": None,
+            "stream_category": None,
         },
+    }
+    # Only an event-sourced aggregate carries apply_handlers in real IR; a classic
+    # aggregate omits the key entirely (see builder.py).
+    if apply_handlers is not None:
+        aggregate["apply_handlers"] = apply_handlers
+    return {
+        "aggregate": aggregate,
         "application_services": {},
         "command_handlers": {},
         "commands": commands or {},
@@ -1032,6 +1038,275 @@ class TestRenameOnEventStillSafe:
         report = classify_changes(diff_ir(left, right), left, right)
         assert report.is_breaking is False
         assert [c.change_type for c in report.safe_changes] == ["field_renamed"]
+
+
+def _es_options() -> dict:
+    """Options block marking an aggregate event-sourced."""
+    return {
+        "auto_add_id_field": True,
+        "fact_events": False,
+        "is_event_sourced": True,
+        "limit": 100,
+        "provider": "default",
+        "schema_name": None,
+        "stream_category": None,
+    }
+
+
+def _es_cluster(fields: dict, events: dict, apply_handlers: dict) -> dict:
+    """An event-sourced ``app.Account`` cluster with the given fields, rebuilding
+    events, and apply-handler map (event fqn -> handler method name)."""
+    return _make_cluster(
+        "Account",
+        fields=fields,
+        events=events,
+        options=_es_options(),
+        apply_handlers=apply_handlers,
+    )
+
+
+class TestEventSourcedAggregateReplayCoverage:
+    """#841: an event-sourced aggregate is rebuilt by replaying its events, so its
+    mitigatable breaking field changes downgrade to safe when every rebuilding event
+    that was version-bumped is upcaster-covered. A classic aggregate is never touched.
+    """
+
+    def test_covered_field_removal_downgrades(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {"note": _std()})
+                    },
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
+    def test_covered_field_type_change_downgrades(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Integer")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_type_changed"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
+    def test_covered_required_field_add_downgrades(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={
+                        "balance": _std("Float"),
+                        "currency": _std("String", required=True),
+                    },
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["required_field_added"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
+    def test_uncovered_bump_leaves_aggregate_breaking(self):
+        """The rebuilding event bumps v1->v2 but no upcaster covers it (a gap), so
+        the aggregate's field removal stays breaking."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+
+    def test_no_rebuilding_event_bump_leaves_aggregate_breaking(self):
+        """No rebuilding event changed version, so nothing was earned and the
+        aggregate's field removal stays breaking."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+
+    def test_classic_aggregate_stays_breaking(self):
+        """A classic (non-event-sourced) aggregate is never touched by replay
+        coverage, even when an event in the same cluster is fully covered."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _make_cluster(
+                    "Account",
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {"note": _std()})
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _make_cluster(
+                    "Account",
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        # The aggregate field removal stays breaking...
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        # ...while the covered event's own changes are the only downgrades.
+        assert all(c.element_fqn == "app.AccountOpened" for c in report.safe_changes)
+        assert report.safe_changes
+
+    def test_orthogonal_type_string_change_stays_breaking(self):
+        """A covered ES aggregate downgrades its field removal but not an orthogonal
+        ``__type__`` change, which replay does not reconstruct."""
+        left_cluster = _es_cluster(
+            fields={"nickname": _std(), "balance": _std("Float")},
+            events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+            apply_handlers={"app.AccountOpened": "on_account_opened"},
+        )
+        left_cluster["aggregate"]["__type__"] = "Test.Account.v1"
+        right_cluster = _es_cluster(
+            fields={"balance": _std("Float")},
+            events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+            apply_handlers={"app.AccountOpened": "on_account_opened"},
+        )
+        right_cluster["aggregate"]["__type__"] = "Test.Account.v2"
+        left = _minimal_ir(clusters={"app.Account": left_cluster})
+        right = _minimal_ir(
+            clusters={"app.Account": right_cluster},
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        breaking = [
+            c for c in report.breaking_changes if c.element_fqn == "app.Account"
+        ]
+        assert [c.change_type for c in breaking] == ["type_string_changed"]
+        safe = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in safe] == ["field_removed"]
+
+    def test_partial_gap_among_rebuilding_events_stays_breaking(self):
+        """Two rebuilding events: one covered, one with an uncovered bump (a gap).
+        A single gap leaves the aggregate breaking."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 1, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        "app.DepositMade": _evt("DepositMade", 2, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            # Only AccountOpened is covered; DepositMade's bump is a gap.
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
 
 
 # ------------------------------------------------------------------

@@ -29,13 +29,14 @@ Protean classifies changes to persisted domain elements using these rules:
 | Visibility internal to public | Safe |
 | Change `__type__` string | **Breaking** |
 | Event version bump covered by a registered upcaster | Safe (mitigated) |
+| Event-sourced aggregate field change whose rebuilding events are all covered | Safe (mitigated) |
 
 These rules apply to all persisted elements: aggregates, entities, value
 objects, commands, events, database models, and projections.
 
 ### Evolution-aware classification
 
-The checker understands two evolution mechanisms:
+The checker understands three evolution mechanisms:
 
 - **Deprecation grace**: A field marked `deprecated` and removed at or past its
   `removal` version is an *expected removal* (safe), not a breaking one. This
@@ -52,6 +53,18 @@ The checker understands two evolution mechanisms:
   example a public→internal visibility flip) stays breaking, and a version bump
   with an upcaster *gap* (a prior version with no path to the new one) stays
   breaking.
+- **Event-sourced aggregate replay coverage**: An event-sourced aggregate holds
+  no schema of its own. It is rebuilt by replaying the events its apply-handlers
+  process. So a breaking field change on such an aggregate (a field removal, a
+  type change, or a required-field add) is downgraded to safe when every
+  rebuilding event that bumped its version in this diff is upcaster-covered, and
+  at least one was bumped and covered. A single uncovered bump among the
+  rebuilding events, or no bump at all, leaves the aggregate breaking, because
+  nothing was earned. Coverage is at aggregate granularity: the IR carries no
+  per-field history, so a covered bump on any rebuilding event downgrades the
+  aggregate's field changes, not only the fields that event populates. A classic
+  table-backed aggregate is never touched by this path; its breaking field
+  changes stay breaking, and `exclude` is the only way to silence them.
 
 ---
 
@@ -127,6 +140,25 @@ When deprecating a domain element or field:
 
 The `protean ir diff` command distinguishes expected removals (deprecated
 elements past their removal version) from unexpected removals.
+
+### Earned safety comes first; `exclude` is the last resort
+
+Reach for the in-code primitives before you reach for `exclude`. Each one earns
+a downgrade the checker can verify against the actual schema:
+
+- `renamed_from` on the new field marks a rename, not a remove-and-add.
+- A `deprecated` mark with a `removal` version earns the expected-removal grace.
+- A registered [upcaster](../../patterns/event-versioning-and-evolution.md) chain
+  earns the mitigation for an event's version bump.
+- Event-sourced replay coverage extends that same earned downgrade to an
+  event-sourced aggregate's field changes, once every rebuilding event is
+  covered.
+
+`exclude` earns nothing. It silences the alert without proving the change is
+safe, so it is the coarse last resort for the element types the checker cannot
+verify: classic table-backed aggregates, projections, commands, and value
+objects. Use it only when you have decided by hand that a break is acceptable,
+and prefer any of the earned primitives above wherever they apply.
 
 Events additionally accept a `superseded_by` option naming the replacement (an
 Event class or a name string):
