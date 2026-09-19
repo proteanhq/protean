@@ -702,6 +702,93 @@ class TestContext:
         }
         assert _context_map(ir) == {"Order": {"domain"}}
 
+    def test_a_lone_top_level_context_is_not_read_as_the_package(self) -> None:
+        """One aggregate at ``order.aggregate`` is a context holding an
+        ``aggregate.py``, not a package holding a module. A shared first segment
+        is only the package when a context segment and a module segment are left
+        under it, so ``order`` is kept rather than stripped down to
+        ``aggregate``."""
+        ir = {
+            "domain": {"normalized_name": "place_order", "name": "place_order"},
+            "elements": {},
+            "clusters": {
+                "order.aggregate.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "order.aggregate.Order",
+                        "module": "order.aggregate",
+                    }
+                },
+            },
+        }
+        assert _context_map(ir) == {"Order": {"order"}}
+
+    def test_two_aggregates_in_one_top_level_context_keep_that_context(self) -> None:
+        """Both aggregates under the top-level ``order`` context share their
+        first segment, and it is still the context. The project collapsed the two
+        declared contexts into one, so it keeps the credit for the aggregate that
+        did land in ``order`` and loses it for the other, rather than scoring
+        zero because both read as a module named ``aggregate``."""
+        gold = boundary_ir(
+            package="sales",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        produced = {
+            "domain": {"normalized_name": "order_and_payment"},
+            "elements": {},
+            "clusters": {
+                "order.aggregate.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "order.aggregate.Order",
+                        "module": "order.aggregate",
+                    }
+                },
+                "order.aggregate.Payment": {
+                    "aggregate": {
+                        "name": "Payment",
+                        "fqn": "order.aggregate.Payment",
+                        "module": "order.aggregate",
+                    }
+                },
+            },
+        }
+        assert _context_map(produced) == {"Order": {"order"}, "Payment": {"order"}}
+        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
+        assert result.context == pytest.approx(1 / 2)
+        assert result.contexts_matched == ("Order",)
+        assert result.contexts_mismatched == ("Payment",)
+
+    def test_a_two_segment_module_under_the_named_package_still_strips(self) -> None:
+        """The counterpart layout: a project that writes each aggregate straight
+        into ``<package>/<context>.py``. Its modules are two segments deep, so
+        the domain name breaks the tie: ``shop`` is the package here, and the two
+        aggregates keep the contexts ``order`` and ``payment``."""
+        ir = {
+            "domain": {"normalized_name": "shop", "name": "Shop"},
+            "elements": {},
+            "clusters": {
+                "shop.order.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "shop.order.Order",
+                        "module": "shop.order",
+                    }
+                },
+                "shop.payment.Payment": {
+                    "aggregate": {
+                        "name": "Payment",
+                        "fqn": "shop.payment.Payment",
+                        "module": "shop.payment",
+                    }
+                },
+            },
+        }
+        assert _context_map(ir) == {"Order": {"order"}, "Payment": {"payment"}}
+
     def test_a_single_context_task_is_not_penalized(self) -> None:
         """The negative test for the undeclared-contexts branch: a
         single-aggregate (flat-spec) task's one aggregate matches its own

@@ -372,32 +372,51 @@ def _context_segment(module: str, package: str) -> str:
     return segments[0] if segments else ""
 
 
-def _package_prefix(modules: list[str]) -> str:
+def _package_prefix(modules: list[str], domain_name: str) -> str:
     """The import package every aggregate module in *modules* sits under.
 
-    The package is read from the modules themselves, not from the IR's domain
-    metadata: ``domain.name`` is the logical name the ``Domain(name=...)`` call
-    carries, which a project is free to set to something other than its import
-    package. A project packaged as ``ecommerce`` but named ``Ordering`` would
-    strip nothing, and every aggregate would key on ``ecommerce`` (one context
-    for the whole project) instead of on its own context segment.
-
     Under ADR-0030 a project's domain code lives under a single import package,
-    so the package is the first segment all the aggregate modules share. Returns
+    so the package is a first segment all the aggregate modules share. Returns
     ``""`` when they share no first segment, or when any of them is a single
     segment (an aggregate at the package root, which has no context segment to
     strip down to): nothing is stripped and each module's own first segment is
     the context.
+
+    A shared first segment alone does not prove a package, because
+    ``<context>.<kind>`` shares its first segment too. ``order.aggregate`` is
+    either package ``order`` holding module ``aggregate``, or context ``order``
+    holding ``aggregate.py`` with no project package at all, and the two read the
+    same. The scaffold layout settles most of it: ``<package>.<context>.<kind>``
+    is three segments, so a shared first segment is the package whenever every
+    module has a context segment and a module segment left under it.
+
+    Shallower than that, the segment is kept as the context unless the IR's
+    ``domain.normalized_name`` names it. That name is only the tiebreaker here,
+    never the package on its own: a project packaged as ``ecommerce`` but named
+    ``Ordering`` still strips ``ecommerce`` from its three-segment modules, so
+    its two contexts stay apart instead of collapsing into one.
     """
     firsts = set()
+    deep = True
     for module in modules:
         segments = [segment for segment in module.split(".") if segment]
         if len(segments) < 2:
             return ""
+        if len(segments) < 3:
+            deep = False
         firsts.add(segments[0])
     if len(firsts) != 1:
         return ""
-    return firsts.pop()
+    first = firsts.pop()
+    return first if deep or first == domain_name else ""
+
+
+def _domain_name(ir: dict[str, Any]) -> str:
+    """The IR's ``domain.normalized_name``, the snake_case domain name, or ``""``."""
+    domain = ir.get("domain") if isinstance(ir, dict) else None
+    if not isinstance(domain, dict):
+        return ""
+    return str(domain.get("normalized_name") or "")
 
 
 def _context_map(ir: dict[str, Any]) -> dict[str, set[str]]:
@@ -415,7 +434,7 @@ def _context_map(ir: dict[str, Any]) -> dict[str, set[str]]:
         (str(cluster["aggregate"].get("module", "")), owner)
         for cluster, owner in _owned_clusters(ir)
     ]
-    package = _package_prefix([module for module, _ in owned])
+    package = _package_prefix([module for module, _ in owned], _domain_name(ir))
     contexts: dict[str, set[str]] = defaultdict(set)
     for module, owner in owned:
         contexts[owner].add(_context_segment(module, package))

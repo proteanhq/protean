@@ -99,17 +99,22 @@ for fields:
   is its package-relative first module segment (`Order` at `shop.order.aggregate`
   is in the `order` context), so a gold under package `sales` and a produced
   project under `app` still match on `order`. The package is read off the
-  aggregate modules themselves: it is the first segment they all share. A project
-  packaged as `ecommerce` whose domain is named `Ordering` still splits into its
-  `order` and `payment` contexts. The spec is the only source of the expectation.
+  aggregate modules themselves: it is the first segment they all share, kept only
+  when a context segment and a module segment are left under it (the
+  `<package>.<context>.<kind>` the scaffold writes) or when the domain's
+  normalized name is that segment. A project packaged as `ecommerce` whose domain
+  is named `Ordering` still splits into its `order` and `payment` contexts, and a
+  project with no package at all keeps `order` as the context of
+  `order.aggregate`. The spec is the only source of the expectation.
   The gold builder puts every aggregate in its own slice module whatever the task
   asked for, so reading those module names back would invent a layout
   requirement. A task that declares no contexts (`place_order`,
   `order_and_customer`) has its layout left unscored, and every aggregate it
   recovers matches. That covers the `place_order` shape, where the gold scaffolds
   `place_order.order.aggregate` and the replay writes a root `domain.py`. A task
-  that does declare contexts is judged against the declaration, so collapsing
-  `order_and_payment`'s two contexts into one scores 0.
+  that does declare contexts is judged against the declaration, so a project that
+  collapses `order_and_payment`'s two contexts into one keeps credit only for an
+  aggregate that still sits in its declared context.
 
 Both scores are `0.0` when nothing is recovered (an empty produced or gold IR),
 the same guard the base rubric uses, and `score_boundary` raises the same
@@ -125,7 +130,9 @@ its own slice); `order_and_payment` foregrounds context (an `Order` and a
 gold. `protean add aggregate` builds each aggregate into its own slice module, so
 a context names the one aggregate whose slug is the context name. `read_spec`
 rejects any other grouping, so a spec never scaffolds a gold whose contexts are
-not the ones it declared.
+not the ones it declared. Aggregate names are stored as the class the scaffold
+emits, so a spec writing `orderItem` reads back as the `OrderItem` the gold
+carries.
 
 What the two new tasks omit, until their transcripts are recorded: only
 `place_order` carries a committed transcript, so `compare()` runs both approaches
