@@ -71,13 +71,14 @@ nothing installs it for you.
 
 ```yaml
 # .pre-commit-config.yaml
-- repo: local
-  hooks:
-    - id: protean-llms-snapshot
-      name: llms.txt is up to date
-      entry: protean docs generate --type=llms --check
-      language: system
-      pass_filenames: false
+repos:
+  - repo: local
+    hooks:
+      - id: protean-llms-snapshot
+        name: llms.txt is up to date
+        entry: protean docs generate --type=llms --check
+        language: system
+        pass_filenames: false
 ```
 
 ### A CI recipe

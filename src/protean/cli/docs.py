@@ -50,6 +50,7 @@ from typing import Annotated, Any
 
 import typer
 from rich import print
+from rich.markup import escape
 
 import protean
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
@@ -732,6 +733,7 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
         raise typer.Abort() from exc
 
     if config_path.name == "pyproject.toml":
+        section_label = "[tool.protean.docs]"
         section: object = data
         for level in ("tool", "protean", "docs"):
             if not isinstance(section, dict):
@@ -739,6 +741,7 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
             section = section.get(level, {})
         docs_section = section
     else:
+        section_label = "[docs]"
         docs_section = data.get("docs", {})
 
     if not isinstance(docs_section, dict):
@@ -749,7 +752,7 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
 
     if not isinstance(snapshot, dict):
         print(
-            f"[red]Error:[/red] [tool.protean.docs].domain_snapshot in "
+            f"[red]Error:[/red] {escape(section_label)}.domain_snapshot in "
             f"{config_path} must be a table with a 'path' and a 'domain'"
         )
         raise typer.Abort()

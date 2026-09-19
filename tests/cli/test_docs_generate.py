@@ -2018,7 +2018,27 @@ class TestDomainSnapshotConfig:
         result = runner.invoke(app, ["generate", "--type=llms"])
 
         assert result.exit_code != 0
-        assert "domain_snapshot" in result.output
+        # Strip every space and newline: rich wraps to the terminal width, and
+        # the bracketed key has to survive rich's markup parser to show up.
+        assert "[tool.protean.docs].domain_snapshot" in "".join(result.output.split())
+
+    def test_malformed_key_in_domain_toml_names_the_docs_section(
+        self, tmp_path, monkeypatch
+    ):
+        """In a domain.toml the key lives under [docs], with no tool.protean
+        prefix, so the abort has to name that section and not pyproject's."""
+        (tmp_path / "domain.toml").write_text(
+            '[docs]\ndomain_snapshot = "llms.txt"\n',
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code != 0
+        squeezed = "".join(result.output.split())
+        assert "[docs].domain_snapshot" in squeezed
+        assert "tool.protean" not in squeezed
 
     def test_malformed_key_empty_path_aborts(self, tmp_path, monkeypatch):
         """The key present with an empty 'path' aborts, naming the requirement."""
