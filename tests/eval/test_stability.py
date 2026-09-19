@@ -1,5 +1,5 @@
 """Run-to-run stability: the aggregation, a spread over an injected stub, and
-the deterministic zero-variance guard (#1350).
+the deterministic zero-variance guard.
 
 The aggregation tests pin ``measure_stability`` against hand-built outcomes and a
 ``statistics.pstdev`` reference. The stub test drives ``run_stability`` through an
@@ -32,8 +32,8 @@ from tests.eval.workspace import Workspace
 
 pytestmark = pytest.mark.no_test_domain
 
-# Two distinct signature sets to build outcomes from. B carries A's aggregate
-# plus a command, so the two are never equal as sets.
+# Three distinct signature sets to build outcomes from. B carries A's aggregate
+# plus a command and C a different aggregate, so no two of them are equal as sets.
 _SIGS_A: frozenset[Signature] = frozenset({("aggregate", "Order")})
 _SIGS_B: frozenset[Signature] = frozenset(
     {("aggregate", "Order"), ("command", "PlaceOrder")}
@@ -118,9 +118,9 @@ class TestRunStability:
     """``run_stability`` drives ``run_once`` n times and aggregates."""
 
     def test_injected_nondeterministic_stub_reports_the_expected_spread(self) -> None:
-        """AC1 over an injected seam: a ``run_once`` that cycles through outcomes
-        with two distinct structures and known scores reports the modal fraction,
-        the distinct count, and the exact score spread."""
+        """An injected ``run_once`` that cycles through outcomes with two
+        distinct structures and known scores reports the modal fraction, the
+        distinct count, and the exact score spread."""
         sequence = [
             RunOutcome(_SIGS_A, 1.0),
             RunOutcome(_SIGS_B, 0.5),
@@ -157,7 +157,7 @@ class TestRunStability:
 
 
 def test_deterministic_approach_reports_zero_variance(tmp_path) -> None:
-    """AC2: the deterministic approach, re-scaffolded and re-scored through
+    """The deterministic approach, re-scaffolded and re-scored through
     ``run_stability``, produces one distinct structure and exactly zero score
     spread. This is a real determinism regression guard: each run is a fresh
     ``build_gold``, so drift in the scaffold's signatures shows up as more than
