@@ -310,7 +310,7 @@ DB commit.
 
 | Adapter | Tier | Ordering | Delivery | Durability |
 |---|---|---|---|---|
-| **Inline** | `reliable_messaging` | Per-stream FIFO *in practice, though not advertised and not a contract* | At-least-once, with ack/nack and backoff requeue on nack; stale in-flight messages time out to the DLQ; DLQ on exhausted retries | In-process only (non-durable) |
+| **Inline** | `reliable_messaging` | Per-stream FIFO *in practice, though not advertised and not a contract* | At-least-once, with ack/nack and backoff requeue on nack. For a stream consumed directly off the broker: stale in-flight messages time out to the native DLQ and exhausted retries land there. For a subscription-consumed stream the broker holds and redelivers with no ceiling and does not use its native DLQ (ADR-0042). | In-process only (non-durable) |
 | **Redis PubSub** | `simple_queuing` | Per-stream FIFO *in practice, though not advertised and not a contract* | **At-most-once (best-effort)**: no ack/nack; the read advances the consumer position across the whole batch *before* any message is processed, so a crash loses **every not-yet-processed message in that batch** (up to `messages_per_tick`). Concurrent consumers in one group can also duplicate-and-skip (non-atomic read/increment). | Redis-backed state; lost messages are not recoverable |
 | **Redis Streams** | `ordered_messaging` | Per-stream FIFO, **guaranteed** (`MESSAGE_ORDERING`, native stream IDs) | At-least-once, via the `XREADGROUP` pending list, `XACK`, and redelivery across restarts | Durable in Redis Streams |
 
@@ -333,13 +333,18 @@ exhausted message to the DLQ, it ACKs the source stream only *after* the DLQ
 publish succeeds. If the publish fails, the message is NACKed (after a
 `retry_delay_seconds` backoff) and its retry count retained rather than being ACKed
 away, so it is redelivered and the DLQ move retried at the retry cadence, not at
-poll speed. On **Redis Streams** this repeats until the DLQ recovers. The
-**Inline** broker has its own independent retry ceiling; under a *persistent* DLQ
-outage that ceiling eventually moves the message to the broker's *native* DLQ
-(which the DLQ CLI lists) and stops redelivering, provided the broker's own DLQ is
-enabled (the default). So under a DLQ outage the message is not silently dropped.
-Disabling a DLQ (`enable_dlq=False`) discards an exhausted message (ACK without a
-DLQ move), which is intentional.
+poll speed. This repeats until the DLQ recovers, on both **Redis Streams** and the
+**Inline** broker.
+
+The subscription owns retry and dead-lettering for the stream it consumes
+(ADR-0042). For a subscription-consumed stream the **Inline** broker holds and
+redelivers a nacked message with no independent ceiling of its own, so a persistent
+DLQ outage never moves the message to the broker's *native* DLQ: the single
+dead-letter destination is the `{stream}:dlq` stream the subscription publishes.
+The Inline broker keeps its own ceiling and native DLQ only for a stream consumed
+directly off the broker with no subscription. Disabling a DLQ
+(`enable_dlq=False`) discards an exhausted message (ACK without a DLQ move), which
+is intentional.
 
 ---
 

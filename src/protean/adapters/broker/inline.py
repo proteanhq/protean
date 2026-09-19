@@ -23,6 +23,12 @@ CONSUMER_GROUP_SEPARATOR = ":"
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 BACKOFF_MULTIPLIER = 2.0
+# Cap the exponential-backoff exponent and the final delay. A subscription-owned
+# stream has no nack ceiling, so its broker-side retry count can grow without
+# bound; without a cap ``backoff_multiplier ** retry_count`` overflows the float
+# (2.0 ** 1024 raises OverflowError) and freezes the message.
+MAX_BACKOFF_EXPONENT = 32
+MAX_BACKOFF_DELAY = 3600.0
 MESSAGE_TIMEOUT = 300.0
 ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
@@ -371,8 +377,14 @@ class InlineBroker(BaseBroker):
             # Update retry count
             self._set_retry_count(stream, consumer_group, identifier, new_retry_count)
 
-            # Calculate next retry time with exponential backoff
-            delay = self._retry_delay * (self._backoff_multiplier**retry_count)
+            # Calculate next retry time with exponential backoff. Cap the
+            # exponent and the delay so an unbounded owned-stream retry count
+            # cannot overflow the exponentiation or balloon the wall-clock wait.
+            capped_exponent = min(retry_count, MAX_BACKOFF_EXPONENT)
+            delay = min(
+                self._retry_delay * (self._backoff_multiplier**capped_exponent),
+                MAX_BACKOFF_DELAY,
+            )
             next_retry_time = time.time() + delay
 
             # Remove any existing failed message entry
@@ -638,14 +650,35 @@ class InlineBroker(BaseBroker):
             # Extract stream name from group key
             stream = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
 
+            owned = group_key in self._subscription_owned_groups
+
             stale_messages = []
             for identifier, (_msg_id, message, timestamp) in list(
                 self._in_flight[group_key].items()
             ):
                 if timestamp < cutoff_time:
-                    stale_messages.append((identifier, message))
                     # Remove from in-flight
                     del self._in_flight[group_key][identifier]
+
+                    if owned:
+                        # A subscription owns retry/DLQ for this group, so the
+                        # broker must not dead-letter underneath it. Hold the
+                        # timed-out message for redelivery (it stays available
+                        # via the failed-message retry path) instead of moving
+                        # it to the native DLQ. Retry count is preserved.
+                        retry_count = self._retry_counts[group_key].get(identifier, 0)
+                        self._remove_failed_message(stream, consumer_group, identifier)
+                        self._store_failed_message(
+                            stream,
+                            consumer_group,
+                            identifier,
+                            message,
+                            retry_count,
+                            current_time,
+                        )
+                        continue
+
+                    stale_messages.append((identifier, message))
 
                     # Move to DLQ if enabled
                     if self._enable_dlq:
@@ -992,7 +1025,13 @@ class InlineBroker(BaseBroker):
         return {"consumer_groups": consumer_groups_info}
 
     def _data_reset(self) -> None:
-        """Flush all data in broker instance"""
+        """Flush all data in broker instance.
+
+        ``_subscription_owned_groups`` is deliberately kept: it records which
+        groups a live subscription owns retry/DLQ for, which is wiring set once
+        at subscription init, not message data. Clearing it here would silently
+        reinstate the broker's nack ceiling for a still-alive subscription.
+        """
         self._messages.clear()
         self._consumer_groups.clear()
         self._in_flight.clear()
@@ -1002,7 +1041,6 @@ class InlineBroker(BaseBroker):
         self._message_ownership.clear()
         self._dead_letter_queue.clear()
         self._operation_states.clear()
-        self._subscription_owned_groups.clear()
 
     def _ping(self) -> bool:
         """Test connectivity to the inline broker.
