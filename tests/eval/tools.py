@@ -32,6 +32,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict
 
+from tests.eval.discovery import discover_domain_arg, stripped_env
 from tests.eval.transcript import ToolCall
 from tests.eval.workspace import Workspace, WorkspaceError
 
@@ -57,21 +58,6 @@ class VerifyResult(TypedDict):
     exit_code: int
     error: NotRequired[str]
 
-
-# Env vars dropped before the verify subprocess, mirroring the scaffold-test
-# harness: VIRTUAL_ENV so a leaked value cannot point the child at a different
-# source tree than sys.executable, and PROTEAN_ENV/PROTEAN_DEBUG so a value
-# exported in the parent shell does not leak into the verify run. PROTEAN_DOMAIN
-# and DOMAIN_ROOT_PATH too: verify honours the former over the `-d` argument and
-# the latter as a Domain root, so either leaked value would steer verification
-# away from the workspace and make the result depend on the outer environment.
-_STRIPPED_ENV_VARS = (
-    "VIRTUAL_ENV",
-    "PROTEAN_ENV",
-    "PROTEAN_DEBUG",
-    "PROTEAN_DOMAIN",
-    "DOMAIN_ROOT_PATH",
-)
 
 # A ceiling on the verify subprocess. The live lane runs model-generated code
 # through pytest, whose import or a test could hang; the cap keeps a hung run
@@ -205,16 +191,14 @@ def run_verify(root: Path | str) -> VerifyResult:
     exits 0) needs a sandbox and is out of scope for this harness.
     """
     root_path = Path(root)
-    env = {
-        key: value for key, value in os.environ.items() if key not in _STRIPPED_ENV_VARS
-    }
+    env = stripped_env()
     # `-P` keeps the agent's workspace off this interpreter's module search, so a
     # generated `protean.py` at the root cannot shadow the framework CLI on
     # `-m protean`. It is a flag on the outer interpreter, not an inherited env
     # var, so verify's nested `python -m pytest` still sees the workspace on its
     # path and a root-layout project's own tests still import their modules.
     args = [sys.executable, "-P", "-m", "protean", "verify", "--json", "--path", "."]
-    domain_arg = _discover_domain_arg(root_path)
+    domain_arg = discover_domain_arg(root_path)
     if domain_arg is not None:
         args += ["-d", domain_arg]
 
@@ -404,24 +388,3 @@ def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyRe
         "errors": errors,
         "exit_code": exit_code,
     }
-
-
-def _discover_domain_arg(root: Path) -> str | None:
-    """Return the ``-d`` value ``protean verify`` needs, or ``None`` to use the
-    default discovery.
-
-    A root ``domain.py`` is what the default discovery already finds, so it
-    needs no ``-d``. Otherwise a single ``src/<pkg>/domain.py`` is addressed by
-    its path; ``protean verify`` resolves the domain the module defines (or
-    reports the file's own error if it will not import). A layout that matches
-    neither returns ``None`` and lets verify report the missing domain itself.
-    """
-    if (root / "domain.py").is_file():
-        return None
-    candidates = (
-        sorted((root / "src").glob("*/domain.py")) if (root / "src").is_dir() else []
-    )
-    if len(candidates) != 1:
-        return None
-    package = candidates[0].parent.name
-    return f"src/{package}/domain.py"
