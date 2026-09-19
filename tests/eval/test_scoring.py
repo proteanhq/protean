@@ -551,6 +551,12 @@ class TestPlacement:
         assert ("entity", "LineItem") in result.misplaced
 
 
+# The context grouping a two-context task declares in its ``spec.json``, in the
+# shape ``TaskSpec.contexts`` carries it. Context is scored against this
+# declaration, so a test that expects a layout to be judged must pass it.
+DECLARED_CONTEXTS = (("order", ("Order",)), ("payment", ("Payment",)))
+
+
 class TestContext:
     def test_matching_contexts_across_packages_score_one(self) -> None:
         """Context matches on the package-relative segment, so a gold under
@@ -570,7 +576,7 @@ class TestContext:
                 "Payment": {"context": "payment"},
             },
         )
-        result = score_boundary(produced, gold)
+        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
         assert result.context == 1.0
         assert result.context_expected == 2
         assert set(result.contexts_matched) == {"Order", "Payment"}
@@ -592,7 +598,7 @@ class TestContext:
                 "Payment": {"context": "payment"},
             },
         )
-        result = score_boundary(produced, gold)
+        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
         assert result.context == pytest.approx(1 / 2)
         assert result.contexts_mismatched == ("Order",)
         assert result.contexts_matched == ("Payment",)
@@ -621,7 +627,7 @@ class TestContext:
             },
         )
         assert _context_map(produced) == {"Order": {"order"}, "Payment": {"payment"}}
-        result = score_boundary(produced, gold)
+        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
         assert result.context == 1.0
         assert set(result.contexts_matched) == {"Order", "Payment"}
 
@@ -646,7 +652,7 @@ class TestContext:
                 "Payment": {"context": "shop"},
             },
         )
-        result = score_boundary(produced, gold)
+        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
         assert result.context == 0.0
         assert set(result.contexts_mismatched) == {"Order", "Payment"}
 
@@ -697,9 +703,9 @@ class TestContext:
         assert _context_map(ir) == {"Order": {"domain"}}
 
     def test_a_single_context_task_is_not_penalized(self) -> None:
-        """The negative test for the new branch: a single-aggregate (flat-spec)
-        task's one aggregate matches its own context, so context stays 1.0 and
-        does not spuriously fall below 1."""
+        """The negative test for the undeclared-contexts branch: a
+        single-aggregate (flat-spec) task's one aggregate matches its own
+        context, so context stays 1.0 and does not spuriously fall below 1."""
         gold = boundary_ir(package="gold", clusters={"Order": {"context": "order"}})
         produced = boundary_ir(package="app", clusters={"Order": {"context": "order"}})
         result = score_boundary(produced, gold)
@@ -709,9 +715,9 @@ class TestContext:
     def test_a_single_context_task_does_not_score_the_module_layout(self) -> None:
         """The shape the committed ``place_order`` replay produces: the gold
         scaffolds ``place_order.order.aggregate`` and the replay writes its one
-        aggregate to a root ``domain.py``. The task asks for no module layout, and
-        a single-context gold has no boundary between contexts, so this matches
-        rather than reporting a context of 0."""
+        aggregate to a root ``domain.py``. The task asks for no module layout and
+        its spec declares no contexts, so this matches rather than reporting a
+        context of 0."""
         gold = {
             "domain": {"normalized_name": "place_order"},
             "elements": {"AGGREGATE": ["place_order.order.aggregate.Order"]},
@@ -743,39 +749,71 @@ class TestContext:
         assert result.contexts_matched == ("Order",)
         assert result.context_expected == 1
 
-    def test_splitting_a_single_context_gold_in_two_still_scores_zero(self) -> None:
-        """The counterpart: layout independence is not a free pass. A gold that
-        keeps two aggregates in one context, against a produced project that
-        splits them into two, is a wrong decomposition and scores 0."""
+    def test_a_flat_spec_task_does_not_score_the_module_layout(self) -> None:
+        """The ``order_and_customer`` shape: the spec names its two aggregates
+        flat, and the gold builder still lands each in its own slice module
+        (``order`` and ``customer``), because that is the only shape ``protean
+        add aggregate`` has. The task claims no contexts, so a produced project
+        that keeps both aggregates in one bounded context is not marked down for
+        a layout nobody asked for."""
         gold = boundary_ir(
-            package="gold",
+            package="order_and_customer",
             clusters={
-                "Order": {"context": "shop"},
-                "Payment": {"context": "shop"},
+                "Order": {"context": "order"},
+                "Customer": {"context": "customer"},
             },
         )
         produced = boundary_ir(
             package="app",
             clusters={
-                "Order": {"context": "order"},
-                "Payment": {"context": "payment"},
+                "Order": {"context": "shop"},
+                "Customer": {"context": "shop"},
             },
         )
         result = score_boundary(produced, gold)
+        assert result.context == 1.0
+        assert set(result.contexts_matched) == {"Order", "Customer"}
+        assert result.context_expected == 2
+
+    def test_the_same_layout_scores_zero_when_the_spec_declares_contexts(
+        self,
+    ) -> None:
+        """The counterpart: leaving the layout unscored is not a free pass. The
+        same collapse, against a spec that does declare an ``order`` and a
+        ``customer`` context, is a wrong decomposition and scores 0."""
+        gold = boundary_ir(
+            package="order_and_customer",
+            clusters={
+                "Order": {"context": "order"},
+                "Customer": {"context": "customer"},
+            },
+        )
+        produced = boundary_ir(
+            package="app",
+            clusters={
+                "Order": {"context": "shop"},
+                "Customer": {"context": "shop"},
+            },
+        )
+        result = score_boundary(
+            produced,
+            gold,
+            contexts=(("order", ("Order",)), ("customer", ("Customer",))),
+        )
         assert result.context == 0.0
-        assert set(result.contexts_mismatched) == {"Order", "Payment"}
+        assert set(result.contexts_mismatched) == {"Order", "Customer"}
 
     def test_a_produced_aggregate_name_in_two_contexts_matches_on_either(
         self,
     ) -> None:
         """A produced project carrying the same aggregate class name in two
-        context modules keeps both segments. One of them is the gold's context,
+        context modules keeps both segments. One of them is the declared context,
         so that is a match: which cluster the IR builder emitted last must not
         decide the score."""
         gold = boundary_ir(
             package="gold",
             clusters={
-                "Order": {"context": "sales"},
+                "Order": {"context": "order"},
                 "Payment": {"context": "payment"},
             },
         )
@@ -784,7 +822,7 @@ class TestContext:
             "elements": {
                 "AGGREGATE": [
                     "app.billing.aggregate.Order",
-                    "app.sales.aggregate.Order",
+                    "app.order.aggregate.Order",
                     "app.payment.aggregate.Payment",
                 ]
             },
@@ -796,11 +834,11 @@ class TestContext:
                         "module": "app.billing.aggregate",
                     }
                 },
-                "app.sales.aggregate.Order": {
+                "app.order.aggregate.Order": {
                     "aggregate": {
                         "name": "Order",
-                        "fqn": "app.sales.aggregate.Order",
-                        "module": "app.sales.aggregate",
+                        "fqn": "app.order.aggregate.Order",
+                        "module": "app.order.aggregate",
                     }
                 },
                 "app.payment.aggregate.Payment": {
@@ -812,8 +850,8 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(produced)["Order"] == {"billing", "sales"}
-        result = score_boundary(produced, gold)
+        assert _context_map(produced)["Order"] == {"billing", "order"}
+        result = score_boundary(produced, gold, contexts=DECLARED_CONTEXTS)
         assert result.context == 1.0
         assert set(result.contexts_matched) == {"Order", "Payment"}
 

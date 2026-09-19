@@ -24,9 +24,10 @@ than reporting that number.
 On top of that base recall, :func:`score_boundary` adds two boundary-aware
 scores the flat rubric cannot see. Placement reads the per-aggregate ``clusters``
 to ask whether each recovered command, event, handler, or entity sits under the
-right aggregate; context asks whether each recovered aggregate sits in the right
-bounded context (its package-relative module segment). The same element names
-under the wrong aggregate score high on the base rubric and low on placement,
+right aggregate; context asks whether each recovered aggregate sits in the
+bounded context the task spec declares for it (matched against the aggregate's
+package-relative module segment). The same element names under the wrong
+aggregate score high on the base rubric and low on placement,
 which is what tells a wrong decomposition apart. The base ``score`` and
 ``Correctness`` are unchanged; the boundary layer is returned alongside as
 :class:`Recovery`.
@@ -35,6 +36,7 @@ which is what tells a wrong decomposition apart. The base ``score`` and
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -131,12 +133,12 @@ class Recovery:
     same element names under the wrong aggregate score high on the base rubric and
     low here.
 
-    ``context`` is the fraction of the gold's recovered aggregates whose bounded
-    context (the package-relative first module segment) matches the gold's:
-    ``len(contexts_matched) / context_expected``. It is the multi-context score. A
-    gold with a single context has no boundary between contexts to score, so its
-    recovered aggregates match as long as the produced project also keeps them in
-    one context, whatever that module is named.
+    ``context`` is the fraction of the gold's recovered aggregates that sit in the
+    bounded context the task spec declares for them, read off the aggregate's
+    package-relative first module segment: ``len(contexts_matched) /
+    context_expected``. It is the multi-context score. A task that declares no
+    contexts makes no claim about the layout, so its recovered aggregates match
+    whatever module they sit in.
 
     Both scores are ``0.0`` when their denominator is zero (an empty produced or
     gold IR), the same empty-input guard the base rubric uses. ``placed``,
@@ -407,7 +409,7 @@ def _context_map(ir: dict[str, Any]) -> dict[str, set[str]]:
     produced collision is allowed everywhere else in the rubric, and keeping one
     of the two segments would make the score turn on which cluster the IR builder
     emitted last. An aggregate matches when any of its produced copies sits in
-    the gold's context, the same "any owner matches" rule placement uses.
+    the declared context, the same "any owner matches" rule placement uses.
     """
     owned = [
         (str(cluster["aggregate"].get("module", "")), owner)
@@ -437,15 +439,68 @@ def _flat_placement_signatures(ir: dict[str, Any]) -> set[Signature]:
     }
 
 
-def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Recovery:
+def _judge_contexts(
+    produced_ir: dict[str, Any],
+    gold_ir: dict[str, Any],
+    contexts: Sequence[tuple[str, Sequence[str]]],
+) -> tuple[list[str], list[str]]:
+    """Split the recovered aggregates into context matches and mismatches.
+
+    *contexts* is the task spec's declared grouping, ``(context_name,
+    aggregates)`` pairs, and it is the only source of the context an aggregate is
+    expected to sit in. The gold's own module names cannot carry that
+    expectation: the gold builder puts every aggregate in its own slice module
+    whatever the task asked for. ``order_and_customer`` names its two aggregates
+    flat, and the gold still lands them in an ``order`` and a ``customer``
+    module, so reading those names back would fail a produced project that keeps
+    both aggregates in one bounded context, a layout the task never ruled out.
+
+    So a task that declares no contexts has its layout left unscored: every
+    aggregate it recovers matches. That covers ``place_order`` (the gold
+    scaffolds ``place_order.order.aggregate`` and the committed replay writes a
+    root ``domain.py``) and ``order_and_customer`` alike. A task that does
+    declare contexts is judged against the declaration: each aggregate must sit
+    in the context module named for it. The aggregates come from the gold, so an
+    aggregate the produced project never wrote is out of the denominator either
+    way.
+    """
+    gold_context = _context_map(gold_ir)
+    produced_context = _context_map(produced_ir)
+    declared = {
+        aggregate: context for context, members in contexts for aggregate in members
+    }
+    matched: list[str] = []
+    mismatched: list[str] = []
+    for aggregate in gold_context:
+        produced_segments = produced_context.get(aggregate)
+        if produced_segments is None:
+            continue  # aggregate not recovered, so no context to judge
+        expected = declared.get(aggregate)
+        if expected is None or expected in produced_segments:
+            matched.append(aggregate)
+        else:
+            mismatched.append(aggregate)
+    return matched, mismatched
+
+
+def score_boundary(
+    produced_ir: dict[str, Any],
+    gold_ir: dict[str, Any],
+    *,
+    contexts: Sequence[tuple[str, Sequence[str]]] = (),
+) -> Recovery:
     """Score *produced_ir*'s aggregate boundaries and bounded contexts vs *gold_ir*.
 
     Placement is, of the gold's per-cluster elements the produced project recovers
     by class name, the fraction it attaches to the correct aggregate. Context is, of
     the gold's aggregates the produced project recovers, the fraction that sit in
-    the matching bounded context. Both are ``0.0`` when nothing is recovered (an
-    empty produced or gold IR), the same guard the base rubric uses, so neither
-    divides by zero.
+    the bounded context *contexts* declares for them. Both are ``0.0`` when nothing
+    is recovered (an empty produced or gold IR), the same guard the base rubric
+    uses, so neither divides by zero.
+
+    *contexts* is the task spec's :attr:`tests.eval.spec.TaskSpec.contexts`
+    grouping. Passing it empty says the task makes no context claim, so the layout
+    is not scored (see :func:`_judge_contexts`).
 
     Raises :class:`AmbiguousGoldError` when the gold cannot be scored by class
     name: two elements sharing a category and class name (the base guard) or one
@@ -477,36 +532,7 @@ def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Reco
     placement_expected = len(placed) + len(misplaced)
     placement = len(placed) / placement_expected if placement_expected else 0.0
 
-    gold_context = _context_map(gold_ir)
-    produced_context = _context_map(produced_ir)
-    recovered_context = {
-        aggregate: produced_context[aggregate]
-        for aggregate in gold_context
-        if aggregate in produced_context
-    }
-    # A gold with one bounded context has no boundary between contexts to score.
-    # Its aggregates sit together whatever module holds them, and the module's
-    # name is a layout choice the task never asked for: the committed
-    # ``place_order`` replay writes its one aggregate to a root ``domain.py``
-    # against a gold that scaffolds ``place_order.order.aggregate``. So a
-    # single-context gold asks only that the produced project keep those
-    # aggregates together, not that it name the module the way the scaffold does.
-    gold_segments = set().union(*gold_context.values()) if gold_context else set()
-    produced_segments = (
-        set().union(*recovered_context.values()) if recovered_context else set()
-    )
-    layout_independent = len(gold_segments) <= 1 and len(produced_segments) <= 1
-
-    matched: list[str] = []
-    mismatched: list[str] = []
-    for aggregate, segments in gold_context.items():
-        produced_segments_for = recovered_context.get(aggregate)
-        if produced_segments_for is None:
-            continue  # aggregate not recovered, so no context to judge
-        if layout_independent or segments & produced_segments_for:
-            matched.append(aggregate)
-        else:
-            mismatched.append(aggregate)
+    matched, mismatched = _judge_contexts(produced_ir, gold_ir, contexts)
     context_expected = len(matched) + len(mismatched)
     context = len(matched) / context_expected if context_expected else 0.0
 

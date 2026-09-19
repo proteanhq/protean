@@ -101,6 +101,9 @@ def test_two_aggregate_gold_self_scores_placement(
     assert result.placement_expected == 6
     assert ("command", "CreateOrder") in result.placed
     assert ("command", "CreateCustomer") in result.placed
+    # The spec names its aggregates flat, so the task claims no contexts and the
+    # gold's two slice modules are not an expectation the scorer reads back.
+    assert read_spec("order_and_customer").contexts == ()
 
 
 def test_two_aggregate_gold_verifies_green(
@@ -122,7 +125,9 @@ def test_two_context_gold_self_scores_context(
     # scores context 1.0 against itself just the same. Guard the "two-context" shape
     # so a future scaffold layout change that merged the segments is caught here.
     assert len(set().union(*_context_map(two_context_gold.ir).values())) == 2
-    result = score_boundary(two_context_gold.ir, two_context_gold.ir)
+    result = score_boundary(
+        two_context_gold.ir, two_context_gold.ir, contexts=spec.contexts
+    )
     assert result.context == 1.0
     assert result.context_expected == 2
     assert set(result.contexts_matched) == {"Order", "Payment"}

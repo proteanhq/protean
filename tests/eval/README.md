@@ -94,18 +94,22 @@ for fields:
   cluster) counts as misplaced. The same names under the wrong aggregate score
   high on the base rubric and 0 here, which is the discriminator.
 - **Context.** Of the aggregates the produced project recovers, the fraction that
-  sit in the matching bounded context. The context is the aggregate's
-  package-relative first module segment (`Order` at `shop.order.aggregate` is in
-  the `order` context), so a gold under package `sales` and a produced project
-  under `app` still match on `order`. The package is read off the aggregate
-  modules themselves: it is the first segment they all share. A project packaged
-  as `ecommerce` whose domain is named `Ordering` still splits into its `order`
-  and `payment` contexts. A gold with a single context has no boundary between
-  contexts to score, so its recovered aggregates match whatever module they sit
-  in, as long as the produced project keeps them in one context too. That is the
-  `place_order` shape: the gold scaffolds `place_order.order.aggregate` and the
-  replay writes a root `domain.py`, and the task asked for neither layout.
-  Splitting a one-context gold into two contexts is still a miss.
+  sit in the bounded context the task's spec declares for them, passed to
+  `score_boundary` as `contexts=spec.contexts`. The context an aggregate sits in
+  is its package-relative first module segment (`Order` at `shop.order.aggregate`
+  is in the `order` context), so a gold under package `sales` and a produced
+  project under `app` still match on `order`. The package is read off the
+  aggregate modules themselves: it is the first segment they all share. A project
+  packaged as `ecommerce` whose domain is named `Ordering` still splits into its
+  `order` and `payment` contexts. The spec is the only source of the expectation.
+  The gold builder puts every aggregate in its own slice module whatever the task
+  asked for, so reading those module names back would invent a layout
+  requirement. A task that declares no contexts (`place_order`,
+  `order_and_customer`) has its layout left unscored, and every aggregate it
+  recovers matches. That covers the `place_order` shape, where the gold scaffolds
+  `place_order.order.aggregate` and the replay writes a root `domain.py`. A task
+  that does declare contexts is judged against the declaration, so collapsing
+  `order_and_payment`'s two contexts into one scores 0.
 
 Both scores are `0.0` when nothing is recovered (an empty produced or gold IR),
 the same guard the base rubric uses, and `score_boundary` raises the same
