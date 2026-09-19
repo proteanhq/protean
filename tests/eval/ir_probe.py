@@ -88,15 +88,18 @@ def build_ir(root: Path | str) -> dict[str, Any]:
 
 
 def _decode_ir(stdout: str) -> dict[str, Any]:
-    """Decode the IR JSON object from *stdout*, tolerating stray output before it.
+    """Decode the IR JSON object from *stdout*, tolerating stray output around it.
 
     ``ir show`` prints the IR as a single top-level JSON object; a produced
-    domain may still print to stdout during import. This returns the last
-    top-level JSON object in the output, so a stray earlier print does not win
-    over the real IR, and ``{}`` when there is no JSON object at all.
+    domain may still print to stdout, before the IR (an import log) or after it
+    (an ``atexit`` hook, a ``__del__``, a shutdown line). The IR object is the
+    one carrying an ``elements`` map, so this returns the last top-level JSON
+    object that has an ``elements`` key. That picks the IR whether the stray
+    print lands before or after it. When no object carries ``elements`` it falls
+    back to the last object, and ``{}`` when there is no JSON object at all.
     """
     decoder = json.JSONDecoder()
-    last: dict[str, Any] = {}
+    objects: list[dict[str, Any]] = []
     index = stdout.find("{")
     while index != -1:
         try:
@@ -105,6 +108,9 @@ def _decode_ir(stdout: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             index = stdout.find("{", index + 1)
             continue
-        last = candidate
+        objects.append(candidate)
         index = stdout.find("{", max(end, index + 1))
-    return last
+    for candidate in reversed(objects):
+        if "elements" in candidate:
+            return candidate
+    return objects[-1] if objects else {}

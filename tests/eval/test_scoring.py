@@ -4,7 +4,7 @@ The IRs here are built by :func:`ir_of`, which mirrors the shape
 ``protean ir show`` emits: an ``elements`` map of category to FQN lists, and a
 ``clusters`` map of aggregate FQN to its fields. The package prefix is arbitrary
 and differs from the gold's on purpose, so these tests also pin the cross-project
-class-name matching the scorer rests on.
+class-name matching the scorer uses.
 """
 
 from __future__ import annotations
@@ -258,3 +258,18 @@ class TestDegenerateInputs:
     def test_signatures_of_empty_ir_are_empty(self) -> None:
         assert element_signatures({}) == set()
         assert element_signatures({"elements": {}, "clusters": {}}) == set()
+
+    def test_a_cluster_aggregate_with_no_name_or_fqn_contributes_no_fields(
+        self,
+    ) -> None:
+        """A malformed cluster whose aggregate has neither ``name`` nor ``fqn``
+        is skipped, so its fields do not key under the empty string and collide
+        with another such aggregate's."""
+        ir = {
+            "elements": {},
+            "clusters": {
+                "a": {"aggregate": {"fields": {"total": {"type": "Integer"}}}},
+                "b": {"aggregate": {"fields": {"total": {"type": "Integer"}}}},
+            },
+        }
+        assert element_signatures(ir) == set()

@@ -42,6 +42,25 @@ class TestReadSpec:
         with pytest.raises(ValueError, match="no aggregates"):
             read_spec("t", root=tmp_path)
 
+    def test_a_task_with_no_spec_file_raises_file_not_found(
+        self, tmp_path: Path
+    ) -> None:
+        """A task carrying no ``spec.json`` is a read error, not a silent empty
+        build."""
+        _make_task(tmp_path, "t", spec=None)
+        with pytest.raises(FileNotFoundError):
+            read_spec("t", root=tmp_path)
+
+    def test_malformed_spec_json_raises(self, tmp_path: Path) -> None:
+        """A spec that is not valid JSON surfaces the decode error rather than
+        scoring a broken task."""
+        task_dir = tmp_path / TASKS_DIRNAME / "t"
+        task_dir.mkdir(parents=True)
+        (task_dir / TASK_FILE).write_text("do the thing\n", encoding="utf-8")
+        (task_dir / SPEC_FILE).write_text("{not json", encoding="utf-8")
+        with pytest.raises(json.JSONDecodeError):
+            read_spec("t", root=tmp_path)
+
 
 class TestListTaskSpecs:
     def test_committed_place_order_is_discovered_from_its_files(self) -> None:

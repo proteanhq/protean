@@ -5,7 +5,7 @@ Two callers shell a ``protean`` command into a project the harness produced:
 ``build_ir`` (in :mod:`tests.eval.ir_probe`) runs ``protean ir show``. Both must
 strip the same environment variables and discover the domain the same way, or
 the result would depend on the outer shell instead of the project. This module
-is the one copy of both, so the two callers cannot drift apart.
+is the one copy of both, so a change to one applies to both callers.
 """
 
 from __future__ import annotations
@@ -20,8 +20,9 @@ __all__ = ["STRIPPED_ENV_VARS", "discover_domain_arg", "stripped_env"]
 # source tree than sys.executable, and PROTEAN_ENV/PROTEAN_DEBUG so a value
 # exported in the parent shell does not leak into the run. PROTEAN_DOMAIN and
 # DOMAIN_ROOT_PATH too: the CLI honours the former over the `-d` argument and
-# the latter as a Domain root, so either leaked value would steer the run away
-# from the produced project and make the result depend on the outer environment.
+# the latter as a Domain root, so either leaked value would point the run at a
+# different domain than the produced project and make the result depend on the
+# outer environment.
 STRIPPED_ENV_VARS = (
     "VIRTUAL_ENV",
     "PROTEAN_ENV",
@@ -34,7 +35,7 @@ STRIPPED_ENV_VARS = (
 def stripped_env() -> dict[str, str]:
     """The parent environment minus :data:`STRIPPED_ENV_VARS`.
 
-    The removed vars would otherwise steer a protean subprocess at a different
+    The removed vars would otherwise point a protean subprocess at a different
     source tree or domain than the produced project, so a run's result would
     depend on the outer shell rather than the project's files.
     """

@@ -41,8 +41,8 @@ plain data file naming the project and the aggregate(s):
 `protean add aggregate Order` emits more than the task names: a canned command
 and event, a command handler, and also a projector and a read-model. The base
 rubric scores only **aggregates, fields, commands, events, and handlers**, so the
-projector and read-model stay out of scope and never penalize a context-driven
-project that skips them.
+projector and read-model stay out of scope: a context-driven project that skips
+them loses no points for it.
 
 ### The rubric
 
@@ -64,6 +64,14 @@ event), so a context-driven project recovers some but not all of the gold's
 elements. That graded distance is the intended signal: the score measures how
 close the context-driven structure lands to the deterministic one.
 
+The score is structural recall against the `add` scaffold. It is not a measure of
+how faithful the project is to `task.md`. A project that builds exactly what the
+task asks (a `PlaceOrder` command and no separate event) still scores below 1.0,
+because the gold carries the scaffold's `CreateOrder` and `OrderCreated`. So a
+more task-faithful project can score lower here. A per-task expected set of
+commands, events, and fields (so the score tracks the task, and the scaffold is
+just one way to author it) is a later dimension (#1350/#1351).
+
 ## Layout
 
 ```
@@ -75,9 +83,12 @@ tests/eval/
   discovery.py ir_probe.py spec.py gold.py scoring.py compare.py  # the scorer
 ```
 
-Adding a task means adding `tasks/<task_id>/task.md` and `tasks/<task_id>/spec.json`.
-Nothing else changes: `list_task_specs()` discovers a task from those two files
-alone.
+Adding a task's gold and scoring side means adding `tasks/<task_id>/task.md` and
+`tasks/<task_id>/spec.json`: `list_task_specs()` discovers the task from those two
+files alone, and `build_gold` and the rubric run from them. Approach B (the
+context-driven half of `compare`) also needs a recorded transcript at
+`transcripts/<pack_version>/<task_id>.json`, so a new task's full comparison needs
+a maintainer-side recording too (see "Recording a transcript" below).
 
 ## The transcript format
 

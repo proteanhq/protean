@@ -42,13 +42,25 @@ def test_context_driven_approach_verifies_and_scores_in_range(
     comparison: Comparison,
 ) -> None:
     """Approach B replays the committed transcript, verifies green, and lands a
-    score in ``[0, 1]`` against the same gold. The number is asserted as a range,
-    not pinned, so re-recording the transcript does not break the test."""
+    graded score strictly between 0 and 1 against the same gold. The exact number
+    is not pinned, so re-recording the transcript does not break the test, but the
+    graded-score decision is: a scorer that reported full recovery would fail the
+    upper bound, and one that recovered nothing would fail the lower bound and the
+    recovered/missing pins."""
     b = comparison.context_driven
     assert b.verify_green is True
-    assert 0.0 <= b.correctness.score <= 1.0
+    # The graded-score decision: B is a near-miss, so it must land strictly below
+    # the deterministic 1.0 and strictly above 0. A binary match would collapse a
+    # near-miss and a total miss; this is the signal the whole comparison exists
+    # for, so pin it, not just the [0, 1] range.
+    assert 0.0 < b.correctness.score < 1.0
     # Both approaches score against the same gold, so the denominators match.
     assert b.correctness.expected == comparison.deterministic.correctness.expected
     # The task asks for an Order aggregate, which the context-driven project does
     # build, so that element is recovered regardless of the naming distance.
     assert ("aggregate", "Order") in b.correctness.recovered
+    # The gold carries the `add` scaffold's canned `CreateOrder` command, which
+    # the task-faithful project never builds, so it is a known-missing element.
+    # Pinning it defends the graded score against a scorer that reports it
+    # recovered.
+    assert ("command", "CreateOrder") in b.correctness.missing

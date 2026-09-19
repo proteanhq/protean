@@ -43,8 +43,8 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
     """Load task *task_id*'s :class:`TaskSpec` from its ``spec.json``.
 
     Raises ``FileNotFoundError`` if the task carries no spec, and ``ValueError``
-    if the spec is missing ``project_name`` or names no aggregate: a task the
-    gold builder cannot scaffold from is a spec error, not a silent empty build.
+    if the spec is missing ``project_name`` or names no aggregate. This way a
+    task the gold builder cannot scaffold from fails loudly at read time.
     """
     base = root if root is not None else _eval_root()
     path = base / TASKS_DIRNAME / task_id / SPEC_FILE

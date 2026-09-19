@@ -48,9 +48,9 @@ class GoldProject:
 def _run_protean(args: list[str], *, cwd: Path | None = None) -> None:
     """Run ``protean <args>`` in a subprocess, raising on a non-zero exit.
 
-    A failed scaffold is a real error, not a low score: the gold is the oracle,
-    so it must build cleanly or the run cannot proceed. The stderr tail rides
-    along in the raised message so the failure is diagnosable.
+    A failed scaffold raises rather than scoring low: the gold is the oracle, so
+    it must build cleanly or the run cannot proceed. The stderr tail is included
+    in the raised message so the failure is diagnosable.
     """
     process = subprocess.run(
         [sys.executable, "-m", "protean", *args],

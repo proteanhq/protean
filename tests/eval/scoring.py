@@ -98,6 +98,11 @@ def element_signatures(ir: dict[str, Any]) -> set[Signature]:
             aggregate_name = aggregate.get("name") or _class_name(
                 str(aggregate.get("fqn", ""))
             )
+            if not aggregate_name:
+                # No name and no fqn: skip rather than key every field under the
+                # empty string, where two such aggregates would collide. Real IR
+                # always carries a name, so this only guards a malformed input.
+                continue
             for field_name in fields:
                 signatures.add(("field", str(aggregate_name), str(field_name)))
 
