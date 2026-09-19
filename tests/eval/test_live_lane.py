@@ -9,13 +9,17 @@ so core CI never needs model access. Selecting it explicitly, and recording:
 
 from __future__ import annotations
 
+import itertools
 import os
 from pathlib import Path
 
 import pytest
 
 from tests.eval.drivers import LIVE_DRIVER_ENV_VAR, resolve_live_driver
+from tests.eval.gold import build_gold
 from tests.eval.runner import build_pack_prompt, eval_root, record, replay
+from tests.eval.spec import read_spec
+from tests.eval.stability import DEFAULT_RUNS, context_driven_outcome, run_stability
 from tests.eval.tools import TOOL_SPECS, run_verify
 from tests.eval.transcript import TASK_FILE, TASKS_DIRNAME
 from tests.eval.workspace import Workspace
@@ -66,3 +70,44 @@ def test_live_lane_records_a_replayable_green_transcript(
     assert run_verify(workspace.root)["verdict"] == "pass"
 
     transcript.save(eval_root())  # the live lane doubles as the recorder
+
+
+def test_live_lane_reports_context_driven_stability(tmp_path: Path) -> None:
+    """Drive the context-driven approach through the live model N times, score
+    each run against the gold, and report its run-to-run stability. This is the
+    only lane that can produce the context-driven variance number: transcript
+    replay is deterministic by construction, so its stability is trivially
+    perfect. It skips without a driver exactly like the recorder test above, so
+    core CI never reaches a model.
+
+    The variance value itself is not pinned; it depends on the live model. The
+    test asserts the shape: ``runs`` matches the run count and every field is in
+    range."""
+    if not os.environ.get(LIVE_DRIVER_ENV_VAR):
+        pytest.skip(
+            "live lane needs a driver: set "
+            "PROTEAN_EVAL_LIVE_DRIVER='module.path:factory'"
+        )
+    task_id = "place_order"
+    gold = build_gold(read_spec(task_id), tmp_path / "gold")
+    counter = itertools.count()
+
+    def run_once():
+        # A fresh driver and a fresh workspace per run: the whole point is to see
+        # how much the model varies across independent runs of the same task.
+        driver = resolve_live_driver(build_pack_prompt(), TOOL_SPECS)
+        assert driver is not None  # the env var is set, so resolution returns one
+        run_dir = tmp_path / f"run-{next(counter)}"
+        run_dir.mkdir()
+        return context_driven_outcome(
+            task_id, gold.ir, driver=driver, workspace=Workspace(run_dir)
+        )
+
+    stability = run_stability(run_once, n=DEFAULT_RUNS)
+
+    assert stability.runs == DEFAULT_RUNS
+    assert stability.distinct_results >= 1
+    assert 0.0 <= stability.identical_result_rate <= 1.0
+    assert stability.score_stdev >= 0.0
+    assert 0.0 <= stability.score_min <= stability.score_max <= 1.0
+    assert 0.0 <= stability.score_mean <= 1.0
