@@ -508,6 +508,19 @@ def test_whole_file_update_rewrites_the_file_when_the_version_advances(
     )
 
 
+def test_whole_file_version_bump_alone_is_an_update(tmp_path: Path) -> None:
+    """The state row's stamp drives staleness even when the body is unchanged."""
+    body = "---\nk: v\n---\nbody\n"
+    apply_managed_file(tmp_path, whole("rules.mdc", "1", body))
+
+    result = apply_managed_file(tmp_path, whole("rules.mdc", "2", body))
+
+    assert result.status is ApplyStatus.UPDATE
+    assert (tmp_path / "rules.mdc").read_text(encoding="utf-8") == body
+    state = json.loads(state_path(tmp_path).read_text(encoding="utf-8"))
+    assert state["entries"]["rules.mdc"]["version"] == "2"
+
+
 def test_whole_file_conflict_on_any_hand_edit_writes_nothing(tmp_path: Path) -> None:
     """dx owns the whole file, so a hand edit anywhere is a CONFLICT and is kept."""
     apply_managed_file(tmp_path, whole("rules.mdc", "1", "---\nk: v\n---\nbody v1\n"))

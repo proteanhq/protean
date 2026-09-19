@@ -339,10 +339,11 @@ class ManagedWholeFile:
     line above its first byte, such as Cursor's ``.mdc`` rule file, whose YAML
     frontmatter must start at line 1.
 
-    The version stamp must live inside ``body`` (``render_agents_body`` leads with
-    a version-stamped H1, and the Cursor renderer adds an explicit stamp line too)
-    so a version bump changes the file and ``dx check`` reports staleness. A stamp
-    that lived only in the state file would leave an upgrade with no re-render.
+    The version stamp lives inside ``body`` (``render_agents_body`` leads with a
+    version-stamped H1, and the Cursor renderer adds an explicit stamp line too),
+    so the file on disk names the pack version that rendered it. Staleness does
+    not depend on that: the state row carries the stamp as well, so a version bump
+    reports ``UPDATE`` even when the rendered body is byte-identical.
     """
 
     target: str
