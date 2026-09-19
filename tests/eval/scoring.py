@@ -20,6 +20,16 @@ apart. A gold carrying ``sales.commands.CreateOrder`` and
 undercount the denominator and let a single produced command recover two gold
 elements. :func:`score` raises :class:`AmbiguousGoldError` on such a gold rather
 than reporting that number.
+
+On top of that base recall, :func:`score_boundary` adds two boundary-aware
+scores the flat rubric cannot see. Placement reads the per-aggregate ``clusters``
+to ask whether each recovered command, event, handler, or entity sits under the
+right aggregate; context asks whether each recovered aggregate sits in the right
+bounded context (its package-relative module segment). The same element names
+under the wrong aggregate score high on the base rubric and low on placement,
+which is what tells a wrong decomposition apart. The base ``score`` and
+``Correctness`` are unchanged; the boundary layer is returned alongside as
+:class:`Recovery`.
 """
 
 from __future__ import annotations
@@ -31,9 +41,11 @@ from typing import Any
 __all__ = [
     "AmbiguousGoldError",
     "Correctness",
+    "Recovery",
     "Signature",
     "element_signatures",
     "score",
+    "score_boundary",
 ]
 
 # A structural element reduced to what the rubric matches on. A category element
@@ -51,6 +63,20 @@ _SCORED_CATEGORIES = {
     "EVENT": "event",
     "COMMAND_HANDLER": "handler",
     "EVENT_HANDLER": "handler",
+}
+
+# The per-cluster element sections whose placement under an aggregate the
+# boundary score reads, mapped to the same rubric category names as above. A
+# command handler and an event handler both score as "handler", so a handler in
+# either section keys the same way. Aggregates and fields are left out: an
+# aggregate's placement is itself, and a field already keys on its aggregate in
+# the base rubric.
+_CLUSTER_ELEMENT_SECTIONS = {
+    "commands": "command",
+    "events": "event",
+    "command_handlers": "handler",
+    "event_handlers": "handler",
+    "entities": "entity",
 }
 
 
@@ -74,6 +100,41 @@ class Correctness:
     recovered: tuple[Signature, ...]
     missing: tuple[Signature, ...]
     expected: int
+
+
+@dataclass(frozen=True)
+class Recovery:
+    """The boundary/aggregate recovery scores plus the breakdown behind them.
+
+    ``placement`` is the fraction of the gold's per-cluster elements (commands,
+    events, handlers, entities) the produced project both recovers by class name
+    *and* attaches to the correct aggregate: ``len(placed) / placement_expected``,
+    where ``placement_expected`` is the count the produced project recovers (the
+    denominator is recovery, so placement asks "of what you recovered, how much
+    did you put in the right boundary"). This is the discriminator a wrong
+    decomposition fails: the same element names under the wrong aggregate score
+    high on the base rubric and low here.
+
+    ``context`` is the fraction of the gold's recovered aggregates whose bounded
+    context (the package-relative first module segment) matches the gold's:
+    ``len(contexts_matched) / context_expected``. It is meaningful only on a
+    multi-context task; a single-context task scores 1.0 when its one aggregate is
+    recovered under the same segment.
+
+    Both scores are ``0.0`` when their denominator is zero (an empty produced or
+    gold IR), the same empty-input guard the base rubric uses. ``placed``,
+    ``misplaced``, ``contexts_matched``, and ``contexts_mismatched`` are sorted for
+    a readable report.
+    """
+
+    placement: float
+    context: float
+    placed: tuple[Signature, ...]
+    misplaced: tuple[Signature, ...]
+    placement_expected: int
+    contexts_matched: tuple[str, ...]
+    contexts_mismatched: tuple[str, ...]
+    context_expected: int
 
 
 def _class_name(fqn: str) -> str:
@@ -192,4 +253,175 @@ def score(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Correctness:
         recovered=tuple(sorted(recovered)),
         missing=tuple(sorted(missing)),
         expected=len(gold),
+    )
+
+
+def _owned_clusters(ir: dict[str, Any]) -> list[tuple[dict[str, Any], str]]:
+    """Return each cluster in *ir* paired with its aggregate's class name.
+
+    A cluster whose ``aggregate`` has neither a ``name`` nor an ``fqn`` is
+    skipped, so its elements never key under the empty string (where two such
+    clusters would collide). Real IR always carries a name, so this only guards a
+    malformed input, mirroring the base rubric's field guard.
+    """
+    clusters = ir.get("clusters") if isinstance(ir, dict) else None
+    if not isinstance(clusters, dict):
+        return []
+    owned: list[tuple[dict[str, Any], str]] = []
+    for cluster in clusters.values():
+        if not isinstance(cluster, dict):
+            continue
+        aggregate = cluster.get("aggregate")
+        if not isinstance(aggregate, dict):
+            continue
+        owner = aggregate.get("name") or _class_name(str(aggregate.get("fqn", "")))
+        if not owner:
+            continue
+        owned.append((cluster, str(owner)))
+    return owned
+
+
+def _member_name(member: Any, fqn: str) -> str:
+    """The class name of a cluster member, from its ``name`` or its FQN key."""
+    if isinstance(member, dict):
+        name = member.get("name")
+        if name:
+            return str(name)
+    return _class_name(str(fqn))
+
+
+def _placement_sources(ir: dict[str, Any]) -> dict[Signature, set[str]]:
+    """Map each per-cluster element signature to the aggregate(s) that own it.
+
+    A signature is ``(category, class_name)`` for a command, event, handler, or
+    entity; its owners are the class names of the aggregates whose clusters carry
+    an element of that signature. In a well-formed gold each signature has exactly
+    one owner. Two owners for one signature means the same element name sits under
+    two aggregates, which :func:`_reject_ambiguous_placement` rejects in a gold.
+    """
+    sources: dict[Signature, set[str]] = defaultdict(set)
+    for cluster, owner in _owned_clusters(ir):
+        for section, category in _CLUSTER_ELEMENT_SECTIONS.items():
+            members = cluster.get(section)
+            if not isinstance(members, dict):
+                continue
+            for fqn, member in members.items():
+                name = _member_name(member, str(fqn))
+                if name:
+                    sources[(category, name)].add(owner)
+    return dict(sources)
+
+
+def _reject_ambiguous_placement(sources: dict[Signature, set[str]]) -> None:
+    """Raise when a gold element name is placed under more than one aggregate.
+
+    The base ``AmbiguousGoldError`` guard already catches a class name repeated
+    across the flat ``elements`` map; this covers the placement-only case of an
+    entity name (which the base rubric does not score) repeated across clusters,
+    so the gold's correct placement stays a single, defined aggregate.
+    """
+    ambiguous = sorted(
+        ("/".join(signature), sorted(owners))
+        for signature, owners in sources.items()
+        if len(owners) > 1
+    )
+    if not ambiguous:
+        return
+    detail = "; ".join(
+        f"{signature} <- aggregates {', '.join(owners)}"
+        for signature, owners in ambiguous
+    )
+    raise AmbiguousGoldError(
+        "gold IR places an element of the same class name under more than one "
+        f"aggregate, so its correct placement is undefined: {detail}"
+    )
+
+
+def _context_segment(module: str, package: str) -> str:
+    """The bounded-context segment of *module*, its first package-relative part.
+
+    The scaffold puts each aggregate under ``<package>.<context>.<kind>`` (an
+    ``Order`` aggregate lands at ``shop.order.aggregate``), so the context is the
+    first module segment after the package. Stripping the package first is what
+    lets a gold under package ``sales`` and a produced project under ``app`` still
+    match on the ``order`` segment. When *module* does not start with *package*
+    (a malformed input) its own first segment is used.
+    """
+    segments = [segment for segment in module.split(".") if segment]
+    if package and segments and segments[0] == package:
+        segments = segments[1:]
+    return segments[0] if segments else ""
+
+
+def _context_map(ir: dict[str, Any]) -> dict[str, str]:
+    """Map each aggregate's class name to its bounded-context segment."""
+    domain = ir.get("domain") if isinstance(ir, dict) else None
+    package = ""
+    if isinstance(domain, dict):
+        package = str(domain.get("normalized_name") or domain.get("name") or "")
+    context: dict[str, str] = {}
+    for cluster, owner in _owned_clusters(ir):
+        aggregate = cluster["aggregate"]
+        context[owner] = _context_segment(str(aggregate.get("module", "")), package)
+    return context
+
+
+def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Recovery:
+    """Score *produced_ir*'s aggregate boundaries and bounded contexts vs *gold_ir*.
+
+    Placement asks, of the gold's per-cluster elements the produced project
+    recovers by class name, how many it attaches to the correct aggregate. Context
+    asks, of the gold's aggregates the produced project recovers, how many sit in
+    the matching bounded context. Both are ``0.0`` when nothing is recovered (an
+    empty produced or gold IR), the same guard the base rubric uses, so neither
+    divides by zero.
+
+    Raises :class:`AmbiguousGoldError` when the gold cannot be scored by class
+    name: two elements sharing a category and class name (the base guard) or one
+    element name placed under two aggregates (the placement guard). Either would
+    make the gold's correct placement undefined.
+    """
+    _reject_ambiguous_gold(_signature_sources(gold_ir))
+    gold_placement = _placement_sources(gold_ir)
+    _reject_ambiguous_placement(gold_placement)
+    produced_placement = _placement_sources(produced_ir)
+
+    placed: list[Signature] = []
+    misplaced: list[Signature] = []
+    for signature, owners in gold_placement.items():
+        produced_owners = produced_placement.get(signature)
+        if not produced_owners:
+            continue  # not recovered at all, so not a placement to judge
+        gold_owner = next(iter(owners))
+        if gold_owner in produced_owners:
+            placed.append(signature)
+        else:
+            misplaced.append(signature)
+    placement_expected = len(placed) + len(misplaced)
+    placement = len(placed) / placement_expected if placement_expected else 0.0
+
+    gold_context = _context_map(gold_ir)
+    produced_context = _context_map(produced_ir)
+    matched: list[str] = []
+    mismatched: list[str] = []
+    for aggregate, segment in gold_context.items():
+        produced_segment = produced_context.get(aggregate)
+        if produced_segment is None:
+            continue  # aggregate not recovered, so no context to judge
+        if produced_segment == segment:
+            matched.append(aggregate)
+        else:
+            mismatched.append(aggregate)
+    context_expected = len(matched) + len(mismatched)
+    context = len(matched) / context_expected if context_expected else 0.0
+
+    return Recovery(
+        placement=placement,
+        context=context,
+        placed=tuple(sorted(placed)),
+        misplaced=tuple(sorted(misplaced)),
+        placement_expected=placement_expected,
+        contexts_matched=tuple(sorted(matched)),
+        contexts_mismatched=tuple(sorted(mismatched)),
+        context_expected=context_expected,
     )

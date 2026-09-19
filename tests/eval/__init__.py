@@ -32,7 +32,8 @@ The scoring pieces:
 - :mod:`tests.eval.gold`: ``build_gold``, which scaffolds a task's deterministic
   gold project from its spec and reads back its IR.
 - :mod:`tests.eval.scoring`: the per-element rubric that scores a produced IR
-  against the gold's.
+  against the gold's, plus ``score_boundary``, the boundary/aggregate recovery
+  layer (placement and context).
 - :mod:`tests.eval.compare`: ``compare``, which runs both approaches over a task
-  and reports each one's verify-green plus correctness.
+  and reports each one's verify-green, correctness, and boundary recovery.
 """

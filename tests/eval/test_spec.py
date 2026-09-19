@@ -51,6 +51,48 @@ class TestReadSpec:
         with pytest.raises(FileNotFoundError):
             read_spec("t", root=tmp_path)
 
+    def test_reads_the_committed_order_and_payment_nested_spec(self) -> None:
+        """A multi-context spec's ``contexts`` object flattens to the aggregate
+        list the gold builder reads, and keeps the declared grouping."""
+        spec = read_spec("order_and_payment")
+        assert spec.project_name == "order_and_payment"
+        assert spec.aggregates == ("Order", "Payment")
+        assert spec.contexts == (("order", ("Order",)), ("payment", ("Payment",)))
+
+    def test_a_nested_contexts_spec_flattens_in_declaration_order(
+        self, tmp_path: Path
+    ) -> None:
+        """A context holding two aggregates flattens both, in order, and a flat
+        spec leaves ``contexts`` empty (one default context)."""
+        _make_task(
+            tmp_path,
+            "nested",
+            spec={
+                "project_name": "shop",
+                "contexts": {"sales": ["Order", "Cart"], "billing": ["Invoice"]},
+            },
+        )
+        spec = read_spec("nested", root=tmp_path)
+        assert spec.aggregates == ("Order", "Cart", "Invoice")
+        assert spec.contexts == (
+            ("sales", ("Order", "Cart")),
+            ("billing", ("Invoice",)),
+        )
+
+    def test_a_non_object_contexts_field_is_an_error(self, tmp_path: Path) -> None:
+        _make_task(tmp_path, "bad", spec={"project_name": "p", "contexts": ["Order"]})
+        with pytest.raises(ValueError, match="non-object contexts"):
+            read_spec("bad", root=tmp_path)
+
+    def test_an_empty_contexts_object_falls_back_to_no_aggregates(
+        self, tmp_path: Path
+    ) -> None:
+        """An empty ``contexts`` names no aggregate and no flat list backs it, so
+        it fails the same way a spec with no aggregates does."""
+        _make_task(tmp_path, "empty", spec={"project_name": "p", "contexts": {}})
+        with pytest.raises(ValueError, match="no aggregates"):
+            read_spec("empty", root=tmp_path)
+
     def test_malformed_spec_json_raises(self, tmp_path: Path) -> None:
         """A spec that is not valid JSON surfaces the decode error rather than
         scoring a broken task."""

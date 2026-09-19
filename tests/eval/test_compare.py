@@ -42,13 +42,23 @@ def test_reports_both_approaches(comparison: Comparison) -> None:
         assert isinstance(approach.verify_green, bool)
         assert 0.0 <= approach.correctness.score <= 1.0
         assert approach.correctness.expected >= 1
+        # AC1: every task run through the harness reports a boundary/aggregate
+        # recovery score, in range alongside the base correctness.
+        assert 0.0 <= approach.recovery.placement <= 1.0
+        assert 0.0 <= approach.recovery.context <= 1.0
 
 
 def test_deterministic_approach_is_green_and_perfect(comparison: Comparison) -> None:
-    """Approach A is the oracle: verify-green and exactly 1.0."""
+    """Approach A is the oracle: verify-green and exactly 1.0, on both the base
+    rubric and the boundary/aggregate recovery layer."""
     assert comparison.deterministic.verify_green is True
     assert comparison.deterministic.correctness.score == 1.0
     assert comparison.deterministic.correctness.missing == ()
+    # The gold scored against itself places every element and matches its own
+    # context, so recovery is 1.0 by construction, and over real elements.
+    assert comparison.deterministic.recovery.placement == 1.0
+    assert comparison.deterministic.recovery.context == 1.0
+    assert comparison.deterministic.recovery.placement_expected >= 1
 
 
 def test_context_driven_approach_verifies_and_scores_in_range(

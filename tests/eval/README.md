@@ -19,8 +19,8 @@ packages only `src/protean`).
 ## Scoring the two approaches
 
 For one task the comparison (`compare(task_id)`) runs two approaches and reports,
-per approach, whether `protean verify` is green and a correctness score against
-the same gold:
+per approach, whether `protean verify` is green, a base correctness score, and a
+boundary/aggregate recovery score against the same gold:
 
 - **Approach A (deterministic).** `build_gold` scaffolds the task's gold project
   from its `spec.json`: `protean new` (with the example slice off), then one
@@ -76,6 +76,41 @@ number. The produced project is not checked the same way: the gold still asks
 for one element there, so one of the produced elements matching it is a real
 recovery.
 
+### Boundary and aggregate recovery
+
+The base rubric counts names. It cannot see whether a recovered command sits under
+the right aggregate, or whether an aggregate sits in the right bounded context. A
+project that recovers every element name but puts them under the wrong aggregate
+scores a full 1.0 on the base rubric. `score_boundary` adds the two scores that
+tell that apart, reading the per-aggregate `clusters` the base rubric only uses
+for fields:
+
+- **Placement.** Of the per-cluster elements (commands, events, handlers,
+  entities) the produced project recovers by class name, the fraction it attaches
+  to the correct aggregate. The denominator is what was recovered, so placement
+  asks "of what you recovered, how much did you put in the right boundary". The
+  same names under the wrong aggregate score high on the base rubric and 0 here,
+  which is the discriminator.
+- **Context.** Of the aggregates the produced project recovers, the fraction that
+  sit in the matching bounded context. The context is the aggregate's
+  package-relative first module segment (`Order` at `shop.order.aggregate` is in
+  the `order` context), so a gold under package `sales` and a produced project
+  under `app` still match on `order`. A single-context task scores 1.0 when its
+  one aggregate is recovered under the same segment.
+
+Both scores are `0.0` when nothing is recovered (an empty produced or gold IR),
+the same guard the base rubric uses, and `score_boundary` raises the same
+`AmbiguousGoldError` when the gold cannot be scored by class name. The base
+`score` and its `Correctness` are unchanged; recovery is returned alongside as a
+`Recovery`.
+
+The `order_and_customer` task foregrounds placement (two aggregates, each owning
+its own slice); `order_and_payment` foregrounds context (an `Order` and a
+`Payment` in separate context modules). A task declares its context grouping in
+`spec.json` with a `contexts` object (`{"order": ["Order"], "payment":
+["Payment"]}`) instead of a flat `aggregates` list; both forms scaffold the same
+gold.
+
 ### Reading Approach B's number
 
 The scaffold's canned command and event names (`CreateOrder`, `OrderCreated`)
@@ -90,14 +125,14 @@ task asks (a `PlaceOrder` command and no separate event) still scores below 1.0,
 because the gold carries the scaffold's `CreateOrder` and `OrderCreated`. So a
 more task-faithful project can score lower here. A per-task expected set of
 commands, events, and fields (so the score tracks the task, and the scaffold is
-just one way to author it) is a later dimension (#1350/#1351).
+just one way to author it) is a later dimension (#1350).
 
 ## Layout
 
 ```
 tests/eval/
   tasks/<task_id>/task.md          # the prompt the context-driven path sees
-  tasks/<task_id>/spec.json        # the gold recipe: project name + aggregates
+  tasks/<task_id>/spec.json        # the gold recipe: project name + aggregates (flat or by context)
   transcripts/<pack_version>/<task_id>.json   # recorded runs, keyed to the pack
   workspace.py transcript.py tools.py drivers.py runner.py   # the run harness
   discovery.py ir_probe.py spec.py gold.py scoring.py compare.py  # the scorer

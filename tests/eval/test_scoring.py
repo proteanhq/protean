@@ -14,7 +14,12 @@ from typing import Any
 
 import pytest
 
-from tests.eval.scoring import AmbiguousGoldError, element_signatures, score
+from tests.eval.scoring import (
+    AmbiguousGoldError,
+    element_signatures,
+    score,
+    score_boundary,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -350,3 +355,276 @@ class TestAmbiguousGold:
             "clusters": {},
         }
         assert score(gold, gold).expected == 1
+
+
+def boundary_ir(*, package: str = "app", clusters: dict[str, dict[str, Any]]) -> dict:
+    """Build an IR carrying per-cluster placement sections and a domain package.
+
+    ``clusters`` maps an aggregate class name to a spec dict with an optional
+    ``context`` (the module segment, defaulting to the aggregate name lowercased)
+    and optional ``commands``/``events``/``command_handlers``/``event_handlers``/
+    ``entities`` tuples of class names. Each element lands both in its aggregate's
+    cluster (what the boundary scorer reads) and in the flat ``elements`` map (what
+    the base rubric reads), so a fixture can be scored both ways. The ``package``
+    forms the FQNs and the domain name, so a gold and a produced IR can use
+    different packages and still match on the class name and context segment.
+    """
+    sections = {
+        "commands": "COMMAND",
+        "events": "EVENT",
+        "command_handlers": "COMMAND_HANDLER",
+        "event_handlers": "EVENT_HANDLER",
+        "entities": "ENTITY",
+    }
+    elements: dict[str, list[str]] = defaultdict(list)
+    ir_clusters: dict[str, Any] = {}
+    for aggregate, spec in clusters.items():
+        context = spec.get("context", aggregate.lower())
+        agg_fqn = f"{package}.{context}.aggregate.{aggregate}"
+        elements["AGGREGATE"].append(agg_fqn)
+        cluster: dict[str, Any] = {
+            "aggregate": {
+                "name": aggregate,
+                "fqn": agg_fqn,
+                "module": f"{package}.{context}.aggregate",
+                "fields": {},
+            }
+        }
+        for section, element_key in sections.items():
+            members: dict[str, Any] = {}
+            for name in spec.get(section, ()):
+                fqn = f"{package}.{context}.{section}.{name}"
+                members[fqn] = {
+                    "name": name,
+                    "module": f"{package}.{context}.{section}",
+                }
+                elements[element_key].append(fqn)
+            cluster[section] = members
+        ir_clusters[agg_fqn] = cluster
+    return {
+        "domain": {"normalized_name": package, "name": package},
+        "elements": dict(elements),
+        "clusters": ir_clusters,
+    }
+
+
+# A two-aggregate gold: an Order and a Payment, each owning its own create
+# command, created event, and command handler. Six per-cluster placement
+# elements in all.
+BOUNDARY_GOLD = boundary_ir(
+    package="gold",
+    clusters={
+        "Order": {
+            "commands": ("CreateOrder",),
+            "events": ("OrderCreated",),
+            "command_handlers": ("OrderCommandHandler",),
+        },
+        "Payment": {
+            "commands": ("CreatePayment",),
+            "events": ("PaymentCreated",),
+            "command_handlers": ("PaymentCommandHandler",),
+        },
+    },
+)
+
+
+class TestPlacement:
+    def test_gold_places_every_element_against_itself(self) -> None:
+        result = score_boundary(BOUNDARY_GOLD, BOUNDARY_GOLD)
+        assert result.placement == 1.0
+        assert result.placement_expected == 6
+        assert result.misplaced == ()
+
+    def test_the_same_names_under_the_right_aggregate_place_correctly(self) -> None:
+        """A produced project with the gold's element names, each under the
+        correct aggregate but in a different package, places 1.0."""
+        produced = boundary_ir(
+            package="produced",
+            clusters={
+                "Order": {
+                    "commands": ("CreateOrder",),
+                    "events": ("OrderCreated",),
+                    "command_handlers": ("OrderCommandHandler",),
+                },
+                "Payment": {
+                    "commands": ("CreatePayment",),
+                    "events": ("PaymentCreated",),
+                    "command_handlers": ("PaymentCommandHandler",),
+                },
+            },
+        )
+        assert score_boundary(produced, BOUNDARY_GOLD).placement == 1.0
+
+    def test_the_same_names_under_the_wrong_aggregate_place_zero(self) -> None:
+        """The discriminator (AC2): swap the two aggregates' slices. Every gold
+        element name is still present, so the base rubric scores full recovery,
+        but each sits under the wrong aggregate, so placement collapses to 0."""
+        planted_wrong = boundary_ir(
+            package="produced",
+            clusters={
+                "Order": {
+                    "commands": ("CreatePayment",),
+                    "events": ("PaymentCreated",),
+                    "command_handlers": ("PaymentCommandHandler",),
+                },
+                "Payment": {
+                    "commands": ("CreateOrder",),
+                    "events": ("OrderCreated",),
+                    "command_handlers": ("OrderCommandHandler",),
+                },
+            },
+        )
+        # The base rubric cannot see the swap: all eight names (two aggregates,
+        # two commands, two events, two handlers) are present.
+        assert score(planted_wrong, BOUNDARY_GOLD).score == 1.0
+        wrong = score_boundary(planted_wrong, BOUNDARY_GOLD)
+        right = score_boundary(BOUNDARY_GOLD, BOUNDARY_GOLD)
+        assert wrong.placement == 0.0
+        assert wrong.placement_expected == 6
+        # The whole point of the layer: the wrong decomposition is separated from
+        # the right one by the placement number, where the base score is blind.
+        assert right.placement > wrong.placement
+        assert ("command", "CreateOrder") in wrong.misplaced
+
+    def test_placement_denominator_is_what_was_recovered(self) -> None:
+        """Placement is conditional on recovery: a produced project that recovers
+        only one element, correctly placed, scores 1.0 over that one element."""
+        produced = boundary_ir(
+            package="produced", clusters={"Order": {"commands": ("CreateOrder",)}}
+        )
+        result = score_boundary(produced, BOUNDARY_GOLD)
+        assert result.placement == 1.0
+        assert result.placement_expected == 1
+        assert result.placed == (("command", "CreateOrder"),)
+
+    def test_entities_count_toward_placement(self) -> None:
+        """An entity under the wrong aggregate is a misplacement, so the boundary
+        signal covers entities and not only the command/event/handler slice."""
+        gold = boundary_ir(
+            package="gold",
+            clusters={"Order": {"entities": ("LineItem",)}, "Payment": {}},
+        )
+        misplaced = boundary_ir(
+            package="produced",
+            clusters={"Order": {}, "Payment": {"entities": ("LineItem",)}},
+        )
+        result = score_boundary(misplaced, gold)
+        assert result.placement == 0.0
+        assert ("entity", "LineItem") in result.misplaced
+
+
+class TestContext:
+    def test_matching_contexts_across_packages_score_one(self) -> None:
+        """Context matches on the package-relative segment, so a gold under
+        ``sales`` and a produced project under ``app`` still match on ``order``
+        and ``payment``."""
+        gold = boundary_ir(
+            package="sales",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        produced = boundary_ir(
+            package="app",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        result = score_boundary(produced, gold)
+        assert result.context == 1.0
+        assert result.context_expected == 2
+        assert set(result.contexts_matched) == {"Order", "Payment"}
+
+    def test_an_aggregate_in_the_wrong_context_scores_low(self) -> None:
+        """One aggregate under the wrong context module drops the context score
+        and is named in the mismatch breakdown."""
+        gold = boundary_ir(
+            package="sales",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        produced = boundary_ir(
+            package="app",
+            clusters={
+                "Order": {"context": "payment"},  # wrong context
+                "Payment": {"context": "payment"},
+            },
+        )
+        result = score_boundary(produced, gold)
+        assert result.context == pytest.approx(1 / 2)
+        assert result.contexts_mismatched == ("Order",)
+        assert result.contexts_matched == ("Payment",)
+
+    def test_a_single_context_task_is_not_penalized(self) -> None:
+        """The negative test for the new branch: a single-aggregate (flat-spec)
+        task's one aggregate matches its own context, so context stays 1.0 and
+        does not spuriously fall below 1."""
+        gold = boundary_ir(package="gold", clusters={"Order": {"context": "order"}})
+        produced = boundary_ir(package="app", clusters={"Order": {"context": "order"}})
+        result = score_boundary(produced, gold)
+        assert result.context == 1.0
+        assert result.context_expected == 1
+
+
+class TestBoundaryDegenerateInputs:
+    def test_empty_produced_scores_zero_without_raising(self) -> None:
+        result = score_boundary({}, BOUNDARY_GOLD)
+        assert result.placement == 0.0
+        assert result.context == 0.0
+        assert result.placement_expected == 0
+        assert result.context_expected == 0
+
+    def test_empty_gold_does_not_divide_by_zero(self) -> None:
+        result = score_boundary(BOUNDARY_GOLD, {})
+        assert result.placement == 0.0
+        assert result.context == 0.0
+
+    def test_a_cluster_aggregate_with_no_name_contributes_no_placement(self) -> None:
+        """A malformed cluster whose aggregate has neither name nor fqn is
+        skipped, so its elements are not keyed under an empty owner."""
+        gold = {
+            "domain": {"normalized_name": "gold"},
+            "elements": {},
+            "clusters": {
+                "a": {
+                    "aggregate": {"fields": {}},
+                    "commands": {"a.commands.X": {"name": "X"}},
+                },
+            },
+        }
+        produced = boundary_ir(package="p", clusters={"Order": {"commands": ("X",)}})
+        result = score_boundary(produced, gold)
+        assert result.placement == 0.0
+        assert result.placement_expected == 0
+
+
+class TestBoundaryAmbiguousGold:
+    def test_a_command_name_repeated_across_aggregates_is_rejected(self) -> None:
+        """A gold with the same command name under two aggregates has no defined
+        correct placement, so scoring refuses it (the base flat-elements guard)."""
+        gold = boundary_ir(
+            package="gold",
+            clusters={
+                "Order": {"commands": ("Create",)},
+                "Payment": {"commands": ("Create",)},
+            },
+        )
+        with pytest.raises(AmbiguousGoldError, match="Create"):
+            score_boundary(boundary_ir(package="p", clusters={"Order": {}}), gold)
+
+    def test_an_entity_name_repeated_across_aggregates_is_rejected(self) -> None:
+        """Entities are not in the flat rubric, so the placement guard is what
+        rejects an entity name owned by two aggregates in the gold."""
+        gold = boundary_ir(
+            package="gold",
+            clusters={
+                "Order": {"entities": ("LineItem",)},
+                "Payment": {"entities": ("LineItem",)},
+            },
+        )
+        with pytest.raises(AmbiguousGoldError, match="entity/LineItem"):
+            score_boundary(boundary_ir(package="p", clusters={"Order": {}}), gold)
