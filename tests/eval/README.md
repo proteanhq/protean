@@ -87,10 +87,10 @@ for fields:
 
 - **Placement.** Of the per-cluster elements (commands, events, handlers,
   entities) the produced project recovers by class name, the fraction it attaches
-  to the correct aggregate. The denominator is what was recovered, so placement
-  asks "of what you recovered, how much did you put in the right boundary". The
-  same names under the wrong aggregate score high on the base rubric and 0 here,
-  which is the discriminator.
+  to the correct aggregate. The denominator is the count the produced project
+  recovered, so placement scores only the elements the project got back, on
+  whether each landed under the right aggregate. The same names under the wrong
+  aggregate score high on the base rubric and 0 here, which is the discriminator.
 - **Context.** Of the aggregates the produced project recovers, the fraction that
   sit in the matching bounded context. The context is the aggregate's
   package-relative first module segment (`Order` at `shop.order.aggregate` is in

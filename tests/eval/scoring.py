@@ -109,11 +109,11 @@ class Recovery:
     ``placement`` is the fraction of the gold's per-cluster elements (commands,
     events, handlers, entities) the produced project both recovers by class name
     *and* attaches to the correct aggregate: ``len(placed) / placement_expected``,
-    where ``placement_expected`` is the count the produced project recovers (the
-    denominator is recovery, so placement asks "of what you recovered, how much
-    did you put in the right boundary"). This is the discriminator a wrong
-    decomposition fails: the same element names under the wrong aggregate score
-    high on the base rubric and low here.
+    where ``placement_expected`` is the count the produced project recovers. The
+    denominator is that recovered count, so placement scores only the elements the
+    project got back, on whether each landed under the right aggregate. This is the
+    discriminator a wrong decomposition fails: the same element names under the
+    wrong aggregate score high on the base rubric and low here.
 
     ``context`` is the fraction of the gold's recovered aggregates whose bounded
     context (the package-relative first module segment) matches the gold's:
@@ -369,9 +369,9 @@ def _context_map(ir: dict[str, Any]) -> dict[str, str]:
 def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Recovery:
     """Score *produced_ir*'s aggregate boundaries and bounded contexts vs *gold_ir*.
 
-    Placement asks, of the gold's per-cluster elements the produced project
-    recovers by class name, how many it attaches to the correct aggregate. Context
-    asks, of the gold's aggregates the produced project recovers, how many sit in
+    Placement is, of the gold's per-cluster elements the produced project recovers
+    by class name, the fraction it attaches to the correct aggregate. Context is, of
+    the gold's aggregates the produced project recovers, the fraction that sit in
     the matching bounded context. Both are ``0.0`` when nothing is recovered (an
     empty produced or gold IR), the same guard the base rubric uses, so neither
     divides by zero.

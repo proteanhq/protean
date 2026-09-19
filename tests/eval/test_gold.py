@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from tests.eval.gold import GoldProject, _run_protean, build_gold
-from tests.eval.scoring import score, score_boundary
+from tests.eval.scoring import _context_map, score, score_boundary
 from tests.eval.spec import read_spec
 from tests.eval.tools import run_verify
 
@@ -117,6 +117,11 @@ def test_two_context_gold_self_scores_context(
     self-scores context 1.0 over both recovered aggregates."""
     spec = read_spec("order_and_payment")
     assert spec.contexts == (("order", ("Order",)), ("payment", ("Payment",)))
+    # The two aggregates must land in two distinct context segments, or a self-score
+    # of 1.0 would say nothing: a single-context collapse (both under one segment)
+    # scores context 1.0 against itself just the same. Guard the "two-context" shape
+    # so a future scaffold layout change that merged the segments is caught here.
+    assert len(set(_context_map(two_context_gold.ir).values())) == 2
     result = score_boundary(two_context_gold.ir, two_context_gold.ir)
     assert result.context == 1.0
     assert result.context_expected == 2
