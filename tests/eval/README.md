@@ -92,6 +92,40 @@ more task-faithful project can score lower here. A per-task expected set of
 commands, events, and fields (so the score tracks the task, and the scaffold is
 just one way to author it) is a later dimension (#1350/#1351).
 
+### N-run stability
+
+The score above is one run of one approach. Stability (`tests/eval/stability.py`)
+layers a run-to-run metric on top: run a task `n` times for one approach and
+report two numbers.
+
+- **Identical-result rate.** Each run reduces to its set of IR element signatures
+  (the same set the rubric scores on). Two runs are the same result when their
+  signature sets are equal. The rate is the modal fraction: the share of runs
+  that produced the most common signature set. It reads `1.0` when every run
+  built the same structure and needs no reference run. `distinct_results` counts
+  how many different structures appeared.
+- **Score spread.** The mean, population standard deviation, min, and max of the
+  correctness score across the runs. A stable approach reads a standard deviation
+  of exactly `0.0` (population standard deviation, so one run and identical runs
+  both read zero without an error).
+
+The two axes are independent: the rate reads the signature set, the spread reads
+the score. Under today's scorer the score is a function of the signature set
+against a fixed gold, so the two move together. They are computed independently,
+so a later scorer that adds noise to the score would leave the structural rate
+unchanged.
+
+Stability is measured on the **live lane**. Transcript replay is deterministic by
+construction, so the context-driven variance number comes from the opt-in live
+lane (`pytest tests/eval -m live`, the `test_live_lane_reports_context_driven_stability`
+test), which drives the task `n` times through the model and scores each run. The
+**deterministic path** is the zero-variance guard: `test_stability.py` re-scaffolds
+the gold a few times through `run_stability` and asserts one distinct result, an
+identical-result rate of `1.0`, and a score standard deviation of `0.0`, so drift
+in the scaffold's signatures fails the guard. The run count is a knob
+(`DEFAULT_RUNS = 10`, overridable with `n`); ten belongs to the live lane, and the
+CI guard keeps `n` small because each run is a real scaffold.
+
 ## Layout
 
 ```
