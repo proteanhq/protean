@@ -19,8 +19,8 @@ packages only `src/protean`).
 ## Scoring the two approaches
 
 For one task the comparison (`compare(task_id)`) runs two approaches and reports,
-per approach, whether `protean verify` is green and a correctness score against
-the same gold:
+per approach, whether `protean verify` is green, a base correctness score, and a
+boundary/aggregate recovery score against the same gold:
 
 - **Approach A (deterministic).** `build_gold` scaffolds the task's gold project
   from its `spec.json`: `protean new` (with the example slice off), then one
@@ -76,6 +76,71 @@ number. The produced project is not checked the same way: the gold still asks
 for one element there, so one of the produced elements matching it is a real
 recovery.
 
+### Boundary and aggregate recovery
+
+The base rubric counts names. It cannot see whether a recovered command sits under
+the right aggregate, or whether an aggregate sits in the right bounded context. A
+project that recovers every element name but puts them under the wrong aggregate
+scores a full 1.0 on the base rubric. `score_boundary` adds the two scores that
+tell that apart, reading the per-aggregate `clusters` the base rubric only uses
+for fields:
+
+- **Placement.** Of the per-cluster elements (commands, events, handlers,
+  entities) the produced project recovers by class name, the fraction it attaches
+  to the correct aggregate. The denominator is the count the produced project
+  recovered, so placement scores only the elements the project got back, on
+  whether each landed under the right aggregate. An element the project wrote but
+  attached to no aggregate at all (the IR lists it under `elements` and in no
+  cluster) counts as misplaced. The same names under the wrong aggregate score
+  high on the base rubric and 0 here, which is the discriminator.
+- **Context.** Of the aggregates the produced project recovers, the fraction that
+  sit in the bounded context the task's spec declares for them, passed to
+  `score_boundary` as `contexts=spec.contexts`. The context an aggregate sits in
+  is its package-relative first module segment (`Order` at `shop.order.aggregate`
+  is in the `order` context), so a gold under package `sales` and a produced
+  project under `app` still match on `order`. The package comes from the project
+  on disk, passed to `score_boundary` as `package=`: `discover_import_package`
+  reads it off the discovered `domain.py`, so a `src/<pkg>/domain.py` project
+  imports as `<pkg>` and a root `domain.py` project has no package at all. The
+  module names alone could not say where the package ends, because
+  `order.aggregate` is either package `order` holding module `aggregate` or
+  context `order` holding `aggregate.py`, and the two read the same. The spec is
+  the only source of the expectation.
+  The gold builder puts every aggregate in its own slice module whatever the task
+  asked for, so reading those module names back would invent a layout
+  requirement. A task that declares no contexts (`place_order`,
+  `order_and_customer`) has its layout left unscored, and every aggregate it
+  recovers matches. That covers the `place_order` shape, where the gold scaffolds
+  `place_order.order.aggregate` and the replay writes a root `domain.py`. A task
+  that does declare contexts is judged against the declaration, so a project that
+  collapses `order_and_payment`'s two contexts into one keeps credit only for an
+  aggregate that still sits in its declared context.
+
+Both scores are `0.0` when nothing is recovered (an empty produced or gold IR),
+the same guard the base rubric uses, and `score_boundary` raises the same
+`AmbiguousGoldError` when the gold cannot be scored by class name. The base
+`score` and its `Correctness` are unchanged; recovery is returned alongside as a
+`Recovery`.
+
+The `order_and_customer` task foregrounds placement (two aggregates, each owning
+its own slice); `order_and_payment` foregrounds context (an `Order` and a
+`Payment` in separate context modules). A task declares its context grouping in
+`spec.json` with a `contexts` object (`{"order": ["Order"], "payment":
+["Payment"]}`) instead of a flat `aggregates` list; both forms scaffold the same
+gold, and a spec uses one or the other, never both. `protean add aggregate`
+builds each aggregate into its own slice module, named after the class it emits,
+so a context names the one aggregate whose class slugs to the context name.
+`read_spec` rejects any other grouping, so a spec never scaffolds a gold whose
+contexts are not the ones it declared. Aggregate names are stored as the class
+the scaffold emits, so a spec writing `orderItem` reads back as the `OrderItem`
+the gold carries.
+
+What the two new tasks omit, until their transcripts are recorded: only
+`place_order` carries a committed transcript, so `compare()` runs both approaches
+for it alone. The other two tasks score their gold through the harness (Approach
+A and the scorer), and Approach B joins them once the live lane records a
+transcript for each.
+
 ### Reading Approach B's number
 
 The scaffold's canned command and event names (`CreateOrder`, `OrderCreated`)
@@ -89,8 +154,10 @@ how faithful the project is to `task.md`. A project that builds exactly what the
 task asks (a `PlaceOrder` command and no separate event) still scores below 1.0,
 because the gold carries the scaffold's `CreateOrder` and `OrderCreated`. So a
 more task-faithful project can score lower here. A per-task expected set of
-commands, events, and fields (so the score tracks the task, and the scaffold is
-just one way to author it) is a later dimension (#1350/#1351).
+commands, events, and fields, declared in `spec.json` and scaffolded into the
+gold so the score tracks the task and not the scaffold, is not built here.
+#1351's design records it; what ships is the aggregate and context grouping, and
+the three seed tasks are written to the scaffold's shape.
 
 ### N-run stability
 
@@ -131,7 +198,7 @@ CI guard keeps `n` small because each run is a real scaffold.
 ```
 tests/eval/
   tasks/<task_id>/task.md          # the prompt the context-driven path sees
-  tasks/<task_id>/spec.json        # the gold recipe: project name + aggregates
+  tasks/<task_id>/spec.json        # the gold recipe: project name + aggregates (flat or by context)
   transcripts/<pack_version>/<task_id>.json   # recorded runs, keyed to the pack
   workspace.py transcript.py tools.py drivers.py runner.py   # the run harness
   discovery.py ir_probe.py spec.py gold.py scoring.py compare.py  # the scorer

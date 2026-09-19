@@ -11,7 +11,7 @@ import pytest
 
 from protean.dx.pack import PACK_VERSION, iter_skills
 from tests.eval import tools as tools_module
-from tests.eval.discovery import discover_domain_arg
+from tests.eval.discovery import discover_domain_arg, discover_import_package
 from tests.eval.drivers import (
     LIVE_DRIVER_ENV_VAR,
     Conversation,
@@ -669,6 +669,32 @@ class TestDomainDiscovery:
                 encoding="utf-8",
             )
         assert discover_domain_arg(tmp_path) is None
+
+    def test_a_src_layout_imports_under_its_package(self, tmp_path: Path) -> None:
+        """A ``src/<pkg>/domain.py`` project's modules are all under ``<pkg>``,
+        which is the prefix the scorer strips before reading a bounded-context
+        segment."""
+        package = tmp_path / "src" / "store"
+        package.mkdir(parents=True)
+        (package / "domain.py").write_text(
+            "from protean import Domain\n\nstore = Domain(name='Store')\n",
+            encoding="utf-8",
+        )
+        assert discover_import_package(tmp_path) == "store"
+
+    def test_a_root_domain_project_has_no_import_package(self, tmp_path: Path) -> None:
+        """A root ``domain.py`` puts the project root itself on the import path,
+        so its top-level directories are modules and there is no package to
+        strip."""
+        (tmp_path / "domain.py").write_text(
+            "from protean import Domain\n", encoding="utf-8"
+        )
+        assert discover_import_package(tmp_path) == ""
+
+    def test_an_undiscoverable_layout_has_no_import_package(
+        self, tmp_path: Path
+    ) -> None:
+        assert discover_import_package(tmp_path) == ""
 
 
 class TestRunLoop:

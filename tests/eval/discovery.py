@@ -6,14 +6,23 @@ Two callers shell a ``protean`` command into a project the harness produced:
 strip the same environment variables and discover the domain the same way, or
 the result would depend on the outer shell instead of the project. This module
 is the one copy of both, so a change to one applies to both callers.
+
+The same domain discovery also answers what import package a project's modules
+sit under, which :mod:`tests.eval.scoring` strips before reading an aggregate's
+bounded-context segment.
 """
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-__all__ = ["STRIPPED_ENV_VARS", "discover_domain_arg", "stripped_env"]
+__all__ = [
+    "STRIPPED_ENV_VARS",
+    "discover_domain_arg",
+    "discover_import_package",
+    "stripped_env",
+]
 
 # Env vars dropped before a protean subprocess, mirroring the scaffold-test
 # harness: VIRTUAL_ENV so a leaked value cannot point the child at a different
@@ -63,3 +72,25 @@ def discover_domain_arg(root: Path) -> str | None:
         return None
     package = candidates[0].parent.name
     return f"src/{package}/domain.py"
+
+
+def discover_import_package(root: Path) -> str:
+    """Return the import package the project at *root* puts its modules under,
+    or ``""`` when its modules sit under no package.
+
+    The scorer needs this to read an aggregate's bounded context off its module
+    name: the context is the first segment after the package, and the module
+    name alone cannot say where the package ends. ``order.aggregate`` is either
+    package ``order`` holding module ``aggregate``, or context ``order`` holding
+    ``aggregate.py`` with no package at all, and the two read the same.
+
+    The project on disk settles it, because the same two layouts
+    :func:`discover_domain_arg` reads are the only ones the harness can run a
+    protean command over: a ``src/<pkg>/domain.py`` project imports as ``<pkg>``,
+    and a root ``domain.py`` project has the root itself on the import path, so
+    its top-level directories are modules rather than a package.
+    """
+    domain_arg = discover_domain_arg(root)
+    if domain_arg is None:
+        return ""
+    return PurePosixPath(domain_arg).parent.name
