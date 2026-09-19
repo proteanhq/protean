@@ -13,9 +13,12 @@ way. It exposes Protean's operations as tools an agent calls: `validate`,
 the installed domain, so the agent always reasons about the code that is
 actually there, at the version of Protean the project actually runs.
 
-Because the answers are live, there is nothing to keep fresh. The domain
-changes, the next `introspect` reflects it, so nothing drifts and there is no
-refresh step to run.
+Because the answers come from the domain itself, there is no copy to
+regenerate and commit, and no refresh step in your build. One thing to know:
+the server imports your domain modules on the first call and Python holds them
+in memory for the life of that process, so a server that is already running
+keeps answering from the version it imported. Restart it after you change the
+source, and the next `introspect` reflects the change.
 
 Register the server in a `.mcp.json` file and point your agent at it. The
 [`protean mcp` reference](../reference/cli/runtime/mcp.md) covers installation,
@@ -55,9 +58,10 @@ Then regenerate with `protean docs generate --type=llms` and check with
 `protean docs generate --type=llms --check`.
 
 The path is read relative to the file that declares it, so both commands name
-the same snapshot from anywhere in the project. Keep the key in a config file
-at the project root: the command looks in the directory you run it from and its
-two parents.
+the same snapshot from every directory that finds the config. The command looks
+in the directory you run it from and its two parents, so keep the key in a
+config file at the project root and run from the root or at most two levels
+below it.
 
 ### A pre-commit recipe
 
