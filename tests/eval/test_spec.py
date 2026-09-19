@@ -177,6 +177,39 @@ class TestReadSpec:
         with pytest.raises(ValueError, match="the gold builds as order"):
             read_spec("bad", root=tmp_path)
 
+    def test_a_context_is_checked_against_the_class_slug_not_the_raw_name(
+        self, tmp_path: Path
+    ) -> None:
+        """``aB`` slugs to ``a_b`` on its own, but the class it emits, ``AB``,
+        slugs to ``ab``. The gold scaffolds from the class name, so
+        ``{"a_b": ["aB"]}`` would build the context ``ab`` and the gold would
+        miss its own declared context."""
+        _make_task(
+            tmp_path,
+            "bad",
+            spec={"project_name": "p", "contexts": {"a_b": ["aB"]}},
+        )
+        with pytest.raises(ValueError, match="the gold builds as ab"):
+            read_spec("bad", root=tmp_path)
+
+    def test_naming_both_contexts_and_aggregates_is_an_error(
+        self, tmp_path: Path
+    ) -> None:
+        """The two are alternative forms of the same list. Reading the contexts
+        and ignoring the flat list would silently drop ``Order`` from the gold
+        and change the score with no error."""
+        _make_task(
+            tmp_path,
+            "bad",
+            spec={
+                "project_name": "p",
+                "aggregates": ["Order"],
+                "contexts": {"payment": ["Payment"]},
+            },
+        )
+        with pytest.raises(ValueError, match="names both contexts and aggregates"):
+            read_spec("bad", root=tmp_path)
+
     def test_a_context_naming_no_aggregate_is_an_error(self, tmp_path: Path) -> None:
         _make_task(
             tmp_path, "bad", spec={"project_name": "p", "contexts": {"order": []}}

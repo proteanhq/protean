@@ -11,7 +11,9 @@ A spec names its aggregates in one of two forms: a flat ``aggregates`` list, or 
 nested ``contexts`` object mapping each context to its aggregates. Both reduce to
 the same flat aggregate list the gold builder scaffolds; the nested form also
 declares which context each aggregate is expected to land in, and ``read_spec``
-checks that declaration against what the gold builder will actually build.
+checks that declaration against what the gold builder will actually build. A
+spec uses one form or the other, never both: naming ``aggregates`` alongside
+``contexts`` is a read error rather than a list that is silently dropped.
 """
 
 from __future__ import annotations
@@ -98,6 +100,13 @@ def _read_contexts(
       has, and it puts each aggregate in its own slice module named after the
       aggregate, so a context declaring ``["Order", "Cart"]`` would be built as
       the two contexts ``order`` and ``cart``, not as the declared one.
+
+    The slug is taken from the class name, not from the raw spec text, because
+    the gold builder scaffolds from the class name this function stores. The two
+    can differ: ``aB`` slugs to ``a_b`` on its own, but the class it emits,
+    ``AB``, slugs to ``ab``. Checking the raw name would accept
+    ``{"a_b": ["aB"]}`` and then build the context ``ab``, so the gold would miss
+    its own declared context.
     """
     if not isinstance(contexts_data, dict):
         raise ValueError(f"spec for task {task_id!r} has a non-object contexts field")
@@ -111,17 +120,18 @@ def _read_contexts(
                 f"spec for task {task_id!r} declares context {context!r} as "
                 f"{members!r}; a context must name a list of aggregate names"
             )
-        slugs = [_slug(member) for member in members]
+        classes = [_class_name(member) for member in members]
+        slugs = [_slug(name) for name in classes]
         if slugs != [context]:
             built = ", ".join(slugs) or "nothing"
             raise ValueError(
                 f"spec for task {task_id!r} declares context {context!r} with "
                 f"aggregates {list(members)!r}, which the gold builds as {built}: "
                 "`protean add aggregate` puts every aggregate in its own slice "
-                "module, so a context must name the one aggregate whose slug is "
-                "the context name"
+                "module, named after the class it emits, so a context must name "
+                "the one aggregate whose class slugs to the context name"
             )
-        contexts.append((context, tuple(_class_name(member) for member in members)))
+        contexts.append((context, tuple(classes)))
     return tuple(contexts)
 
 
@@ -134,11 +144,11 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
     """Load task *task_id*'s :class:`TaskSpec` from its ``spec.json``.
 
     Raises ``FileNotFoundError`` if the task carries no spec, and ``ValueError``
-    if the spec is missing ``project_name``, names no aggregate, or declares a
-    ``contexts`` grouping the gold builder cannot build (see
-    :func:`_read_contexts`). This way a task the gold builder cannot scaffold
-    from, or would scaffold into contexts other than the declared ones, fails
-    loudly at read time.
+    if the spec is missing ``project_name``, names no aggregate, names both
+    ``contexts`` and ``aggregates``, or declares a ``contexts`` grouping the gold
+    builder cannot build (see :func:`_read_contexts`). This way a task the gold
+    builder cannot scaffold from, or would scaffold into contexts other than the
+    declared ones, fails loudly at read time.
     """
     base = root if root is not None else _eval_root()
     path = base / TASKS_DIRNAME / task_id / SPEC_FILE
@@ -153,6 +163,14 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
     # back to the flat ``aggregates`` list.
     if "contexts" in data:
         contexts = _read_contexts(task_id, data["contexts"])
+        # After the contexts object itself is checked, so a spec that is
+        # malformed as well as contradictory is reported as malformed first.
+        if "aggregates" in data:
+            raise ValueError(
+                f"spec for task {task_id!r} names both contexts and aggregates; "
+                "the two are alternative forms of the same list, so a spec must "
+                "use one or the other"
+            )
         aggregates = tuple(
             aggregate for _, members in contexts for aggregate in members
         )

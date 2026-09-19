@@ -127,12 +127,13 @@ its own slice); `order_and_payment` foregrounds context (an `Order` and a
 `Payment` in separate context modules). A task declares its context grouping in
 `spec.json` with a `contexts` object (`{"order": ["Order"], "payment":
 ["Payment"]}`) instead of a flat `aggregates` list; both forms scaffold the same
-gold. `protean add aggregate` builds each aggregate into its own slice module, so
-a context names the one aggregate whose slug is the context name. `read_spec`
-rejects any other grouping, so a spec never scaffolds a gold whose contexts are
-not the ones it declared. Aggregate names are stored as the class the scaffold
-emits, so a spec writing `orderItem` reads back as the `OrderItem` the gold
-carries.
+gold, and a spec uses one or the other, never both. `protean add aggregate`
+builds each aggregate into its own slice module, named after the class it emits,
+so a context names the one aggregate whose class slugs to the context name.
+`read_spec` rejects any other grouping, so a spec never scaffolds a gold whose
+contexts are not the ones it declared. Aggregate names are stored as the class
+the scaffold emits, so a spec writing `orderItem` reads back as the `OrderItem`
+the gold carries.
 
 What the two new tasks omit, until their transcripts are recorded: only
 `place_order` carries a committed transcript, so `compare()` runs both approaches
