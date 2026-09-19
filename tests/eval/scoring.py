@@ -38,7 +38,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 __all__ = [
     "AmbiguousGoldError",
@@ -309,16 +309,29 @@ def _member_name(member: Any, fqn: str) -> str:
     return _class_name(str(fqn))
 
 
-def _placement_sources(ir: dict[str, Any]) -> dict[Signature, set[str]]:
-    """Map each per-cluster element signature to the aggregate(s) that own it.
+class _Placement(NamedTuple):
+    """The cluster elements behind one placement signature.
+
+    ``owners`` is the class names of the aggregates whose clusters carry an
+    element of the signature; ``elements`` is the source FQNs of those elements.
+    Both are kept because a gold signature is ambiguous either way: two owners
+    mean one element name sits under two aggregates, and two elements under one
+    owner mean the signature stands for a pair the rubric cannot tell apart.
+    """
+
+    owners: set[str]
+    elements: set[str]
+
+
+def _placement_sources(ir: dict[str, Any]) -> dict[Signature, _Placement]:
+    """Map each per-cluster element signature to the elements that produced it.
 
     A signature is ``(category, class_name)`` for a command, event, handler, or
-    entity; its owners are the class names of the aggregates whose clusters carry
-    an element of that signature. In a well-formed gold each signature has exactly
-    one owner. Two owners for one signature means the same element name sits under
-    two aggregates, which :func:`_reject_ambiguous_placement` rejects in a gold.
+    entity. In a well-formed gold each signature has exactly one owner and one
+    source element; more of either means the gold's placement is undefined, which
+    :func:`_reject_ambiguous_placement` rejects.
     """
-    sources: dict[Signature, set[str]] = defaultdict(set)
+    sources: dict[Signature, _Placement] = defaultdict(lambda: _Placement(set(), set()))
     for cluster, owner in _owned_clusters(ir):
         for section, category in _CLUSTER_ELEMENT_SECTIONS.items():
             members = cluster.get(section)
@@ -327,32 +340,39 @@ def _placement_sources(ir: dict[str, Any]) -> dict[Signature, set[str]]:
             for fqn, member in members.items():
                 name = _member_name(member, str(fqn))
                 if name:
-                    sources[(category, name)].add(owner)
+                    placement = sources[(category, name)]
+                    placement.owners.add(owner)
+                    placement.elements.add(str(fqn))
     return dict(sources)
 
 
-def _reject_ambiguous_placement(sources: dict[Signature, set[str]]) -> None:
-    """Raise when a gold element name is placed under more than one aggregate.
+def _reject_ambiguous_placement(sources: dict[Signature, _Placement]) -> None:
+    """Raise when more than one gold element backs a single placement signature.
 
-    The base ``AmbiguousGoldError`` guard already catches a class name repeated
-    across the flat ``elements`` map; this covers the placement-only case of an
-    entity name (which the base rubric does not score) repeated across clusters,
-    so the gold's correct placement stays a single, defined aggregate.
+    Two shapes collapse into one signature. The same element name under two
+    aggregates leaves the gold's correct placement undefined. Two elements of the
+    same category and class name under one aggregate (two entity FQNs both ending
+    in ``LineItem``, which the registry and the IR builder both key by FQN and so
+    both keep) leave the placement denominator counting one where the gold
+    carries two. The base ``AmbiguousGoldError`` guard catches both shapes for a
+    scored category, because it reads the flat ``elements`` map. It does not
+    score entities, so this guard is what catches either shape for an entity.
     """
     ambiguous = sorted(
-        ("/".join(signature), sorted(owners))
-        for signature, owners in sources.items()
-        if len(owners) > 1
+        ("/".join(signature), sorted(placement.owners), sorted(placement.elements))
+        for signature, placement in sources.items()
+        if len(placement.owners) > 1 or len(placement.elements) > 1
     )
     if not ambiguous:
         return
     detail = "; ".join(
-        f"{signature} <- aggregates {', '.join(owners)}"
-        for signature, owners in ambiguous
+        f"{signature} <- {', '.join(elements)} under aggregates {', '.join(owners)}"
+        for signature, owners, elements in ambiguous
     )
     raise AmbiguousGoldError(
-        "gold IR places an element of the same class name under more than one "
-        f"aggregate, so its correct placement is undefined: {detail}"
+        "gold IR carries more than one cluster element of the same category and "
+        "class name, so its placement is undefined and the placement denominator "
+        f"would undercount it: {detail}"
     )
 
 
@@ -493,9 +513,10 @@ def score_boundary(
     ``domain.py`` writes.
 
     Raises :class:`AmbiguousGoldError` when the gold cannot be scored by class
-    name: two elements sharing a category and class name (the base guard) or one
-    element name placed under two aggregates (the placement guard). Either would
-    make the gold's correct placement undefined.
+    name: two elements sharing a category and class name (the base guard), or two
+    cluster elements collapsing to one placement signature, whether under two
+    aggregates or under one (the placement guard). Either leaves the gold's
+    correct placement undefined or its denominator short.
     """
     _reject_ambiguous_gold(_signature_sources(gold_ir))
     gold_placement = _placement_sources(gold_ir)
@@ -505,17 +526,17 @@ def score_boundary(
 
     placed: list[Signature] = []
     misplaced: list[Signature] = []
-    for signature, owners in gold_placement.items():
-        produced_owners = produced_placement.get(signature)
-        if not produced_owners:
+    for signature, gold_element in gold_placement.items():
+        produced_element = produced_placement.get(signature)
+        if produced_element is None or not produced_element.owners:
             if signature in produced_flat:
                 # Recovered by name, but under no aggregate at all: the project
                 # wrote it and gave it no owner, which is a placement failure,
                 # not an element to leave out of the denominator.
                 misplaced.append(signature)
             continue  # not recovered at all, so not a placement to judge
-        gold_owner = next(iter(owners))
-        if gold_owner in produced_owners:
+        gold_owner = next(iter(gold_element.owners))
+        if gold_owner in produced_element.owners:
             placed.append(signature)
         else:
             misplaced.append(signature)

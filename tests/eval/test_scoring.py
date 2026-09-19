@@ -418,6 +418,28 @@ def boundary_ir(
     }
 
 
+def add_duplicate_entity(ir: dict, *, aggregate: str, name: str, module: str) -> None:
+    """Add a second entity of class name *name* under *aggregate*'s cluster.
+
+    The IR keys cluster members and flat elements by FQN, so two entity classes
+    of one name in two modules are two distinct entries. :func:`boundary_ir`
+    cannot express that (it derives one FQN per class name), so this writes the
+    second entry directly, under *module*.
+    """
+    package = next(iter(ir["clusters"])).split(".", 1)[0]
+    agg_fqn = next(
+        key
+        for key, cluster in ir["clusters"].items()
+        if cluster["aggregate"]["name"] == aggregate
+    )
+    fqn = f"{package}.{module}.entities.{name}"
+    ir["clusters"][agg_fqn]["entities"][fqn] = {
+        "name": name,
+        "module": f"{package}.{module}.entities",
+    }
+    ir["elements"].setdefault("ENTITY", []).append(fqn)
+
+
 # A two-aggregate gold: an Order and a Payment, each owning its own create
 # command, created event, and command handler. Six per-cluster placement
 # elements in all.
@@ -1033,3 +1055,25 @@ class TestBoundaryAmbiguousGold:
         )
         with pytest.raises(AmbiguousGoldError, match="entity/LineItem"):
             score_boundary(boundary_ir(package="p", clusters={"Order": {}}), gold)
+
+    def test_two_entity_fqns_of_one_name_under_one_aggregate_are_rejected(
+        self,
+    ) -> None:
+        """Two entity classes of the same name under one aggregate collapse to a
+        single placement signature, so the denominator would count one where the
+        gold carries two. Entities are outside the flat rubric, so only the
+        placement guard sees it."""
+        gold = boundary_ir(package="gold", clusters={"Order": {"entities": ("Line",)}})
+        add_duplicate_entity(gold, aggregate="Order", name="Line", module="legacy")
+        with pytest.raises(AmbiguousGoldError, match="entity/Line"):
+            score_boundary(boundary_ir(package="p", clusters={"Order": {}}), gold)
+
+    def test_a_produced_duplicate_entity_name_is_scored_not_rejected(self) -> None:
+        """The guard is on the gold alone. The produced project repeating an
+        entity name under one aggregate still recovers the gold's single entity."""
+        gold = boundary_ir(package="gold", clusters={"Order": {"entities": ("Line",)}})
+        produced = boundary_ir(package="p", clusters={"Order": {"entities": ("Line",)}})
+        add_duplicate_entity(produced, aggregate="Order", name="Line", module="legacy")
+        result = score_boundary(produced, gold)
+        assert result.placement == 1.0
+        assert result.placed == (("entity", "Line"),)
