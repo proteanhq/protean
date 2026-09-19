@@ -1777,3 +1777,212 @@ class TestFullIntegration:
         assert "flowchart LR" in content
         assert "flowchart TD" in content
         assert "# Event & Command Catalog" in content
+
+
+# ---------------------------------------------------------------------------
+# Test: llms.txt snapshot drift check (--check) and the opt-in config key
+# ---------------------------------------------------------------------------
+
+
+class TestLlmsCheck:
+    """Tests for ``--check`` on ``--type=llms``: byte-exact drift, no write."""
+
+    @pytest.fixture()
+    def ir_file(self, tmp_path) -> Path:
+        path = tmp_path / "test-ir.json"
+        path.write_text(json.dumps(_minimal_ir()), encoding="utf-8")
+        return path
+
+    def test_check_reports_drift_and_writes_nothing(self, tmp_path):
+        """A committed file that differs from a fresh render exits non-zero and
+        leaves the file untouched."""
+        snap = tmp_path / "llms.txt"
+        snap.write_text("stale content\n", encoding="utf-8")
+
+        result = runner.invoke(
+            app, ["generate", "--type=llms", f"--output={snap}", "--check"]
+        )
+
+        assert result.exit_code != 0
+        assert "drift" in result.output.lower()
+        # The file is unchanged: --check writes nothing on the mismatch branch.
+        assert snap.read_text(encoding="utf-8") == "stale content\n"
+
+    def test_check_passes_when_matching_and_writes_nothing(self, tmp_path):
+        """A round-trip (generate to the path, then --check the path) exits 0
+        and writes nothing, proving the write and the compare agree on bytes."""
+        snap = tmp_path / "llms.txt"
+        gen = runner.invoke(app, ["generate", "--type=llms", f"--output={snap}"])
+        assert gen.exit_code == 0
+        before = snap.read_bytes()
+
+        result = runner.invoke(
+            app, ["generate", "--type=llms", f"--output={snap}", "--check"]
+        )
+
+        assert result.exit_code == 0
+        assert "up to date" in result.output.lower()
+        assert snap.read_bytes() == before
+
+    def test_check_missing_file_is_drift(self, tmp_path):
+        """A missing snapshot file counts as drift and creates nothing."""
+        snap = tmp_path / "does-not-exist.txt"
+
+        result = runner.invoke(
+            app, ["generate", "--type=llms", f"--output={snap}", "--check"]
+        )
+
+        assert result.exit_code != 0
+        assert "drift" in result.output.lower()
+        assert not snap.exists()
+
+    def test_check_rejected_for_non_llms(self, ir_file):
+        """--check is guarded to --type=llms, like --cluster and --annotations."""
+        result = runner.invoke(
+            app, ["generate", f"--ir={ir_file}", "--type=catalog", "--check"]
+        )
+
+        assert result.exit_code != 0
+        assert "can only be used with --type=llms" in result.output
+
+    def test_check_without_a_path_errors(self, tmp_path, monkeypatch):
+        """--check with no config key and no --output has no file to diff."""
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms", "--check"])
+
+        assert result.exit_code != 0
+        assert "domain_snapshot" in result.output or "path" in result.output.lower()
+
+
+class TestDomainSnapshotConfig:
+    """Tests for the opt-in ``[tool.protean.docs].domain_snapshot`` key."""
+
+    def _write_pyproject(self, directory: Path, *, path="llms.txt", domain="my_app"):
+        (directory / "pyproject.toml").write_text(
+            "[tool.protean.docs]\n"
+            f'domain_snapshot = {{ path = "{path}", domain = "{domain}" }}\n',
+            encoding="utf-8",
+        )
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_config_driven_generate_then_check(
+        self, mock_derive, tmp_path, monkeypatch
+    ):
+        """With the key set, generate writes the snapshot from the configured
+        domain to the configured path, and a following --check exits 0 — with
+        no --domain/--output on the command line."""
+        mock_domain = mock_derive.return_value
+        mock_domain.init.return_value = None
+        mock_domain.to_ir.return_value = _minimal_ir()
+        self._write_pyproject(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        gen = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert gen.exit_code == 0, gen.output
+        mock_derive.assert_called_with("my_app")
+        snap = tmp_path / "llms.txt"
+        expected = generate_llms_txt(_minimal_ir(), version=protean.__version__)
+        assert snap.read_text(encoding="utf-8") == expected
+
+        check = runner.invoke(app, ["generate", "--type=llms", "--check"])
+        assert check.exit_code == 0, check.output
+
+    def test_default_project_creates_no_snapshot(self, tmp_path, monkeypatch):
+        """A project with no key generates the framework layer to stdout and
+        creates no snapshot file (the default surface is unchanged)."""
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.other]\nx = 1\n", encoding="utf-8"
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code == 0
+        assert "Protean" in result.output
+        assert not (tmp_path / "llms.txt").exists()
+        assert list(tmp_path.glob("*.txt")) == []
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_output_flag_overrides_config_path(
+        self, mock_derive, tmp_path, monkeypatch
+    ):
+        """An explicit --output wins over the configured snapshot path."""
+        mock_domain = mock_derive.return_value
+        mock_domain.init.return_value = None
+        mock_domain.to_ir.return_value = _minimal_ir()
+        self._write_pyproject(tmp_path, path="configured.txt")
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(
+            app, ["generate", "--type=llms", "--output=override.txt"]
+        )
+
+        assert result.exit_code == 0
+        assert (tmp_path / "override.txt").exists()
+        assert not (tmp_path / "configured.txt").exists()
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_domain_flag_overrides_config_domain(
+        self, mock_derive, tmp_path, monkeypatch
+    ):
+        """An explicit --domain wins over the configured domain entry point."""
+        mock_domain = mock_derive.return_value
+        mock_domain.init.return_value = None
+        mock_domain.to_ir.return_value = _minimal_ir()
+        self._write_pyproject(tmp_path, domain="configured_app")
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(
+            app, ["generate", "--type=llms", "--domain=other_app", "--output=x.txt"]
+        )
+
+        assert result.exit_code == 0
+        mock_derive.assert_called_with("other_app")
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_domain_toml_parity(self, mock_derive, tmp_path, monkeypatch):
+        """The key resolves the same from [docs] in domain.toml as it does from
+        [tool.protean.docs] in pyproject.toml."""
+        mock_domain = mock_derive.return_value
+        mock_domain.init.return_value = None
+        mock_domain.to_ir.return_value = _minimal_ir()
+        (tmp_path / "domain.toml").write_text(
+            '[docs]\ndomain_snapshot = { path = "llms.txt", domain = "my_app" }\n',
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code == 0, result.output
+        mock_derive.assert_called_with("my_app")
+        expected = generate_llms_txt(_minimal_ir(), version=protean.__version__)
+        assert (tmp_path / "llms.txt").read_text(encoding="utf-8") == expected
+
+    def test_malformed_key_missing_domain_aborts(self, tmp_path, monkeypatch):
+        """The key present but missing 'domain' aborts, naming the requirement."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.protean.docs]\ndomain_snapshot = { path = "llms.txt" }\n',
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code != 0
+        assert "domain" in result.output
+
+    def test_malformed_key_not_a_table_aborts(self, tmp_path, monkeypatch):
+        """The key present but a bare string (not a table) aborts."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.protean.docs]\ndomain_snapshot = "llms.txt"\n',
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code != 0
+        assert "domain_snapshot" in result.output

@@ -43,6 +43,9 @@ protean docs generate --ir=domain-ir.json --type=event-model
 - `--annotations`: Path to an annotations TOML file (only with
   `--type=event-model`). Defaults to `.protean/annotations.toml` when present.
   See [Annotating the event model](#annotating-the-event-model).
+- `--check`: Only with `--type=llms`. Compare a committed snapshot against a
+  fresh render, write nothing, and exit non-zero on drift. See
+  [Checking a committed snapshot for drift](#checking-a-committed-snapshot-for-drift).
 
 ### The event model slice timeline
 
@@ -116,6 +119,62 @@ protean docs generate --type=llms
 # Framework layer plus the project overlay
 protean docs generate --domain=my_app --type=llms --output=llms.txt
 ```
+
+#### Checking a committed snapshot for drift
+
+If you commit the `llms.txt` snapshot to the repository, the file drifts as the
+domain changes. `--check` catches that drift. It renders the snapshot fresh in
+memory, compares it byte for byte to the committed file, writes nothing, and
+exits non-zero when they differ. A missing file counts as drift. This is the
+`black --check` idiom, and the exit codes match `protean dx check`: `0` when the
+file is up to date, `1` on drift.
+
+```shell
+# Fails (exit 1) if llms.txt is out of date; writes nothing
+protean docs generate --type=llms --domain=my_app --output=llms.txt --check
+```
+
+The snapshot is a **secondary** path. The [`protean mcp`](../runtime/mcp.md)
+server is the recommended way to give an agent domain knowledge: it answers
+live from the installed domain, so there is no file to keep fresh. Reach for a
+committed snapshot only for agents that do not speak MCP, and know the
+trade-off: a file can go stale, and `--check` is what tells you it has. See
+[Giving an agent domain context](../../../guides/giving-agents-domain-context.md).
+
+#### The opt-in `domain_snapshot` config key
+
+Repeating `--domain` and `--output` on every `generate` and `--check` run is
+noise. The `[tool.protean.docs].domain_snapshot` key names both once. It is
+**absent by default**: set it only when you commit a snapshot. Nothing reads it
+until you add it, and `protean new` and `protean dx` never write it.
+
+In `pyproject.toml`:
+
+```toml
+[tool.protean.docs]
+domain_snapshot = { path = "llms.txt", domain = "my_app" }
+```
+
+In a `domain.toml` the same key sits under `[docs]` (a `domain.toml` maps
+directly to the Protean namespace, with no `tool.protean` prefix):
+
+```toml
+[docs]
+domain_snapshot = { path = "llms.txt", domain = "my_app" }
+```
+
+With the key set, both commands run with no repeated flags:
+
+```shell
+# Writes the snapshot to the configured path from the configured domain
+protean docs generate --type=llms
+
+# Diffs that same path
+protean docs generate --type=llms --check
+```
+
+An explicit `--domain` or `--output` on the command line overrides the config
+value, so the key only fills in what the flags omit.
 
 ### The AGENTS.md constraint pack
 

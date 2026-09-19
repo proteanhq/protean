@@ -282,6 +282,7 @@ nav:
       - guides/server/opentelemetry.md
     - Scaling and Operations:
       - guides/multi-domain-applications.md
+      - "Giving an Agent Domain Context": guides/giving-agents-domain-context.md
       - guides/compose-a-domain/inspecting-the-ir.md
       - guides/compose-a-domain/schema-generation.md
       - guides/evolving-events.md
