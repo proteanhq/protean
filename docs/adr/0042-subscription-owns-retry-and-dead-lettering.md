@@ -36,3 +36,13 @@ Production adapters are untouched: they inherit the no-op hook and keep the same
 Under a genuinely persistent `{stream}:dlq` outage the InlineBroker holds and redelivers without bound, so a message's broker-side retry count grows. The broker caps its exponential-backoff exponent and delay so the growing retry count cannot overflow the exponentiation or balloon the wall-clock wait. This unbounded growth only matters in tests that drive many rounds against a downed DLQ; set `retry_delay=0` there. In a real deployment the DLQ recovers and the message is acked.
 
 The InlineBroker keeps its native DLQ and ceiling for the broker-direct path, so its existing broker-level retry and DLQ tests stay valid.
+
+## Compatibility
+
+This is a Tier-2 behavioral change under ADR-0004, and it ships without an opt-in flag.
+
+The old behavior was observable from the public CLI. On the InlineBroker, `_dlq_list` reports native-DLQ entries under the `{stream}:dlq` name, so under a persistent `{stream}:dlq` publish outage a subscription-consumed message eventually showed up in `protean dlq list`. It no longer does: it is held and redelivered instead.
+
+We take the silent-correctness-bug exception in ADR-0004 rather than the three-version flag rollout. The old path was two retry authorities counting the same failure, which no correct program should have depended on; there is nothing for a user to migrate; and keeping the old path alive behind a flag would keep the broker dead-lettering underneath the subscription, which is the bug. The exception's "loud and immediate failure" criterion does not apply here, since the new behavior fails by holding a message rather than by raising. We accept that gap because the exposure is small: the InlineBroker is an in-process, non-durable test double, and reaching the old path needed a `{stream}:dlq` publish to keep failing inside that same process.
+
+No public name, signature, or default changed. `BaseBroker._mark_subscription_owned` is new and concrete, defaulting to a no-op, so an existing custom broker adapter keeps working without defining it.
