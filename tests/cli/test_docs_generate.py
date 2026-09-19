@@ -2045,7 +2045,8 @@ class TestDomainSnapshotConfig:
         result = runner.invoke(app, ["generate", "--type=llms"])
 
         assert result.exit_code != 0
-        assert "pyproject.toml" in result.output
+        # rich wraps the path across lines; join before checking.
+        assert "pyproject.toml" in result.output.replace("\n", "")
         assert not (tmp_path / "llms.txt").exists()
 
     def test_non_table_docs_section_falls_back_to_no_key(self, tmp_path, monkeypatch):
