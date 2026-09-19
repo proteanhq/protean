@@ -41,10 +41,11 @@ case so pre-flight and rollback are not re-derived.
   A second apply replaces only the body between them. Every byte outside, the marker
   lines included, is preserved. The caller supplies the comment syntax (`<!-- -->`
   for Markdown, `#` for a config), so the writer stays format-agnostic.
-- *Managed JSON keys*, for `.mcp.json`. The rendered dict's top-level keys are the
-  managed keys. A second apply sets those keys and preserves every other key on disk.
-  The merge is shallow: a managed key's value is replaced whole. `.mcp.json` names
-  its servers at the top level, so that is enough.
+- *Managed JSON keys*, for `.mcp.json`. The rendered dict's keys are the managed
+  keys. A second apply sets those keys and preserves every other key on disk. A
+  managed key's value is replaced whole. An optional key-path scopes the merge to a
+  nested object: `.mcp.json` manages only the `mcpServers.protean` key-path, so an
+  existing file keeps the user's other servers (the key-path merge landed in #1475).
 
 **A state file at `.protean/dx-state.json` remembers what was written.** It sits
 beside `project.json` (ADR-0034) and `ir.json`. Per target path it records the pack
@@ -117,10 +118,10 @@ the next run re-derives rather than trusting a stamp for content that never land
   unrecorded slice matches no recorded state.
 - Managed-block files carry visible marker comments. That is a small cost in the
   file's readability, and it buys a boundary the user can see and work around.
-- The shallow JSON merge cannot manage a nested key on its own. Managing
-  `servers.protean` means managing all of `servers`. `.mcp.json` does not need more
-  than that today; a deeper merge would need a key-path notion and is deferred until
-  a file actually asks for it.
+- The JSON merge takes an optional key-path so it can manage a nested key on its
+  own: managing `mcpServers.protean` sets only that entry and keeps every sibling
+  server. With no key-path it stays the shallow top-level merge. `.mcp.json` asked
+  for the nested form (#1475), so it is built; other targets still use the shallow one.
 - `state_version` means an old build meeting a newer state file fails loudly instead of
   misreading it. The cost is one more version marker to bump when the shape changes.
 

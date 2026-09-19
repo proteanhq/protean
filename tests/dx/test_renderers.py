@@ -2,25 +2,39 @@
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
-from protean.dx.managed_files import ManagedBlock
+from protean.dx.managed_files import ManagedBlock, ManagedJsonKeys
 from protean.dx.pack import PACK_VERSION, load_agents_source
 from protean.dx.renderers import (
     AGENTS_TARGET,
     BLOCK_ID,
     CLAUDE_BRIDGE_BODY,
     CLAUDE_BRIDGE_TARGET,
+    MCP_SERVER_KEY,
+    MCP_SERVER_NAME,
+    MCP_TARGET,
     _strip_leading_h1,
     agents_managed_file,
     claude_bridge_managed_file,
     managed_files,
+    mcp_json_managed_file,
     render_agents_body,
 )
 from protean.ir.generators.agents import generate_agents_md
+from protean.mcp import mcp_registration
 
 # The renderers are pure functions over package data and never touch a domain.
 pytestmark = pytest.mark.no_test_domain
+
+# Repo root: tests/dx/test_renderers.py → parents[2] is the repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _h1_lines(text: str) -> list[str]:
@@ -100,10 +114,53 @@ def test_claude_bridge_body_is_version_independent() -> None:
     )
 
 
-def test_managed_files_returns_agents_then_bridge() -> None:
+def test_mcp_json_managed_file_shape() -> None:
+    managed = mcp_json_managed_file("0.18.0")
+
+    assert isinstance(managed, ManagedJsonKeys)
+    assert managed.target == MCP_TARGET == ".mcp.json"
+    assert managed.version == "0.18.0"
+    assert managed.path == (MCP_SERVER_KEY,) == ("mcpServers",)
+    assert managed.managed_keys == (MCP_SERVER_NAME,) == ("protean",)
+    # The value under the managed key is the single-sourced registration shape.
+    assert managed.data[MCP_SERVER_NAME] == mcp_registration()
+    assert managed.data["protean"] == {"command": "protean", "args": ["mcp"]}
+
+
+def test_mcp_registration_imports_without_the_mcp_extra() -> None:
+    """The renderer runs on every ``dx install``, so its registration source must
+    import without the optional ``mcp`` SDK.
+
+    Run a subprocess whose import system refuses the ``mcp`` package, then import
+    ``protean.mcp`` and call ``mcp_registration``. If the helper reached for the
+    SDK, the import would fail; that it returns the launch shape proves it does
+    not, and that ``mcp`` never lands in ``sys.modules`` proves nothing pulled it
+    in transitively.
+    """
+    code = (
+        "import sys, importlib.abc\n"
+        "class Block(importlib.abc.MetaPathFinder):\n"
+        "    def find_spec(self, name, path, target=None):\n"
+        "        if name == 'mcp' or name.startswith('mcp.'):\n"
+        "            raise ImportError('mcp extra blocked for this test')\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, Block())\n"
+        "from protean.mcp import mcp_registration\n"
+        "assert mcp_registration() == {'command': 'protean', 'args': ['mcp']}\n"
+        "assert 'mcp' not in sys.modules\n"
+        "print('sdk-free-ok')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert "sdk-free-ok" in result.stdout
+
+
+def test_managed_files_returns_agents_bridge_then_mcp() -> None:
     files = managed_files("0.18.0")
 
-    assert [f.target for f in files] == ["AGENTS.md", "CLAUDE.md"]
+    assert [f.target for f in files] == ["AGENTS.md", "CLAUDE.md", ".mcp.json"]
     assert all(f.version == "0.18.0" for f in files)
 
 
@@ -132,3 +189,33 @@ def test_strip_leading_h1_leaves_text_without_an_h1_unchanged() -> None:
 def test_strip_leading_h1_does_not_touch_an_h2() -> None:
     text = "## Subheading\nbody\n"
     assert _strip_leading_h1(text) == text
+
+
+def test_repo_mcp_json_matches_what_the_renderer_writes() -> None:
+    """The repository's own ``.mcp.json`` carries the shape ``dx install`` writes.
+
+    The repo ships a ``.mcp.json`` and the MCP docs print one by hand. If either
+    drifts from the renderer, a user gets two contradictory registration formats
+    and a client reading one of them never finds the server. Pin all three to the
+    same key-path and value here.
+    """
+    repo_mcp_json = json.loads((_REPO_ROOT / MCP_TARGET).read_text(encoding="utf-8"))
+
+    assert repo_mcp_json[MCP_SERVER_KEY][MCP_SERVER_NAME] == mcp_registration()
+
+
+def test_mcp_docs_snippet_matches_what_the_renderer_writes() -> None:
+    """The hand-written snippet in the MCP reference matches the renderer too."""
+    page = (_REPO_ROOT / "docs/reference/cli/runtime/mcp.md").read_text(
+        encoding="utf-8"
+    )
+    snippets = re.findall(r"```json\n(.*?)```", page, flags=re.DOTALL)
+    registrations = [
+        json.loads(snippet)
+        for snippet in snippets
+        if MCP_SERVER_KEY in json.loads(snippet)
+    ]
+
+    assert registrations, "the MCP reference no longer prints a registration snippet"
+    for registration in registrations:
+        assert registration[MCP_SERVER_KEY][MCP_SERVER_NAME] == mcp_registration()
