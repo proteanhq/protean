@@ -154,8 +154,10 @@ how faithful the project is to `task.md`. A project that builds exactly what the
 task asks (a `PlaceOrder` command and no separate event) still scores below 1.0,
 because the gold carries the scaffold's `CreateOrder` and `OrderCreated`. So a
 more task-faithful project can score lower here. A per-task expected set of
-commands, events, and fields (so the score tracks the task, and the scaffold is
-just one way to author it) is a later dimension (#1350).
+commands, events, and fields, declared in `spec.json` and scaffolded into the
+gold so the score tracks the task and not the scaffold, is not built here.
+#1351's design records it; what ships is the aggregate and context grouping, and
+the three seed tasks are written to the scaffold's shape.
 
 ## Layout
 
