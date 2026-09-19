@@ -5,7 +5,7 @@ make a coding agent correct with the installed framework version. The files are
 composed from data that ships inside the `protean` package, so an agent reads
 guidance that matches the installed code.
 
-This cut writes three files into a target project:
+It writes two sets of files into a target project. The canonical set:
 
 - `AGENTS.md`: the canonical, cross-agent instruction file. Its body has two
   layers. The first is the positive guidance from the packaged AGENTS.md source.
@@ -20,24 +20,43 @@ This cut writes three files into a target project:
   `mcpServers.protean` key-path, so an existing `.mcp.json` keeps every other
   server you configured; `install` writes and reconciles only its own entry.
 
-The per-editor rule files (Cursor, Copilot, opencode) are separate commands that
-land later on the same epic.
+The per-editor set, one file each for Cursor, Copilot, and opencode:
 
-## Managed blocks
+- `.cursor/rules/protean.mdc`: Cursor's rule file. It carries MDC frontmatter
+  (with `globs: "**/*.py"`, so the rule applies to Python files) and the same
+  composed guidance `AGENTS.md` carries. Cursor reads `AGENTS.md` natively for the
+  always-on layer, so this rule is scoped to code. Protean owns the whole file,
+  since the MDC frontmatter must start at line 1 and leaves no room for a marker
+  above it.
+- `.github/copilot-instructions.md`: Copilot's instructions, the composed guidance
+  in an HTML-comment managed block, so the file stays co-owned with your own
+  Copilot instructions.
+- `opencode.json`: opencode's config. It manages one `mcp.protean` entry with
+  opencode's launch shape (`type: "local"`, `command: ["protean", "mcp"]`,
+  `enabled: true`) and keeps every other key. opencode reads `AGENTS.md` natively,
+  so it gets no separate instruction file: this config only supplies the MCP
+  registration.
 
-Each file is co-owned. For the Markdown files, the framework writes a block framed
-by two HTML comment markers, `<!-- PROTEAN:BEGIN protean -->` and
-`<!-- PROTEAN:END protean -->`, and you own every line around it. For `.mcp.json`,
-the framework owns only the `mcpServers.protean` key-path and you own every other
-key, including your other servers. Re-running `install` or `refresh` rewrites the
-framework's region and preserves your own edits around it.
+## Managed regions
+
+Each file is co-owned, except the Cursor rule file, which Protean owns whole. For
+the Markdown files (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`),
+the framework writes a block framed by two HTML comment markers,
+`<!-- PROTEAN:BEGIN protean -->` and `<!-- PROTEAN:END protean -->`, and you own
+every line around it. For the JSON files (`.mcp.json`, `opencode.json`), the
+framework owns only its own key-path (`mcpServers.protean`, `mcp.protean`) and you
+own every other key, including your other servers. For the Cursor rule file, the
+framework owns the whole file, so any hand edit to it is a conflict. Re-running
+`install` or `refresh` rewrites the framework's region and preserves your own
+edits around it.
 
 A state file at `.protean/dx-state.json` records what the writer last wrote per
 target. It tells a version change (a safe rewrite) apart from an edit you made
 inside the framework's region (a conflict the writer refuses to overwrite). The
 conflict line names the region it means: the managed block for a Markdown file,
-the managed key `mcpServers.protean` for `.mcp.json`. Commit the state file so
-the conflict check works across machines. The design is recorded in
+the managed key (`mcpServers.protean`, `mcp.protean`) for a JSON file, the whole
+file for the Cursor rule. Commit the state file so the conflict check works across
+machines. The design is recorded in
 [ADR-0037](../../../adr/0037-idempotent-file-projection.md).
 
 `install` refuses a pre-existing `AGENTS.md` that has no `PROTEAN` markers and
@@ -49,8 +68,8 @@ that already carries an unmarked `AGENTS.md`, including one written by an older
 ## Verbs
 
 ```shell
-protean dx install     # write AGENTS.md, the CLAUDE.md bridge, and .mcp.json
-protean dx refresh     # re-render the blocks to the installed version
+protean dx install     # write the canonical and per-editor files
+protean dx refresh     # re-render the managed regions to the installed version
 protean dx diff        # preview what install would change (unified diff); write nothing
 protean dx check       # exit non-zero when a target has drifted; write nothing
 ```

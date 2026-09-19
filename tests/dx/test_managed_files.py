@@ -18,6 +18,7 @@ from protean.dx.managed_files import (
     ManagedFileError,
     ManagedFileState,
     ManagedJsonKeys,
+    ManagedWholeFile,
     MergeMode,
     _merge_json,
     apply_managed_file,
@@ -48,6 +49,11 @@ def json_keys(
     target: str, version: str, data: dict, path: tuple[str, ...] = ()
 ) -> ManagedJsonKeys:
     return ManagedJsonKeys(target=target, version=version, data=data, path=path)
+
+
+def whole(target: str, version: str, body: str) -> ManagedWholeFile:
+    """A whole-file target: dx owns the entire file."""
+    return ManagedWholeFile(target=target, version=version, body=body)
 
 
 def state_path(root: Path) -> Path:
@@ -463,6 +469,101 @@ def test_create_respects_the_process_umask(tmp_path: Path) -> None:
     assert (
         stat.S_IMODE((tmp_path / ".protean" / "dx-state.json").stat().st_mode) == 0o600
     )
+
+
+# --- whole file ------------------------------------------------------------
+
+
+def test_whole_file_create_writes_the_body_then_rerun_is_no_op(
+    tmp_path: Path,
+) -> None:
+    """Create path: write the whole body, then a re-run at the same version is a no-op."""
+    managed = whole("rules.mdc", "1", "---\nk: v\n---\nbody v1\n")
+    result = apply_managed_file(tmp_path, managed)
+
+    assert result.status is ApplyStatus.CREATE
+    target = tmp_path / "rules.mdc"
+    assert target.read_text(encoding="utf-8") == "---\nk: v\n---\nbody v1\n"
+    # The whole file is the managed slice, so the two hashes match.
+    assert result.slice_hash == result.file_hash
+
+    rerun = apply_managed_file(tmp_path, managed)
+    assert rerun.status is ApplyStatus.NO_CHANGE
+    assert target.read_text(encoding="utf-8") == "---\nk: v\n---\nbody v1\n"
+
+
+def test_whole_file_update_rewrites_the_file_when_the_version_advances(
+    tmp_path: Path,
+) -> None:
+    """A stamp bump changes the body, so a re-apply rewrites the whole file."""
+    apply_managed_file(tmp_path, whole("rules.mdc", "1", "---\nk: v\n---\nbody v1\n"))
+
+    result = apply_managed_file(
+        tmp_path, whole("rules.mdc", "2", "---\nk: v\n---\nbody v2\n")
+    )
+
+    assert result.status is ApplyStatus.UPDATE
+    assert (tmp_path / "rules.mdc").read_text(encoding="utf-8") == (
+        "---\nk: v\n---\nbody v2\n"
+    )
+
+
+def test_whole_file_conflict_on_any_hand_edit_writes_nothing(tmp_path: Path) -> None:
+    """dx owns the whole file, so a hand edit anywhere is a CONFLICT and is kept."""
+    apply_managed_file(tmp_path, whole("rules.mdc", "1", "---\nk: v\n---\nbody v1\n"))
+    target = tmp_path / "rules.mdc"
+    target.write_text("---\nk: v\n---\nbody v1\nUSER EDIT\n", encoding="utf-8")
+    before = target.read_text(encoding="utf-8")
+    state_before = state_path(tmp_path).read_text(encoding="utf-8")
+
+    managed = whole("rules.mdc", "2", "---\nk: v\n---\nbody v2\n")
+    diff = diff_managed_file(tmp_path, managed)
+    assert diff.status is ApplyStatus.CONFLICT
+    assert diff.content is None
+    assert diff.outside_modified is False
+
+    with pytest.raises(ManagedFileConflict) as excinfo:
+        apply_managed_file(tmp_path, managed)
+    assert excinfo.value.target == "rules.mdc"
+    assert excinfo.value.managed == "the whole file"
+
+    # The hand edit is left in place and the state file is untouched.
+    assert target.read_text(encoding="utf-8") == before
+    assert state_path(tmp_path).read_text(encoding="utf-8") == state_before
+
+
+def test_whole_file_over_a_preexisting_unmanaged_file_is_a_conflict(
+    tmp_path: Path,
+) -> None:
+    """A pre-existing file with no state entry is content dx did not write: a conflict."""
+    target = tmp_path / "rules.mdc"
+    target.write_text("hand-written by the user\n", encoding="utf-8")
+
+    managed = whole("rules.mdc", "1", "---\nk: v\n---\nbody v1\n")
+    assert diff_managed_file(tmp_path, managed).status is ApplyStatus.CONFLICT
+    with pytest.raises(ManagedFileConflict):
+        apply_managed_file(tmp_path, managed)
+    # Nothing overwritten.
+    assert target.read_text(encoding="utf-8") == "hand-written by the user\n"
+
+
+def test_whole_file_leaves_a_sibling_file_alone(tmp_path: Path) -> None:
+    """Owning one whole file does not touch an unrelated sibling."""
+    sibling = tmp_path / "other.txt"
+    sibling.write_text("unrelated\n", encoding="utf-8")
+
+    apply_managed_file(tmp_path, whole("rules.mdc", "1", "---\nk: v\n---\nbody v1\n"))
+
+    assert sibling.read_text(encoding="utf-8") == "unrelated\n"
+
+
+def test_whole_file_reports_the_whole_file_mode() -> None:
+    assert whole("rules.mdc", "1", "body\n").mode is MergeMode.WHOLE_FILE
+
+
+def test_whole_file_rejects_an_empty_body() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        whole("rules.mdc", "1", "")
 
 
 # --- managed JSON keys -----------------------------------------------------

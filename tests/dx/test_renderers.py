@@ -10,22 +10,32 @@ from pathlib import Path
 
 import pytest
 
-from protean.dx.managed_files import ManagedBlock, ManagedJsonKeys
+from protean.dx.managed_files import ManagedBlock, ManagedJsonKeys, ManagedWholeFile
 from protean.dx.pack import PACK_VERSION, load_agents_source
 from protean.dx.renderers import (
     AGENTS_TARGET,
     BLOCK_ID,
     CLAUDE_BRIDGE_BODY,
     CLAUDE_BRIDGE_TARGET,
+    COPILOT_TARGET,
+    CURSOR_TARGET,
     MCP_SERVER_KEY,
     MCP_SERVER_NAME,
     MCP_TARGET,
+    OPENCODE_MCP_KEY,
+    OPENCODE_SERVER_NAME,
+    OPENCODE_TARGET,
     _strip_leading_h1,
     agents_managed_file,
     claude_bridge_managed_file,
+    copilot_managed_file,
+    cursor_managed_file,
     managed_files,
     mcp_json_managed_file,
+    opencode_managed_file,
+    opencode_registration,
     render_agents_body,
+    render_cursor_body,
 )
 from protean.ir.generators.agents import generate_agents_md
 from protean.mcp import mcp_registration
@@ -157,11 +167,110 @@ def test_mcp_registration_imports_without_the_mcp_extra() -> None:
     assert "sdk-free-ok" in result.stdout
 
 
-def test_managed_files_returns_agents_bridge_then_mcp() -> None:
+def test_managed_files_returns_canonical_then_per_editor() -> None:
     files = managed_files("0.18.0")
 
-    assert [f.target for f in files] == ["AGENTS.md", "CLAUDE.md", ".mcp.json"]
+    assert [f.target for f in files] == [
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".mcp.json",
+        ".cursor/rules/protean.mdc",
+        ".github/copilot-instructions.md",
+        "opencode.json",
+    ]
     assert all(f.version == "0.18.0" for f in files)
+
+
+# --- Cursor -----------------------------------------------------------------
+
+
+def test_cursor_body_starts_with_the_mdc_frontmatter() -> None:
+    """The MDC frontmatter must be the first bytes: Cursor parses it at line 1."""
+    body = render_cursor_body("0.18.0")
+
+    assert body.startswith(
+        "---\n"
+        "description: Protean framework guidance for this project\n"
+        'globs: "**/*.py"\n'
+        "alwaysApply: false\n"
+        "---\n"
+    )
+
+
+def test_cursor_body_stamps_the_version_and_carries_the_guidance() -> None:
+    body = render_cursor_body("0.18.0")
+
+    assert "<!-- protean:0.18.0 -->" in body
+    # The composed guidance follows the frontmatter and stamp.
+    assert render_agents_body("0.18.0") in body
+    assert "## Do not break these rules" in body
+
+
+def test_cursor_body_changes_with_the_version() -> None:
+    """A version bump changes the whole file, so a refresh detects staleness."""
+    assert render_cursor_body("0.18.0") != render_cursor_body("0.19.0")
+
+
+def test_cursor_managed_file_is_a_whole_file_target() -> None:
+    managed = cursor_managed_file("0.18.0")
+
+    assert isinstance(managed, ManagedWholeFile)
+    assert managed.target == CURSOR_TARGET == ".cursor/rules/protean.mdc"
+    assert managed.version == "0.18.0"
+    assert managed.body == render_cursor_body("0.18.0")
+
+
+# --- Copilot ----------------------------------------------------------------
+
+
+def test_copilot_managed_file_is_a_block_with_the_guidance() -> None:
+    managed = copilot_managed_file("0.18.0")
+
+    assert isinstance(managed, ManagedBlock)
+    assert managed.target == COPILOT_TARGET == ".github/copilot-instructions.md"
+    assert managed.block_id == BLOCK_ID == "protean"
+    assert managed.version == "0.18.0"
+    assert managed.comment_prefix == "<!-- "
+    assert managed.comment_suffix == " -->"
+    assert managed.body == render_agents_body("0.18.0")
+
+
+# --- opencode ---------------------------------------------------------------
+
+
+def test_opencode_registration_is_the_local_launch_shape() -> None:
+    """opencode's shape differs from ``.mcp.json``: type/command-list/enabled."""
+    assert opencode_registration() == {
+        "type": "local",
+        "command": ["protean", "mcp"],
+        "enabled": True,
+    }
+
+
+def test_opencode_registration_is_a_fresh_dict_each_call() -> None:
+    first = opencode_registration()
+    first["command"].append("mutated")
+    assert opencode_registration()["command"] == ["protean", "mcp"]
+
+
+def test_opencode_managed_file_shape() -> None:
+    managed = opencode_managed_file("0.18.0")
+
+    assert isinstance(managed, ManagedJsonKeys)
+    assert managed.target == OPENCODE_TARGET == "opencode.json"
+    assert managed.version == "0.18.0"
+    assert managed.path == (OPENCODE_MCP_KEY,) == ("mcp",)
+    assert managed.managed_keys == (OPENCODE_SERVER_NAME,) == ("protean",)
+    assert managed.data[OPENCODE_SERVER_NAME] == opencode_registration()
+
+
+def test_opencode_shape_differs_from_mcp_json() -> None:
+    """The two JSON targets carry different registration shapes and key-paths."""
+    opencode = opencode_managed_file("0.18.0")
+    mcp = mcp_json_managed_file("0.18.0")
+
+    assert opencode.path != mcp.path
+    assert opencode.data["protean"] != mcp.data["protean"]
 
 
 # --- _strip_leading_h1 ------------------------------------------------------
