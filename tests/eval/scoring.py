@@ -79,6 +79,20 @@ _CLUSTER_ELEMENT_SECTIONS = {
     "entities": "entity",
 }
 
+# The same categories as above, keyed by their flat ``elements`` IR key. The IR
+# lists every non-internal element under ``elements`` but only puts it in a
+# cluster when it resolves an owning aggregate, so an element with no owner (an
+# event handler bound to a stream category rather than to an aggregate) is in
+# the flat list and in no cluster. Placement reads this list to tell such an
+# element apart from one the produced project never wrote at all.
+_PLACEMENT_ELEMENT_KEYS = {
+    "COMMAND": "command",
+    "EVENT": "event",
+    "COMMAND_HANDLER": "handler",
+    "EVENT_HANDLER": "handler",
+    "ENTITY": "entity",
+}
+
 
 class AmbiguousGoldError(ValueError):
     """The gold IR carries elements its class names cannot tell apart."""
@@ -111,15 +125,18 @@ class Recovery:
     *and* attaches to the correct aggregate: ``len(placed) / placement_expected``,
     where ``placement_expected`` is the count the produced project recovers. The
     denominator is that recovered count, so placement scores only the elements the
-    project got back, on whether each landed under the right aggregate. This is the
-    discriminator a wrong decomposition fails: the same element names under the
-    wrong aggregate score high on the base rubric and low here.
+    project got back, on whether each landed under the right aggregate. An element
+    the produced project wrote but left under no aggregate counts as misplaced,
+    not as unrecovered. This is the discriminator a wrong decomposition fails: the
+    same element names under the wrong aggregate score high on the base rubric and
+    low here.
 
     ``context`` is the fraction of the gold's recovered aggregates whose bounded
     context (the package-relative first module segment) matches the gold's:
-    ``len(contexts_matched) / context_expected``. It is meaningful only on a
-    multi-context task; a single-context task scores 1.0 when its one aggregate is
-    recovered under the same segment.
+    ``len(contexts_matched) / context_expected``. It is the multi-context score. A
+    gold with a single context has no boundary between contexts to score, so its
+    recovered aggregates match as long as the produced project also keeps them in
+    one context, whatever that module is named.
 
     Both scores are ``0.0`` when their denominator is zero (an empty produced or
     gold IR), the same empty-input guard the base rubric uses. ``placed``,
@@ -381,14 +398,43 @@ def _package_prefix(modules: list[str]) -> str:
     return firsts.pop()
 
 
-def _context_map(ir: dict[str, Any]) -> dict[str, str]:
-    """Map each aggregate's class name to its bounded-context segment."""
+def _context_map(ir: dict[str, Any]) -> dict[str, set[str]]:
+    """Map each aggregate's class name to the bounded-context segment(s) it sits in.
+
+    A class name keys a set of segments, not one segment, because a produced
+    project may carry two aggregates of the same class name in two context
+    modules. A gold may not (:func:`_reject_ambiguous_gold` refuses it), but a
+    produced collision is allowed everywhere else in the rubric, and keeping one
+    of the two segments would make the score turn on which cluster the IR builder
+    emitted last. An aggregate matches when any of its produced copies sits in
+    the gold's context, the same "any owner matches" rule placement uses.
+    """
     owned = [
         (str(cluster["aggregate"].get("module", "")), owner)
         for cluster, owner in _owned_clusters(ir)
     ]
     package = _package_prefix([module for module, _ in owned])
-    return {owner: _context_segment(module, package) for module, owner in owned}
+    contexts: dict[str, set[str]] = defaultdict(set)
+    for module, owner in owned:
+        contexts[owner].add(_context_segment(module, package))
+    return dict(contexts)
+
+
+def _flat_placement_signatures(ir: dict[str, Any]) -> set[Signature]:
+    """The placement-category signatures *ir* carries in its flat element list.
+
+    Read alongside the per-cluster sections, so an element the produced project
+    wrote but attached to no aggregate is told apart from one it never wrote.
+    """
+    elements = ir.get("elements") if isinstance(ir, dict) else None
+    if not isinstance(elements, dict):
+        return set()
+    return {
+        (category, _class_name(fqn))
+        for ir_key, category in _PLACEMENT_ELEMENT_KEYS.items()
+        for fqn in elements.get(ir_key) or []
+        if isinstance(fqn, str)
+    }
 
 
 def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Recovery:
@@ -410,12 +456,18 @@ def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Reco
     gold_placement = _placement_sources(gold_ir)
     _reject_ambiguous_placement(gold_placement)
     produced_placement = _placement_sources(produced_ir)
+    produced_flat = _flat_placement_signatures(produced_ir)
 
     placed: list[Signature] = []
     misplaced: list[Signature] = []
     for signature, owners in gold_placement.items():
         produced_owners = produced_placement.get(signature)
         if not produced_owners:
+            if signature in produced_flat:
+                # Recovered by name, but under no aggregate at all: the project
+                # wrote it and gave it no owner, which is a placement failure,
+                # not an element to leave out of the denominator.
+                misplaced.append(signature)
             continue  # not recovered at all, so not a placement to judge
         gold_owner = next(iter(owners))
         if gold_owner in produced_owners:
@@ -427,13 +479,31 @@ def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Reco
 
     gold_context = _context_map(gold_ir)
     produced_context = _context_map(produced_ir)
+    recovered_context = {
+        aggregate: produced_context[aggregate]
+        for aggregate in gold_context
+        if aggregate in produced_context
+    }
+    # A gold with one bounded context has no boundary between contexts to score.
+    # Its aggregates sit together whatever module holds them, and the module's
+    # name is a layout choice the task never asked for: the committed
+    # ``place_order`` replay writes its one aggregate to a root ``domain.py``
+    # against a gold that scaffolds ``place_order.order.aggregate``. So a
+    # single-context gold asks only that the produced project keep those
+    # aggregates together, not that it name the module the way the scaffold does.
+    gold_segments = set().union(*gold_context.values()) if gold_context else set()
+    produced_segments = (
+        set().union(*recovered_context.values()) if recovered_context else set()
+    )
+    layout_independent = len(gold_segments) <= 1 and len(produced_segments) <= 1
+
     matched: list[str] = []
     mismatched: list[str] = []
-    for aggregate, segment in gold_context.items():
-        produced_segment = produced_context.get(aggregate)
-        if produced_segment is None:
+    for aggregate, segments in gold_context.items():
+        produced_segments_for = recovered_context.get(aggregate)
+        if produced_segments_for is None:
             continue  # aggregate not recovered, so no context to judge
-        if produced_segment == segment:
+        if layout_independent or segments & produced_segments_for:
             matched.append(aggregate)
         else:
             mismatched.append(aggregate)

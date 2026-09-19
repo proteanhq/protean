@@ -79,13 +79,29 @@ class TestReadSpec:
             ("order_item", ("OrderItem",)),
         )
 
-    @pytest.mark.parametrize("contexts", [["Order"], "", 0, False])
+    @pytest.mark.parametrize("contexts", [["Order"], "", 0, False, None])
     def test_a_non_object_contexts_field_is_an_error(
         self, tmp_path: Path, contexts: object
     ) -> None:
         """A supplied ``contexts`` that is not an object is malformed, including
-        the falsey values that would otherwise read as an absent field."""
+        the falsey values that would otherwise read as an absent field. ``None``
+        is the JSON ``null`` case: the key is there, so the spec supplied a
+        contexts value, and it is not an object."""
         _make_task(tmp_path, "bad", spec={"project_name": "p", "contexts": contexts})
+        with pytest.raises(ValueError, match="non-object contexts"):
+            read_spec("bad", root=tmp_path)
+
+    def test_a_null_contexts_does_not_fall_back_to_the_flat_list(
+        self, tmp_path: Path
+    ) -> None:
+        """A spec writing ``"contexts": null`` alongside a flat ``aggregates``
+        list is malformed, not a flat spec: reading it as an absent field would
+        build a gold the spec never declared."""
+        _make_task(
+            tmp_path,
+            "bad",
+            spec={"project_name": "p", "contexts": None, "aggregates": ["Order"]},
+        )
         with pytest.raises(ValueError, match="non-object contexts"):
             read_spec("bad", root=tmp_path)
 

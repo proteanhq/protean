@@ -507,6 +507,34 @@ class TestPlacement:
         assert result.placement_expected == 1
         assert result.placed == (("command", "CreateOrder"),)
 
+    def test_a_recovered_element_with_no_owning_aggregate_is_misplaced(self) -> None:
+        """The IR lists every element under ``elements`` but clusters only the
+        ones that resolve an owning aggregate (an event handler bound to a stream
+        category resolves none). Such an element is recovered by the base rubric
+        and placed under nothing, so it counts against placement instead of
+        dropping out of the denominator and leaving the rest at 1.0."""
+        gold = boundary_ir(
+            package="gold",
+            clusters={
+                "Order": {
+                    "commands": ("CreateOrder",),
+                    "event_handlers": ("OrderNotifier",),
+                }
+            },
+        )
+        produced = boundary_ir(
+            package="produced", clusters={"Order": {"commands": ("CreateOrder",)}}
+        )
+        # The handler is in the flat element list and in no cluster, the shape
+        # ``IRBuilder`` emits for a handler with no resolvable aggregate.
+        produced["elements"]["EVENT_HANDLER"] = ["produced.notify.OrderNotifier"]
+        # The base rubric counts it as recovered, so placement must judge it.
+        assert score(produced, gold).missing == ()
+        result = score_boundary(produced, gold)
+        assert result.placement == pytest.approx(1 / 2)
+        assert result.placement_expected == 2
+        assert result.misplaced == (("handler", "OrderNotifier"),)
+
     def test_entities_count_toward_placement(self) -> None:
         """An entity under the wrong aggregate is a misplacement, so the boundary
         signal covers entities and not only the command/event/handler slice."""
@@ -592,7 +620,7 @@ class TestContext:
                 "Payment": {"context": "payment"},
             },
         )
-        assert _context_map(produced) == {"Order": "order", "Payment": "payment"}
+        assert _context_map(produced) == {"Order": {"order"}, "Payment": {"payment"}}
         result = score_boundary(produced, gold)
         assert result.context == 1.0
         assert set(result.contexts_matched) == {"Order", "Payment"}
@@ -648,7 +676,7 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(ir) == {"Order": "order", "Payment": "payment"}
+        assert _context_map(ir) == {"Order": {"order"}, "Payment": {"payment"}}
 
     def test_a_single_segment_module_is_its_own_context(self) -> None:
         """An aggregate defined in a root ``domain.py`` has no package segment to
@@ -666,7 +694,7 @@ class TestContext:
                 },
             },
         }
-        assert _context_map(ir) == {"Order": "domain"}
+        assert _context_map(ir) == {"Order": {"domain"}}
 
     def test_a_single_context_task_is_not_penalized(self) -> None:
         """The negative test for the new branch: a single-aggregate (flat-spec)
@@ -677,6 +705,117 @@ class TestContext:
         result = score_boundary(produced, gold)
         assert result.context == 1.0
         assert result.context_expected == 1
+
+    def test_a_single_context_task_does_not_score_the_module_layout(self) -> None:
+        """The shape the committed ``place_order`` replay produces: the gold
+        scaffolds ``place_order.order.aggregate`` and the replay writes its one
+        aggregate to a root ``domain.py``. The task asks for no module layout, and
+        a single-context gold has no boundary between contexts, so this matches
+        rather than reporting a context of 0."""
+        gold = {
+            "domain": {"normalized_name": "place_order"},
+            "elements": {"AGGREGATE": ["place_order.order.aggregate.Order"]},
+            "clusters": {
+                "place_order.order.aggregate.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "place_order.order.aggregate.Order",
+                        "module": "place_order.order.aggregate",
+                    }
+                },
+            },
+        }
+        produced = {
+            "domain": {"normalized_name": "Store"},
+            "elements": {"AGGREGATE": ["domain.Order"]},
+            "clusters": {
+                "domain.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "domain.Order",
+                        "module": "domain",
+                    }
+                },
+            },
+        }
+        result = score_boundary(produced, gold)
+        assert result.context == 1.0
+        assert result.contexts_matched == ("Order",)
+        assert result.context_expected == 1
+
+    def test_splitting_a_single_context_gold_in_two_still_scores_zero(self) -> None:
+        """The counterpart: layout independence is not a free pass. A gold that
+        keeps two aggregates in one context, against a produced project that
+        splits them into two, is a wrong decomposition and scores 0."""
+        gold = boundary_ir(
+            package="gold",
+            clusters={
+                "Order": {"context": "shop"},
+                "Payment": {"context": "shop"},
+            },
+        )
+        produced = boundary_ir(
+            package="app",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        result = score_boundary(produced, gold)
+        assert result.context == 0.0
+        assert set(result.contexts_mismatched) == {"Order", "Payment"}
+
+    def test_a_produced_aggregate_name_in_two_contexts_matches_on_either(
+        self,
+    ) -> None:
+        """A produced project carrying the same aggregate class name in two
+        context modules keeps both segments. One of them is the gold's context,
+        so that is a match: which cluster the IR builder emitted last must not
+        decide the score."""
+        gold = boundary_ir(
+            package="gold",
+            clusters={
+                "Order": {"context": "sales"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        produced = {
+            "domain": {"normalized_name": "app"},
+            "elements": {
+                "AGGREGATE": [
+                    "app.billing.aggregate.Order",
+                    "app.sales.aggregate.Order",
+                    "app.payment.aggregate.Payment",
+                ]
+            },
+            "clusters": {
+                "app.billing.aggregate.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "app.billing.aggregate.Order",
+                        "module": "app.billing.aggregate",
+                    }
+                },
+                "app.sales.aggregate.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "app.sales.aggregate.Order",
+                        "module": "app.sales.aggregate",
+                    }
+                },
+                "app.payment.aggregate.Payment": {
+                    "aggregate": {
+                        "name": "Payment",
+                        "fqn": "app.payment.aggregate.Payment",
+                        "module": "app.payment.aggregate",
+                    }
+                },
+            },
+        }
+        assert _context_map(produced)["Order"] == {"billing", "sales"}
+        result = score_boundary(produced, gold)
+        assert result.context == 1.0
+        assert set(result.contexts_matched) == {"Order", "Payment"}
 
 
 class TestBoundaryDegenerateInputs:

@@ -70,7 +70,9 @@ def _read_contexts(
     not match what the spec declared. The checks are:
 
     - ``contexts`` must be a JSON object. Any other value, including a falsey one
-      such as ``[]`` or ``""``, is a malformed spec, not an absent field.
+      such as ``[]``, ``""`` or ``null``, is a malformed spec, not an absent
+      field: ``read_spec`` branches on the key being present, so a written
+      ``null`` reaches this check rather than reading as no contexts at all.
     - each context must name a list of non-empty strings. A bare string such as
       ``{"sales": "Order"}`` would otherwise iterate into one-character aggregate
       names.
@@ -128,9 +130,12 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
     if not project_name:
         raise ValueError(f"spec for task {task_id!r} has no project_name")
 
-    contexts_data = data.get("contexts")
-    if contexts_data is not None:
-        contexts = _read_contexts(task_id, contexts_data)
+    # Branch on the key being there, not on its value: a spec that writes
+    # ``"contexts": null`` supplied the field, so it is a malformed contexts
+    # object for :func:`_read_contexts` to reject, not an absent one that falls
+    # back to the flat ``aggregates`` list.
+    if "contexts" in data:
+        contexts = _read_contexts(task_id, data["contexts"])
         aggregates = tuple(
             aggregate for _, members in contexts for aggregate in members
         )

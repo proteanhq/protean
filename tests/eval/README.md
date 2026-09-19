@@ -89,8 +89,10 @@ for fields:
   entities) the produced project recovers by class name, the fraction it attaches
   to the correct aggregate. The denominator is the count the produced project
   recovered, so placement scores only the elements the project got back, on
-  whether each landed under the right aggregate. The same names under the wrong
-  aggregate score high on the base rubric and 0 here, which is the discriminator.
+  whether each landed under the right aggregate. An element the project wrote but
+  attached to no aggregate at all (the IR lists it under `elements` and in no
+  cluster) counts as misplaced. The same names under the wrong aggregate score
+  high on the base rubric and 0 here, which is the discriminator.
 - **Context.** Of the aggregates the produced project recovers, the fraction that
   sit in the matching bounded context. The context is the aggregate's
   package-relative first module segment (`Order` at `shop.order.aggregate` is in
@@ -98,8 +100,12 @@ for fields:
   under `app` still match on `order`. The package is read off the aggregate
   modules themselves: it is the first segment they all share. A project packaged
   as `ecommerce` whose domain is named `Ordering` still splits into its `order`
-  and `payment` contexts. A single-context task scores 1.0 when its one aggregate
-  is recovered under the same segment.
+  and `payment` contexts. A gold with a single context has no boundary between
+  contexts to score, so its recovered aggregates match whatever module they sit
+  in, as long as the produced project keeps them in one context too. That is the
+  `place_order` shape: the gold scaffolds `place_order.order.aggregate` and the
+  replay writes a root `domain.py`, and the task asked for neither layout.
+  Splitting a one-context gold into two contexts is still a miss.
 
 Both scores are `0.0` when nothing is recovered (an empty produced or gold IR),
 the same guard the base rubric uses, and `score_boundary` raises the same
