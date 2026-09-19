@@ -29,6 +29,17 @@ the same gold:
 - **Approach B (context-driven).** Replay the task's committed transcript into a
   workspace, read the produced project's IR, and score it against the gold.
 
+Both verdicts are a fresh `protean verify` of the finished project, not a verify
+the run recorded along the way: a transcript can verify green and then write a
+breaking change, so the reported verdict has to describe the same project whose
+IR is scored.
+
+A replay is scored only when it still reproduces its recording. If the replayed
+tree hashes differently than the recorded hash, or a re-run tool no longer
+answers what the recording saw, `compare` raises `StaleTranscriptError` rather
+than publishing a score for a stale transcript. Re-record the transcript from
+the live lane.
+
 ### The gold and its recipe
 
 The gold is the reference structure. Its recipe is the task's `spec.json`, a
@@ -55,6 +66,15 @@ full FQN because the gold and the context-driven project use different package
 names. Fields match on `(aggregate class name, field name)`, so renaming the
 aggregate drops every field under it. Matching is exact per category; fuzzy or
 semantic matching is a later dimension.
+
+Matching on the class name only works on a gold whose class names tell its
+elements apart. A gold carrying both `sales.commands.CreateOrder` and
+`billing.commands.CreateOrder` reduces them to one signature, which would shrink
+the denominator and let a single produced command recover two gold elements.
+`score` raises `AmbiguousGoldError` on such a gold instead of reporting that
+number. The produced project is not checked the same way: the gold still asks
+for one element there, so one of the produced elements matching it is a real
+recovery.
 
 ### Reading Approach B's number
 

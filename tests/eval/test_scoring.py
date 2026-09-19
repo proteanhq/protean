@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from tests.eval.scoring import element_signatures, score
+from tests.eval.scoring import AmbiguousGoldError, element_signatures, score
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -273,3 +273,80 @@ class TestDegenerateInputs:
             },
         }
         assert element_signatures(ir) == set()
+
+
+class TestAmbiguousGold:
+    """The gold must be scorable by class name alone, or the score is wrong."""
+
+    @staticmethod
+    def _two_contexts_ir() -> dict[str, Any]:
+        """An IR with a ``CreateOrder`` command and an ``Order`` aggregate under
+        each of two bounded contexts: four elements, two class names."""
+        return {
+            "elements": {
+                "AGGREGATE": ["sales.order.Order", "billing.order.Order"],
+                "COMMAND": [
+                    "sales.commands.CreateOrder",
+                    "billing.commands.CreateOrder",
+                ],
+            },
+            "clusters": {},
+        }
+
+    def test_two_gold_elements_sharing_a_class_name_are_rejected(self) -> None:
+        """Two commands named ``CreateOrder`` in different packages reduce to one
+        signature. Scoring against that gold would count one element where the
+        gold carries two, and let a single produced command recover both, so the
+        scorer refuses the gold instead of reporting the number."""
+        produced = ir_of(package="p", aggregates=("Order",), commands=("CreateOrder",))
+        with pytest.raises(AmbiguousGoldError) as excinfo:
+            score(produced, self._two_contexts_ir())
+        message = str(excinfo.value)
+        assert "command/CreateOrder" in message
+        assert "sales.commands.CreateOrder" in message
+        assert "billing.commands.CreateOrder" in message
+        # Every colliding signature is named, not just the first one found.
+        assert "aggregate/Order" in message
+
+    def test_two_gold_aggregates_sharing_a_name_collide_on_their_fields_too(
+        self,
+    ) -> None:
+        """Fields key on the aggregate's class name, so two aggregates named
+        ``Order`` also merge their fields. The rejection names the field."""
+        gold = {
+            "elements": {},
+            "clusters": {
+                "sales.order.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "sales.order.Order",
+                        "fields": {"total": {"type": "Integer"}},
+                    }
+                },
+                "billing.order.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "billing.order.Order",
+                        "fields": {"total": {"type": "Integer"}},
+                    }
+                },
+            },
+        }
+        with pytest.raises(AmbiguousGoldError, match="field/Order/total"):
+            score(ir_of(package="p"), gold)
+
+    def test_the_same_collision_in_the_produced_ir_is_not_rejected(self) -> None:
+        """Only the gold sets the denominator. A produced project carrying two
+        ``CreateOrder`` commands still recovers the one the gold asks for."""
+        gold = ir_of(package="gold", aggregates=("Order",), commands=("CreateOrder",))
+        result = score(self._two_contexts_ir(), gold)
+        assert result.expected == 2
+        assert result.score == 1.0
+
+    def test_a_repeated_fqn_is_one_element_not_a_collision(self) -> None:
+        """The same FQN listed twice is one element, so it is not ambiguous."""
+        gold = {
+            "elements": {"COMMAND": ["app.commands.X", "app.commands.X"]},
+            "clusters": {},
+        }
+        assert score(gold, gold).expected == 1

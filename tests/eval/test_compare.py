@@ -9,9 +9,22 @@ the run quick.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from tests.eval.compare import Comparison, compare
+from protean.dx.pack import PACK_VERSION
+from tests.eval import compare as compare_module
+from tests.eval.compare import (
+    Comparison,
+    StaleTranscriptError,
+    _reject_stale,
+    compare,
+)
+from tests.eval.gold import GoldProject
+from tests.eval.runner import RunResult, eval_root
+from tests.eval.transcript import Transcript, transcript_path
+from tests.eval.workspace import Workspace
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -64,3 +77,109 @@ def test_context_driven_approach_verifies_and_scores_in_range(
     # Pinning it defends the graded score against a scorer that reports it
     # recovered.
     assert ("command", "CreateOrder") in b.correctness.missing
+
+
+class TestStalenessGuard:
+    """A transcript that no longer reproduces its recording is not scored."""
+
+    @staticmethod
+    def _transcript() -> Transcript:
+        return Transcript.load(
+            transcript_path(eval_root(), PACK_VERSION, "place_order")
+        )
+
+    def test_a_clean_replay_passes(self) -> None:
+        transcript = self._transcript()
+        result = RunResult(turns=(), project_hash=transcript.project_hash)
+        _reject_stale(transcript, result)
+
+    def test_a_different_project_hash_is_rejected(self) -> None:
+        """The recorded turns no longer land the recorded tree, so the project
+        being scored is not the one the transcript describes."""
+        transcript = self._transcript()
+        result = RunResult(turns=(), project_hash="deadbeef")
+        with pytest.raises(StaleTranscriptError, match="deadbeef"):
+            _reject_stale(transcript, result)
+
+    def test_a_tool_result_divergence_is_rejected(self) -> None:
+        """The hash covers only the files the agent wrote, so a tool answering
+        differently is the second staleness signal and is rejected on its own."""
+        transcript = self._transcript()
+        result = RunResult(
+            turns=(),
+            project_hash=transcript.project_hash,
+            result_divergences=(
+                "turn 0 call 0 (run_verify): recorded X, recomputed Y",
+            ),
+        )
+        with pytest.raises(StaleTranscriptError, match="run_verify"):
+            _reject_stale(transcript, result)
+
+
+def test_a_stale_replay_is_rejected_before_scoring(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``compare`` raises rather than publishing a score for a stale transcript,
+    and it raises before the produced IR is ever read."""
+    gold_root = tmp_path / "gold"
+    gold_root.mkdir()
+    replay_dest = tmp_path / "replay"
+    replay_dest.mkdir()
+    monkeypatch.setattr(
+        compare_module,
+        "build_gold",
+        lambda spec, dest: GoldProject(root=gold_root, ir={}),
+    )
+    monkeypatch.setattr(
+        compare_module,
+        "replay",
+        lambda transcript, *, workspace: RunResult(turns=(), project_hash="deadbeef"),
+    )
+    monkeypatch.setattr(
+        compare_module,
+        "build_ir",
+        lambda root: pytest.fail("the produced IR was read for a stale transcript"),
+    )
+    with pytest.raises(StaleTranscriptError):
+        compare("place_order", tmp_path / "gold_dest", replay_dest)
+
+
+def test_context_driven_verify_green_describes_the_final_tree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The reported verdict is a fresh verify of the tree the replay produced,
+    not the last verify the transcript happened to record. A run that verified
+    green and then broke the project is not green."""
+    gold_root = tmp_path / "gold"
+    gold_root.mkdir()
+    replay_dest = tmp_path / "replay"
+    replay_dest.mkdir()
+    monkeypatch.setattr(
+        compare_module,
+        "build_gold",
+        lambda spec, dest: GoldProject(root=gold_root, ir={}),
+    )
+
+    def fake_replay(transcript: Transcript, *, workspace: Workspace) -> RunResult:
+        """A clean replay whose last recorded verify was green, into a workspace
+        holding no project at all."""
+        return RunResult(
+            turns=(),
+            project_hash=transcript.project_hash,
+            verify_results=[
+                {
+                    "ok": True,
+                    "verdict": "pass",
+                    "counts": {"errors": 0, "warnings": 0, "infos": 0},
+                    "codes": [],
+                    "errors": [],
+                    "exit_code": 0,
+                }
+            ],
+        )
+
+    monkeypatch.setattr(compare_module, "replay", fake_replay)
+
+    comparison = compare("place_order", tmp_path / "gold_dest", replay_dest)
+
+    assert comparison.context_driven.verify_green is False
