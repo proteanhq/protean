@@ -1986,3 +1986,45 @@ class TestDomainSnapshotConfig:
 
         assert result.exit_code != 0
         assert "domain_snapshot" in result.output
+
+    def test_malformed_key_empty_path_aborts(self, tmp_path, monkeypatch):
+        """The key present with an empty 'path' aborts, naming the requirement."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.protean.docs]\ndomain_snapshot = { path = "", domain = "my_app" }\n',
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code != 0
+        assert "path" in result.output
+
+    def test_unparseable_config_falls_back_to_no_key(self, tmp_path, monkeypatch):
+        """An unparseable config file is the runtime loader's error to raise, not
+        this command's: the docs reader falls back to no key and the framework
+        layer still prints to stdout, creating no snapshot."""
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.protean.docs\nthis is not valid toml\n", encoding="utf-8"
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code == 0, result.output
+        assert "Protean" in result.output
+        assert not (tmp_path / "llms.txt").exists()
+
+    def test_non_table_docs_section_falls_back_to_no_key(self, tmp_path, monkeypatch):
+        """A ``docs`` value that is not a table is treated as no key: the
+        framework layer prints to stdout and no snapshot is created."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.protean]\ndocs = "not-a-table"\n', encoding="utf-8"
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code == 0, result.output
+        assert "Protean" in result.output
+        assert not (tmp_path / "llms.txt").exists()

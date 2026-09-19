@@ -271,7 +271,6 @@ def generate(
             )
             raise typer.Abort()
         _check_snapshot(target_path, content)
-        return
 
     # --- Emit output ------------------------------------------------------
     if target_path:
