@@ -19,7 +19,7 @@ The canonical set:
   MCP server. It is a managed-JSON-keys target scoped to the ``mcpServers.protean``
   key-path, so an existing ``.mcp.json`` keeps the user's other servers.
 
-The per-editor set (see the #1474 decisions):
+The per-editor set:
 
 - ``.cursor/rules/protean.mdc``: Cursor's rule file. MDC: YAML frontmatter
   (``description``, ``globs: "**/*.py"``, ``alwaysApply: false``) at line 1, then
@@ -96,7 +96,7 @@ MCP_TARGET = ".mcp.json"
 MCP_SERVER_KEY = "mcpServers"
 MCP_SERVER_NAME = "protean"
 
-# The per-editor targets (see the #1474 decisions). Cursor's rule file is a
+# The per-editor targets. Cursor's rule file is a
 # whole-file dx-owned render; Copilot's instructions carry the guidance in a
 # managed block; opencode's config manages one ``mcp`` entry via the key-path
 # JSON merge.
