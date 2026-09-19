@@ -99,6 +99,12 @@ class InlineBroker(BaseBroker):
             str, dict[str, tuple[OperationState, float]]
         ] = defaultdict(dict)
 
+        # Track group keys owned by a Protean subscription. For these, nack
+        # holds and redelivers with no independent ceiling; the subscription
+        # owns retry and dead-lettering via {stream}:dlq.
+        # Structure: {stream:consumer_group}
+        self._subscription_owned_groups: set[str] = set()
+
     @property
     def capabilities(self) -> BrokerCapabilities:
         """InlineBroker provides full manual broker capabilities for testing."""
@@ -317,7 +323,11 @@ class InlineBroker(BaseBroker):
             retry_count = self._get_retry_count(stream, consumer_group, identifier)
             new_retry_count = retry_count + 1
 
-            if new_retry_count <= self._max_retries:
+            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            if (
+                new_retry_count <= self._max_retries
+                or group_key in self._subscription_owned_groups
+            ):
                 return self._handle_nack_with_retry(
                     stream,
                     identifier,
@@ -938,6 +948,17 @@ class InlineBroker(BaseBroker):
                 "created_at": time.time(),
             }
 
+    def _mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+        """Record that a subscription owns retry/DLQ for this group.
+
+        For an owned (stream, consumer group), ``_nack`` bypasses the broker's
+        own retry ceiling and always holds-and-redelivers, so the broker never
+        moves the message to its native DLQ. The subscription is the single
+        retry/DLQ authority and publishes exhausted messages to ``{stream}:dlq``.
+        """
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._subscription_owned_groups.add(group_key)
+
     def _info(self) -> dict[str, Any]:
         """Provide information about consumer groups and consumers."""
         # Group info by consumer group name across all streams
@@ -981,6 +1002,7 @@ class InlineBroker(BaseBroker):
         self._message_ownership.clear()
         self._dead_letter_queue.clear()
         self._operation_states.clear()
+        self._subscription_owned_groups.clear()
 
     def _ping(self) -> bool:
         """Test connectivity to the inline broker.

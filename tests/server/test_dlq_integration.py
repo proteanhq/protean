@@ -163,22 +163,23 @@ class TestBrokerSubscriptionDLQIntegration:
         assert len(dlq_messages) == 0
 
     @pytest.mark.asyncio
-    async def test_persistent_dlq_publish_failure_lands_in_broker_native_dlq(
+    async def test_persistent_dlq_outage_holds_and_lands_in_published_dlq(
         self, test_domain, monkeypatch
     ):
-        """InlineBroker's native DLQ preserves messages during a DLQ outage.
+        """The subscription owns retry/DLQ: the InlineBroker holds, never dead-letters.
 
-        When the subscription's published ``{stream}:dlq`` is persistently
-        unavailable, the subscription holds the message by NACKing it rather than
-        ACKing it away. On the InlineBroker the repeated NACKs eventually trip the
-        broker's own retry ceiling, which moves the message to the broker's native
-        DLQ. The message is not lost, it never reaches the published DLQ stream,
-        and the subscription cleans up its retry tracking so the entry does not
-        leak.
+        Under a persistent ``{stream}:dlq`` outage the subscription holds the
+        message by NACKing it. Because the subscription owns retry and
+        dead-lettering for this stream, the InlineBroker holds-and-redelivers
+        with no independent ceiling: it never moves the message to its own native
+        DLQ, no matter how many rounds the outage lasts. When the DLQ recovers,
+        the message lands in the single documented ``{stream}:dlq`` and the retry
+        count is cleared, so nothing leaks.
         """
         engine = Engine(test_domain, test_mode=True)
         broker = test_domain.brokers["default"]
-        # Trip the broker's own nack ceiling quickly, with no retry delay.
+        # A low ceiling that the OLD, unreconciled broker would have tripped, plus
+        # no retry delay so the unbounded rounds run fast.
         monkeypatch.setattr(broker, "_max_retries", 1)
         monkeypatch.setattr(broker, "_retry_delay", 0)
 
@@ -208,31 +209,100 @@ class TestBrokerSubscriptionDLQIntegration:
         identifier = "int-persistent-1"
         payload = {"data": "x"}
         group = sub.subscriber_name
-        broker._ensure_group(group, "integration_stream")
 
-        # Drive the exhaust path until the broker's own nack ceiling trips. Each
-        # round re-seeds the delivery state (ownership + cleared op-state + in-flight)
-        # exactly as ``get_next`` would, standing in for the poll loop's re-read.
-        # We set it directly rather than publish + read because publishing to the
-        # source stream would synchronously invoke the subscriber, and we bypass
-        # ``get_next``.
-        for _ in range(broker._max_retries + 1):
+        def reseed_in_flight():
+            # Stand in for the poll loop re-reading the held message: re-seed the
+            # delivery state (ownership + cleared op-state + in-flight) exactly as
+            # ``get_next`` would. We set it directly rather than publish + read
+            # because publishing to the source stream would synchronously invoke
+            # the subscriber, and we bypass ``get_next``.
             broker._message_ownership[identifier][group] = True
             broker._clear_operation_state(group, identifier)
             broker._store_in_flight_message(
                 "integration_stream", group, identifier, payload
             )
+
+        # Drive the exhaust path for far more rounds than the broker's own ceiling.
+        # The OLD broker would have dead-lettered on round 2; the reconciled broker
+        # holds every round.
+        for _ in range(broker._max_retries + 5):
+            reseed_in_flight()
             await sub._handle_failed_message(identifier, payload)
 
-        # It never reached the subscription's published DLQ stream (publish failed).
+        # Never reached the published DLQ stream (publish failed every round).
         assert len(broker._messages.get(sub.dlq_stream, [])) == 0
-        # But it is NOT lost: the broker's own ceiling routed it to the native DLQ.
+        # And never routed to the broker's native DLQ: it is held, not lost.
         native_dlq = broker.get_dlq_messages(group, "integration_stream")
         dlq_ids = [entry[0] for entries in native_dlq.values() for entry in entries]
-        assert identifier in dlq_ids
-        # The subscription cleans up its retry count once the broker takes the
-        # message into its native DLQ.
+        assert identifier not in dlq_ids
+        group_key = f"integration_stream:{group}"
+        held_ids = [entry[0] for entry in broker._failed_messages[group_key]]
+        assert identifier in held_ids
+        # The retry count is retained while the message is legitimately held.
+        assert identifier in sub.retry_counts
+
+        # Recovery: lift the outage and run one more exhaust cycle.
+        monkeypatch.setattr(broker, "publish", real_publish)
+        reseed_in_flight()
+        await sub._handle_failed_message(identifier, payload)
+
+        # It now lands in the single documented DLQ, the native DLQ stays empty,
+        # and the retry count is cleared on ACK, so nothing leaks.
+        assert len(broker._messages.get(sub.dlq_stream, [])) == 1
+        native_dlq = broker.get_dlq_messages(group, "integration_stream")
+        dlq_ids = [entry[0] for entries in native_dlq.values() for entry in entries]
+        assert identifier not in dlq_ids
         assert identifier not in sub.retry_counts
+
+    def test_subscription_marks_its_stream_owned_on_the_broker(self, test_domain):
+        """``BrokerSubscription.__init__`` marks its (stream, group) broker-owned.
+
+        This pins the wiring: without the owned mark the broker keeps its own
+        ceiling and the fix silently no-ops.
+        """
+        engine = Engine(test_domain, test_mode=True)
+        broker = test_domain.brokers["default"]
+
+        from protean.server.subscription.broker_subscription import (
+            BrokerSubscription,
+        )
+
+        sub = BrokerSubscription(
+            engine=engine,
+            broker=broker,
+            stream_name="integration_stream",
+            handler=FailingSubscriber,
+        )
+
+        group_key = f"integration_stream:{sub.subscriber_name}"
+        assert group_key in broker._subscription_owned_groups
+
+    def test_broker_direct_group_still_ceilings_to_native_dlq(self, test_domain):
+        """A stream consumed directly off the broker keeps its independent ceiling.
+
+        The reconciliation covers subscription-consumed streams only. A consumer
+        group that was never marked owned still trips the broker's nack ceiling
+        and lands in the native DLQ, so the boundary is real.
+        """
+        broker = test_domain.brokers["default"]
+        broker._max_retries = 1
+        broker._retry_delay = 0
+
+        stream = "broker_direct_stream"
+        consumer_group = "broker_direct_group"
+        message = {"data": "y"}
+
+        identifier = broker.publish(stream, message)
+
+        # First nack holds; second nack exceeds the ceiling and dead-letters.
+        assert broker.get_next(stream, consumer_group) is not None
+        assert broker.nack(stream, identifier, consumer_group) is True
+        assert broker.get_next(stream, consumer_group) is not None
+        assert broker.nack(stream, identifier, consumer_group) is True
+
+        dlq_messages = broker.get_dlq_messages(consumer_group, stream)
+        dlq_ids = [entry[0] for entry in dlq_messages.get(stream, [])]
+        assert identifier in dlq_ids
 
 
 # ── Tests: EventStoreSubscription failed position tracking ──────────────

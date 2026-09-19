@@ -450,6 +450,7 @@ nav:
       - "0039 · DX pack as package data": adr/0039-dx-pack-ships-as-package-data.md
       - "0040 · Schema-evolution ladder": adr/0040-schema-evolution-ladder.md
       - "0041 · Event-model grammar over IR": adr/0041-textual-event-model-grammar-over-ir.md
+      - "0042 · Subscription owns retry and dead-lettering": adr/0042-subscription-owns-retry-and-dead-lettering.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
