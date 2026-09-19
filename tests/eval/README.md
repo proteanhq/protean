@@ -1,12 +1,10 @@
 # Comparison-eval harness
 
 This directory holds the eval machinery for the comparison-eval epic: running a
-scaffolding task through the **context-driven path** and recording it as a
-replayable fixture. It is test-and-eval infrastructure. It is not shipped in the
-wheel (the wheel packages only `src/protean`).
-
-Scoring lives with the comparison eval that consumes these transcripts. This
-harness produces and records a project; it does not score it.
+scaffolding task through the **context-driven path**, recording it as a
+replayable fixture, and scoring both approaches against a deterministic gold. It
+is test-and-eval infrastructure. It is not shipped in the wheel (the wheel
+packages only `src/protean`).
 
 ## The two lanes
 
@@ -18,17 +16,68 @@ harness produces and records a project; it does not score it.
   task through a real model, produces a project, and records the transcript. It
   doubles as the recorder. It skips when no live driver is configured.
 
+## Scoring the two approaches
+
+For one task the comparison (`compare(task_id)`) runs two approaches and reports,
+per approach, whether `protean verify` is green and a correctness score against
+the same gold:
+
+- **Approach A (deterministic).** `build_gold` scaffolds the task's gold project
+  from its `spec.json`: `protean new` (with the example slice off), then one
+  `protean add aggregate <Name>` per aggregate. Scoring the gold's IR against
+  itself is 1.0 by construction, so Approach A is the scorer's own oracle check.
+- **Approach B (context-driven).** Replay the task's committed transcript into a
+  workspace, read the produced project's IR, and score it against the gold.
+
+### The gold and its recipe
+
+The gold is the reference structure. Its recipe is the task's `spec.json`, a
+plain data file naming the project and the aggregate(s):
+
+```json
+{"project_name": "place_order", "aggregates": ["Order"]}
+```
+
+`protean add aggregate Order` emits more than the task names: a canned command
+and event, a command handler, and also a projector and a read-model. The base
+rubric scores only **aggregates, fields, commands, events, and handlers**, so the
+projector and read-model stay out of scope and never penalize a context-driven
+project that skips them.
+
+### The rubric
+
+The correctness score is per-element partial credit: the fraction of the gold's
+scored elements the produced project recovers, every element weighted equally (a
+missing field counts the same as a missing aggregate). An element is recovered
+when the produced IR carries one of the **same category and same class name**.
+Matching uses the class name, the final segment of the IR FQN. It ignores the
+full FQN because the gold and the context-driven project use different package
+names. Fields match on `(aggregate class name, field name)`, so renaming the
+aggregate drops every field under it. Matching is exact per category; fuzzy or
+semantic matching is a later dimension.
+
+### Reading Approach B's number
+
+The scaffold's canned command and event names (`CreateOrder`, `OrderCreated`)
+differ from a task-faithful project's own (`PlaceOrder`, and often no separate
+event), so a context-driven project recovers some but not all of the gold's
+elements. That graded distance is the intended signal: the score measures how
+close the context-driven structure lands to the deterministic one.
+
 ## Layout
 
 ```
 tests/eval/
-  tasks/<task_id>/task.md          # one prompt per task; nothing else
+  tasks/<task_id>/task.md          # the prompt the context-driven path sees
+  tasks/<task_id>/spec.json        # the gold recipe: project name + aggregates
   transcripts/<pack_version>/<task_id>.json   # recorded runs, keyed to the pack
-  workspace.py transcript.py tools.py drivers.py runner.py   # the harness
+  workspace.py transcript.py tools.py drivers.py runner.py   # the run harness
+  discovery.py ir_probe.py spec.py gold.py scoring.py compare.py  # the scorer
 ```
 
-Adding a task means adding `tasks/<task_id>/task.md`. The expected structure and
-scoring live with the comparison eval that consumes these transcripts.
+Adding a task means adding `tasks/<task_id>/task.md` and `tasks/<task_id>/spec.json`.
+Nothing else changes: `list_task_specs()` discovers a task from those two files
+alone.
 
 ## The transcript format
 

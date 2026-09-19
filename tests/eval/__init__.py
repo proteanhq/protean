@@ -1,9 +1,9 @@
 """Comparison-eval harness.
 
 This package holds the eval machinery that runs a scaffolding task through the
-context-driven path and records it as a replayable fixture. It is test-and-eval
-infrastructure, kept out of the shipped wheel (the wheel packages only
-``src/protean``).
+context-driven path, records it as a replayable fixture, and scores both
+approaches against a deterministic gold. It is test-and-eval infrastructure,
+kept out of the shipped wheel (the wheel packages only ``src/protean``).
 
 The pieces:
 
@@ -21,6 +21,18 @@ The pieces:
 - :mod:`tests.eval.runner`: the multi-turn loop that ties them together, plus
   ``record`` (live) and ``replay`` (deterministic).
 
-Scoring lives with the comparison eval that consumes these transcripts. This
-package produces and records a project; it does not score it.
+The scoring pieces:
+
+- :mod:`tests.eval.discovery`: the shared subprocess setup (env-strip and domain
+  discovery) that ``run_verify`` and ``build_ir`` both use.
+- :mod:`tests.eval.ir_probe`: ``build_ir``, which reads a produced project's IR
+  by shelling ``protean ir show`` into it.
+- :mod:`tests.eval.spec`: the per-task sidecar ``spec.json`` (the gold recipe)
+  and the task-discovery helper.
+- :mod:`tests.eval.gold`: ``build_gold``, which scaffolds a task's deterministic
+  gold project from its spec and reads back its IR.
+- :mod:`tests.eval.scoring`: the per-element rubric that scores a produced IR
+  against the gold's.
+- :mod:`tests.eval.compare`: ``compare``, which runs both approaches over a task
+  and reports each one's verify-green plus correctness.
 """

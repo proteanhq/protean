@@ -11,6 +11,7 @@ import pytest
 
 from protean.dx.pack import PACK_VERSION, iter_skills
 from tests.eval import tools as tools_module
+from tests.eval.discovery import discover_domain_arg
 from tests.eval.drivers import (
     LIVE_DRIVER_ENV_VAR,
     Conversation,
@@ -28,7 +29,6 @@ from tests.eval.runner import (
 from tests.eval.tools import (
     TOOL_SPECS,
     TOOLS,
-    _discover_domain_arg,
     _summarize_verify,
     execute_tool_call,
     run_verify,
@@ -646,7 +646,7 @@ class TestDomainDiscovery:
         (tmp_path / "domain.py").write_text(
             "from protean import Domain\n", encoding="utf-8"
         )
-        assert _discover_domain_arg(tmp_path) is None
+        assert discover_domain_arg(tmp_path) is None
 
     def test_src_layout_is_addressed_by_path(self, tmp_path: Path) -> None:
         package = tmp_path / "src" / "store"
@@ -655,10 +655,10 @@ class TestDomainDiscovery:
             "from protean import Domain\n\nstore = Domain(name='Store')\n",
             encoding="utf-8",
         )
-        assert _discover_domain_arg(tmp_path) == "src/store/domain.py"
+        assert discover_domain_arg(tmp_path) == "src/store/domain.py"
 
     def test_no_domain_uses_default_discovery(self, tmp_path: Path) -> None:
-        assert _discover_domain_arg(tmp_path) is None
+        assert discover_domain_arg(tmp_path) is None
 
     def test_multiple_src_domains_use_default_discovery(self, tmp_path: Path) -> None:
         for name in ("store", "billing"):
@@ -668,7 +668,7 @@ class TestDomainDiscovery:
                 f"from protean import Domain\n\n{name} = Domain(name='{name}')\n",
                 encoding="utf-8",
             )
-        assert _discover_domain_arg(tmp_path) is None
+        assert discover_domain_arg(tmp_path) is None
 
 
 class TestRunLoop:
