@@ -2081,6 +2081,36 @@ class TestDomainSnapshotConfig:
         assert not (tmp_path / "llms.txt").exists()
 
     @patch("protean.cli._ir_utils.derive_domain")
+    def test_generated_project_layout_reads_the_root_pyproject(
+        self, mock_derive, tmp_path, monkeypatch
+    ):
+        """A `protean new` project keeps its domain.toml under src/<package>/,
+        where a run from the project root does not look: discovery starts at
+        the current directory because the key has to be readable before any
+        domain is loaded. The root pyproject.toml is the file that carries the
+        key there, and it is the one the run reads."""
+        mock_domain = mock_derive.return_value
+        mock_domain.init.return_value = None
+        mock_domain.to_ir.return_value = _minimal_ir()
+        package = tmp_path / "src" / "my_app"
+        package.mkdir(parents=True)
+        (package / "domain.toml").write_text(
+            "[docs]\n"
+            'domain_snapshot = { path = "buried.txt", domain = "buried_app" }\n',
+            encoding="utf-8",
+        )
+        self._write_pyproject(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code == 0, result.output
+        mock_derive.assert_called_with(str(tmp_path / "my_app"))
+        assert (tmp_path / "llms.txt").exists()
+        assert not (tmp_path / "buried.txt").exists()
+        assert not (package / "buried.txt").exists()
+
+    @patch("protean.cli._ir_utils.derive_domain")
     def test_config_values_resolve_against_the_config_file(
         self, mock_derive, tmp_path, monkeypatch
     ):
