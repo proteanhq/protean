@@ -710,7 +710,12 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
         return None
 
     if config_path.name == "pyproject.toml":
-        docs_section = data.get("tool", {}).get("protean", {}).get("docs", {})
+        section: object = data
+        for level in ("tool", "protean", "docs"):
+            if not isinstance(section, dict):
+                return None
+            section = section.get(level, {})
+        docs_section = section
     else:
         docs_section = data.get("docs", {})
 

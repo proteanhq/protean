@@ -1923,6 +1923,13 @@ class TestDomainSnapshotConfig:
         assert (tmp_path / "override.txt").exists()
         assert not (tmp_path / "configured.txt").exists()
 
+        # With the flag omitted, the same config drives the run to the
+        # configured path, so the override assertion above has a live config
+        # to override.
+        no_flag = runner.invoke(app, ["generate", "--type=llms"])
+        assert no_flag.exit_code == 0, no_flag.output
+        assert (tmp_path / "configured.txt").exists()
+
     @patch("protean.cli._ir_utils.derive_domain")
     def test_domain_flag_overrides_config_domain(
         self, mock_derive, tmp_path, monkeypatch
@@ -1940,6 +1947,13 @@ class TestDomainSnapshotConfig:
 
         assert result.exit_code == 0
         mock_derive.assert_called_with("other_app")
+
+        # With the flag omitted, the same config drives the run to the
+        # configured domain, so the override assertion above has a live config
+        # to override.
+        no_flag = runner.invoke(app, ["generate", "--type=llms", "--output=y.txt"])
+        assert no_flag.exit_code == 0, no_flag.output
+        mock_derive.assert_called_with("configured_app")
 
     @patch("protean.cli._ir_utils.derive_domain")
     def test_domain_toml_parity(self, mock_derive, tmp_path, monkeypatch):
@@ -2020,6 +2034,23 @@ class TestDomainSnapshotConfig:
         framework layer prints to stdout and no snapshot is created."""
         (tmp_path / "pyproject.toml").write_text(
             '[tool.protean]\ndocs = "not-a-table"\n', encoding="utf-8"
+        )
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert result.exit_code == 0, result.output
+        assert "Protean" in result.output
+        assert not (tmp_path / "llms.txt").exists()
+
+    def test_non_table_intermediate_level_falls_back_to_no_key(
+        self, tmp_path, monkeypatch
+    ):
+        """A parseable pyproject where an intermediate level (``tool.protean``)
+        is a scalar, not a table, falls back to no key instead of crashing: the
+        framework layer prints to stdout and no snapshot is created."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool]\nprotean = "not-a-table"\n', encoding="utf-8"
         )
         monkeypatch.chdir(tmp_path)
 

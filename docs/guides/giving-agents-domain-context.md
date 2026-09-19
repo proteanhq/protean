@@ -14,7 +14,8 @@ the installed domain, so the agent always reasons about the code that is
 actually there, at the version of Protean the project actually runs.
 
 Because the answers are live, there is nothing to keep fresh. The domain
-changes, the next `introspect` reflects it. No file drifts, no step is skipped.
+changes, the next `introspect` reflects it, so nothing drifts and there is no
+refresh step to run.
 
 Register the server in a `.mcp.json` file and point your agent at it. The
 [`protean mcp` reference](../reference/cli/runtime/mcp.md) covers installation,
