@@ -91,7 +91,11 @@ def test_live_lane_reports_context_driven_stability(tmp_path: Path) -> None:
             "PROTEAN_EVAL_LIVE_DRIVER='module.path:factory'"
         )
     task_id = "place_order"
-    gold = build_gold(read_spec(task_id), tmp_path / "gold")
+    # ``protean new`` needs its output folder to already exist, and ``build_gold``
+    # takes a caller-owned destination, so create it here before building.
+    gold_dest = tmp_path / "gold"
+    gold_dest.mkdir()
+    gold = build_gold(read_spec(task_id), gold_dest)
     counter = itertools.count()
 
     def run_once():
