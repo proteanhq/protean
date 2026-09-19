@@ -101,6 +101,10 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     context-driven project under *replay_dest*. The task's transcript for the
     installed ``PACK_VERSION`` must exist, or replay has nothing to run, and it
     must replay clean or this raises :class:`StaleTranscriptError`.
+
+    Both recovery scores are taken against the task spec's declared contexts, so
+    a task that names a bounded-context grouping has its layout judged instead of
+    matching whatever module each aggregate landed in.
     """
     spec = read_spec(task_id)
     gold = build_gold(spec, gold_dest)
@@ -108,7 +112,7 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     deterministic = ApproachResult(
         verify_green=run_verify(gold.root)["ok"],
         correctness=score(gold.ir, gold.ir),
-        recovery=score_boundary(gold.ir, gold.ir),
+        recovery=score_boundary(gold.ir, gold.ir, contexts=spec.contexts),
     )
 
     transcript = Transcript.load(transcript_path(eval_root(), PACK_VERSION, task_id))
@@ -119,7 +123,7 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     context_driven = ApproachResult(
         verify_green=run_verify(workspace.root)["ok"],
         correctness=score(produced_ir, gold.ir),
-        recovery=score_boundary(produced_ir, gold.ir),
+        recovery=score_boundary(produced_ir, gold.ir, contexts=spec.contexts),
     )
 
     return Comparison(
