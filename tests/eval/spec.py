@@ -33,7 +33,11 @@ class TaskSpec:
     """A task's deterministic recipe: the gold project's name and its aggregates.
 
     ``project_name`` is the package the gold scaffolds under; ``aggregates`` are
-    the class names to add to it, one ``protean add aggregate`` each.
+    the class names to add to it, one ``protean add aggregate`` each. Both
+    ``aggregates`` and the names inside ``contexts`` hold the class name the
+    scaffold emits, so a spec that writes an alias such as ``orderItem`` is read
+    back as the ``OrderItem`` the gold project will carry (see
+    :func:`_class_name`).
 
     ``contexts`` is the optional bounded-context grouping a multi-context task
     declares: ``(context_name, aggregate_class_names)`` pairs. It states which
@@ -49,6 +53,19 @@ class TaskSpec:
     project_name: str
     aggregates: tuple[str, ...]
     contexts: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+
+def _class_name(aggregate: str) -> str:
+    """The class name ``protean add aggregate`` emits for *aggregate*.
+
+    The scaffold normalizes its name argument, so ``order``, ``orderItem`` and
+    ``order_item`` build the classes ``Order`` and ``OrderItem``. The spec stores
+    the normalized name because that is what the gold's IR carries, and the
+    scorer looks the spec's declared context up by the IR's class name: a spec
+    keeping the raw alias would find no declaration for ``Order`` and leave the
+    task's layout unscored.
+    """
+    return "".join(word[:1].upper() + word[1:] for word in split_words(aggregate))
 
 
 def _slug(aggregate: str) -> str:
@@ -104,7 +121,7 @@ def _read_contexts(
                 "module, so a context must name the one aggregate whose slug is "
                 "the context name"
             )
-        contexts.append((context, tuple(members)))
+        contexts.append((context, tuple(_class_name(member) for member in members)))
     return tuple(contexts)
 
 
@@ -141,7 +158,10 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
         )
     else:
         contexts = ()
-        aggregates = tuple(data.get("aggregates") or ())
+        aggregates = tuple(
+            _class_name(aggregate) if isinstance(aggregate, str) else aggregate
+            for aggregate in data.get("aggregates") or ()
+        )
 
     if not aggregates:
         raise ValueError(f"spec for task {task_id!r} names no aggregates")

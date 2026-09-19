@@ -79,6 +79,37 @@ class TestReadSpec:
             ("order_item", ("OrderItem",)),
         )
 
+    def test_aggregate_aliases_are_read_back_as_scaffold_class_names(
+        self, tmp_path: Path
+    ) -> None:
+        """``protean add aggregate order_item`` builds the class ``OrderItem``,
+        so the spec stores ``OrderItem``. Keeping the alias would leave the
+        scorer with no declared context for the ``OrderItem`` the gold IR
+        carries, and it would score the task's layout as matching whatever the
+        produced project did."""
+        _make_task(
+            tmp_path,
+            "aliases",
+            spec={
+                "project_name": "p",
+                "contexts": {"order": ["order"], "order_item": ["orderItem"]},
+            },
+        )
+        spec = read_spec("aliases", root=tmp_path)
+        assert spec.aggregates == ("Order", "OrderItem")
+        assert spec.contexts == (
+            ("order", ("Order",)),
+            ("order_item", ("OrderItem",)),
+        )
+
+    def test_a_flat_aggregate_alias_is_normalized_too(self, tmp_path: Path) -> None:
+        """The flat form normalizes the same way, so both spec forms name the
+        classes the gold project will carry."""
+        _make_task(
+            tmp_path, "flat", spec={"project_name": "p", "aggregates": ["orderItem"]}
+        )
+        assert read_spec("flat", root=tmp_path).aggregates == ("OrderItem",)
+
     @pytest.mark.parametrize("contexts", [["Order"], "", 0, False, None])
     def test_a_non_object_contexts_field_is_an_error(
         self, tmp_path: Path, contexts: object
