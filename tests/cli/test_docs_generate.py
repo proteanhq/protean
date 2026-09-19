@@ -1821,7 +1821,10 @@ class TestLlmsCheck:
         )
 
         assert result.exit_code == 0
-        assert "up to date" in result.output.lower()
+        # Rich wraps the message to the terminal width, so a long tmp_path can
+        # split "up to date" across a line break. Collapse whitespace before
+        # matching so the assertion does not depend on the terminal width.
+        assert "up to date" in " ".join(result.output.lower().split())
         assert snap.read_bytes() == before
 
     def test_check_missing_file_is_drift(self, tmp_path):
