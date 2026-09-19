@@ -62,26 +62,79 @@ class TestReadSpec:
     def test_a_nested_contexts_spec_flattens_in_declaration_order(
         self, tmp_path: Path
     ) -> None:
-        """A context holding two aggregates flattens both, in order, and a flat
-        spec leaves ``contexts`` empty (one default context)."""
+        """The contexts flatten to one aggregate list, in declaration order, and
+        a multi-word aggregate's context is its snake_case slug."""
         _make_task(
             tmp_path,
             "nested",
             spec={
                 "project_name": "shop",
-                "contexts": {"sales": ["Order", "Cart"], "billing": ["Invoice"]},
+                "contexts": {"order": ["Order"], "order_item": ["OrderItem"]},
             },
         )
         spec = read_spec("nested", root=tmp_path)
-        assert spec.aggregates == ("Order", "Cart", "Invoice")
+        assert spec.aggregates == ("Order", "OrderItem")
         assert spec.contexts == (
-            ("sales", ("Order", "Cart")),
-            ("billing", ("Invoice",)),
+            ("order", ("Order",)),
+            ("order_item", ("OrderItem",)),
         )
 
-    def test_a_non_object_contexts_field_is_an_error(self, tmp_path: Path) -> None:
-        _make_task(tmp_path, "bad", spec={"project_name": "p", "contexts": ["Order"]})
+    @pytest.mark.parametrize("contexts", [["Order"], "", 0, False])
+    def test_a_non_object_contexts_field_is_an_error(
+        self, tmp_path: Path, contexts: object
+    ) -> None:
+        """A supplied ``contexts`` that is not an object is malformed, including
+        the falsey values that would otherwise read as an absent field."""
+        _make_task(tmp_path, "bad", spec={"project_name": "p", "contexts": contexts})
         with pytest.raises(ValueError, match="non-object contexts"):
+            read_spec("bad", root=tmp_path)
+
+    @pytest.mark.parametrize("members", ["Order", ["Order", ""], [1], {"a": "b"}])
+    def test_a_context_that_does_not_name_a_list_of_names_is_an_error(
+        self, tmp_path: Path, members: object
+    ) -> None:
+        """A bare string would iterate into one-character aggregate names, and an
+        empty or non-string member names no aggregate at all. Both are read
+        errors, not a gold built from nonsense."""
+        _make_task(
+            tmp_path, "bad", spec={"project_name": "p", "contexts": {"order": members}}
+        )
+        with pytest.raises(ValueError, match="must name a list of aggregate names"):
+            read_spec("bad", root=tmp_path)
+
+    def test_a_context_the_gold_would_split_in_two_is_an_error(
+        self, tmp_path: Path
+    ) -> None:
+        """``protean add aggregate`` puts each aggregate in its own slice module,
+        so a context naming two aggregates is a grouping the gold cannot build.
+        It fails at read time rather than scaffolding a project whose contexts
+        are not the declared ones."""
+        _make_task(
+            tmp_path,
+            "bad",
+            spec={"project_name": "p", "contexts": {"sales": ["Order", "Cart"]}},
+        )
+        with pytest.raises(ValueError, match="the gold builds as order, cart"):
+            read_spec("bad", root=tmp_path)
+
+    def test_a_context_named_other_than_its_aggregate_slug_is_an_error(
+        self, tmp_path: Path
+    ) -> None:
+        """The gold builds ``Order`` into the ``order`` module, so a context
+        calling it ``orders`` declares a context the gold never produces."""
+        _make_task(
+            tmp_path,
+            "bad",
+            spec={"project_name": "p", "contexts": {"orders": ["Order"]}},
+        )
+        with pytest.raises(ValueError, match="the gold builds as order"):
+            read_spec("bad", root=tmp_path)
+
+    def test_a_context_naming_no_aggregate_is_an_error(self, tmp_path: Path) -> None:
+        _make_task(
+            tmp_path, "bad", spec={"project_name": "p", "contexts": {"order": []}}
+        )
+        with pytest.raises(ValueError, match="the gold builds as nothing"):
             read_spec("bad", root=tmp_path)
 
     def test_an_empty_contexts_object_falls_back_to_no_aggregates(

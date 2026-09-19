@@ -95,8 +95,11 @@ for fields:
   sit in the matching bounded context. The context is the aggregate's
   package-relative first module segment (`Order` at `shop.order.aggregate` is in
   the `order` context), so a gold under package `sales` and a produced project
-  under `app` still match on `order`. A single-context task scores 1.0 when its
-  one aggregate is recovered under the same segment.
+  under `app` still match on `order`. The package is read off the aggregate
+  modules themselves: it is the first segment they all share. A project packaged
+  as `ecommerce` whose domain is named `Ordering` still splits into its `order`
+  and `payment` contexts. A single-context task scores 1.0 when its one aggregate
+  is recovered under the same segment.
 
 Both scores are `0.0` when nothing is recovered (an empty produced or gold IR),
 the same guard the base rubric uses, and `score_boundary` raises the same
@@ -109,7 +112,16 @@ its own slice); `order_and_payment` foregrounds context (an `Order` and a
 `Payment` in separate context modules). A task declares its context grouping in
 `spec.json` with a `contexts` object (`{"order": ["Order"], "payment":
 ["Payment"]}`) instead of a flat `aggregates` list; both forms scaffold the same
-gold.
+gold. `protean add aggregate` builds each aggregate into its own slice module, so
+a context names the one aggregate whose slug is the context name. `read_spec`
+rejects any other grouping, so a spec never scaffolds a gold whose contexts are
+not the ones it declared.
+
+What the two new tasks omit, until their transcripts are recorded: only
+`place_order` carries a committed transcript, so `compare()` runs both approaches
+for it alone. The other two tasks score their gold through the harness (Approach
+A and the scorer), and Approach B joins them once the live lane records a
+transcript for each.
 
 ### Reading Approach B's number
 

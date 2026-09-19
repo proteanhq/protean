@@ -7,11 +7,11 @@ builder (:mod:`tests.eval.gold`) runs ``protean add aggregate <Name>`` for each
 one. Keeping the spec to plain data means adding a task is adding its two files
 with no harness edit, so the task set stays declarative.
 
-A spec names its aggregates in one of two forms: a flat ``aggregates`` list (one
-default bounded context), or a nested ``contexts`` object mapping each context to
-its aggregates (a multi-context task). Both reduce to the same flat aggregate
-list the gold builder scaffolds; the nested form only records the context
-grouping the boundary score checks.
+A spec names its aggregates in one of two forms: a flat ``aggregates`` list, or a
+nested ``contexts`` object mapping each context to its aggregates. Both reduce to
+the same flat aggregate list the gold builder scaffolds; the nested form also
+declares which context each aggregate is expected to land in, and ``read_spec``
+checks that declaration against what the gold builder will actually build.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from protean.scaffold.slice_generator import split_words
 from tests.eval.transcript import TASK_FILE, TASKS_DIRNAME
 
 __all__ = ["SPEC_FILE", "TaskSpec", "list_task_specs", "read_spec"]
@@ -40,14 +41,69 @@ class TaskSpec:
     the aggregate name. The flat ``aggregates`` tuple is always the union of the
     contexts' aggregates in declaration order, so the gold builder reads only
     ``aggregates`` and does not care which form the spec used. A flat spec (one
-    that names ``aggregates`` directly) leaves ``contexts`` empty: one default
-    context.
+    that names ``aggregates`` directly) leaves ``contexts`` empty and makes no
+    context claim; each of its aggregates still lands in its own context module.
     """
 
     task_id: str
     project_name: str
     aggregates: tuple[str, ...]
     contexts: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+
+def _slug(aggregate: str) -> str:
+    """The slice module ``protean add aggregate`` builds for *aggregate*.
+
+    The same snake_case derivation the scaffold uses, so ``Order`` lands in
+    ``order`` and ``OrderItem`` in ``order_item``.
+    """
+    return "_".join(word.lower() for word in split_words(aggregate))
+
+
+def _read_contexts(
+    task_id: str, contexts_data: object
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Read and check the ``contexts`` object of task *task_id*'s spec.
+
+    Every failure raises ``ValueError`` at read time, so a spec the gold builder
+    cannot honour never gets as far as scaffolding a project whose contexts do
+    not match what the spec declared. The checks are:
+
+    - ``contexts`` must be a JSON object. Any other value, including a falsey one
+      such as ``[]`` or ``""``, is a malformed spec, not an absent field.
+    - each context must name a list of non-empty strings. A bare string such as
+      ``{"sales": "Order"}`` would otherwise iterate into one-character aggregate
+      names.
+    - each context must name exactly one aggregate, whose slug is the context
+      name. ``protean add aggregate <Name>`` is the only shape the gold builder
+      has, and it puts each aggregate in its own slice module named after the
+      aggregate, so a context declaring ``["Order", "Cart"]`` would be built as
+      the two contexts ``order`` and ``cart``, not as the declared one.
+    """
+    if not isinstance(contexts_data, dict):
+        raise ValueError(f"spec for task {task_id!r} has a non-object contexts field")
+    contexts: list[tuple[str, tuple[str, ...]]] = []
+    for name, members in contexts_data.items():
+        context = str(name)
+        if not isinstance(members, list) or not all(
+            isinstance(member, str) and member for member in members
+        ):
+            raise ValueError(
+                f"spec for task {task_id!r} declares context {context!r} as "
+                f"{members!r}; a context must name a list of aggregate names"
+            )
+        slugs = [_slug(member) for member in members]
+        if slugs != [context]:
+            built = ", ".join(slugs) or "nothing"
+            raise ValueError(
+                f"spec for task {task_id!r} declares context {context!r} with "
+                f"aggregates {list(members)!r}, which the gold builds as {built}: "
+                "`protean add aggregate` puts every aggregate in its own slice "
+                "module, so a context must name the one aggregate whose slug is "
+                "the context name"
+            )
+        contexts.append((context, tuple(members)))
+    return tuple(contexts)
 
 
 def _eval_root() -> Path:
@@ -59,8 +115,11 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
     """Load task *task_id*'s :class:`TaskSpec` from its ``spec.json``.
 
     Raises ``FileNotFoundError`` if the task carries no spec, and ``ValueError``
-    if the spec is missing ``project_name`` or names no aggregate. This way a
-    task the gold builder cannot scaffold from fails loudly at read time.
+    if the spec is missing ``project_name``, names no aggregate, or declares a
+    ``contexts`` grouping the gold builder cannot build (see
+    :func:`_read_contexts`). This way a task the gold builder cannot scaffold
+    from, or would scaffold into contexts other than the declared ones, fails
+    loudly at read time.
     """
     base = root if root is not None else _eval_root()
     path = base / TASKS_DIRNAME / task_id / SPEC_FILE
@@ -70,14 +129,8 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
         raise ValueError(f"spec for task {task_id!r} has no project_name")
 
     contexts_data = data.get("contexts")
-    if contexts_data:
-        if not isinstance(contexts_data, dict):
-            raise ValueError(
-                f"spec for task {task_id!r} has a non-object contexts field"
-            )
-        contexts = tuple(
-            (str(name), tuple(members or ())) for name, members in contexts_data.items()
-        )
+    if contexts_data is not None:
+        contexts = _read_contexts(task_id, contexts_data)
         aggregates = tuple(
             aggregate for _, members in contexts for aggregate in members
         )

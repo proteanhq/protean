@@ -16,6 +16,7 @@ import pytest
 
 from tests.eval.scoring import (
     AmbiguousGoldError,
+    _context_map,
     element_signatures,
     score,
     score_boundary,
@@ -357,7 +358,12 @@ class TestAmbiguousGold:
         assert score(gold, gold).expected == 1
 
 
-def boundary_ir(*, package: str = "app", clusters: dict[str, dict[str, Any]]) -> dict:
+def boundary_ir(
+    *,
+    package: str = "app",
+    clusters: dict[str, dict[str, Any]],
+    domain_name: str | None = None,
+) -> dict:
     """Build an IR carrying per-cluster placement sections and a domain package.
 
     ``clusters`` maps an aggregate class name to a spec dict with an optional
@@ -366,9 +372,13 @@ def boundary_ir(*, package: str = "app", clusters: dict[str, dict[str, Any]]) ->
     ``entities`` tuples of class names. Each element lands both in its aggregate's
     cluster (what the boundary scorer reads) and in the flat ``elements`` map (what
     the base rubric reads), so a fixture can be scored both ways. The ``package``
-    forms the FQNs and the domain name, so a gold and a produced IR can use
-    different packages and still match on the class name and context segment.
+    forms the FQNs, so a gold and a produced IR can use different packages and
+    still match on the class name and context segment. ``domain_name`` is the
+    logical ``Domain(name=...)`` the IR reports, which defaults to the package and
+    can be set to something else to model a project whose domain name and import
+    package differ.
     """
+    domain = domain_name if domain_name is not None else package
     sections = {
         "commands": "COMMAND",
         "events": "EVENT",
@@ -402,7 +412,7 @@ def boundary_ir(*, package: str = "app", clusters: dict[str, dict[str, Any]]) ->
             cluster[section] = members
         ir_clusters[agg_fqn] = cluster
     return {
-        "domain": {"normalized_name": package, "name": package},
+        "domain": {"normalized_name": domain, "name": domain},
         "elements": dict(elements),
         "clusters": ir_clusters,
     }
@@ -558,6 +568,105 @@ class TestContext:
         assert result.context == pytest.approx(1 / 2)
         assert result.contexts_mismatched == ("Order",)
         assert result.contexts_matched == ("Payment",)
+
+    def test_a_domain_named_other_than_its_package_still_splits_contexts(
+        self,
+    ) -> None:
+        """The context segment is package-relative, and the package is the import
+        package, not the logical ``Domain(name=...)``. A project packaged as
+        ``ecommerce`` but named ``Ordering`` keeps its two contexts; reading the
+        package off the domain name would strip nothing and collapse both
+        aggregates into one ``ecommerce`` context."""
+        gold = boundary_ir(
+            package="sales",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        produced = boundary_ir(
+            package="ecommerce",
+            domain_name="ordering",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        assert _context_map(produced) == {"Order": "order", "Payment": "payment"}
+        result = score_boundary(produced, gold)
+        assert result.context == 1.0
+        assert set(result.contexts_matched) == {"Order", "Payment"}
+
+    def test_a_wrong_decomposition_still_scores_low_under_a_renamed_domain(
+        self,
+    ) -> None:
+        """The counterpart: deriving the package from the modules must not make
+        every project match. A single-context project scores 0 against a
+        two-context gold even when its domain name differs from its package."""
+        gold = boundary_ir(
+            package="sales",
+            clusters={
+                "Order": {"context": "order"},
+                "Payment": {"context": "payment"},
+            },
+        )
+        produced = boundary_ir(
+            package="ecommerce",
+            domain_name="ordering",
+            clusters={
+                "Order": {"context": "shop"},
+                "Payment": {"context": "shop"},
+            },
+        )
+        result = score_boundary(produced, gold)
+        assert result.context == 0.0
+        assert set(result.contexts_mismatched) == {"Order", "Payment"}
+
+    def test_aggregates_under_different_top_level_packages_keep_their_segments(
+        self,
+    ) -> None:
+        """Nothing is stripped when the aggregate modules share no first segment
+        (contexts as top-level packages), so each module's own first segment is
+        its context."""
+        ir = {
+            "domain": {"normalized_name": "shop", "name": "shop"},
+            "elements": {},
+            "clusters": {
+                "order.aggregate.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "order.aggregate.Order",
+                        "module": "order.aggregate",
+                    }
+                },
+                "payment.aggregate.Payment": {
+                    "aggregate": {
+                        "name": "Payment",
+                        "fqn": "payment.aggregate.Payment",
+                        "module": "payment.aggregate",
+                    }
+                },
+            },
+        }
+        assert _context_map(ir) == {"Order": "order", "Payment": "payment"}
+
+    def test_a_single_segment_module_is_its_own_context(self) -> None:
+        """An aggregate defined in a root ``domain.py`` has no package segment to
+        strip, so the module itself is the context rather than an empty one."""
+        ir = {
+            "domain": {"normalized_name": "shop", "name": "shop"},
+            "elements": {},
+            "clusters": {
+                "domain.Order": {
+                    "aggregate": {
+                        "name": "Order",
+                        "fqn": "domain.Order",
+                        "module": "domain",
+                    }
+                },
+            },
+        }
+        assert _context_map(ir) == {"Order": "domain"}
 
     def test_a_single_context_task_is_not_penalized(self) -> None:
         """The negative test for the new branch: a single-aggregate (flat-spec)

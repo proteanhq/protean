@@ -353,17 +353,42 @@ def _context_segment(module: str, package: str) -> str:
     return segments[0] if segments else ""
 
 
+def _package_prefix(modules: list[str]) -> str:
+    """The import package every aggregate module in *modules* sits under.
+
+    The package is read from the modules themselves, not from the IR's domain
+    metadata: ``domain.name`` is the logical name the ``Domain(name=...)`` call
+    carries, which a project is free to set to something other than its import
+    package. A project packaged as ``ecommerce`` but named ``Ordering`` would
+    strip nothing, and every aggregate would key on ``ecommerce`` (one context
+    for the whole project) instead of on its own context segment.
+
+    Under ADR-0030 a project's domain code lives under a single import package,
+    so the package is the first segment all the aggregate modules share. Returns
+    ``""`` when they share no first segment, or when any of them is a single
+    segment (an aggregate at the package root, which has no context segment to
+    strip down to): nothing is stripped and each module's own first segment is
+    the context.
+    """
+    firsts = set()
+    for module in modules:
+        segments = [segment for segment in module.split(".") if segment]
+        if len(segments) < 2:
+            return ""
+        firsts.add(segments[0])
+    if len(firsts) != 1:
+        return ""
+    return firsts.pop()
+
+
 def _context_map(ir: dict[str, Any]) -> dict[str, str]:
     """Map each aggregate's class name to its bounded-context segment."""
-    domain = ir.get("domain") if isinstance(ir, dict) else None
-    package = ""
-    if isinstance(domain, dict):
-        package = str(domain.get("normalized_name") or domain.get("name") or "")
-    context: dict[str, str] = {}
-    for cluster, owner in _owned_clusters(ir):
-        aggregate = cluster["aggregate"]
-        context[owner] = _context_segment(str(aggregate.get("module", "")), package)
-    return context
+    owned = [
+        (str(cluster["aggregate"].get("module", "")), owner)
+        for cluster, owner in _owned_clusters(ir)
+    ]
+    package = _package_prefix([module for module, _ in owned])
+    return {owner: _context_segment(module, package) for module, owner in owned}
 
 
 def score_boundary(produced_ir: dict[str, Any], gold_ir: dict[str, Any]) -> Recovery:
