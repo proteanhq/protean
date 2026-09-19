@@ -176,6 +176,18 @@ protean docs generate --type=llms --check
 An explicit `--domain` or `--output` on the command line overrides the config
 value, so the key only fills in what the flags omit.
 
+Both values are read relative to the file that declares them, so `llms.txt`
+means the file next to that config, whether you run from the project root or
+from a subdirectory. The command looks for the config in the directory you run
+it from and its two parents, in the order `.domain.toml`, `domain.toml`,
+`pyproject.toml`. A project created by `protean new` keeps its `domain.toml`
+under `src/<package>/`, which a run from the project root does not see: put the
+key in the root `pyproject.toml` there.
+
+A config file that cannot be parsed stops the command with an error naming the
+file. Nothing else reads it on this path, so a typo there would otherwise drop
+the configured domain and output without a word.
+
 ### The AGENTS.md constraint pack
 
 `--type=agents` renders a versioned

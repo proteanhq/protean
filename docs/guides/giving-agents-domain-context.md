@@ -54,6 +54,11 @@ domain_snapshot = { path = "llms.txt", domain = "my_app" }
 Then regenerate with `protean docs generate --type=llms` and check with
 `protean docs generate --type=llms --check`.
 
+The path is read relative to the file that declares it, so both commands name
+the same snapshot from anywhere in the project. Keep the key in a config file
+at the project root: the command looks in the directory you run it from and its
+two parents.
+
 ### A pre-commit recipe
 
 To fail a commit when the snapshot is stale, wire the check as a local

@@ -15,7 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 import protean
-from protean.cli.docs import app
+from protean.cli.docs import _write_output, app
 from protean.ir.generators.agents import generate_agents_md
 from protean.ir.generators.llms import generate_llms_txt
 
@@ -1827,6 +1827,22 @@ class TestLlmsCheck:
         assert "up to date" in " ".join(result.output.lower().split())
         assert snap.read_bytes() == before
 
+    def test_write_output_disables_newline_translation(self, tmp_path):
+        """The write and the --check compare have to agree on bytes. With
+        translation left on, Python writes CRLF on Windows while the check
+        compares LF, so a fresh generate-then-check round trip would report
+        drift there and nowhere else."""
+        target = tmp_path / "nested" / "llms.txt"
+
+        _write_output(str(target), "a\nb\n")
+
+        assert target.read_bytes() == b"a\nb\n"
+
+        with patch.object(Path, "write_text", autospec=True) as mock_write:
+            _write_output(str(target), "a\nb\n")
+
+        assert mock_write.call_args.kwargs.get("newline") == ""
+
     def test_check_missing_file_is_drift(self, tmp_path):
         """A missing snapshot file counts as drift and creates nothing."""
         snap = tmp_path / "does-not-exist.txt"
@@ -1884,7 +1900,7 @@ class TestDomainSnapshotConfig:
         gen = runner.invoke(app, ["generate", "--type=llms"])
 
         assert gen.exit_code == 0, gen.output
-        mock_derive.assert_called_with("my_app")
+        mock_derive.assert_called_with(str(tmp_path / "my_app"))
         snap = tmp_path / "llms.txt"
         expected = generate_llms_txt(_minimal_ir(), version=protean.__version__)
         assert snap.read_text(encoding="utf-8") == expected
@@ -1956,7 +1972,7 @@ class TestDomainSnapshotConfig:
         # to override.
         no_flag = runner.invoke(app, ["generate", "--type=llms", "--output=y.txt"])
         assert no_flag.exit_code == 0, no_flag.output
-        mock_derive.assert_called_with("configured_app")
+        mock_derive.assert_called_with(str(tmp_path / "configured_app"))
 
     @patch("protean.cli._ir_utils.derive_domain")
     def test_domain_toml_parity(self, mock_derive, tmp_path, monkeypatch):
@@ -1974,7 +1990,7 @@ class TestDomainSnapshotConfig:
         result = runner.invoke(app, ["generate", "--type=llms"])
 
         assert result.exit_code == 0, result.output
-        mock_derive.assert_called_with("my_app")
+        mock_derive.assert_called_with(str(tmp_path / "my_app"))
         expected = generate_llms_txt(_minimal_ir(), version=protean.__version__)
         assert (tmp_path / "llms.txt").read_text(encoding="utf-8") == expected
 
@@ -2017,10 +2033,10 @@ class TestDomainSnapshotConfig:
         assert result.exit_code != 0
         assert "path" in result.output
 
-    def test_unparseable_config_falls_back_to_no_key(self, tmp_path, monkeypatch):
-        """An unparseable config file is the runtime loader's error to raise, not
-        this command's: the docs reader falls back to no key and the framework
-        layer still prints to stdout, creating no snapshot."""
+    def test_unparseable_config_aborts(self, tmp_path, monkeypatch):
+        """An unparseable config file aborts, naming the file. Nothing else
+        loads it in the no-flag workflow, so falling back would drop the
+        configured domain and output without a word."""
         (tmp_path / "pyproject.toml").write_text(
             "[tool.protean.docs\nthis is not valid toml\n", encoding="utf-8"
         )
@@ -2028,8 +2044,8 @@ class TestDomainSnapshotConfig:
 
         result = runner.invoke(app, ["generate", "--type=llms"])
 
-        assert result.exit_code == 0, result.output
-        assert "Protean" in result.output
+        assert result.exit_code != 0
+        assert "pyproject.toml" in result.output
         assert not (tmp_path / "llms.txt").exists()
 
     def test_non_table_docs_section_falls_back_to_no_key(self, tmp_path, monkeypatch):
@@ -2062,3 +2078,29 @@ class TestDomainSnapshotConfig:
         assert result.exit_code == 0, result.output
         assert "Protean" in result.output
         assert not (tmp_path / "llms.txt").exists()
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_config_values_resolve_against_the_config_file(
+        self, mock_derive, tmp_path, monkeypatch
+    ):
+        """Run from a subdirectory, the configured path and domain still name
+        what the config file names. Anchored to the working directory instead,
+        generate would drop a second snapshot in the subdirectory and --check
+        would read that one, leaving the committed snapshot unchecked."""
+        mock_domain = mock_derive.return_value
+        mock_domain.init.return_value = None
+        mock_domain.to_ir.return_value = _minimal_ir()
+        self._write_pyproject(tmp_path)
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        monkeypatch.chdir(sub)
+
+        gen = runner.invoke(app, ["generate", "--type=llms"])
+
+        assert gen.exit_code == 0, gen.output
+        mock_derive.assert_called_with(str(tmp_path / "my_app"))
+        assert (tmp_path / "llms.txt").exists()
+        assert not (sub / "llms.txt").exists()
+
+        check = runner.invoke(app, ["generate", "--type=llms", "--check"])
+        assert check.exit_code == 0, check.output

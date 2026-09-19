@@ -228,6 +228,8 @@ def generate(
     # config, absent by default. When set, it fills in the domain and the
     # output path that `--domain`/`--output` otherwise carry, so `--type=llms`
     # and `--check` run with no repeated flags. An explicit flag always wins.
+    # A configured value is relative to the config file that declares it; a
+    # flag is relative to the current directory, as flags always are.
     snapshot = _load_domain_snapshot_config() if type == "llms" else None
     source_domain = domain or (snapshot["domain"] if snapshot else "")
     target_path = output or (snapshot["path"] if snapshot else "")
@@ -628,10 +630,18 @@ def _generate_agents() -> str:
 
 
 def _write_output(path: str, content: str) -> None:
-    """Write content to a file, creating parent directories as needed."""
+    """Write content to a file, creating parent directories as needed.
+
+    ``newline=""`` turns newline translation off, so the bytes on disk are the
+    bytes that were rendered: a line feed stays a line feed on Windows too,
+    instead of becoming a carriage return plus line feed. The ``--check``
+    comparison is byte-exact, so the write and the compare have to agree on one
+    representation or a generate-then-check round trip would report drift on
+    Windows alone.
+    """
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(content, encoding="utf-8")
+    out_path.write_text(content, encoding="utf-8", newline="")
 
 
 def _check_snapshot(path: str, fresh_content: str) -> None:
@@ -672,8 +682,12 @@ def _find_docs_config_file() -> Path | None:
 
     Walks the current directory and up to two parents, and in each directory
     picks the first of ``.domain.toml``, ``domain.toml``, ``pyproject.toml``
-    that exists. This matches ``Config2.load_from_path`` discovery, so docs
-    tooling reads the same file the runtime does.
+    that exists. The filenames and the walk are the ones
+    ``Config2.load_from_path`` uses, but the walk starts at the current
+    directory: the runtime starts at the domain's root path, and the docs key
+    has to be readable before any domain is loaded. So the key belongs in a
+    config file in the directory you run the command from, or one of its two
+    parents.
     """
     current = Path.cwd()
     for directory in (current, *list(current.parents)[:2]):
@@ -694,11 +708,18 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
     ``domain.toml``/``.domain.toml`` it maps directly to ``[docs]`` with no
     ``tool.protean`` prefix.
 
-    An unreadable or unparseable config file falls back to ``None``: that is
-    the runtime loader's error to raise, not this command's. But once the file
-    parses and the key is present, it must be a table with a non-empty string
-    ``path`` and a non-empty string ``domain``; anything else aborts the
-    command, naming the file.
+    Both values are resolved against the directory of the file that declares
+    them, so ``path = "llms.txt"`` names the same snapshot whether the command
+    runs from the project root or from a subdirectory. Without that anchor a
+    run from a subdirectory would write a second snapshot beside itself and
+    leave the committed one stale.
+
+    A config file that cannot be read or parsed aborts the command, naming the
+    file. In the no-flag workflow nothing else loads that file, so swallowing
+    the error would turn a typo into a silent framework-only render with the
+    configured domain and output dropped. Once the file parses and the key is
+    present, it must be a table with a non-empty string ``path`` and a
+    non-empty string ``domain``; anything else aborts the same way.
     """
     config_path = _find_docs_config_file()
     if config_path is None:
@@ -706,8 +727,9 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
 
     try:
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
-        return None
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        print(f"[red]Error:[/red] could not read {config_path}: {exc}")
+        raise typer.Abort() from exc
 
     if config_path.name == "pyproject.toml":
         section: object = data
@@ -747,4 +769,5 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
         )
         raise typer.Abort()
 
-    return {"path": path, "domain": snapshot_domain}
+    base = config_path.parent
+    return {"path": str(base / path), "domain": str(base / snapshot_domain)}
