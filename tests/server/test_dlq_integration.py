@@ -13,6 +13,7 @@ import time
 import pytest
 
 from protean import Domain, handle
+from protean.adapters.broker.inline import MAX_BACKOFF_DELAY
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -349,12 +350,16 @@ class TestBrokerSubscriptionDLQIntegration:
         assert identifier not in [e[0] for e in broker._failed_messages[group_key]]
 
     @pytest.mark.parametrize(
-        ("multiplier", "retry_count"),
-        [(2.0, 5000), (1e20, 32)],
-        ids=["high_retry_count", "large_configured_multiplier"],
+        ("retry_delay", "multiplier", "retry_count", "max_delay"),
+        [
+            (1.0, 2.0, 5000, MAX_BACKOFF_DELAY),
+            (1.0, 1e20, 32, MAX_BACKOFF_DELAY),
+            (0.0, 2.0, 5000, 0.0),
+        ],
+        ids=["high_retry_count", "large_configured_multiplier", "zero_retry_delay"],
     )
     def test_owned_nack_backoff_does_not_overflow(
-        self, test_domain, multiplier, retry_count
+        self, test_domain, retry_delay, multiplier, retry_count, max_delay
     ):
         """The backoff calculation cannot overflow and freeze the message.
 
@@ -362,13 +367,13 @@ class TestBrokerSubscriptionDLQIntegration:
         result leaves float range, either from an unbounded owned-stream retry
         count or from a large configured multiplier. Unguarded, ``nack`` returns
         False after the message has left in-flight and the message freezes. The
-        nack must still hold the message, with a bounded scheduled delay.
+        nack must still hold the message, with a bounded scheduled delay. A
+        configured ``retry_delay`` of zero must stay zero however high the retry
+        count goes, since that is what the outage guidance tells you to set.
         """
-        from protean.adapters.broker.inline import MAX_BACKOFF_DELAY
-
         broker = test_domain.brokers["default"]
         broker._max_retries = 1
-        broker._retry_delay = 1.0  # a real delay, so the cap is what bounds it
+        broker._retry_delay = retry_delay
         broker._backoff_multiplier = multiplier
 
         stream = "owned_backoff_stream"
@@ -387,9 +392,9 @@ class TestBrokerSubscriptionDLQIntegration:
         held = [e for e in broker._failed_messages[group_key] if e[0] == identifier]
         assert len(held) == 1
         next_retry_time = held[0][3]
-        # The scheduled delay is bounded by the cap, not an overflowed/astronomical
-        # value. next_retry_time == t_nack + delay, and delay <= MAX_BACKOFF_DELAY.
-        assert next_retry_time <= after + MAX_BACKOFF_DELAY
+        # The scheduled delay is bounded, not an overflowed/astronomical value.
+        # next_retry_time == t_nack + delay, and delay <= max_delay.
+        assert next_retry_time <= after + max_delay
 
     @pytest.mark.parametrize(
         "stream",

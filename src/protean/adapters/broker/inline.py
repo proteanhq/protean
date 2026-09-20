@@ -376,17 +376,22 @@ class InlineBroker(BaseBroker):
             # Update retry count
             self._set_retry_count(stream, consumer_group, identifier, new_retry_count)
 
-            # Calculate next retry time with exponential backoff. Saturate at
-            # MAX_BACKOFF_DELAY so neither an unbounded owned-stream retry count
-            # nor a large configured multiplier can overflow the exponentiation
-            # or balloon the wall-clock wait.
-            try:
-                delay = min(
-                    self._retry_delay * (self._backoff_multiplier**retry_count),
-                    MAX_BACKOFF_DELAY,
-                )
-            except OverflowError:
-                delay = MAX_BACKOFF_DELAY
+            # Calculate next retry time with exponential backoff. A retry delay
+            # of zero stays zero at every retry count: the exponentiation would
+            # overflow long before it is multiplied by zero. For a real delay,
+            # saturate at MAX_BACKOFF_DELAY so neither an unbounded owned-stream
+            # retry count nor a large configured multiplier can overflow the
+            # exponentiation or balloon the wall-clock wait.
+            if self._retry_delay <= 0:
+                delay = 0.0
+            else:
+                try:
+                    delay = min(
+                        self._retry_delay * (self._backoff_multiplier**retry_count),
+                        MAX_BACKOFF_DELAY,
+                    )
+                except OverflowError:
+                    delay = MAX_BACKOFF_DELAY
             next_retry_time = time.time() + delay
 
             # Remove any existing failed message entry
