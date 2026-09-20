@@ -325,6 +325,5 @@ def test_account_overdraft_invariant():
 
 ## Related
 
-- [Aggregate Mutation](./mutation.md) - How state changes work
 - [Anti-patterns](./anti-patterns.md) - Common invariant mistakes
 - [domain-service](../../domain-service/SKILL.md) - Cross-aggregate invariants

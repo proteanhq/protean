@@ -251,3 +251,7 @@ class OrderEventHandler:
 - [event](../event/SKILL.md) — Event definition, fields, and past-tense naming
 - [event-handler](../event-handler/SKILL.md) — Reacting to events and orchestrating side effects
 - [aggregate](../aggregate/SKILL.md) — Raising events from aggregate methods
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

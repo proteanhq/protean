@@ -175,3 +175,7 @@ class Username:
 - [add-field](../add-field/SKILL.md) - Adding fields with validation to domain elements
 - [add-validation](../add-validation/SKILL.md) - Choosing the right validation layer (field vs invariant vs guard)
 - [aggregate](../aggregate/SKILL.md) - Aggregates can use field validators too
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

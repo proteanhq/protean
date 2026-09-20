@@ -347,6 +347,6 @@ class Order:
 
 ## Related
 
-- [Aggregate Inheritance](./inheritance.md)
+- [Aggregate Inheritance](../assets/aggregate_inheritance.py)
 - [Stream Categories](https://protean.readthedocs.io/guides/essentials/stream-categories.html)
 - [Database Providers](https://protean.readthedocs.io/guides/adapters/database.html)

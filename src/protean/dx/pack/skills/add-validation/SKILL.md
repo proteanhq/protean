@@ -279,3 +279,7 @@ Is it a single-field data constraint?
 - [entity](../entity/SKILL.md) - Entities within aggregates
 - [command-handler](../command-handler/SKILL.md) - Handler guards (Layer 4)
 - [add-field](../add-field/SKILL.md) - Adding fields with validation
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

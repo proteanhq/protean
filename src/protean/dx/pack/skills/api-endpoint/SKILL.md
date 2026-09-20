@@ -172,3 +172,7 @@ Instead: Always use `current_domain.process(command)`.
 - `command` - Commands are what endpoints construct
 - `command-handler` - Command handlers process the commands that endpoints submit
 - `aggregate` - The target of commands submitted through endpoints
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

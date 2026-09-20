@@ -42,3 +42,7 @@ declare with decorators on a `Domain` object.
 - Business rules live in the domain layer: field constraints, value-object
   invariants, and aggregate invariants.
 - An aggregate has a single identity. Composite keys have no place in the model.
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

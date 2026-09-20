@@ -88,7 +88,7 @@ more than one aggregate class.
 - Multiple `HasMany` associations pointing to unrelated entity types
 
 **Severity**: HIGH
-**Fix**: [refactor-split-aggregate](../refactor-split-aggregate/SKILL.md) (planned)
+**Fix**: refactor-split-aggregate (planned)
 
 ### 5. Manual UoW wrapping
 
@@ -124,7 +124,7 @@ more than one aggregate class.
 - Missing `@invariant.post` decorators on aggregates with complex rules
 
 **Severity**: MEDIUM
-**Fix**: [refactor-add-invariants](../refactor-add-invariants/SKILL.md) (planned)
+**Fix**: refactor-add-invariants (planned)
 
 ### 8. Circular import risk — class references in DTOs
 
@@ -275,6 +275,10 @@ HIGH: Logic leak — validation and calculation in handler, not aggregate (lines
 HIGH: Missing events — Inventory update should be event-driven, not direct (line 10-12)
 ```
 
+## Examples
+
+- [Sample codebase to audit](assets/audit_sample_codebase.py) and [the refactored result](assets/audit_sample_refactored.py)
+
 ## Detailed references
 
 - [Detection heuristics](references/detection-heuristics.md) — Detailed patterns for each category
@@ -287,3 +291,7 @@ HIGH: Missing events — Inventory update should be event-driven, not direct (li
 - [refactor-move-logic-to-aggregate](../refactor-move-logic-to-aggregate/SKILL.md) — Fix logic leaks
 - [refactor-introduce-events](../refactor-introduce-events/SKILL.md) — Fix transaction boundary violations
 - [coverage-analysis](../coverage-analysis/SKILL.md) — Complementary: find untested code paths
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

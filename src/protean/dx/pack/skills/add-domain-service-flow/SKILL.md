@@ -200,3 +200,7 @@ Instead: invoke the instance — `service()` — so invariants execute around th
 - [aggregate](../aggregate/SKILL.md) — Aggregates that domain services coordinate
 - [command-handler](../command-handler/SKILL.md) — Wiring domain services into command flows
 - [add-validation](../add-validation/SKILL.md) — Invariants on domain services (Layer 3+)
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

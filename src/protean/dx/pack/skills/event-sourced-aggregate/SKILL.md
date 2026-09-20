@@ -293,3 +293,7 @@ See [Anti-patterns](references/anti-patterns.md) for more.
 - `event-handler` - Event handler structure, @handle decorator
 - `command-handler` - Command handler processing
 - `repository` - Standard repository (contrast with ES repository)
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

@@ -258,3 +258,7 @@ Instead: Persist one aggregate and use events for cross-aggregate sync
 - `event` - Aggregates may raise events during application service operations
 - `repository` - Application services use repositories to load/persist aggregates
 - `domain-service` - Cross-aggregate logic invoked from application services
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

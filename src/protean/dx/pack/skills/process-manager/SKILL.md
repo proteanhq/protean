@@ -242,3 +242,7 @@ If you find yourself tracking state in external stores from an event handler, or
 - `aggregate` - Process managers coordinate aggregates
 - `command` - Process managers issue commands to drive aggregates
 - `command-handler` - Commands issued by PMs are processed by command handlers
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

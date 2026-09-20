@@ -216,6 +216,11 @@ class Invoice:
         return self.subtotal.add(self.tax) if self.subtotal and self.tax else None
 ```
 
+## Examples
+
+- Address: [before](assets/extract_vo_address_before.py) and [after](assets/extract_vo_address_after.py)
+- Money: [before](assets/extract_vo_money_before.py) and [after](assets/extract_vo_money_after.py)
+
 ## Detailed references
 
 - [Common value objects](references/common-value-objects.md) — Catalog of common VOs with implementations
@@ -227,3 +232,7 @@ class Invoice:
 - [value-object](../value-object/SKILL.md) — Full VO patterns and rules
 - [audit-domain](../audit-domain/SKILL.md) — Detects primitive obsession
 - [aggregate](../aggregate/SKILL.md) — Aggregate patterns including VO usage
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

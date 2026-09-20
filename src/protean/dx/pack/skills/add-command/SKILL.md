@@ -212,3 +212,7 @@ class OrderCommandHandler:
 - [command](../command/SKILL.md) — Command definition, fields, and naming
 - [command-handler](../command-handler/SKILL.md) — Handling commands and orchestrating aggregates
 - [api-endpoint](../api-endpoint/SKILL.md) — Exposing commands over HTTP
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

@@ -263,3 +263,7 @@ Instead: Register projection with `@domain.projection` decorator
 - `event-handler` - Generic event handlers (compare/contrast with projectors)
 - `projection` - Projections are the output that projectors maintain
 - `patterns/cqrs` - Projectors implement the query side of CQRS
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

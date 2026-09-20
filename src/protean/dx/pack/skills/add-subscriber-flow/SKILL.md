@@ -215,3 +215,7 @@ Instead: set `domain.config["message_processing"] = "sync"` (and `command_proces
 - [command](../command/SKILL.md) — Command definition for translated actions
 - [command-handler](../command-handler/SKILL.md) — Processing translated commands
 - [add-use-case](../add-use-case/SKILL.md) — Full command flow (complement to subscriber flow)
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

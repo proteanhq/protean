@@ -198,3 +198,7 @@ Do not report missing tests for framework-guaranteed behavior:
 - [command-handler](../command-handler/SKILL.md) — Command handler patterns
 - [event-handler](../event-handler/SKILL.md) — Event handler patterns
 - [value-object](../value-object/SKILL.md) — Value object patterns
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

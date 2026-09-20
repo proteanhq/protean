@@ -167,3 +167,7 @@ Instead: `part_of` is the projection the handler reads from.
 - `projection` - The read model the handler reads from
 - `projector` - Populates the projection from domain events
 - `command-handler` - The write-side counterpart (uses `@handle`, runs a UoW)
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

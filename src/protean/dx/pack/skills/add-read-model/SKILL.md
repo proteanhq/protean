@@ -281,3 +281,7 @@ Instead: set `domain.config["event_processing"] = "sync"` in tests so projectors
 - [projector](../projector/SKILL.md) — Projector patterns and configuration
 - [event](../event/SKILL.md) — Defining domain events
 - [aggregate](../aggregate/SKILL.md) — Aggregates that raise events
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports
