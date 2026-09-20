@@ -51,9 +51,10 @@ Custom(python_type, *, validators=(), serializers=(), **constraints)
   Pydantic's own `model_dump`.
 - `**constraints` are the usual field constraints, passed straight to `FieldSpec`.
 
-`Custom` builds `Annotated[python_type, *validators, *serializers]` and hands it to
-`FieldSpec` as the resolved type, with `field_kind="custom"`. The author never
-instantiates `FieldSpec`. It ships **Stable**.
+`Custom` builds a `FieldSpec` over `python_type` with `field_kind="custom"` and
+hands it the validators and serializers separately; `FieldSpec.resolve_type`
+attaches them as `Annotated[python_type, *validators, *serializers]` when it builds
+the annotation. The author never instantiates `FieldSpec`. It ships **Stable**.
 
 `FieldSpec` stays **Internal**. The `base.py` `Field` descriptor engine (association
 fields, `Nested`, `Method`) stays **Provisional** and out of scope, unchanged.
@@ -90,10 +91,34 @@ paths and when each applies.
 - `Custom` is the promotion this issue delivers. `Field` and `FieldBase` stay
   Provisional; the more advanced descriptor extension point they represent keeps its
   own contract and is not promoted here.
-- Choices combined with a custom type degenerate: `resolve_type` replaces the
+- Choices combined with a custom type degenerate: `resolve_type` would replace the
   annotation with a `Literal` of the choice values, discarding the custom type. So
-  `Custom` is for types that parse and validate, not for a closed vocabulary of
-  primitive values, which `String(choices=...)` or `Status` already cover.
+  `Custom` rejects `choices` at declaration with an `IncorrectUsageError` rather
+  than building a field that silently stores the raw primitive and never calls the
+  parser. `Custom` is for types that parse and validate, not for a closed
+  vocabulary of primitive values, which `String(choices=...)` or `Status` cover.
+- The custom type's validators and serializers ride on the spec, not folded into
+  `python_type`. `FieldSpec` resolves the type-specific constraints (`max_length`,
+  decimal precision and scale) off `python_type`, and an `Annotated` wrapper there
+  hides the base type from those checks, so the constraint was dropped without a
+  word. `resolve_type` re-attaches the metadata when it builds the annotation.
+- A custom value is serialized at the shared adapter boundary (`_entity_to_dict`)
+  and in query filters, both through `ResolvedField.as_dict`. The in-memory store
+  keeps any Python object, but SQLAlchemy maps an unknown type to a string column
+  and Elasticsearch indexes the raw value, so the driver rejected the instance on
+  write and a `unique=True` lookup bound the object into the query. A custom
+  field inside an embedded value object is covered too: its shadow attribute
+  carries the real field, so the same serialization applies. SQLite round-trip
+  tests cover save, reload, the stored column value, the duplicate check, and the
+  value-object case.
+- The mypy plugin reads `Custom`'s type from its first argument, the way it
+  already does for `HasOne`, `HasMany` and `ValueObject`: `Custom(Color)` is
+  `Color | None` and `Custom(Color, required=True)` is `Color`. Without it the
+  factory showed up as `FieldSpec` and every attribute read off a custom field
+  was mistyped.
+- A custom default is serialized through `as_dict` before it goes into the IR.
+  It is an instance of the custom type, and the IR is written out as JSON and
+  hashed into the canonical baselines.
 - A custom field emits `"kind": "custom"` in the IR, so the IR schema carries a
   `field_custom` definition for it. Without that definition every IR document from a
   domain holding one custom field failed schema validation.

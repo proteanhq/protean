@@ -80,6 +80,12 @@ class FieldSpec:
     # passed, so ``protean check`` can surface the usage. Read via ``getattr``
     # with a ``False`` default; absent on every other spec.
     _pickled_deprecated: bool
+    # The custom type's Pydantic validators and serializers, set by the
+    # ``Custom`` factory. ``resolve_type`` attaches them to the annotation;
+    # keeping them off ``python_type`` leaves the base type visible to the
+    # type-specific constraint resolution. Read via ``getattr`` with an empty
+    # default; absent on every other spec.
+    _custom_metadata: tuple[Any, ...]
 
     def __init__(
         self,
@@ -215,6 +221,12 @@ class FieldSpec:
             else:
                 choices_values = tuple(self.choices)
             resolved = Literal[choices_values]
+
+        # A custom field carries its type's validators and serializers on the
+        # spec; attach them here so Pydantic gets a type it can parse.
+        custom_metadata = getattr(self, "_custom_metadata", ())
+        if custom_metadata:
+            resolved = Annotated[(resolved, *custom_metadata)]
 
         # Wrap in Optional when not required, no explicit default, and not identifier.
         # Auto-increment identifiers are also Optional since the DAO assigns

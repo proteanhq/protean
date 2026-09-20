@@ -279,8 +279,9 @@ it should parse to, and a raw value it should reject. It builds its own in-memor
 domain, declares a throwaway aggregate carrying the field, and asserts the whole
 custom-field contract:
 
-- **The validation order.** Empty short-circuits before the cast; the cast parses
-  a raw value into the type; a supplied `AfterValidator` runs after it.
+- **The outcome of each validation stage.** A required field rejects a missing
+  value; an optional one resolves it to its default, or to `None`; the cast parses
+  a raw value into the type and rejects one it cannot parse.
 - **The `ResolvedField` reflection.** The field surfaces as a `ResolvedField` with
   the declared `required`, and its `as_dict` output is JSON-serializable.
 - **A serialize, persist, reload, and event-replay round-trip.** The value saves,

@@ -43,6 +43,7 @@ _FIELD_FIXTURE_FILES = [
     "class_fields.py",
     "status_field.py",
     "association_fields.py",
+    "custom_field.py",
     "field_annotations.py",
 ]
 
@@ -260,6 +261,21 @@ class TestAssociationFields:
         # ValueObject(Address) → Address | None
         assert "| None" in types[2]
         assert "Address" in types[2]
+
+
+class TestCustomField:
+    """The Custom factory resolves to the type given as its first argument."""
+
+    def test_custom_resolves_to_the_declared_type(self) -> None:
+        notes, errors = _get_field_results("custom_field.py")
+        types = _extract_revealed_types(notes)
+        assert types == [
+            "tests.ext.fixtures.custom_field.Color | None",  # Custom(Color)
+            "tests.ext.fixtures.custom_field.Color",  # required=True
+            "tests.ext.fixtures.custom_field.Color",  # default=Color(...)
+            "tests.ext.fixtures.custom_field.Color",  # Brand.color attribute
+        ]
+        assert not errors
 
 
 class TestFieldAnnotations:

@@ -6,6 +6,8 @@ on ``kind``, so without a matching definition the whole IR document fails schema
 validation the moment a domain declares one custom field.
 """
 
+import json
+
 import pytest
 from jsonschema import ValidationError, validate
 from pydantic import PlainSerializer, PlainValidator
@@ -56,6 +58,24 @@ def ir():
 
 
 @pytest.fixture(scope="module")
+def ir_with_default():
+    domain = Domain(name="Custom Field Default IR")
+
+    @domain.aggregate
+    class Theme:
+        name: String(required=True)
+        brand: Custom(
+            Color,
+            validators=[PlainValidator(parse_color)],
+            serializers=[PlainSerializer(lambda color: color.hex, return_type=str)],
+            default=Color("#FFFFFF"),
+        )
+
+    domain.init(traverse=False)
+    return IRBuilder(domain).build()
+
+
+@pytest.fixture(scope="module")
 def brand_field(ir):
     cluster = next(c for fqn, c in ir["clusters"].items() if fqn.endswith(".Palette"))
     return cluster["aggregate"]["fields"]["brand"]
@@ -73,6 +93,36 @@ class TestCustomFieldIR:
         except ValidationError as exc:
             pytest.fail(
                 f"IR with a custom field failed schema validation:\n"
+                f"  Path: {'.'.join(str(p) for p in exc.absolute_path)}\n"
+                f"  Message: {exc.message}"
+            )
+
+
+@pytest.mark.no_test_domain
+class TestCustomFieldDefaultInIR:
+    """A custom default is an instance of the custom type; the IR is JSON."""
+
+    def test_custom_default_is_serialized(self, ir_with_default):
+        cluster = next(
+            c
+            for fqn, c in ir_with_default["clusters"].items()
+            if fqn.endswith(".Theme")
+        )
+        assert cluster["aggregate"]["fields"]["brand"]["default"] == "#FFFFFF"
+
+    def test_ir_with_a_custom_default_serializes_to_json(self, ir_with_default):
+        # The IR is written out as JSON and hashed into the canonical baselines,
+        # so an unserialized default breaks every emitter, not just this test.
+        json.dumps(ir_with_default)
+
+    def test_ir_with_a_custom_default_validates_against_the_schema(
+        self, ir_with_default
+    ):
+        try:
+            validate(instance=ir_with_default, schema=load_schema())
+        except ValidationError as exc:
+            pytest.fail(
+                f"IR with a custom default failed schema validation:\n"
                 f"  Path: {'.'.join(str(p) for p in exc.absolute_path)}\n"
                 f"  Message: {exc.message}"
             )

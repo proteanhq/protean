@@ -15,16 +15,20 @@ Covers:
 
 from unittest.mock import MagicMock
 
+from mypy.nodes import SymbolTable
+
 from protean.ext.mypy_plugin import (
     _REEXPORT_MAP,
     DECORATOR_BASE_CLASS_MAP,
     FIELD_TYPE_MAP,
     ProteanPlugin,
+    _custom_field_hook,
     _extract_decorator_name,
     _extract_decorator_name_from_expr,
     _field_factory_hook,
     _get_kwarg_bool,
     _has_kwarg,
+    _resolve_custom_fullname,
 )
 
 
@@ -590,3 +594,57 @@ class TestCustomizeClassMroCallback:
         ctx.cls.decorators = [NameExpr("some_decorator")]
         _customize_class_mro_callback(ctx)
         ctx.api.lookup_fully_qualified_or_none.assert_not_called()
+
+
+class TestCustomFieldHook:
+    """The Custom factory's hook, driven directly."""
+
+    def test_reexported_name_resolves_to_canonical(self):
+        assert (
+            _resolve_custom_fullname("protean.fields.Custom")
+            == "protean.fields.simple.Custom"
+        )
+
+    def test_unrelated_name_does_not_resolve(self):
+        assert _resolve_custom_fullname("protean.fields.simple.String") is None
+
+    def test_missing_first_argument_falls_back(self):
+        """Custom() with no positional argument keeps the default return type."""
+        ctx = MagicMock()
+        ctx.args = []
+        ctx.arg_types = []
+        ctx.default_return_type = MagicMock(name="default_return")
+
+        assert _custom_field_hook(ctx) is ctx.default_return_type
+
+    def test_unresolvable_first_argument_falls_back(self):
+        """A first argument mypy cannot resolve keeps the default return type."""
+        from mypy.types import AnyType, TypeOfAny
+
+        ctx = MagicMock()
+        ctx.args = [[MagicMock()]]
+        ctx.arg_types = [[AnyType(TypeOfAny.special_form)]]
+        ctx.default_return_type = MagicMock(name="default_return")
+
+        assert _custom_field_hook(ctx) is ctx.default_return_type
+
+    def test_type_type_argument_is_unwrapped(self):
+        """``Custom(Color)`` passed as type[Color] resolves to ``Color | None``."""
+        from mypy.nodes import Block, ClassDef, TypeInfo
+        from mypy.types import Instance, NoneType, TypeType, UnionType
+
+        class_def = ClassDef("Color", Block([]))
+        class_def.fullname = "somewhere.Color"
+        info = TypeInfo(SymbolTable(), class_def, "somewhere")
+        color = Instance(info, [])
+
+        ctx = MagicMock()
+        ctx.args = [[MagicMock()]]
+        ctx.arg_types = [[TypeType(color)]]
+        ctx.arg_names = []
+
+        result = _custom_field_hook(ctx)
+        # Optional by default: Custom(Color) is Color | None
+        assert isinstance(result, UnionType)
+        assert color in result.items
+        assert any(isinstance(item, NoneType) for item in result.items)

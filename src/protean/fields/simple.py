@@ -14,7 +14,7 @@ import datetime
 import decimal
 from collections.abc import Callable, Iterable
 from enum import Enum as _Enum
-from typing import TYPE_CHECKING, Annotated, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from protean.exceptions import IncorrectUsageError
 from protean.fields.spec import FieldSpec
@@ -243,7 +243,9 @@ def Custom(  # pyright: ignore[reportRedeclaration]
       on the type so it round-trips through save, reload, and event replay.
     - ``**constraints`` are the usual field constraints (``required``, ``default``,
       ``unique``, ``description``, ``min_value``/``max_value``, ...), passed
-      straight to the underlying ``FieldSpec``.
+      straight to the underlying ``FieldSpec``. ``choices`` is rejected: a choice
+      set replaces the field's type with a ``Literal`` of the choice values, which
+      would discard the custom type and skip the parser.
 
     Example::
 
@@ -260,15 +262,25 @@ def Custom(  # pyright: ignore[reportRedeclaration]
     factory: declare it as a raw ``Annotated[CustomType, Field(...)]`` and Pydantic
     handles it directly (see the defining-fields guide).
     """
-    metadata = (*validators, *serializers)
-    # ``Annotated`` requires at least one metadata item; with none, hand the bare
-    # type to FieldSpec. A bare arbitrary class has no Pydantic schema, so a field
-    # over a type Pydantic cannot resolve on its own will fail at class creation
-    # unless at least one validator is supplied, which is the documented contract.
-    resolved_type: Any = (
-        Annotated[(python_type, *metadata)] if metadata else python_type
-    )
-    return FieldSpec(resolved_type, field_kind="custom", **constraints)
+    if constraints.get("choices") is not None:
+        raise IncorrectUsageError(
+            "Custom() does not support choices: a choice set replaces the field's "
+            "type with a Literal of the choice values, which discards the custom "
+            "type and skips the parser. Use String(choices=...) or Status() for a "
+            "closed vocabulary of primitive values."
+        )
+
+    # The custom type's Pydantic metadata rides on the spec, not folded into
+    # ``python_type``. FieldSpec resolves type-specific constraints (max_length,
+    # decimal precision/scale) off ``python_type``, and an ``Annotated`` wrapper
+    # there hides the base type from those checks, silently dropping the
+    # constraint. ``resolve_type`` re-attaches the metadata when it builds the
+    # annotation. A bare arbitrary class has no Pydantic schema, so a field over a
+    # type Pydantic cannot resolve on its own will fail at class creation unless
+    # at least one validator is supplied, which is the documented contract.
+    spec = FieldSpec(python_type, field_kind="custom", **constraints)
+    spec._custom_metadata = (*validators, *serializers)
+    return spec
 
 
 # ---------------------------------------------------------------------------

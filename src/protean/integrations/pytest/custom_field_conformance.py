@@ -6,8 +6,9 @@ value that should parse, the value it should parse to, and a raw value that
 should be rejected. The harness declares a throwaway aggregate carrying the
 field, then asserts the whole custom-field contract holds:
 
-- the guaranteed validation order (empty short-circuits before the cast; the
-  cast parses a raw value into the type; supplied validators run after it),
+- the outcome of each validation stage (a missing value resolves to the
+  default, or to ``None``; the cast parses a raw value into the type and
+  rejects one it cannot parse),
 - the ``ResolvedField`` reflection an adapter reads (``required`` and a
   JSON-serializable ``as_dict``),
 - a serialize, persist, reload, and event-replay round-trip.
@@ -26,7 +27,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.exceptions import ValidationError
 from protean.fields.resolved import ResolvedField
-from protean.fields.spec import FieldSpec
+from protean.fields.spec import _UNSET, FieldSpec
 from protean.utils.reflection import fields
 
 
@@ -50,6 +51,14 @@ def run_custom_field_conformance(
         raise TypeError(
             "run_custom_field_conformance expects a FieldSpec built by Custom(); "
             f"got {type(field).__name__}"
+        )
+    # Every built-in factory returns a FieldSpec too, so the isinstance check
+    # alone would let a String() through and report it as custom-field
+    # conformance. Only Custom() stamps field_kind="custom".
+    if field.field_kind != "custom":
+        raise TypeError(
+            "run_custom_field_conformance expects a field built by Custom(); "
+            f"got a field of kind {field.field_kind!r}"
         )
 
     domain = Domain(name="CustomFieldConformance")
@@ -95,9 +104,9 @@ def _assert_rejects_invalid(subject: Any, invalid_input: Any) -> None:
 def _assert_empty_handling(subject: Any, field: FieldSpec) -> None:
     """Empty short-circuits before the cast.
 
-    A required field rejects a missing value. An optional field left unset is
-    ``None`` and never reaches the cast, so the parser is not asked to make an
-    instance out of nothing.
+    A required field rejects a missing value. An optional field left unset falls
+    back to its declared default, or to ``None`` when it has none; either way the
+    parser is not asked to make an instance out of nothing.
     """
     if field.required:
         try:
@@ -107,7 +116,20 @@ def _assert_empty_handling(subject: Any, field: FieldSpec) -> None:
         raise AssertionError(
             "a required Custom field accepted a missing value; it must reject it"
         )
+
     instance = subject()
+
+    if field.default is not _UNSET:
+        # A declared default is what a missing value resolves to. It may be an
+        # instance of the custom type, a raw value, or a callable producing
+        # either; Pydantic does not run the parser over it.
+        expected_default = field.default() if callable(field.default) else field.default
+        assert instance.sample == expected_default, (
+            f"an optional Custom field left unset should fall back to its "
+            f"default {expected_default!r}, got {instance.sample!r}"
+        )
+        return
+
     assert instance.sample is None, (
         f"an optional Custom field left unset should be None, got {instance.sample!r}"
     )

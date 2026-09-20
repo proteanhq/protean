@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+from decimal import Decimal
 
 import pytest
 from pydantic import AfterValidator, PlainSerializer, PlainValidator
@@ -19,8 +20,8 @@ from pydantic import AfterValidator, PlainSerializer, PlainValidator
 from protean import value_object_from_entity
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.exceptions import ValidationError
-from protean.fields import Custom, HasOne, String
+from protean.exceptions import IncorrectUsageError, ValidationError
+from protean.fields import Custom, HasOne, String, ValueObject
 from protean.integrations.pytest.custom_field_conformance import (
     run_custom_field_conformance,
 )
@@ -182,6 +183,65 @@ class TestCustomValidationOrder:
             Marker(at="0,0")
 
 
+class TestCustomValidationOrderProbes:
+    """Prove the stage each callable runs at, not just the final value.
+
+    Observing the final value cannot tell a correct order from a wrong one: a
+    parser that happens to accept ``None`` produces the same ``None`` whether it
+    ran or was skipped. These fields carry probes that fail if a stage runs on
+    the wrong input.
+    """
+
+    def test_parser_is_never_called_for_a_missing_optional_value(self, test_domain):
+        calls: list[object] = []
+
+        def probing_parser(value: object) -> Point | None:
+            calls.append(value)
+            # A parser that tolerates None: the value alone cannot show whether
+            # the empty check short-circuited, so the call log is the evidence.
+            if value is None:
+                return None
+            return parse_point(value)
+
+        @test_domain.aggregate
+        class Marker:
+            at: Point = Custom(Point, validators=[PlainValidator(probing_parser)])
+
+        test_domain.init(traverse=False)
+
+        assert Marker().at is None
+        assert calls == [], f"the parser ran on a missing value: {calls!r}"
+
+        Marker(at="3,4")
+        assert calls == ["3,4"], f"the parser did not see the raw value: {calls!r}"
+
+    def test_after_validator_receives_the_parsed_instance(self, test_domain):
+        seen: list[object] = []
+
+        def probing_validator(value: object) -> object:
+            seen.append(value)
+            return value
+
+        @test_domain.aggregate
+        class Marker:
+            at: Point = Custom(
+                Point,
+                validators=[
+                    PlainValidator(parse_point),
+                    AfterValidator(probing_validator),
+                ],
+                required=True,
+            )
+
+        test_domain.init(traverse=False)
+
+        Marker(at="3,4")
+        assert seen == [Point(3, 4)], (
+            f"the AfterValidator did not receive the parsed instance: {seen!r}"
+        )
+        assert isinstance(seen[0], Point)
+
+
 class TestCustomReflection:
     def test_resolved_field_reports_required_and_field_kind(self, test_domain):
         @test_domain.aggregate
@@ -194,6 +254,177 @@ class TestCustomReflection:
         assert resolved.required is True
         assert resolved.field_kind == "custom"
         assert resolved.as_dict(Point(3, 4)) == "3,4"
+
+
+class TestCustomConstraintPassthrough:
+    """``**constraints`` reach the field, including the type-specific ones."""
+
+    def test_max_length_applies_to_a_custom_over_str(self, test_domain):
+        @test_domain.aggregate
+        class Tag:
+            code: str = Custom(
+                str,
+                validators=[PlainValidator(lambda v: str(v).upper())],
+                max_length=3,
+            )
+
+        test_domain.init(traverse=False)
+
+        assert fields(Tag)["code"].max_length == 3
+        assert Tag(code="ab").code == "AB"
+        with pytest.raises(ValidationError):
+            Tag(code="abcd")
+
+    def test_decimal_precision_and_scale_apply_to_a_custom_over_decimal(
+        self, test_domain
+    ):
+        @test_domain.aggregate
+        class Invoice:
+            total: Decimal = Custom(
+                Decimal,
+                validators=[PlainValidator(lambda v: Decimal(str(v)))],
+                precision=5,
+                scale=2,
+            )
+
+        test_domain.init(traverse=False)
+
+        assert Invoice(total="123.45").total == Decimal("123.45")
+        with pytest.raises(ValidationError):
+            Invoice(total="1234.567")
+
+    def test_min_value_applies_to_a_custom_over_int(self, test_domain):
+        @test_domain.aggregate
+        class Batch:
+            size: int = Custom(
+                int, validators=[PlainValidator(lambda v: int(v))], min_value=1
+            )
+
+        test_domain.init(traverse=False)
+
+        assert Batch(size="2").size == 2
+        with pytest.raises(ValidationError):
+            Batch(size="0")
+
+
+class TestCustomRejectsChoices:
+    """A choice set would replace the custom type with a Literal."""
+
+    def test_choices_are_rejected_at_declaration(self):
+        with pytest.raises(IncorrectUsageError, match="does not support choices"):
+            Custom(
+                Point,
+                validators=[PlainValidator(parse_point)],
+                choices=["0,0", "1,1"],
+            )
+
+
+class TestCustomDefault:
+    def test_optional_field_falls_back_to_its_default(self, test_domain):
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(default=Point(0, 0))
+
+        test_domain.init(traverse=False)
+
+        assert Marker().at == Point(0, 0)
+        assert Marker(at="3,4").at == Point(3, 4)
+
+    def test_a_field_with_a_default_passes_conformance(self):
+        # The harness must not insist that a missing value is None: a default is
+        # part of the factory contract.
+        field = _point_field(default=Point(0, 0))
+        run_custom_field_conformance(
+            field,
+            valid_input="3,4",
+            expected=Point(3, 4),
+            invalid_input="garbage",
+        )
+
+    def test_a_field_with_a_callable_default_passes_conformance(self):
+        field = _point_field(default=lambda: Point(1, 1))
+        run_custom_field_conformance(
+            field,
+            valid_input="3,4",
+            expected=Point(3, 4),
+            invalid_input="garbage",
+        )
+
+
+class TestCustomAtTheAdapterBoundary:
+    """What an adapter is handed for a custom field.
+
+    Every adapter's ``from_entity`` goes through ``_entity_to_dict``. A driver or
+    an index mapping only takes plain values, so the custom instance is
+    serialized there, and reading it back parses it again.
+    """
+
+    def test_model_dict_holds_the_serialized_value(self, test_domain):
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(required=True)
+
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            model_cls = test_domain.repository_for(Marker)._dao.database_model_cls
+            record = model_cls.from_entity(Marker(at="3,4"))
+            assert record["at"] == "3,4"
+
+    def test_unique_lookup_uses_the_serialized_value(self, test_domain):
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(required=True, unique=True)
+
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            repository = test_domain.repository_for(Marker)
+            repository.add(Marker(at="3,4"))
+
+            # The duplicate is found even though the filter carries a live Point
+            # while the store holds the serialized "3,4".
+            with pytest.raises(ValidationError):
+                repository.add(Marker(at="3,4"))
+
+    def test_filter_accepts_an_instance_and_a_raw_value(self, test_domain):
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(required=True)
+
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            repository = test_domain.repository_for(Marker)
+            repository.add(Marker(at="3,4"))
+
+            dao = repository._dao
+            assert dao.find_by(at=Point(3, 4)).at == Point(3, 4)
+            assert dao.find_by(at="3,4").at == Point(3, 4)
+
+    def test_custom_field_inside_a_value_object_is_serialized(self, test_domain):
+        # An embedded value object is flattened into shadow attributes, and the
+        # shadow attribute is what the adapter is handed. It carries the real
+        # field, so the custom value is serialized there too.
+        @test_domain.value_object
+        class Location:
+            at: Point = _point_field(required=True)
+
+        @test_domain.aggregate
+        class Marker:
+            label: str = String(max_length=50)
+            place = ValueObject(Location)
+
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            repository = test_domain.repository_for(Marker)
+            model_cls = repository._dao.database_model_cls
+            marker = Marker(label="home", place=Location(at="3,4"))
+            assert model_cls.from_entity(marker)["place_at"] == "3,4"
+
+            repository.add(marker)
+            assert repository.get(marker.id).place.at == Point(3, 4)
 
 
 class TestCustomWithoutMetadata:
@@ -328,6 +559,18 @@ class TestConformanceHarnessGuards:
                 valid_input="x",
                 expected="x",
                 invalid_input="y",
+            )
+
+    def test_rejects_a_built_in_field(self):
+        # A built-in factory returns a FieldSpec too, so the isinstance check
+        # alone would let a String() through and report it as custom-field
+        # conformance.
+        with pytest.raises(TypeError, match="built by Custom"):
+            run_custom_field_conformance(
+                String(max_length=10),
+                valid_input="x",
+                expected="x",
+                invalid_input=1,
             )
 
     def test_flags_a_parser_that_accepts_everything(self):

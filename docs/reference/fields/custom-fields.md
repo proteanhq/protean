@@ -56,8 +56,9 @@ instance straight through.
 
 A field runs its checks in a fixed order, and `Custom` inherits it unchanged:
 
-1. **empty**: an optional field left unset is `None` and short-circuits here. The
-   parser is never asked to build an instance out of nothing.
+1. **empty**: an optional field left unset resolves to its default, or to `None`
+   when it has none, and short-circuits here. The parser is never asked to build
+   an instance out of nothing.
 2. **cast**: the value is parsed into the type. For `Custom`, this is the
    `PlainValidator` you supplied.
 3. **validators**: post-cast checks run on the parsed value. For `Custom`, these
@@ -66,14 +67,14 @@ A field runs its checks in a fixed order, and `Custom` inherits it unchanged:
 So an `AfterValidator` always sees a parsed instance, never a raw value, and a
 missing optional value never reaches your parser.
 
-!!! warning "Do not pass `choices` to `Custom`"
+!!! warning "`Custom` rejects `choices`"
 
-    `choices` is not supported with `Custom`. When you declare a choice set,
-    Protean replaces the field's type with a `Literal` of the choice values, which
-    discards your custom type: the field stores the raw primitive and your parser
-    never runs. `Custom` is for a type that parses and validates, not for a closed
-    vocabulary of primitive values. For that, use `String(choices=...)` or
-    `Status`.
+    Passing `choices` to `Custom` raises `IncorrectUsageError` at declaration.
+    A choice set makes Protean replace the field's type with a `Literal` of the
+    choice values, which would discard your custom type: the field would store
+    the raw primitive and your parser would never run. `Custom` is for a type
+    that parses and validates, not for a closed vocabulary of primitive values.
+    For that, use `String(choices=...)` or `Status`.
 
 ## The serialization boundary adapters read
 
@@ -87,6 +88,11 @@ event replay. The `serializers` you pass to `Custom` cover Pydantic's own
 The value your `to_dict()` returns must be something your parser accepts back. In
 the example, `to_dict()` returns the hex string and `parse_color` accepts a hex
 string, so a `Color` saved as `"#3366FF"` reloads as the same `Color`.
+
+That serialized form is what the store holds, so it is also what a query compares
+against. Protean serializes a custom value in a filter the same way, so both
+`filter(brand=Color("#3366FF"))` and `filter(brand="#3366FF")` find the record,
+and `unique=True` catches a duplicate.
 
 ## Prove your field with the conformance suite
 

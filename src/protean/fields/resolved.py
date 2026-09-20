@@ -250,3 +250,24 @@ def convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str]
             msg = msg[len("Value error, ") :]
         errors[field].append(msg)
     return dict(errors)
+
+
+# ---------------------------------------------------------------------------
+# Custom-field serialization helper
+# ---------------------------------------------------------------------------
+def serialize_custom_value(field_obj: Any, value: Any) -> Any:
+    """Return the stored form of a value held by a custom field.
+
+    A custom field (built by ``Custom``) holds an instance of a type the store
+    knows nothing about, so the persistence path and query filters both hand the
+    adapter what ``as_dict`` returns instead. Any other field's value is returned
+    untouched.
+
+    ``field_obj`` may be a shadow attribute backing one field of an embedded
+    value object; the real field hangs off it as ``field_obj.field_obj``, so the
+    kind is read from there.
+    """
+    source = getattr(field_obj, "field_obj", field_obj)
+    if getattr(source, "field_kind", None) == "custom":
+        return source.as_dict(value)
+    return value
