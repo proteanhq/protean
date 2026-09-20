@@ -695,6 +695,23 @@ class BaseBroker(metaclass=ABCMeta):
         """
         return 0
 
+    def _mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+        """Signal that a Protean subscription owns retry and dead-lettering for
+        this (stream, consumer group) pair.
+
+        The subscription is the single retry/DLQ authority: it counts handler
+        failures and publishes exhausted messages to ``{stream}:dlq``. A broker
+        that keeps an independent nack ceiling (only the InlineBroker test
+        double does) overrides this to stop dead-lettering such a message
+        underneath the subscription, so the message is held and redelivered
+        instead. Production adapters have no independent ceiling, so the default
+        no-op is correct for them.
+
+        Args:
+            stream (str): The stream the subscription consumes.
+            consumer_group (str): The subscription's consumer group.
+        """
+
     def info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers in each group.
 

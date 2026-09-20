@@ -282,6 +282,13 @@ class StreamSubscription(BaseSubscription):
             logger.error(f"Failed to ensure consumer group {self.consumer_group}: {e}")
             raise
 
+        # The subscription owns retry and dead-lettering for this stream: it
+        # counts handler failures and publishes exhausted messages to
+        # {stream}:dlq. Tell the broker to hold-and-redeliver nacks with no
+        # independent ceiling, so it never dead-letters underneath us. No-op on
+        # brokers without an independent ceiling (all production adapters).
+        self.broker._mark_subscription_owned(self.stream_category, self.consumer_group)
+
         # Clean up stale consumers from previous engine runs
         try:
             removed = self.broker._cleanup_stale_consumers(
@@ -305,6 +312,11 @@ class StreamSubscription(BaseSubscription):
                     f"{self.consumer_group} on {self.backfill_stream}: {e}"
                 )
                 raise
+
+            # The subscription owns retry/DLQ for the backfill stream too.
+            self.broker._mark_subscription_owned(
+                self.backfill_stream, self.consumer_group
+            )
 
             # Clean up stale consumers on backfill stream too
             try:

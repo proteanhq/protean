@@ -105,6 +105,13 @@ class BrokerSubscription(BaseSubscription):
         # Ensure consumer group exists for this stream
         self.broker._ensure_group(self.subscriber_name, self.stream_name)
 
+        # The subscription owns retry and dead-lettering for this stream: it
+        # counts handler failures and publishes exhausted messages to
+        # {stream}:dlq. Tell the broker to hold-and-redeliver nacks with no
+        # independent ceiling, so it never dead-letters underneath us. No-op on
+        # brokers without an independent ceiling (all production adapters).
+        self.broker._mark_subscription_owned(self.stream_name, self.subscriber_name)
+
         # Resolve retry/DLQ configuration from domain config
         server_config = engine.domain.config.get("server", {})
         bs_config = server_config.get("broker_subscription", {})

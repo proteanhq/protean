@@ -23,6 +23,11 @@ CONSUMER_GROUP_SEPARATOR = ":"
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 BACKOFF_MULTIPLIER = 2.0
+# Cap the backoff delay. A subscription-owned stream has no nack ceiling, so its
+# broker-side retry count can grow without bound, and ``backoff_multiplier`` is
+# configurable; either can make ``backoff_multiplier ** retry_count`` overflow
+# the float (2.0 ** 1024 raises OverflowError) and freeze the message.
+MAX_BACKOFF_DELAY = 3600.0
 MESSAGE_TIMEOUT = 300.0
 ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
@@ -98,6 +103,12 @@ class InlineBroker(BaseBroker):
         self._operation_states: defaultdict[
             str, dict[str, tuple[OperationState, float]]
         ] = defaultdict(dict)
+
+        # Track group keys owned by a Protean subscription. For these, nack
+        # holds and redelivers with no independent ceiling; the subscription
+        # owns retry and dead-lettering via {stream}:dlq.
+        # Structure: {stream:consumer_group}
+        self._subscription_owned_groups: set[str] = set()
 
     @property
     def capabilities(self) -> BrokerCapabilities:
@@ -317,7 +328,11 @@ class InlineBroker(BaseBroker):
             retry_count = self._get_retry_count(stream, consumer_group, identifier)
             new_retry_count = retry_count + 1
 
-            if new_retry_count <= self._max_retries:
+            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            if (
+                new_retry_count <= self._max_retries
+                or group_key in self._subscription_owned_groups
+            ):
                 return self._handle_nack_with_retry(
                     stream,
                     identifier,
@@ -361,8 +376,22 @@ class InlineBroker(BaseBroker):
             # Update retry count
             self._set_retry_count(stream, consumer_group, identifier, new_retry_count)
 
-            # Calculate next retry time with exponential backoff
-            delay = self._retry_delay * (self._backoff_multiplier**retry_count)
+            # Calculate next retry time with exponential backoff. A retry delay
+            # of zero stays zero at every retry count: the exponentiation would
+            # overflow long before it is multiplied by zero. For a real delay,
+            # saturate at MAX_BACKOFF_DELAY so neither an unbounded owned-stream
+            # retry count nor a large configured multiplier can overflow the
+            # exponentiation or balloon the wall-clock wait.
+            if self._retry_delay <= 0:
+                delay = 0.0
+            else:
+                try:
+                    delay = min(
+                        self._retry_delay * (self._backoff_multiplier**retry_count),
+                        MAX_BACKOFF_DELAY,
+                    )
+                except OverflowError:
+                    delay = MAX_BACKOFF_DELAY
             next_retry_time = time.time() + delay
 
             # Remove any existing failed message entry
@@ -618,24 +647,51 @@ class InlineBroker(BaseBroker):
         cutoff_time = current_time - timeout_seconds
 
         # Find all group keys for this consumer group
+        group_suffix = f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         matching_group_keys = [
             group_key
             for group_key in self._in_flight
-            if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}")
+            if group_key.endswith(group_suffix)
         ]
 
         for group_key in matching_group_keys:
-            # Extract stream name from group key
-            stream = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
+            # Recover the stream by stripping the exact consumer-group suffix.
+            # A stream name can itself contain the separator (aggregate
+            # categories are ``domain::aggregate``, DLQ streams are
+            # ``{stream}:dlq``), so splitting on the first separator would
+            # yield a truncated stream and strand the message under a group
+            # key nothing reads.
+            stream = group_key[: -len(group_suffix)]
+
+            owned = group_key in self._subscription_owned_groups
 
             stale_messages = []
             for identifier, (_msg_id, message, timestamp) in list(
                 self._in_flight[group_key].items()
             ):
                 if timestamp < cutoff_time:
-                    stale_messages.append((identifier, message))
                     # Remove from in-flight
                     del self._in_flight[group_key][identifier]
+
+                    if owned:
+                        # A subscription owns retry/DLQ for this group, so the
+                        # broker must not dead-letter underneath it. Hold the
+                        # timed-out message for redelivery (it stays available
+                        # via the failed-message retry path) instead of moving
+                        # it to the native DLQ. Retry count is preserved.
+                        retry_count = self._retry_counts[group_key].get(identifier, 0)
+                        self._remove_failed_message(stream, consumer_group, identifier)
+                        self._store_failed_message(
+                            stream,
+                            consumer_group,
+                            identifier,
+                            message,
+                            retry_count,
+                            current_time,
+                        )
+                        continue
+
+                    stale_messages.append((identifier, message))
 
                     # Move to DLQ if enabled
                     if self._enable_dlq:
@@ -938,6 +994,17 @@ class InlineBroker(BaseBroker):
                 "created_at": time.time(),
             }
 
+    def _mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+        """Record that a subscription owns retry/DLQ for this group.
+
+        For an owned (stream, consumer group), ``_nack`` bypasses the broker's
+        own retry ceiling and always holds-and-redelivers, so the broker never
+        moves the message to its native DLQ. The subscription is the single
+        retry/DLQ authority and publishes exhausted messages to ``{stream}:dlq``.
+        """
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._subscription_owned_groups.add(group_key)
+
     def _info(self) -> dict[str, Any]:
         """Provide information about consumer groups and consumers."""
         # Group info by consumer group name across all streams
@@ -971,7 +1038,13 @@ class InlineBroker(BaseBroker):
         return {"consumer_groups": consumer_groups_info}
 
     def _data_reset(self) -> None:
-        """Flush all data in broker instance"""
+        """Flush all data in broker instance.
+
+        ``_subscription_owned_groups`` is deliberately kept: it records which
+        groups a live subscription owns retry/DLQ for, which is wiring set once
+        at subscription init, not message data. Clearing it here would silently
+        reinstate the broker's nack ceiling for a still-alive subscription.
+        """
         self._messages.clear()
         self._consumer_groups.clear()
         self._in_flight.clear()
