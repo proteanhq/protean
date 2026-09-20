@@ -99,8 +99,8 @@ in the framework:
 
 ## Network services Protean ships
 
-Three services listen on a port. None of them authenticates the caller, and each
-binds to loopback (`127.0.0.1`) by default.
+Three services can listen on a port. None of them authenticates the caller, and
+each binds to loopback (`127.0.0.1`) by default.
 
 - **The engine health server.** It runs with the server and is on by default
   (`[server.health] enabled = true`, port 8080). It answers `GET /healthz`,
