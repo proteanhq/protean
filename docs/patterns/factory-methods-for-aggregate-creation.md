@@ -44,13 +44,13 @@ find yourself creating orders four more ways:
 
 Each one gets its own handler, and each handler assembles the Order itself.
 Which items to include, how to total them, which rules to apply, which events to
-raise: all of it now exists four times. Each copy is slightly different, and they
-drift further apart over time.
+raise: all of it now exists five times, once per handler. Each copy is slightly
+different, and they drift further apart over time.
 
 That costs you in four ways:
 
-- **Four handlers know how to build an Order.** Add a required field to the
-  aggregate and you update all four. Change a rule, say every order now needs a
+- **Five handlers know how to build an Order.** Add a required field to the
+  aggregate and you update all five. Change a rule, say every order now needs a
   tax calculation, and you have to find and edit each one.
 
 - **Every copy is a fresh chance to get it wrong.** The renewal handler forgets
@@ -621,8 +621,10 @@ class TestOrderCreation:
 ```
 
 No repository, no command, no handler, no unit of work: call the classmethod and
-assert on what it returns. Standalone factories test the same way, being plain
-classes.
+assert on what it returns. A standalone factory is a plain class and tests the
+same way, except where it loads aggregates of its own, as
+`OrderFactory.from_cart_checkout` loads the Cart and the Customer. Those tests
+have to persist that data first.
 
 ---
 

@@ -44,8 +44,9 @@ what**, when it should follow **what has to stay consistent**.
 Design aggregates around **consistency boundaries**, not data relationships.
 
 Keep in an aggregate only the data that has to change together, in one
-transaction, to hold a business rule. Everything else gets its own aggregate and
-is referenced by identity.
+transaction, to hold a business rule. Everything else moves out: into its own
+aggregate referenced by identity, or into a value object where a copy of the
+data at that moment is what you want.
 
 ```
 Wrong mental model:
@@ -319,6 +320,7 @@ class OrderPlaced(BaseEvent):
     order_id: Identifier(required=True)
     customer_id: Identifier(required=True)
     total_amount: Float(required=True)
+    items: List(required=True)  # Each item: product_id, quantity
 
 
 @domain.aggregate
@@ -334,6 +336,10 @@ class Order:
             order_id=self.order_id,
             customer_id=self.customer_id,
             total_amount=self.total.amount,
+            items=[
+                {"product_id": item.product_id, "quantity": item.quantity}
+                for item in self.items
+            ],
         ))
 
 
@@ -575,9 +581,10 @@ hurt.
 Event-sourced aggregates carry one more concern: stream length. A long-lived
 aggregate with thousands of events takes longer to replay, which argues for
 keeping them small. Where an aggregate genuinely needs to be one consistency
-boundary, reach for snapshots before you split it. Protean writes them
-automatically once a stream passes `snapshot_threshold`, and you can create one
-by hand; see [Snapshots](../guides/change-state/snapshots.md).
+boundary, reach for snapshots before you split it. Protean writes one while it
+loads the aggregate, once enough events have piled up since the last snapshot to
+pass `snapshot_threshold`, and you can create one by hand; see
+[Snapshots](../guides/change-state/snapshots.md).
 
 ---
 

@@ -315,7 +315,8 @@ There is never a point where the caller is holding a reference it cannot use.
 ## Idempotent creation
 
 An early identity gives the handler a stable key for spotting duplicates.
-Without it, nothing tells a duplicate from a new request.
+Without it the handler has no aggregate ID to look up, so a repeat has to be
+caught some other way, with a caller-supplied idempotency key.
 
 ### Check, then act
 
@@ -427,8 +428,8 @@ sequential number as a domain attribute you assign at the right step.
 | Who decides | The database | The caller (client, API, saga) |
 | Available in commands | No | Yes |
 | Available in events | After persistence | Immediately |
-| Supports duplicate detection | No | Yes (check-then-act) |
-| Supports async processing | Poorly (caller must wait) | Well (caller has the ID immediately) |
+| Duplicate detection by aggregate ID | No (needs an idempotency key) | Yes (check-then-act) |
+| Async processing | Works, but the caller cannot name the result yet | Works, and the caller has the ID immediately |
 | Supports optimistic UI | No | Yes |
 | Distributed-friendly | No (central sequence) | Yes (UUIDs need no coordination) |
 | Protean default | No | **Yes** (Auto field with UUID) |
