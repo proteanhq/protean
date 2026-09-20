@@ -1099,7 +1099,15 @@ class TestEventSourcedAggregateReplayCoverage:
         assert [c.change_type for c in agg] == ["field_removed"]
         assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
 
-    def test_covered_field_type_change_downgrades(self):
+    def test_covered_field_type_change_stays_breaking(self):
+        """A stored snapshot can survive a type change and skip replay entirely.
+
+        ``_load_aggregate_current`` constructs the aggregate from the snapshot's
+        payload and only replays when that raises ``ValidationError``. A stored
+        ``Float`` value coerces cleanly into the new ``Integer`` field, so the
+        aggregate loads from the pre-change snapshot and the upcaster never runs.
+        The upcaster earns nothing here, even though it covers the event bump.
+        """
         left = _minimal_ir(
             clusters={
                 "app.Account": _es_cluster(
@@ -1120,10 +1128,48 @@ class TestEventSourcedAggregateReplayCoverage:
             upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
         )
         report = classify_changes(diff_ir(left, right), left, right)
-        assert report.is_breaking is False
-        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
         assert [c.change_type for c in agg] == ["field_type_changed"]
-        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+        assert agg[0].mitigated_by is None
+        assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+
+    def test_type_change_alongside_a_removal_keeps_only_the_removal_safe(self):
+        """The per-change filter is what splits these, not the aggregate verdict.
+
+        Both changes sit on the same aggregate under the same covered bump. The
+        removal makes a stale snapshot fail to construct, so replay and the
+        upcaster run; the type change does not. Only the removal is downgraded.
+        """
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Integer")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        assert [
+            c.change_type
+            for c in report.breaking_changes
+            if c.element_fqn == "app.Account"
+        ] == ["field_type_changed"]
+        safe = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in safe] == ["field_removed"]
+        assert safe[0].mitigated_by == "upcaster AccountOpened v1->v2"
 
     def test_covered_required_field_add_downgrades(self):
         left = _minimal_ir(

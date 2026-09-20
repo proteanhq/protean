@@ -29,7 +29,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Visibility internal to public | Safe |
 | Change `__type__` string | **Breaking** |
 | Event version bump covered by a registered upcaster | Safe (mitigated) |
-| Event-sourced aggregate field change whose rebuilding events are all covered | Safe (mitigated) |
+| Event-sourced aggregate field removal / required-field add whose rebuilding events are all covered | Safe (mitigated) |
 
 These rules apply to all persisted elements: aggregates, entities, value
 objects, commands, events, database models, and projections.
@@ -53,10 +53,9 @@ The checker understands three evolution mechanisms:
   example a public→internal visibility flip) stays breaking, and a version bump
   with an upcaster *gap* (a prior version with no path to the new one) stays
   breaking.
-- **Event-sourced aggregate replay coverage**: An event-sourced aggregate holds
-  no schema of its own. It is rebuilt by replaying the events its apply-handlers
-  process. So a breaking field change on such an aggregate (a field removal, a
-  type change, or a required-field add) is downgraded to safe when every
+- **Event-sourced aggregate replay coverage**: An event-sourced aggregate is
+  rebuilt by replaying the events its apply-handlers process. So a field removal
+  or a required-field add on such an aggregate is downgraded to safe when every
   rebuilding event that bumped its version in this diff is upcaster-covered, and
   at least one was bumped and covered. A single uncovered bump among the
   rebuilding events, or no bump at all, leaves the aggregate breaking, because
@@ -70,6 +69,15 @@ The checker understands three evolution mechanisms:
   aggregate's field changes, not only the fields that event populates. A classic
   table-backed aggregate is never touched by this path; its breaking field
   changes stay breaking, and `exclude` is the only way to silence them.
+
+  A **field type change** is not on this list. An event-sourced aggregate can
+  still have a stored snapshot of its own state, and Protean loads that snapshot
+  directly, replaying the event stream only when the snapshot no longer
+  constructs. A removed field and a new required field both make the snapshot
+  fail to construct, so it is discarded and the upcaster runs. A type change
+  often does not: a stored `Float` of `5.0` coerces cleanly into a new `Integer`
+  field, so the aggregate loads from the pre-change snapshot and the upcaster is
+  never consulted. That change stays breaking.
 
 ---
 
@@ -156,8 +164,8 @@ a downgrade the checker can verify against the actual schema:
 - A registered [upcaster](../../patterns/event-versioning-and-evolution.md) chain
   earns the mitigation for an event's version bump.
 - Event-sourced replay coverage extends that same earned downgrade to an
-  event-sourced aggregate's field changes, once every rebuilding event is
-  covered.
+  event-sourced aggregate's field removals and required-field adds, once every
+  rebuilding event is covered.
 
 `exclude` earns nothing. It silences the alert without proving the change is
 safe, so it is the coarse last resort for the element types the checker cannot

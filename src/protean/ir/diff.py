@@ -1016,12 +1016,21 @@ _UPCASTER_MITIGATABLE = frozenset(
     }
 )
 
-# The subset of the above that can arise on an aggregate. An aggregate has no
-# ``__type__`` version string, so ``type_string_changed`` never applies to one.
+# The subset of the above an event-sourced aggregate can earn. Two exclusions:
+# an aggregate has no ``__type__`` version string, so ``type_string_changed``
+# never applies to one; and ``field_type_changed`` is left breaking because a
+# stored snapshot can survive it. ``_load_aggregate_current`` builds the
+# aggregate straight from the snapshot's ``to_dict()`` payload and only falls
+# back to replay when that construction raises ``ValidationError``. A removed
+# field ("Extra inputs are not permitted") and an added required field
+# ("is required") both raise, so the stale snapshot is discarded and the
+# upcaster runs. A type change often does not: ``Float`` -> ``Integer`` coerces
+# a stored ``5.0`` to ``5`` and constructs fine, so the aggregate loads from the
+# pre-change snapshot with the upcaster never consulted, and can hold different
+# state than a full replay would produce.
 _ES_AGGREGATE_MITIGATABLE = frozenset(
     {
         "field_removed",
-        "field_type_changed",
         "required_field_added",
     }
 )
@@ -1125,11 +1134,11 @@ def _apply_es_aggregate_mitigation(
     """Downgrade breaking field changes on an event-sourced aggregate whose
     rebuilding events are all upcaster-covered.
 
-    An event-sourced aggregate stores no schema of its own: it is rebuilt by
-    replaying the events its ``apply_handlers`` name. So its mitigatable breaking
-    field changes (removal, type change, required-field add) are earned-safe on the
-    same terms as those events: downgrade them only when every rebuilding event that
-    was version-bumped in this diff is covered, and at least one was bumped-and-covered.
+    An event-sourced aggregate is rebuilt by replaying the events its
+    ``apply_handlers`` name. So its mitigatable breaking field changes (a field
+    removal or a required-field add) are earned-safe on the same terms as those
+    events: downgrade them only when every rebuilding event that was version-bumped
+    in this diff is covered, and at least one was bumped-and-covered.
     A single uncovered bump (a gap) among the rebuilding events, or no bump at all,
     leaves the aggregate breaking, because nothing was earned. Coverage is at aggregate
     granularity: the IR carries no per-field provenance, so a covered bump on any
@@ -1137,6 +1146,11 @@ def _apply_es_aggregate_mitigation(
     that event happens to populate. A classic (non-event-sourced) aggregate is never
     touched by this path; its breaking field changes stay breaking, and ``exclude``
     is the only escape hatch there.
+
+    A field type change is not on the earned list, because an event-sourced
+    aggregate can still have a stored *state* snapshot that replay never touches.
+    See :data:`_ES_AGGREGATE_MITIGATABLE` for why that fast path makes a type
+    change unsafe while the other two stay earned.
 
     The aggregate must be event-sourced in *both* snapshots. A classic aggregate
     converted to event sourcing in this diff persisted its old state as table rows,
