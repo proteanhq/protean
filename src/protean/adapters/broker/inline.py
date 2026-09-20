@@ -23,11 +23,10 @@ CONSUMER_GROUP_SEPARATOR = ":"
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 BACKOFF_MULTIPLIER = 2.0
-# Cap the exponential-backoff exponent and the final delay. A subscription-owned
-# stream has no nack ceiling, so its broker-side retry count can grow without
-# bound; without a cap ``backoff_multiplier ** retry_count`` overflows the float
-# (2.0 ** 1024 raises OverflowError) and freezes the message.
-MAX_BACKOFF_EXPONENT = 32
+# Cap the backoff delay. A subscription-owned stream has no nack ceiling, so its
+# broker-side retry count can grow without bound, and ``backoff_multiplier`` is
+# configurable; either can make ``backoff_multiplier ** retry_count`` overflow
+# the float (2.0 ** 1024 raises OverflowError) and freeze the message.
 MAX_BACKOFF_DELAY = 3600.0
 MESSAGE_TIMEOUT = 300.0
 ENABLE_DLQ = True
@@ -377,14 +376,17 @@ class InlineBroker(BaseBroker):
             # Update retry count
             self._set_retry_count(stream, consumer_group, identifier, new_retry_count)
 
-            # Calculate next retry time with exponential backoff. Cap the
-            # exponent and the delay so an unbounded owned-stream retry count
-            # cannot overflow the exponentiation or balloon the wall-clock wait.
-            capped_exponent = min(retry_count, MAX_BACKOFF_EXPONENT)
-            delay = min(
-                self._retry_delay * (self._backoff_multiplier**capped_exponent),
-                MAX_BACKOFF_DELAY,
-            )
+            # Calculate next retry time with exponential backoff. Saturate at
+            # MAX_BACKOFF_DELAY so neither an unbounded owned-stream retry count
+            # nor a large configured multiplier can overflow the exponentiation
+            # or balloon the wall-clock wait.
+            try:
+                delay = min(
+                    self._retry_delay * (self._backoff_multiplier**retry_count),
+                    MAX_BACKOFF_DELAY,
+                )
+            except OverflowError:
+                delay = MAX_BACKOFF_DELAY
             next_retry_time = time.time() + delay
 
             # Remove any existing failed message entry

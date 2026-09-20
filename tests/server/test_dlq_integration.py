@@ -348,20 +348,28 @@ class TestBrokerSubscriptionDLQIntegration:
         assert broker._get_retry_count(stream, group, identifier) == 0
         assert identifier not in [e[0] for e in broker._failed_messages[group_key]]
 
-    def test_owned_nack_backoff_does_not_overflow_at_high_retry_count(
-        self, test_domain
+    @pytest.mark.parametrize(
+        ("multiplier", "retry_count"),
+        [(2.0, 5000), (1e20, 32)],
+        ids=["high_retry_count", "large_configured_multiplier"],
+    )
+    def test_owned_nack_backoff_does_not_overflow(
+        self, test_domain, multiplier, retry_count
     ):
-        """An unbounded owned-stream retry count cannot overflow the backoff.
+        """The backoff calculation cannot overflow and freeze the message.
 
-        Without a cap, ``backoff_multiplier ** retry_count`` raises OverflowError
-        at ~1024, ``nack`` returns False, and the message freezes. With the cap
-        the nack still holds the message and the scheduled delay stays bounded.
+        ``backoff_multiplier ** retry_count`` raises OverflowError once the
+        result leaves float range, either from an unbounded owned-stream retry
+        count or from a large configured multiplier. Unguarded, ``nack`` returns
+        False after the message has left in-flight and the message freezes. The
+        nack must still hold the message, with a bounded scheduled delay.
         """
         from protean.adapters.broker.inline import MAX_BACKOFF_DELAY
 
         broker = test_domain.brokers["default"]
         broker._max_retries = 1
         broker._retry_delay = 1.0  # a real delay, so the cap is what bounds it
+        broker._backoff_multiplier = multiplier
 
         stream = "owned_backoff_stream"
         group = "owned_backoff_group"
@@ -370,8 +378,7 @@ class TestBrokerSubscriptionDLQIntegration:
         identifier = broker.publish(stream, {"data": "z"})
         assert broker.get_next(stream, group) is not None
 
-        # Force a retry count that would overflow 2.0 ** retry_count.
-        broker._set_retry_count(stream, group, identifier, 5000)
+        broker._set_retry_count(stream, group, identifier, retry_count)
 
         assert broker.nack(stream, identifier, group) is True
         after = time.time()
