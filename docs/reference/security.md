@@ -101,8 +101,9 @@ in the framework:
 
 ## Network services Protean ships
 
-Three services can listen on a port. None of them authenticates the caller, and
-each binds to loopback (`127.0.0.1`) by default.
+Four services can listen on a port. None of them authenticates the caller. The
+first three bind to loopback (`127.0.0.1`) by default. The docs preview binds
+every interface.
 
 - **The engine health server.** It runs with the server and is on by default
   (`[server.health] enabled = true`, port 8080). It answers `GET /healthz`,
@@ -116,6 +117,12 @@ each binds to loopback (`127.0.0.1`) by default.
 - **The MCP server over HTTP.** `protean mcp --http` serves the framework's agent
   tools over streamable HTTP on port 8000. The default stdio transport
   (`protean mcp`) opens no port. See [`protean mcp`](cli/runtime/mcp.md).
+- **The docs preview.** `protean docs preview` runs `mkdocs serve` on port 8000
+  and binds every interface (`0.0.0.0`), not loopback. It has no host option, so
+  anyone who can reach the port sees whatever your docs tree holds. Keep it to a
+  trusted network. For a loopback preview, call mkdocs yourself:
+  `mkdocs serve --dev-addr=127.0.0.1:8000`. See
+  [`protean docs preview`](cli/project/docs.md#protean-docs-preview).
 
-If you bind any of them to another address, put it behind an authenticating
-reverse proxy on a trusted network.
+If one of these listens on anything wider than loopback, put it behind an
+authenticating reverse proxy on a trusted network.
