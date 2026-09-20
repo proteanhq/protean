@@ -49,6 +49,8 @@ class TestTypedQueryRuntime:
         """A BaseQuery[Result] subclass builds the same fields as a bare one."""
         assert list(GetTypedOrder.model_fields) == ["order_id"]
         assert list(GetUntypedOrder.model_fields) == ["order_id"]
+        assert list(GetTypedOrder.__container_fields__) == ["order_id"]
+        assert list(GetUntypedOrder.__container_fields__) == ["order_id"]
 
     def test_typed_query_instantiates(self):
         """A parametrized subclass instantiates and exposes its payload."""

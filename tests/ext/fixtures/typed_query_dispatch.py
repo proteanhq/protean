@@ -11,7 +11,7 @@ call-arg noise that differs between mypy (with the plugin) and pyright (without
 it).
 """
 
-from typing import Any, cast
+from typing import cast
 
 from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
@@ -32,7 +32,7 @@ class GetOrderSummary(BaseQuery[OrderSummary]):
 
 
 @domain.query(part_of=OrderSummary)
-class GetAnything(BaseQuery[Any]):
+class GetAnything(BaseQuery):
     order_id = Identifier(required=True)
 
 
