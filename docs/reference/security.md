@@ -37,6 +37,10 @@ output encoding. There are two ways:
 - Across the domain, set `sanitize = true` under `[field_defaults]` in
   `domain.toml`. Individual fields can still override it.
 
+One exception is enforced. A field with `choices` is never sanitized, not by
+`sanitize=True` and not by the domain default. The stored value has to match a
+declared choice exactly, and escaping it would break that match.
+
 Precedence runs field keyword argument, then domain default, then the framework
 default of off. When sanitization is on for a field, Protean runs the value
 through `bleach.clean()`. This keeps a small set of safe tags and escapes the
@@ -93,9 +97,23 @@ in the framework:
 - **Output escaping.** Escaping a value for HTML, SQL, shell, or any other sink
   happens where the value is used, not where it is stored.
 
-One network service does ship: the Observatory. `protean observatory` runs a
-FastAPI server that exposes domain internals and dead-letter-queue management
-endpoints. It has no authentication and binds to loopback (`127.0.0.1`) by
-default. If you bind it to any other address, put it behind an authenticating
-reverse proxy on a trusted network. See
-[`protean observatory`](cli/runtime/observatory.md).
+## Network services Protean ships
+
+Three services listen on a port. None of them authenticates the caller, and each
+binds to loopback (`127.0.0.1`) by default.
+
+- **The engine health server.** It runs with the server and is on by default
+  (`[server.health] enabled = true`, port 8080). It answers `GET /healthz`,
+  `GET /livez`, and `GET /readyz`. It also accepts `POST /drainz`, which flips
+  the engine to draining so it stops taking new work. That request changes
+  state, and anyone who can reach the port can send it. See
+  [Server hardening](server/hardening.md).
+- **The Observatory.** `protean observatory` runs a FastAPI server that exposes
+  domain internals and dead-letter-queue management endpoints. See
+  [`protean observatory`](cli/runtime/observatory.md).
+- **The MCP server over HTTP.** `protean mcp --http` serves the framework's agent
+  tools over streamable HTTP on port 8000. The default stdio transport
+  (`protean mcp`) opens no port. See [`protean mcp`](cli/runtime/mcp.md).
+
+If you bind any of them to another address, put it behind an authenticating
+reverse proxy on a trusted network.

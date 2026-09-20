@@ -146,7 +146,8 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
     ---
 
     Protean's security posture: input handling, field sanitization defaults,
-    persistence, secrets in configuration, and what is left to the operator.
+    persistence, secrets in configuration, the network services it ships, and
+    what is left to the operator.
 
     [:material-arrow-right-box: Security Considerations](security.md)
 
