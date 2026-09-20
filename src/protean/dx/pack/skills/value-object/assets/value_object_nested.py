@@ -30,6 +30,11 @@ class Coordinates:
     latitude: Float(required=True, min_value=-90.0, max_value=90.0)
     longitude: Float(required=True, min_value=-180.0, max_value=180.0)
 
+    @property
+    def as_text(self) -> str:
+        """Return the coordinates formatted as a display string."""
+        return f"{self.latitude}, {self.longitude}"
+
 
 @domain.value_object
 class Address:
@@ -129,7 +134,7 @@ class Store:
 if __name__ == "__main__":
     # Create nested value objects
     coords = Coordinates(latitude=40.7128, longitude=-74.0060)
-    print(f"Coordinates: {coords.latitude}, {coords.longitude}")
+    print(f"Coordinates: {coords.as_text}")
 
     # Create address with nested coordinates
     address = Address(
@@ -141,7 +146,7 @@ if __name__ == "__main__":
         coordinates=coords,
     )
     print(f"\nAddress: {address.full_address}")
-    print(f"Location: {address.coordinates.latitude}, {address.coordinates.longitude}")
+    print(f"Location: {address.coordinates.as_text}")
 
     # Can also initialize nested value objects by dict
     address2 = Address(
@@ -153,9 +158,7 @@ if __name__ == "__main__":
         coordinates={"latitude": 37.7749, "longitude": -122.4194},
     )
     print(f"\nAddress 2: {address2.full_address}")
-    print(
-        f"Location 2: {address2.coordinates.latitude}, {address2.coordinates.longitude}"
-    )
+    print(f"Location 2: {address2.coordinates.as_text}")
 
     # Multiple levels of nesting
     contact = ContactInfo(
@@ -192,9 +195,7 @@ if __name__ == "__main__":
     )
     print(f"\nStore: {store.store_name}")
     print(f"Address: {store.address.full_address}")
-    print(
-        f"Coordinates: {store.address.coordinates.latitude}, {store.address.coordinates.longitude}"
-    )
+    print(f"Coordinates: {store.address.coordinates.as_text}")
 
     # Immutability cascades through nesting
     print("\n--- Testing immutability ---")

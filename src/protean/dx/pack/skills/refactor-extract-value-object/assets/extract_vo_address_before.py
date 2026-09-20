@@ -22,6 +22,19 @@ class Customer:
     billing_zip_code = String(max_length=20)
     billing_country = String(max_length=100, default="US")
 
+    @property
+    def billing_address_label(self) -> str:
+        """Format the billing address by hand.
+
+        Every aggregate that holds these primitive fields grows its own copy of
+        this formatting. That duplication is the smell an Address value object
+        removes.
+        """
+        return (
+            f"{self.billing_street}, {self.billing_city}, "
+            f"{self.billing_state} {self.billing_zip_code}"
+        )
+
 
 @domain.aggregate
 class ShippingOrder:
@@ -46,7 +59,4 @@ if __name__ == "__main__":
             billing_zip_code="62701",
         )
         print(f"Customer: {customer.name}")
-        print(
-            f"Address: {customer.billing_street}, {customer.billing_city}, "
-            f"{customer.billing_state} {customer.billing_zip_code}"
-        )
+        print(f"Address: {customer.billing_address_label}")
