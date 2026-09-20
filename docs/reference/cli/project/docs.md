@@ -230,9 +230,8 @@ This command prints the diagnostics-derived hard rules on their own. A project
 generated with `protean new` ships a richer `AGENTS.md`: the dx-managed form,
 which composes the packaged pack guidance with these hard rules inside a managed
 block. That file is written and maintained by [`protean dx`](dx.md), not by this
-command, so refresh it with `protean dx refresh` after upgrading Protean rather
-than regenerating it here. Use this command when you want the hard-rules pack by
-itself:
+command. After upgrading Protean, refresh it with `protean dx refresh`. Use this
+command when you want the hard-rules pack by itself:
 
 ```shell
 # Print the constraint pack

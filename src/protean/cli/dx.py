@@ -215,10 +215,11 @@ def _scan(
     if only_installed_optional:
         # The scope decision reads the state file. A corrupt or unreadable one is
         # the same environment error (exit 2) the per-file diff path raises via
-        # its own ``load_state``; surface it once here and stop, rather than
-        # silently treating every optional target as not-installed. ``load_state``
-        # keeps a ``ValueError`` contract for a corrupt file and raises
-        # ``ManagedFileError`` for a symlinked state path.
+        # its own ``load_state``. Surface it once here and stop the scan. If it
+        # were swallowed, every optional target would read as not-installed and be
+        # skipped without warning. ``load_state`` keeps a ``ValueError`` contract
+        # for a corrupt file and raises ``ManagedFileError`` for a symlinked state
+        # path.
         try:
             recorded = frozenset(load_state(root).entries)
         except (ValueError, ManagedFileError) as exc:

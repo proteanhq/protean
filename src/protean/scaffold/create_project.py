@@ -11,11 +11,12 @@ the ``dx`` renderers. It leaves the post-generation setup (``uv sync``,
 ``git init``, pre-commit, console tips) in the CLI, because that is console and
 subprocess work, not scaffolding.
 
-The scaffold defers to ``protean dx`` for the agent-facing files: it writes the
-same managed-block ``AGENTS.md`` that ``protean dx install`` writes at the same
-pack version, so the two never drift and a scaffolded project is dx-managed from
-birth. ``protean new`` writes only the universal baseline; ``.mcp.json`` and the
-per-editor files stay ``protean dx install`` choices.
+``protean new`` writes the same agent-facing files ``protean dx`` manages. It
+renders the managed-block ``AGENTS.md`` from the same renderer that
+``protean dx install`` uses, at the same pack version, so the two produce the
+same bytes and a scaffolded project is already dx-managed. ``protean new`` writes
+only the universal baseline; ``.mcp.json`` and the per-editor files stay
+``protean dx install`` choices.
 
 :func:`create_project` returns the sorted list of project-relative POSIX paths it
 created (apply) or would create (dry-run). Under ``dry_run`` it touches nothing
@@ -29,9 +30,11 @@ function (its first statement), never at module top: this keeps
 ``import protean.scaffold`` side-effect free on a base install, and the guard
 fires before any directory is cleared. The ``protean.dx`` renderers and writer
 are imported function-local for a different reason: the writer imports
-:mod:`protean.scaffold.apply`, which runs this package's ``__init__`` and imports
-this module, so a module-top ``import protean.dx`` would form a cycle whenever
-``protean.dx`` is imported first.
+:mod:`protean.scaffold.apply`, and importing that runs this package's
+``__init__``, which imports this module. So when ``protean.dx`` is imported
+first, a module-top ``from protean.dx import ...`` here would run while
+``protean.dx`` is still half-initialized and raise ``ImportError`` (the name is
+not bound yet).
 """
 
 from __future__ import annotations
@@ -169,8 +172,9 @@ def create_project(
     # The dx substrate is imported function-local to break an import cycle: the
     # writer (:mod:`protean.dx.managed_files`) imports
     # :mod:`protean.scaffold.apply`, and importing that runs this package's
-    # ``__init__``, which imports this module. A module-top ``import protean.dx``
-    # here would deadlock whenever ``protean.dx`` is imported first.
+    # ``__init__``, which imports this module. When ``protean.dx`` is imported
+    # first, a module-top ``from protean.dx import ...`` here would run while
+    # ``protean.dx`` is still half-initialized and raise ``ImportError``.
     from protean.dx import apply_managed_file  # noqa: PLC0415
     from protean.dx.pack import PACK_VERSION  # noqa: PLC0415
     from protean.dx.renderers import (  # noqa: PLC0415
@@ -226,7 +230,7 @@ def create_project(
         # captured as manifest entries. The dx baseline goes through the same
         # renderers and writer ``protean dx install`` uses, at the same pack
         # version, so the scaffold's AGENTS.md is byte-identical to a dx install
-        # and the project is dx-managed from birth. ``apply_managed_file`` writes
+        # and the project is already dx-managed. ``apply_managed_file`` writes
         # the managed-block AGENTS.md, creates the CLAUDE.md bridge, and records
         # both in ``.protean/dx-state.json``. ``.mcp.json`` and the per-editor
         # files stay ``protean dx install`` choices.

@@ -69,10 +69,9 @@ that file and run `install`, which then writes the managed version.
 A project made with `protean new` needs none of this. `protean new` writes the
 same managed `AGENTS.md` and `CLAUDE.md` bridge that `install` writes, at the same
 version, and records them in `.protean/dx-state.json`. So a fresh project is
-dx-managed from birth: `install` adopts it, `refresh` updates it, and `check`
-reports it clean with no manual step. `protean new` writes only this baseline;
-`.mcp.json` and the per-editor files stay `install` choices, since you pick your
-own editors.
+already dx-managed: `install`, `refresh`, and `check` all work on it with no manual
+step. `protean new` writes only this baseline; `.mcp.json` and the per-editor files
+stay `install` choices, since you pick your own editors.
 
 ## Verbs
 
@@ -95,11 +94,11 @@ target, naming the region it means, and exits non-zero when any has drifted.
 `check` verifies a required baseline plus whatever else is installed. `AGENTS.md`
 and the `CLAUDE.md` bridge are the required baseline, always verified. `.mcp.json`
 and the per-editor files are optional: `check` verifies one only once it is present
-on disk or recorded in `.protean/dx-state.json`. So a freshly scaffolded project,
-which carries only the baseline, passes; a project missing the baseline fails; and
-an editor file you never chose is not counted as drift. `diff`, the preview, is not
-scoped this way: it always previews all six, including a pending create for an
-optional file you have not installed.
+on disk or recorded in `.protean/dx-state.json`. A freshly scaffolded project
+carries only the baseline, so it passes. A project missing the baseline fails. An
+editor file you never chose is not counted as drift. `diff`, the preview, is not
+scoped this way: it always previews every managed target, including a pending
+create for an optional file you have not installed.
 
 ### Options
 

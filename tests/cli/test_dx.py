@@ -394,6 +394,12 @@ def test_check_scopes_in_an_optional_file_present_on_disk(tmp_path: Path) -> Non
     assert result.exit_code == 1, result.output
     assert "Drift detected" in result.output
     assert ".mcp.json" in result.output
+    # Only the on-disk .mcp.json is scoped in. The other optional files are absent
+    # on disk and unrecorded, so check skips them. The old "scan all six" code
+    # would have listed each as "not installed yet".
+    flat = " ".join(result.output.split())
+    for rel in (_CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"
 
 
 def test_diff_still_previews_all_six_on_baseline_only(tmp_path: Path) -> None:
@@ -573,14 +579,47 @@ def test_install_error_outranks_conflict(tmp_path: Path) -> None:
 
 
 def test_corrupt_state_file_fails_loud(tmp_path: Path) -> None:
-    """A malformed state file is surfaced as a clean error, not a traceback."""
-    _install(tmp_path)
+    """A malformed state file is a clean error naming the state file, not a trace.
+
+    On a baseline-only project the scope read of the state file runs first, so a
+    corrupt file is attributed to ``.protean/dx-state.json`` and the scan stops
+    before the per-file loop. If the early scope read were dropped, the loop would
+    instead hit ``AGENTS.md``'s own ``load_state`` and name ``AGENTS.md``, so
+    asserting the state file (and not ``AGENTS.md``) pins the early return.
+    """
+    _install_baseline(tmp_path)
     _state_file(tmp_path).write_text("{ not json", encoding="utf-8")
 
     result = runner.invoke(app, ["check", "-p", str(tmp_path)])
 
     assert result.exit_code == 2, result.output
-    assert "error" in result.output
+    flat = " ".join(result.output.split())
+    assert "error" in flat, flat
+    assert ".protean/dx-state.json" in flat, flat
+    # The scan stopped at the scope read and never reached the per-file loop.
+    assert "AGENTS.md" not in flat, flat
+
+
+def test_symlinked_state_file_fails_loud(tmp_path: Path) -> None:
+    """A symlinked state file is refused as a clean error (the ManagedFileError arm).
+
+    The scope read calls ``load_state``, which refuses to follow a symlinked state
+    path and raises ``ManagedFileError`` (not the ``ValueError`` a corrupt file
+    raises). check surfaces it as exit 2 naming the state file.
+    """
+    _install_baseline(tmp_path)
+    state = _state_file(tmp_path)
+    real = tmp_path / "elsewhere.json"
+    real.write_text(state.read_text(encoding="utf-8"), encoding="utf-8")
+    state.unlink()
+    state.symlink_to(real)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert "error" in flat, flat
+    assert ".protean/dx-state.json" in flat, flat
 
 
 def test_render_failure_reports_a_clean_error(tmp_path: Path, monkeypatch) -> None:

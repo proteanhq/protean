@@ -362,24 +362,33 @@ class TestGeneratedProjectIsDxManaged:
         assert not (project / "CLAUDE.md").exists()
         assert not (project / ".protean" / "dx-state.json").exists()
 
-    def test_dry_run_lists_the_baseline_files(self, tmp_path):
-        """The dry-run file list names the same baseline an apply creates.
+    def test_dry_run_lists_the_same_files_an_apply_creates(self, tmp_path):
+        """The dry-run file list is the exact set an apply creates.
 
         A dry run renders through the same path into a temp dir, so its returned
-        list must include CLAUDE.md and the dx state file alongside AGENTS.md.
+        list must equal what an apply into a real target returns. Comparing the
+        whole sets catches a divergence (an extra or missing file, or a different
+        relative-path form) that a membership check would miss, and confirms the
+        baseline dx files (CLAUDE.md, the state file) are in both.
         """
         from protean.scaffold import create_project
 
-        out = tmp_path / "out"
-        out.mkdir(parents=True, exist_ok=True)
+        dry_out = tmp_path / "dry"
+        dry_out.mkdir(parents=True, exist_ok=True)
         listed = create_project(
-            "scaffolded", output_folder=str(out), dry_run=True, defaults=True
+            "scaffolded", output_folder=str(dry_out), dry_run=True, defaults=True
         )
-        assert "AGENTS.md" in listed
-        assert "CLAUDE.md" in listed
-        assert ".protean/dx-state.json" in listed
+
+        apply_out = tmp_path / "apply"
+        apply_out.mkdir(parents=True, exist_ok=True)
+        created = create_project(
+            "scaffolded", output_folder=str(apply_out), defaults=True
+        )
+
+        assert set(listed) == set(created)
+        assert {"AGENTS.md", "CLAUDE.md", ".protean/dx-state.json"} <= set(listed)
         # A dry run touches nothing at the target.
-        assert not (out / "scaffolded").exists()
+        assert not (dry_out / "scaffolded").exists()
 
 
 class TestGeneratedConfigIsValidToml:
