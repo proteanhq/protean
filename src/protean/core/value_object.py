@@ -463,7 +463,18 @@ def value_object_from_entity(
         elif isinstance(value, ResolvedField):
             finfo = model_field_info.get(key)
             if finfo:
-                annotations[key] = finfo.annotation
+                annotation = finfo.annotation
+                # A custom field (built by ``Custom``) carries the type's Pydantic
+                # validators and serializers in the field metadata. The bare
+                # annotation is the raw custom class, which has no Pydantic schema
+                # on its own, so re-attach the metadata for the projected VO field.
+                # Otherwise projecting an entity that holds a custom field (either
+                # directly via ``value_object_from_entity`` or as a child entity of
+                # a fact-event aggregate) fails at schema build time. Only custom
+                # fields need this; every built-in field has a native schema.
+                if value.field_kind == "custom" and finfo.metadata:
+                    annotation = Annotated[(annotation, *finfo.metadata)]
+                annotations[key] = annotation
                 if finfo.default is not PydanticUndefined:
                     namespace[key] = finfo.default
                 elif finfo.default_factory is not None:

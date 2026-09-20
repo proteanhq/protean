@@ -16,8 +16,11 @@ import sys
 import pytest
 from pydantic import AfterValidator, PlainSerializer, PlainValidator
 
+from protean import value_object_from_entity
+from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.exceptions import ValidationError
-from protean.fields import Custom
+from protean.fields import Custom, HasOne, String
 from protean.integrations.pytest.custom_field_conformance import (
     run_custom_field_conformance,
 )
@@ -204,6 +207,60 @@ class TestCustomWithoutMetadata:
         test_domain.init(traverse=False)
 
         assert Holder(count=5).count == 5
+
+
+class TestCustomFieldProjectsToValueObject:
+    """A custom field must survive projection into a value object.
+
+    ``value_object_from_entity`` mirrors an entity's fields into a generated
+    value object, and fact-event generation projects a child entity through the
+    same path. Both read the bare Pydantic annotation, which for a custom field
+    is the raw class with no schema, so the projected VO field needs the field's
+    metadata re-attached or the VO fails at schema build.
+    """
+
+    def test_value_object_from_entity_projects_a_custom_field(self, test_domain):
+        # Calling the Stable public API on an aggregate with a custom field must
+        # build the VO and keep the field parseable.
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(required=True)
+
+        test_domain.init(traverse=False)
+
+        VO = value_object_from_entity(Marker)
+        projected = VO(at="3,4")
+        assert projected.at == Point(3, 4)
+
+    def test_custom_field_on_child_entity_of_fact_event_aggregate(self, test_domain):
+        # A custom field on a child entity of a fact_events aggregate round-trips
+        # through save, reload, and event replay. ``domain.init()`` builds the
+        # fact event, which projects the child entity into a VO; without the
+        # metadata re-attach it crashes here at schema build.
+        class Route(BaseAggregate):
+            label: str = String(required=True)
+            stop = HasOne("Waypoint")
+
+        class Waypoint(BaseEntity):
+            at: Point = _point_field(required=True)
+
+        test_domain.register(Route, fact_events=True)
+        test_domain.register(Waypoint, part_of=Route)
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            route = Route(label="scenic", stop=Waypoint(at="3,4"))
+            repository = test_domain.repository_for(Route)
+            repository.add(route)
+
+            reloaded = repository.get(route.id)
+            assert reloaded.stop.at == Point(3, 4)
+
+            fact_stream = f"{Route.meta_.stream_category}-fact-{route.id}"
+            messages = test_domain.event_store.store.read(fact_stream)
+            assert len(messages) > 0
+            replayed = messages[-1].to_domain_object()
+            assert replayed.stop.at == Point(3, 4)
 
 
 # ===========================================================================

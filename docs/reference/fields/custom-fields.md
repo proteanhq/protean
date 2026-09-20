@@ -58,14 +58,22 @@ A field runs its checks in a fixed order, and `Custom` inherits it unchanged:
 
 1. **empty**: an optional field left unset is `None` and short-circuits here. The
    parser is never asked to build an instance out of nothing.
-2. **choices**: a value is checked against a declared choice set, if any.
-3. **cast**: the value is parsed into the type. For `Custom`, this is the
+2. **cast**: the value is parsed into the type. For `Custom`, this is the
    `PlainValidator` you supplied.
-4. **validators**: post-cast checks run on the parsed value. For `Custom`, these
+3. **validators**: post-cast checks run on the parsed value. For `Custom`, these
    are any `AfterValidator` objects you passed in `validators`.
 
 So an `AfterValidator` always sees a parsed instance, never a raw value, and a
 missing optional value never reaches your parser.
+
+!!! warning "Do not pass `choices` to `Custom`"
+
+    `choices` is not supported with `Custom`. When you declare a choice set,
+    Protean replaces the field's type with a `Literal` of the choice values, which
+    discards your custom type: the field stores the raw primitive and your parser
+    never runs. `Custom` is for a type that parses and validates, not for a closed
+    vocabulary of primitive values. For that, use `String(choices=...)` or
+    `Status`.
 
 ## The serialization boundary adapters read
 
