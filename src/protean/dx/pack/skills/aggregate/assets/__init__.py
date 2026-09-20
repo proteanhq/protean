@@ -1,0 +1,1 @@
+"""Aggregate example implementations."""
