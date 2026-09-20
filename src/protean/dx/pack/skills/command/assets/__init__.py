@@ -1,0 +1,1 @@
+"""Command element asset files."""
