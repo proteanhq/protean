@@ -175,8 +175,8 @@ do not touch it.
 
 **Option 3: Look up in a read model.**
 
-When the decision needs the other aggregate's *current* data, query a
-projection:
+When the decision needs the other aggregate's data and can live with it being
+slightly behind, query a projection:
 
 ```python
 @domain.command_handler(part_of=Order)
@@ -200,7 +200,10 @@ class OrderCommandHandler(BaseCommandHandler):
         current_domain.repository_for(Order).add(order)
 ```
 
-You read what you need without tying Order to Customer.
+You read what you need without tying Order to Customer. A projector runs after
+the event it reacts to, so the view can trail the aggregate it reflects. Use
+this only where that window is acceptable; where it is not, the decision belongs
+inside the other aggregate.
 
 ---
 
@@ -572,7 +575,9 @@ hurt.
 Event-sourced aggregates carry one more concern: stream length. A long-lived
 aggregate with thousands of events takes longer to replay, which argues for
 keeping them small. Where an aggregate genuinely needs to be one consistency
-boundary, reach for snapshots (Protean tracks `_version`) before you split it.
+boundary, reach for snapshots before you split it. Protean writes them
+automatically once a stream passes `snapshot_threshold`, and you can create one
+by hand; see [Snapshots](../guides/change-state/snapshots.md).
 
 ---
 

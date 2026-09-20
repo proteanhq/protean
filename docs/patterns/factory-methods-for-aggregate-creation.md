@@ -652,10 +652,11 @@ command handlers and repositories are?
 
 It deliberately does not, for three reasons:
 
-- **A factory touches no infrastructure.** Repositories need database adapters,
+- **A factory has no lifecycle to manage.** Repositories need database adapters,
   event handlers need message routing, command handlers need dispatch and a unit
-  of work. A factory builds an object. There is nothing for the framework to
-  manage.
+  of work. A factory builds an object, and when it needs a repository it reaches
+  for the same `current_domain.repository_for()` any code can call. Registering
+  it would buy nothing.
 
 - **Factories take too many shapes.** A constructor, a classmethod, a method on
   another aggregate, a standalone class. One `BaseFactory` would be either too

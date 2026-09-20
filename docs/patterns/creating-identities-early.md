@@ -15,10 +15,11 @@ That delay causes five problems:
 - **The API response waits on the database.** A client POSTs an order, and the
   server cannot return the resource URL until it has written the row. That rules
   out optimistic UI and keeps the request synchronous.
-- **Creation cannot be made idempotent.** If the client retries after a timeout,
-  or the user double-clicks, nothing distinguishes the retry from a new request.
-  Each attempt writes another row with another ID. To ask "does this order already
-  exist?" you have to know which order you mean.
+- **A retry cannot be spotted by identity.** If the client retries after a
+  timeout, or the user double-clicks, the request carries no order ID to check
+  against, and each attempt writes another row with another ID. A separate
+  idempotency key can still catch the repeat; the aggregate's own identity
+  cannot.
 - **Events raised during creation carry no stable reference.** `OrderPlaced`
   should carry the `order_id`, but the event is raised before the database has
   assigned one. Either the event goes out incomplete, or you patch it after the
@@ -209,8 +210,10 @@ class Measurement:
 
 ### `Identifier` on commands
 
-Commands carry aggregate identities in `Identifier` fields. `Identifier` never
-generates anything, so the caller has to supply it:
+Commands carry aggregate identities in `Identifier` fields. A plain `Identifier`
+field generates nothing, so the caller supplies the value. Marked
+`identifier=True`, it falls back to a generated UUID when the caller leaves it
+out, so pass the caller's identity in whenever it has to be preserved:
 
 ```python
 @domain.command(part_of=Order)
@@ -311,8 +314,8 @@ There is never a point where the caller is holding a reference it cannot use.
 
 ## Idempotent creation
 
-This is what makes a creation command safe to retry. Without it you have no way
-to tell a duplicate from a new request.
+An early identity gives the handler a stable key for spotting duplicates.
+Without it, nothing tells a duplicate from a new request.
 
 ### Check, then act
 
@@ -327,7 +330,7 @@ class OrderCommandHandler(BaseCommandHandler):
         repo = current_domain.repository_for(Order)
 
         # If the order already exists, this is a duplicate command
-        existing = repo.get(command.order_id)
+        existing = repo.get_or_none(command.order_id)
         if existing:
             return  # Idempotent: no-op on duplicate
 
@@ -339,10 +342,13 @@ class OrderCommandHandler(BaseCommandHandler):
         repo.add(order)
 ```
 
-It needs nothing else: no Redis, no idempotency keys. It keeps the handler safe
-on its own, even where framework-level deduplication is not available.
+`get_or_none()` returns `None` only when the order is missing, so any other
+repository failure still surfaces. This catches a retry that arrives after the
+first write is visible, and it needs no Redis and no extra infrastructure. It is
+not deduplication on its own: two deliveries running at the same time can both
+read a miss before either write lands.
 
-For stronger guarantees, pair it with Protean's idempotency keys. The
+To close that gap, pair it with Protean's idempotency keys. The
 [Command Idempotency](command-idempotency.md) pattern covers that in full.
 
 ### Why database IDs break it
@@ -421,15 +427,17 @@ sequential number as a domain attribute you assign at the right step.
 | Who decides | The database | The caller (client, API, saga) |
 | Available in commands | No | Yes |
 | Available in events | After persistence | Immediately |
-| Supports idempotent creation | No | Yes (check-then-act) |
+| Supports duplicate detection | No | Yes (check-then-act) |
 | Supports async processing | Poorly (caller must wait) | Well (caller has the ID immediately) |
 | Supports optimistic UI | No | Yes |
 | Distributed-friendly | No (central sequence) | Yes (UUIDs need no coordination) |
 | Protean default | No | **Yes** (Auto field with UUID) |
 
-Generate the identity where the intent originates, at the caller. Protean's
-`Auto` field does this by default. The command carries the identity, the events
-reference it, the handler uses it, and you can retry any of it safely.
+Generate the identity where the intent originates, at the caller, and pass it
+in. Protean's `Auto` field takes that value as given, and generates a UUID when
+the aggregate is constructed without one. The command carries the identity, the
+events reference it, and the handler uses it to spot duplicates. Add an
+idempotency key where retries have to be safe.
 
 ---
 
