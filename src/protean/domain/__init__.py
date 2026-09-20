@@ -2398,10 +2398,15 @@ class Domain:
 
         return ReadView(self, projection_cls)
 
+    # The overload stubs are typing-only: their ``...`` bodies never run, so
+    # coverage reports them as partial branches. Exclude them the way codecov.yml
+    # prescribes for genuinely unexecutable lines.
     @overload
-    def dispatch(self, query: BaseQuery[_QueryResult]) -> _QueryResult: ...
+    def dispatch(
+        self, query: BaseQuery[_QueryResult]
+    ) -> _QueryResult: ...  # pragma: no cover
     @overload
-    def dispatch(self, query: BaseQuery[Any]) -> Any: ...
+    def dispatch(self, query: BaseQuery[Any]) -> Any: ...  # pragma: no cover
     def dispatch(self, query: Any) -> Any:
         """Dispatch a query to its registered QueryHandler and return results.
 
