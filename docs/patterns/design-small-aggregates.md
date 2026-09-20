@@ -551,18 +551,24 @@ class ProjectEventHandler(BaseEventHandler):
 
     @handle(TaskCompleted)
     def on_task_completed(self, event: TaskCompleted):
-        # Query a read model for task counts rather than loading all tasks
-        task_stats = current_domain.repository_for(ProjectTaskStats).get(
-            event.project_id
+        # `count()` issues a SELECT COUNT(*); it does not load the tasks
+        tasks = current_domain.repository_for(Task).query.filter(
+            project_id=event.project_id
         )
         repo = current_domain.repository_for(Project)
         project = repo.get(event.project_id)
         project.update_progress(
-            task_stats.completed_count + 1,
-            task_stats.total_count,
+            tasks.filter(status="completed").count(),
+            tasks.count(),
         )
         repo.add(project)
 ```
+
+The handler counts the rows itself. Do not take those counts from a projection
+that a projector updates from `TaskCompleted` as well. The two consume the event
+through separate subscriptions, in no fixed order. Adding one to the
+projection's count double-counts the task when the projector got there first,
+and reports a stale count when the projector lags.
 
 ---
 

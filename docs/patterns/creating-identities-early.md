@@ -397,8 +397,8 @@ The rule behind every row: whoever starts the intent makes the identity.
 
 Start here by default, but two cases call for something different.
 
-**The domain already has a key.** Books have an ISBN, accounts have an email, tax
-records have an SSN. Do not invent a second identity; mark the real one:
+**The domain already has a key.** Books have an ISBN, tax records have an SSN.
+Do not invent a second identity; mark the real one:
 
 ```python
 @domain.aggregate
@@ -408,7 +408,9 @@ class Book:
 ```
 
 The creation command carries the `isbn` from the caller, so you keep the benefits
-and skip the UUID.
+and skip the UUID. Only take this route for a key that never changes. An email
+or a username reads like an identity until someone updates it, and then every
+command, event, and reference holding the old value points at nothing.
 
 **Something outside needs a sequence.** Invoice and receipt numbers often have to
 run in order. Use `increment` on the `Auto` field, knowing you have handed
