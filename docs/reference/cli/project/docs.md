@@ -322,14 +322,17 @@ the command without any additional options:
 protean docs preview
 ```
 
-This will start a local server, usually accessible via a web browser at a URL
-such as `http://localhost:8000`. The exact URL will be displayed in your
-command line interface once the server is running:
+This starts a server on port 8000, reachable in a browser at
+`http://localhost:8000`. It binds every interface (`0.0.0.0`), not just
+loopback, so anyone who can reach the port sees your docs. Run it on a trusted
+network. For a loopback-only preview, call mkdocs yourself:
+`mkdocs serve --dev-addr=127.0.0.1:8000`. The exact URL is printed once the
+server is running:
 
 ```shell
 INFO    -  Building documentation...
 INFO    -  Cleaning site directory
 INFO    -  Documentation built in 0.56 seconds
 INFO    -  [09:45:08] Watching paths for changes: 'docs', 'mkdocs.yml'
-INFO    -  [09:45:08] Serving on http://127.0.0.1:8000/
+INFO    -  [09:45:08] Serving on http://0.0.0.0:8000/
 ```

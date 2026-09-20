@@ -1,5 +1,10 @@
 # Security Policy
 
+For Protean's runtime security posture (input handling, field sanitization, secrets
+in configuration, and what is left to the operator), see
+[Security considerations](docs/reference/security.md). This policy covers how to
+report a vulnerability and which release lines receive patches.
+
 ## Supported versions
 
 Protean is pre-1.0. To keep the maintenance surface small while the API is still
