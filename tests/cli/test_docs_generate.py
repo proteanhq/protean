@@ -7,6 +7,7 @@ file output, and all generator types.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -2154,4 +2155,51 @@ class TestDomainSnapshotConfig:
         assert not (sub / "llms.txt").exists()
 
         check = runner.invoke(app, ["generate", "--type=llms", "--check"])
+        assert check.exit_code == 0, check.output
+
+    def test_generated_project_layout_loads_the_real_domain(
+        self, tmp_path, monkeypatch
+    ):
+        """The documented value works on a real `protean new` layout, with no
+        mock in the way. The package's `__init__.py` is empty there and the
+        domain lives in `src/<package>/domain.py`, so the key has to name the
+        file. Run for real, the snapshot carries the project overlay and the
+        `--check` that follows reads that same file and passes."""
+        package = tmp_path / "src" / "snapshot_layout_app"
+        package.mkdir(parents=True)
+        # Empty, the way `protean new` leaves it.
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (package / "domain.py").write_text(
+            "from protean import Domain\n"
+            "from protean.fields import String\n"
+            "\n"
+            'domain = Domain(name="SnapshotLayoutApp")\n'
+            "\n"
+            "\n"
+            "@domain.aggregate\n"
+            "class Invoice:\n"
+            "    number = String(max_length=50)\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.protean.docs]\n"
+            'domain_snapshot = { path = "llms.txt", '
+            'domain = "src/snapshot_layout_app/domain.py" }\n',
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        # derive_domain imports the module and prepends to sys.path. Hand both
+        # a copy so the throwaway domain does not leak into the session.
+        monkeypatch.setattr(sys, "path", list(sys.path))
+
+        with patch.dict(sys.modules):
+            result = runner.invoke(app, ["generate", "--type=llms"])
+
+            assert result.exit_code == 0, result.output
+            snapshot = (tmp_path / "llms.txt").read_text(encoding="utf-8")
+            # The overlay, not the framework layer alone: the domain loaded.
+            assert "Invoice" in snapshot
+
+            check = runner.invoke(app, ["generate", "--type=llms", "--check"])
+
         assert check.exit_code == 0, check.output

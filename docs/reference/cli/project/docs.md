@@ -152,7 +152,7 @@ In `pyproject.toml`:
 
 ```toml
 [tool.protean.docs]
-domain_snapshot = { path = "llms.txt", domain = "my_app" }
+domain_snapshot = { path = "llms.txt", domain = "src/my_app/domain.py" }
 ```
 
 In a `domain.toml` the same key sits under `[docs]` (a `domain.toml` maps
@@ -160,8 +160,15 @@ directly to the Protean namespace, with no `tool.protean` prefix):
 
 ```toml
 [docs]
-domain_snapshot = { path = "llms.txt", domain = "my_app" }
+domain_snapshot = { path = "llms.txt", domain = "src/my_app/domain.py" }
 ```
+
+`domain` takes the same value `--domain` takes: a file, a package, or a dotted
+import path, with an optional `:instance` suffix. A project made by
+`protean new` keeps the domain in `src/<package>/domain.py` and leaves the
+package's `__init__.py` empty, so name the file. `domain = "my_app"` there
+resolves to the package, which holds no domain, and the command stops with a
+load error.
 
 With the key set, both commands run with no repeated flags:
 

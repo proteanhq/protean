@@ -51,8 +51,13 @@ Set the snapshot path and the domain once, so neither command repeats the flags:
 ```toml
 # pyproject.toml
 [tool.protean.docs]
-domain_snapshot = { path = "llms.txt", domain = "my_app" }
+domain_snapshot = { path = "llms.txt", domain = "src/my_app/domain.py" }
 ```
+
+`domain` takes the same value `--domain` takes. A project made by `protean new`
+keeps the domain in `src/<package>/domain.py` and leaves the package's
+`__init__.py` empty, so name the file: `domain = "my_app"` there points at a
+package with no domain in it and the command stops with a load error.
 
 Then regenerate with `protean docs generate --type=llms` and check with
 `protean docs generate --type=llms --check`.
