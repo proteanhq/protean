@@ -60,7 +60,12 @@ The checker understands three evolution mechanisms:
   rebuilding event that bumped its version in this diff is upcaster-covered, and
   at least one was bumped and covered. A single uncovered bump among the
   rebuilding events, or no bump at all, leaves the aggregate breaking, because
-  nothing was earned. Coverage is at aggregate granularity: the IR carries no
+  nothing was earned. The aggregate must be event-sourced in both the old and new
+  snapshots: a classic aggregate converted to event sourcing in the same diff
+  stored its old state as table rows that replay cannot rebuild, so its field
+  changes stay breaking. Dropping a rebuilding event's apply-handler also leaves
+  the aggregate breaking, because its historical events can no longer be replayed.
+  Coverage is at aggregate granularity: the IR carries no
   per-field history, so a covered bump on any rebuilding event downgrades the
   aggregate's field changes, not only the fields that event populates. A classic
   table-backed aggregate is never touched by this path; its breaking field

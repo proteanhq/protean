@@ -991,7 +991,7 @@ def classify_changes(
     _apply_upcaster_mitigation(report, coverage)
     # Downgrade breaking field changes on an event-sourced aggregate when the
     # events that rebuild it are all covered.
-    _apply_es_aggregate_mitigation(report, right_ir, coverage)
+    _apply_es_aggregate_mitigation(report, left_ir, right_ir, coverage)
 
     return report
 
@@ -1118,6 +1118,7 @@ def _apply_upcaster_mitigation(
 
 def _apply_es_aggregate_mitigation(
     report: CompatibilityReport,
+    left_ir: dict[str, Any],
     right_ir: dict[str, Any],
     coverage: dict[str, tuple[str, str | None]],
 ) -> None:
@@ -1135,20 +1136,41 @@ def _apply_es_aggregate_mitigation(
     rebuilding event downgrades the aggregate's field changes, not only the fields
     that event happens to populate. A classic (non-event-sourced) aggregate is never
     touched by this path; its breaking field changes stay breaking, and ``exclude``
-    is the only escape hatch there. *coverage* is the map from
+    is the only escape hatch there.
+
+    The aggregate must be event-sourced in *both* snapshots. A classic aggregate
+    converted to event sourcing in this diff persisted its old state as table rows,
+    which replay cannot reconstruct, so nothing is earned and its field changes stay
+    breaking. Likewise a rebuilding event whose ``@apply`` handler was dropped in
+    this diff is treated as a gap: historical events of that type remain in the
+    store with no handler, so replay would fail (see
+    :meth:`BaseAggregate._apply_handler`). *coverage* is the map from
     :func:`_event_upcaster_coverage`.
     """
     if not report.breaking_changes:
         return
 
+    left_clusters = left_ir.get("clusters", {})
     # Per aggregate fqn, the citation to attach when its field changes are earned-safe.
     aggregate_citation: dict[str, str] = {}
     for fqn, cluster in right_ir.get("clusters", {}).items():
         aggregate = cluster.get("aggregate", {})
         if not aggregate.get("options", {}).get("is_event_sourced"):
             continue
+        # The aggregate must also have been event-sourced in the old snapshot.
+        # A classic->event-sourced conversion stored its old state as table rows,
+        # which replay cannot rebuild, so no field change is earned-safe.
+        left_aggregate = left_clusters.get(fqn, {}).get("aggregate", {})
+        if not left_aggregate.get("options", {}).get("is_event_sourced"):
+            continue
         rebuilding_events = aggregate.get("apply_handlers", {})
         if not rebuilding_events:
+            continue
+        # A rebuilding event whose handler was dropped in this diff leaves its
+        # historical events in the store with no @apply handler, so replay fails.
+        # Treat any removed handler as a gap: nothing is earned for this aggregate.
+        left_rebuilding_events = left_aggregate.get("apply_handlers", {})
+        if set(left_rebuilding_events) - set(rebuilding_events):
             continue
 
         covering_citations: list[str] = []
