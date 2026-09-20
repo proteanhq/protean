@@ -29,6 +29,9 @@ Usage::
     # Write output to a file
     protean docs generate --domain=my_app --output=docs/architecture.md
 
+    # Check a committed llms.txt snapshot for drift (writes nothing, non-zero on drift)
+    protean docs generate --type=llms --domain=my_app --output=llms.txt --check
+
     # Filter to a specific cluster
     protean docs generate --domain=my_app --type=clusters --cluster=app.Order
 
@@ -47,9 +50,11 @@ from typing import Annotated, Any
 
 import typer
 from rich import print
+from rich.markup import escape
 
 import protean
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
+from protean.cli.result import EXIT_FAILURE, EXIT_OK
 from protean.ir.generators.base import mermaid_fence
 
 app = typer.Typer(no_args_is_help=True)
@@ -153,6 +158,16 @@ def generate(
             ),
         ),
     ] = "",
+    check: Annotated[
+        bool,
+        typer.Option(
+            "--check",
+            help=(
+                "For --type=llms: compare a committed snapshot against a fresh "
+                "render, write nothing, and exit non-zero on drift."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Generate architecture documentation from a Protean domain or IR file."""
     # --- Validate inputs --------------------------------------------------
@@ -193,6 +208,10 @@ def generate(
         )
         raise typer.Abort()
 
+    if check and type != "llms":
+        print("[red]Error:[/red] --check can only be used with --type=llms")
+        raise typer.Abort()
+
     if format == "mermaid" and type in ("catalog", "llms", "agents"):
         _reason = {
             "catalog": "catalog outputs Markdown tables, not Mermaid diagrams",
@@ -205,6 +224,17 @@ def generate(
         )
         raise typer.Abort()
 
+    # --- Resolve the opt-in domain snapshot (llms only) -------------------
+    # The `[tool.protean.docs].domain_snapshot` key is docs-local tooling
+    # config, absent by default. When set, it fills in the domain and the
+    # output path that `--domain`/`--output` otherwise carry, so `--type=llms`
+    # and `--check` run with no repeated flags. An explicit flag always wins.
+    # A configured value is relative to the config file that declares it; a
+    # flag is relative to the current directory, as flags always are.
+    snapshot = _load_domain_snapshot_config() if type == "llms" else None
+    source_domain = domain or (snapshot["domain"] if snapshot else "")
+    target_path = output or (snapshot["path"] if snapshot else "")
+
     # --- Load IR ----------------------------------------------------------
     # --type=llms and --type=agents run with no source. agents is derived only
     # from the diagnostics registry, so its source is truly ignored: skip the
@@ -212,10 +242,14 @@ def generate(
     # before the registry-only pack is printed. llms loads a source when given
     # (it adds a project overlay) and emits the framework layer alone without one.
     ir_data: dict[str, Any] | None
-    if type == "agents" or (not domain and not ir):
+    if type == "agents":
         ir_data = None
+    elif ir:
+        ir_data = load_ir_file(ir)
+    elif source_domain:
+        ir_data = load_domain_ir(source_domain)
     else:
-        ir_data = load_domain_ir(domain) if domain else load_ir_file(ir)
+        ir_data = None
 
     # --- Load annotations (event-model only) ------------------------------
     # Loaded and validated here, before any generation or file write, so a
@@ -231,10 +265,20 @@ def generate(
         annotations=annotations_map,
     )
 
+    # --- Drift check (llms only, writes nothing) --------------------------
+    if check:
+        if not target_path:
+            print(
+                "[red]Error:[/red] --check needs a snapshot path: set "
+                "[tool.protean.docs].domain_snapshot or pass --output"
+            )
+            raise typer.Abort()
+        _check_snapshot(target_path, content)
+
     # --- Emit output ------------------------------------------------------
-    if output:
-        _write_output(output, content)
-        print(f"[green]Documentation written to {output}[/green]")
+    if target_path:
+        _write_output(target_path, content)
+        print(f"[green]Documentation written to {target_path}[/green]")
     else:
         typer.echo(content)
 
@@ -587,7 +631,146 @@ def _generate_agents() -> str:
 
 
 def _write_output(path: str, content: str) -> None:
-    """Write content to a file, creating parent directories as needed."""
+    """Write content to a file, creating parent directories as needed.
+
+    ``newline=""`` turns newline translation off, so the bytes on disk are the
+    bytes that were rendered: a line feed stays a line feed on Windows too,
+    instead of becoming a carriage return plus line feed. The ``--check``
+    comparison is byte-exact, so the write and the compare have to agree on one
+    representation or a generate-then-check round trip would report drift on
+    Windows alone.
+    """
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(content, encoding="utf-8")
+    out_path.write_text(content, encoding="utf-8", newline="")
+
+
+def _check_snapshot(path: str, fresh_content: str) -> None:
+    """Compare a committed llms snapshot against a fresh render, writing nothing.
+
+    Exits :data:`EXIT_OK` when the file matches the fresh render byte for byte,
+    and :data:`EXIT_FAILURE` when it differs or does not exist (a missing file
+    counts as drift). This is the ``black --check`` idiom and the exit-code
+    shape of ``protean dx check``. The comparison is byte-exact against the
+    UTF-8 encoding ``_write_output`` uses, so a snapshot written by
+    ``generate`` and then checked with no change matches.
+    """
+    committed = Path(path)
+    fresh_bytes = fresh_content.encode("utf-8")
+    if not committed.exists():
+        print(
+            f"[yellow]Snapshot drift:[/yellow] {path} does not exist. Run "
+            "`protean docs generate --type=llms` to create it."
+        )
+        raise typer.Exit(code=EXIT_FAILURE)
+    if committed.read_bytes() != fresh_bytes:
+        print(
+            f"[yellow]Snapshot drift:[/yellow] {path} is out of date. Run "
+            "`protean docs generate --type=llms` to refresh it."
+        )
+        raise typer.Exit(code=EXIT_FAILURE)
+    print(f"[green]{path} is up to date.[/green]")
+    raise typer.Exit(code=EXIT_OK)
+
+
+# The config files docs tooling reads, in the same precedence order
+# ``Config2.load_from_path`` uses.
+_DOCS_CONFIG_FILENAMES = (".domain.toml", "domain.toml", "pyproject.toml")
+
+
+def _find_docs_config_file() -> Path | None:
+    """Find the config file that carries the docs settings.
+
+    Walks the current directory and up to two parents, and in each directory
+    picks the first of ``.domain.toml``, ``domain.toml``, ``pyproject.toml``
+    that exists. The filenames and the walk are the ones
+    ``Config2.load_from_path`` uses, but the walk starts at the current
+    directory: the runtime starts at the domain's root path, and the docs key
+    has to be readable before any domain is loaded. So the key belongs in a
+    config file in the directory you run the command from, or one of its two
+    parents.
+    """
+    current = Path.cwd()
+    for directory in (current, *list(current.parents)[:2]):
+        for name in _DOCS_CONFIG_FILENAMES:
+            candidate = directory / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _load_domain_snapshot_config() -> dict[str, str] | None:
+    """Read the opt-in ``[tool.protean.docs].domain_snapshot`` key.
+
+    Returns ``{"path": ..., "domain": ...}`` when the key is set, or ``None``
+    when there is no config file or the key is absent. The key is docs-local
+    tooling config, kept out of the runtime ``Config2`` on purpose. In a
+    ``pyproject.toml`` it lives under ``[tool.protean.docs]``; in a
+    ``domain.toml``/``.domain.toml`` it maps directly to ``[docs]`` with no
+    ``tool.protean`` prefix.
+
+    Both values are resolved against the directory of the file that declares
+    them, so ``path = "llms.txt"`` names the same snapshot whether the command
+    runs from the project root or from a subdirectory. Without that anchor a
+    run from a subdirectory would write a second snapshot beside itself and
+    leave the committed one stale.
+
+    A config file that cannot be read or parsed aborts the command, naming the
+    file. In the no-flag workflow nothing else loads that file, so swallowing
+    the error would turn a typo into a silent framework-only render with the
+    configured domain and output dropped. Once the file parses and the key is
+    present, it must be a table with a non-empty string ``path`` and a
+    non-empty string ``domain``; anything else aborts the same way.
+    """
+    config_path = _find_docs_config_file()
+    if config_path is None:
+        return None
+
+    try:
+        data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        print(f"[red]Error:[/red] could not read {config_path}: {exc}")
+        raise typer.Abort() from exc
+
+    if config_path.name == "pyproject.toml":
+        section_label = "[tool.protean.docs]"
+        section: object = data
+        for level in ("tool", "protean", "docs"):
+            if not isinstance(section, dict):
+                return None
+            section = section.get(level, {})
+        docs_section = section
+    else:
+        section_label = "[docs]"
+        docs_section = data.get("docs", {})
+
+    if not isinstance(docs_section, dict):
+        return None
+    snapshot = docs_section.get("domain_snapshot")
+    if snapshot is None:
+        return None
+
+    if not isinstance(snapshot, dict):
+        print(
+            f"[red]Error:[/red] {escape(section_label)}.domain_snapshot in "
+            f"{config_path} must be a table with a 'path' and a 'domain'"
+        )
+        raise typer.Abort()
+
+    path = snapshot.get("path")
+    snapshot_domain = snapshot.get("domain")
+    if not isinstance(path, str) or not path.strip():
+        print(
+            f"[red]Error:[/red] domain_snapshot in {config_path} needs a "
+            "non-empty string 'path'"
+        )
+        raise typer.Abort()
+    if not isinstance(snapshot_domain, str) or not snapshot_domain.strip():
+        print(
+            f"[red]Error:[/red] domain_snapshot in {config_path} needs a "
+            "non-empty string 'domain'"
+        )
+        raise typer.Abort()
+
+    base = config_path.parent
+    return {"path": str(base / path), "domain": str(base / snapshot_domain)}
