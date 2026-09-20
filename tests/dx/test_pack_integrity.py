@@ -15,11 +15,20 @@ requires a clean report.
 What the scanner recognizes as an internal reference is deliberately narrow, so a
 templated token in a code fence (``<aggregate>.py``) or a bare filename in prose
 (``order_placed.py``) does not read as a broken link. A token counts only when it
-is a markdown link target or an inline-code span that, resolved against the file
-it sits in, lands on one of: a bundled skill's ``SKILL.md``, a ``.py`` file under
-some ``assets/`` directory, a ``.md`` file under some ``references/`` directory,
-or a top-level ``rules/*.md`` file. A ``#anchor`` suffix is stripped first, and
-tokens inside fenced code blocks are skipped.
+is an inline markdown link destination or an inline-code span that, resolved
+against the file it sits in, lands on one of: a bundled skill's ``SKILL.md``, a
+``.py`` file under some ``assets/`` directory, a ``.md`` file under some
+``references/`` directory, or a top-level ``rules/*.md`` file. A ``#anchor``
+suffix is stripped first, and tokens inside fenced code blocks are skipped.
+
+The link forms it reads are ``[text](dest)`` and ``[text](dest "Title")``: the
+destination is parsed on its own, so an optional title does not hide the target.
+Two standard forms it does not read, by choice: a reference-style link
+(``[text][label]`` with a ``[label]: dest`` definition) and a destination that
+carries parentheses, spaces, or angle brackets. The pack uses neither, and the
+skills layer keeps to plain inline links, so the cost of a markdown parser here
+buys nothing. A dangling target written in one of those forms goes unseen by
+this guard.
 """
 
 from __future__ import annotations
@@ -59,7 +68,10 @@ requires_pack_on_disk = pytest.mark.skipif(
     reason="DX pack is not unpacked on disk; the integrity guard walks the pack tree",
 )
 
-_LINK = re.compile(r"\]\(([^)]+)\)")
+# An inline markdown link, capturing only its destination: ``](dest)`` and
+# ``](dest "Title")`` both yield ``dest``. Parsing the title separately keeps a
+# titled link from being dropped later for the whitespace it carries.
+_LINK = re.compile(r"""\]\(\s*([^()\s]*?)\s*(?:"[^"]*"|'[^']*')?\s*\)""")
 _INLINE_CODE = re.compile(r"`([^`]+)`")
 # A token carrying any of these is a template or a glob, not a concrete path.
 _TEMPLATE = re.compile(r"[<>*|\s]")
@@ -449,6 +461,53 @@ def test_missing_referenced_file_is_named(tmp_path):
     finding = report.dangling[0]
     assert finding.skill == "alpha"
     assert finding.token == "references/missing.md"
+
+
+def test_titled_link_target_is_scanned(tmp_path):
+    # ``[text](dest "Title")`` is a standard inline link. The destination has to
+    # be parsed apart from its title, or the whole token reads as whitespace-
+    # carrying prose, gets dropped, and the missing target never surfaces.
+    root = _make_pack(tmp_path)
+    _add_skill(root, "alpha", 'See [missing](references/missing.md "A guide").')
+
+    report = scan_pack(root)
+
+    assert len(report.dangling) == 1
+    finding = report.dangling[0]
+    assert finding.skill == "alpha"
+    assert finding.token == "references/missing.md"
+
+
+def test_titled_link_reaches_its_target(tmp_path):
+    # The same parse on the clean side: a page the SKILL.md reaches only through
+    # a titled link counts as reached, so it is not reported as an orphan.
+    root = _make_pack(tmp_path)
+    _add_skill(
+        root,
+        "alpha",
+        "See the [guide](references/page.md 'The guide').",
+        references={"page.md": "A page.\n"},
+    )
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert report.orphans == []
+
+
+def test_reference_style_link_is_outside_the_contract(tmp_path):
+    # The guard reads inline links only. A reference-style link is not scanned,
+    # so its dangling target raises nothing. This pins the stated boundary: if
+    # the pack ever adopts the form, this test flips and the scanner has to grow
+    # to match.
+    root = _make_pack(tmp_path)
+    body = "See [the guide][g].\n\n[g]: references/missing.md\n"
+    _add_skill(root, "alpha", body)
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert [ref.target for ref in report.references if "missing" in ref.target] == []
 
 
 def test_orphaned_asset_is_named(tmp_path):
