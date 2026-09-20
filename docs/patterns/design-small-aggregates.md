@@ -344,7 +344,9 @@ class Order:
 
 
 # In a separate aggregate's event handler
-@domain.event_handler(part_of=CustomerLoyalty, stream_category="order")
+@domain.event_handler(
+    part_of=CustomerLoyalty, stream_category=Order.meta_.stream_category
+)
 class CustomerLoyaltyEventHandler(BaseEventHandler):
 
     @handle(OrderPlaced)
@@ -359,10 +361,15 @@ class CustomerLoyaltyEventHandler(BaseEventHandler):
 separate handler updates the points. You can deploy, scale, and test the two on
 their own.
 
-The `stream_category="order"` is what makes the handler listen. A handler reads
-its own aggregate's stream by default, so `CustomerLoyaltyEventHandler` would
-watch `customer_loyalty` and never see `OrderPlaced`. Point it at the stream the
-event is written to.
+The `stream_category` is what makes the handler listen. A handler reads its own
+aggregate's stream by default, so `CustomerLoyaltyEventHandler` would watch
+`CustomerLoyalty` and never see `OrderPlaced`. Point it at the stream the event
+is written to.
+
+Read that value off the source aggregate rather than typing it out. Protean
+prefixes a category with the domain name, so `Order` in a domain named `Shop`
+writes to `shop::order`. A hand-written `"order"` subscribes to a stream nothing
+writes to, and the handler stays silent.
 
 ---
 
@@ -406,7 +413,7 @@ def place_order(self, command: PlaceOrder):
     order_repo.add(order)
 
 
-@domain.event_handler(part_of=Inventory, stream_category="order")
+@domain.event_handler(part_of=Inventory, stream_category=Order.meta_.stream_category)
 class InventoryEventHandler(BaseEventHandler):
 
     @handle(OrderPlaced)
@@ -539,7 +546,7 @@ Each aggregate is now small:
 Completing a task raises an event, and the project's progress follows:
 
 ```python
-@domain.event_handler(part_of=Project, stream_category="task")
+@domain.event_handler(part_of=Project, stream_category=Task.meta_.stream_category)
 class ProjectEventHandler(BaseEventHandler):
 
     @handle(TaskCompleted)
