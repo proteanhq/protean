@@ -12,12 +12,14 @@ during class creation.
 
 import datetime
 import decimal
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from enum import Enum as _Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any, TypeVar
 
 from protean.exceptions import IncorrectUsageError
 from protean.fields.spec import FieldSpec
+
+_T = TypeVar("_T")
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +215,62 @@ def Status(  # pyright: ignore[reportRedeclaration]
     )
 
 
+def Custom(  # pyright: ignore[reportRedeclaration]
+    python_type: type,
+    *,
+    validators: Iterable[Any] = (),
+    serializers: Iterable[Any] = (),
+    **constraints: Any,
+) -> FieldSpec:
+    """A field over a custom Python type.
+
+    Use this to store a type Protean has no built-in factory for, when the type
+    still needs Protean's field machinery: constraints, ``required``, a default,
+    or adapter mapping. Pass the type itself, plus the Pydantic annotation objects
+    that parse a raw value into it and render it back.
+
+    - ``python_type`` is the field's Python type (any class).
+    - ``validators`` are the Pydantic validators the type needs to parse a raw
+      value into an instance. An arbitrary class has no Pydantic schema on its
+      own, so supply at least a ``PlainValidator`` that builds the instance;
+      Protean threads it into the annotation. Add an ``AfterValidator`` to run a
+      check after the cast (this is the "validators" stage of the guaranteed
+      order: empty, then choices, then cast, then validators).
+    - ``serializers`` are the Pydantic serializers (for example ``PlainSerializer``)
+      that render an instance back to a plain value for ``model_dump``. Protean's
+      own persistence and event payloads serialize through ``ResolvedField.as_dict``,
+      which calls the value's ``to_dict()`` when it has one; implement ``to_dict()``
+      on the type so it round-trips through save, reload, and event replay.
+    - ``**constraints`` are the usual field constraints (``required``, ``default``,
+      ``unique``, ``description``, ``min_value``/``max_value``, ...), passed
+      straight to the underlying ``FieldSpec``.
+
+    Example::
+
+        from pydantic import PlainValidator, PlainSerializer
+
+        brand: Custom(
+            Color,
+            validators=[PlainValidator(parse_color)],
+            serializers=[PlainSerializer(lambda c: c.hex, return_type=str)],
+            required=True,
+        )
+
+    A custom type that needs no Protean machinery at all does not need this
+    factory: declare it as a raw ``Annotated[CustomType, Field(...)]`` and Pydantic
+    handles it directly (see the defining-fields guide).
+    """
+    metadata = (*validators, *serializers)
+    # ``Annotated`` requires at least one metadata item; with none, hand the bare
+    # type to FieldSpec. A bare arbitrary class has no Pydantic schema, so a field
+    # over a type Pydantic cannot resolve on its own will fail at class creation
+    # unless at least one validator is supplied, which is the documented contract.
+    resolved_type: Any = (
+        Annotated[(python_type, *metadata)] if metadata else python_type
+    )
+    return FieldSpec(resolved_type, field_kind="custom", **constraints)
+
+
 # ---------------------------------------------------------------------------
 # TYPE_CHECKING overrides — static type checkers see resolved Python types
 # instead of FieldSpec, matching what the mypy plugin does at analysis time.
@@ -273,3 +331,11 @@ if TYPE_CHECKING:
         transitions: dict[Any, Any] | None = None,
         **kwargs: Any,
     ) -> str: ...
+
+    def Custom(  # type: ignore[misc]
+        python_type: type[_T],
+        *,
+        validators: Iterable[Any] = (),
+        serializers: Iterable[Any] = (),
+        **constraints: Any,
+    ) -> _T: ...

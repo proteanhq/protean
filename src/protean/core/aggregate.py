@@ -7,7 +7,7 @@ import typing
 from collections import defaultdict
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, TypeVar, cast
 
 from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
@@ -591,7 +591,18 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
             # Regular Pydantic model field
             finfo = model_field_info.get(key)
             if finfo:
-                annotations[key] = finfo.annotation
+                annotation = finfo.annotation
+                # A custom field (built by ``Custom``) carries the type's Pydantic
+                # validators and serializers in the field metadata. The bare
+                # annotation is the raw custom class, which has no Pydantic schema
+                # on its own, so re-attach the metadata for the fact event field.
+                # Otherwise fact-event generation for the aggregate fails at schema
+                # build time. Only custom fields need this; every built-in field
+                # has a native schema, so their metadata (length bounds, sanitize)
+                # is intentionally left off the fact event as before.
+                if value.field_kind == "custom" and finfo.metadata:
+                    annotation = Annotated[(annotation, *finfo.metadata)]
+                annotations[key] = annotation
                 if finfo.default is not PydanticUndefined:
                     namespace[key] = finfo.default
                 elif finfo.default_factory is not None:

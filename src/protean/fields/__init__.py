@@ -8,6 +8,7 @@ from .resolved import ResolvedField
 from .simple import (
     Auto,
     Boolean,
+    Custom,
     Date,
     DateTime,
     Decimal,
@@ -24,6 +25,7 @@ __all__ = [
     # FieldSpec factories (primary API)
     "Auto",
     "Boolean",
+    "Custom",
     "Date",
     "DateTime",
     "Decimal",

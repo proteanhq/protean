@@ -41,3 +41,7 @@ for all available keyword arguments.
 ---
 
 ::: protean.fields.simple.Auto
+
+---
+
+::: protean.fields.simple.Custom
