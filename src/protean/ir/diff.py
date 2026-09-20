@@ -1039,8 +1039,8 @@ def _event_upcaster_coverage(
     when the version bumped but no chain reaches it (old payloads are stranded).
     ``citation`` names the covering upcaster for a ``"covered"`` bump (e.g.
     ``"upcaster OrderPlaced v1->v2"``) and is ``None`` for a ``"gap"``. Events with
-    no version bump are absent from the map — there is nothing for an upcaster to
-    cover. This is the single source of coverage truth both mitigation passes read.
+    no version bump are absent from the map (there is nothing for an upcaster to
+    cover). This is the single source of coverage truth both mitigation passes read.
     """
     upcasters = right_ir.get("upcasters", {})
     left_events = _events_by_fqn(left_ir)
@@ -1086,7 +1086,7 @@ def _apply_upcaster_mitigation(
     its old one transforms stored old-version payloads to the new shape, so the
     schema-transformation changes that make up that version bump (field removals,
     type changes, required-field additions, the ``__type__`` version-string bump)
-    are no longer breaking. Only those change types are downgraded — an orthogonal
+    are no longer breaking. Only those change types are downgraded. An orthogonal
     change such as a public→internal visibility flip is left breaking. Each
     downgraded change is moved to ``safe_changes`` with ``mitigated_by`` set to
     the covering upcaster. *coverage* is the map from :func:`_event_upcaster_coverage`.
@@ -1124,13 +1124,13 @@ def _apply_es_aggregate_mitigation(
     """Downgrade breaking field changes on an event-sourced aggregate whose
     rebuilding events are all upcaster-covered.
 
-    An event-sourced aggregate stores no schema of its own — it is rebuilt by
+    An event-sourced aggregate stores no schema of its own: it is rebuilt by
     replaying the events its ``apply_handlers`` name. So its mitigatable breaking
     field changes (removal, type change, required-field add) are earned-safe on the
     same terms as those events: downgrade them only when every rebuilding event that
     was version-bumped in this diff is covered, and at least one was bumped-and-covered.
     A single uncovered bump (a gap) among the rebuilding events, or no bump at all,
-    leaves the aggregate breaking — nothing was earned. Coverage is at aggregate
+    leaves the aggregate breaking, because nothing was earned. Coverage is at aggregate
     granularity: the IR carries no per-field provenance, so a covered bump on any
     rebuilding event downgrades the aggregate's field changes, not only the fields
     that event happens to populate. A classic (non-event-sourced) aggregate is never
