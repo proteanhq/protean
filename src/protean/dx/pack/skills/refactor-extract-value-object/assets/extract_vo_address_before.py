@@ -59,4 +59,8 @@ if __name__ == "__main__":
             billing_zip_code="62701",
         )
         print(f"Customer: {customer.name}")
-        print(f"Address: {customer.billing_address_label}")
+        # billing_address_label assembles the address by hand. Every aggregate
+        # that holds this field group repeats that formatting, which is the
+        # smell an Address value object removes. The demo does not print the
+        # assembled address: it is personal data, and logging it in copied
+        # example code teaches the wrong habit.
