@@ -87,9 +87,13 @@ def diff(path: Annotated[str, _PATH_OPTION] = ".") -> None:
 def check(path: Annotated[str, _PATH_OPTION] = ".") -> None:
     """Exit non-zero when a target has drifted from the installed version.
 
-    Writes nothing. A target is drifted when it is missing, its managed block is
-    stale, or the user edited inside the block (a conflict). Wire this into CI to
-    fail when a project's agent files fall out of step with the framework.
+    Writes nothing. Verifies the required baseline (AGENTS.md and the CLAUDE.md
+    bridge) plus every optional target already installed (``.mcp.json`` and the
+    per-editor files, each verified only once it is present on disk or recorded in
+    ``.protean/dx-state.json``). A verified target is drifted when it is missing,
+    its managed region is stale, or the user edited inside it (a conflict). An
+    optional file the user never chose is not counted. Wire this into CI to fail
+    when a project's agent files fall out of step with the framework.
     """
     _check(path)
 
@@ -173,7 +177,9 @@ def _apply(path: str) -> None:
         raise typer.Exit(code=EXIT_FAILURE)
 
 
-def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool, bool]:
+def _scan(
+    path: str, *, show_diff: bool = False, only_installed_optional: bool = False
+) -> tuple[bool, bool, bool]:
     """Diff every managed file under *path* and print each target's pending line.
 
     Mutates nothing; shared by ``diff`` and ``check``. With *show_diff*, also print
@@ -183,18 +189,52 @@ def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool, bool]:
     ``drifted`` when any target is not ``NO_CHANGE`` (missing, stale, or a
     hand-edited conflict), and ``had_conflict`` when any target's managed block
     was edited by hand, which needs resolving before a re-install can update it.
+
+    With *only_installed_optional*, scan the required baseline
+    (:data:`~protean.dx.renderers.REQUIRED_TARGETS`) plus only those optional
+    targets that are already installed, one being present on disk or recorded in
+    ``.protean/dx-state.json``. This is what ``check`` passes so a freshly
+    scaffolded project, which ships only the baseline, reports clean while an
+    optional editor file the user never chose is not counted as drift. ``diff``
+    leaves it off and previews every target.
     """
     from protean.dx import (  # noqa: PLC0415
         ApplyStatus,
         ManagedFileError,
         diff_managed_file,
+        load_state,
     )
+    from protean.dx.renderers import REQUIRED_TARGETS  # noqa: PLC0415
 
     root = _project_root(path)
     had_error = False
     drifted = False
     had_conflict = False
+
+    recorded: frozenset[str] = frozenset()
+    if only_installed_optional:
+        # The scope decision reads the state file. A corrupt or unreadable one is
+        # the same environment error (exit 2) the per-file diff path raises via
+        # its own ``load_state``; surface it once here and stop, rather than
+        # silently treating every optional target as not-installed. ``load_state``
+        # keeps a ``ValueError`` contract for a corrupt file and raises
+        # ``ManagedFileError`` for a symlinked state path.
+        try:
+            recorded = frozenset(load_state(root).entries)
+        except (ValueError, ManagedFileError) as exc:
+            print(_error_line(".protean/dx-state.json", exc))
+            return True, False, False
+
     for managed_file in _render_managed_files():
+        if (
+            only_installed_optional
+            and managed_file.target not in REQUIRED_TARGETS
+            and managed_file.target not in recorded
+            # ``exists`` follows a symlink harmlessly for this scope probe; a
+            # present symlinked target still raises in ``diff_managed_file`` below.
+            and not (root / managed_file.target).exists()
+        ):
+            continue
         try:
             result = diff_managed_file(root, managed_file)
         except ManagedFileError as exc:
@@ -255,13 +295,14 @@ def _diff(path: str) -> None:
 
 
 def _check(path: str) -> None:
-    """Report drift for each managed file and exit non-zero when any has drifted.
+    """Report drift for each verified managed file and exit non-zero on any drift.
 
-    Writes nothing. Exits ``2`` when a target is refused or the pack cannot
-    render, ``1`` when any target is missing, stale, or conflicted, ``0`` when
-    every target is up to date.
+    Verifies the required baseline plus every optional target already installed
+    (see :func:`check`). Writes nothing. Exits ``2`` when a target is refused or
+    the pack cannot render, ``1`` when any verified target is missing, stale, or
+    conflicted, ``0`` when every verified target is up to date.
     """
-    had_error, drifted, had_conflict = _scan(path)
+    had_error, drifted, had_conflict = _scan(path, only_installed_optional=True)
     if had_error:
         raise typer.Exit(code=EXIT_USAGE)
     if drifted:

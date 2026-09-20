@@ -226,16 +226,17 @@ The output is byte-stable: for a given Protean version it renders identical
 bytes, because the header is version-stamped, the registry traversal is sorted,
 and nothing reads a timestamp.
 
-A project generated with `protean new` already ships this file as `AGENTS.md` at
-its root, kept byte-identical to this command's output. Regenerate it after
-upgrading Protean:
+This command prints the diagnostics-derived hard rules on their own. A project
+generated with `protean new` ships a richer `AGENTS.md`: the dx-managed form,
+which composes the packaged pack guidance with these hard rules inside a managed
+block. That file is written and maintained by [`protean dx`](dx.md), not by this
+command, so refresh it with `protean dx refresh` after upgrading Protean rather
+than regenerating it here. Use this command when you want the hard-rules pack by
+itself:
 
 ```shell
 # Print the constraint pack
 protean docs generate --type=agents
-
-# Refresh the project's AGENTS.md
-protean docs generate --type=agents --output=AGENTS.md
 ```
 
 ### Annotating the event model

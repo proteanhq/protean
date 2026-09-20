@@ -67,6 +67,7 @@ __all__ = [
     "OPENCODE_MCP_KEY",
     "OPENCODE_SERVER_NAME",
     "OPENCODE_TARGET",
+    "REQUIRED_TARGETS",
     "agents_managed_file",
     "claude_bridge_managed_file",
     "copilot_managed_file",
@@ -85,6 +86,15 @@ __all__ = [
 AGENTS_TARGET = "AGENTS.md"
 CLAUDE_BRIDGE_TARGET = "CLAUDE.md"
 BLOCK_ID = "protean"
+
+# The universal baseline every dx-managed project carries: the canonical
+# AGENTS.md and the CLAUDE.md bridge that points at it. ``protean new`` writes
+# exactly this set, and ``protean dx check`` always verifies it. The remaining
+# targets (``.mcp.json`` and the per-editor files) are optional: the user picks
+# their own editors, so ``check`` verifies one only once it is installed. Defined
+# here so ``protean dx``'s required-vs-optional split and the renderer set never
+# drift.
+REQUIRED_TARGETS = frozenset({AGENTS_TARGET, CLAUDE_BRIDGE_TARGET})
 
 # The ``.mcp.json`` target and the key-path it manages: Protean's own entry under
 # ``mcpServers``, the top-level key an MCP client reads a project ``.mcp.json``

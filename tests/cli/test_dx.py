@@ -23,6 +23,20 @@ def _install(project: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
+def _install_baseline(project: Path) -> None:
+    """Write only the required baseline (AGENTS.md + CLAUDE.md), the scaffold shape.
+
+    ``protean new`` writes exactly this set through the same renderers, so a
+    baseline-only directory reproduces a freshly scaffolded project without
+    driving the whole ``new`` flow.
+    """
+    from protean.dx import apply_managed_file
+    from protean.dx.renderers import agents_managed_file, claude_bridge_managed_file
+
+    apply_managed_file(project, agents_managed_file(PACK_VERSION))
+    apply_managed_file(project, claude_bridge_managed_file(PACK_VERSION))
+
+
 def _state_file(project: Path) -> Path:
     return project / ".protean" / "dx-state.json"
 
@@ -329,6 +343,71 @@ def test_diff_previews_mcp_json_then_install_no_ops(tmp_path: Path) -> None:
     assert second.exit_code == 0, second.output
     # Every target reports up to date on the second install.
     assert "created" not in second.output
+
+
+# --- check: the required-baseline split -------------------------------------
+
+
+def test_check_passes_on_baseline_only(tmp_path: Path) -> None:
+    """The scaffold shape (baseline present, no optional files) passes check."""
+    _install_baseline(tmp_path)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Up to date" in result.output
+    # The optional files were never written and were not created by the check.
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_check_ignores_a_never_installed_optional_file(tmp_path: Path) -> None:
+    """An optional file the user never chose is not counted, nor even reported.
+
+    check scans only the baseline plus already-installed optional targets, so a
+    never-installed editor file is neither drift nor a scanned line.
+    """
+    _install_baseline(tmp_path)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"
+
+
+def test_check_scopes_in_an_optional_file_present_on_disk(tmp_path: Path) -> None:
+    """An optional file present on disk is verified, even with no state entry.
+
+    A user who hand-wrote a bare .mcp.json (no managed entry, so nothing recorded
+    in state) is telling check they want that file managed. check scopes it in and
+    flags the missing registration.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {}}) + "\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    assert "Drift detected" in result.output
+    assert ".mcp.json" in result.output
+
+
+def test_diff_still_previews_all_six_on_baseline_only(tmp_path: Path) -> None:
+    """diff is unscoped: on a baseline-only project it still previews the optional
+    files as pending creates, where check ignores them."""
+    _install_baseline(tmp_path)
+
+    result = runner.invoke(app, ["diff", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel in result.output, f"diff must still preview {rel}"
+    # Flatten whitespace: rich wraps the line at the terminal width.
+    assert "not installed yet" in " ".join(result.output.split())
 
 
 # --- conflict ---------------------------------------------------------------
