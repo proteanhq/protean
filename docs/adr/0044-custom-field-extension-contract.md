@@ -94,7 +94,11 @@ paths and when each applies.
   annotation with a `Literal` of the choice values, discarding the custom type. So
   `Custom` is for types that parse and validate, not for a closed vocabulary of
   primitive values, which `String(choices=...)` or `Status` already cover.
+- A custom field emits `"kind": "custom"` in the IR, so the IR schema carries a
+  `field_custom` definition for it. Without that definition every IR document from a
+  domain holding one custom field failed schema validation.
 - The IR type name for a custom field falls back to `String`, because the IR type
   map has no entry for `field_kind="custom"`. This is a display label in the emitted
-  IR only; it does not affect validation, persistence, or reflection. A dedicated IR
-  type name for custom fields is left for later.
+  IR only; it does not affect persistence or reflection, and the `field_custom`
+  schema definition accepts any type name, so naming it properly later needs no
+  schema change. A dedicated IR type name for custom fields is left for later.
