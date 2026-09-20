@@ -1488,6 +1488,92 @@ class TestEventSourcedAggregateReplayCoverage:
         agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
         assert "field_removed" in [c.change_type for c in agg]
 
+    def test_sibling_payload_change_without_a_bump_stays_breaking(self):
+        """A rebuilding event whose payload lost a field without a version bump has
+        no upcaster to run, so replaying it strands old payloads. It is absent from
+        the coverage map (only bumps land there), so the check reads the leftover
+        breaking change on the event instead of calling it unchanged."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 1, {"note": _std()}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        # DepositMade drops `note` but stays at v1: no bump, so no
+                        # upcaster can be registered for it.
+                        "app.DepositMade": _evt("DepositMade", 1, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+
+    def test_covered_bump_on_a_new_apply_handler_earns_nothing(self):
+        """The only covered bump belongs to an event whose @apply handler was added
+        in this diff. That handler never rebuilt historical state, so its coverage
+        proves nothing about the old aggregate and the field removal stays breaking.
+        """
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 1, {}),
+                    },
+                    # DepositMade exists as an event but does not rebuild the
+                    # aggregate yet.
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 2, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        # New handler; its event's bump is covered.
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"DepositMade": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+
 
 # ------------------------------------------------------------------
 # __type__ string changes

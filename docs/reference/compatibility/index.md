@@ -29,7 +29,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Visibility internal to public | Safe |
 | Change `__type__` string | **Breaking** |
 | Event version bump covered by a registered upcaster | Safe (mitigated) |
-| Event-sourced aggregate field removal / required-field add whose rebuilding events are all covered | Safe (mitigated) |
+| Event-sourced aggregate field removal / required-field add, when one rebuilding event has a covered version bump and no rebuilding event is left breaking | Safe (mitigated) |
 
 These rules apply to all persisted elements: aggregates, entities, value
 objects, commands, events, database models, and projections.
@@ -55,11 +55,15 @@ The checker understands three evolution mechanisms:
   breaking.
 - **Event-sourced aggregate replay coverage**: An event-sourced aggregate is
   rebuilt by replaying the events its apply-handlers process. So a field removal
-  or a required-field add on such an aggregate is downgraded to safe when every
-  rebuilding event that bumped its version in this diff is upcaster-covered, and
-  at least one was bumped and covered. A single uncovered bump among the
-  rebuilding events, or no bump at all, leaves the aggregate breaking, because
-  nothing was earned. The aggregate must be event-sourced in both the old and new
+  or a required-field add on such an aggregate is downgraded to safe when two
+  things hold: no rebuilding event is left with a breaking payload change, and at
+  least one event that already rebuilt the aggregate in the old snapshot has an
+  upcaster-covered version bump. A rebuilding event with an uncovered bump, one
+  whose payload changed without a bump, or no bump anywhere leaves the aggregate
+  breaking, because nothing was earned. An unchanged rebuilding event needs no
+  upcaster; it earns nothing either. A covered bump on an event whose
+  apply-handler was added in the same diff earns nothing: that handler never
+  rebuilt historical state. The aggregate must be event-sourced in both the old and new
   snapshots: a classic aggregate converted to event sourcing in the same diff
   stored its old state as table rows that replay cannot rebuild, so its field
   changes stay breaking. Dropping a rebuilding event's apply-handler also leaves
@@ -164,8 +168,9 @@ a downgrade the checker can verify against the actual schema:
 - A registered [upcaster](../../patterns/event-versioning-and-evolution.md) chain
   earns the mitigation for an event's version bump.
 - Event-sourced replay coverage extends that same earned downgrade to an
-  event-sourced aggregate's field removals and required-field adds, once every
-  rebuilding event is covered.
+  event-sourced aggregate's field removals and required-field adds, once one
+  rebuilding event has a covered version bump and no rebuilding event is left
+  breaking.
 
 `exclude` earns nothing. It silences the alert without proving the change is
 safe, so it is the coarse last resort for the element types the checker cannot

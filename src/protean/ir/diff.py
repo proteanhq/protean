@@ -973,8 +973,9 @@ def classify_changes(
       ``__version__`` from the IR directly and needs no ``current_version``.
     - **Event-sourced aggregate replay coverage**: an event-sourced aggregate is
       rebuilt by replaying its events, so its mitigatable breaking field changes
-      downgrade to safe when every rebuilding event that was version-bumped in
-      this diff is upcaster-covered (see :func:`_apply_es_aggregate_mitigation`).
+      downgrade to safe when no rebuilding event is left with a breaking payload
+      change and at least one long-standing rebuilding event has an
+      upcaster-covered version bump (see :func:`_apply_es_aggregate_mitigation`).
       A classic table-backed aggregate is never touched by this path.
     """
     report = CompatibilityReport()
@@ -1137,10 +1138,14 @@ def _apply_es_aggregate_mitigation(
     An event-sourced aggregate is rebuilt by replaying the events its
     ``apply_handlers`` name. So its mitigatable breaking field changes (a field
     removal or a required-field add) are earned-safe on the same terms as those
-    events: downgrade them only when every rebuilding event that was version-bumped
-    in this diff is covered, and at least one was bumped-and-covered.
-    A single uncovered bump (a gap) among the rebuilding events, or no bump at all,
-    leaves the aggregate breaking, because nothing was earned. Coverage is at aggregate
+    events. Two conditions, both read from the report after the upcaster pass has
+    run: no rebuilding event may be left with a breaking payload change, and at
+    least one event that already rebuilt the aggregate in the old snapshot must
+    have a covered version bump. An uncovered bump (a gap), a payload change made
+    without a version bump, or no bump at all leaves the aggregate breaking,
+    because nothing was earned. A version bump covered on an ``@apply`` handler
+    added in this diff earns nothing either: that handler never rebuilt historical
+    state, so its coverage says nothing about the old aggregate. Coverage is at aggregate
     granularity: the IR carries no per-field provenance, so a covered bump on any
     rebuilding event downgrades the aggregate's field changes, not only the fields
     that event happens to populate. A classic (non-event-sourced) aggregate is never
@@ -1165,6 +1170,15 @@ def _apply_es_aggregate_mitigation(
         return
 
     left_clusters = left_ir.get("clusters", {})
+    # Events still carrying a breaking payload change after the upcaster pass.
+    # `coverage` only records version bumps, so an event whose payload changed
+    # without one is absent from it; read the leftover breaking changes instead of
+    # reading that absence as "unchanged".
+    unmitigated_events = {
+        change.element_fqn
+        for change in report.breaking_changes
+        if change.change_type in _UPCASTER_MITIGATABLE
+    }
     # Per aggregate fqn, the citation to attach when its field changes are earned-safe.
     aggregate_citation: dict[str, str] = {}
     for fqn, cluster in right_ir.get("clusters", {}).items():
@@ -1191,13 +1205,20 @@ def _apply_es_aggregate_mitigation(
         has_gap = False
         for event_fqn in rebuilding_events:
             status, citation = coverage.get(event_fqn, ("unchanged", None))
-            if status == "gap":
+            if status == "gap" or event_fqn in unmitigated_events:
                 has_gap = True
                 break
-            if status == "covered" and citation is not None:
+            # Only an event that already rebuilt this aggregate earns the
+            # downgrade. A handler added in this diff never applied to historical
+            # state, so a covered bump on its event proves nothing about replay.
+            if (
+                status == "covered"
+                and citation is not None
+                and event_fqn in left_rebuilding_events
+            ):
                 covering_citations.append(citation)
-        # Downgrade only when no rebuilding event has an uncovered bump and at
-        # least one was bumped-and-covered.
+        # Downgrade only when no rebuilding event is left breaking and at least one
+        # long-standing rebuilding event was bumped-and-covered.
         if has_gap or not covering_citations:
             continue
         aggregate_citation[fqn] = ", ".join(sorted(covering_citations))
