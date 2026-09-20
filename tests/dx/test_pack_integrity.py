@@ -4,8 +4,8 @@
 ``test_pack.py`` proves the skill, references, and rules layers survive a
 re-sync. Neither one checks that a skill's own links point at files that exist.
 This guard closes that gap: it walks the pack and fails on a dangling internal
-reference, an asset or reference page no skill links, or a skill that forgets the
-shared verify step.
+reference, an asset or reference page no skill links, or a skill whose recipe
+does not link the shared verify step.
 
 The scanner is a plain function over a pack root, so the negative tests can point
 it at a small fake pack built under ``tmp_path`` and prove each failure names the
@@ -25,6 +25,7 @@ tokens inside fenced code blocks are skipped.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -98,7 +99,7 @@ def _lines_outside_fences(text: str) -> list[str]:
     """Return the lines of ``text`` that sit outside fenced code blocks.
 
     A line whose stripped form opens with ``` or ~~~ toggles the fence and is
-    itself dropped. An unterminated fence swallows the rest of the file, which is
+    itself dropped. An unterminated fence drops the rest of the file, which is
     the safe reading: a token in an unclosed code block still does not count.
     """
     outside: list[str] = []
@@ -333,7 +334,14 @@ def test_shipped_pack_scan_is_not_vacuous():
     )
     assert report.skills == on_disk
     assert len(report.skills) >= 30
-    assert len(report.references) >= 300
+    # Floors sit just under the real corpus (756 references: 129 skill, 407
+    # reference, 220 asset). A per-kind floor means a matcher that dropped even
+    # one working kind trips this, not just one that finds nothing.
+    assert len(report.references) >= 700
+    by_kind = Counter(ref.kind for ref in report.references)
+    assert by_kind["skill"] >= 100
+    assert by_kind["reference"] >= 350
+    assert by_kind["asset"] >= 180
 
 
 # --- The shared references: present, non-empty, reachable from the repo ------
@@ -500,6 +508,11 @@ def test_reachable_through_reference_page_is_not_orphaned(tmp_path):
 
 
 def test_anchor_suffix_is_stripped_before_resolving(tmp_path):
+    # The SKILL.md reaches page.md only through an anchored link. The strip must
+    # turn references/page.md#a-heading into references/page.md so it resolves
+    # and reaches the shipped page. Without the strip the token keeps its
+    # #a-heading tail, fails the .md/.py suffix filter, is dropped, and page.md
+    # surfaces as an orphan the SKILL.md never reached.
     root = _make_pack(tmp_path)
     _add_skill(
         root,
@@ -511,6 +524,9 @@ def test_anchor_suffix_is_stripped_before_resolving(tmp_path):
     report = scan_pack(root)
 
     assert report.dangling == []
+    assert report.orphans == []
+    resolved = [ref.target for ref in report.references]
+    assert f"{SKILLS_DIR}/alpha/{REFERENCES_DIR}/page.md" in resolved
 
 
 def test_token_only_inside_a_fence_does_not_count(tmp_path):
@@ -535,3 +551,32 @@ def test_bare_filename_in_prose_is_not_a_reference(tmp_path):
     report = scan_pack(root)
 
     assert report.dangling == []
+
+
+def test_rules_link_resolves(tmp_path):
+    # A top-level rules/*.md target is a recognized reference. A SKILL.md link
+    # that resolves to one is clean and shows up under references as kind "rules".
+    root = _make_pack(tmp_path)
+    _write(root / RULES_DIR / "naming.md", "Naming rule.\n")
+    _add_skill(root, "alpha", "Follow [naming](../../rules/naming.md).")
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    resolved = [(ref.kind, ref.target) for ref in report.references]
+    assert ("rules", f"{RULES_DIR}/naming.md") in resolved
+
+
+def test_dangling_rules_link_is_named(tmp_path):
+    # A link to a missing top-level rules/*.md is a dangling reference, named as
+    # kind "rules" so the finding points at the right layer.
+    root = _make_pack(tmp_path)
+    _add_skill(root, "alpha", "Follow [gone](../../rules/missing.md).")
+
+    report = scan_pack(root)
+
+    assert len(report.dangling) == 1
+    finding = report.dangling[0]
+    assert finding.skill == "alpha"
+    assert finding.kind == "rules"
+    assert finding.token == "../../rules/missing.md"
