@@ -1066,9 +1066,9 @@ def _es_cluster(fields: dict, events: dict, apply_handlers: dict) -> dict:
 
 
 class TestEventSourcedAggregateReplayCoverage:
-    """#841: an event-sourced aggregate is rebuilt by replaying its events, so its
-    mitigatable breaking field changes downgrade to safe when every rebuilding event
-    that was version-bumped is upcaster-covered. A classic aggregate is never touched.
+    """#841: an event-sourced aggregate is rebuilt by replaying its events, so a
+    breaking field removal on it downgrades to safe when every rebuilding event whose
+    payload changed is upcaster-covered. A classic aggregate is never touched.
     """
 
     def test_covered_field_removal_downgrades(self):
@@ -1207,7 +1207,16 @@ class TestEventSourcedAggregateReplayCoverage:
         assert [c.change_type for c in safe] == ["field_removed"]
         assert safe[0].mitigated_by == "upcaster AccountOpened v1->v2"
 
-    def test_covered_required_field_add_downgrades(self):
+    def test_covered_required_field_add_stays_breaking(self):
+        """Replay never checks the new field was set.
+
+        ``_create_for_reconstitution`` starts every field at ``None`` and
+        ``from_events`` returns without a required-field check, so a handler that
+        never assigns ``currency`` leaves the rebuilt aggregate holding ``None``
+        for it, silently. The upcaster puts the field in the event payload; only
+        the ``@apply`` handler carries it across, and the IR shows nothing about
+        that. The add stays breaking.
+        """
         left = _minimal_ir(
             clusters={
                 "app.Account": _es_cluster(
@@ -1231,10 +1240,108 @@ class TestEventSourcedAggregateReplayCoverage:
             upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
         )
         report = classify_changes(diff_ir(left, right), left, right)
-        assert report.is_breaking is False
-        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
         assert [c.change_type for c in agg] == ["required_field_added"]
-        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+        assert agg[0].mitigated_by is None
+        assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+
+    def test_required_add_alongside_a_removal_keeps_only_the_removal_safe(self):
+        """Both changes sit on the same aggregate under the same covered bump. The
+        removal is earned by replay; the required add is not."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={
+                        "balance": _std("Float"),
+                        "currency": _std("String", required=True),
+                    },
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        assert [
+            c.change_type
+            for c in report.breaking_changes
+            if c.element_fqn == "app.Account"
+        ] == ["required_field_added"]
+        safe = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in safe] == ["field_removed"]
+        assert safe[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
+    def test_deprecated_removal_on_a_rebuilding_event_stays_breaking(self):
+        """A field removed from a rebuilding event under the deprecation grace is
+        safe for consumers but not for replay.
+
+        ``AccountOpened`` drops a deprecated field with no version bump, so no
+        upcaster strips it, and every ``AccountOpened`` payload in the event store
+        still carries it. The event rejects a payload with a field it no longer
+        declares ("Extra inputs are not permitted"), so replay cannot start. The
+        sibling ``AccountCredited`` bump being covered earns the aggregate nothing.
+        """
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt(
+                            "AccountOpened",
+                            1,
+                            {
+                                "legacy_code": _std(
+                                    deprecated={"since": "0.9", "removal": "1.0"}
+                                )
+                            },
+                        ),
+                        "app.AccountCredited": _evt("AccountCredited", 1, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_opened",
+                        "app.AccountCredited": "on_credited",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.AccountCredited": _evt("AccountCredited", 2, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_opened",
+                        "app.AccountCredited": "on_credited",
+                    },
+                )
+            },
+            upcasters={"AccountCredited": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(
+            diff_ir(left, right), left, right, current_version="1.0"
+        )
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by is None
+        # The event's own removal keeps its deprecation grace; only the aggregate
+        # downgrade is withheld.
+        evt = [c for c in report.safe_changes if c.element_fqn == "app.AccountOpened"]
+        assert [c.change_type for c in evt] == ["field_removed"]
 
     def test_uncovered_bump_leaves_aggregate_breaking(self):
         """The rebuilding event bumps v1->v2 but no upcaster covers it (a gap), so

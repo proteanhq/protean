@@ -972,9 +972,9 @@ def classify_changes(
       downgraded to safe (see :func:`_apply_upcaster_mitigation`). This reads
       ``__version__`` from the IR directly and needs no ``current_version``.
     - **Event-sourced aggregate replay coverage**: an event-sourced aggregate is
-      rebuilt by replaying its events, so its mitigatable breaking field changes
-      downgrade to safe when no rebuilding event is left with a breaking payload
-      change and at least one long-standing rebuilding event has an
+      rebuilt by replaying its events, so a breaking field removal on it
+      downgrades to safe when every rebuilding event whose payload changed has an
+      upcaster covering it and at least one long-standing rebuilding event has an
       upcaster-covered version bump (see :func:`_apply_es_aggregate_mitigation`).
       A classic table-backed aggregate is never touched by this path.
     """
@@ -1017,24 +1017,31 @@ _UPCASTER_MITIGATABLE = frozenset(
     }
 )
 
-# The subset of the above an event-sourced aggregate can earn. Two exclusions:
-# an aggregate has no ``__type__`` version string, so ``type_string_changed``
-# never applies to one; and ``field_type_changed`` is left breaking because a
-# stored snapshot can survive it. ``_load_aggregate_current`` builds the
-# aggregate straight from the snapshot's ``to_dict()`` payload and only falls
-# back to replay when that construction raises ``ValidationError``. A removed
-# field ("Extra inputs are not permitted") and an added required field
-# ("is required") both raise, so the stale snapshot is discarded and the
-# upcaster runs. A type change often does not: ``Float`` -> ``Integer`` coerces
-# a stored ``5.0`` to ``5`` and constructs fine, so the aggregate loads from the
-# pre-change snapshot with the upcaster never consulted, and can hold different
-# state than a full replay would produce.
-_ES_AGGREGATE_MITIGATABLE = frozenset(
-    {
-        "field_removed",
-        "required_field_added",
-    }
-)
+# The subset of the above an event-sourced aggregate can earn: a field removal,
+# and nothing else. Three exclusions:
+#
+# - ``type_string_changed``: an aggregate carries no ``__type__`` version string,
+#   so the change never applies to one.
+# - ``field_type_changed``: a stored state snapshot can survive it.
+#   ``_load_aggregate_current`` builds the aggregate straight from the snapshot's
+#   ``to_dict()`` payload and only falls back to replay when that construction
+#   raises ``ValidationError``. A removed field raises ("Extra inputs are not
+#   permitted"), so the stale snapshot is discarded and the upcaster runs. A type
+#   change often does not: ``Float`` -> ``Integer`` coerces a stored ``5.0`` to
+#   ``5`` and constructs fine, so the aggregate loads from the pre-change snapshot
+#   with the upcaster never consulted, and can hold different state than a full
+#   replay would produce.
+# - ``required_field_added``: replay never checks the new field is set.
+#   ``BaseAggregate._create_for_reconstitution`` initialises every field to
+#   ``None`` and ``from_events`` applies the handlers and returns with no
+#   required-field validation at the end, so a handler that does not assign the
+#   new field leaves it ``None`` and the aggregate loads anyway. Upcaster coverage
+#   does not rule that out: an upcaster puts the field in the *event payload*,
+#   while the ``@apply`` handler is what would have to read it across to the
+#   aggregate, and the IR carries no evidence either way (``apply_handlers`` maps
+#   an event fqn to a method name and nothing more). So the add stays breaking
+#   until replay validates the field or the IR can show a handler establishes it.
+_ES_AGGREGATE_MITIGATABLE = frozenset({"field_removed"})
 
 
 def _event_upcaster_coverage(
@@ -1132,31 +1139,33 @@ def _apply_es_aggregate_mitigation(
     right_ir: dict[str, Any],
     coverage: dict[str, tuple[str, str | None]],
 ) -> None:
-    """Downgrade breaking field changes on an event-sourced aggregate that earned
+    """Downgrade a breaking field removal on an event-sourced aggregate that earned
     replay coverage: one rebuilding event has an upcaster-covered version bump and
-    no rebuilding event is left with a breaking payload change.
+    every rebuilding event whose payload changed is upcaster-covered.
 
     An event-sourced aggregate is rebuilt by replaying the events its
-    ``apply_handlers`` name. So its mitigatable breaking field changes (a field
-    removal or a required-field add) are earned-safe on the same terms as those
-    events. Two conditions, both read from the report after the upcaster pass has
-    run: no rebuilding event may be left with a breaking payload change, and at
+    ``apply_handlers`` name. So a breaking field removal on it is earned-safe on
+    the same terms as those events. Two conditions: every rebuilding event whose
+    payload schema changed must have a version bump an upcaster covers, and at
     least one event that already rebuilt the aggregate in the old snapshot must
-    have a covered version bump. An uncovered bump (a gap), a payload change made
-    without a version bump, or no bump at all leaves the aggregate breaking,
-    because nothing was earned. A version bump covered on an ``@apply`` handler
+    have such a bump. An uncovered bump (a gap), a payload change made without a
+    version bump, or no bump at all leaves the aggregate breaking, because nothing
+    was earned. Severity is not the test for that first condition: a removal the
+    deprecation grace already downgraded to safe still strands stored payloads,
+    which is why the check reads every payload change in the report rather than
+    the leftover breaking ones. A version bump covered on an ``@apply`` handler
     added in this diff earns nothing either: that handler never rebuilt historical
-    state, so its coverage says nothing about the old aggregate. Coverage is at aggregate
-    granularity: the IR carries no per-field provenance, so a covered bump on any
-    rebuilding event downgrades the aggregate's field changes, not only the fields
-    that event happens to populate. A classic (non-event-sourced) aggregate is never
-    touched by this path; its breaking field changes stay breaking, and ``exclude``
-    is the only escape hatch there.
+    state, so its coverage says nothing about the old aggregate. Coverage is at
+    aggregate granularity: the IR carries no per-field provenance, so a covered
+    bump on any rebuilding event downgrades the aggregate's field removal, not only
+    the fields that event happens to populate. A classic (non-event-sourced)
+    aggregate is never touched by this path; its breaking field changes stay
+    breaking, and ``exclude`` is the only escape hatch there.
 
-    A field type change is not on the earned list, because an event-sourced
-    aggregate can still have a stored *state* snapshot that replay never touches.
-    See :data:`_ES_AGGREGATE_MITIGATABLE` for why that fast path makes a type
-    change unsafe while the other two stay earned.
+    A field type change and a required-field add are not on the earned list. A
+    stored *state* snapshot can survive a type change and skip replay entirely,
+    and replay runs no required-field validation, so neither one is proven safe by
+    upcaster coverage. See :data:`_ES_AGGREGATE_MITIGATABLE` for both arguments.
 
     The aggregate must be event-sourced in *both* snapshots. A classic aggregate
     converted to event sourcing in this diff persisted its old state as table rows,
@@ -1171,13 +1180,16 @@ def _apply_es_aggregate_mitigation(
         return
 
     left_clusters = left_ir.get("clusters", {})
-    # Events still carrying a breaking payload change after the upcaster pass.
-    # `coverage` only records version bumps, so an event whose payload changed
-    # without one is absent from it; read the leftover breaking changes instead of
-    # reading that absence as "unchanged".
-    unmitigated_events = {
+    # Every event whose payload schema changed at all, read from both lists.
+    # Severity is the wrong question here: a field removal the deprecation grace
+    # already called safe still leaves that field in every payload sitting in the
+    # event store, and strict deserialization rejects it ("Extra inputs are not
+    # permitted") before replay can start. Only an upcaster drops it. `coverage`
+    # records version bumps alone, so an event whose payload changed without one
+    # is absent from it, and that absence does not mean the payload is unchanged.
+    payload_changed_events = {
         change.element_fqn
-        for change in report.breaking_changes
+        for change in (*report.breaking_changes, *report.safe_changes)
         if change.change_type in _UPCASTER_MITIGATABLE
     }
     # Per aggregate fqn, the citation to attach when its field changes are earned-safe.
@@ -1206,7 +1218,10 @@ def _apply_es_aggregate_mitigation(
         has_gap = False
         for event_fqn in rebuilding_events:
             status, citation = coverage.get(event_fqn, ("unchanged", None))
-            if status == "gap" or event_fqn in unmitigated_events:
+            # A payload change is only survivable when an upcaster covers it.
+            if status == "gap" or (
+                event_fqn in payload_changed_events and status != "covered"
+            ):
                 has_gap = True
                 break
             # Only an event that already rebuilt this aggregate earns the
@@ -1218,8 +1233,8 @@ def _apply_es_aggregate_mitigation(
                 and event_fqn in left_rebuilding_events
             ):
                 covering_citations.append(citation)
-        # Downgrade only when no rebuilding event is left with a breaking payload
-        # change and at least one long-standing rebuilding event was bumped-and-covered.
+        # Downgrade only when every changed rebuilding event is covered and at
+        # least one long-standing rebuilding event was bumped-and-covered.
         if has_gap or not covering_citations:
             continue
         aggregate_citation[fqn] = ", ".join(sorted(covering_citations))
@@ -1230,8 +1245,8 @@ def _apply_es_aggregate_mitigation(
     still_breaking: list[CompatibilityChange] = []
     for change in report.breaking_changes:
         citation = aggregate_citation.get(change.element_fqn)
-        # Only downgrade field-schema changes replay can reconstruct; leave
-        # orthogonal changes (e.g. the aggregate removed, a visibility flip) breaking.
+        # Only downgrade the field removal replay can reconstruct; leave every
+        # other change (a type change, a required add, a removed aggregate) breaking.
         if citation is None or change.change_type not in _ES_AGGREGATE_MITIGATABLE:
             still_breaking.append(change)
             continue

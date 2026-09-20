@@ -29,7 +29,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Visibility internal to public | Safe |
 | Change `__type__` string | **Breaking** |
 | Event version bump covered by a registered upcaster | Safe (mitigated) |
-| Event-sourced aggregate field removal / required-field add, when one rebuilding event has a covered version bump and no rebuilding event is left with a breaking payload change | Safe (mitigated) |
+| Event-sourced aggregate field removal, when one rebuilding event has a covered version bump and every rebuilding event whose payload changed is covered | Safe (mitigated) |
 
 These rules apply to all persisted elements: aggregates, entities, value
 objects, commands, events, database models, and projections.
@@ -55,33 +55,45 @@ The checker understands three evolution mechanisms:
   breaking.
 - **Event-sourced aggregate replay coverage**: An event-sourced aggregate is
   rebuilt by replaying the events its apply-handlers process. So a field removal
-  or a required-field add on such an aggregate is downgraded to safe when two
-  things hold: no rebuilding event is left with a breaking payload change, and at
-  least one event that already rebuilt the aggregate in the old snapshot has an
-  upcaster-covered version bump. A rebuilding event with an uncovered bump, one
-  whose payload changed without a bump, or no bump anywhere leaves the aggregate
-  breaking, because nothing was earned. An unchanged rebuilding event needs no
-  upcaster; it earns nothing either. A covered bump on an event whose
-  apply-handler was added in the same diff earns nothing: that handler never
-  rebuilt historical state. The aggregate must be event-sourced in both the old and new
-  snapshots: a classic aggregate converted to event sourcing in the same diff
-  stored its old state as table rows that replay cannot rebuild, so its field
-  changes stay breaking. Dropping a rebuilding event's apply-handler also leaves
-  the aggregate breaking, because its historical events can no longer be replayed.
-  Coverage is at aggregate granularity: the IR carries no
-  per-field history, so a covered bump on any rebuilding event downgrades the
-  aggregate's field changes, not only the fields that event populates. A classic
-  table-backed aggregate is never touched by this path; its breaking field
-  changes stay breaking, and `exclude` is the only way to silence them.
+  on such an aggregate is downgraded to safe when two things hold: every
+  rebuilding event whose payload changed has a version bump an upcaster covers,
+  and at least one event that already rebuilt the aggregate in the old snapshot
+  has such a bump. A rebuilding event with an uncovered bump, one whose payload
+  changed without a bump, or no bump anywhere leaves the aggregate breaking,
+  because nothing was earned. That holds even when the event's own change is
+  safe: a field removed from a rebuilding event under the deprecation grace is
+  still sitting in every payload in the event store, and an event rejects a
+  payload carrying a field it no longer declares, so replay cannot start. An
+  unchanged rebuilding event needs no upcaster; it earns nothing either. A
+  covered bump on an event whose apply-handler was added in the same diff earns
+  nothing: that handler never rebuilt historical state. The aggregate must be
+  event-sourced in both the old and new snapshots: a classic aggregate converted
+  to event sourcing in the same diff stored its old state as table rows that
+  replay cannot rebuild, so its field changes stay breaking. Dropping a
+  rebuilding event's apply-handler also leaves the aggregate breaking, because
+  its historical events can no longer be replayed. Coverage is at aggregate
+  granularity: the IR carries no per-field history, so a covered bump on any
+  rebuilding event downgrades the aggregate's field removal, not only the fields
+  that event populates. A classic table-backed aggregate is never touched by this
+  path; its breaking field changes stay breaking, and `exclude` is the only way
+  to silence them.
 
   A **field type change** is not on this list. An event-sourced aggregate can
   still have a stored snapshot of its own state, and Protean loads that snapshot
   directly, replaying the event stream only when the snapshot no longer
-  constructs. A removed field and a new required field both make the snapshot
-  fail to construct, so it is discarded and the upcaster runs. A type change
-  often does not: a stored `Float` of `5.0` coerces cleanly into a new `Integer`
-  field, so the aggregate loads from the pre-change snapshot and the upcaster is
-  never consulted. That change stays breaking.
+  constructs. A removed field makes the snapshot fail to construct, so it is
+  discarded and the upcaster runs. A type change often does not: a stored `Float`
+  of `5.0` coerces cleanly into a new `Integer` field, so the aggregate loads
+  from the pre-change snapshot and the upcaster is never consulted. That change
+  stays breaking.
+
+  A **new required field** is not on this list either. Replay starts from a blank
+  aggregate with every field set to `None`, applies the handlers, and runs no
+  required-field check at the end. An upcaster puts the new field in the event
+  payload; only the `@apply` handler can carry it across to the aggregate, and
+  nothing in the IR shows whether it does. A handler that never assigns the field
+  would leave the rebuilt aggregate holding `None` for it without any error, so
+  the add stays breaking.
 
 ---
 
@@ -168,9 +180,9 @@ a downgrade the checker can verify against the actual schema:
 - A registered [upcaster](../../patterns/event-versioning-and-evolution.md) chain
   earns the mitigation for an event's version bump.
 - Event-sourced replay coverage extends that same earned downgrade to an
-  event-sourced aggregate's field removals and required-field adds, once one
-  rebuilding event has a covered version bump and no rebuilding event is left
-  breaking.
+  event-sourced aggregate's field removals, once one rebuilding event has a
+  covered version bump and every rebuilding event whose payload changed is
+  covered.
 
 `exclude` earns nothing. It silences the alert without proving the change is
 safe, so it is the coarse last resort for the element types the checker cannot
