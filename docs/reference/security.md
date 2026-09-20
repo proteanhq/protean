@@ -61,9 +61,11 @@ your field values to the database as raw query text.
 Raw queries are the exception. A provider's `raw()` method runs a query string
 you supply. On the SQLAlchemy provider, `raw(query, data)` binds the values in
 `data` to named placeholders in the query, so pass user input through `data`
-rather than formatting it into the query string. The repository's raw query path
-runs your string as is and does not bind interpolated values. Either way, if you
-build the query string by pasting user input into it, you own that boundary.
+rather than formatting it into the query string. The repository's raw query path,
+`QuerySet.raw(query, data)`, takes a `data` argument but the bundled adapters
+ignore it. That path runs your string as is with nothing bound, so parameterize
+on the provider path instead. Either way, if you build the query string by
+pasting user input into it, you own that boundary.
 
 ## Secrets in configuration
 

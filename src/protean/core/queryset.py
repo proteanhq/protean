@@ -431,7 +431,9 @@ class QuerySet:
             are not of the Entity type.
 
         `query` is not checked for correctness or validity, and any errors thrown by the plugin or
-            database are passed as-is. Data passed will be transferred as-is to the plugin.
+            database are passed as-is. `data` is handed to the adapter, and the bundled adapters
+            ignore it: this path runs the query string as is. Use the provider's `raw()` when you
+            need values bound to placeholders.
 
         All other query options like `order_by`, `offset`, `limit`, and any
         `only()` field selection are ignored for this action; `raw()` always
