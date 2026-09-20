@@ -2406,15 +2406,18 @@ class Domain:
         self, query: BaseQuery[_QueryResult]
     ) -> _QueryResult: ...  # pragma: no cover
     @overload
-    def dispatch(self, query: BaseQuery[Any]) -> Any: ...  # pragma: no cover
+    def dispatch(self, query: Any) -> Any: ...  # pragma: no cover
     def dispatch(self, query: Any) -> Any:
         """Dispatch a query to its registered QueryHandler and return results.
 
         A query that declares its result type as ``BaseQuery[Result]`` resolves
-        to ``Result`` at the call site; a bare ``BaseQuery`` subclass resolves
-        to ``Any``. Both dispatch identically at runtime. A missing or
-        unregistered handler raises ``IncorrectUsageError`` at runtime; it does
-        not show up in the static return type.
+        to ``Result`` at the call site. Anything else resolves to ``Any``: a
+        bare ``BaseQuery`` subclass (which means ``BaseQuery[Any]``), and a
+        decorator-only query such as ``@domain.query(...) class GetOrders:``,
+        which a checker sees as a plain class because the decorator returns the
+        class it was handed. All of them dispatch identically at runtime. A
+        missing or unregistered handler raises ``IncorrectUsageError`` at
+        runtime; it does not show up in the static return type.
         """
         return self._query_processor.dispatch(query)
 

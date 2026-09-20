@@ -29,7 +29,10 @@ class GetUntypedOrder(BaseQuery):
 class OrderSummaryQueryHandler(BaseQueryHandler):
     @read(GetTypedOrder)
     def get_typed(self, query):
-        return {"order_id": query.order_id, "status": "shipped"}
+        # GetTypedOrder declares OrderSummary as its result, so the handler
+        # returns one. The declaration is phantom at runtime; keeping the two
+        # sides in step is the domain author's job.
+        return OrderSummary(order_id=query.order_id, status="shipped")
 
     @read(GetUntypedOrder)
     def get_untyped(self, query):
@@ -65,5 +68,7 @@ class TestTypedQueryRuntime:
         typed_result = test_domain.dispatch(GetTypedOrder(order_id="order-1"))
         untyped_result = test_domain.dispatch(GetUntypedOrder(order_id="order-2"))
 
-        assert typed_result == {"order_id": "order-1", "status": "shipped"}
+        assert isinstance(typed_result, OrderSummary)
+        assert typed_result.order_id == "order-1"
+        assert typed_result.status == "shipped"
         assert untyped_result == {"order_id": "order-2", "status": "pending"}

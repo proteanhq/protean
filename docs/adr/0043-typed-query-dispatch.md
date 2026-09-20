@@ -33,10 +33,12 @@ class GetOrderSummary(BaseQuery[OrderSummary]):
 @overload
 def dispatch(self, query: BaseQuery[_QueryResult]) -> _QueryResult: ...
 @overload
-def dispatch(self, query: BaseQuery[Any]) -> Any: ...
+def dispatch(self, query: Any) -> Any: ...
 ```
 
-A typed query resolves to its declared result type; an untyped query (`BaseQuery[Any]`, which is what a bare `BaseQuery` subclass means) resolves to `Any`. The runtime implementation is unchanged: it still returns `Any` and its body is untouched. Declaring the result type is optional. Both dispatch identically at runtime.
+A typed query resolves to its declared result type. Anything else falls to the second overload and resolves to `Any`, which is what `dispatch` returned before this change. That covers a bare `BaseQuery` subclass (it means `BaseQuery[Any]`), and it covers a decorator-only query such as `@domain.query(part_of=OrderSummary) class GetOrdersByCustomer:`. The decorator returns the class it was handed, so a checker sees a plain class with no `BaseQuery` in its MRO. That is the shape the guides use, so the fallback has to be `Any` and not `BaseQuery[Any]`, or every decorator-only call site would start failing.
+
+The runtime implementation is unchanged: it still returns `Any` and its body is untouched. Declaring the result type is optional. All three shapes dispatch identically at runtime.
 
 `dispatch` is never typed `NoReturn`. A missing or unregistered handler stays a runtime `IncorrectUsageError`; it does not show up in the static return type.
 
@@ -45,6 +47,7 @@ The generic composes with the custom subclass hooks `BaseQuery` already runs (`_
 ## Consequences
 
 - A caller who dispatches a typed query gets the result type back, checked by both mypy and pyright, with no annotation or cast.
+- No existing call site starts failing. The fallback overload takes `Any`, so a decorator-only query, which is what the guides show, checks exactly as it did before.
 - The result type is written once, on the query, next to the query's fields. The handler's return and the query's declared type are two sides that a reviewer can check against each other.
 - The feature does not depend on the mypy plugin, so pyright users get it too. This is the reason the generic base was chosen over `__result__` and the decorator argument, both of which degrade to `Any` under pyright.
 - Runtime behavior is unchanged. Existing queries keep working, and an untyped query dispatches to `Any` as before.
