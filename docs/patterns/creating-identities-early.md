@@ -212,8 +212,9 @@ class Measurement:
 
 Commands carry aggregate identities in `Identifier` fields. A plain `Identifier`
 field generates nothing, so the caller supplies the value. Marked
-`identifier=True`, it falls back to a generated UUID when the caller leaves it
-out, so pass the caller's identity in whenever it has to be preserved:
+`identifier=True`, it falls back to the domain's configured identity generator
+when the caller leaves it out, a UUID by default. So pass the caller's identity
+in whenever it has to be preserved:
 
 ```python
 @domain.command(part_of=Order)
@@ -349,8 +350,13 @@ first write is visible, and it needs no Redis and no extra infrastructure. It is
 not deduplication on its own: two deliveries running at the same time can both
 read a miss before either write lands.
 
-To close that gap, pair it with Protean's idempotency keys. The
-[Command Idempotency](command-idempotency.md) pattern covers that in full.
+Protean's idempotency keys do not close that gap either: `domain.process()`
+checks the key before handling and records the result after, so two deliveries
+running together can both read a miss. They protect a retry that arrives once a
+result is recorded. For simultaneous deliveries you need something atomic. A
+unique constraint on the identity column is the simplest: the second insert
+fails, and the retry that follows finds the row. The
+[Command Idempotency](command-idempotency.md) pattern covers keys in full.
 
 ### Why database IDs break it
 

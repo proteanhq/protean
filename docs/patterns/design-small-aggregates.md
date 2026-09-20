@@ -344,7 +344,7 @@ class Order:
 
 
 # In a separate aggregate's event handler
-@domain.event_handler(part_of=CustomerLoyalty)
+@domain.event_handler(part_of=CustomerLoyalty, stream_category="order")
 class CustomerLoyaltyEventHandler(BaseEventHandler):
 
     @handle(OrderPlaced)
@@ -358,6 +358,11 @@ class CustomerLoyaltyEventHandler(BaseEventHandler):
 `Order` knows nothing about `CustomerLoyalty`. It raises an event, and a
 separate handler updates the points. You can deploy, scale, and test the two on
 their own.
+
+The `stream_category="order"` is what makes the handler listen. A handler reads
+its own aggregate's stream by default, so `CustomerLoyaltyEventHandler` would
+watch `customer_loyalty` and never see `OrderPlaced`. Point it at the stream the
+event is written to.
 
 ---
 
@@ -401,7 +406,7 @@ def place_order(self, command: PlaceOrder):
     order_repo.add(order)
 
 
-@domain.event_handler(part_of=Inventory)
+@domain.event_handler(part_of=Inventory, stream_category="order")
 class InventoryEventHandler(BaseEventHandler):
 
     @handle(OrderPlaced)
@@ -534,7 +539,7 @@ Each aggregate is now small:
 Completing a task raises an event, and the project's progress follows:
 
 ```python
-@domain.event_handler(part_of=Project)
+@domain.event_handler(part_of=Project, stream_category="task")
 class ProjectEventHandler(BaseEventHandler):
 
     @handle(TaskCompleted)
