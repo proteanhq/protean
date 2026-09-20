@@ -1,26 +1,26 @@
 """Build every DX-pack skill example and require it to initialize.
 
 Each ``skills/*/assets/*.py`` is a runnable teaching example that declares a
-Protean domain. This harness executes every one of them and, for each, collects
-the ``Domain`` objects it defines and calls ``domain.init(traverse=False)``.
-That is the structural contract the pack must keep: every bundled example is a
-well-formed domain that registers and initializes against the installed
+Protean domain. This harness runs every one of them and, for each, collects the
+``Domain`` objects it defines, calls ``domain.init(traverse=False)``, and
+requires the domain to have registered at least one element. That is the
+structural contract the pack must keep: every bundled example is a well-formed
+domain that registers real elements and initializes against the installed
 framework, so an agent that copies the example gets working code.
 
 The examples run in one child interpreter, each under its own ``run_name`` so
 their element registrations land in separate namespaces and cannot collide. The
-runner uses a ``run_name`` other than ``"__main__"``, so it runs each example's
-definitions but not its ``if __name__ == "__main__"`` demo block. The demo
-blocks are usage demonstrations, not the structural contract, and seven of them
-finish by launching a live uvicorn server that never returns; running the
-definitions and initializing the domain validates the example without either
-blocking on a server or depending on a demo scenario's runtime data.
+``run_name`` is never ``"__main__"``, so the runner executes each example's
+definitions and skips its ``if __name__ == "__main__"`` demo block. A demo block
+is a usage walk-through, and several end by launching a live uvicorn server that
+never returns; initializing the domain checks the example without blocking on a
+server or depending on a demo's runtime data.
 
-The child interpreter keeps the 135 domains and their registrations out of this
-test process. The harness reads package data and shells out; it never touches a
-Domain here, so it skips the autouse ``test_domain`` fixture. It runs in the
-core lane (no ``slow`` marker), so ``protean test`` gates it: one framework
-import validates all 135 examples in a couple of seconds.
+The child interpreter keeps the example domains and their registrations out of
+this test process. The harness reads package data and shells out; it never
+touches a Domain here, so it skips the autouse ``test_domain`` fixture. It runs
+in the core lane (no ``slow`` marker), so ``protean test`` gates it: one
+framework import validates the whole example corpus in a couple of seconds.
 """
 
 from __future__ import annotations
@@ -41,6 +41,16 @@ pytestmark = pytest.mark.no_test_domain
 # clean-venv wheel check in CI proves the same files survive the build.
 PACK_ROOT = Path(str(dx.pack_files()))
 SKILLS_ROOT = PACK_ROOT / dx.SKILLS_DIR
+
+# The runner executes assets by path, so it needs the pack unpacked on disk. The
+# accessor does not promise a filesystem root (a zip install would not have one);
+# CI installs unzipped, so this skips cleanly only in the zip case.
+if not PACK_ROOT.is_dir():
+    pytest.skip(
+        "DX pack is not unpacked on disk; the example runner needs a real "
+        "directory to execute assets by path",
+        allow_module_level=True,
+    )
 
 
 def _discover_assets() -> list[Path]:
@@ -78,8 +88,8 @@ ASSETS = _discover_assets()
 # demo block is skipped), initializes every domain the example declares, and
 # writes a JSON report (the count it processed and a line per failure) to the
 # path in argv[2]. It writes to a file, not a stream, so the framework's own
-# start-up logging on stderr cannot corrupt the report. It records rather than
-# swallows: it runs all examples, then exits non-zero if any failed, so one run
+# start-up logging on stderr cannot corrupt the report. It collects every
+# failure: it runs all examples, then exits non-zero if any failed, so one run
 # names every broken example instead of stopping at the first.
 _RUNNER = """
 import json
@@ -103,6 +113,8 @@ for index, path in enumerate(assets):
             raise RuntimeError("example defines no Domain")
         for domain in domains:
             domain.init(traverse=False)
+            if not domain.registry.elements:
+                raise RuntimeError("example domain registers no elements")
     except Exception as exc:  # report the failure, then keep going
         failures.append(
             "%s: %s: %s" % (path.relative_to(skills_root), type(exc).__name__, exc)
@@ -115,10 +127,12 @@ sys.exit(1 if failures else 0)
 def test_example_discovery_is_not_vacuous():
     # Guard against a run that validates nothing: if the glob matched no assets,
     # the harness would pass while building zero examples. Pin the count to an
-    # independent walk and a floor so an empty or broken glob fails loudly here.
+    # independent walk so a broken glob fails, and to a floor near the real
+    # corpus size (135 today) so a mass deletion cannot slip under it. The floor
+    # leaves room for a small prune; a larger loss trips it.
     assert ASSETS, "discovered no example assets under the DX pack"
     assert len(ASSETS) == _independent_asset_count()
-    assert len(ASSETS) >= 100
+    assert len(ASSETS) >= 130
 
 
 def test_every_example_builds_and_initializes(tmp_path):
