@@ -20,7 +20,7 @@ Only the generic base is visible to a plain type checker. `__result__` and the d
 
 ## Decision
 
-`BaseQuery` becomes `Generic[TResult]`. `TResult` is a phantom type parameter: it never appears in a field and has no runtime effect. It records the type the query's handler returns. A query declares its result type by subscripting the base:
+`BaseQuery` becomes `Generic[TResult]`. `TResult` is a phantom type parameter: it never appears in a field and has no runtime effect. It records the type the query's handler returns, and defaults to `Any` (PEP 696) so that a bare `BaseQuery` subclass keeps checking clean under `disallow_any_generics`. The default comes from `typing_extensions.TypeVar`, because `typing.TypeVar` only took parameter defaults in Python 3.13 and Protean supports 3.11 up. A query declares its result type by subscripting the base:
 
 ```python
 class GetOrderSummary(BaseQuery[OrderSummary]):
@@ -48,7 +48,7 @@ The generic composes with the custom subclass hooks `BaseQuery` already runs (`_
 - The result type is written once, on the query, next to the query's fields. The handler's return and the query's declared type are two sides that a reviewer can check against each other.
 - The feature does not depend on the mypy plugin, so pyright users get it too. This is the reason the generic base was chosen over `__result__` and the decorator argument, both of which degrade to `Any` under pyright.
 - Runtime behavior is unchanged. Existing queries keep working, and an untyped query dispatches to `Any` as before.
-- Under a checker configured with `disallow_any_generics` (which mypy's `strict` mode turns on), a bare `class GetFoo(BaseQuery)` now draws a "missing type arguments" note, the same note any bare use of a generic base draws. The fix is to write the result type (`BaseQuery[OrderSummary]`) or `BaseQuery[Any]` when there is nothing meaningful to declare. This is a typing-lint prompt, not a runtime change, and it does not affect checkers that leave `disallow_any_generics` off. Protean's own `src/` uses `BaseQuery[Any]` at its internal annotation sites for this reason.
+- Nothing breaks for existing queries, including under a checker that runs `disallow_any_generics` (which mypy's `strict` mode turns on). `TResult` carries a PEP 696 default of `Any`, so a bare `class GetFoo(BaseQuery)` reads as `BaseQuery[Any]` and draws no "missing type arguments" error. Without the default, every bare query in user code that type-checks clean today would start failing that check, which is a cost this feature has no reason to charge. Protean's own `src/` still spells `BaseQuery[Any]` at its internal annotation sites, now for readability rather than necessity.
 
 ## Alternatives Considered
 

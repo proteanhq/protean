@@ -2306,6 +2306,7 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "structlog" },
     { name = "typer" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -2455,6 +2456,7 @@ requires-dist = [
     { name = "sqlalchemy", marker = "extra == 'sqlite'", specifier = ">=2.0.36,<2.1" },
     { name = "structlog", specifier = ">=24.1.0" },
     { name = "typer", specifier = ">=0.16.0" },
+    { name = "typing-extensions", specifier = ">=4.14.1" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30.0" },
     { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=1.2.0" },
 ]

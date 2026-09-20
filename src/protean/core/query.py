@@ -7,10 +7,11 @@ projections -- the read-side counterpart of commands.
 import contextlib
 import json
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, cast
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
+from typing_extensions import TypeVar
 
 from protean.exceptions import (
     IncorrectUsageError,
@@ -29,9 +30,13 @@ from protean.utils.reflection import _FIELDS
 # TResult records the type a query's handler returns. It is a phantom type
 # parameter: it never appears in a field and has no runtime effect. Declaring a
 # query as ``BaseQuery[OrderSummary]`` lets ``domain.dispatch`` resolve the
-# result type statically. A bare ``BaseQuery`` subclass is ``BaseQuery[Any]``,
-# so dispatch keeps returning ``Any`` for untyped queries.
-TResult = TypeVar("TResult")
+# result type statically. It defaults to ``Any`` (PEP 696), so a bare
+# ``BaseQuery`` subclass is ``BaseQuery[Any]`` to a type checker: dispatch keeps
+# returning ``Any`` for untyped queries, and a checker running
+# ``disallow_any_generics`` does not ask users to spell the parameter out.
+# ``TypeVar`` comes from ``typing_extensions`` because parameter defaults only
+# reached ``typing.TypeVar`` in Python 3.13.
+TResult = TypeVar("TResult", default=Any)
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +98,11 @@ class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
     ]
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQuery[Any]":
-        if cls is BaseQuery:
+        # ``BaseQuery[Result]`` is a distinct class that pydantic builds for the
+        # parametrized base, so ``cls is BaseQuery`` alone would let it through.
+        # Its generic metadata still points back at ``BaseQuery`` as the origin,
+        # which a real subclass never does.
+        if cls is BaseQuery or cls.__pydantic_generic_metadata__["origin"] is BaseQuery:
             raise NotSupportedError("BaseQuery cannot be instantiated")
         return super().__new__(cls)
 
