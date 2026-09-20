@@ -229,6 +229,13 @@ mutation = [
 # Configurations #
 ##################
 
+[tool.ruff]
+# Copied, unexecuted teaching assets (the dx pack and the scaffold templates) carry deliberate
+# anti-patterns and stay out of the lint gate. force-exclude keeps them excluded even when a file
+# is passed to ruff explicitly, which the loop's quality gate does (`ruff check <changed files>`).
+extend-exclude = ["src/protean/template", "src/protean/dx/pack"]
+force-exclude = true
+
 [tool.ruff.lint]
 # Imports must live at module top. Function-local imports are allowed only for
 # verified reasons (optional dep, monkeypatch test seam, lazy CLI startup,
@@ -328,7 +335,7 @@ markers = [
 
 [tool.mypy]
 plugins = ["protean.ext.mypy_plugin"]
-exclude = [".venv", "src/protean/template", "docs_src"]
+exclude = [".venv", "src/protean/template", "src/protean/dx/pack", "docs_src"]
 warn_unused_configs = true
 warn_unused_ignores = true
 strict = true
@@ -375,6 +382,7 @@ precision = 2
 omit = [
     "*migrations*",
     "*/template/*",  # Exclude template files - they're copied, not executed
+    "*/dx/pack/*",   # Exclude the dx teaching pack - copied assets, not executed
 ]
 exclude_lines = [
     "pragma: no cover",
