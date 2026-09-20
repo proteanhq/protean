@@ -1132,8 +1132,9 @@ def _apply_es_aggregate_mitigation(
     right_ir: dict[str, Any],
     coverage: dict[str, tuple[str, str | None]],
 ) -> None:
-    """Downgrade breaking field changes on an event-sourced aggregate whose
-    rebuilding events are all upcaster-covered.
+    """Downgrade breaking field changes on an event-sourced aggregate that earned
+    replay coverage: one rebuilding event has an upcaster-covered version bump and
+    no rebuilding event is left with a breaking payload change.
 
     An event-sourced aggregate is rebuilt by replaying the events its
     ``apply_handlers`` name. So its mitigatable breaking field changes (a field
@@ -1217,8 +1218,8 @@ def _apply_es_aggregate_mitigation(
                 and event_fqn in left_rebuilding_events
             ):
                 covering_citations.append(citation)
-        # Downgrade only when no rebuilding event is left breaking and at least one
-        # long-standing rebuilding event was bumped-and-covered.
+        # Downgrade only when no rebuilding event is left with a breaking payload
+        # change and at least one long-standing rebuilding event was bumped-and-covered.
         if has_gap or not covering_citations:
             continue
         aggregate_citation[fqn] = ", ".join(sorted(covering_citations))

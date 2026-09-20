@@ -1099,6 +1099,42 @@ class TestEventSourcedAggregateReplayCoverage:
         assert [c.change_type for c in agg] == ["field_removed"]
         assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
 
+    def test_visibility_flip_on_a_covered_event_does_not_block_the_aggregate(self):
+        """Only a breaking *payload* change on a rebuilding event blocks the
+        aggregate. The event flips public->internal alongside its covered bump, so
+        that flip stays breaking on the event, while the aggregate's field removal
+        is still earned-safe.
+        """
+        opened_v1 = _evt("AccountOpened", 1, {"note": _std()})
+        opened_v1["published"] = True
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={"app.AccountOpened": opened_v1},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        assert [c.change_type for c in report.breaking_changes] == [
+            "visibility_public_to_internal"
+        ]
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
     def test_covered_field_type_change_stays_breaking(self):
         """A stored snapshot can survive a type change and skip replay entirely.
 

@@ -29,7 +29,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Visibility internal to public | Safe |
 | Change `__type__` string | **Breaking** |
 | Event version bump covered by a registered upcaster | Safe (mitigated) |
-| Event-sourced aggregate field removal / required-field add, when one rebuilding event has a covered version bump and no rebuilding event is left breaking | Safe (mitigated) |
+| Event-sourced aggregate field removal / required-field add, when one rebuilding event has a covered version bump and no rebuilding event is left with a breaking payload change | Safe (mitigated) |
 
 These rules apply to all persisted elements: aggregates, entities, value
 objects, commands, events, database models, and projections.
