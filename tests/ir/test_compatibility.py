@@ -887,6 +887,45 @@ class TestUpcasterMitigation:
         report = classify_changes(diff_ir(left, right), left, right)
         assert report.is_breaking is True
 
+    def test_gap_below_the_old_version_leaves_change_breaking(self):
+        """The old IR's version is only the newest payload in the store. Here the
+        event moves v2->v3 with a v2->v3 upcaster, but the v1->v2 edge is gone, so
+        stored v1 payloads are stranded and the change stays breaking."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 3, {})},
+            upcasters={"OrderPlaced": [{"from_version": 2, "to_version": 3}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        assert {c.change_type for c in report.breaking_changes} == {
+            "field_removed",
+            "type_string_changed",
+        }
+
+    def test_full_chain_below_the_old_version_mitigates(self):
+        """The same v2->v3 bump with the v1->v2 edge still registered: every stored
+        version reaches v3, so the change is mitigated."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 3, {})},
+            upcasters={
+                "OrderPlaced": [
+                    {"from_version": 1, "to_version": 2},
+                    {"from_version": 2, "to_version": 3},
+                ]
+            },
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        assert all(
+            c.mitigated_by == "upcaster OrderPlaced v2->v3" for c in report.safe_changes
+        )
+
     def test_upcaster_for_a_different_event_does_not_mitigate(self):
         left = self._ir(
             {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
@@ -1363,6 +1402,34 @@ class TestEventSourcedAggregateReplayCoverage:
                     apply_handlers={"app.AccountOpened": "on_account_opened"},
                 )
             }
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+
+    def test_gap_below_the_old_event_version_leaves_aggregate_breaking(self):
+        """The rebuilding event moves v2->v3 with a v2->v3 upcaster, but the v1->v2
+        edge is gone. Stored v1 events cannot be deserialized, so replay cannot run
+        and the aggregate's field removal stays breaking."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 3, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 2, "to_version": 3}]},
         )
         report = classify_changes(diff_ir(left, right), left, right)
         assert report.is_breaking is True

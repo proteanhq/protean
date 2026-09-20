@@ -1051,9 +1051,9 @@ def _event_upcaster_coverage(
     """Whether a registered upcaster chain covers each event's version bump.
 
     Returns a map of event fqn to ``(status, citation)`` for every event that was
-    version-bumped between the two IRs. ``status`` is ``"covered"`` when an
-    upcaster chain reaches the new ``__version__`` from the old one, or ``"gap"``
-    when the version bumped but no chain reaches it (old payloads are stranded).
+    version-bumped between the two IRs. ``status`` is ``"covered"`` when upcaster
+    chains reach the new ``__version__`` from *every* prior version, or ``"gap"``
+    when any of them is stranded (including the old IR's own version).
     ``citation`` names the covering upcaster for a ``"covered"`` bump (e.g.
     ``"upcaster OrderPlaced v1->v2"``) and is ``None`` for a ``"gap"``. Events with
     no version bump are absent from the map (there is nothing for an upcaster to
@@ -1082,8 +1082,13 @@ def _event_upcaster_coverage(
             (e["from_version"], e["to_version"])
             for e in upcasters.get(right_entry.get("name", ""), [])
         ]
-        # left_v reaches right_v iff it is NOT among the versions with no path.
-        if left_v in missing_upcaster_source_versions(edges, right_v):
+        # Every stored version has to reach right_v, not just left_v. The old
+        # IR's version is only the newest payload in the store; v1 payloads
+        # written before an earlier bump are still there. This is the same rule
+        # `UPCASTER_GAP` applies at build time, so the two never disagree: an
+        # event bumped v2->v3 whose v1->v2 edge is gone strands its v1 payloads,
+        # and a change riding on that bump stays breaking.
+        if missing_upcaster_source_versions(edges, right_v):
             coverage[event_fqn] = ("gap", None)
         else:
             coverage[event_fqn] = (
@@ -1099,8 +1104,8 @@ def _apply_upcaster_mitigation(
 ) -> None:
     """Downgrade breaking changes on events whose version bump an upcaster covers.
 
-    A registered upcaster chain that reaches an event's new ``__version__`` from
-    its old one transforms stored old-version payloads to the new shape, so the
+    Registered upcaster chains that reach an event's new ``__version__`` from
+    every prior version transform stored payloads to the new shape, so the
     schema-transformation changes that make up that version bump (field removals,
     type changes, required-field additions, the ``__type__`` version-string bump)
     are no longer breaking. Only those change types are downgraded. An orthogonal
