@@ -565,7 +565,7 @@ class HandlerMixin:
         cls._handlers = defaultdict(set)
 
     @classmethod
-    def _handle(cls, item: Message | BaseCommand | BaseEvent | BaseQuery) -> Any:
+    def _handle(cls, item: Message | BaseCommand | BaseEvent | BaseQuery[Any]) -> Any:
         """Handle a message, command, event, or query.
 
         Returns:
@@ -642,7 +642,7 @@ class HandlerMixin:
     def _dispatch_handlers(
         cls,
         handlers: Collection[Callable[..., Any]],
-        item: BaseCommand | BaseEvent | BaseQuery,
+        item: BaseCommand | BaseEvent | BaseQuery[Any],
     ) -> Any:
         """Dispatch item to registered handler methods.
 

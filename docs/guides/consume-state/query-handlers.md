@@ -131,6 +131,31 @@ result = domain.dispatch(
 `domain.dispatch()` resolves the registered query handler, invokes the
 correct method, and returns the result directly.
 
+### Typing the dispatch result
+
+By default `domain.dispatch()` returns `Any`. A query can declare the type its
+handler returns by subscripting `BaseQuery`, and then `dispatch` resolves to
+that type at the call site:
+
+```python
+from protean.core.query import BaseQuery
+
+
+@domain.query(part_of=OrderSummary)
+class GetOrderById(BaseQuery[OrderSummary]):
+    order_id = Identifier(required=True)
+
+
+order = domain.dispatch(GetOrderById(order_id="order-1"))
+# order is typed as OrderSummary, not Any
+```
+
+The result type must match what the handler returns; the query declares it once,
+next to its fields. This is plain typing, so it works under both mypy and pyright
+with no plugin. Declaring the result type is optional: a query that does not
+subscript `BaseQuery` keeps dispatching to `Any`, and runtime behavior is
+identical either way. See [ADR-0043](../../adr/0043-typed-query-dispatch.md).
+
 ### Comparison with `domain.process()`
 
 | Aspect | `domain.process(command)` | `domain.dispatch(query)` |

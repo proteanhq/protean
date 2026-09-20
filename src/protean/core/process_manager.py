@@ -74,7 +74,7 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_correlation_value(
-    event: Union["BaseCommand", BaseEvent, "BaseQuery"],
+    event: Union["BaseCommand", BaseEvent, "BaseQuery[Any]"],
     correlate_spec: str | dict[str, str],
 ) -> str:
     """Extract the correlation value from an event using the correlate spec.
@@ -324,7 +324,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
     # ------------------------------------------------------------------
     @classmethod
     def _handle(
-        cls, item: Union[Message, "BaseCommand", BaseEvent, "BaseQuery"]
+        cls, item: Union[Message, "BaseCommand", BaseEvent, "BaseQuery[Any]"]
     ) -> Any:
         """Process manager dispatch: load → dispatch → persist lifecycle.
 
@@ -334,7 +334,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         state as a transition event in the PM's own event store stream.
         """
         # Deserialize
-        domain_object: BaseCommand | BaseEvent | BaseQuery = (
+        domain_object: BaseCommand | BaseEvent | BaseQuery[Any] = (
             item.to_domain_object() if isinstance(item, Message) else item
         )
 

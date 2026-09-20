@@ -98,7 +98,7 @@ from protean.core.event_sourced_repository import event_sourced_repository_facto
 from protean.core.process_manager import process_manager_factory
 from protean.core.projection import BaseProjection, projection_factory
 from protean.core.projector import projector_factory
-from protean.core.query import query_factory
+from protean.core.query import BaseQuery, query_factory
 from protean.core.query_handler import query_handler_factory
 from protean.core.repository import BaseRepository, repository_factory
 from protean.core.subscriber import subscriber_factory
@@ -192,6 +192,10 @@ logger = logging.getLogger(__name__)
 # than referenced through a constant.
 
 _T = TypeVar("_T")
+
+# Binds a query's declared result type so ``dispatch`` returns it at the call
+# site (see the ``dispatch`` overloads and ``BaseQuery``'s ``TResult``).
+_QueryResult = TypeVar("_QueryResult")
 
 # a singleton sentinel value for parameter defaults
 _sentinel = object()
@@ -2394,8 +2398,27 @@ class Domain:
 
         return ReadView(self, projection_cls)
 
+    # The overload stubs are typing-only: their ``...`` bodies never run, so
+    # coverage reports them as partial branches. Exclude them the way codecov.yml
+    # prescribes for genuinely unexecutable lines.
+    @overload
+    def dispatch(
+        self, query: BaseQuery[_QueryResult]
+    ) -> _QueryResult: ...  # pragma: no cover
+    @overload
+    def dispatch(self, query: Any) -> Any: ...  # pragma: no cover
     def dispatch(self, query: Any) -> Any:
-        """Dispatch a query to its registered QueryHandler and return results."""
+        """Dispatch a query to its registered QueryHandler and return results.
+
+        A query that declares its result type as ``BaseQuery[Result]`` resolves
+        to ``Result`` at the call site. Anything else resolves to ``Any``: a
+        bare ``BaseQuery`` subclass (which means ``BaseQuery[Any]``), and a
+        decorator-only query such as ``@domain.query(...) class GetOrders:``,
+        which a checker sees as a plain class because the decorator returns the
+        class it was handed. All of them dispatch identically at runtime. A
+        missing or unregistered handler raises ``IncorrectUsageError`` at
+        runtime; it does not show up in the static return type.
+        """
         return self._query_processor.dispatch(query)
 
     def _query_handler_for(self, query: Any) -> type | None:

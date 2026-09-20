@@ -5,10 +5,12 @@ Validates:
 - Abstract query without part_of is allowed
 - part_of must reference a Projection (not an Aggregate)
 - Unresolved string part_of raises error
-- BaseQuery cannot be instantiated directly
+- BaseQuery cannot be instantiated directly, subscripted or not
 - Association fields are rejected in queries
 - Query with part_of pointing to an unregistered projection raises error
 """
+
+from typing import Any
 
 import pytest
 
@@ -93,6 +95,11 @@ class TestBaseQueryInstantiation:
     def test_base_query_cannot_be_instantiated(self):
         with pytest.raises(NotSupportedError, match="BaseQuery cannot be instantiated"):
             BaseQuery()
+
+    def test_parametrized_base_query_cannot_be_instantiated(self):
+        """Subscripting the base does not turn it into something instantiable."""
+        with pytest.raises(NotSupportedError, match="BaseQuery cannot be instantiated"):
+            BaseQuery[Any]()
 
 
 class TestQueryFieldTypeRestrictions:
