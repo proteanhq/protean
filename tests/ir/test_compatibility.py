@@ -1698,6 +1698,46 @@ class TestEventSourcedAggregateReplayCoverage:
         agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
         assert "field_removed" in [c.change_type for c in agg]
 
+    def test_removed_rebuilding_event_stays_breaking(self):
+        """A rebuilding event removed from the domain while its @apply handler stays
+        leaves stored messages of that type with no class to deserialize into, so
+        replay fails. Even with a covered sibling bump, the aggregate's field removal
+        stays breaking."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 1, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    # DepositMade is gone from the domain, but its handler stays.
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+
     def test_sibling_payload_change_without_a_bump_stays_breaking(self):
         """A rebuilding event whose payload lost a field without a version bump has
         no upcaster to run, so replaying it strands old payloads. It is absent from

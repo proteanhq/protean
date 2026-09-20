@@ -1175,16 +1175,23 @@ def _apply_es_aggregate_mitigation(
     The aggregate must be event-sourced in *both* snapshots. A classic aggregate
     converted to event sourcing in this diff persisted its old state as table rows,
     which replay cannot reconstruct, so nothing is earned and its field changes stay
-    breaking. Likewise a rebuilding event whose ``@apply`` handler was dropped in
-    this diff is treated as a gap: historical events of that type remain in the
-    store with no handler, so replay would fail (see
-    :meth:`BaseAggregate._apply_handler`). *coverage* is the map from
+    breaking. Likewise a rebuilding event that fell out of replay in this diff is
+    treated as a gap. That happens in two shapes: its ``@apply`` handler was
+    dropped, so historical events of that type sit in the store with no handler
+    (see :meth:`BaseAggregate._apply_handler`), or the event was removed from the
+    domain outright, so a stored message of that type no longer resolves to an
+    event class at all. *coverage* is the map from
     :func:`_event_upcaster_coverage`.
     """
     if not report.breaking_changes:
         return
 
     left_clusters = left_ir.get("clusters", {})
+    # Events this diff dropped from the domain entirely, read from the two IRs
+    # rather than inferred from the handler maps: a handler can outlive the event
+    # it applies, and it is the event registration replay needs to resolve a
+    # stored message back to a class.
+    removed_events = set(_events_by_fqn(left_ir)) - set(_events_by_fqn(right_ir))
     # Every event whose payload schema changed at all, read from both lists.
     # Severity is the wrong question here: a field removal the deprecation grace
     # already called safe still leaves that field in every payload sitting in the
@@ -1212,11 +1219,16 @@ def _apply_es_aggregate_mitigation(
         rebuilding_events = aggregate.get("apply_handlers", {})
         if not rebuilding_events:
             continue
-        # A rebuilding event whose handler was dropped in this diff leaves its
-        # historical events in the store with no @apply handler, so replay fails.
-        # Treat any removed handler as a gap: nothing is earned for this aggregate.
+        # A rebuilding event falls out of replay in two shapes. Its @apply handler
+        # is dropped, leaving historical events in the store with no handler. Or
+        # the event itself is gone from the domain, so a stored message of that
+        # type no longer resolves to a class and replay cannot even deserialize it.
+        # Either shape is a gap: nothing is earned for this aggregate.
         left_rebuilding_events = left_aggregate.get("apply_handlers", {})
-        if set(left_rebuilding_events) - set(rebuilding_events):
+        if any(
+            event_fqn not in rebuilding_events or event_fqn in removed_events
+            for event_fqn in left_rebuilding_events
+        ):
             continue
 
         covering_citations: list[str] = []

@@ -71,7 +71,9 @@ The checker understands three evolution mechanisms:
   to event sourcing in the same diff stored its old state as table rows that
   replay cannot rebuild, so its field changes stay breaking. Dropping a
   rebuilding event's apply-handler also leaves the aggregate breaking, because
-  its historical events can no longer be replayed. Coverage is at aggregate
+  its historical events can no longer be replayed, and so does removing the
+  rebuilding event itself: stored messages of that type no longer resolve to an
+  event class, so replay cannot even read them. Coverage is at aggregate
   granularity: the IR carries no per-field history, so a covered bump on any
   rebuilding event downgrades the aggregate's field removal, not only the fields
   that event populates. A classic table-backed aggregate is never touched by this
