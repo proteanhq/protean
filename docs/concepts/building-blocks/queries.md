@@ -45,6 +45,14 @@ Unlike commands and events, queries carry no metadata, stream, or event-store
 concerns. They are plain read-intent DTOs, dispatched synchronously and answered
 immediately.
 
+### A query can declare its result type. { data-toc-label="Result Type" }
+
+A query may state the type its handler returns by subscripting the base:
+`class GetOrderById(BaseQuery[OrderSummary])`. `domain.dispatch(query)` then
+resolves to that type at the call site instead of `Any`, checked by both mypy
+and pyright. Declaring the result type is optional and changes nothing at
+runtime.
+
 ## Best Practices
 
 ### Keep queries to read parameters. { data-toc-label="Read Parameters Only" }

@@ -532,7 +532,7 @@ class HandlerConfigurator:
     @staticmethod
     def _validate_query_handler_method(
         method_name: str, method: HandlerMethod, handler_cls: type[OptionsMixin]
-    ) -> type[BaseQuery]:
+    ) -> type[BaseQuery[Any]]:
         """Validate a single query handler method's target and return it."""
         if hasattr(method, "_start"):
             raise IncorrectUsageError(

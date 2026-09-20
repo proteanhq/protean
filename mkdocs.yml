@@ -452,6 +452,7 @@ nav:
       - "0040 · Schema-evolution ladder": adr/0040-schema-evolution-ladder.md
       - "0041 · Event-model grammar over IR": adr/0041-textual-event-model-grammar-over-ir.md
       - "0042 · Subscription owns retry and dead-lettering": adr/0042-subscription-owns-retry-and-dead-lettering.md
+      - "0043 · Typed query dispatch": adr/0043-typed-query-dispatch.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

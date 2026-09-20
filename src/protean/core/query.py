@@ -7,7 +7,7 @@ projections -- the read-side counterpart of commands.
 import contextlib
 import json
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import ValidationError as PydanticValidationError
@@ -26,11 +26,18 @@ from protean.utils import DomainObjects, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _FIELDS
 
+# TResult records the type a query's handler returns. It is a phantom type
+# parameter: it never appears in a field and has no runtime effect. Declaring a
+# query as ``BaseQuery[OrderSummary]`` lets ``domain.dispatch`` resolve the
+# result type statically. A bare ``BaseQuery`` subclass is ``BaseQuery[Any]``,
+# so dispatch keeps returning ``Any`` for untyped queries.
+TResult = TypeVar("TResult")
+
 
 # ---------------------------------------------------------------------------
 # BaseQuery
 # ---------------------------------------------------------------------------
-class BaseQuery(Element, BaseModel, OptionsMixin):
+class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
     """Base class for domain queries -- immutable DTOs representing a
     read intent against a projection.
 
@@ -41,6 +48,11 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
 
     Fields are declared using standard Python type annotations with optional
     ``Field`` constraints.
+
+    A query may declare the type its handler returns by subscripting the base:
+    ``class GetOrderSummary(BaseQuery[OrderSummary])``. ``domain.dispatch`` then
+    resolves to ``OrderSummary`` at the call site. Declaring the result type is
+    optional; a bare ``BaseQuery`` subclass dispatches to ``Any`` as before.
 
     **Meta Options**
 
@@ -80,7 +92,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin):
         ("suppress_checks", ()),
     ]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQuery":
+    def __new__(cls, *args: Any, **kwargs: Any) -> "BaseQuery[Any]":
         if cls is BaseQuery:
             raise NotSupportedError("BaseQuery cannot be instantiated")
         return super().__new__(cls)
@@ -263,7 +275,7 @@ def query_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     # `_derive_element_class` returns a subclass of ``base_cls`` (here
     # ``BaseQuery``); narrow to expose ``meta_`` to the type checkers. The
     # unbounded ``_T`` return contract is preserved via ``element_cls`` below.
-    query_cls = cast("type[BaseQuery]", element_cls)
+    query_cls = cast("type[BaseQuery[Any]]", element_cls)
 
     if not query_cls.meta_.part_of and not query_cls.meta_.abstract:
         raise IncorrectUsageError(
