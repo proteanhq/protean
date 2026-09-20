@@ -207,6 +207,11 @@ class Order:
         current_prices: dict[str, float],
     ) -> "Order":
         """Create a renewal Order from a previous subscription order."""
+        if previous_order.status != "delivered":
+            raise ValidationError(
+                {"previous_order": ["Can only renew from a delivered order"]}
+            )
+
         order = cls(
             customer_id=previous_order.customer_id,
             shipping_address=previous_order.shipping_address,
@@ -347,11 +352,6 @@ def from_subscription_renewal(cls, previous_order, current_prices):
     if previous_order.status != "delivered":
         raise ValidationError(
             {"previous_order": ["Can only renew from a delivered order"]}
-        )
-
-    if not previous_order.is_renewal_eligible:
-        raise ValidationError(
-            {"previous_order": ["Order is not eligible for renewal"]}
         )
 
     # Proceed with construction...
@@ -580,6 +580,7 @@ class TestOrderCreation:
         previous = Order(
             customer_id="cust-1",
             shipping_address=Address(...),
+            status="delivered",
         )
         previous.add_item(product_id="p1", name="Widget", quantity=2, unit_price=10.0)
 
