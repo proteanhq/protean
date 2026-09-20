@@ -1308,6 +1308,48 @@ class TestEventSourcedAggregateReplayCoverage:
         agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
         assert [c.change_type for c in agg] == ["field_removed"]
 
+    def test_covered_bump_with_unbumped_sibling_downgrades(self):
+        """Two rebuilding events: one bumped-and-covered, the other unchanged at v1
+        (no bump, so no gap). At least one is covered and none is a gap, so the
+        aggregate downgrades and cites only the covered upcaster."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 1, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        # DepositMade stays at v1: unbumped, not a gap.
+                        "app.DepositMade": _evt("DepositMade", 1, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
 
 # ------------------------------------------------------------------
 # __type__ string changes
