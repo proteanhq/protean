@@ -1120,15 +1120,23 @@ def load_state(project_root: Path | str) -> ManagedFileState:
 
     Returns an empty :class:`ManagedFileState` when the file is absent, which is
     how a first apply reads. Raises :exc:`ValueError` when the file exists but
-    cannot be read, is not valid JSON, or does not carry the state shape (an
-    unknown ``state_version`` included), and :exc:`ManagedFileError` when the
-    state directory or state file is a symlink.
+    cannot be read (an unreadable file or directory included), is not valid JSON,
+    or does not carry the state shape (an unknown ``state_version`` included),
+    and :exc:`ManagedFileError` when the state directory or state file is a
+    symlink.
     """
     state_path = _resolve_state_path(Path(project_root))
-    if not state_path.exists():
-        return ManagedFileState()
+    # Read first and let a missing file say so, rather than probing with
+    # ``exists()``. ``Path.exists()`` swallows the ``OSError`` an unreadable
+    # ``.protean`` directory raises and answers ``False``, so an unreadable state
+    # file would read as an absent one: every recorded target would silently
+    # count as never installed. Only ``FileNotFoundError`` means absent; a
+    # permission error and every other read failure surface as the environment
+    # error they are.
     try:
         content = state_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ManagedFileState()
     except UnicodeDecodeError as exc:
         raise ValueError(f"State file {state_path} is not valid utf-8: {exc}") from exc
     except OSError as exc:

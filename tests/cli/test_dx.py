@@ -134,11 +134,136 @@ def test_install_defaults_to_the_current_directory(tmp_path: Path, monkeypatch) 
 
 
 def test_refresh_creates_when_missing(tmp_path: Path) -> None:
-    """Refresh is the same idempotent apply, so it also creates a missing file."""
+    """Refresh is the same idempotent apply, so it also creates a missing baseline.
+
+    The required baseline is always in scope, so refresh writes it even on an
+    empty directory. The optional targets are not: refresh never opts a project
+    into a file it does not have.
+    """
     result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
     assert (tmp_path / "AGENTS.md").exists()
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_refresh_keeps_a_baseline_only_project_baseline_only(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The documented upgrade flow does not opt a scaffolded project into extras.
+
+    A project from ``protean new`` carries only the baseline. Refreshing it after
+    a version bump must bring the baseline up to the new version and leave
+    ``.mcp.json`` and the per-editor files uncreated, since those stay ``install``
+    choices.
+    """
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.9")
+    _install_baseline(tmp_path)
+
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.10")
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "9.9.10" in agents
+    assert "9.9.9" not in agents
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists(), f"refresh must not create {rel}"
+    # A file it did not write is not reported either.
+    flat = " ".join(result.output.split())
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, flat
+    # And the project still passes its own check, which verifies the same scope.
+    check = runner.invoke(app, ["check", "-p", str(tmp_path)])
+    assert check.exit_code == 0, check.output
+
+
+def test_refresh_updates_every_installed_target(tmp_path: Path, monkeypatch) -> None:
+    """A project that installed everything gets everything refreshed.
+
+    Scoping refresh to the installed set must not narrow it for a user who ran
+    ``install``: all six targets are recorded in state, so all six come along.
+    """
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.9")
+    _install(tmp_path)
+
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.10")
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    for rel in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".mcp.json",
+        _CURSOR_RULE,
+        _COPILOT_FILE,
+        _OPENCODE_CONFIG,
+    ):
+        assert rel in flat, f"refresh must report {rel}: {flat}"
+    assert "9.9.9" not in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "9.9.9" not in (tmp_path / _CURSOR_RULE).read_text(encoding="utf-8")
+
+
+def test_refresh_scopes_in_an_optional_file_present_on_disk(tmp_path: Path) -> None:
+    """An optional file the user put on disk is refreshed, with no state entry.
+
+    Presence on disk is the same opt-in signal ``check`` reads, so refresh writes
+    the managed registration into a hand-written ``.mcp.json`` while still leaving
+    the editor files alone.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {}}) + "\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    registered = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert "protean" in registered["mcpServers"]
+    for rel in (_CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_refresh_stops_on_a_corrupt_state_file(tmp_path: Path) -> None:
+    """The scope read runs before any write, so a corrupt state file writes nothing.
+
+    Refresh cannot tell which optional targets are installed without the state
+    file, so it reports the state file and exits 2 rather than guessing (and
+    writing every target).
+    """
+    _install_baseline(tmp_path)
+    agents_before = (tmp_path / "AGENTS.md").read_bytes()
+    _state_file(tmp_path).write_text("{ not json", encoding="utf-8")
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert ".protean/dx-state.json" in flat, flat
+    assert (tmp_path / "AGENTS.md").read_bytes() == agents_before
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_refresh_reports_a_refused_optional_target(tmp_path: Path) -> None:
+    """A dangling symlink at an optional target is an error, not a silent skip.
+
+    The scope decision runs through the same diff the writer's path checks live
+    in, so a target dx refuses to write through is reported and exits 2 instead of
+    reading as a file the project never installed.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").symlink_to(tmp_path / "nowhere.json")
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert "error .mcp.json" in flat, flat
+    assert "symlink" in flat, flat
 
 
 def test_refresh_rewrites_a_stale_block_and_keeps_user_edits(

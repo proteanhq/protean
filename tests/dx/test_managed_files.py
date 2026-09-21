@@ -983,6 +983,33 @@ def test_unreadable_state_file_raises_value_error(tmp_path: Path) -> None:
         load_state(tmp_path)
 
 
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root reads through a 0o000 directory",
+)
+def test_state_file_behind_an_unreadable_directory_raises_value_error(
+    tmp_path: Path,
+) -> None:
+    """An unreadable ``.protean`` fails loud instead of reading as an absent file.
+
+    ``Path.exists()`` swallows the OSError an unreadable directory raises and
+    answers ``False``, so probing with it would report an empty state and every
+    recorded target would silently count as never installed. The read is the
+    probe, so only a genuinely missing file reads as absent.
+    """
+    state_dir = tmp_path / ".protean"
+    state_dir.mkdir()
+    state_path(tmp_path).write_text(
+        json.dumps({"state_version": STATE_VERSION, "entries": {}}), encoding="utf-8"
+    )
+    state_dir.chmod(0o000)
+    try:
+        with pytest.raises(ValueError, match="Could not read"):
+            load_state(tmp_path)
+    finally:
+        state_dir.chmod(0o700)
+
+
 def test_unknown_state_version_is_rejected(tmp_path: Path) -> None:
     (tmp_path / ".protean").mkdir()
     state_path(tmp_path).write_text(

@@ -72,34 +72,41 @@ writes the same managed `AGENTS.md` and `CLAUDE.md` bridge that `install` writes
 the same version, and records them in `.protean/dx-state.json`. So a fresh project is
 already dx-managed: `install`, `refresh`, and `check` all work on it with no manual
 step. `protean new` writes only this baseline; `.mcp.json` and the per-editor files
-stay `install` choices, since you pick your own editors.
+stay `install` choices, since you pick your own editors. `refresh` keeps it that way:
+it re-renders what the project already has and never adds an optional file, so
+upgrading a scaffolded project leaves it baseline-only until you run `install`.
 
 ## Verbs
 
 ```shell
 protean dx install     # write the canonical and per-editor files
-protean dx refresh     # re-render the managed regions to the installed version
+protean dx refresh     # re-render what is installed, to the installed version
 protean dx diff        # preview what install would change (unified diff); write nothing
 protean dx check       # exit non-zero when a target has drifted; write nothing
 ```
 
-`install` creates a missing file and refreshes a stale managed region. `refresh`
-is the same idempotent apply, run after upgrading Protean. `diff` and `check` write
-nothing: `diff` is the preview, printing a unified diff of each pending change,
-and `check` is the CI gate.
+`install` creates a missing file and refreshes a stale managed region, across every
+target. It is the verb that opts a project into `.mcp.json` and the per-editor
+files. `refresh` is the same idempotent apply, run after upgrading Protean, scoped
+to what the project already has: the required baseline plus every optional target
+already installed. So `refresh` updates a project without adding a file you did not
+choose. `diff` and `check` write nothing: `diff` is the preview, printing a unified
+diff of each pending change, and `check` is the CI gate.
 
 A target has drifted when it is missing, its managed region is stale against the
 installed version, or you edited inside that region. `check` reports each verified
 target, naming the region it means, and exits non-zero when any has drifted.
 
-`check` verifies a required baseline plus whatever else is installed. `AGENTS.md`
-and the `CLAUDE.md` bridge are the required baseline, always verified. `.mcp.json`
-and the per-editor files are optional: `check` verifies one only once it is present
-on disk or recorded in `.protean/dx-state.json`. A freshly scaffolded project
-carries only the baseline, so it passes. A project missing the baseline fails. An
-editor file you never chose is not counted as drift. `diff`, the preview, is not
-scoped this way: it always previews every managed target, including a pending
-create for an optional file you have not installed.
+`check` verifies a required baseline plus whatever else is installed, the same
+scope `refresh` writes. `AGENTS.md` and the `CLAUDE.md` bridge are the required
+baseline, always verified. `.mcp.json` and the per-editor files are optional:
+`check` verifies one only once it is present on disk or recorded in
+`.protean/dx-state.json`. A freshly scaffolded project carries only the baseline, so
+it passes. A project missing the baseline fails. An editor file you never chose is
+not counted as drift. Because the two share a scope, `refresh` fixes exactly what
+`check` reports. `diff`, the preview, is not scoped this way: it always previews
+every managed target, including a pending create for an optional file you have not
+installed.
 
 ### Options
 
@@ -111,8 +118,9 @@ create for an optional file you have not installed.
 - `0`: the command succeeded. For `check`, every target is up to date.
 - `1`: for `check`, a target has drifted. For `install` and `refresh`, a managed
   region conflicts with a hand edit and was left untouched.
-- `2`: a filesystem error, such as an unreadable or malformed target, a `--path`
-  that is not a directory, or a pack that cannot render.
+- `2`: a filesystem error, such as an unreadable or malformed target, an
+  unreadable or corrupt `.protean/dx-state.json`, a `--path` that is not a
+  directory, or a pack that cannot render.
 
 A conflict on one file does not stop the others. `install` applies every file it
 safely can, reports the conflict, and then exits non-zero.

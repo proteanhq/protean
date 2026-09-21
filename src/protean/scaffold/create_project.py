@@ -157,7 +157,8 @@ def create_project(
         ValueError: *project_name* is not a string, is empty, is ``.`` or
             ``..``, or carries a forbidden character; or the target path
             resolves outside *output_folder*, which is what a symlink left at
-            the target does.
+            the target does; or a required dx target has no renderer. All are
+            raised before any directory is cleared.
         FileNotFoundError: *output_folder* does not exist.
         FileExistsError: Something already sits at the target path (a non-empty
             directory, or a non-directory such as a file or symlink) and *force*
@@ -205,6 +206,14 @@ def create_project(
     data_dict = dict(data or {})
     data_dict["project_name"] = project_name
 
+    # Render the dx baseline up front, for the same reason copier is imported
+    # first: rendering reads the packaged pack and the diagnostics registry, so a
+    # stripped or unreadable pack fails here, while the target is still
+    # untouched. Rendering it inside ``render_into`` would fail after ``force``
+    # had cleared the target and copier had written into it, leaving a
+    # half-scaffolded project that is not dx-managed.
+    baseline = baseline_managed_files(PACK_VERSION)
+
     def render_into(destination: str, quiet: bool = False) -> list[str]:
         """Render the template, manifest, and dx baseline into *destination*.
 
@@ -237,7 +246,7 @@ def create_project(
         # choices.
         write_manifest(destination or ".")
         dest = Path(destination or ".")
-        for managed_file in baseline_managed_files(PACK_VERSION):
+        for managed_file in baseline:
             apply_managed_file(dest, managed_file)
         return _relative_file_paths(destination or ".")
 
