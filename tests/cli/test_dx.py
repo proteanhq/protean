@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from protean.cli.dx import app
 from protean.dx.pack import PACK_VERSION
+from protean.dx.renderers import REQUIRED_TARGETS
 
 # The dx commands are pure filesystem work and never load a domain.
 pytestmark = pytest.mark.no_test_domain
@@ -31,10 +32,10 @@ def _install_baseline(project: Path) -> None:
     driving the whole ``new`` flow.
     """
     from protean.dx import apply_managed_file
-    from protean.dx.renderers import agents_managed_file, claude_bridge_managed_file
+    from protean.dx.renderers import baseline_managed_files
 
-    apply_managed_file(project, agents_managed_file(PACK_VERSION))
-    apply_managed_file(project, claude_bridge_managed_file(PACK_VERSION))
+    for managed_file in baseline_managed_files(PACK_VERSION):
+        apply_managed_file(project, managed_file)
 
 
 def _state_file(project: Path) -> Path:
@@ -400,6 +401,54 @@ def test_check_scopes_in_an_optional_file_present_on_disk(tmp_path: Path) -> Non
     flat = " ".join(result.output.split())
     for rel in (_CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
         assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"
+
+
+@pytest.mark.parametrize("required", sorted(REQUIRED_TARGETS))
+def test_check_flags_each_required_file_on_its_own(
+    tmp_path: Path, required: str
+) -> None:
+    """Every required file is verified on its own, not only as a pair.
+
+    Deleting one and leaving the other in place must still fail the check. With
+    both deleted at once (test_check_fails_on_fresh_dir), a target dropped from
+    REQUIRED_TARGETS by mistake would still look covered: the other one carries
+    the assertion. Parametrized over the constant, so a target added to the
+    baseline gets this case for free.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / required).unlink()
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    assert "Drift detected" in result.output
+    # Flatten whitespace: rich wraps the line at the terminal width.
+    flat = " ".join(result.output.split())
+    assert f"create {required} — not installed yet" in flat, flat
+    # Scope is unchanged by the deletion: the optional files stay out.
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"
+
+
+def test_check_scopes_in_a_dangling_symlink_at_an_optional_target(
+    tmp_path: Path,
+) -> None:
+    """A dangling symlink at an unrecorded optional target is an error, not a skip.
+
+    ``Path.exists`` reads a dangling symlink as absent, so a scope probe on
+    ``exists`` alone would skip the target and let check exit 0 over a symlink dx
+    refuses to write through. The scope counts any symlink as present, so the
+    per-file diff reaches its refusal and reports it.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").symlink_to(tmp_path / "nowhere.json")
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert "error .mcp.json" in flat, flat
+    assert "symlink" in flat, flat
 
 
 def test_diff_still_previews_all_six_on_baseline_only(tmp_path: Path) -> None:

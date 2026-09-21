@@ -177,6 +177,17 @@ def _apply(path: str) -> None:
         raise typer.Exit(code=EXIT_FAILURE)
 
 
+def _is_present(target_path: Path) -> bool:
+    """Return whether something occupies *target_path*, symlinks included.
+
+    ``Path.exists`` follows a symlink, so a dangling one reads as absent.
+    ``is_symlink`` covers that case, so a link counts as present whether or not
+    it resolves: ``dx`` refuses to write through any symlinked target, and a
+    refusal a user can see beats a silent skip.
+    """
+    return target_path.exists() or target_path.is_symlink()
+
+
 def _scan(
     path: str, *, show_diff: bool = False, only_installed_optional: bool = False
 ) -> tuple[bool, bool, bool]:
@@ -231,9 +242,11 @@ def _scan(
             only_installed_optional
             and managed_file.target not in REQUIRED_TARGETS
             and managed_file.target not in recorded
-            # ``exists`` follows a symlink harmlessly for this scope probe; a
-            # present symlinked target still raises in ``diff_managed_file`` below.
-            and not (root / managed_file.target).exists()
+            # A symlink at the target counts as present, whether or not it
+            # resolves. ``exists`` follows the link and reads a dangling one as
+            # absent, which would skip it silently; scoping it in instead lets
+            # ``diff_managed_file`` below refuse it as the symlinked target it is.
+            and not _is_present(root / managed_file.target)
         ):
             continue
         try:

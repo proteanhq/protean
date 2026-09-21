@@ -177,10 +177,7 @@ def create_project(
     # ``protean.dx`` is still half-initialized and raise ``ImportError``.
     from protean.dx import apply_managed_file  # noqa: PLC0415
     from protean.dx.pack import PACK_VERSION  # noqa: PLC0415
-    from protean.dx.renderers import (  # noqa: PLC0415
-        agents_managed_file,
-        claude_bridge_managed_file,
-    )
+    from protean.dx.renderers import baseline_managed_files  # noqa: PLC0415
 
     if not _is_valid_project_name(project_name):
         raise ValueError("Invalid project name")
@@ -230,14 +227,18 @@ def create_project(
         # captured as manifest entries. The dx baseline goes through the same
         # renderers and writer ``protean dx install`` uses, at the same pack
         # version, so the scaffold's AGENTS.md is byte-identical to a dx install
-        # and the project is already dx-managed. ``apply_managed_file`` writes
-        # the managed-block AGENTS.md, creates the CLAUDE.md bridge, and records
-        # both in ``.protean/dx-state.json``. ``.mcp.json`` and the per-editor
-        # files stay ``protean dx install`` choices.
+        # and the project is already dx-managed. The set comes from
+        # ``baseline_managed_files``, the same ``REQUIRED_TARGETS`` baseline
+        # ``protean dx check`` requires, so a target added to that baseline is
+        # written here too and a fresh project never fails its own check.
+        # ``apply_managed_file`` writes the managed-block AGENTS.md, creates the
+        # CLAUDE.md bridge, and records both in ``.protean/dx-state.json``.
+        # ``.mcp.json`` and the per-editor files stay ``protean dx install``
+        # choices.
         write_manifest(destination or ".")
         dest = Path(destination or ".")
-        apply_managed_file(dest, agents_managed_file(PACK_VERSION))
-        apply_managed_file(dest, claude_bridge_managed_file(PACK_VERSION))
+        for managed_file in baseline_managed_files(PACK_VERSION):
+            apply_managed_file(dest, managed_file)
         return _relative_file_paths(destination or ".")
 
     if dry_run:
