@@ -22,7 +22,9 @@ against the file it sits in, lands on one of: a bundled skill's ``SKILL.md``, a
 suffix is stripped first, and tokens inside a fenced code block or an HTML
 comment are skipped: neither renders on the page, so neither is a link. Each
 reference remembers which form it came from, and the verify check counts only a
-real link: a path named in backticks is a mention, not a link.
+real link: a path named in backticks is a mention, not a link. Link syntax
+written inside backticks is neither. It renders as literal text, so code spans
+are lifted out of the body before links are read from what remains.
 
 The link forms it reads are ``[text](dest)`` and ``[text](dest "Title")``: the
 destination is parsed on its own, so an optional title does not hide the target.
@@ -154,12 +156,19 @@ def _raw_tokens(text: str) -> list[tuple[str, bool]]:
     Fences are dropped first, off the raw lines, and HTML comments after: a
     comment that opens inside a fence cannot then eat a fence marker and throw
     the fence state off.
+
+    Code spans come out next, and links are read from what is left. Link syntax
+    inside backticks renders as literal text, so it is not a link on the page,
+    and reading it as one would let a quoted example both satisfy the verify
+    check and raise a dangling finding for the path it names.
     """
     body = _HTML_COMMENT.sub("", "\n".join(_lines_outside_fences(text)))
+    spans = [match.group(1).strip() for match in _INLINE_CODE.finditer(body)]
+    outside_code = _INLINE_CODE.sub(" ", body)
     tokens: list[tuple[str, bool]] = [
-        (match.group(1).strip(), True) for match in _LINK.finditer(body)
+        (match.group(1).strip(), True) for match in _LINK.finditer(outside_code)
     ]
-    tokens += [(match.group(1).strip(), False) for match in _INLINE_CODE.finditer(body)]
+    tokens += [(span, False) for span in spans]
     return tokens
 
 
@@ -405,15 +414,42 @@ def test_verify_reference_is_present_and_non_empty():
 
 
 @requires_pack_on_disk
-def test_hardening_bar_note_is_present_and_reachable():
-    # The maintainer-facing bar lives in the pack and is linked from AGENTS.md,
-    # so it is reachable from the repo.
+def test_hardening_bar_note_names_the_guards_that_enforce_it():
+    # The bar is maintainer-facing: it belongs to the pack, not to the guidance
+    # rendered into someone's project, so nothing links it from AGENTS.md (see
+    # test_agents_source_carries_no_relative_link for why a link there breaks).
+    # What keeps it honest instead is that its clauses name the tests that
+    # enforce them, so a clause no test checks reads as the gap it is.
     text = dx.read_pack_text(REFERENCES_DIR, HARDENING_BAR)
     assert text.strip(), "the hardening-bar note is empty"
 
-    agents = dx.load_agents_source()
-    assert f"{REFERENCES_DIR}/{HARDENING_BAR}" in agents, (
-        "AGENTS.md does not link the hardening-bar note"
+    for guard in (
+        "tests/dx/test_examples.py",
+        "tests/dx/test_pack_integrity.py",
+        "tests/dx/test_diagnostic_codes.py",
+    ):
+        assert guard in text, f"the hardening-bar note does not name {guard}"
+
+
+@requires_pack_on_disk
+def test_agents_source_carries_no_relative_link():
+    # ``render_agents_body`` embeds this source verbatim into a project's
+    # AGENTS.md, .cursor/rules/protean.mdc, and .github/copilot-instructions.md.
+    # None of those copies the pack alongside, and each resolves a relative link
+    # from a different directory, so a pack-relative link in the source lands
+    # dangling in three generated files at once. An absolute URL survives the
+    # render, and so does an in-page #anchor; nothing else does.
+    source = dx.load_agents_source()
+
+    relative = [
+        token
+        for token, from_link in _raw_tokens(source)
+        if from_link and not token.startswith(("http://", "https://", "mailto:", "#"))
+    ]
+
+    assert relative == [], (
+        "AGENTS.md is rendered into a project, where these links cannot "
+        "resolve:\n" + "\n".join(relative)
     )
 
 
@@ -717,6 +753,58 @@ def test_verify_mention_in_backticks_does_not_count_as_a_link(tmp_path):
 
     assert report.dangling == []
     assert report.skills_missing_verify == ["alpha"]
+
+
+def test_verify_link_syntax_in_a_code_span_does_not_count_as_a_link(tmp_path):
+    # The same hole, one step further: quoting the whole link form inside
+    # backticks renders as literal text, not as a link a reader can follow. It
+    # must not satisfy the verify check either.
+    root = _make_pack(tmp_path)
+    _add_skill(
+        root,
+        "alpha",
+        f"Write `[verify](../../{VERIFY_TARGET})` in your recipe.",
+        link_verify=False,
+    )
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert report.skills_missing_verify == ["alpha"]
+
+
+def test_link_syntax_in_a_code_span_raises_no_dangling_finding(tmp_path):
+    # The clean side of the same rule: a page that shows the link form as a code
+    # example names a path that need not exist, so quoting it must not surface
+    # as a dangling reference.
+    root = _make_pack(tmp_path)
+    _add_skill(root, "alpha", "Write it as `[page](references/missing.md)`.")
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert [ref.target for ref in report.references if "missing" in ref.target] == []
+
+
+def test_code_span_inside_link_text_keeps_the_link(tmp_path):
+    # Lifting code spans out must not cost a real link: ``[`page`](dest)`` is a
+    # link whose text is code, so its destination still counts and still reaches
+    # the page it names.
+    root = _make_pack(tmp_path)
+    _add_skill(
+        root,
+        "alpha",
+        "See [`page.md`](references/page.md).",
+        references={"page.md": "A page.\n"},
+    )
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert report.orphans == []
+    assert f"{SKILLS_DIR}/alpha/{REFERENCES_DIR}/page.md" in [
+        ref.target for ref in report.references if ref.from_link
+    ]
 
 
 def test_directory_named_like_a_page_does_not_resolve(tmp_path):

@@ -20,8 +20,3 @@ developer-experience epic. -->
 - Put validation in the domain layer: field constraints, value-object invariants,
   and aggregate invariants. The database stores state; it does not enforce the
   business rules.
-
-## For maintainers
-
-The bar every bundled teaching skill is held to is written up in
-[the skill-hardening bar](references/hardening-bar.md).
