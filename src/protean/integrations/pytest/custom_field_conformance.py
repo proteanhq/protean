@@ -123,10 +123,21 @@ def _assert_empty_handling(subject: Any, field: FieldSpec) -> None:
         # A declared default is what a missing value resolves to. It may be an
         # instance of the custom type, a raw value, or a callable producing
         # either; Pydantic does not run the parser over it.
-        expected_default = field.default() if callable(field.default) else field.default
-        assert instance.sample == expected_default, (
+        if callable(field.default):
+            # Pydantic has already run the factory to fill ``instance``.
+            # Running it a second time here to compute an expected value would
+            # fail any stateful or non-deterministic factory, which is a
+            # conforming field, so check the field is wired to the declared
+            # factory and leave the value it produced alone.
+            wired = subject.model_fields["sample"].default_factory
+            assert wired is field.default, (
+                f"an optional Custom field with a callable default should be "
+                f"wired to that callable as its default factory; got {wired!r}"
+            )
+            return
+        assert instance.sample == field.default, (
             f"an optional Custom field left unset should fall back to its "
-            f"default {expected_default!r}, got {instance.sample!r}"
+            f"default {field.default!r}, got {instance.sample!r}"
         )
         return
 

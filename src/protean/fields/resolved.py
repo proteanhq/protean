@@ -24,6 +24,7 @@ from enum import Enum
 from typing import Any
 
 from annotated_types import Ge, Gt, Le, Lt, MaxLen, MinLen
+from pydantic import Field as PydanticField
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_core import PydanticUndefined
 
@@ -250,6 +251,44 @@ def convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str]
             msg = msg[len("Value error, ") :]
         errors[field].append(msg)
     return dict(errors)
+
+
+# ---------------------------------------------------------------------------
+# Custom-field redeclaration helper
+# ---------------------------------------------------------------------------
+def custom_field_declaration(field_info: Any) -> tuple[Any, Any]:
+    """Return the ``(annotation, class attribute)`` pair that redeclares a custom field.
+
+    Fact-event generation and value-object projection both rebuild a domain
+    element from another element's ``FieldInfo`` objects. A custom field (built
+    by ``Custom``) needs both halves of its declaration carried over:
+
+    - its Pydantic metadata, because the bare annotation is the raw custom
+      class and carries no schema of its own, so the rebuilt class fails at
+      schema-build time without it, and
+    - its ``field_kind="custom"`` marker, because ``serialize_custom_value``
+      reads the kind off the rebuilt ``ResolvedField`` to decide whether a
+      value needs ``as_dict`` before it reaches an adapter.
+
+    Carrying only the metadata leaves the rebuilt field classified
+    ``"standard"``, and a live custom instance then reaches the database.
+
+    Only the kind is carried across, not the rest of ``json_schema_extra``:
+    a rebuilt field is a projection, so identity, uniqueness and the Protean
+    validators belong to the source element and are deliberately left behind,
+    as they already are for every built-in field.
+    """
+    annotation = field_info.annotation
+    if field_info.metadata:
+        annotation = typing.Annotated[(annotation, *field_info.metadata)]
+
+    kwargs: dict[str, Any] = {"json_schema_extra": {"field_kind": "custom"}}
+    if field_info.default is not PydanticUndefined:
+        kwargs["default"] = field_info.default
+    elif field_info.default_factory is not None:
+        kwargs["default_factory"] = field_info.default_factory
+
+    return annotation, PydanticField(**kwargs)
 
 
 # ---------------------------------------------------------------------------

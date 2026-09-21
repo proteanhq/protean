@@ -10,6 +10,7 @@ verified by execution, not by reading the page.
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import os
 import sys
 from decimal import Decimal
@@ -492,6 +493,98 @@ class TestCustomFieldProjectsToValueObject:
             assert len(messages) > 0
             replayed = messages[-1].to_domain_object()
             assert replayed.stop.at == Point(3, 4)
+
+
+class TestProjectedCustomFieldKeepsItsKind:
+    """A projected custom field must stay classified ``custom``.
+
+    ``value_object_from_entity`` and fact-event generation both rebuild a field
+    from the source element's ``FieldInfo``. The ``field_kind`` marker lives in
+    ``json_schema_extra``, not in the annotation metadata, so a rebuild that
+    carries only the metadata leaves the field classified ``standard``.
+    ``serialize_custom_value`` reads that kind to decide whether a value needs
+    ``as_dict``, so losing it hands the adapter a live custom instance.
+    """
+
+    def test_projected_value_object_field_is_still_custom(self, test_domain):
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(required=True)
+
+        test_domain.init(traverse=False)
+
+        VO = value_object_from_entity(Marker)
+        assert fields(VO)["at"].field_kind == "custom"
+
+    def test_projected_unique_field_is_still_custom(self, test_domain):
+        # A unique field is made optional during projection, which rewrites the
+        # class attribute and would otherwise discard the marker again.
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(required=True, unique=True)
+
+        test_domain.init(traverse=False)
+
+        VO = value_object_from_entity(Marker)
+        assert fields(VO)["at"].field_kind == "custom"
+
+    def test_fact_event_field_is_still_custom(self, test_domain):
+        @test_domain.aggregate(fact_events=True)
+        class Marker:
+            at: Point = _point_field(required=True)
+
+        test_domain.init(traverse=False)
+
+        assert fields(Marker._fact_event_cls)["at"].field_kind == "custom"
+
+    def test_embedded_projected_value_object_reaches_the_adapter_serialized(
+        self, test_domain
+    ):
+        # The generated VO embedded in another aggregate is flattened into a
+        # shadow attribute, and that is what every adapter's ``from_entity``
+        # is handed. With the marker lost the shadow carries a live Point, and
+        # a driver that maps an unknown type to a string column fails on write.
+        @test_domain.aggregate
+        class Marker:
+            at: Point = _point_field(required=True)
+
+        test_domain.init(traverse=False)
+
+        Place = value_object_from_entity(Marker)
+
+        @test_domain.aggregate
+        class Trip:
+            label: str = String(max_length=50)
+            place = ValueObject(Place)
+
+        test_domain.init(traverse=False)
+
+        with test_domain.domain_context():
+            model_cls = test_domain.repository_for(Trip)._dao.database_model_cls
+            record = model_cls.from_entity(Trip(label="home", place=Place(at="3,4")))
+            assert record["place_at"] == "3,4"
+
+
+class TestCallableDefaultConformance:
+    """A stateful default factory is a conforming field.
+
+    The harness must not compute an expected default of its own: Pydantic has
+    already run the factory to fill the instance, so running it again compares
+    against a second, different value.
+    """
+
+    def test_a_stateful_callable_default_passes_conformance(self):
+        counter = itertools.count()
+
+        def next_point() -> Point:
+            return Point(next(counter), 0)
+
+        run_custom_field_conformance(
+            _point_field(default=next_point),
+            valid_input="3,4",
+            expected=Point(3, 4),
+            invalid_input=object(),
+        )
 
 
 # ===========================================================================

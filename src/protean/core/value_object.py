@@ -28,7 +28,11 @@ from protean.fields.association import HasMany, HasOne, Reference
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject as ValueObjectDescriptor
 from protean.fields.embedded import ValueObject as ValueObjectField
-from protean.fields.resolved import ResolvedField, convert_pydantic_errors
+from protean.fields.resolved import (
+    ResolvedField,
+    convert_pydantic_errors,
+    custom_field_declaration,
+)
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.ir.diagnostics import DiagnosticCode
 from protean.utils import DomainObjects, _derive_element_class
@@ -463,24 +467,22 @@ def value_object_from_entity(
         elif isinstance(value, ResolvedField):
             finfo = model_field_info.get(key)
             if finfo:
-                annotation = finfo.annotation
-                # A custom field (built by ``Custom``) carries the type's Pydantic
-                # validators and serializers in the field metadata. The bare
-                # annotation is the raw custom class, which has no Pydantic schema
-                # on its own, so re-attach the metadata for the projected VO field.
-                # Otherwise projecting an entity that holds a custom field (either
-                # directly via ``value_object_from_entity`` or as a child entity of
-                # a fact-event aggregate) fails at schema build time. Only custom
-                # fields need this; every built-in field has a native schema.
-                if value.field_kind == "custom" and finfo.metadata:
-                    annotation = Annotated[(annotation, *finfo.metadata)]
-                annotations[key] = annotation
-                if finfo.default is not PydanticUndefined:
-                    namespace[key] = finfo.default
-                elif finfo.default_factory is not None:
-                    namespace[key] = PydanticField(
-                        default_factory=finfo.default_factory
-                    )
+                # A custom field (built by ``Custom``) needs its Pydantic
+                # metadata and its kind marker carried onto the projected VO
+                # field; ``custom_field_declaration`` builds both. Without the
+                # metadata the projection fails at schema build time; without
+                # the marker the projected field is classified ``standard`` and
+                # a live custom instance reaches the adapter.
+                if value.field_kind == "custom":
+                    annotations[key], namespace[key] = custom_field_declaration(finfo)
+                else:
+                    annotations[key] = finfo.annotation
+                    if finfo.default is not PydanticUndefined:
+                        namespace[key] = finfo.default
+                    elif finfo.default_factory is not None:
+                        namespace[key] = PydanticField(
+                            default_factory=finfo.default_factory
+                        )
 
     # Make identifier/unique fields optional (they are identity concerns,
     # not value concerns).
@@ -491,7 +493,13 @@ def value_object_from_entity(
             field_obj.identifier or field_obj.unique
         ):
             annotations[key] = annotations[key] | None
-            namespace[key] = None
+            # A unique custom field lands here too, and a bare ``None`` would
+            # discard the kind marker the declaration above just carried over.
+            namespace[key] = (
+                PydanticField(default=None, json_schema_extra={"field_kind": "custom"})
+                if field_obj.field_kind == "custom"
+                else None
+            )
 
     ns = {"__annotations__": annotations, **namespace}
     value_object_cls = type(vo_name, (BaseValueObject,), ns)
