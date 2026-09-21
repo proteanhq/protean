@@ -1787,6 +1787,40 @@ class TestEventSourcedAggregateReplayCoverage:
         agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
         assert "field_removed" in [c.change_type for c in agg]
 
+    def test_renamed_apply_handler_still_earns_coverage(self):
+        """The gap check asks whether the event still has an @apply handler, not
+        which method name the IR happens to record. ``_projections`` holds a *set*
+        of methods per event and the IR writes one name, so the name is not evidence
+        of anything; the event fqn being present is. Rename the sole handler and
+        replay still resolves and applies the stored event, so the field removal is
+        still earned-safe."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {"note": _std()})
+                    },
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "apply_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
     def test_removed_rebuilding_event_stays_breaking(self):
         """A rebuilding event removed from the domain while its @apply handler stays
         leaves stored messages of that type with no class to deserialize into, so
