@@ -1101,18 +1101,34 @@ def _resolve_state_path(project_root: Path) -> Path:
     treated as absent, read, or written.
     """
     state_dir = project_root / _STATE_DIR
-    if state_dir.is_symlink():
+    if _is_symlink(state_dir):
         raise ManagedFileError(
             f"State directory {state_dir} is a symlink; refusing to follow it "
             "outside the project tree."
         )
     state_path = state_dir / _STATE_FILENAME
-    if state_path.is_symlink():
+    if _is_symlink(state_path):
         raise ManagedFileError(
             f"State file {state_path} is a symlink; refusing to follow it outside "
             "the project tree."
         )
     return state_path
+
+
+def _is_symlink(path: Path) -> bool:
+    """Return whether *path* is a symlink, treating an unreadable parent as not one.
+
+    ``Path.is_symlink()`` needs search permission on the parent directory. When the
+    parent is unreadable it raises ``PermissionError`` on Python 3.11 through 3.13,
+    while Python 3.14 swallows it and answers ``False``. Answer ``False`` on every
+    version so the caller keeps going and the later read or write fails with the
+    real environment error (an unreadable ``.protean`` surfaces as the ``ValueError``
+    :func:`load_state` raises, not a raw ``OSError`` that leaks past it).
+    """
+    try:
+        return path.is_symlink()
+    except OSError:
+        return False
 
 
 def load_state(project_root: Path | str) -> ManagedFileState:

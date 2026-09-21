@@ -31,10 +31,13 @@ def _install_baseline(project: Path) -> None:
     baseline-only directory reproduces a freshly scaffolded project without
     driving the whole ``new`` flow.
     """
-    from protean.dx import apply_managed_file
+    from protean.dx import apply_managed_file, pack
     from protean.dx.renderers import baseline_managed_files
 
-    for managed_file in baseline_managed_files(PACK_VERSION):
+    # Read the version off the module at call time, not the name bound at import,
+    # so a test that monkeypatches ``protean.dx.pack.PACK_VERSION`` stamps the
+    # baseline with the patched version.
+    for managed_file in baseline_managed_files(pack.PACK_VERSION):
         apply_managed_file(project, managed_file)
 
 
@@ -225,6 +228,29 @@ def test_refresh_scopes_in_an_optional_file_present_on_disk(tmp_path: Path) -> N
     assert "protean" in registered["mcpServers"]
     for rel in (_CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
         assert not (tmp_path / rel).exists()
+
+
+def test_refresh_recreates_a_recorded_optional_target_deleted_from_disk(
+    tmp_path: Path,
+) -> None:
+    """A recorded optional file deleted from disk comes back on refresh.
+
+    ``install`` records every optional target in state. If the user later removes
+    one, refresh must recreate it: the state entry keeps it in scope even though
+    the diff comes back ``CREATE`` (the file is gone), so ``recorded + CREATE``
+    means recreate, not skip-as-uninstalled.
+    """
+    _install(tmp_path)
+    (tmp_path / ".mcp.json").unlink()
+    assert not (tmp_path / ".mcp.json").exists()
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    registered = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert "protean" in registered["mcpServers"]
+    flat = " ".join(result.output.split())
+    assert "created .mcp.json" in flat, flat
 
 
 def test_refresh_stops_on_a_corrupt_state_file(tmp_path: Path) -> None:
