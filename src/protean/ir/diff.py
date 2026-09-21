@@ -1048,16 +1048,22 @@ def _event_upcaster_coverage(
     left_ir: dict[str, Any],
     right_ir: dict[str, Any],
 ) -> dict[str, tuple[str, str | None]]:
-    """Whether a registered upcaster chain covers each event's version bump.
+    """Whether a registered upcaster chain reaches each event's current version.
 
-    Returns a map of event fqn to ``(status, citation)`` for every event that was
-    version-bumped between the two IRs. ``status`` is ``"covered"`` when upcaster
-    chains reach the new ``__version__`` from *every* prior version, or ``"gap"``
-    when any of them is stranded (including the old IR's own version).
-    ``citation`` names the covering upcaster for a ``"covered"`` bump (e.g.
-    ``"upcaster OrderPlaced v1->v2"``) and is ``None`` for a ``"gap"``. Events with
-    no version bump are absent from the map (there is nothing for an upcaster to
-    cover). This is the single source of coverage truth both mitigation passes read.
+    Returns a map of event fqn to ``(status, citation)``. ``status`` is ``"gap"``
+    when any stored version below the new ``__version__`` cannot be upcast to it,
+    and ``"covered"`` when the chains do reach it from every prior version *and*
+    this diff bumped the version. ``citation`` names the covering upcaster for a
+    ``"covered"`` bump (e.g. ``"upcaster OrderPlaced v1->v2"``) and is ``None``
+    for a ``"gap"``.
+
+    The gap question is asked of every event, bumped or not. An event standing
+    still at v3 whose v1->v2 upcaster was deleted in this diff has stranded its
+    stored v1 payloads just as surely as a bump would, and replay of a stream
+    carrying them fails. A bumped event is the only one that can be ``"covered"``,
+    because coverage is what an upcaster earns for the *new* shape; an event that
+    did not bump earns nothing and is absent from the map. This is the single
+    source of coverage truth both mitigation passes read.
     """
     upcasters = right_ir.get("upcasters", {})
     left_events = _events_by_fqn(left_ir)
@@ -1070,9 +1076,7 @@ def _event_upcaster_coverage(
             continue
         left_v = left_entry.get("__version__")
         right_v = right_entry.get("__version__")
-        if not isinstance(left_v, int) or not isinstance(right_v, int):
-            continue
-        if right_v <= left_v:
+        if not isinstance(right_v, int):
             continue
         # Keyed by event base name (matching the `Domain.Name` type string and
         # `_diagnose_upcaster_gap`). Two events sharing a class name across
@@ -1090,11 +1094,13 @@ def _event_upcaster_coverage(
         # and a change riding on that bump stays breaking.
         if missing_upcaster_source_versions(edges, right_v):
             coverage[event_fqn] = ("gap", None)
-        else:
-            coverage[event_fqn] = (
-                "covered",
-                f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}",
-            )
+            continue
+        if not isinstance(left_v, int) or right_v <= left_v:
+            continue
+        coverage[event_fqn] = (
+            "covered",
+            f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}",
+        )
     return coverage
 
 
@@ -1273,15 +1279,16 @@ def _apply_es_aggregate_mitigation(
     the same terms as those events. Two conditions: every rebuilding event whose
     payload schema changed must have a version bump an upcaster covers, and at
     least one event that already rebuilt the aggregate in the old snapshot must
-    have such a bump. An uncovered bump (a gap), a payload change made without a
-    version bump, or no bump at all leaves the aggregate breaking, because nothing
-    was earned. That first condition is answered from the two IRs, by
+    have such a bump. A stored version no upcaster chain reaches (a gap, with or
+    without a bump in this diff), a payload change made without a version bump, or
+    no bump at all leaves the aggregate breaking, because nothing was earned. That
+    first condition is answered from the two IRs, by
     :func:`_payload_changed_events`: the classified report names only some of the
     shape changes that strand a stored payload, so reading it would miss the rest.
     A version bump covered on an ``@apply`` handler added in this diff earns
     nothing either: that handler never rebuilt historical state, so its coverage
-    says nothing about the old aggregate. Coverage is at
-    aggregate granularity: the IR carries no per-field provenance, so a covered
+    says nothing about the old aggregate. Coverage is at aggregate granularity:
+    the IR carries no per-field provenance, so a covered
     bump on any rebuilding event downgrades the aggregate's field removal, not only
     the fields that event happens to populate. A classic (non-event-sourced)
     aggregate is never touched by this path; its breaking field changes stay
@@ -1292,11 +1299,14 @@ def _apply_es_aggregate_mitigation(
     and replay runs no required-field validation, so neither one is proven safe by
     upcaster coverage. See :data:`_ES_AGGREGATE_MITIGATABLE` for both arguments.
 
-    The aggregate must be event-sourced in *both* snapshots. A classic aggregate
-    converted to event sourcing in this diff persisted its old state as table rows,
-    which replay cannot reconstruct, so nothing is earned and its field changes stay
-    breaking. Likewise a rebuilding event that fell out of replay in this diff is
-    treated as a gap. That happens in two shapes: its ``@apply`` handler was
+    The aggregate must be event-sourced in *both* snapshots, and must still name
+    the same ``stream_category``. A classic aggregate converted to event sourcing
+    in this diff persisted its old state as table rows, which replay cannot
+    reconstruct. An aggregate whose stream category moved leaves its whole history
+    behind under the old category, so replay finds no events at all. Either way
+    nothing is earned and its field changes stay breaking. Likewise a rebuilding
+    event that fell out of replay in this diff is treated as a gap. That happens
+    in two shapes: its ``@apply`` handler was
     dropped, so historical events of that type sit in the store with no handler
     (see :meth:`BaseAggregate._apply_handler`), or the event was removed from the
     domain outright, so a stored message of that type no longer resolves to an
@@ -1313,21 +1323,31 @@ def _apply_es_aggregate_mitigation(
     # stored message back to a class.
     removed_events = set(_events_by_fqn(left_ir)) - set(_events_by_fqn(right_ir))
     # Every event a stored payload can no longer satisfy, read from the two IRs.
-    # `coverage` records version bumps alone, so an event whose shape moved
-    # without one is absent from it, and that absence does not mean the payload
-    # is unchanged.
+    # `coverage` only ever reports "covered" for a version bump, so an event whose
+    # shape moved without one is absent from it, and that absence does not mean
+    # the payload is unchanged.
     payload_changed_events = _payload_changed_events(left_ir, right_ir)
     # Per aggregate fqn, the citation to attach when its field changes are earned-safe.
     aggregate_citation: dict[str, str] = {}
     for fqn, cluster in right_ir.get("clusters", {}).items():
         aggregate = cluster.get("aggregate", {})
-        if not aggregate.get("options", {}).get("is_event_sourced"):
+        options = aggregate.get("options", {})
+        if not options.get("is_event_sourced"):
             continue
         # The aggregate must also have been event-sourced in the old snapshot.
         # A classic->event-sourced conversion stored its old state as table rows,
         # which replay cannot rebuild, so no field change is earned-safe.
         left_aggregate = left_clusters.get(fqn, {}).get("aggregate", {})
-        if not left_aggregate.get("options", {}).get("is_event_sourced"):
+        left_options = left_aggregate.get("options", {})
+        if not left_options.get("is_event_sourced"):
+            continue
+        # Replay reads the stream the aggregate names: `_load_aggregate_current`
+        # pages `f"{stream_category}-{identifier}"`. Move the category and every
+        # historical event is left behind under the old one, so replay of an
+        # existing aggregate finds no events at all and reports it missing. No
+        # upcaster earns anything back from that, so the field changes stay
+        # breaking.
+        if left_options.get("stream_category") != options.get("stream_category"):
             continue
         rebuilding_events = aggregate.get("apply_handlers", {})
         if not rebuilding_events:

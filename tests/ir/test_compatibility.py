@@ -1079,7 +1079,7 @@ class TestRenameOnEventStillSafe:
         assert [c.change_type for c in report.safe_changes] == ["field_renamed"]
 
 
-def _es_options() -> dict:
+def _es_options(stream_category: str | None = "account") -> dict:
     """Options block marking an aggregate event-sourced."""
     return {
         "auto_add_id_field": True,
@@ -1088,18 +1088,23 @@ def _es_options() -> dict:
         "limit": 100,
         "provider": "default",
         "schema_name": None,
-        "stream_category": None,
+        "stream_category": stream_category,
     }
 
 
-def _es_cluster(fields: dict, events: dict, apply_handlers: dict) -> dict:
+def _es_cluster(
+    fields: dict,
+    events: dict,
+    apply_handlers: dict,
+    stream_category: str | None = "account",
+) -> dict:
     """An event-sourced ``app.Account`` cluster with the given fields, rebuilding
     events, and apply-handler map (event fqn -> handler method name)."""
     return _make_cluster(
         "Account",
         fields=fields,
         events=events,
-        options=_es_options(),
+        options=_es_options(stream_category),
         apply_handlers=apply_handlers,
     )
 
@@ -1659,6 +1664,90 @@ class TestEventSourcedAggregateReplayCoverage:
         assert report.is_breaking is True
         agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
         assert "field_removed" in [c.change_type for c in agg]
+
+    def test_removed_upcaster_on_an_unbumped_event_stays_breaking(self):
+        """An upcaster deleted from an event that did not bump strands stored
+        payloads just as a gap on a bump does.
+
+        ``DepositMade`` sits at v2 on both sides, so this diff changes nothing
+        about its shape, but its v1->v2 upcaster is gone. Every v1 payload written
+        before that bump is still in the stream and can no longer be read, so
+        replay fails and the sibling ``AccountOpened`` bump earns the aggregate
+        nothing.
+        """
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 2, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"DepositMade": [{"from_version": 1, "to_version": 2}]},
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        "app.DepositMade": _evt("DepositMade", 2, {}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            # The DepositMade v1->v2 upcaster was deleted in this diff.
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by is None
+
+    def test_moved_stream_category_stays_breaking(self):
+        """Replay reads `f"{stream_category}-{identifier}"`, so moving the category
+        leaves every historical event behind under the old one.
+
+        The rebuilding event's bump is covered, but there is no stream left for the
+        upcaster to run over: an existing aggregate replays from an empty stream.
+        The field removal stays breaking.
+        """
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                    stream_category="account",
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                    stream_category="ledger::account",
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by is None
 
     def test_removed_apply_handler_stays_breaking(self):
         """A rebuilding event whose @apply handler is dropped in this diff leaves its

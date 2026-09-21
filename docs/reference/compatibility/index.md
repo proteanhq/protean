@@ -72,7 +72,13 @@ The checker understands three evolution mechanisms:
   nothing: that handler never rebuilt historical state. The aggregate must be
   event-sourced in both the old and new snapshots: a classic aggregate converted
   to event sourcing in the same diff stored its old state as table rows that
-  replay cannot rebuild, so its field changes stay breaking. Dropping a
+  replay cannot rebuild, so its field changes stay breaking. It must also still
+  name the same `stream_category`: replay reads the stream the aggregate names,
+  so moving the category leaves the whole history behind under the old one and an
+  existing aggregate replays from an empty stream. Deleting an upcaster leaves the
+  aggregate breaking too, even from an event whose version did not move in this
+  diff: the payloads written under the versions that upcaster used to carry are
+  still in the stream, and nothing can read them any more. Dropping a
   rebuilding event's apply-handler also leaves the aggregate breaking, because
   its historical events can no longer be replayed, and so does removing the
   rebuilding event itself: stored messages of that type no longer resolve to an
