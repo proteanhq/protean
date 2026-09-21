@@ -2675,6 +2675,194 @@ class TestEventSourcedAggregateReplayCoverage:
         assert [c.change_type for c in agg] == ["field_removed"]
         assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
 
+    def test_rename_inside_an_embedded_value_object_stays_breaking(self):
+        """A ``renamed_from`` alias earns nothing inside a value object.
+
+        ``Message._resolve_field_aliases`` rewrites the event's own top-level
+        payload, so the nested ``Money`` dict still arrives with the old
+        ``amount`` key and the value object rejects it as an extra input. The
+        sibling covered bump earns the aggregate nothing.
+        """
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt(
+                            "DepositMade", 1, {"money": _vo_field("app.Money")}
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                    value_objects={
+                        "app.Money": _vo("Money", {"amount": _std("Float")})
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        "app.DepositMade": _evt(
+                            "DepositMade", 1, {"money": _vo_field("app.Money")}
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                    value_objects={
+                        "app.Money": _vo(
+                            "Money",
+                            {"value": _std("Float", renamed_from=["amount"])},
+                        )
+                    },
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by is None
+
+    def test_new_invariant_on_an_embedded_value_object_stays_breaking(self):
+        """``Money`` keeps every field and records a new post-invariant.
+
+        Constructing a value object runs its post-invariants, so the new rule
+        runs against every stored nested payload and can reject one that never
+        changed. The sibling covered bump earns the aggregate nothing.
+        """
+        money = _vo("Money", {"amount": _std("Float")})
+        stricter_money = _vo("Money", {"amount": _std("Float")})
+        stricter_money["invariants"] = {"post": ["amount_is_positive"], "pre": []}
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt(
+                            "DepositMade", 1, {"money": _vo_field("app.Money")}
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                    value_objects={"app.Money": money},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        "app.DepositMade": _evt(
+                            "DepositMade", 1, {"money": _vo_field("app.Money")}
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                    value_objects={"app.Money": stricter_money},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by is None
+
+    def test_identity_field_type_change_stays_breaking(self):
+        """The identity field keeps its name and changes type.
+
+        The stream key carries that field's value as a string, so a ``Float``
+        identity of ``5.0`` wrote its events under ``account-5.0`` while the new
+        ``Integer`` identity asks for ``account-5``. Replay finds nothing, so the
+        covered bump earns nothing and the field removal stays breaking.
+        """
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={
+                        "id": _std("Float", identifier=True),
+                        "nickname": _std(),
+                        "balance": _std("Float"),
+                    },
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={
+                        "id": _std("Integer", identifier=True),
+                        "balance": _std("Float"),
+                    },
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert sorted(c.change_type for c in agg) == [
+            "field_removed",
+            "field_type_changed",
+        ]
+        assert all(c.mitigated_by is None for c in agg)
+
+    def test_identity_field_held_still_earns_the_downgrade(self):
+        """Reading the identity field's shape is not a blanket block: the ``id``
+        entry is identical in both snapshots, so the covered bump still earns the
+        downgrade."""
+        identity = _std("Integer", identifier=True)
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={
+                        "id": identity,
+                        "nickname": _std(),
+                        "balance": _std("Float"),
+                    },
+                    events={"app.AccountOpened": _evt("AccountOpened", 1, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"id": identity, "balance": _std("Float")},
+                    events={"app.AccountOpened": _evt("AccountOpened", 2, {})},
+                    apply_handlers={"app.AccountOpened": "on_account_opened"},
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
 
 # ------------------------------------------------------------------
 # __type__ string changes

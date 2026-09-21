@@ -74,7 +74,12 @@ The checker understands three evolution mechanisms:
   object it embeds, too. A rebuilding event's field says only which value object
   it holds, so dropping a field from that value object changes the payload
   without touching the event, and every stored payload carrying the dropped key
-  fails. An
+  fails. Two things count as a payload change inside a value object that do not
+  count on the event's own fields. A `renamed_from` alias earns nothing there,
+  because alias resolution rewrites the event's top-level payload only and the
+  nested dict still arrives with the old key. And a newly recorded
+  `@invariant.post` counts as a change, because constructing a value object runs
+  its post-invariants against the stored nested payload. An
   unchanged rebuilding event needs no upcaster; it earns nothing either. A
   covered bump on an event whose apply-handler was added in the same diff earns
   nothing: that handler never rebuilt historical state. The aggregate must be
@@ -85,7 +90,11 @@ The checker understands three evolution mechanisms:
   stream `"{stream_category}-{identifier}"`, so both halves have to hold still:
   move the category and the whole history is left behind under the old one, and
   move the identity to another field and a load asks for a stream keyed by a
-  different value. Either way an existing aggregate replays from an empty stream.
+  different value. The identity field's own shape has to hold still too, since
+  the key carries its value as a string: turn an identity `Float` into an
+  `Integer` and `str(5.0)` becomes `str(5)`, so a load asks for `account-5` while
+  the history sits under `account-5.0`. Either way an existing aggregate replays
+  from an empty stream.
   Deleting an upcaster leaves the
   aggregate breaking too, even from an event whose version did not move in this
   diff: the payloads written under the versions that upcaster used to carry are

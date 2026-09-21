@@ -1199,6 +1199,23 @@ def _field_shape_moved(
 _VALUE_OBJECT_FIELD_KINDS = frozenset({"value_object", "value_object_list"})
 
 
+def _post_invariants_added(
+    left_entry: dict[str, Any],
+    right_entry: dict[str, Any],
+) -> bool:
+    """Whether *right_entry* records a post-invariant *left_entry* did not.
+
+    Constructing a value object runs its post-invariants (see
+    ``BaseValueObject.__init__``), so an invariant recorded since the old
+    snapshot can reject a stored nested payload whose fields did not move at
+    all. The IR records invariant method names, so a rewritten body under an
+    unchanged name is not visible here; an added name is.
+    """
+    left_post = set((left_entry.get("invariants") or {}).get("post") or [])
+    right_post = set((right_entry.get("invariants") or {}).get("post") or [])
+    return bool(right_post - left_post)
+
+
 def _embedded_value_object_moved(
     left_field: dict[str, Any],
     right_field: dict[str, Any],
@@ -1214,6 +1231,14 @@ def _embedded_value_object_moved(
     as removing a field straight off the event would, while the event's own
     field entry (``{"kind": "value_object", "target": "...Address"}``) is
     byte-identical across the diff. The target has to be followed to see it.
+
+    Two rules that hold for the event's own fields do not hold down here, so the
+    nested comparison is stricter. A declared rename earns nothing: alias
+    resolution rewrites the event's top-level payload only
+    (``Message._resolve_field_aliases`` reads ``fields(element_cls)`` of the
+    event), so a nested dict still carries the old key and the value object
+    rejects it. And an added post-invariant counts as a move, because
+    constructing the value object runs it against the stored nested payload.
 
     *seen* carries the targets already being compared further up the stack, so a
     value object that embeds itself terminates instead of recursing forever.
@@ -1232,12 +1257,15 @@ def _embedded_value_object_moved(
         # of shapes to compare and no evidence the stored nested payload still
         # constructs. That reads as moved: the answer feeds a downgrade.
         return left_target is not right_target
+    if _post_invariants_added(left_target, right_target):
+        return True
     return _payload_fields_moved(
         left_target.get("fields", {}),
         right_target.get("fields", {}),
         left_value_objects,
         right_value_objects,
         seen | {target},
+        resolves_aliases=False,
     )
 
 
@@ -1247,12 +1275,18 @@ def _payload_fields_moved(
     left_value_objects: dict[str, dict[str, Any]],
     right_value_objects: dict[str, dict[str, Any]],
     seen: frozenset[str] = frozenset(),
+    resolves_aliases: bool = True,
 ) -> bool:
     """Whether a payload written for *left_fields* can still satisfy *right_fields*.
 
     Used for an event's own fields and, through
     :func:`_embedded_value_object_moved`, for the fields of every value object
     those fields embed.
+
+    *resolves_aliases* says whether a ``renamed_from`` alias declared on these
+    fields actually maps an old stored key onto its new field. It does on an
+    event's own payload and does not inside an embedded value object, so the
+    nested call passes ``False`` and a nested rename reads as a removal.
     """
     removed = {
         name: field for name, field in left_fields.items() if name not in right_fields
@@ -1260,7 +1294,7 @@ def _payload_fields_moved(
     added = {
         name: field for name, field in right_fields.items() if name not in left_fields
     }
-    renames = _detect_field_renames(added, removed)
+    renames = _detect_field_renames(added, removed) if resolves_aliases else {}
     renamed_new = set(renames.values())
     if set(removed) - set(renames):
         return True
@@ -1314,7 +1348,10 @@ def _payload_changed_events(
     old payloads. It is still shape-compared, under the new name. The alias only
     routes the old key to the new field; that field then has to accept the stored
     value, so a rename that also changes the type or another validating
-    constraint fails old payloads just as an in-place change would.
+    constraint fails old payloads just as an in-place change would. That holds
+    for the event's own fields only. A rename declared inside an embedded value
+    object counts as a removal, because alias resolution never reaches the
+    nested dict.
     """
     left_events = _events_by_fqn(left_ir)
     right_events = _events_by_fqn(right_ir)
@@ -1422,8 +1459,11 @@ def _apply_es_aggregate_mitigation(
     ``f"{stream_category}-{identifier}"`` have to hold still: an aggregate whose
     stream category moved leaves its whole history behind under the old category,
     and one whose identity moved to another field asks for a stream keyed by a
-    different value. Either way replay finds no events at all, nothing is earned,
-    and its field changes stay breaking. Likewise a rebuilding
+    different value. The identity field's own shape has to hold still too, since
+    the stream key carries its value as a string: turning an identity ``Float``
+    into an ``Integer`` turns ``str(5.0)`` into ``str(5)``, so a load asks for a
+    stream no writer ever used. Either way replay finds no events at all, nothing
+    is earned, and its field changes stay breaking. Likewise a rebuilding
     event that fell out of replay in this diff is treated as a gap. That happens
     in two shapes: its ``@apply`` handler was
     dropped, so historical events of that type sit in the store with no handler
@@ -1476,7 +1516,20 @@ def _apply_es_aggregate_mitigation(
         # earned. A field merely renamed in place is caught here too: the IR
         # records the identity as a name, and reading a rename as continuity
         # would be guessing.
-        if left_aggregate.get("identity_field") != aggregate.get("identity_field"):
+        identity_field = aggregate.get("identity_field")
+        if left_aggregate.get("identity_field") != identity_field:
+            continue
+        # The name holding still is not enough: the stream key carries that
+        # field's value as a string. Turn an identity `Float` into an `Integer`
+        # and `str(5.0)` becomes `str(5)`, so a load asks for `account-5` while
+        # every historical event sits under `account-5.0`. Any move in the
+        # identity field's own shape can do that, so read the field entry out of
+        # both snapshots and reject the whole diff when it moved. Absent on both
+        # sides (a partial IR) compares equal and decides nothing.
+        if _field_shape_moved(
+            left_aggregate.get("fields", {}).get(identity_field, {}),
+            aggregate.get("fields", {}).get(identity_field, {}),
+        ):
             continue
         rebuilding_events = aggregate.get("apply_handlers", {})
         if not rebuilding_events:
