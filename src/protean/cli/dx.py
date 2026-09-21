@@ -177,17 +177,6 @@ def _apply(path: str) -> None:
         raise typer.Exit(code=EXIT_FAILURE)
 
 
-def _is_present(target_path: Path) -> bool:
-    """Return whether something occupies *target_path*, symlinks included.
-
-    ``Path.exists`` follows a symlink, so a dangling one reads as absent.
-    ``is_symlink`` covers that case, so a link counts as present whether or not
-    it resolves: ``dx`` refuses to write through any symlinked target, and a
-    refusal a user can see beats a silent skip.
-    """
-    return target_path.exists() or target_path.is_symlink()
-
-
 def _scan(
     path: str, *, show_diff: bool = False, only_installed_optional: bool = False
 ) -> tuple[bool, bool, bool]:
@@ -201,13 +190,15 @@ def _scan(
     hand-edited conflict), and ``had_conflict`` when any target's managed block
     was edited by hand, which needs resolving before a re-install can update it.
 
-    With *only_installed_optional*, scan the required baseline
+    With *only_installed_optional*, report the required baseline
     (:data:`~protean.dx.renderers.REQUIRED_TARGETS`) plus only those optional
     targets that are already installed, one being present on disk or recorded in
     ``.protean/dx-state.json``. This is what ``check`` passes so a freshly
     scaffolded project, which ships only the baseline, reports clean while an
-    optional editor file the user never chose is not counted as drift. ``diff``
-    leaves it off and previews every target.
+    optional editor file the user never chose is not counted as drift. Every
+    target is still diffed: an optional one drops out only when the diff comes
+    back ``CREATE`` and the state file has no entry for it, so a refused target is
+    reported either way. ``diff`` leaves the flag off and previews every target.
     """
     from protean.dx import (  # noqa: PLC0415
         ApplyStatus,
@@ -238,34 +229,38 @@ def _scan(
             return True, False, False
 
     for managed_file in _render_managed_files():
-        if (
-            only_installed_optional
-            and managed_file.target not in REQUIRED_TARGETS
-            and managed_file.target not in recorded
-            # A symlink at the target counts as present, whether or not it
-            # resolves. ``exists`` follows the link and reads a dangling one as
-            # absent, which would skip it silently; scoping it in instead lets
-            # ``diff_managed_file`` below refuse it as the symlinked target it is.
-            and not _is_present(root / managed_file.target)
-        ):
-            continue
+        # Diff first, scope after. ``diff_managed_file`` is the one reader of the
+        # target: it runs the path checks (outside the root, a symlink anywhere on
+        # the way) and reports ``CREATE`` only for a target that is genuinely
+        # absent. Deciding scope from its result instead of a separate presence
+        # probe keeps ``check`` from stepping around those checks, and keeps the
+        # filesystem errors inside this one boundary.
         try:
             result = diff_managed_file(root, managed_file)
         except ManagedFileError as exc:
             had_error = True
             print(_error_line(managed_file.target, exc))
-        else:
-            if result.status is not ApplyStatus.NO_CHANGE:
-                drifted = True
-            if result.status is ApplyStatus.CONFLICT:
-                had_conflict = True
-            print(_pending_line(result, managed_file))
-            if show_diff:
-                body = _unified_diff(root, result)
-                if body:
-                    # Print the diff plain: it is content, not a status line, and
-                    # a stray bracket in it must not be read as rich markup.
-                    typer.echo(body)
+            continue
+        if (
+            only_installed_optional
+            and result.status is ApplyStatus.CREATE
+            and managed_file.target not in REQUIRED_TARGETS
+            and managed_file.target not in recorded
+        ):
+            # An optional target the user never chose: absent on disk and not
+            # recorded in the state file. Not drift, so leave it out of the report.
+            continue
+        if result.status is not ApplyStatus.NO_CHANGE:
+            drifted = True
+        if result.status is ApplyStatus.CONFLICT:
+            had_conflict = True
+        print(_pending_line(result, managed_file))
+        if show_diff:
+            body = _unified_diff(root, result)
+            if body:
+                # Print the diff plain: it is content, not a status line, and a
+                # stray bracket in it must not be read as rich markup.
+                typer.echo(body)
     return had_error, drifted, had_conflict
 
 

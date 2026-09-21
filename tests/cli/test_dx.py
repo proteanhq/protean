@@ -435,10 +435,10 @@ def test_check_scopes_in_a_dangling_symlink_at_an_optional_target(
 ) -> None:
     """A dangling symlink at an unrecorded optional target is an error, not a skip.
 
-    ``Path.exists`` reads a dangling symlink as absent, so a scope probe on
-    ``exists`` alone would skip the target and let check exit 0 over a symlink dx
-    refuses to write through. The scope counts any symlink as present, so the
-    per-file diff reaches its refusal and reports it.
+    A presence probe on ``Path.exists`` would read a dangling symlink as absent
+    and let check exit 0 over a symlink dx refuses to write through. check diffs
+    every target and scopes one out only when the diff itself says the target is
+    absent, so the refusal is reached and reported.
     """
     _install_baseline(tmp_path)
     (tmp_path / ".mcp.json").symlink_to(tmp_path / "nowhere.json")
@@ -449,6 +449,29 @@ def test_check_scopes_in_a_dangling_symlink_at_an_optional_target(
     flat = " ".join(result.output.split())
     assert "error .mcp.json" in flat, flat
     assert "symlink" in flat, flat
+
+
+def test_check_reports_an_optional_target_under_a_symlinked_parent(
+    tmp_path: Path,
+) -> None:
+    """An optional target whose parent directory leaves the project is an error.
+
+    ``.cursor`` points outside the project, so the rule file is absent and is not
+    a symlink itself: a presence probe on the final path component would skip it
+    and let check exit 0, while install refuses the same target for climbing out
+    of the root. check runs the per-file diff first, so it reports that refusal.
+    """
+    _install_baseline(tmp_path)
+    outside = tmp_path.parent / "outside-cursor"
+    outside.mkdir()
+    (tmp_path / ".cursor").symlink_to(outside, target_is_directory=True)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert f"error {_CURSOR_RULE}" in flat, flat
+    assert "outside the project root" in flat, flat
 
 
 def test_diff_still_previews_all_six_on_baseline_only(tmp_path: Path) -> None:

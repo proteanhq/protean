@@ -62,13 +62,14 @@ machines. The design is recorded in
 For any managed-block Markdown file (`AGENTS.md`, `CLAUDE.md`, and
 `.github/copilot-instructions.md`), `install` refuses a pre-existing file that has
 no `PROTEAN` markers and writes nothing to it, so it never overwrites a file you
-wrote by hand. This covers a `.github/copilot-instructions.md` you already keep, or
-an `AGENTS.md` you wrote yourself. It reports an error until you remove or rename
-that file and run `install`, which then writes the managed version.
+wrote by hand. This covers a `.github/copilot-instructions.md` you already keep, an
+`AGENTS.md` you wrote yourself, and the marker-less `AGENTS.md` a `protean new`
+before 0.18 wrote. It reports an error until you remove or rename that file and run
+`install`, which then writes the managed version.
 
-A project made with `protean new` needs none of this. `protean new` writes the
-same managed `AGENTS.md` and `CLAUDE.md` bridge that `install` writes, at the same
-version, and records them in `.protean/dx-state.json`. So a fresh project is
+A project made with `protean new` from 0.18 on needs none of this. `protean new`
+writes the same managed `AGENTS.md` and `CLAUDE.md` bridge that `install` writes, at
+the same version, and records them in `.protean/dx-state.json`. So a fresh project is
 already dx-managed: `install`, `refresh`, and `check` all work on it with no manual
 step. `protean new` writes only this baseline; `.mcp.json` and the per-editor files
 stay `install` choices, since you pick your own editors.
