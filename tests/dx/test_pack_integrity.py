@@ -19,7 +19,9 @@ is an inline markdown link destination or an inline-code span that, resolved
 against the file it sits in, lands on one of: a bundled skill's ``SKILL.md``, a
 ``.py`` file under some ``assets/`` directory, a ``.md`` file under some
 ``references/`` directory, or a top-level ``rules/*.md`` file. A ``#anchor``
-suffix is stripped first, and tokens inside fenced code blocks are skipped.
+suffix is stripped first, and tokens inside fenced code blocks are skipped. Each
+reference remembers which form it came from, and the verify check counts only a
+real link: a path named in backticks is a mention, not a link.
 
 The link forms it reads are ``[text](dest)`` and ``[text](dest "Title")``: the
 destination is parsed on its own, so an optional title does not hide the target.
@@ -87,6 +89,7 @@ class Reference:
     token: str  # the token exactly as written, before anchor stripping
     target: str  # the pack-relative path the token resolves to (posix)
     kind: str  # "skill" | "asset" | "reference" | "rules"
+    from_link: bool  # True for a markdown link destination, False for code span
 
 
 @dataclass
@@ -110,30 +113,49 @@ class PackIntegrityReport:
 def _lines_outside_fences(text: str) -> list[str]:
     """Return the lines of ``text`` that sit outside fenced code blocks.
 
-    A line whose stripped form opens with ``` or ~~~ toggles the fence and is
-    itself dropped. An unterminated fence drops the rest of the file, which is
-    the safe reading: a token in an unclosed code block still does not count.
+    A line whose stripped form opens with ``` or ~~~ opens a fence, and only a
+    line starting with that same marker closes it. A ~~~ block is the standard
+    way to quote a ``` example, so a mismatched marker inside the block is
+    content, not a close. Fence lines are themselves dropped. An unterminated
+    fence drops the rest of the file, which is the safe reading: a token in an
+    unclosed code block still does not count.
     """
     outside: list[str] = []
-    in_fence = False
+    fence: str | None = None
     for line in text.splitlines():
-        if line.lstrip().startswith(_FENCE_MARKERS):
-            in_fence = not in_fence
-            continue
-        if not in_fence:
+        stripped = line.lstrip()
+        if fence is None:
+            opener = next(
+                (marker for marker in _FENCE_MARKERS if stripped.startswith(marker)),
+                None,
+            )
+            if opener is not None:
+                fence = opener
+                continue
             outside.append(line)
+        elif stripped.startswith(fence):
+            fence = None
     return outside
 
 
-def _raw_tokens(text: str) -> list[str]:
-    """Return every markdown link target and inline-code span outside fences."""
+def _raw_tokens(text: str) -> list[tuple[str, bool]]:
+    """Return every markdown link target and inline-code span outside fences,
+    each paired with True when it came from a link destination.
+
+    The origin is carried rather than guessed later: the verify check asks for a
+    real link, and a path named in backticks is a mention, not a link.
+    """
     body = "\n".join(_lines_outside_fences(text))
-    tokens: list[str] = [match.group(1).strip() for match in _LINK.finditer(body)]
-    tokens += [match.group(1).strip() for match in _INLINE_CODE.finditer(body)]
+    tokens: list[tuple[str, bool]] = [
+        (match.group(1).strip(), True) for match in _LINK.finditer(body)
+    ]
+    tokens += [(match.group(1).strip(), False) for match in _INLINE_CODE.finditer(body)]
     return tokens
 
 
-def _classify(root: Path, skill: str, source: Path, token: str) -> Reference | None:
+def _classify(
+    root: Path, skill: str, source: Path, token: str, from_link: bool
+) -> Reference | None:
     """Resolve one token and classify it, or return ``None`` if it is not a
     recognized internal reference.
 
@@ -175,6 +197,7 @@ def _classify(root: Path, skill: str, source: Path, token: str) -> Reference | N
         token=token,
         target=rel.as_posix(),
         kind=kind,
+        from_link=from_link,
     )
 
 
@@ -182,8 +205,8 @@ def _references_in(root: Path, skill: str, source: Path) -> list[Reference]:
     """Return every recognized internal reference in one pack file."""
     text = source.read_text(encoding="utf-8")
     found: list[Reference] = []
-    for token in _raw_tokens(text):
-        ref = _classify(root, skill, source, token)
+    for token, from_link in _raw_tokens(text):
+        ref = _classify(root, skill, source, token, from_link)
         if ref is not None:
             found.append(ref)
     return found
@@ -193,9 +216,11 @@ def _skill_sources(skill_dir: Path) -> list[Path]:
     """Return the files scanned for one skill: its SKILL.md and its reference
     pages. Pack-level references and rules are link targets, never sources, so a
     note that mentions a file name in prose cannot itself raise a false dangling
-    finding."""
+    finding. Only files are read: a directory carrying a .md name is not a page."""
     sources = [skill_dir / SKILL_FILE]
-    sources += sorted((skill_dir / REFERENCES_DIR).glob("*.md"))
+    sources += sorted(
+        path for path in (skill_dir / REFERENCES_DIR).glob("*.md") if path.is_file()
+    )
     return sources
 
 
@@ -239,11 +264,12 @@ def _skill_asset_and_reference_files(root: Path, skill_dir: Path) -> list[str]:
     files: list[str] = [
         path.relative_to(root).as_posix()
         for path in sorted((skill_dir / ASSETS_DIR).glob("*.py"))
-        if path.name != "__init__.py"
+        if path.is_file() and path.name != "__init__.py"
     ]
     files += [
         path.relative_to(root).as_posix()
         for path in sorted((skill_dir / REFERENCES_DIR).glob("*.md"))
+        if path.is_file()
     ]
     return files
 
@@ -276,9 +302,9 @@ def scan_pack(pack_root: Path) -> PackIntegrityReport:
         for source in _skill_sources(skill_dir):
             for ref in _references_in(root, skill, source):
                 references.append(ref)
-                if not (root / ref.target).exists():
+                if not (root / ref.target).is_file():
                     dangling.append(ref)
-                if source.name == SKILL_FILE:
+                if source.name == SKILL_FILE and ref.from_link:
                     skill_md_targets.add(ref.target)
 
         if VERIFY_TARGET not in skill_md_targets:
@@ -639,3 +665,58 @@ def test_dangling_rules_link_is_named(tmp_path):
     assert finding.skill == "alpha"
     assert finding.kind == "rules"
     assert finding.token == "../../rules/missing.md"
+
+
+def test_fence_closes_only_with_its_own_marker(tmp_path):
+    # A ~~~ block is how you quote a ``` example. The inner backtick line is
+    # content, so it must not close the block and expose the rest as prose. If
+    # it did, the links after it would read as references and the missing pages
+    # they name would surface as dangling findings.
+    root = _make_pack(tmp_path)
+    body = (
+        "Quoting a fence:\n\n"
+        "~~~markdown\n"
+        "```python\n"
+        "# see [missing](references/gone.md)\n"
+        "```\n"
+        "[also missing](references/also-gone.md)\n"
+        "~~~\n\n"
+        "Back in prose.\n"
+    )
+    _add_skill(root, "alpha", body)
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert [ref.target for ref in report.references if "gone" in ref.target] == []
+
+
+def test_verify_mention_in_backticks_does_not_count_as_a_link(tmp_path):
+    # The check asks the recipe to link the shared verify step. Naming the path
+    # in an inline-code span is a mention, not a link, so the skill still reads
+    # as missing it.
+    root = _make_pack(tmp_path)
+    _add_skill(
+        root,
+        "alpha",
+        f"Read `../../{VERIFY_TARGET}` when you are done.",
+        link_verify=False,
+    )
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert report.skills_missing_verify == ["alpha"]
+
+
+def test_directory_named_like_a_page_does_not_resolve(tmp_path):
+    # A target has to be a file. A directory that happens to carry a .md name
+    # resolves on disk but holds no page, so the link is still dangling.
+    root = _make_pack(tmp_path)
+    _add_skill(root, "alpha", "See [page](references/page.md).")
+    (root / SKILLS_DIR / "alpha" / REFERENCES_DIR / "page.md").mkdir(parents=True)
+
+    report = scan_pack(root)
+
+    assert len(report.dangling) == 1
+    assert report.dangling[0].token == "references/page.md"
