@@ -52,7 +52,11 @@ The checker understands three evolution mechanisms:
   mitigating upcaster. An orthogonal change riding along with the bump (for
   example a public→internal visibility flip) stays breaking, and a version bump
   with an upcaster *gap* (a prior version with no path to the new one) stays
-  breaking.
+  breaking. So does a bump that moves the type string's base, the part before
+  the version, as renaming the domain or the event class does. Upcasters are
+  registered under that base, and a stored message is looked up by the base it
+  was written with, so moving it strands every stored payload no matter which
+  upcasters are registered.
 - **Event-sourced aggregate replay coverage**: An event-sourced aggregate is
   rebuilt by replaying the events its apply-handlers process. So a field removal
   on such an aggregate is downgraded to safe when two things hold: every
@@ -66,16 +70,23 @@ The checker understands three evolution mechanisms:
   payload carrying a field it no longer declares, so replay cannot start. It also
   holds when the event's change is reported nowhere, as when an existing field
   turns required: the rule reads the event's fields in the two snapshots, not the
-  changes the checker happened to report. An
+  changes the checker happened to report. It follows a field into the value
+  object it embeds, too. A rebuilding event's field says only which value object
+  it holds, so dropping a field from that value object changes the payload
+  without touching the event, and every stored payload carrying the dropped key
+  fails. An
   unchanged rebuilding event needs no upcaster; it earns nothing either. A
   covered bump on an event whose apply-handler was added in the same diff earns
   nothing: that handler never rebuilt historical state. The aggregate must be
   event-sourced in both the old and new snapshots: a classic aggregate converted
   to event sourcing in the same diff stored its old state as table rows that
   replay cannot rebuild, so its field changes stay breaking. It must also still
-  name the same `stream_category`: replay reads the stream the aggregate names,
-  so moving the category leaves the whole history behind under the old one and an
-  existing aggregate replays from an empty stream. Deleting an upcaster leaves the
+  name the same `stream_category` and the same identity field. Replay reads the
+  stream `"{stream_category}-{identifier}"`, so both halves have to hold still:
+  move the category and the whole history is left behind under the old one, and
+  move the identity to another field and a load asks for a stream keyed by a
+  different value. Either way an existing aggregate replays from an empty stream.
+  Deleting an upcaster leaves the
   aggregate breaking too, even from an event whose version did not move in this
   diff: the payloads written under the versions that upcaster used to carry are
   still in the stream, and nothing can read them any more. Dropping a

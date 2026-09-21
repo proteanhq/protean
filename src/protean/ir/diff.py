@@ -10,6 +10,7 @@ Public API::
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -22,6 +23,11 @@ AvroVerdict = Literal["FULL", "BACKWARD", "FORWARD", "NONE"]
 # The IR field-spec sentinel for a default produced by a callable (which cannot
 # be emitted as a static schema default). Mirrors ``generators/avro.py``.
 _CALLABLE_DEFAULT = "<callable>"
+
+# The version segment a ``__type__`` string ends with, e.g. the ``.v2`` of
+# ``"Ordering.OrderPlaced.v2"``. Stripping it leaves the base the runtime
+# upcaster chain is keyed by.
+_VERSION_SUFFIX = re.compile(r"\.v\d+$")
 
 
 def diff_ir(
@@ -1005,6 +1011,31 @@ def _events_by_fqn(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return events
 
 
+def _value_objects_by_fqn(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Collect every value object entry across an IR's clusters, keyed by fqn.
+
+    Scanned across all clusters because an event can embed a value object that
+    belongs to another aggregate's cluster.
+    """
+    value_objects: dict[str, dict[str, Any]] = {}
+    for cluster in ir.get("clusters", {}).values():
+        value_objects.update(cluster.get("value_objects", {}))
+    return value_objects
+
+
+def _type_string_base(entry: dict[str, Any]) -> str:
+    """The ``__type__`` string of *entry* without its trailing version segment.
+
+    ``"Ordering.OrderPlaced.v2"`` gives ``"Ordering.OrderPlaced"``. This is the
+    key the runtime upcaster chain is registered under: ``TypeManager``
+    registers every edge as ``f"{domain.camel_case_name}.{event_name}"`` and
+    ``UpcasterChain`` looks a stored message up by the base of its own type
+    string. An entry carrying no ``__type__`` gives ``""``, which compares
+    equal across the two snapshots and so decides nothing on its own.
+    """
+    return _VERSION_SUFFIX.sub("", str(entry.get("__type__") or ""))
+
+
 # Change types that make up a payload-schema transformation an upcaster can
 # perform. Orthogonal changes that happen to ride along with the version bump
 # (e.g. a visibility flip or the element being removed) are NOT covered.
@@ -1062,8 +1093,10 @@ def _event_upcaster_coverage(
     stored v1 payloads just as surely as a bump would, and replay of a stream
     carrying them fails. A bumped event is the only one that can be ``"covered"``,
     because coverage is what an upcaster earns for the *new* shape; an event that
-    did not bump earns nothing and is absent from the map. This is the single
-    source of coverage truth both mitigation passes read.
+    did not bump earns nothing and is absent from the map. A bump whose type
+    string base also moved earns nothing either, because the chain is keyed by
+    that base. This is the single source of coverage truth both mitigation
+    passes read.
     """
     upcasters = right_ir.get("upcasters", {})
     left_events = _events_by_fqn(left_ir)
@@ -1096,6 +1129,16 @@ def _event_upcaster_coverage(
             coverage[event_fqn] = ("gap", None)
             continue
         if not isinstance(left_v, int) or right_v <= left_v:
+            continue
+        # The chain is keyed by the type string's base, not by the event class.
+        # `TypeManager._populate_chain` registers every edge under
+        # `f"{domain.camel_case_name}.{event_name}"`, and a stored message is
+        # looked up by the base of the type string it was written with. Move
+        # that base (rename the domain, rename the event class) and a stored
+        # `Ordering.OrderPlaced.v1` message reaches neither a chain nor a class,
+        # whatever upcasters are registered for the new base. The bump earns
+        # nothing then, so no coverage is granted and the change stays breaking.
+        if _type_string_base(left_entry) != _type_string_base(right_entry):
             continue
         coverage[event_fqn] = (
             "covered",
@@ -1149,6 +1192,100 @@ def _field_shape_moved(
     )
 
 
+# Field kinds whose value is an embedded value object payload rather than a
+# scalar. The field entry names its value object as a ``target`` fqn and says
+# nothing about that value object's own fields, so the shape a stored payload
+# has to satisfy is only reachable by following the target.
+_VALUE_OBJECT_FIELD_KINDS = frozenset({"value_object", "value_object_list"})
+
+
+def _embedded_value_object_moved(
+    left_field: dict[str, Any],
+    right_field: dict[str, Any],
+    left_value_objects: dict[str, dict[str, Any]],
+    right_value_objects: dict[str, dict[str, Any]],
+    seen: frozenset[str],
+) -> bool:
+    """Whether the value object *right_field* embeds changed shape under it.
+
+    A value object field serializes as a nested dict of that value object's
+    fields, and is deserialized by constructing the value object from it. So
+    removing ``Address.zip`` fails every stored payload carrying a zip, exactly
+    as removing a field straight off the event would, while the event's own
+    field entry (``{"kind": "value_object", "target": "...Address"}``) is
+    byte-identical across the diff. The target has to be followed to see it.
+
+    *seen* carries the targets already being compared further up the stack, so a
+    value object that embeds itself terminates instead of recursing forever.
+    """
+    if left_field.get("kind") not in _VALUE_OBJECT_FIELD_KINDS:
+        return False
+    target = right_field.get("target")
+    # A moved ``kind`` or ``target`` is already a shape move by the field's own
+    # attributes, so this only has to answer the stable-target case.
+    if not isinstance(target, str) or target in seen:
+        return False
+    left_target = left_value_objects.get(target)
+    right_target = right_value_objects.get(target)
+    if left_target is None or right_target is None:
+        # The value object is registered on one side only, so there is no pair
+        # of shapes to compare and no evidence the stored nested payload still
+        # constructs. That reads as moved: the answer feeds a downgrade.
+        return left_target is not right_target
+    return _payload_fields_moved(
+        left_target.get("fields", {}),
+        right_target.get("fields", {}),
+        left_value_objects,
+        right_value_objects,
+        seen | {target},
+    )
+
+
+def _payload_fields_moved(
+    left_fields: dict[str, Any],
+    right_fields: dict[str, Any],
+    left_value_objects: dict[str, dict[str, Any]],
+    right_value_objects: dict[str, dict[str, Any]],
+    seen: frozenset[str] = frozenset(),
+) -> bool:
+    """Whether a payload written for *left_fields* can still satisfy *right_fields*.
+
+    Used for an event's own fields and, through
+    :func:`_embedded_value_object_moved`, for the fields of every value object
+    those fields embed.
+    """
+    removed = {
+        name: field for name, field in left_fields.items() if name not in right_fields
+    }
+    added = {
+        name: field for name, field in right_fields.items() if name not in left_fields
+    }
+    renames = _detect_field_renames(added, removed)
+    renamed_new = set(renames.values())
+    if set(removed) - set(renames):
+        return True
+    if any(
+        name not in renamed_new and field.get("required") and "default" not in field
+        for name, field in added.items()
+    ):
+        return True
+    # Every old field name paired with the right-side field that has to accept
+    # its stored values: the same name, or the new name a rename aliases it to.
+    paired = {name: name for name in left_fields.keys() & right_fields.keys()}
+    paired.update(renames)
+    return any(
+        _field_shape_moved(left_fields[old_name], right_fields[new_name])
+        or _embedded_value_object_moved(
+            left_fields[old_name],
+            right_fields[new_name],
+            left_value_objects,
+            right_value_objects,
+            seen,
+        )
+        for old_name, new_name in paired.items()
+    )
+
+
 def _payload_changed_events(
     left_ir: dict[str, Any],
     right_ir: dict[str, Any],
@@ -1167,9 +1304,11 @@ def _payload_changed_events(
 
     An event counts as changed when a field was removed, when a required field
     with no default was added (a stored payload omits it), when a field's shape
-    moved (see :data:`_REPLAY_INERT_FIELD_ATTRS`), or when the ``__type__``
-    string changed, which leaves a stored message unable to resolve back to the
-    event class.
+    moved (see :data:`_REPLAY_INERT_FIELD_ATTRS`), when a value object one of
+    its fields embeds moved in any of those ways (see
+    :func:`_embedded_value_object_moved`), or when the ``__type__`` string
+    changed, which leaves a stored message unable to resolve back to the event
+    class.
 
     A declared rename is not a removal here: the alias resolves the old name in
     old payloads. It is still shape-compared, under the new name. The alias only
@@ -1179,6 +1318,8 @@ def _payload_changed_events(
     """
     left_events = _events_by_fqn(left_ir)
     right_events = _events_by_fqn(right_ir)
+    left_value_objects = _value_objects_by_fqn(left_ir)
+    right_value_objects = _value_objects_by_fqn(right_ir)
 
     changed: set[str] = set()
     for event_fqn, right_entry in right_events.items():
@@ -1189,36 +1330,11 @@ def _payload_changed_events(
             changed.add(event_fqn)
             continue
 
-        left_fields = left_entry.get("fields", {})
-        right_fields = right_entry.get("fields", {})
-        removed = {
-            name: field
-            for name, field in left_fields.items()
-            if name not in right_fields
-        }
-        added = {
-            name: field
-            for name, field in right_fields.items()
-            if name not in left_fields
-        }
-        renames = _detect_field_renames(added, removed)
-        renamed_new = set(renames.values())
-        # Every old field name paired with the right-side field that has to accept
-        # its stored values: the same name, or the new name a rename aliases it to.
-        paired = {name: name for name in left_fields.keys() & right_fields.keys()}
-        paired.update(renames)
-        if (
-            set(removed) - set(renames)
-            or any(
-                name not in renamed_new
-                and field.get("required")
-                and "default" not in field
-                for name, field in added.items()
-            )
-            or any(
-                _field_shape_moved(left_fields[old_name], right_fields[new_name])
-                for old_name, new_name in paired.items()
-            )
+        if _payload_fields_moved(
+            left_entry.get("fields", {}),
+            right_entry.get("fields", {}),
+            left_value_objects,
+            right_value_objects,
         ):
             changed.add(event_fqn)
     return changed
@@ -1300,11 +1416,14 @@ def _apply_es_aggregate_mitigation(
     upcaster coverage. See :data:`_ES_AGGREGATE_MITIGATABLE` for both arguments.
 
     The aggregate must be event-sourced in *both* snapshots, and must still name
-    the same ``stream_category``. A classic aggregate converted to event sourcing
-    in this diff persisted its old state as table rows, which replay cannot
-    reconstruct. An aggregate whose stream category moved leaves its whole history
-    behind under the old category, so replay finds no events at all. Either way
-    nothing is earned and its field changes stay breaking. Likewise a rebuilding
+    the same ``stream_category`` and the same ``identity_field``. A classic
+    aggregate converted to event sourcing in this diff persisted its old state as
+    table rows, which replay cannot reconstruct. Both halves of the stream name
+    ``f"{stream_category}-{identifier}"`` have to hold still: an aggregate whose
+    stream category moved leaves its whole history behind under the old category,
+    and one whose identity moved to another field asks for a stream keyed by a
+    different value. Either way replay finds no events at all, nothing is earned,
+    and its field changes stay breaking. Likewise a rebuilding
     event that fell out of replay in this diff is treated as a gap. That happens
     in two shapes: its ``@apply`` handler was
     dropped, so historical events of that type sit in the store with no handler
@@ -1348,6 +1467,16 @@ def _apply_es_aggregate_mitigation(
         # upcaster earns anything back from that, so the field changes stay
         # breaking.
         if left_options.get("stream_category") != options.get("stream_category"):
+            continue
+        # The identifier half of that stream name is the value of whichever
+        # field carries the identity. Point the identity at a different field
+        # and every existing aggregate's events stay under a stream keyed by the
+        # old field's value, while a load now asks for one keyed by the new
+        # field's. Replay finds nothing, same as a category move, so nothing is
+        # earned. A field merely renamed in place is caught here too: the IR
+        # records the identity as a name, and reading a rename as continuity
+        # would be guessing.
+        if left_aggregate.get("identity_field") != aggregate.get("identity_field"):
             continue
         rebuilding_events = aggregate.get("apply_handlers", {})
         if not rebuilding_events:
