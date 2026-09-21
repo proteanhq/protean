@@ -63,7 +63,10 @@ The checker understands three evolution mechanisms:
   because nothing was earned. That holds even when the event's own change is
   safe: a field removed from a rebuilding event under the deprecation grace is
   still sitting in every payload in the event store, and an event rejects a
-  payload carrying a field it no longer declares, so replay cannot start. An
+  payload carrying a field it no longer declares, so replay cannot start. It also
+  holds when the event's change is reported nowhere, as when an existing field
+  turns required: the rule reads the event's fields in the two snapshots, not the
+  changes the checker happened to report. An
   unchanged rebuilding event needs no upcaster; it earns nothing either. A
   covered bump on an event whose apply-handler was added in the same diff earns
   nothing: that handler never rebuilt historical state. The aggregate must be

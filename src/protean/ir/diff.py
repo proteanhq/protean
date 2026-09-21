@@ -1098,6 +1098,92 @@ def _event_upcaster_coverage(
     return coverage
 
 
+# Field attributes that take no part in constructing a value, so moving one
+# cannot make a stored payload fail. Every other attribute counts: type,
+# required, max_length, choices and the rest all decide whether a value is
+# accepted, and an attribute added to the IR later counts until it is listed
+# here. The default has to be "this can reject a payload", because the answer
+# feeds a downgrade.
+_REPLAY_INERT_FIELD_ATTRS = frozenset({"deprecated", "description", "renamed_from"})
+
+
+def _field_shape_moved(
+    left_field: dict[str, Any],
+    right_field: dict[str, Any],
+) -> bool:
+    """Whether a field that exists in both IRs moved in a way a payload may fail."""
+    return any(
+        left_field.get(attr) != right_field.get(attr)
+        for attr in (left_field.keys() | right_field.keys()) - _REPLAY_INERT_FIELD_ATTRS
+    )
+
+
+def _payload_changed_events(
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> set[str]:
+    """Event fqns whose new shape a stored old payload can no longer satisfy.
+
+    Read from the two IRs rather than from the classified report. ``diff_ir``
+    records every field-attribute delta, but :func:`_classify_field_changes`
+    only emits a change for a few of them: a field that goes optional to
+    required, or loses its default, produces no change at all, and yet every
+    historical payload that omits it fails strict event construction before
+    replay can start. Severity is the wrong question too: a field removal the
+    deprecation grace already called safe still leaves that field in every
+    payload sitting in the event store, and strict deserialization rejects it
+    ("Extra inputs are not permitted"). Only an upcaster drops it.
+
+    An event counts as changed when a field was removed, when a required field
+    with no default was added (a stored payload omits it), when a surviving
+    field's shape moved (see :data:`_REPLAY_INERT_FIELD_ATTRS`), or when the
+    ``__type__`` string changed, which leaves a stored message unable to resolve
+    back to the event class. A declared rename does not count: the alias
+    resolves the old name in old payloads.
+    """
+    left_events = _events_by_fqn(left_ir)
+    right_events = _events_by_fqn(right_ir)
+
+    changed: set[str] = set()
+    for event_fqn, right_entry in right_events.items():
+        left_entry = left_events.get(event_fqn)
+        if left_entry is None:
+            continue
+        if left_entry.get("__type__") != right_entry.get("__type__"):
+            changed.add(event_fqn)
+            continue
+
+        left_fields = left_entry.get("fields", {})
+        right_fields = right_entry.get("fields", {})
+        removed = {
+            name: field
+            for name, field in left_fields.items()
+            if name not in right_fields
+        }
+        added = {
+            name: field
+            for name, field in right_fields.items()
+            if name not in left_fields
+        }
+        renames = _detect_field_renames(added, removed)
+        renamed_new = set(renames.values())
+        if (
+            set(removed) - set(renames)
+            or any(
+                name not in renamed_new
+                and field.get("required")
+                and "default" not in field
+                for name, field in added.items()
+            )
+            or any(
+                _field_shape_moved(left_fields[name], right_fields[name])
+                for name in left_fields.keys() & right_fields.keys()
+            )
+        ):
+            changed.add(event_fqn)
+    return changed
+
+
 def _apply_upcaster_mitigation(
     report: CompatibilityReport,
     coverage: dict[str, tuple[str, str | None]],
@@ -1155,12 +1241,12 @@ def _apply_es_aggregate_mitigation(
     least one event that already rebuilt the aggregate in the old snapshot must
     have such a bump. An uncovered bump (a gap), a payload change made without a
     version bump, or no bump at all leaves the aggregate breaking, because nothing
-    was earned. Severity is not the test for that first condition: a removal the
-    deprecation grace already downgraded to safe still strands stored payloads,
-    which is why the check reads every payload change in the report rather than
-    the leftover breaking ones. A version bump covered on an ``@apply`` handler
-    added in this diff earns nothing either: that handler never rebuilt historical
-    state, so its coverage says nothing about the old aggregate. Coverage is at
+    was earned. That first condition is answered from the two IRs, by
+    :func:`_payload_changed_events`: the classified report names only some of the
+    shape changes that strand a stored payload, so reading it would miss the rest.
+    A version bump covered on an ``@apply`` handler added in this diff earns
+    nothing either: that handler never rebuilt historical state, so its coverage
+    says nothing about the old aggregate. Coverage is at
     aggregate granularity: the IR carries no per-field provenance, so a covered
     bump on any rebuilding event downgrades the aggregate's field removal, not only
     the fields that event happens to populate. A classic (non-event-sourced)
@@ -1192,18 +1278,11 @@ def _apply_es_aggregate_mitigation(
     # it applies, and it is the event registration replay needs to resolve a
     # stored message back to a class.
     removed_events = set(_events_by_fqn(left_ir)) - set(_events_by_fqn(right_ir))
-    # Every event whose payload schema changed at all, read from both lists.
-    # Severity is the wrong question here: a field removal the deprecation grace
-    # already called safe still leaves that field in every payload sitting in the
-    # event store, and strict deserialization rejects it ("Extra inputs are not
-    # permitted") before replay can start. Only an upcaster drops it. `coverage`
-    # records version bumps alone, so an event whose payload changed without one
-    # is absent from it, and that absence does not mean the payload is unchanged.
-    payload_changed_events = {
-        change.element_fqn
-        for change in (*report.breaking_changes, *report.safe_changes)
-        if change.change_type in _UPCASTER_MITIGATABLE
-    }
+    # Every event a stored payload can no longer satisfy, read from the two IRs.
+    # `coverage` records version bumps alone, so an event whose shape moved
+    # without one is absent from it, and that absence does not mean the payload
+    # is unchanged.
+    payload_changed_events = _payload_changed_events(left_ir, right_ir)
     # Per aggregate fqn, the citation to attach when its field changes are earned-safe.
     aggregate_citation: dict[str, str] = {}
     for fqn, cluster in right_ir.get("clusters", {}).items():
