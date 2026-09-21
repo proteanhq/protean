@@ -1103,15 +1103,40 @@ def _event_upcaster_coverage(
 # required, max_length, choices and the rest all decide whether a value is
 # accepted, and an attribute added to the IR later counts until it is listed
 # here. The default has to be "this can reject a payload", because the answer
-# feeds a downgrade.
+# feeds a downgrade. ``renamed_from`` is only half inert (adding an alias is,
+# dropping one is not), so it sits here and `_aliases_dropped` reads it instead.
 _REPLAY_INERT_FIELD_ATTRS = frozenset({"deprecated", "description", "renamed_from"})
+
+
+def _aliases_dropped(
+    left_field: dict[str, Any],
+    right_field: dict[str, Any],
+) -> bool:
+    """Whether *right_field* stopped answering to an alias *left_field* declared.
+
+    Adding a ``renamed_from`` alias is inert for replay: no stored payload uses
+    the name being aliased away from, so nothing in the store changes meaning.
+    Dropping one is not inert. Payloads written under that old key are still in
+    the event store, alias resolution no longer maps the key, and strict
+    deserialization rejects it as an extra input.
+    """
+    return bool(
+        set(left_field.get("renamed_from") or [])
+        - set(right_field.get("renamed_from") or [])
+    )
 
 
 def _field_shape_moved(
     left_field: dict[str, Any],
     right_field: dict[str, Any],
 ) -> bool:
-    """Whether a field that exists in both IRs moved in a way a payload may fail."""
+    """Whether a field moved in a way a payload may fail.
+
+    *left_field* and *right_field* are the same field on either side of the diff:
+    either under the same name, or paired by a declared rename.
+    """
+    if _aliases_dropped(left_field, right_field):
+        return True
     return any(
         left_field.get(attr) != right_field.get(attr)
         for attr in (left_field.keys() | right_field.keys()) - _REPLAY_INERT_FIELD_ATTRS
@@ -1135,11 +1160,16 @@ def _payload_changed_events(
     ("Extra inputs are not permitted"). Only an upcaster drops it.
 
     An event counts as changed when a field was removed, when a required field
-    with no default was added (a stored payload omits it), when a surviving
-    field's shape moved (see :data:`_REPLAY_INERT_FIELD_ATTRS`), or when the
-    ``__type__`` string changed, which leaves a stored message unable to resolve
-    back to the event class. A declared rename does not count: the alias
-    resolves the old name in old payloads.
+    with no default was added (a stored payload omits it), when a field's shape
+    moved (see :data:`_REPLAY_INERT_FIELD_ATTRS`), or when the ``__type__``
+    string changed, which leaves a stored message unable to resolve back to the
+    event class.
+
+    A declared rename is not a removal here: the alias resolves the old name in
+    old payloads. It is still shape-compared, under the new name. The alias only
+    routes the old key to the new field; that field then has to accept the stored
+    value, so a rename that also changes the type or another validating
+    constraint fails old payloads just as an in-place change would.
     """
     left_events = _events_by_fqn(left_ir)
     right_events = _events_by_fqn(right_ir)
@@ -1167,6 +1197,10 @@ def _payload_changed_events(
         }
         renames = _detect_field_renames(added, removed)
         renamed_new = set(renames.values())
+        # Every old field name paired with the right-side field that has to accept
+        # its stored values: the same name, or the new name a rename aliases it to.
+        paired = {name: name for name in left_fields.keys() & right_fields.keys()}
+        paired.update(renames)
         if (
             set(removed) - set(renames)
             or any(
@@ -1176,8 +1210,8 @@ def _payload_changed_events(
                 for name, field in added.items()
             )
             or any(
-                _field_shape_moved(left_fields[name], right_fields[name])
-                for name in left_fields.keys() & right_fields.keys()
+                _field_shape_moved(left_fields[old_name], right_fields[new_name])
+                for old_name, new_name in paired.items()
             )
         ):
             changed.add(event_fqn)

@@ -1880,6 +1880,149 @@ class TestEventSourcedAggregateReplayCoverage:
         assert [c.change_type for c in agg] == ["field_removed"]
         assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
 
+    def test_sibling_field_losing_an_alias_stays_breaking(self):
+        """A rebuilding event whose surviving field drops a ``renamed_from`` alias
+        strands every payload still written under that old key: alias resolution no
+        longer maps it and strict deserialization rejects it as an extra input. The
+        covered sibling earns nothing, so the field removal stays breaking."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt(
+                            "DepositMade", 1, {"note": _std(renamed_from=["memo"])}
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        # `note` keeps its name and type but stops answering to
+                        # `memo`, at the same version: no upcaster can rewrite the
+                        # key.
+                        "app.DepositMade": _evt("DepositMade", 1, {"note": _std()}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+
+    def test_sibling_rename_that_changes_type_stays_breaking(self):
+        """A declared rename routes the old key to the new field, and that field
+        then has to accept the stored value. This rename also changes the type, so
+        old payloads fail, and the covered sibling cannot downgrade the aggregate's
+        field removal."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt("DepositMade", 1, {"memo": _std()}),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        # `memo` -> `note` at the same version, String -> Integer.
+                        "app.DepositMade": _evt(
+                            "DepositMade",
+                            1,
+                            {"note": _std("Integer", renamed_from=["memo"])},
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        agg = [c for c in report.breaking_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert not [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+
+    def test_sibling_shape_preserving_rename_still_earns_the_downgrade(self):
+        """The other direction: a rename that keeps the field's shape, plus an added
+        alias on another field, leaves every stored payload constructible, so the
+        covered sibling's downgrade still stands."""
+        left = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"nickname": _std(), "balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 1, {}),
+                        "app.DepositMade": _evt(
+                            "DepositMade", 1, {"memo": _std(), "teller": _std()}
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Account": _es_cluster(
+                    fields={"balance": _std("Float")},
+                    events={
+                        "app.AccountOpened": _evt("AccountOpened", 2, {}),
+                        "app.DepositMade": _evt(
+                            "DepositMade",
+                            1,
+                            {
+                                "note": _std(renamed_from=["memo"]),
+                                "teller": _std(renamed_from=["clerk"]),
+                            },
+                        ),
+                    },
+                    apply_handlers={
+                        "app.AccountOpened": "on_account_opened",
+                        "app.DepositMade": "on_deposit_made",
+                    },
+                )
+            },
+            upcasters={"AccountOpened": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        agg = [c for c in report.safe_changes if c.element_fqn == "app.Account"]
+        assert [c.change_type for c in agg] == ["field_removed"]
+        assert agg[0].mitigated_by == "upcaster AccountOpened v1->v2"
+
     def test_sibling_description_edit_still_earns_the_downgrade(self):
         """A metadata-only edit on a rebuilding event cannot make a stored payload
         fail, so it does not block the covered sibling's downgrade."""
