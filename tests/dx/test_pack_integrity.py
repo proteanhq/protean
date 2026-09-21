@@ -19,7 +19,8 @@ is an inline markdown link destination or an inline-code span that, resolved
 against the file it sits in, lands on one of: a bundled skill's ``SKILL.md``, a
 ``.py`` file under some ``assets/`` directory, a ``.md`` file under some
 ``references/`` directory, or a top-level ``rules/*.md`` file. A ``#anchor``
-suffix is stripped first, and tokens inside fenced code blocks are skipped. Each
+suffix is stripped first, and tokens inside a fenced code block or an HTML
+comment are skipped: neither renders on the page, so neither is a link. Each
 reference remembers which form it came from, and the verify check counts only a
 real link: a path named in backticks is a mention, not a link.
 
@@ -75,6 +76,11 @@ requires_pack_on_disk = pytest.mark.skipif(
 # titled link from being dropped later for the whitespace it carries.
 _LINK = re.compile(r"""\]\(\s*([^()\s]*?)\s*(?:"[^"]*"|'[^']*')?\s*\)""")
 _INLINE_CODE = re.compile(r"`([^`]+)`")
+# An HTML comment, terminated or running to the end of the file. Markdown hands
+# it to the renderer, which hides it, so a link written inside one is not a link
+# on the page. An unterminated comment swallows the rest of the file, which is
+# how a renderer reads it and matches the rule for an unterminated fence.
+_HTML_COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
 # A token carrying any of these is a template or a glob, not a concrete path.
 _TEMPLATE = re.compile(r"[<>*|\s]")
 _FENCE_MARKERS = ("```", "~~~")
@@ -144,8 +150,12 @@ def _raw_tokens(text: str) -> list[tuple[str, bool]]:
 
     The origin is carried rather than guessed later: the verify check asks for a
     real link, and a path named in backticks is a mention, not a link.
+
+    Fences are dropped first, off the raw lines, and HTML comments after: a
+    comment that opens inside a fence cannot then eat a fence marker and throw
+    the fence state off.
     """
-    body = "\n".join(_lines_outside_fences(text))
+    body = _HTML_COMMENT.sub("", "\n".join(_lines_outside_fences(text)))
     tokens: list[tuple[str, bool]] = [
         (match.group(1).strip(), True) for match in _LINK.finditer(body)
     ]
@@ -720,3 +730,71 @@ def test_directory_named_like_a_page_does_not_resolve(tmp_path):
 
     assert len(report.dangling) == 1
     assert report.dangling[0].token == "references/page.md"
+
+
+def test_token_only_inside_an_html_comment_does_not_count(tmp_path):
+    # A renderer hides an HTML comment, so a link inside one is not a link on
+    # the page. A commented-out link must neither reach the asset it names nor
+    # raise a dangling finding for the page it names.
+    root = _make_pack(tmp_path)
+    body = (
+        "Prose.\n\n"
+        "<!-- [example](assets/hidden.py) and [gone](references/gone.md) -->\n\n"
+        "More prose.\n"
+    )
+    _add_skill(root, "alpha", body, assets={"hidden.py": "x = 1\n"})
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert report.orphans == [f"{SKILLS_DIR}/alpha/{ASSETS_DIR}/hidden.py"]
+
+
+def test_commented_out_verify_link_does_not_satisfy_the_check(tmp_path):
+    # The hole this closes: a skill that comments out its verify link renders
+    # with no link to the shared verify step, so it still reads as missing it.
+    root = _make_pack(tmp_path)
+    _add_skill(
+        root,
+        "alpha",
+        f"<!--\n## Verify\n\n- [verify](../../{VERIFY_TARGET})\n-->\n",
+        link_verify=False,
+    )
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert report.skills_missing_verify == ["alpha"]
+
+
+def test_unterminated_html_comment_hides_the_rest_of_the_file(tmp_path):
+    # An unterminated comment runs to the end of the file in a renderer, so the
+    # links after it are hidden too and raise nothing.
+    root = _make_pack(tmp_path)
+    body = "Prose.\n\n<!-- a note that never closes\n\n[gone](references/gone.md)\n"
+    _add_skill(root, "alpha", body)
+
+    report = scan_pack(root)
+
+    assert report.dangling == []
+    assert [ref.target for ref in report.references if "gone" in ref.target] == []
+
+
+def test_html_comment_inside_a_fence_does_not_disturb_the_fence(tmp_path):
+    # A fence is read off the raw lines, before comments are stripped. An open
+    # comment quoted inside a fenced example therefore cannot swallow the
+    # closing marker and hide the prose that follows it.
+    root = _make_pack(tmp_path)
+    body = (
+        "Quoting a comment:\n\n"
+        "```markdown\n"
+        "<!-- a hidden note\n"
+        "```\n\n"
+        "See [missing](references/gone.md).\n"
+    )
+    _add_skill(root, "alpha", body)
+
+    report = scan_pack(root)
+
+    assert len(report.dangling) == 1
+    assert report.dangling[0].token == "references/gone.md"
