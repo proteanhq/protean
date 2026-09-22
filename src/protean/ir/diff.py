@@ -862,8 +862,10 @@ def _change_avro_safety(change: CompatibilityChange) -> tuple[bool, bool]:
     backward = table_backward if change.backward_safe is None else change.backward_safe
     forward = table_forward if change.forward_safe is None else change.forward_safe
     if change.mitigated_by is not None:
-        # A registered upcaster transforms old payloads to the new shape at read
-        # time, so a new-schema reader can decode old data -> backward-safe.
+        # The change was earned: either a registered upcaster transforms old
+        # payloads to the new shape at read time, or replay rebuilds the element
+        # from its events. Either way a new-schema reader gets data in the new
+        # shape -> backward-safe.
         backward = True
     return backward, forward
 
@@ -982,6 +984,11 @@ def classify_changes(
       registered upcaster chain covers has its schema-transformation changes
       downgraded to safe (see :func:`_apply_upcaster_mitigation`). This reads
       ``__version__`` from the IR directly and needs no ``current_version``.
+    - **Event-sourced replay**: an event-sourced aggregate holds no stored
+      schema of its own, so removing a field from it is safe (see
+      :func:`_apply_es_aggregate_mitigation`). The changes that would stop the
+      replay it relies on are reported separately, by
+      :func:`_classify_replay_hazards`.
     """
     report = CompatibilityReport()
 
@@ -996,6 +1003,9 @@ def classify_changes(
     # registered upcaster (the upcaster transforms old payloads to the new
     # shape), citing the mitigating coverage.
     _apply_upcaster_mitigation(report, left_ir, right_ir)
+    # Downgrade a field removal on an event-sourced aggregate, which holds no
+    # stored schema of its own and is rebuilt from its events.
+    _apply_es_aggregate_mitigation(report, left_ir, right_ir)
 
     return report
 
@@ -1083,6 +1093,99 @@ def _apply_upcaster_mitigation(
             continue
         change.severity = "safe"
         change.mitigated_by = citation
+        report.safe_changes.append(change)
+    report.breaking_changes = still_breaking
+
+
+# What an event-sourced aggregate's field change earns from replay: a field
+# removal, and nothing else. What is excluded is excluded because replay does
+# not prove for it what it proves for a removal:
+#
+# - ``field_type_changed``: a stored state snapshot can survive it and skip
+#   replay entirely. ``_load_aggregate_current`` builds the aggregate straight
+#   from the snapshot payload and only falls back to replay when that raises
+#   ``ValidationError``. A removed field raises ("Extra inputs are not
+#   permitted"), so the stale snapshot is discarded. A type change often does
+#   not: ``Float`` -> ``Integer`` coerces a stored ``5.0`` to ``5`` and
+#   constructs fine, so the aggregate loads from the pre-change snapshot and can
+#   hold different state than a full replay would produce.
+# - ``required_field_added``: replay never checks the new field was set.
+#   ``BaseAggregate._create_for_reconstitution`` initialises every field to
+#   ``None`` and ``from_events`` applies the handlers and returns with no
+#   required-field validation, so a handler that does not assign the new field
+#   leaves it ``None`` and the aggregate loads anyway.
+_ES_AGGREGATE_MITIGATABLE = frozenset({"field_removed"})
+
+
+def _apply_es_aggregate_mitigation(
+    report: CompatibilityReport,
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> None:
+    """Downgrade a field removal on an event-sourced aggregate.
+
+    An event-sourced aggregate holds no stored schema of its own. Its state
+    lives as a stream of events plus an optional snapshot, and the snapshot is a
+    rebuildable cache over that stream: ``_load_aggregate_current``
+    (``port/event_store.py``) constructs the aggregate from the snapshot, and on
+    ``ValidationError`` discards it and replays the stream instead. Its own
+    comment names this exact case ("The snapshot predates the current schema (a
+    field was renamed, removed, or newly required), so it no longer
+    constructs"). Removing a field is therefore not a stored-schema break the
+    way it is on a table-backed aggregate.
+
+    The single condition is that the aggregate is event-sourced in *both*
+    snapshots. A classic aggregate converted to event sourcing in this diff
+    stored its old state as table rows, which replay cannot rebuild.
+
+    What this deliberately does **not** do is prove that replay is healthy.
+    Every way replay can break (the stream category or the identity moving, an
+    ``@apply`` handler dropped, event sourcing itself flipped) is reported as
+    its own breaking change by :func:`_classify_replay_hazards`, and a rebuilding
+    event that can no longer be read is reported against that event. Any of
+    those keeps ``report.is_breaking`` true on its own, so this downgrade can
+    never hide one. Making the downgrade conditional on a whole-domain health
+    proof instead would mean re-deriving every hazard here, and would report the
+    hazard only when a field happened to be removed alongside it.
+
+    A classic table-backed aggregate is never touched by this path; ``exclude``
+    stays the coarse last resort there.
+    """
+    if not report.breaking_changes:
+        return
+
+    left_clusters = left_ir.get("clusters", {})
+    earned: set[str] = set()
+    for fqn, right_cluster in right_ir.get("clusters", {}).items():
+        if (
+            not right_cluster.get("aggregate", {})
+            .get("options", {})
+            .get("is_event_sourced")
+        ):
+            continue
+        left_options = (
+            left_clusters.get(fqn, {}).get("aggregate", {}).get("options", {})
+        )
+        if not left_options.get("is_event_sourced"):
+            continue
+        earned.add(fqn)
+
+    if not earned:
+        return
+
+    still_breaking: list[CompatibilityChange] = []
+    for change in report.breaking_changes:
+        # Only the aggregate's own field removal. Every other change against it
+        # (a type change, a required add, the aggregate removed, a replay
+        # hazard) stays breaking.
+        if (
+            change.element_fqn not in earned
+            or change.change_type not in _ES_AGGREGATE_MITIGATABLE
+        ):
+            still_breaking.append(change)
+            continue
+        change.severity = "safe"
+        change.mitigated_by = "event-sourced replay"
         report.safe_changes.append(change)
     report.breaking_changes = still_breaking
 

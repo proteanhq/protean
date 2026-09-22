@@ -29,6 +29,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Visibility internal to public | Safe |
 | Change `__type__` string | **Breaking** |
 | Event version bump covered by a registered upcaster | Safe (mitigated) |
+| Remove a field from an event-sourced aggregate | Safe (mitigated) |
 | Turn event sourcing on or off for an aggregate | **Breaking** (`event_sourcing_changed`) |
 | Move an event-sourced aggregate's `stream_category` | **Breaking** (`stream_category_changed`) |
 | Point an event-sourced aggregate's identity at another field | **Breaking** (`identity_field_changed`) |
@@ -62,7 +63,7 @@ method together is one act, so it reports once, as the removal.
 
 ### Evolution-aware classification
 
-The checker understands two evolution mechanisms:
+The checker understands these evolution mechanisms:
 
 - **Deprecation grace**: A field marked `deprecated` and removed at or past its
   `removal` version is an *expected removal* (safe), not a breaking one. This
@@ -78,7 +79,32 @@ The checker understands two evolution mechanisms:
   mitigating upcaster. An orthogonal change riding along with the bump (for
   example a public→internal visibility flip) stays breaking, and a version bump
   with an upcaster *gap* (a prior version with no path to the new one) stays
-  breaking.
+  breaking. So does a bump that moves the type string's base, the part before
+  the version, as renaming the domain or the event class does. Chains are
+  registered under that base and a stored message is looked up by the base it
+  was written with, so moving it strands every stored payload whatever is
+  registered under the new base.
+- **Event-sourced replay**: An event-sourced aggregate holds no stored schema of
+  its own. Its state is a stream of events plus an optional snapshot, and the
+  snapshot is a rebuildable cache: Protean constructs the aggregate from the
+  snapshot and, when that no longer works because the schema moved, discards it
+  and replays the stream. So removing a field from an event-sourced aggregate is
+  downgraded to safe. The aggregate has to be event-sourced in both snapshots; a
+  classic aggregate converted to event sourcing in the same change stored its old
+  state as table rows that replay cannot rebuild.
+
+  A field **type change** is not downgraded. A stored snapshot can survive one
+  and skip replay entirely: a stored `Float` of `5.0` coerces cleanly into a new
+  `Integer` field, so the aggregate loads from the pre-change snapshot and can
+  hold different state than a full replay would produce. A **new required
+  field** is not downgraded either, because replay starts from a blank aggregate
+  with every field `None`, applies the handlers, and runs no required-field
+  check at the end.
+
+  This downgrade says nothing about whether replay still works. The changes that
+  stop it are reported separately, as their own breaking changes (see Replay
+  hazards above), so a diff that both removes a field and moves the stream
+  category still reports breaking and names the stream move as the reason.
 
 ---
 
@@ -154,6 +180,24 @@ When deprecating a domain element or field:
 
 The `protean ir diff` command distinguishes expected removals (deprecated
 elements past their removal version) from unexpected removals.
+
+### Earned safety comes first; `exclude` is the last resort
+
+Reach for the in-code primitives before you reach for `exclude`. Each one earns
+a downgrade the checker can verify against the actual schema:
+
+- `renamed_from` on the new field marks a rename, not a remove-and-add.
+- A `deprecated` mark with a `removal` version earns the expected-removal grace.
+- A registered [upcaster](../../patterns/event-versioning-and-evolution.md) chain
+  earns the mitigation for an event's version bump.
+- Making an aggregate event-sourced earns the downgrade for its field removals,
+  because its state is then rebuilt from events rather than read from a table.
+
+`exclude` earns nothing. It silences the alert without proving the change is
+safe, so it is the coarse last resort for the element types the checker cannot
+verify: classic table-backed aggregates, projections, commands, and value
+objects. Use it only when you have decided by hand that a break is acceptable,
+and prefer any of the earned primitives above wherever they apply.
 
 Events additionally accept a `superseded_by` option naming the replacement (an
 Event class or a name string):

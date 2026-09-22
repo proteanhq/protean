@@ -1065,12 +1065,14 @@ def _es_cluster(
     apply_handlers: dict | None = None,
     identity_field: str = "id",
     options: dict | None = None,
+    entities: dict | None = None,
 ) -> dict:
     """An event-sourced aggregate cluster, with @apply handlers."""
     cluster = _make_cluster(
         "Order",
         fields=fields if fields is not None else {"id": _std(), "note": _std()},
         events=events,
+        entities=entities,
         options=options or _es_options(),
     )
     cluster["aggregate"]["identity_field"] = identity_field
@@ -1359,6 +1361,218 @@ class TestReplayHazards:
         report = _run(left, right)
         assert report.is_breaking is True
         assert report.avro_verdict == "FULL"
+
+
+class TestEventSourcedAggregateFieldRemoval:
+    """An event-sourced aggregate holds no stored schema of its own, so removing
+    a field from it is safe. The downgrade proves nothing about replay, because
+    everything that breaks replay is reported on its own."""
+
+    def test_field_removal_is_safe(self):
+        left = _minimal_ir(
+            clusters={"app.Order": _es_cluster(fields={"id": _std(), "note": _std()})}
+        )
+        right = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        report = _run(left, right)
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_removed"]
+        assert report.safe_changes[0].mitigated_by == "event-sourced replay"
+
+    def test_classic_aggregate_field_removal_stays_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", fields={"id": _std(), "note": _std()}
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"id": _std()})}
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "field_removed" in _types(report)
+
+    def test_field_type_change_stays_breaking(self):
+        """A stored state snapshot can survive a type change and skip replay
+        entirely, so nothing earns the downgrade."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(fields={"id": _std(), "qty": _std("Float")})
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(fields={"id": _std(), "qty": _std("Integer")})
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "field_type_changed" in _types(report)
+
+    def test_required_field_add_stays_breaking(self):
+        """Replay runs no required-field check, so the add is not proven safe."""
+        left = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std(), "owner": _std(required=True)}
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "required_field_added" in _types(report)
+
+    def test_conversion_to_event_sourcing_earns_nothing(self):
+        """The old state is table rows, which replay cannot rebuild."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", fields={"id": _std(), "note": _std()}
+                )
+            }
+        )
+        right = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "field_removed" in _types(report)
+
+    def test_conversion_away_from_event_sourcing_earns_nothing(self):
+        left = _minimal_ir(
+            clusters={"app.Order": _es_cluster(fields={"id": _std(), "note": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"id": _std()})}
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "field_removed" in _types(report)
+
+    def test_a_downgraded_removal_cannot_hide_a_moved_stream(self):
+        """The load-bearing case for this design. The field removal downgrades
+        and the stream move is still reported, so the report stays breaking and
+        names the real reason."""
+        left = _minimal_ir(
+            clusters={"app.Order": _es_cluster(fields={"id": _std(), "note": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options("orders")
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert [c.change_type for c in report.breaking_changes] == [
+            "stream_category_changed"
+        ]
+        assert [c.change_type for c in report.safe_changes] == ["field_removed"]
+
+    def test_a_downgraded_removal_cannot_hide_a_dropped_apply_handler(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std(), "note": _std()},
+                    apply_handlers={
+                        "app.OrderPlaced": "on_placed",
+                        "app.OrderPaid": "on_paid",
+                    },
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()},
+                    apply_handlers={"app.OrderPlaced": "on_placed"},
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "apply_handler_removed" in _types(report)
+
+    def test_a_downgraded_removal_cannot_hide_a_moved_identity(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std(), "ref": _std(), "note": _std()}
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std(), "ref": _std()}, identity_field="ref"
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "identity_field_changed" in _types(report)
+
+    def test_a_removed_aggregate_stays_breaking(self):
+        left = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        right = _minimal_ir(clusters={})
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "element_removed" in _types(report)
+
+    def test_an_entity_in_an_es_cluster_is_not_covered(self):
+        """The downgrade is the aggregate's own, not its cluster's. An entity is
+        persisted in its own right."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    entities={
+                        "app.LineItem": _make_entity(
+                            "LineItem", "app.LineItem", {"sku": _std(), "note": _std()}
+                        )
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    entities={
+                        "app.LineItem": _make_entity(
+                            "LineItem", "app.LineItem", {"sku": _std()}
+                        )
+                    }
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert report.breaking_changes[0].element_fqn == "app.LineItem"
+
+    def test_an_event_in_an_es_cluster_is_not_covered(self):
+        """Same boundary from the other side: a rebuilding event's own field
+        removal still needs an upcaster."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    events={
+                        "app.OrderPlaced": _evt(
+                            "OrderPlaced", 1, {"amount": _std("Float")}
+                        )
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    events={"app.OrderPlaced": _evt("OrderPlaced", 1, {})}
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert report.breaking_changes[0].element_fqn == "app.OrderPlaced"
 
 
 class TestClassifyTypeStringChanged:
