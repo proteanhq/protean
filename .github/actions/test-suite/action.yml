@@ -62,8 +62,13 @@ runs:
           "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0"
           "ghcr.io/proteanhq/mirror/message-db:1.2.6"
           "ghcr.io/proteanhq/mirror/mssql-server:2022-latest"
-          "ghcr.io/proteanhq/mirror/mysql:8.4"
-          "ghcr.io/proteanhq/mirror/mariadb:11.4"
+          # MySQL and MariaDB come from Docker Hub until the mirror carries
+          # them. mirror-images.yml lists them, but that workflow is
+          # dispatch-only and its new packages have to be made Public by hand
+          # before CI can pull them. Move these two to
+          # ghcr.io/proteanhq/mirror/ once that is done.
+          "mysql:8.4"
+          "mariadb:11.4"
         )
 
         # A cache-hit with no tarballs (e.g. a cache saved by an interrupted
@@ -155,13 +160,13 @@ runs:
           -p 53306:3306 \
           -e MYSQL_ROOT_PASSWORD=protean \
           -e MYSQL_DATABASE=protean \
-          ghcr.io/proteanhq/mirror/mysql:8.4
+          mysql:8.4
 
         docker run -d --name mariadb \
           -p 53307:3306 \
           -e MARIADB_ROOT_PASSWORD=protean \
           -e MARIADB_DATABASE=protean \
-          ghcr.io/proteanhq/mirror/mariadb:11.4
+          mariadb:11.4
 
         docker run -d --name elasticsearch \
           -p 59200:9200 \
