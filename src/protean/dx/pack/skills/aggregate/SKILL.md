@@ -434,3 +434,7 @@ See [Anti-patterns](references/anti-patterns.md) for additional mistakes: oversi
 - `event` - Events raised by aggregates
 - `repository` - Persisting and retrieving aggregates
 - `event-sourced-aggregate` - Event-sourced aggregates with @apply, from_events(), fact events
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

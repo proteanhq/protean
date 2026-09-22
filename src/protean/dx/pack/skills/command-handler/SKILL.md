@@ -203,3 +203,7 @@ def handle_place_order(self, command):
 - `aggregate` - Command handlers operate on aggregates
 - `event` - Aggregates may raise events during handler processing
 - `event-handler` - Downstream processing of events raised during command handling
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

@@ -214,3 +214,7 @@ Instead: Let the implicit UnitOfWork handle transactional behavior
 - `command-handler` - Command handlers use repositories to load and persist aggregates
 - `event-handler` - Event handlers use repositories for cross-aggregate coordination
 - `entity` - Entities enclosed within aggregates are persisted automatically via repositories
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

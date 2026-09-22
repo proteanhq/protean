@@ -248,3 +248,7 @@ def _calculate_total(self):
 - `command-handler` - Where domain services are typically invoked from
 - `event` - Events raised by aggregates during domain service operations
 - `value-object` - Value objects used within aggregates passed to domain services
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

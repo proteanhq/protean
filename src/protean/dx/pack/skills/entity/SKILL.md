@@ -405,6 +405,10 @@ order = Order(customer_id="C123")
 order.add_line_items([LineItem(product_id="P1", quantity=2)])  # Auto-generated
 ```
 
+## Examples
+
+- [Simple entity](assets/entity_simple.py): a minimal entity inside an aggregate
+
 ## Detailed references
 
 - [HasOne relationships](references/with-hasone.md) - One-to-one entity relationships
@@ -417,4 +421,7 @@ order.add_line_items([LineItem(product_id="P1", quantity=2)])  # Auto-generated
 
 - [aggregate](../aggregate/SKILL.md) - Learn about aggregates that contain entities
 - [value-object](../value-object/SKILL.md) - When to use value objects instead of entities
-- [add-entity](../../add-entity/SKILL.md) - Workflow for adding entities to aggregates
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

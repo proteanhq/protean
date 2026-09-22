@@ -229,6 +229,10 @@ def notify_customer(self, event):
     domain.repository_for(Notification).add(notification)
 ```
 
+## Examples
+
+- E-commerce: [before](assets/introduce_events_ecommerce_before.py) and [after](assets/introduce_events_ecommerce_after.py)
+
 ## Detailed references
 
 - [Event design guide](references/event-design-guide.md) — How to design good events
@@ -238,5 +242,8 @@ def notify_customer(self, event):
 
 - [event](../event/SKILL.md) — Event definition patterns
 - [event-handler](../event-handler/SKILL.md) — Event handler patterns
-- [add-cross-aggregate-sync](../add-cross-aggregate-sync/SKILL.md) — Full cross-aggregate workflow
 - [audit-domain](../audit-domain/SKILL.md) — Detects transaction boundary violations
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

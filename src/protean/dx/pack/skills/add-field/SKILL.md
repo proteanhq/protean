@@ -168,3 +168,7 @@ See [references/common-mistakes.md](references/common-mistakes.md) for detailed 
 - [add-validation](../add-validation/SKILL.md) — Choosing the right validation layer
 - [custom-validator](../custom-validator/SKILL.md) — Building custom field validators
 - [refactor-extract-value-object](../refactor-extract-value-object/SKILL.md) — When fields should become VOs
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

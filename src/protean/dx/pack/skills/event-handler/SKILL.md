@@ -272,3 +272,7 @@ Instead: Keep business logic in the aggregate, handler only orchestrates
 - [aggregate](../aggregate/SKILL.md) - Event handlers are always connected to aggregates
 - [command-handler](../command-handler/SKILL.md) - Analogous pattern for commands (compare/contrast)
 - [refactor-introduce-events](../refactor-introduce-events/SKILL.md) - Refactoring direct calls into event-driven flows
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

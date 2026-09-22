@@ -87,7 +87,7 @@ Cross-reference the catalog against the test inventory.
 
 ## Step 7: Generate missing tests
 
-For each gap, use [generate-test-scaffold](../generate-test-scaffold/SKILL.md) patterns:
+For each gap, use [generate-test-scaffold](../../generate-test-scaffold/SKILL.md) patterns:
 
 | Gap type | Test class pattern | Scaffold step |
 |----------|-------------------|---------------|
@@ -112,7 +112,7 @@ For each gap, use [generate-test-scaffold](../generate-test-scaffold/SKILL.md) p
 
 ## Related
 
-- [generate-test-scaffold](../generate-test-scaffold/SKILL.md) — Test generation patterns
-- [Aggregate test patterns](../generate-test-scaffold/references/aggregate-tests.md)
-- [Handler test patterns](../generate-test-scaffold/references/handler-tests.md)
-- [Integration test patterns](../generate-test-scaffold/references/integration-tests.md)
+- [generate-test-scaffold](../../generate-test-scaffold/SKILL.md) — Test generation patterns
+- [Aggregate test patterns](../../generate-test-scaffold/references/aggregate-tests.md)
+- [Handler test patterns](../../generate-test-scaffold/references/handler-tests.md)
+- [Integration test patterns](../../generate-test-scaffold/references/integration-tests.md)

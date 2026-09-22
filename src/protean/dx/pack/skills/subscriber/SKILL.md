@@ -200,3 +200,7 @@ def __call__(self, payload: dict) -> None:  # Correct!
 - `aggregate` - Subscribers often load and update aggregates through repositories
 - `command` - Subscribers commonly translate external messages into domain commands
 - `command-handler` - Subscribers often dispatch commands for processing
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

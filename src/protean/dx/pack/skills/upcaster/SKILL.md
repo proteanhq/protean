@@ -246,3 +246,7 @@ See [Anti-patterns](references/anti-patterns.md) for more.
 - `event-sourced-aggregate` — `@apply` decorator, `from_events()`, ES repository
 - `event-handler` — `@handle` decorator, event handler structure
 - `projector` — `@handle`/`@on` decorator, projector structure
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

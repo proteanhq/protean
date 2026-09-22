@@ -247,3 +247,7 @@ Instead: Use `@domain.aggregate` for write models with business logic
 - `aggregate` - Aggregates are the write-side counterpart to projections
 - `event` - Events are the bridge between aggregates and projections
 - `patterns/cqrs` - Projections implement the query side of CQRS
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

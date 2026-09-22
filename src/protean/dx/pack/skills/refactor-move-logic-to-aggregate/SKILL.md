@@ -211,6 +211,10 @@ def close_ticket(self, command):
     domain.repository_for(Ticket).add(ticket)
 ```
 
+## Examples
+
+- Ticket: [before](assets/move_logic_ticket_before.py) and [after](assets/move_logic_ticket_after.py)
+
 ## Detailed references
 
 - [Identifying logic leaks](references/identifying-logic-leaks.md) — Heuristics and examples
@@ -221,3 +225,7 @@ def close_ticket(self, command):
 - [aggregate](../aggregate/SKILL.md) — Aggregate patterns
 - [command-handler](../command-handler/SKILL.md) — Handler patterns
 - [audit-domain](../audit-domain/SKILL.md) — Detects logic leaks
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

@@ -130,3 +130,7 @@ payload. Domain data belongs in the command/event fields.
 - `command` / `command-handler` - Commands that enrichers annotate
 - `event` / `event-handler` - Events that enrichers annotate
 - `aggregate` - Event enrichers receive the aggregate raising the event
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

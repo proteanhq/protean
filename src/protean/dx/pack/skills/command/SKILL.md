@@ -199,3 +199,7 @@ command = PlaceOrder(order_id="ORD-001", customer_id="CUST-456")
 - `event` - Commands and events are complementary (commands = intent, events = result)
 - `value-object` - Commands can contain value objects
 - `patterns/cqrs` - Commands are the "C" in CQRS
+
+## Verify your work
+
+- [Verify with check](../../references/verify-with-check.md): run `check` and resolve what it reports

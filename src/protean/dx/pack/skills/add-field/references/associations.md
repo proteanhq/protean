@@ -639,6 +639,6 @@ class Order:
 - [Field Types Guide](field-types.md) - All available field types
 - [Complete association example](../assets/add_association_fields.py)
 - [ValueObject example](../assets/add_value_object_field.py)
-- [aggregate](../aggregate/SKILL.md)
-- [entity](../entity/SKILL.md)
-- [value-object](../value-object/SKILL.md)
+- [aggregate](../../aggregate/SKILL.md)
+- [entity](../../entity/SKILL.md)
+- [value-object](../../value-object/SKILL.md)
