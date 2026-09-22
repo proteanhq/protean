@@ -159,11 +159,30 @@ def _assert_reflection(subject: Any, field: FieldSpec, expected: Any) -> Resolve
         f"ResolvedField.required is {resolved.required}, "
         f"but the field was declared required={field.required}"
     )
-    serialized = resolved.as_dict(expected)
-    # Must not raise: the persistence and event payloads are JSON-encoded, so a
-    # custom value that as_dict leaves unserialized would break the round-trip.
-    json.dumps(serialized)
+    _assert_json_encodable(
+        resolved.as_dict(expected),
+        f"as_dict({expected!r})",
+    )
     return resolved
+
+
+def _assert_json_encodable(serialized: Any, what: str) -> None:
+    """The stored form of a custom value must survive JSON encoding.
+
+    The persistence and event payloads are JSON-encoded, so a value ``as_dict``
+    leaves unserialized breaks the round-trip. ``json.dumps`` reports that as a
+    ``TypeError`` (or a ``ValueError`` for a cycle), and the harness promises an
+    ``AssertionError`` on every contract violation, so it is restated here with
+    the rule it broke.
+    """
+    try:
+        json.dumps(serialized)
+    except (TypeError, ValueError) as exc:
+        raise AssertionError(
+            f"{what} returned {serialized!r}, which is not JSON-encodable "
+            f"({exc}); as_dict must return a plain value, so implement to_dict() "
+            f"on the custom type to return one"
+        ) from exc
 
 
 def _assert_round_trip(
@@ -183,7 +202,10 @@ def _assert_round_trip(
         f"reloaded value {reloaded.sample!r} does not equal the original {expected!r}"
     )
     # The reloaded value serializes the same way, so a second save would match.
-    json.dumps(resolved.as_dict(reloaded.sample))
+    _assert_json_encodable(
+        resolved.as_dict(reloaded.sample),
+        "as_dict of the reloaded value",
+    )
 
     store = domain.event_store.store
     assert store is not None, "the domain has no configured event store"

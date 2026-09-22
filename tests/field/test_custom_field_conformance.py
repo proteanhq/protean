@@ -90,6 +90,32 @@ def _point_field(**constraints):
     )
 
 
+class Opaque:
+    """A type whose ``to_dict()`` hands back something JSON cannot encode."""
+
+    __slots__ = ("label",)
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def to_dict(self) -> object:
+        return object()
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Opaque) and other.label == self.label
+
+    def __repr__(self) -> str:
+        return f"Opaque({self.label!r})"
+
+
+def parse_opaque(value: object) -> Opaque:
+    if isinstance(value, Opaque):
+        return value
+    if isinstance(value, str):
+        return Opaque(value)
+    raise ValueError(f"cannot parse {value!r} as an Opaque")
+
+
 # ===========================================================================
 # Factory behavior
 # ===========================================================================
@@ -698,6 +724,24 @@ class TestConformanceHarnessGuards:
                 valid_input="anything",
                 expected=Point(9, 9),
                 invalid_input="garbage",
+            )
+
+    def test_flags_an_as_dict_that_is_not_json_encodable(self):
+        # ``as_dict`` goes through the value's ``to_dict()``. One that returns an
+        # object JSON cannot encode breaks persistence and the event payload, and
+        # the harness promises an AssertionError naming the rule, not the raw
+        # TypeError ``json.dumps`` raises.
+        field = Custom(
+            Opaque,
+            validators=[PlainValidator(parse_opaque)],
+            serializers=[PlainSerializer(lambda o: o.label, return_type=str)],
+        )
+        with pytest.raises(AssertionError, match="not JSON-encodable"):
+            run_custom_field_conformance(
+                field,
+                valid_input="here",
+                expected=Opaque("here"),
+                invalid_input=1,
             )
 
     def test_flags_a_required_field_that_accepts_a_missing_value(self):
