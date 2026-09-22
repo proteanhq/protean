@@ -15,6 +15,7 @@ from protean.ir.diff import (
     classify_changes,
     diff_ir,
 )
+from protean.utils.upcasting import missing_upcaster_source_versions
 
 # ------------------------------------------------------------------
 # Shared helpers (mirrors test_diff.py conventions)
@@ -1003,6 +1004,167 @@ class TestUpcasterMitigation:
             "field_removed",
             "type_string_changed",
         }
+
+
+class TestUpcasterCoverageReachesEveryStoredVersion:
+    """A bump is only covered when every version still sitting in the store can
+    reach the new one, and when the chain's key did not move out from under it."""
+
+    @staticmethod
+    def _ir(events: dict, upcasters: dict | None = None) -> dict:
+        overrides: dict = {"clusters": {"app.Order": _cluster_with_events(events)}}
+        if upcasters is not None:
+            overrides["upcasters"] = upcasters
+        return _minimal_ir(**overrides)
+
+    def test_deleted_earlier_edge_strands_old_payloads(self):
+        """v2 -> v3 with only the v2 -> v3 edge. The v1 -> v2 edge is gone, so
+        every stored v1 payload is stranded even though the bump in *this* diff
+        is covered. The old rule asked only whether v2 reached v3."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {"amount": _std("Float")})},
+            upcasters={
+                "OrderPlaced": [
+                    {"from_version": 1, "to_version": 2},
+                ]
+            },
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 3, {})},
+            upcasters={"OrderPlaced": [{"from_version": 2, "to_version": 3}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+        assert "field_removed" in {c.change_type for c in report.breaking_changes}
+
+    def test_intact_chain_from_v1_still_covers_the_bump(self):
+        """The positive control for the case above: keep the v1 -> v2 edge and
+        the same v2 -> v3 bump is covered."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {"amount": _std("Float")})},
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 3, {})},
+            upcasters={
+                "OrderPlaced": [
+                    {"from_version": 1, "to_version": 2},
+                    {"from_version": 2, "to_version": 3},
+                ]
+            },
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+        assert all(
+            c.mitigated_by == "upcaster OrderPlaced v2->v3" for c in report.safe_changes
+        )
+
+    def test_gap_check_matches_the_build_time_diagnostic(self):
+        """The rule the diff applies is the one `UPCASTER_GAP` applies, so the
+        two cannot report different things about the same registry."""
+        edges = [(2, 3)]
+        assert missing_upcaster_source_versions(edges, 3) == [1]
+
+    def test_renamed_event_class_earns_nothing(self):
+        """The chain is keyed by the type string's base. Rename the event class
+        and a stored `Test.OrderPlaced.v1` message reaches no chain registered
+        under `Test.OrderSubmitted`, whatever its edges say."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _make_event(
+                            "OrderSubmitted",
+                            "app.OrderPlaced",
+                            fields={},
+                            __version__=2,
+                            __type__="Test.OrderSubmitted.v2",
+                        )
+                    }
+                )
+            },
+            upcasters={"OrderSubmitted": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+
+    def test_renamed_domain_earns_nothing(self):
+        """Same rule from the other half of the base: the domain moved, so the
+        registered key moved with it."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _make_event(
+                            "OrderPlaced",
+                            "app.OrderPlaced",
+                            fields={},
+                            __version__=2,
+                            __type__="Ordering.OrderPlaced.v2",
+                        )
+                    }
+                )
+            },
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is True
+
+    def test_version_only_type_string_move_still_covers(self):
+        """The control for the two above: the base holds still and only the
+        version segment moves, which is the ordinary covered bump."""
+        left = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 1, {"amount": _std("Float")})}
+        )
+        right = self._ir(
+            {"app.OrderPlaced": _evt("OrderPlaced", 2, {})},
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
+
+    def test_event_with_no_type_string_is_decided_on_its_versions(self):
+        """A missing `__type__` on both sides compares equal, so it decides
+        nothing and the version rule is left to answer."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _make_event(
+                            "OrderPlaced",
+                            "app.OrderPlaced",
+                            fields={"amount": _std("Float")},
+                            __version__=1,
+                            __type__=None,
+                        )
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _cluster_with_events(
+                    {
+                        "app.OrderPlaced": _make_event(
+                            "OrderPlaced",
+                            "app.OrderPlaced",
+                            fields={},
+                            __version__=2,
+                            __type__=None,
+                        )
+                    }
+                )
+            },
+            upcasters={"OrderPlaced": [{"from_version": 1, "to_version": 2}]},
+        )
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert report.is_breaking is False
 
 
 class TestRenameOnEventStillSafe:

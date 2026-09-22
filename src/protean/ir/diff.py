@@ -10,6 +10,7 @@ Public API::
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -22,6 +23,11 @@ AvroVerdict = Literal["FULL", "BACKWARD", "FORWARD", "NONE"]
 # The IR field-spec sentinel for a default produced by a callable (which cannot
 # be emitted as a static schema default). Mirrors ``generators/avro.py``.
 _CALLABLE_DEFAULT = "<callable>"
+
+# The version segment a ``__type__`` string ends with, e.g. the ``.v2`` of
+# ``"Ordering.OrderPlaced.v2"``. Stripping it leaves the base the runtime
+# upcaster chain is keyed by.
+_VERSION_SUFFIX = re.compile(r"\.v\d+$")
 
 
 def diff_ir(
@@ -993,6 +999,20 @@ def _events_by_fqn(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return events
 
 
+def _type_string_base(entry: dict[str, Any]) -> str:
+    """The ``__type__`` string of *entry* without its trailing version segment.
+
+    ``"Ordering.OrderPlaced.v2"`` gives ``"Ordering.OrderPlaced"``. This is the
+    key the runtime upcaster chain is registered under: ``TypeManager`` builds
+    every chain's key as ``f"{domain.camel_case_name}.{event_name}"``
+    (``domain/type_manager.py``) and ``UpcasterChain`` looks a stored message up
+    by the base of its own type string. An entry carrying no ``__type__`` gives
+    ``""``, which compares equal across the two snapshots and so decides nothing
+    on its own.
+    """
+    return _VERSION_SUFFIX.sub("", str(entry.get("__type__") or ""))
+
+
 # Change types that make up a payload-schema transformation an upcaster can
 # perform. Orthogonal changes that happen to ride along with the version bump
 # (e.g. a visibility flip or the element being removed) are NOT covered.
@@ -1014,7 +1034,8 @@ def _apply_upcaster_mitigation(
     """Downgrade breaking changes on events whose version bump an upcaster covers.
 
     A registered upcaster chain that reaches an event's new ``__version__`` from
-    its old one transforms stored old-version payloads to the new shape, so the
+    *every* prior version transforms stored old-version payloads to the new
+    shape, so the
     schema-transformation changes that make up that version bump (field removals,
     type changes, required-field additions, the ``__type__`` version-string bump)
     are no longer breaking. Only those change types are downgraded — an orthogonal
@@ -1048,8 +1069,24 @@ def _apply_upcaster_mitigation(
             (e["from_version"], e["to_version"])
             for e in upcasters.get(right_entry.get("name", ""), [])
         ]
-        # left_v reaches right_v iff it is NOT among the versions with no path.
-        if left_v in missing_upcaster_source_versions(edges, right_v):
+        # Every stored version has to reach right_v, not only left_v. The old
+        # IR's version is the newest payload in the store, not the only one: v1
+        # payloads written before an earlier bump are still there. An event
+        # bumped v2->v3 whose v1->v2 edge was deleted strands every stored v1
+        # payload, and a change riding on that bump is not earned-safe. This is
+        # the same rule the build-time ``UPCASTER_GAP`` diagnostic applies, so
+        # the two can no longer disagree about the same domain.
+        if missing_upcaster_source_versions(edges, right_v):
+            continue
+        # The chain is keyed by the type string's base, not by the event class.
+        # ``TypeManager`` registers every chain under
+        # ``f"{domain.camel_case_name}.{event_name}"``, and a stored message is
+        # looked up by the base of the type string it was written with. Move
+        # that base (rename the domain, rename the event class) and a stored
+        # ``Ordering.OrderPlaced.v1`` message reaches neither a chain nor a
+        # class, whatever upcasters are registered under the new base. The bump
+        # earns nothing then.
+        if _type_string_base(left_entry) != _type_string_base(right_entry):
             continue
         mitigation[event_fqn] = (
             f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}"
