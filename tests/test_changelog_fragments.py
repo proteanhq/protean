@@ -91,7 +91,12 @@ def _anchors(text: str) -> set[str]:
             continue
         title = line.lstrip("#").strip()
         slug = re.sub(r"[^\w\s-]", "", title.lower())
-        slug = re.sub(r"\s+", "-", slug).strip("-")
+        # python-markdown's slugify collapses a run of hyphens and spaces into
+        # one separator, so a heading naming a CLI flag (`--dialects`) publishes
+        # `-dialects`, not `---dialects`. Substituting only on whitespace kept
+        # the double hyphen and made this model disagree with the published
+        # page, which passed a link that 404s.
+        slug = re.sub(r"[-\s]+", "-", slug).strip("-")
         candidate, repeat = slug, 0
         while candidate in anchors:
             repeat += 1
@@ -369,6 +374,10 @@ class TestABreakCannotHideInProse:
             "a bool there now raises a ConfigurationError"
         )
         assert _SOUNDS_LIKE_A_BREAK.search("the old shape no longer works")
+        # A heading naming a CLI flag: the anchor carries one hyphen, not three.
+        assert _anchors("## `protean new --pretend` is now `--dry-run`") == {
+            "protean-new-pretend-is-now-dry-run"
+        }
         # A break can read as something ceasing to prevent, not ceasing to work.
         assert _SOUNDS_LIKE_A_BREAK.search(
             "a failing method no longer stops its siblings"

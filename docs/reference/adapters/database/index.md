@@ -62,6 +62,19 @@ SQL Server.
 
 [MSSQL provider reference](./mssql.md)
 
+### MySQL
+
+The `mysql` provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
+[PyMySQL](https://github.com/PyMySQL/PyMySQL) to communicate with MySQL and
+MariaDB. One provider serves both servers.
+
+- **Use cases**: Production environments on MySQL or MariaDB
+- **Capabilities**: Full relational set plus JSON columns. MySQL has no array
+  type, so a `List` field is stored as JSON
+- **Requires**: `pymysql`, which installs from a wheel everywhere
+
+[MySQL provider reference](./mysql.md)
+
 ### Elasticsearch
 
 The `elasticsearch` provider uses the
@@ -97,7 +110,7 @@ database_uri = "postgresql://postgres:postgres@localhost:5432/reports"
 Each database configuration must specify:
 
 - `provider`: The provider adapter to use (`memory`, `postgresql`, `sqlite`,
-  `mssql`, `elasticsearch`, or a third-party provider name)
+  `mssql`, `mysql`, `elasticsearch`, or a third-party provider name)
 - Additional provider-specific options (like `database_uri` for non-memory
   providers)
 

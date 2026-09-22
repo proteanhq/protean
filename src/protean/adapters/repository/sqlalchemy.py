@@ -16,6 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, ClassVar
 
 import sqlalchemy.dialects.mssql as mssql
+import sqlalchemy.dialects.mysql as mysql
 import sqlalchemy.dialects.postgresql as psql
 from sqlalchemy import (
     DDL,
@@ -363,6 +364,36 @@ _PARTIAL_INDEX_OPS = {
 _PARTIAL_INDEX_DIALECTS = frozenset({"postgresql", "sqlite"})
 _INCLUDE_INDEX_DIALECTS = frozenset({"postgresql", "mssql"})
 
+# SQLAlchemy reports two dialect names for the one provider: ``mysql+pymysql://``
+# is ``mysql`` and ``mariadb+pymysql://`` is ``mariadb``. Every branch that keys
+# off the dialect name has to accept both, so they are named once here.
+_MYSQL_DIALECTS = frozenset({"mysql", "mariadb"})
+
+# Defaults for the table charset and collation, overridable per provider through
+# the ``charset`` and ``collation`` config keys. Both are emitted as table
+# defaults, which every column inherits.
+#
+# MySQL 8 defaults to ``utf8mb4_0900_ai_ci`` and MariaDB to
+# ``utf8mb4_uca1400_ai_ci``. Both are accent-insensitive and case-insensitive, so
+# ``exact``, ``contains``, ``startswith`` and ``endswith`` would all match
+# case-insensitively on a table that takes the server default. The
+# accent-sensitive, case-sensitive collation below restores the behaviour every
+# other provider has. It is present on MySQL 8.0.1+ and on MariaDB 10.10+ (where
+# it is an alias for ``utf8mb4_uca1400_as_cs``); an older MariaDB should set
+# ``collation = "utf8mb4_bin"``.
+_MYSQL_DEFAULT_CHARSET = "utf8mb4"
+_MYSQL_DEFAULT_COLLATION = "utf8mb4_0900_as_cs"
+
+# InnoDB caps an index key at 3072 bytes, and a ``utf8mb4`` character takes up to
+# 4 bytes, so a VARCHAR longer than this cannot be indexed in full — which is
+# what a primary key or a unique constraint needs.
+_MYSQL_MAX_INDEXED_VARCHAR = 768
+
+# MySQL's ``DATETIME`` carries zero fractional-second digits unless the column
+# says otherwise, so microseconds are dropped on write with no error. Protean
+# writes microsecond-precision timestamps.
+_MYSQL_DATETIME_FSP = 6
+
 
 def _q_field_names(criteria: Q) -> set[str]:
     """Collect the field names referenced by a ``Q`` predicate (recursively)."""
@@ -480,25 +511,48 @@ def _attribute_map(entity_cls: typing.Any) -> dict[str, str]:
 
 
 def _merge_table_args(
-    existing: typing.Any, sa_indexes: list[SAIndex]
+    existing: typing.Any,
+    sa_indexes: list[SAIndex],
+    table_kwargs: dict[str, typing.Any] | None = None,
 ) -> tuple[typing.Any, ...]:
-    """Append SQLAlchemy ``Index`` objects to a model's ``__table_args__``.
+    """Append SQLAlchemy ``Index`` objects and table kwargs to ``__table_args__``.
 
     SQLAlchemy allows ``__table_args__`` to be a dict (table kwargs), a tuple of
     positional args, or a tuple whose last element is a dict of table kwargs.
     The trailing dict (when present) must stay last, so indexes are inserted
-    before it.
+    before it and ``table_kwargs`` is merged into it. A key the model already
+    declares wins, so a hand-written ``__table_args__`` is never overwritten.
     """
     indexes = tuple(sa_indexes)
+    extra = dict(table_kwargs or {})
+
     if not existing:
-        return indexes
+        return (*indexes, extra) if extra else indexes
     if isinstance(existing, dict):
         # Pure table-kwargs dict — indexes go first, dict stays last.
-        return (*indexes, existing)
+        return (*indexes, {**extra, **existing})
     existing = tuple(existing)
     if existing and isinstance(existing[-1], dict):
-        return (*existing[:-1], *indexes, existing[-1])
-    return (*existing, *indexes)
+        return (*existing[:-1], *indexes, {**extra, **existing[-1]})
+    return (*existing, *indexes, extra) if extra else (*existing, *indexes)
+
+
+def _mysql_table_kwargs(
+    dialect_name: str, options: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Table-level charset and collation kwargs for MySQL or MariaDB.
+
+    SQLAlchemy keys dialect table kwargs by dialect name, and quietly ignores a
+    prefix that does not match — ``mysql_charset`` on the ``mariadb`` dialect
+    emits no ``CHARSET`` clause and raises nothing — so the prefix comes from
+    the live dialect name rather than a fixed string.
+    """
+    if dialect_name not in _MYSQL_DIALECTS:
+        return {}
+    return {
+        f"{dialect_name}_charset": options.get("charset") or _MYSQL_DEFAULT_CHARSET,
+        f"{dialect_name}_collate": options.get("collation") or _MYSQL_DEFAULT_COLLATION,
+    }
 
 
 def _build_sa_indexes(
@@ -570,14 +624,24 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     dialect_impls = {
         # SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are
         # declared without full annotations, so mypy flags the calls as
-        # untyped even though the package ships ``py.typed``. The sqlite
-        # equivalent is annotated, hence no ignore there. See the redis
+        # untyped even though the package ships ``py.typed``. The sqlite and
+        # mysql equivalents are annotated, hence no ignore there. See the redis
         # adapter for the same scoped-ignore precedent.
         "postgresql": psql.dialect(),  # type: ignore[no-untyped-call]
         "sqlite": sqlite_dialect.dialect(),
         "mssql": mssql.dialect(),  # type: ignore[no-untyped-call]
+        "mysql": mysql.dialect(),
+        "mariadb": mysql.mariadb.MariaDBDialect(),
     }
-    dialect = dialect_impls.get(dialect_name, sqlite_dialect.dialect())
+    # An unknown name used to fall back to the SQLite dialect, which compiles
+    # without complaint and hands back plausible DDL for the wrong database. A
+    # misspelt ``--dialects`` value is worth an error.
+    if dialect_name not in dialect_impls:
+        raise IncorrectUsageError(
+            f"Unknown index DDL dialect '{dialect_name}'. "
+            f"Supported: {', '.join(sorted(dialect_impls))}."
+        )
+    dialect = dialect_impls[dialect_name]
 
     statements = [
         str(CreateIndex(sa_index).compile(dialect=dialect)).strip()
@@ -587,6 +651,69 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
         raw.ddl.strip() for raw in raw_indexes if raw.dialect == dialect_name
     )
     return statements
+
+
+def _mysql_column_type(
+    sa_type_cls: typing.Any,
+    type_kwargs: dict[str, typing.Any],
+    *,
+    resolved_type: type | None,
+    attribute_name: str,
+    owner_name: str,
+    is_key_column: bool,
+) -> tuple[typing.Any, dict[str, typing.Any]]:
+    """Adjust a mapped column type for MySQL and MariaDB.
+
+    Two things differ from the other dialects:
+
+    * ``DATETIME`` drops microseconds unless the column declares fractional
+      seconds.
+    * MySQL cannot create a ``VARCHAR`` without a length, so a ``String`` field
+      with no ``max_length`` becomes ``TEXT``. A ``TEXT`` column cannot be a
+      primary key or carry a unique constraint without an index prefix length,
+      so that combination raises instead, as does a ``VARCHAR`` past InnoDB's
+      3072-byte key limit.
+
+    Collation is not set per column. It comes from the table default that
+    :func:`_mysql_table_kwargs` emits, which every column inherits.
+
+    Returns the (possibly replaced) type class and its keyword arguments.
+    """
+    kwargs = dict(type_kwargs)
+
+    if resolved_type is _datetime and sa_type_cls is sa_types.DateTime:
+        kwargs["fsp"] = _MYSQL_DATETIME_FSP
+        return mysql.DATETIME, kwargs
+
+    if sa_type_cls is not sa_types.String:
+        return sa_type_cls, kwargs
+
+    length = kwargs.get("length")
+
+    if not length:
+        if is_key_column:
+            raise IncorrectUsageError(
+                f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+                f"unique column with no max_length. MySQL cannot index a TEXT "
+                f"column without a prefix length, so declare one "
+                f"(e.g. Field(max_length=255))."
+            )
+        # An unlengthed VARCHAR is a compile error on MySQL, and every other
+        # provider accepts the field, so map it to TEXT rather than reject a
+        # domain that works elsewhere.
+        kwargs.pop("length", None)
+        return sa_types.Text, kwargs
+
+    if is_key_column and length > _MYSQL_MAX_INDEXED_VARCHAR:
+        raise IncorrectUsageError(
+            f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+            f"unique column with max_length={length}. InnoDB caps an index key "
+            f"at 3072 bytes, which is {_MYSQL_MAX_INDEXED_VARCHAR} utf8mb4 "
+            f"characters, so the column cannot be indexed in full. Reduce "
+            f"max_length to {_MYSQL_MAX_INDEXED_VARCHAR} or below."
+        )
+
+    return sa_type_cls, kwargs
 
 
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
@@ -718,6 +845,15 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                             type_args.append(
                                 None
                             )  # Store as JSON string with serialization
+                    elif dialect_name in _MYSQL_DIALECTS:
+                        # MySQL 8 has a real JSON type. It has no array type, so
+                        # a list goes to JSON as well — the same call MSSQL makes
+                        # through ``MSSQLJSON``. MariaDB's ``JSON`` is an alias
+                        # for ``LONGTEXT`` with a CHECK constraint, and both
+                        # round-trip a Python list or dict through the engine's
+                        # JSON serializer.
+                        if resolved_type in (dict, list) and not pickled:
+                            sa_type_cls = mysql.JSON
 
                     # Default to the text type if no mapping is found
                     if not sa_type_cls:
@@ -747,6 +883,10 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         if field_obj.scale is not None:
                             type_kwargs["scale"] = field_obj.scale
 
+                    is_key_column = bool(
+                        col_args.get("primary_key") or col_args.get("unique")
+                    )
+
                     # MSSQL requires explicit length on VARCHAR columns used
                     # as primary keys or in unique constraints.  Raise early
                     # with a clear message instead of letting the DB fail with
@@ -754,7 +894,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     if (
                         dialect_name == "mssql"
                         and sa_type_cls == sa_types.String
-                        and (col_args.get("primary_key") or col_args.get("unique"))
+                        and is_key_column
                         and not type_kwargs.get("length")
                     ):
                         raise IncorrectUsageError(
@@ -765,6 +905,16 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                             f"MSSQL requires an explicit max_length for "
                             f"indexed/unique string columns "
                             f"(e.g. Field(max_length=255))."
+                        )
+
+                    if dialect_name in _MYSQL_DIALECTS:
+                        sa_type_cls, type_kwargs = _mysql_column_type(
+                            sa_type_cls,
+                            type_kwargs,
+                            resolved_type=resolved_type,
+                            attribute_name=attribute_name,
+                            owner_name=entity_cls.__name__,
+                            is_key_column=is_key_column,
                         )
 
                     # Update the attributes of the class
@@ -780,9 +930,12 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             entity_cls = cls.__dict__["meta_"].part_of
             raw_dialect = cls.__dict__["engine"].dialect.name
             sa_indexes, raw_indexes = _build_sa_indexes(cls, entity_cls, raw_dialect)
-            if sa_indexes:
+            table_kwargs = _mysql_table_kwargs(
+                raw_dialect, cls.__dict__.get("_type_options") or {}
+            )
+            if sa_indexes or table_kwargs:
                 cls.__table_args__ = _merge_table_args(
-                    cls.__dict__.get("__table_args__"), sa_indexes
+                    cls.__dict__.get("__table_args__"), sa_indexes, table_kwargs
                 )
 
         # Native optimistic-concurrency guard: with a ``_version`` column the
@@ -1468,6 +1621,24 @@ class SAProvider(BaseProvider):
         postgresql = "postgresql"
         sqlite = "sqlite"
         mssql = "mssql"
+        mysql = "mysql"
+
+    # Config keys that describe the provider rather than the SQLAlchemy engine.
+    # Everything else in ``conn_info`` is forwarded to ``create_engine`` as a
+    # keyword argument, so a provider that adds a config key of its own has to
+    # add it here too or ``create_engine`` rejects it.
+    _NON_ENGINE_CONN_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"provider", "database_uri", "schema", "managed"}
+    )
+
+    def _model_type_options(self) -> dict[str, typing.Any]:
+        """Provider-specific knobs the model builder reads when mapping columns.
+
+        Carried onto every constructed model class as ``_type_options``, so
+        column mapping can see provider config without reaching back through the
+        engine. Empty for providers that need none.
+        """
+        return {}
 
     def _additional_engine_args(self) -> dict[str, typing.Any]:
         """Construct additional arguments for the engine"""
@@ -1478,7 +1649,7 @@ class SAProvider(BaseProvider):
             {
                 key: value
                 for key, value in self.conn_info.items()
-                if key not in ["provider", "database_uri", "schema", "managed"]
+                if key not in self._NON_ENGINE_CONN_KEYS
             }
         )
 
@@ -1775,7 +1946,12 @@ class SAProvider(BaseProvider):
             )
 
             custom_attrs.update(
-                {"meta_": meta_, "engine": self._engine, "metadata": self._metadata}
+                {
+                    "meta_": meta_,
+                    "engine": self._engine,
+                    "metadata": self._metadata,
+                    "_type_options": self._model_type_options(),
+                }
             )
             # User class is in the MRO; custom methods/properties resolve via standard Python MRO
             decorated_database_database_model_cls = type(
@@ -1813,6 +1989,7 @@ class SAProvider(BaseProvider):
                 "meta_": meta_,
                 "engine": self._engine,
                 "metadata": self._metadata,
+                "_type_options": self._model_type_options(),
             }
             # Auto-generated model; no user-defined attributes to carry over
             database_model_cls = type(
@@ -1986,6 +2163,104 @@ class MssqlProvider(SAProvider):
         # Set SQL Server specific options if needed
         # For example, you might want to set specific isolation levels
         # conn.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED;"))
+        return conn
+
+
+class MysqlProvider(SAProvider):
+    """Provider for MySQL and MariaDB, on the PyMySQL driver.
+
+    One provider serves both servers. SQLAlchemy reports the dialect as
+    ``mysql`` for a ``mysql+pymysql://`` URI and ``mariadb`` for a
+    ``mariadb+pymysql://`` one, and every dialect-sensitive branch in this module
+    accepts both through :data:`_MYSQL_DIALECTS`.
+
+    Two config keys beyond the shared ones:
+
+    * ``charset`` (default ``utf8mb4``) — the connection charset and the table
+      default charset.
+    * ``collation`` (default ``utf8mb4_0900_as_cs``) — the collation every string
+      column is created with. The server default is accent-insensitive and
+      case-insensitive on both MySQL and MariaDB, which would make ``exact``,
+      ``contains``, ``startswith`` and ``endswith`` match case-insensitively.
+    """
+
+    __database__ = SAProvider.databases.mysql.value
+
+    _NON_ENGINE_CONN_KEYS: ClassVar[frozenset[str]] = (
+        SAProvider._NON_ENGINE_CONN_KEYS | {"charset", "collation"}
+    )
+
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """MySQL supports relational capabilities plus native JSON.
+
+        MySQL 8 has a real JSON type. It has no array type, so ``NATIVE_ARRAY``
+        is not declared and a list column is stored as JSON.
+        """
+        return DatabaseCapabilities.RELATIONAL | DatabaseCapabilities.NATIVE_JSON
+
+    @property
+    def charset(self) -> str:
+        """The charset for the connection and for created tables."""
+        return str(self.conn_info.get("charset") or _MYSQL_DEFAULT_CHARSET)
+
+    @property
+    def collation(self) -> str:
+        """The collation every string column is created with."""
+        return str(self.conn_info.get("collation") or _MYSQL_DEFAULT_COLLATION)
+
+    def _model_type_options(self) -> dict[str, typing.Any]:
+        return {"charset": self.charset, "collation": self.collation}
+
+    def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
+        """Supplies additional database-specific arguments to SQLAlchemy Engine.
+
+        Return: a dictionary with database-specific SQLAlchemy Engine arguments.
+        """
+        return {
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_pre_ping": True,
+            "pool_recycle": 1800,
+            # InnoDB defaults to REPEATABLE READ, under which a transaction keeps
+            # reading the snapshot it opened with. ADR-0027 makes the Unit of Work
+            # one real transaction and expects a read to see what other
+            # transactions have committed, as PostgreSQL and SQL Server do at
+            # their defaults.
+            "isolation_level": "READ COMMITTED",
+            # PyMySQL's default charset has varied across releases; pinning it
+            # here keeps 4-byte characters working regardless of the driver and
+            # server defaults.
+            "connect_args": {"charset": self.charset},
+        }
+
+    def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
+        """Set Database specific session parameters.
+
+        Depending on the database in use, this method supplies
+        additional arguments while constructing sessions.
+
+        Return: a dictionary with additional arguments and values.
+        """
+        # ADR-0027: the Unit of Work is one real database transaction. The engine
+        # runs at READ COMMITTED (not AUTOCOMMIT), and autoflush lets a read see
+        # the UoW's own pending writes, deferred within that transaction and
+        # rolled back with it.
+        return {"autoflush": True}
+
+    def _execute_database_specific_connection_statements(
+        self, conn: typing.Any
+    ) -> typing.Any:
+        """Execute connection statements depending on the database in use.
+        Overridden implementation for MySQL and MariaDB.
+
+        Arguments:
+        * conn: An active connection object to the database
+
+        Return: Updated connection object
+        """
+        # Case sensitivity is a property of the column collation here, set at DDL
+        # time, so there is no per-connection statement to run.
         return conn
 
 
@@ -2279,6 +2554,22 @@ def register_sqlite() -> None:
     except ImportError as e:
         logger.debug(
             f"SQLite provider not registered: sqlalchemy package not available ({e})"
+        )
+
+
+def register_mysql() -> None:
+    """Register MySQL provider with Protean if sqlalchemy is available."""
+    try:
+        import sqlalchemy  # noqa: F401, PLC0415
+
+        registry.register(
+            "mysql",
+            "protean.adapters.repository.sqlalchemy.MysqlProvider",
+        )
+        logger.debug("MySQL provider registered successfully")
+    except ImportError as e:
+        logger.debug(
+            f"MySQL provider not registered: sqlalchemy package not available ({e})"
         )
 
 

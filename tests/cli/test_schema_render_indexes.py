@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from protean import Index, Q
 from protean.cli.schema import app, write_index_ddl
 from protean.core.aggregate import BaseAggregate
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
 
 runner = CliRunner()
@@ -87,6 +88,23 @@ class TestWriteIndexDDL:
             "product.indexes.postgresql.sql",
             "product.indexes.sqlite.sql",
         ]
+
+    def test_mysql_and_mariadb_are_renderable_dialects(self, shop_domain, tmp_path):
+        written = write_index_ddl(shop_domain, str(tmp_path), ["mysql", "mariadb"])
+        names = sorted(p.name for p in written)
+        assert names == [
+            "product.indexes.mariadb.sql",
+            "product.indexes.mysql.sql",
+        ]
+
+    def test_an_unknown_dialect_is_rejected(self, shop_domain, tmp_path):
+        """It used to fall through to SQLite and write DDL for the wrong
+        database under the requested dialect's filename."""
+        with pytest.raises(IncorrectUsageError) as exc:
+            write_index_ddl(shop_domain, str(tmp_path), ["postgres"])
+
+        assert "postgres" in str(exc.value)
+        assert list(tmp_path.iterdir()) == []
 
     def test_file_contains_create_index_ddl(self, shop_domain, tmp_path):
         written = write_index_ddl(shop_domain, str(tmp_path), ["postgresql"])

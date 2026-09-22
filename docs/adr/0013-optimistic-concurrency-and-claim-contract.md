@@ -86,6 +86,10 @@ offers `FOR UPDATE SKIP LOCKED` and `UPDATE … RETURNING` together, so it is th
 sole fast-path dialect. A dedicated MySQL or MSSQL fast path can be added later
 (two-statement lock-then-update, or `OUTPUT`) if profiling justifies it.
 
+The MySQL provider shipped on the portable path, as written here. The claim
+conformance suite passes against MySQL 8.4 and MariaDB 11.4, and no fast path
+was added.
+
 **Transaction boundary.** `_claim` commits the claim through the
 DAO's standalone-commit path, so the lock and state change are durable the
 moment it returns. It must therefore be called **outside** an active Unit of

@@ -1,0 +1,208 @@
+# MySQL
+
+The MySQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
+[PyMySQL](https://github.com/PyMySQL/PyMySQL) to talk to MySQL and MariaDB. One
+provider serves both servers, and it is exercised by the same conformance tests
+as PostgreSQL, SQLite and MSSQL.
+
+## Installation
+
+```bash
+pip install "protean[mysql]"
+```
+
+PyMySQL is written in Python, so the extra installs from a wheel everywhere and
+needs no `libmysqlclient` on the machine.
+
+## Configuration
+
+```toml
+[databases.default]
+provider = "mysql"
+database_uri = "mysql+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"
+```
+
+For MariaDB, use the `mariadb+pymysql://` scheme:
+
+```toml
+[databases.default]
+provider = "mysql"
+database_uri = "mariadb+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `provider` | Required | Must be `"mysql"`, for MySQL and for MariaDB |
+| `database_uri` | Required | PyMySQL connection string |
+| `charset` | `utf8mb4` | Connection charset and the default charset of created tables |
+| `collation` | `utf8mb4_0900_as_cs` | Default collation of created tables |
+| `pool_size` | 5 | Connections held open in the pool |
+| `max_overflow` | 10 | Connections opened beyond `pool_size` under load |
+
+Use the scheme that matches the server. SQLAlchemy reports the dialect as
+`mysql` for `mysql+pymysql://` and `mariadb` for `mariadb+pymysql://`, and the
+provider reads that name to decide how to emit table DDL. Pointing a
+`mysql+pymysql://` URI at a MariaDB server works, but the DDL is written for
+MySQL.
+
+## Capabilities
+
+- :white_check_mark: **CRUD**: Create, read, update, delete single records.
+- :white_check_mark: **FILTER**: Query and filter records with lookup criteria.
+- :white_check_mark: **BULK_OPERATIONS**: `update_all()` and `delete_all()`.
+- :white_check_mark: **ORDERING**: Server-side `ORDER BY`.
+- :white_check_mark: **TRANSACTIONS**: Real commit and rollback atomicity.
+- :white_check_mark: **OPTIMISTIC_LOCKING**: Version-based concurrency control.
+- :white_check_mark: **RAW_QUERIES**: Execute raw SQL.
+- :white_check_mark: **SCHEMA_MANAGEMENT**: Create and drop tables.
+- :white_check_mark: **CONNECTION_POOLING**: SQLAlchemy pool management.
+- :white_check_mark: **NATIVE_JSON**: `Dict` fields map to the `JSON` column type.
+- :x: **NATIVE_ARRAY**: MySQL has no array type. A `List` field is stored as
+  JSON, which is what the MSSQL provider does too.
+
+## Collation and case sensitivity
+
+MySQL 8 defaults to `utf8mb4_0900_ai_ci` and MariaDB to
+`utf8mb4_uca1400_ai_ci`. Both ignore case and accents, so on a table that takes
+the server default, `exact`, `contains`, `startswith` and `endswith` would all
+match rows they should not. Every other Protean provider compares strings
+case-sensitively.
+
+The provider therefore creates each table with an explicit default collation,
+`utf8mb4_0900_as_cs`, which every string column in the table inherits:
+
+```sql
+CREATE TABLE person (...) CHARSET=utf8mb4 COLLATE utf8mb4_0900_as_cs
+```
+
+Setting the collation on the table rather than on each lookup keeps indexes
+usable. A `COLLATE` applied to a column inside a `WHERE` clause stops the
+optimizer from using an index on that column, and Protean filters through these
+lookups constantly.
+
+Two consequences:
+
+- The collation only reaches tables Protean creates. A table created by hand,
+  or by an earlier migration, keeps whatever collation it was given, and string
+  lookups against it behave the way that collation says.
+- `utf8mb4_0900_as_cs` needs MySQL 8.0.1+ or MariaDB 10.10+, where it is an
+  alias for `utf8mb4_uca1400_as_cs`. On an older MariaDB, set
+  `collation = "utf8mb4_bin"`. An unknown collation fails at `CREATE TABLE`
+  with the server's own error.
+
+The case-insensitive lookups (`iexact`, `icontains`) are unaffected: they lower
+both sides of the comparison, so they keep matching every case.
+
+## Isolation level
+
+InnoDB defaults to `REPEATABLE READ`, under which a transaction keeps reading
+the snapshot it opened with. [ADR-0027](../../../adr/0027-unit-of-work-is-a-real-transaction.md)
+makes a Unit of Work one real database transaction and expects a read inside it
+to see what other transactions have committed, which is what PostgreSQL and SQL
+Server do at their defaults. The provider therefore opens its engine at
+`READ COMMITTED`.
+
+## Schema changes commit the open transaction
+
+MySQL has no transactional DDL. A `CREATE TABLE`, `ALTER TABLE` or `DROP TABLE`
+commits whatever the connection has pending. `protean db setup` runs its DDL on
+a connection of its own, outside any Unit of Work, so ordinary use is
+unaffected. Running DDL inside a Unit of Work will commit that Unit of Work's
+writes early, and a later rollback will not take them back.
+
+## String columns used as keys
+
+InnoDB caps an index key at 3072 bytes. A `utf8mb4` character takes up to four
+bytes, so a `VARCHAR` beyond 768 characters cannot be indexed in full, which is
+what a primary key or a unique constraint needs. Protean raises
+`IncorrectUsageError` naming the field at schema-generation time:
+
+```python
+@domain.aggregate
+class User:
+    email: String(max_length=255, unique=True)   # fine
+    bio: String(max_length=4000)                 # fine, not a key column
+    token: String(max_length=1000, unique=True)  # raises: past the key limit
+```
+
+A `String` field with no `max_length` becomes a `TEXT` column, because MySQL
+cannot create a `VARCHAR` without a length. `TEXT` cannot be a key column
+either without an index prefix length, so that combination raises the same
+error.
+
+## Timestamps
+
+MySQL's `DATETIME` carries zero fractional-second digits unless the column says
+otherwise, and drops microseconds on write without an error. Protean writes
+microsecond-precision timestamps, so every `DateTime` field maps to
+`DATETIME(6)`.
+
+## Indexes
+
+MySQL honors part of the [`Index`](../../domain-elements/indexes.md) surface,
+emitted during `protean db setup`:
+
+- Composite, descending (`desc=`), and unique (`unique=`) indexes.
+- Partial indexes (`where=Q(...)`) are **not** supported. The index is created
+  without the predicate and a warning is logged.
+- Covering columns (`include=`) are **not** supported. The index is created
+  without them and a warning is logged.
+
+`protean schema render --indexes --dialects mysql` (or `mariadb`) writes the
+`CREATE INDEX` statements to `.sql` files without touching a database.
+
+## Outbox claim
+
+The outbox claims messages through the portable path: a bounded `SELECT`
+followed by a guarded `UPDATE ... WHERE` per row. MySQL has `SKIP LOCKED` but
+no `UPDATE ... RETURNING`, so the single-statement claim PostgreSQL uses does
+not compile here. [ADR-0013](../../../adr/0013-optimistic-concurrency-and-claim-contract.md)
+covers why the portable path is correct wherever a guarded `UPDATE` re-evaluates
+its predicate against committed state under row-lock contention, which InnoDB
+does. The cost is `1 + N` round trips instead of one.
+
+The bounded delete behind `_delete_top` takes the portable path for the same
+kind of reason: MySQL rejects a subquery that reads the table being deleted
+from.
+
+## SQLAlchemy model
+
+You can supply a custom SQLAlchemy model in place of the one Protean generates,
+which gives you control over column types and constraints. The pattern is the
+same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
+
+```python
+import sqlalchemy as sa
+from sqlalchemy.dialects import mysql
+
+@domain.aggregate
+class User:
+    name: String(max_length=100)
+    preferences: Dict()
+
+@domain.database_model(part_of=User)
+class UserModel:
+    name = sa.Column(mysql.VARCHAR(100))
+    preferences = sa.Column(mysql.JSON)
+```
+
+!!!note
+    Column names in the model must match the attribute names of the aggregate
+    or entity they represent.
+
+## Slow query detection
+
+The provider emits the same structured
+`protean.adapters.repository.sqlalchemy.slow_query` WARNING and
+`protean.adapters.repository.sqlalchemy.query` DEBUG events as the
+[PostgreSQL provider](./postgresql.md#slow-query-detection). Set the threshold
+with `[logging].slow_query_threshold_ms` in `domain.toml`.
+
+## Related pages
+
+- [PostgreSQL](./postgresql.md): The full-capability relational provider,
+  including native arrays.
+- [MSSQL](./mssql.md): The other provider that stores lists as JSON.
+- [Database capabilities](./index.md#database-capabilities): What each
+  capability flag means.
+- [Indexes](../../domain-elements/indexes.md): Declaring indexes on an aggregate.

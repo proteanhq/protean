@@ -2343,6 +2343,11 @@ mssql = [
     { name = "pyodbc" },
     { name = "sqlalchemy" },
 ]
+mysql = [
+    { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
+    { name = "pymysql" },
+    { name = "sqlalchemy" },
+]
 postgresql = [
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "psycopg2-binary" },
@@ -2430,6 +2435,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.139.0" },
     { name = "flask", marker = "extra == 'flask'", specifier = ">=3.0.0" },
     { name = "greenlet", marker = "(platform_machine == 'AMD64' and extra == 'mssql') or (platform_machine == 'WIN32' and extra == 'mssql') or (platform_machine == 'aarch64' and extra == 'mssql') or (platform_machine == 'amd64' and extra == 'mssql') or (platform_machine == 'ppc64le' and extra == 'mssql') or (platform_machine == 'win32' and extra == 'mssql') or (platform_machine == 'x86_64' and extra == 'mssql')", specifier = ">=3.2.3,<4" },
+    { name = "greenlet", marker = "(platform_machine == 'AMD64' and extra == 'mysql') or (platform_machine == 'WIN32' and extra == 'mysql') or (platform_machine == 'aarch64' and extra == 'mysql') or (platform_machine == 'amd64' and extra == 'mysql') or (platform_machine == 'ppc64le' and extra == 'mysql') or (platform_machine == 'win32' and extra == 'mysql') or (platform_machine == 'x86_64' and extra == 'mysql')", specifier = ">=3.2.3,<4" },
     { name = "greenlet", marker = "(platform_machine == 'AMD64' and extra == 'postgresql') or (platform_machine == 'WIN32' and extra == 'postgresql') or (platform_machine == 'aarch64' and extra == 'postgresql') or (platform_machine == 'amd64' and extra == 'postgresql') or (platform_machine == 'ppc64le' and extra == 'postgresql') or (platform_machine == 'win32' and extra == 'postgresql') or (platform_machine == 'x86_64' and extra == 'postgresql')", specifier = ">=3.2.3,<4" },
     { name = "greenlet", marker = "(platform_machine == 'AMD64' and extra == 'sqlite') or (platform_machine == 'WIN32' and extra == 'sqlite') or (platform_machine == 'aarch64' and extra == 'sqlite') or (platform_machine == 'amd64' and extra == 'sqlite') or (platform_machine == 'ppc64le' and extra == 'sqlite') or (platform_machine == 'win32' and extra == 'sqlite') or (platform_machine == 'x86_64' and extra == 'sqlite')", specifier = ">=3.2.3,<4" },
     { name = "inflection", specifier = ">=0.5.1" },
@@ -2447,11 +2453,13 @@ requires-dist = [
     { name = "protean", extras = ["shell", "scaffold", "mcp"], marker = "extra == 'cli'" },
     { name = "psycopg2-binary", marker = "extra == 'postgresql'", specifier = ">=2.9.11" },
     { name = "pydantic", specifier = ">=2.12.0,<3.0" },
+    { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1.1" },
     { name = "pyodbc", marker = "extra == 'mssql'", specifier = ">=5.3.0" },
     { name = "python-dateutil", specifier = ">=2.8.2" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=8.0.0,<8.2.0" },
     { name = "sendgrid", marker = "extra == 'sendgrid'", specifier = ">=6.11.0" },
     { name = "sqlalchemy", marker = "extra == 'mssql'", specifier = ">=2.0.36,<2.1" },
+    { name = "sqlalchemy", marker = "extra == 'mysql'", specifier = ">=2.0.36,<2.1" },
     { name = "sqlalchemy", marker = "extra == 'postgresql'", specifier = ">=2.0.36,<2.1" },
     { name = "sqlalchemy", marker = "extra == 'sqlite'", specifier = ">=2.0.36,<2.1" },
     { name = "structlog", specifier = ">=24.1.0" },
@@ -2460,7 +2468,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30.0" },
     { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=1.2.0" },
 ]
-provides-extras = ["elasticsearch", "redis", "postgresql", "sqlite", "mssql", "message-db", "flask", "sendgrid", "server", "shell", "scaffold", "mcp", "cli", "all", "dev", "telemetry"]
+provides-extras = ["elasticsearch", "redis", "postgresql", "sqlite", "mssql", "mysql", "message-db", "flask", "sendgrid", "server", "shell", "scaffold", "mcp", "cli", "all", "dev", "telemetry"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2802,6 +2810,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/21/a9/5f0c535ba3b08fe09270c16808e053a968868242ecbd5676d4e3a488bf28/pymdown_extensions-11.0.1.tar.gz", hash = "sha256:dd2905ae6fc5b75582fafb139a1266ffc754705efa902aa50067fa7ff4f94ec0", size = 857113, upload-time = "2026-07-02T17:59:22.955Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/54/da572c98c0b77626a91b5d3b89f0231d8bff5125c225420908632f8b342d/pymdown_extensions-11.0.1-py3-none-any.whl", hash = "sha256:db3943a62bab7e03af1364f0c4083e64b91fb097675a4b6cceccfbe9a77e5eb2", size = 269455, upload-time = "2026-07-02T17:59:21.271Z" },
+]
+
+[[package]]
+name = "pymysql"
+version = "1.2.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/d4/c15b459e25a23767d2f4065ef40968920320f04e302889574310c21c96a3/pymysql-1.2.3.tar.gz", hash = "sha256:d5b288529782e536ae171866df3ca9dc4f6cbfb3cc2f18e6f837fbb90dbc262b", size = 50629, upload-time = "2026-09-17T12:22:49.146Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/4b/0a906d8184f011ff8dbd4722743783867589b33269d2c5fff238d636fdcb/pymysql-1.2.3-py3-none-any.whl", hash = "sha256:14f1c68e2ed859243ae5ca41ffbe677027fc46bc136a9f0be8a4e928e5e7415a", size = 46740, upload-time = "2026-09-17T12:22:47.826Z" },
 ]
 
 [[package]]

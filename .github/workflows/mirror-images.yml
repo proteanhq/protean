@@ -59,6 +59,8 @@ jobs:
             "elasticsearch:8.7.0|elasticsearch:8.7.0"
             "ethangarofolo/message-db:1.2.6|message-db:1.2.6"
             "mcr.microsoft.com/mssql/server:2022-latest|mssql-server:2022-latest"
+            "mysql:8.4|mysql:8.4"
+            "mariadb:11.4|mariadb:11.4"
           )
 
           for m in "${MAPPINGS[@]}"; do

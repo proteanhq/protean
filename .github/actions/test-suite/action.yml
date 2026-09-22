@@ -47,7 +47,10 @@ runs:
       uses: actions/cache@v6
       with:
         path: /tmp/docker-images
-        key: docker-images-${{ runner.os }}-v3
+        # Bump when the IMAGES list below changes: a hit on an older key skips
+        # the pull step entirely, so a newly added image would be missing from
+        # the cache and pulled one container at a time instead.
+        key: docker-images-${{ runner.os }}-v4
 
     - name: Load or pull Docker images
       if: inputs.full == 'true'
@@ -59,6 +62,8 @@ runs:
           "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0"
           "ghcr.io/proteanhq/mirror/message-db:1.2.6"
           "ghcr.io/proteanhq/mirror/mssql-server:2022-latest"
+          "ghcr.io/proteanhq/mirror/mysql:8.4"
+          "ghcr.io/proteanhq/mirror/mariadb:11.4"
         )
 
         # A cache-hit with no tarballs (e.g. a cache saved by an interrupted
@@ -120,7 +125,7 @@ runs:
         # 59200 ("failed to bind host port for 0.0.0.0:59200: address already
         # in use") with every container already removed. Wait for the ports
         # themselves.
-        for port in 55432 56379 55433 51433 59200 59300; do
+        for port in 55432 56379 55433 51433 53306 53307 59200 59300; do
           for _ in $(seq 1 30); do
             ss -ltnH "sport = :$port" 2>/dev/null | grep -q . || break
             sleep 1
@@ -145,6 +150,18 @@ runs:
           -e ACCEPT_EULA=Y \
           -e "SA_PASSWORD=Protean123!" \
           ghcr.io/proteanhq/mirror/mssql-server:2022-latest
+
+        docker run -d --name mysql \
+          -p 53306:3306 \
+          -e MYSQL_ROOT_PASSWORD=protean \
+          -e MYSQL_DATABASE=protean \
+          ghcr.io/proteanhq/mirror/mysql:8.4
+
+        docker run -d --name mariadb \
+          -p 53307:3306 \
+          -e MARIADB_ROOT_PASSWORD=protean \
+          -e MARIADB_DATABASE=protean \
+          ghcr.io/proteanhq/mirror/mariadb:11.4
 
         docker run -d --name elasticsearch \
           -p 59200:9200 \
@@ -173,6 +190,18 @@ runs:
         echo "Waiting for MSSQL..."
         timeout 60 bash -c 'until docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Protean123!" -Q "SELECT 1" -b -C 2>/dev/null; do sleep 2; done'
         echo "MSSQL is ready!"
+
+        # `mysqladmin ping` answers before the server finishes its first-run
+        # initialisation, so also wait for a real query to succeed.
+        echo "Waiting for MySQL..."
+        timeout 120 bash -c 'until docker exec mysql mysqladmin ping -h 127.0.0.1 -uroot -pprotean --silent 2>/dev/null; do sleep 2; done'
+        timeout 60 bash -c 'until docker exec mysql mysql -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean 2>/dev/null; do sleep 2; done'
+        echo "MySQL is ready!"
+
+        echo "Waiting for MariaDB..."
+        timeout 120 bash -c 'until docker exec mariadb mariadb-admin ping -h 127.0.0.1 -uroot -pprotean --silent 2>/dev/null; do sleep 2; done'
+        timeout 60 bash -c 'until docker exec mariadb mariadb -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean 2>/dev/null; do sleep 2; done'
+        echo "MariaDB is ready!"
 
         echo "Waiting for Elasticsearch..."
         timeout 120 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
@@ -265,6 +294,12 @@ runs:
         MSSQL_USER: sa
         MSSQL_PORT: 51433
         MSSQL_HOST: localhost
+        MYSQL_PASSWORD: protean
+        MYSQL_USER: root
+        MYSQL_PORT: 53306
+        MYSQL_HOST: localhost
+        MARIADB_PORT: 53307
+        MARIADB_HOST: localhost
       run: uv run protean test ${{ inputs.full == 'true' && '-c FULL' || '' }}
 
     # Project coverage floor. `protean test -c FULL` already ran `coverage

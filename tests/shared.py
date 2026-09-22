@@ -51,6 +51,8 @@ MESSAGE_DB_PORT = 55433
 REDIS_PORT = 56379
 ELASTICSEARCH_PORT = 59200
 MSSQL_PORT = 51433
+MYSQL_PORT = 53306
+MARIADB_PORT = 53307
 
 # Pre-built connection URIs
 POSTGRES_URI = f"postgresql://postgres:postgres@localhost:{POSTGRES_PORT}/postgres"
@@ -61,6 +63,8 @@ MSSQL_URI = (
     "?driver=ODBC+Driver+18+for+SQL+Server"
     "&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
 )
+MYSQL_URI = f"mysql+pymysql://root:protean@localhost:{MYSQL_PORT}/protean"
+MARIADB_URI = f"mariadb+pymysql://root:protean@localhost:{MARIADB_PORT}/protean"
 ELASTICSEARCH_URI: dict = {"hosts": [f"localhost:{ELASTICSEARCH_PORT}"]}
 
 

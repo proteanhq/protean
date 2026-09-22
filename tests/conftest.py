@@ -11,8 +11,10 @@ import pytest
 
 from tests.shared import (
     ELASTICSEARCH_URI,
+    MARIADB_URI,
     MESSAGE_DB_URI,
     MSSQL_URI,
+    MYSQL_URI,
     POSTGRES_URI,
     REDIS_URI,
 )
@@ -55,6 +57,12 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         "--mssql", action="store_true", default=False, help="Run MSSQL tests"
+    )
+    parser.addoption(
+        "--mysql",
+        action="store_true",
+        default=False,
+        help="Run MySQL/MariaDB tests",
     )
     parser.addoption(
         "--elasticsearch",
@@ -119,7 +127,7 @@ def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
     run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = (
         run_redis
-    ) = run_message_db = run_sendgrid = run_mssql = False
+    ) = run_message_db = run_sendgrid = run_mssql = run_mysql = False
 
     if config.getoption("--slow"):
         # --slow given in cli: do not skip slow tests
@@ -140,6 +148,9 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--mssql"):
         run_mssql = True
 
+    if config.getoption("--mysql"):
+        run_mysql = True
+
     if config.getoption("--redis"):
         run_redis = True
 
@@ -155,6 +166,7 @@ def pytest_collection_modifyitems(config, items):
     skip_postgresql = pytest.mark.skip(reason="need --postgresql option to run")
     skip_elasticsearch = pytest.mark.skip(reason="need --elasticsearch option to run")
     skip_mssql = pytest.mark.skip(reason="need --mssql option to run")
+    skip_mysql = pytest.mark.skip(reason="need --mysql option to run")
     skip_redis = pytest.mark.skip(reason="need --redis option to run")
     skip_message_db = pytest.mark.skip(reason="need --message_db option to run")
     skip_sendgrid = pytest.mark.skip(reason="need --sendgrid option to run")
@@ -172,6 +184,8 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_elasticsearch)
         if "mssql" in item.keywords and run_mssql is False:
             item.add_marker(skip_mssql)
+        if "mysql" in item.keywords and run_mysql is False:
+            item.add_marker(skip_mysql)
         if "redis" in item.keywords and run_redis is False:
             item.add_marker(skip_redis)
         if "message_db" in item.keywords and run_message_db is False:
@@ -241,6 +255,18 @@ def db_config(request):
             "MSSQL": {
                 "provider": "mssql",
                 "database_uri": MSSQL_URI,
+                "pool_size": 1,
+                "max_overflow": 2,
+            },
+            "MYSQL": {
+                "provider": "mysql",
+                "database_uri": MYSQL_URI,
+                "pool_size": 1,
+                "max_overflow": 2,
+            },
+            "MARIADB": {
+                "provider": "mysql",
+                "database_uri": MARIADB_URI,
                 "pool_size": 1,
                 "max_overflow": 2,
             },

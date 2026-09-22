@@ -128,7 +128,7 @@ def generate(
         print(f"  {path}")
 
 
-_DEFAULT_INDEX_DIALECTS = "postgresql,sqlite,mssql"
+_DEFAULT_INDEX_DIALECTS = "postgresql,sqlite,mssql,mysql"
 
 
 def write_index_ddl(
@@ -210,7 +210,7 @@ def render(
         str,
         typer.Option(
             "--dialects",
-            help="Comma-separated dialects (postgresql, sqlite, mssql)",
+            help="Comma-separated dialects (postgresql, sqlite, mssql, mysql, mariadb)",
         ),
     ] = _DEFAULT_INDEX_DIALECTS,
     output: Annotated[

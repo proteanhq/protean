@@ -65,12 +65,15 @@ class TestTestRunner:
             "POSTGRESQL": "RELATIONAL_FULL",
             "SQLITE": "RELATIONAL",
             "MSSQL": "RELATIONAL_FULL",
+            "MYSQL": "RELATIONAL_JSON",
+            "MARIADB": "RELATIONAL_JSON",
             "ELASTICSEARCH": "DOCUMENT_STORE",
         }
-        assert "IN_MEMORY" in runner.database_capability_markers
-        assert "DOCUMENT_STORE" in runner.database_capability_markers
-        assert "RELATIONAL" in runner.database_capability_markers
-        assert "RELATIONAL_FULL" in runner.database_capability_markers
+        # Every database names a capability set that exists, so a typo in either
+        # table cannot leave a leg with an empty marker expression.
+        assert set(runner.database_capabilities.values()) <= set(
+            runner.database_capability_markers
+        )
 
     def test_track_exit_code(self, mock_runner):
         """Test exit code tracking with bitwise OR."""
@@ -160,8 +163,11 @@ class TestTestRunner:
         """Test test suite generation."""
         suites = mock_runner.generate_test_suites()
 
-        # Full Matrix + 5 DBs + 3 Brokers + 1 EventStore = 10
-        assert len(suites) == 10
+        # Full Matrix, one per database, one per broker, one per non-memory
+        # event store. Derived rather than written down, so adding a database
+        # does not leave a stale number here.
+        expected = 1 + len(TEST_CONFIGS["databases"]) + len(TEST_CONFIGS["brokers"]) + 1
+        assert len(suites) == expected
         suite_names = [suite.name for suite in suites]
 
         assert "Full Matrix" in suite_names
@@ -636,9 +642,13 @@ class TestConfiguration:
         assert "eventstores" in TEST_CONFIGS
         assert "full_matrix_flags" in TEST_CONFIGS
 
-        assert len(TEST_CONFIGS["databases"]) == 5
-        assert len(TEST_CONFIGS["brokers"]) == 3
-        assert len(TEST_CONFIGS["eventstores"]) == 2
+        # Named, not counted: a count here goes stale the moment an adapter is
+        # added, and says nothing about which ones are in the matrix.
+        assert {"MEMORY", "POSTGRESQL", "SQLITE", "MSSQL", "MYSQL", "MARIADB"} <= set(
+            TEST_CONFIGS["databases"]
+        )
+        assert {"INLINE", "REDIS", "REDIS_PUBSUB"} == set(TEST_CONFIGS["brokers"])
+        assert {"MEMORY", "MESSAGE_DB"} == set(TEST_CONFIGS["eventstores"])
 
     def test_run_category_enum(self):
         """Test RunCategory enum has all expected values."""
