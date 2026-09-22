@@ -33,8 +33,9 @@ def pytest_configure(config):
     # is: a long path pushes a wrap into the middle of the phrase being
     # asserted, and the substring stops matching. `test_empty_note_aborts`
     # asserts "non-empty string 'note'" and gets "non-empty string \n'note'"
-    # on a machine whose temp paths run long, while CI never sees it. Set once
-    # here rather than on each of the ~40 `CliRunner()` instances in the suite.
+    # on a machine whose temp paths run long, while CI never sees it. Set here
+    # so it covers every `CliRunner()` in the suite at once, including any added
+    # later, which no per-instance argument would.
     os.environ["COLUMNS"] = "1000"
 
 
