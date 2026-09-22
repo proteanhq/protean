@@ -22,27 +22,36 @@ class UserView:
 
 Error: `"Projection 'UserView' needs to have at least one identifier"`
 
-## 2. Using ValueObject fields
+## 2. Projection with no projector
+
+A projection needs a projector to populate it. With no projector, nothing writes to the projection, so queries against it always come back empty.
 
 ```python
-# Wrong! ValueObject not allowed in projections
+# Wrong! Nothing populates this projection
 @domain.projection
-class OrderView:
+class OrderSummary:
     order_id: Identifier(identifier=True)
-    amount = ValueObject(Money)
+    status: String()
 ```
 
-**Fix**: Flatten ValueObject fields:
+**Fix**: Add a projector that handles the aggregate's events and writes the projection. When a subscriber fills the projection from outside the domain, mark it `externally_populated=True` instead:
 
 ```python
-@domain.projection
-class OrderView:
+@domain.projector(projector_for=OrderSummary, aggregates=[Order])
+class OrderSummaryProjector:
+    @on(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        repo = current_domain.repository_for(OrderSummary)
+        repo.add(OrderSummary(order_id=event.order_id, status="PLACED"))
+
+# OR, when a subscriber fills it from an external stream:
+@domain.projection(externally_populated=True)
+class OrderSummary:
     order_id: Identifier(identifier=True)
-    amount_value: Float()
-    amount_currency: String()
+    status: String()
 ```
 
-Error: `"Projections can only contain basic field types. Remove amount (ValueObject) from class OrderView"`
+`check` reports `PROJECTION_WITHOUT_PROJECTOR` for a projection no projector writes and that is not marked `externally_populated`.
 
 ## 3. Using Reference fields
 
@@ -175,6 +184,61 @@ inventory.product_id = "PROD-002"  # Wrong! Raises InvalidOperationError
 ```
 
 **Fix**: Identifiers are immutable once set. Create a new projection record instead.
+
+## 9. Projection field no projector writes
+
+Every projection field should be written by a projector method. A field no projector fills is a dead column: it shows in the read model and carries a type, but nothing ever sets it.
+
+```python
+@domain.projection
+class OrderSummary:
+    order_id: Identifier(identifier=True)
+    status: String()
+    customer_email: String()   # No projector method ever writes this
+
+@domain.projector(projector_for=OrderSummary, aggregates=[Order])
+class OrderSummaryProjector:
+    @on(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        repo = current_domain.repository_for(OrderSummary)
+        repo.add(OrderSummary(order_id=event.order_id, status="PLACED"))
+```
+
+**Fix**: Write the field from the projector method that handles the event carrying it, or drop the field when nothing sources it:
+
+```python
+    @on(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        repo = current_domain.repository_for(OrderSummary)
+        repo.add(
+            OrderSummary(
+                order_id=event.order_id,
+                status="PLACED",
+                customer_email=event.customer_email,
+            )
+        )
+```
+
+`check` reports `UNSOURCED_PROJECTION_FIELD` for such a field. It reads what projector methods write, so it is advisory: a field filled only through a helper or a dict splat the check cannot follow can still be flagged.
+
+## 10. Reading a projection with the wrong accessor
+
+Read a projection through `view_for(Projection)`, which returns a read-only view with `get()`, `query`, `find_by()`, `count()`, and `exists()`. Use `connection_for(Projection)` for the raw store connection. Both require a projection; passing an element of another type raises `IncorrectUsageError`.
+
+```python
+# Wrong! Order is an aggregate, so view_for rejects it
+view = current_domain.view_for(Order)
+```
+
+**Fix**: Call the accessor with a projection, or use the accessor that matches the element's type:
+
+```python
+view = current_domain.view_for(OrderSummary)
+order = view.get("order-123")
+shipped = view.query.filter(status="shipped").all()
+```
+
+`check` reports `USAGE_NOT_A_PROJECTION` when `view_for` or `connection_for` is given a non-projection.
 
 ## Related
 

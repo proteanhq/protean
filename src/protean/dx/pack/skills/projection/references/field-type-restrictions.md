@@ -2,14 +2,14 @@
 
 ## Overview
 
-Projections are restricted to basic field types only. References, Associations (HasOne, HasMany), and ValueObjects are not supported. This is a deliberate design decision rooted in the CQRS pattern and the purpose of projections as denormalized, flattened read models.
+Projections accept basic field types and `ValueObject` fields. References and Associations (`HasOne`, `HasMany`) are not supported. This is a deliberate design decision rooted in the CQRS pattern and the purpose of projections as denormalized, flattened read models.
 
-## Why only basic field types?
+## Why no References or Associations?
 
 1. **Denormalization**: Projections are designed to avoid joins and complex queries. Flattened data is faster to read.
 2. **Independence**: Projections should not depend on other domain elements at query time.
-3. **Simplicity**: Read models should be simple data containers, not complex object graphs.
-4. **Storage flexibility**: Basic types map cleanly to database columns and cache entries.
+3. **Simplicity**: Read models are simple, flat data containers.
+4. **Storage flexibility**: Basic types map cleanly to database columns and cache entries. A `ValueObject` fits this model because it is stored as flattened shadow columns.
 5. **Rebuild capability**: Projections can be rebuilt from events without needing relational integrity.
 
 ## Allowed field types
@@ -25,20 +25,11 @@ Projections are restricted to basic field types only. References, Associations (
 | `Boolean` | `active: Boolean(default=True)` |
 | `DateTime` | `created_at: DateTime()` |
 | `Date` | `birth_date: Date()` |
+| `ValueObject` | `shipping_address = ValueObject(Address)` |
+
+A `ValueObject` field is stored as flattened shadow columns (`shipping_address_street`, `shipping_address_city`, ...), and each attribute is queryable on its own.
 
 ## Disallowed field types
-
-### ValueObject fields
-
-```python
-# This raises IncorrectUsageError at class definition time
-@domain.projection
-class UserView:
-    user_id: Identifier(identifier=True)
-    email = ValueObject(Email)  # NOT ALLOWED
-```
-
-Error: `"Projections can only contain basic field types. Remove email (ValueObject) from class UserView"`
 
 ### Reference fields
 
@@ -50,7 +41,7 @@ class UserView:
     role = Reference(Role)  # NOT ALLOWED
 ```
 
-Error: `"Projections can only contain basic field types. Remove role (Reference) from class UserView"`
+Error: `"Projections can only contain basic field types and ValueObjects. Remove role (Reference) from class UserView"`
 
 ### Association fields
 
@@ -62,7 +53,7 @@ class UserView:
     role = HasOne(Role)  # NOT ALLOWED
 ```
 
-Error: `"Projections can only contain basic field types. Remove role (HasOne) from class UserView"`
+Error: `"Projections can only contain basic field types and ValueObjects. Remove role (HasOne) from class UserView"`
 
 ## How to flatten complex data
 

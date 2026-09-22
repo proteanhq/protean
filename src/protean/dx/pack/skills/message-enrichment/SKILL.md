@@ -7,6 +7,8 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - USAGE_ENRICHER_NOT_CALLABLE
 ---
 
 # Message Enrichment

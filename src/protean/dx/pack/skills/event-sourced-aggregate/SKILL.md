@@ -1,12 +1,15 @@
 ---
 name: event-sourced-aggregate
-description: "Build event-sourced aggregates in Protean where state is derived by replaying domain events instead of stored as snapshots. Covers the @apply decorator for event application, raising events from business methods, state reconstruction via from_events(), event-sourced repositories, version tracking for optimistic concurrency, and fact events. Use when the user asks to 'create an event-sourced aggregate', 'add event sourcing', 'use event sourcing', 'store events instead of state', 'add an @apply method', 'enable is_event_sourced', or when they need audit trails, temporal queries, or complete state history for an aggregate."
+description: "Build event-sourced aggregates in Protean where state is derived by replaying domain events instead of stored as snapshots. Covers the @apply decorator for event application, raising events from business methods, state reconstruction via from_events(), event-sourced repositories, version tracking for optimistic concurrency, and fact events. Use when the user asks to 'create an event-sourced aggregate', 'add event sourcing', 'use event sourcing', 'store events instead of state', 'add an @apply method', 'enable event_sourced', or when they need audit trails, temporal queries, or complete state history for an aggregate."
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - ES_AGGREGATE_NO_EVENTS
+    - ES_EVENT_MISSING_APPLY
 ---
 
 # Event-Sourced Aggregate
@@ -31,7 +34,7 @@ class AccountOpened:
 class AccountClosed:
     account_id: Identifier(required=True)
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     account_id: Identifier(identifier=True)
     owner_name: String(required=True)
@@ -61,17 +64,17 @@ class Account:
 
 ## Key rules
 
-1. **Enable with `is_event_sourced=True`** — Pass to the `@domain.aggregate` decorator
+1. **Enable with `event_sourced=True`** — Pass to the `@domain.aggregate` decorator
 2. **`@apply` is the single source of truth for state mutations** — `raise_()` automatically invokes the matching `@apply` handler to mutate state. Business methods should validate preconditions and call `raise_()` — never mutate state directly
-3. **Every event must have a corresponding `@apply` handler** — When `raise_()` is called, it looks up and invokes the `@apply` handler for that event type. A missing handler raises `NotImplementedError`
+3. **Every event must have a corresponding `@apply` handler** — When `raise_()` is called, it looks up and invokes the `@apply` handler for that event type. A missing handler raises `IncorrectUsageError`
 4. **`@apply` runs on both live and replay paths** — The same `@apply` handler runs when `raise_()` is called during normal operations AND when replaying events from the event store. This guarantees identical state regardless of path
 5. **Each `@apply` method handles exactly one event type** — Use a type annotation on the event parameter: `def opened(self, event: AccountOpened)`
 6. **Use factory classmethods for creation** — Create instance, raise initial event, return instance. This ensures the creation event is always the first event in the aggregate's stream
-7. **Import `apply` from `protean.core.aggregate`** — Not from `protean` directly
+7. **Import `apply` from `protean.core.aggregate`** — `from protean import apply` also works and is the same decorator; this skill uses the `protean.core.aggregate` path throughout
 8. **Events must be registered with `part_of`** — Associate each event with its aggregate: `@domain.event(part_of="Account")`
 9. **Version auto-increments with each event** — Each `raise_()` call increments `_version`, providing optimistic concurrency control
-10. **ES repository is selected automatically** — `domain.repository_for(Account)` returns an event-sourced repository when the aggregate has `is_event_sourced=True`
-11. **Fact events auto-generate state snapshots** — Use `@domain.aggregate(is_event_sourced=True, fact_events=True)` to auto-publish complete state after each persist
+10. **ES repository is selected automatically** — `domain.repository_for(Account)` returns an event-sourced repository when the aggregate has `event_sourced=True`
+11. **Fact events auto-generate state snapshots** — Use `@domain.aggregate(event_sourced=True, fact_events=True)` to auto-publish complete state after each persist
 12. **First event's `@apply` must set ALL fields** — `from_events()` creates a blank aggregate and applies all events through `@apply`, so the first event's handler must establish all state including identity
 
 ## The @apply pattern
@@ -172,11 +175,14 @@ repo.add(account)
 account = repo.get(account_id)
 ```
 
-For custom queries, define an explicit ES repository:
+For custom queries, define an explicit ES repository by subclassing `BaseEventSourcedRepository` and registering it against the aggregate:
 ```python
-@domain.event_sourced_repository(part_of=Account)
-class AccountRepository:
+from protean.core.event_sourced_repository import BaseEventSourcedRepository
+
+class AccountRepository(BaseEventSourcedRepository):
     pass  # Default behavior handles add/get
+
+domain.register(AccountRepository, part_of=Account)
 ```
 
 See [Event-Sourced Repository](references/event-sourced-repository.md) for details.
@@ -186,7 +192,7 @@ See [Event-Sourced Repository](references/event-sourced-repository.md) for detai
 Enable fact events to auto-generate state snapshots after each persist:
 
 ```python
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Product:
     name: String(required=True)
     price: Float(required=True)
@@ -219,7 +225,7 @@ You can mix patterns per-aggregate within the same domain:
 @domain.aggregate                              # Standard — state stored directly
 class Product: ...
 
-@domain.aggregate(is_event_sourced=True)       # Event sourced — state from events
+@domain.aggregate(event_sourced=True)       # Event sourced — state from events
 class Order: ...
 ```
 
@@ -254,7 +260,7 @@ def closed(self, event: AccountClosed):
 
 ### Missing @apply handler for an event
 
-Every event type raised by the aggregate must have a corresponding `@apply` method. Missing one raises `NotImplementedError` at runtime because `raise_()` invokes `@apply` automatically.
+Every event type raised by the aggregate must have a corresponding `@apply` method. Missing one raises `IncorrectUsageError` at runtime (`No @apply handler registered for event ...`) because `raise_()` invokes `@apply` automatically.
 
 ### Forgetting to raise initial event in factory
 
@@ -269,7 +275,7 @@ Always `raise_()` an event in the factory classmethod.
 
 ### Using standard repository with ES aggregate
 
-ES aggregates must use `domain.repository_for()` or `@domain.event_sourced_repository`. Using `@domain.repository` raises an error.
+`repository_for()` returns the event-sourced repository automatically for an ES aggregate. For custom query methods, subclass `BaseEventSourcedRepository` and register it. A standard `@domain.repository` builds a state-based repository, which is the wrong persistence model for an ES aggregate.
 
 See [Anti-patterns](references/anti-patterns.md) for more.
 

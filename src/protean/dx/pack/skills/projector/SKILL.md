@@ -7,6 +7,8 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - PROJECTOR_HANDLES_ORPHANED_EVENT
 ---
 
 # Projector

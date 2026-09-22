@@ -8,7 +8,7 @@ The `@apply` decorator is the core mechanism that connects events to state chang
 from protean.core.aggregate import apply
 ```
 
-**Important**: Import from `protean.core.aggregate`, not from `protean` directly.
+**Note**: `from protean import apply` also works and is the same decorator; these examples use the `protean.core.aggregate` path throughout.
 
 ## How It Works
 
@@ -97,12 +97,12 @@ Because the same `@apply` handler runs in both paths, live processing and replay
 
 ## Missing Handler Error
 
-If an event is applied but no `@apply` method is registered for it, a `NotImplementedError` is raised:
+If an event is applied but no `@apply` method is registered for it, an `IncorrectUsageError` is raised:
 
 ```python
 # If User has no @apply method for UserArchived:
 user._apply(UserArchived(user_id="U-001"))
-# → NotImplementedError: No handler registered for event `...UserArchived` in `User`
+# → IncorrectUsageError: No @apply handler registered for event `...UserArchived` in `User`
 ```
 
 This ensures every event type has explicit handling logic.

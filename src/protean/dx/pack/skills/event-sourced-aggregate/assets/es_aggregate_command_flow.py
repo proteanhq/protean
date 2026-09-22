@@ -93,7 +93,7 @@ class WithdrawMoney:
 # --- Aggregate ---
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     """Event-sourced bank account aggregate.
 

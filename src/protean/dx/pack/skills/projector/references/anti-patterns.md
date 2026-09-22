@@ -172,6 +172,35 @@ def on_product_added(self, event):
     domain.repository_for(ProductInventory).add(inventory)
 ```
 
+## 9. Handling an event the domain does not register
+
+A projector may only handle events the domain registers. A handler keyed on an event that no longer exists is wired to a type that can never be dispatched, usually a stale reference left after the event was renamed or removed.
+
+```python
+# Wrong! ProductRenamed was removed from the domain, but the handler stays
+@domain.projector(projector_for=ProductInventory, aggregates=[Product])
+class InventoryProjector:
+    @on(ProductAdded)
+    def on_added(self, event):
+        ...
+
+    @on(ProductRenamed)   # Orphaned: ProductRenamed is not registered
+    def on_renamed(self, event):
+        ...
+```
+
+**Fix**: Register the event with the domain, or remove the handler for the orphaned type from the projector:
+
+```python
+@domain.projector(projector_for=ProductInventory, aggregates=[Product])
+class InventoryProjector:
+    @on(ProductAdded)
+    def on_added(self, event):
+        ...
+```
+
+`check` reports `PROJECTOR_HANDLES_ORPHANED_EVENT` for a projector whose handler keys on an event the domain does not register.
+
 ## Related
 
 - [Single-Aggregate Projector](single-aggregate.md) - Correct basic pattern

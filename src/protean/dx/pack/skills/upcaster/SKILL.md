@@ -1,12 +1,14 @@
 ---
 name: upcaster
-description: "Define a Protean event upcaster — a class that transforms old event payloads to match the current schema version, enabling event schema evolution without breaking stored events. Upcasters extend BaseUpcaster, implement an upcast(data) method, and are registered with @domain.upcaster(event_type=EventClass, from_version='v1', to_version='v2'). The framework automatically chains individual upcasters and applies them lazily during deserialization. Use when the user asks to 'create an upcaster', 'handle event schema migration', 'evolve an event schema', 'add a field to an existing event', 'rename a field in an event', 'migrate old events', 'transform stored events', 'handle event versioning', or when they need to change an event's schema while keeping old stored events compatible."
+description: "Define a Protean event upcaster — a class that transforms old event payloads to match the current schema version, enabling event schema evolution without breaking stored events. Upcasters extend BaseUpcaster, implement an upcast(data) method, and are registered with @domain.upcaster(event_type=EventClass, from_version=1, to_version=2). The framework automatically chains individual upcasters and applies them lazily during deserialization. Use when the user asks to 'create an upcaster', 'handle event schema migration', 'evolve an event schema', 'add a field to an existing event', 'rename a field in an event', 'migrate old events', 'transform stored events', 'handle event versioning', or when they need to change an event's schema while keeping old stored events compatible."
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - UPCASTER_GAP
 ---
 
 # Upcaster
@@ -140,7 +142,7 @@ A stored v1 event passes through both: v1→v2→v3. A stored v2 event passes th
 Upcasting is especially valuable for ES aggregates because every reconstruction replays all events. With upcasters, `@apply` handlers only handle the current schema:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     order_id = Identifier(identifier=True)
     total_amount = Float()

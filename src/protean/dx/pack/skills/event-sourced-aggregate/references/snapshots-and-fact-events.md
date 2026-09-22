@@ -60,7 +60,7 @@ Fact events are auto-generated events that capture the **complete current state*
 ### Enabling Fact Events
 
 ```python
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Product:
     name: String(required=True)
     price: Float(required=True)
@@ -116,7 +116,7 @@ This separation allows subscribers to independently consume delta events or fact
 You can use both snapshots and fact events on the same aggregate:
 
 ```python
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Order:
     ...
 

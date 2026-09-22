@@ -90,7 +90,7 @@ class UpcastPriceChangedV3ToV4(BaseUpcaster):
 # --- Aggregate ---
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Product:
     """Event-sourced product aggregate."""
 

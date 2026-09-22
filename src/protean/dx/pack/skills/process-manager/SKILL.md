@@ -7,6 +7,8 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - PROCESS_MANAGER_UNCLOSED
 ---
 
 # Process Manager
@@ -62,7 +64,7 @@ class OrderFulfillmentPM:
 1. **Requires `stream_categories` or `aggregates`** — PM must subscribe to at least one event stream: `@domain.process_manager(stream_categories=["domain::order", "domain::payment"])`. Alternatively, pass `aggregates=[Order, Payment]` and Protean infers the stream categories
 2. **Use `@handle` with PM-specific parameters** — Each handler uses `@handle(EventClass, start=..., correlate=..., end=...)`. These three parameters control lifecycle and routing
 3. **Every handler must specify `correlate`** — Maps events to PM instances: `correlate="order_id"` (string) or `correlate={"order_id": "ext_order_ref"}` (dict when names differ)
-4. **Exactly one handler must have `start=True`** — The entry point that creates new PM instances. If a non-start event arrives with no existing PM, it is silently skipped
+4. **At least one handler must have `start=True`** — The entry point that creates new PM instances. Protean enforces at least one; a PM with none fails at `domain.init()` with `IncorrectUsageError`. If a non-start event arrives with no existing PM, it is silently skipped
 5. **Handler methods take self and event** — Signature: `def method_name(self, event: EventType) -> None`
 6. **No return values** — Process managers follow fire-and-forget pattern. Return values are discarded
 7. **Import `handle` from `protean`** — `from protean import handle` (not from `protean.core` or `protean.utils`)
@@ -86,7 +88,7 @@ class OrderFulfillmentPM:
 | Parameter | Purpose | Required |
 |-----------|---------|----------|
 | First arg (event class) | The event class this handler processes | Yes |
-| `start` | `True` creates new PM instance (exactly one per PM) | One handler must have `True` |
+| `start` | `True` creates new PM instance (at least one per PM) | One handler must have `True` |
 | `correlate` | String or dict mapping event field to PM identity | Yes (all PM handlers) |
 | `end` | `True` auto-marks PM as complete after handler runs | No |
 

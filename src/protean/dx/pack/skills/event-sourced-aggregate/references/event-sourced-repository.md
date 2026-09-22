@@ -4,7 +4,7 @@ Event-sourced aggregates use a specialized repository that persists events to an
 
 ## Automatic Selection
 
-When an aggregate has `is_event_sourced=True`, `domain.repository_for()` automatically returns an event-sourced repository:
+When an aggregate has `event_sourced=True`, `domain.repository_for()` automatically returns an event-sourced repository:
 
 ```python
 from protean.globals import current_domain
@@ -20,17 +20,20 @@ No explicit repository definition is needed — the domain handles this automati
 
 ## Custom ES Repository
 
-For custom query methods, define an explicit event-sourced repository:
+For custom query methods, define an explicit event-sourced repository by subclassing `BaseEventSourcedRepository` and registering it:
 
 ```python
-@domain.event_sourced_repository(part_of=Account)
-class AccountRepository:
+from protean.core.event_sourced_repository import BaseEventSourcedRepository
+
+class AccountRepository(BaseEventSourcedRepository):
     pass  # Default behavior handles add/get
+
+domain.register(AccountRepository, part_of=Account)
 ```
 
 **Validation**: The repository factory checks that:
 - `part_of` is specified (must be associated with an aggregate)
-- The aggregate has `is_event_sourced=True` (raises `IncorrectUsageError` otherwise)
+- The aggregate has `event_sourced=True` (raises `IncorrectUsageError` otherwise)
 
 ## How `add()` Works
 
@@ -128,6 +131,6 @@ Example: `banking::account-ACC-001`
 The stream category defaults to the snake_case aggregate name but can be overridden:
 
 ```python
-@domain.aggregate(is_event_sourced=True, stream_category="bank_account")
+@domain.aggregate(event_sourced=True, stream_category="bank_account")
 class Account: ...
 ```

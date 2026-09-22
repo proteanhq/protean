@@ -20,11 +20,11 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
 ```
 
-Protean raises `ConfigurationError` during `domain.init()` if any PM handler is missing `correlate`.
+Protean raises `IncorrectUsageError` during `domain.init()` if any PM handler is missing `correlate`.
 
 ## 2. No `start=True` Handler
 
-Every process manager must have exactly one handler marked with `start=True`. Without it, no new PM instances can be created.
+Every process manager must have at least one handler marked with `start=True`. Without it, no new PM instances can be created.
 
 **Wrong:**
 ```python

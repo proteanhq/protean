@@ -33,8 +33,8 @@ class ProductInventory:
 ### Key requirements
 
 1. **Identifier field**: Every non-abstract projection must have at least one field with `identifier=True`
-2. **Basic field types only**: String, Integer, Float, Identifier, DateTime, Date, Text, Boolean, Auto
-3. **No complex types**: References, Associations (HasOne, HasMany), and ValueObjects are not allowed
+2. **Basic field types plus ValueObjects**: String, Integer, Float, Identifier, DateTime, Date, Text, Boolean, Auto, and `ValueObject` (stored as flattened shadow fields)
+3. **No References or Associations**: `Reference` and Associations (`HasOne`, `HasMany`) are not allowed
 
 ## Identifier field
 

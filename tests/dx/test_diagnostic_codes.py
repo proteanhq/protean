@@ -148,6 +148,17 @@ def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
     assert teachers == sorted(set(teachers))
 
 
+def test_reverse_index_maps_a_family_code_to_its_skill():
+    # The event-driven/CQRS family wires each skill to the codes it teaches.
+    # Assert one such mapping end to end: the projection skill declares
+    # PROJECTION_WITHOUT_PROJECTOR, and the reverse index names it as a teacher.
+    assert "PROJECTION_WITHOUT_PROJECTOR" in pack.skill_diagnostic_codes("projection")
+
+    teachers = pack.diagnostic_code_skills()["PROJECTION_WITHOUT_PROJECTOR"]
+    assert "projection" in teachers
+    assert teachers == sorted(set(teachers))
+
+
 # --- Surfacing on a built diagnostic ----------------------------------------
 
 
@@ -159,6 +170,19 @@ def test_build_diagnostic_surfaces_teaching_skills():
     )
 
     assert "protean-overview" in diag["teaching_skills"]
+    assert diag["teaching_skills"] == sorted(set(diag["teaching_skills"]))
+
+
+def test_build_diagnostic_surfaces_a_family_teaching_skill():
+    # A diagnostic for a code the event-driven/CQRS family declares carries the
+    # teaching skill on the built diagnostic, the same way the seed code does.
+    diag = build_diagnostic(
+        DiagnosticCode.PROJECTION_WITHOUT_PROJECTOR,
+        element="my_app.OrderSummary",
+        message="OrderSummary has no projector to populate it.",
+    )
+
+    assert "projection" in diag["teaching_skills"]
     assert diag["teaching_skills"] == sorted(set(diag["teaching_skills"]))
 
 

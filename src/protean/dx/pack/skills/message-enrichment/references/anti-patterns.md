@@ -74,3 +74,28 @@ Capture what you need into `g` earlier (e.g. in middleware) and read it here.
 
 `metadata.extensions` is for cross-cutting metadata (tenant, request, actor,
 correlation). Domain payload belongs in the command/event fields, not extensions.
+
+## Non-callable enricher
+
+An enricher is invoked to build a message's metadata, so it must be callable: a
+plain function or a callable object (a class with `__call__`). Registering a
+non-callable value raises `IncorrectUsageError` (`USAGE_ENRICHER_NOT_CALLABLE`).
+
+```python
+# WRONG: a dict is not callable
+domain.register_command_enricher({"request_id": "static"})
+```
+
+```python
+# RIGHT: a function
+@domain.command_enricher
+def add_ctx(command):
+    return {"request_id": getattr(g, "request_id", None)}
+
+# RIGHT: a callable object
+class TenantEnricher:
+    def __call__(self, command):
+        return {"tenant_id": current_tenant()}
+
+domain.register_command_enricher(TenantEnricher())
+```

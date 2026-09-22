@@ -20,7 +20,7 @@ class MySubscriber:
         pass
 ```
 
-Protean raises `IncorrectUsageError: Subscriber 'MySubscriber' needs to be associated with an Event` (the error message refers to an "Event" because subscribers must specify a stream to consume from).
+Protean raises `IncorrectUsageError: Subscriber `MySubscriber` needs to be associated with a stream`. A subscriber must name the stream it consumes.
 
 ## 2. Using @handle Decorator Instead of __call__
 

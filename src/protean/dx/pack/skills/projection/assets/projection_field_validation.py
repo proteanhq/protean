@@ -2,18 +2,19 @@
 Projection field type validation and restrictions.
 
 This example demonstrates:
-- Projections only allow basic field types
-- ValueObject, Reference, and Association fields are rejected at class definition time
+- Projections allow basic field types and ValueObject fields
+- Reference and Association fields are rejected at class definition time
+- ValueObject fields are allowed and stored as flattened shadow fields
 - At least one identifier field is required
 - Validation errors with clear messages
 - How to correctly flatten complex data into basic fields
 
 Usage:
     # These raise IncorrectUsageError:
-    # - Projection with ValueObject field
     # - Projection with Reference field
     # - Projection with HasOne field
     # - Projection without identifier field
+    # A ValueObject field is allowed and creates flattened shadow fields.
 """
 
 from protean import Domain
