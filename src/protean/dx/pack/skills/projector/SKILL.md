@@ -82,7 +82,7 @@ class ProductInventoryProjector:
 6. **Implicit UnitOfWork** - Each handler method runs within a UnitOfWork context automatically
 7. **Multiple projectors per event** - Different projectors can process the same event into different projections
 8. **Import on from protean.core.projector** - `from protean.core.projector import on` (not from protean directly)
-9. **Projections use basic fields only** - Projections cannot contain References, Associations, or ValueObjects
+9. **Projections reject References and Associations** - `Reference` and Associations (`HasOne`/`HasMany`) are not allowed; basic field types and `ValueObject` fields are allowed (a `ValueObject` is stored as flattened shadow fields)
 10. **Idempotency** - Design projector methods to handle duplicate events gracefully
 
 ## Projector options

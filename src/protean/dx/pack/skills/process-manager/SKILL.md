@@ -198,7 +198,7 @@ class BadPM:
         pass
 ```
 
-Every PM must have exactly one handler with `start=True`.
+Every PM must have at least one handler with `start=True`.
 
 ### Business logic in the process manager
 

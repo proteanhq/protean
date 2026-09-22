@@ -56,7 +56,7 @@ class ProductInventory:
 7. **Default query limit is 100** - Can be overridden; set to `None` or negative for unlimited
 8. **Schema name auto-derived** - Defaults to underscore-cased class name (e.g., `ProductInventory` -> `product_inventory`)
 9. **Identifier values are immutable** - Once set, the identifier field cannot be changed
-10. **Identifier values are mandatory** - Non-abstract projections require an identifier value on creation
+10. **Identifier values auto-generate when omitted** - Non-abstract projections generate an identifier value on creation if you do not supply one (a UUID by default), the same as aggregates
 
 ## Projection options
 

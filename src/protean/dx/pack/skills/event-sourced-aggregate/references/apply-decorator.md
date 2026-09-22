@@ -27,7 +27,7 @@ def activated(self, event: UserActivated):
 ### Validation
 
 The decorator validates at class definition time:
-- **Too many arguments**: Raises `IncorrectUsageError` if more than 2 parameters (self + event)
+- **Too many arguments**: Raises `IncorrectUsageError` if the method takes more than the event parameter; it must accept only `self` and one type-annotated event argument
 - **Missing annotation**: Raises `IncorrectUsageError` if the event parameter is not type-annotated
 - **Wrong type**: Raises `IncorrectUsageError` if the annotation is not an Event class (e.g., a Command)
 - **Missing argument**: Raises `IncorrectUsageError` if no event parameter is provided
@@ -35,7 +35,7 @@ The decorator validates at class definition time:
 ```python
 # WRONG — too many arguments
 @apply
-def activated(self, event: UserActivated, extra: str):  # IncorrectUsageError
+def activated(self, event: UserActivated, actor: str, reason: str):  # IncorrectUsageError
     ...
 
 # WRONG — missing type annotation

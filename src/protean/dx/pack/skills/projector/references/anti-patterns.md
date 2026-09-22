@@ -60,18 +60,20 @@ class ProductInventory:
 
 Protean raises `IncorrectUsageError: 'UnregisteredProjection' is not a Projection, or is not registered in domain`.
 
-## 4. Using complex field types in projections
+## 4. Using References or Associations in projections
 
 ```python
-# Wrong! Projections cannot contain References, Associations, or ValueObjects
+# Wrong! Projections reject References and Associations (HasOne/HasMany)
 @domain.projection
 class OrderView:
     customer = Reference(Customer)
     items = HasMany(OrderItem)
-    address = ValueObject(Address)
 ```
 
-**Fix**: Flatten data into basic field types:
+Basic field types and `ValueObject` fields are allowed; a `ValueObject` is
+stored as flattened shadow fields.
+
+**Fix**: Flatten related data into basic field types:
 
 ```python
 @domain.projection

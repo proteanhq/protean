@@ -102,9 +102,9 @@ def handle_transfer(self, command: TransferMoney):
 Each event increments the aggregate's `_version`:
 
 ```python
-account = Account.open("ACC-001", "Alice", 1000.0)  # version: 1
-account.deposit(500.0)   # version: 2
-account.withdraw(200.0)  # version: 3
+account = Account.open("ACC-001", "Alice", 1000.0)  # version: 0
+account.deposit(500.0)   # version: 1
+account.withdraw(200.0)  # version: 2
 ```
 
 When persisting, the event store checks the expected version against the stream's actual version. If another process modified the aggregate concurrently, an `ExpectedVersionError` is raised:

@@ -160,21 +160,24 @@ class OrderSummaryProjector:
 
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced):
-        # Always receives current schema
-        return OrderSummary(
-            order_id=event.order_id,
-            total=event.total,
-            currency=event.currency,
-            status="PLACED",
+        # Always receives current schema. Projectors persist through the
+        # repository; a returned value would be discarded.
+        domain.repository_for(OrderSummary).add(
+            OrderSummary(
+                order_id=event.order_id,
+                total=event.total,
+                currency=event.currency,
+                status="PLACED",
+            )
         )
 
     @handle(OrderShipped)
     def on_order_shipped(self, event: OrderShipped):
-        return OrderSummary(
-            order_id=event.order_id,
-            tracking_number=event.tracking_number,
-            status="SHIPPED",
-        )
+        repo = domain.repository_for(OrderSummary)
+        summary = repo.get(event.order_id)
+        summary.tracking_number = event.tracking_number
+        summary.status = "SHIPPED"
+        repo.add(summary)
 
 
 # Example usage

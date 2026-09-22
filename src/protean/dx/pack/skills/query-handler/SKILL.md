@@ -106,7 +106,7 @@ view = current_domain.view_for(OrderSummary)
 view.get("ORD-1")                                  # single record by id
 view.query.filter(status="placed").all().items     # filtered list
 view.query.filter(status="placed").count()         # flat count
-view.exists()                                       # any records?
+view.exists("ORD-1")                               # is there a record with this id?
 ```
 
 ## Common mistakes

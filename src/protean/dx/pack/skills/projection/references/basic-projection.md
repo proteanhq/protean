@@ -57,7 +57,7 @@ The identifier field serves as the primary key for the projection. It can be:
 
 Important properties:
 - Identifier values are **immutable** once set (raises `InvalidOperationError` on change)
-- Identifier values are **mandatory** for non-abstract projections (raises `ValidationError` if missing)
+- Identifier values **auto-generate** for non-abstract projections when omitted (a UUID by default), the same as aggregates
 
 ## Projection properties
 
