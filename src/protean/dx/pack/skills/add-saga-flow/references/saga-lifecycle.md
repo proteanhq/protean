@@ -5,9 +5,10 @@ aggregates. It has three kinds of handler, set by parameters on `@handle`.
 
 ## Start
 
-A start handler opens the saga. Mark it `start=True`. It runs whenever its event
-arrives. When no instance exists yet for that correlation value it creates one;
-when an instance already exists it loads that instance and runs on it.
+A start handler opens the saga. Mark it `start=True`. When no instance exists yet
+for that correlation value it creates one; when an open instance already exists
+it loads that instance and runs on it. Once an instance is complete it is
+skipped, so a repeated start event does not reopen a closed saga.
 
 A saga needs at least one start handler, and it can have more than one: mark
 every event that can begin the flow `start=True`, and whichever arrives first
