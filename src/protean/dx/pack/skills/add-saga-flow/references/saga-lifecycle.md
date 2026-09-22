@@ -49,8 +49,9 @@ one for each failure path.
 ## PROCESS_MANAGER_UNCLOSED
 
 `check` reports `PROCESS_MANAGER_UNCLOSED` when a process manager has handlers
-but none is marked `end=True`. Such a saga never retires an instance: its
-instances stay open and it keeps matching later events for them.
+but none is marked `end=True`. The rule reads handler metadata, not run-time
+behavior. When no handler calls `mark_as_complete()` either, nothing retires an
+instance: its instances stay open and it keeps matching later events for them.
 
 Mark a terminating handler `end=True` on every path that ends the flow, and the
 code clears. `mark_as_complete()` inside a handler also completes an instance at

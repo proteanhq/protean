@@ -132,9 +132,10 @@ full.
 
 ## The anti-pattern: an unclosed saga
 
-A saga with handlers but no `end=True` on any of them never retires an instance.
-Its instances stay open and it keeps matching later events for them. `check`
-reports `PROCESS_MANAGER_UNCLOSED` for it.
+`check` reports `PROCESS_MANAGER_UNCLOSED` for a saga that has handlers but none
+marked `end=True`. It reads handler metadata, not run-time behavior. When no
+handler calls `mark_as_complete()` either, nothing retires an instance: its
+instances stay open and the saga keeps matching later events for them.
 
 [saga_before_unclosed.py](assets/saga_before_unclosed.py) is the flow with the
 terminal handlers removed. It advances through every step and sets a `fulfilled`
