@@ -8,6 +8,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [projection, projector, event, aggregate]
+  diagnostic_codes: [PROJECTION_WITHOUT_PROJECTOR, UNSOURCED_PROJECTION_FIELD]
 ---
 
 # Add Read Model
@@ -252,6 +253,22 @@ orders = domain.repository_for(Order).query.filter(status="placed")
 ```
 
 Instead: query the projection (`domain.repository_for(ProductListing)` or `view_for`), which is shaped for the query.
+
+### A projection field no projector writes
+
+```python
+# Wrong! last_updated is declared but no projector handler ever sets it
+@domain.projection
+class ProductListing:
+    product_id: Identifier(identifier=True)
+    name: String()
+    last_updated: DateTime()   # no @on handler writes this, so it stays empty
+```
+
+Instead: write every projection field from the projector handler for the event that carries
+it, or drop the field. `check` reports an unsourced field as `UNSOURCED_PROJECTION_FIELD`.
+A projection with no projector at all reports as `PROJECTION_WITHOUT_PROJECTOR`; add a
+projector, or set `externally_populated=True` when a subscriber fills it.
 
 ### Forgetting sync processing in tests
 

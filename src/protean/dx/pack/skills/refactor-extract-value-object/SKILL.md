@@ -14,6 +14,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [value-object, aggregate, entity]
+  diagnostic_codes: [VALUE_OBJECT_MUTABLE_FIELD]
 ---
 
 # Refactor: Extract Value Object
@@ -185,6 +186,13 @@ For events, flattening is often preferred since events are read by many consumer
 
 5. **Losing default values** — When moving `default=0.0` from the aggregate to the VO,
    make sure the VO field or the aggregate `ValueObject()` field carries the default.
+
+6. **Putting a mutable collection on the VO**: a value object is compared by value and must
+   stay immutable. A `List` or `Dict` field gives it mutable internal state, so two instances
+   that should be equal can drift apart and value equality breaks. `check` reports this as
+   `VALUE_OBJECT_MUTABLE_FIELD`. Move the collection onto the containing entity or aggregate,
+   or, if the items form a concept with its own identity, model them as an entity the aggregate
+   references.
 
 ## Quick example
 

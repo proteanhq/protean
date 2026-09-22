@@ -8,6 +8,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [aggregate, value-object, entity, command-handler, custom-validator]
+  diagnostic_codes: [AGGREGATE_NO_INVARIANTS, VALUE_OBJECT_INVARIANT_FAILED]
 ---
 
 # Add Validation

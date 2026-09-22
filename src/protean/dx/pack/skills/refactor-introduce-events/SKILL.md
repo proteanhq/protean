@@ -14,6 +14,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [event, event-handler, aggregate, command-handler]
+  diagnostic_codes: [EVENT_WITHOUT_DATA, UNRAISED_EVENT]
 ---
 
 # Refactor: Introduce Events

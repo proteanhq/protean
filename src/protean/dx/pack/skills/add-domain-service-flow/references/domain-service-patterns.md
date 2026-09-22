@@ -26,7 +26,7 @@ PlaceOrderService(order, inventories)()
 
 Always call `BaseDomainService.__init__(self, *(aggregates))` in `__init__`. This is required for invariant support.
 
-**Do not use `super().__init__`** — the `@domain.domain_service` decorator modifies the class, which breaks `super()`'s `__class__` cell reference.
+`super().__init__(*(aggregates))` works too: the framework rebinds each method's `__class__` cell after it rebuilds the class, so zero-argument `super()` resolves correctly. These examples call `BaseDomainService.__init__` explicitly for clarity.
 
 ## Pre and post invariants
 

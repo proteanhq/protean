@@ -14,6 +14,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [aggregate, command-handler, event-handler]
+  diagnostic_codes: [AGGREGATE_NO_INVARIANTS]
 ---
 
 # Refactor: Move Logic to Aggregate

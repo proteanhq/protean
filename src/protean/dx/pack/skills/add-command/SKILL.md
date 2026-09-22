@@ -179,7 +179,7 @@ class OrderCommandHandler:
 
 ## Key rules
 
-1. **Commands use `part_of="String"`**, handlers use `part_of=ClassRef` (command handlers require the class — a string `part_of` raises at registration) - don't mix them up
+1. **Commands use `part_of="String"`**, handlers use `part_of=ClassRef` (a string reference on a handler also works, resolved lazily at `init`; the class is just the usual convention when it is in scope) - don't mix them up
 2. **One handler per command** - Protean enforces this; multiple `@handle` methods in one handler is fine
 3. **Implicit UnitOfWork** - Do NOT wrap handler methods in manual UnitOfWork
 4. **Endpoints are thin** - Only construct commands and call `domain.process()`. No repository access, no business logic
