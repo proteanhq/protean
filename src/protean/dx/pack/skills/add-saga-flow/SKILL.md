@@ -138,9 +138,12 @@ marked `end=True`. It reads handler metadata, not run-time behavior. When no
 handler calls `mark_as_complete()` either, nothing retires an instance: its
 instances stay open and the saga keeps matching later events for them.
 
-[saga_before_unclosed.py](assets/saga_before_unclosed.py) is the flow with the
-terminal handlers removed. It advances through every step and sets a `fulfilled`
-status, yet no handler is marked `end=True`, so `check` flags it:
+[saga_before_unclosed.py](assets/saga_before_unclosed.py) is
+[saga_after_closed.py](assets/saga_after_closed.py) with the two `end=True`
+markers removed and nothing else changed, so a diff between them shows only what
+this diagnostic is about. Both terminal handlers are still there and both still
+run: the success path reaches `fulfilled`, the failure path compensates and
+reaches `cancelled`. Neither closes the saga any more, so `check` flags it:
 
 ```
 PROCESS_MANAGER_UNCLOSED  Process manager `OrderFulfillmentPM` has no handler

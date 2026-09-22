@@ -6,8 +6,11 @@ does not run the flow. This harness does both:
 - It builds each asset's IR, the way ``check`` does, and asserts the before
   asset reports ``PROCESS_MANAGER_UNCLOSED`` while the after asset clears it and
   reports no warnings at all.
-- It runs the after asset's saga end to end, on the success path and on the
+- It runs each asset's saga end to end, on the success path and on the
   compensating failure path, so the asset's claim that the flow runs holds.
+- It pins the pair as a minimal diff: the two assets' executable code differs by
+  the two ``end=True`` markers and by nothing else. That is what the skill says
+  the before asset is, and it drifted once already.
 
 Each asset is executed under its own ``run_name`` so the two domains' element
 registrations land in separate namespaces and cannot collide (both assets define
@@ -16,6 +19,7 @@ same-named events and aggregates). The runner mirrors ``test_examples.py``.
 
 from __future__ import annotations
 
+import ast
 import runpy
 from pathlib import Path
 from typing import Any
@@ -119,6 +123,92 @@ def test_after_asset_reports_no_warnings():
     assert warnings == [], [(d["code"], d["element"]) for d in warnings]
 
 
+def test_before_asset_reports_no_warnings():
+    """The before asset must isolate one diagnostic. If it carries warnings of
+    its own (an unhandled command, an aggregate no command reaches), a reader
+    running ``check`` on it cannot tell which finding the lesson is about."""
+    ir = _build_ir("saga_before_unclosed.py", "_saga_before_warnings_")
+
+    warnings = [d for d in ir["diagnostics"] if d["level"] in ("warning", "error")]
+    assert warnings == [], [(d["code"], d["element"]) for d in warnings]
+
+
+def _code_only(asset_name: str, drop_end: bool = False) -> str:
+    """One asset's executable code, with every docstring dropped.
+
+    Parsed structure, not text, so rewording a docstring or reflowing a comment
+    does not register while a one-token change to the code does. With
+    ``drop_end``, every ``end=True`` argument to ``@handle`` goes too, which is
+    what lets the two assets be compared on everything except the markers.
+    """
+    tree = ast.parse((ASSETS_DIR / asset_name).read_bytes())
+    for node in ast.walk(tree):
+        if drop_end and isinstance(node, ast.Call):
+            node.keywords = [
+                k
+                for k in node.keywords
+                if not (
+                    k.arg == "end"
+                    and isinstance(k.value, ast.Constant)
+                    and k.value.value is True
+                )
+            ]
+        if not isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            continue
+        body = node.body
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            node.body = body[1:] or [ast.Pass()]
+    return ast.dump(tree)
+
+
+def _end_marker_count(asset_name: str) -> int:
+    """How many handlers the asset marks ``end=True``."""
+    tree = ast.parse((ASSETS_DIR / asset_name).read_bytes())
+    return sum(
+        1
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for k in node.keywords
+        if k.arg == "end"
+        and isinstance(k.value, ast.Constant)
+        and k.value.value is True
+    )
+
+
+def test_the_assets_differ_only_by_the_end_markers():
+    """SKILL.md calls the before asset "the flow with the terminal handlers
+    removed" and tells the reader the fix is to mark a terminating handler on the
+    success path and on the failure path. Both sentences are only true while the
+    pair is a minimal diff.
+
+    It was not one. The before asset also dropped ``PaymentFailed``, both
+    compensating commands and their handlers, ``Order.cancel``,
+    ``Inventory.release``, ``PAYMENT_LIMIT``, the payment branch and the saga's
+    ``reservation_id``: 87 lines, so the pair taught several changes at once and
+    the prescribed fix could not be carried out on it at all. Nothing caught the
+    drift, because no test compared the two.
+    """
+    # Ignore the markers on both sides: everything that is left must match.
+    assert _code_only("saga_before_unclosed.py", drop_end=True) == _code_only(
+        "saga_after_closed.py", drop_end=True
+    ), (
+        "the before asset must be the after asset with the two end=True markers "
+        "removed and nothing else changed"
+    )
+
+    # And the markers are the difference: two on the after asset, one per
+    # terminal path, none on the before asset.
+    assert _end_marker_count("saga_after_closed.py") == 2
+    assert _end_marker_count("saga_before_unclosed.py") == 0
+
+
 def test_after_asset_runs_the_success_path():
     namespace, domain = _load("saga_after_closed.py", "_saga_after_success_")
 
@@ -192,3 +282,30 @@ def test_before_asset_runs_the_flow_without_closing_it():
     # No handler is marked end=True and none calls mark_as_complete(), so the
     # instance stays open after the flow has run to its last step.
     assert final.is_complete is False
+
+
+def test_before_asset_compensates_without_closing_either():
+    """The failure terminal is the half the before asset used to be missing. It
+    runs the same compensation as the after asset and leaves the saga open too,
+    so neither terminal closes and the diagnostic is about the markers alone."""
+    namespace, domain = _load("saga_before_unclosed.py", "_saga_before_failure_")
+
+    # Over PAYMENT_LIMIT, so Payment raises PaymentFailed instead of confirming.
+    statuses = _run_saga(namespace, domain, order_id="ORD-OPEN-FAIL", total=900.0)
+
+    assert statuses == ["reserving_stock", "awaiting_payment", "cancelled"]
+
+    with domain.domain_context():
+        final = _final_transition(
+            domain, namespace["OrderFulfillmentPM"], "ORD-OPEN-FAIL"
+        )
+        assert final.is_complete is False
+
+        # The compensation itself is unchanged from the after asset.
+        reservation = domain.repository_for(namespace["Inventory"]).get(
+            final.state["reservation_id"]
+        )
+        assert reservation.status == "released"
+
+        order = domain.repository_for(namespace["Order"]).get("ORD-OPEN-FAIL")
+        assert order.status == "cancelled"

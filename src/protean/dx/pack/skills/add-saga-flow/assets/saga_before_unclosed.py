@@ -1,13 +1,19 @@
 """
 Order fulfillment saga, left unclosed. This is the anti-pattern.
 
-The same flow as saga_after_closed.py, but no handler is marked end=True and
-there is no compensating failure path. The saga starts, advances through stock
-reservation, payment, and shipment, and sets a "fulfilled" status, but it never
-signals completion. Its instances stay open and keep matching later events.
+This file is saga_after_closed.py with the two `end=True` markers removed, and
+nothing else changed. The same four aggregates, the same commands and events,
+the same success and failure paths, the same compensation. Only the two markers
+that close the saga are gone, so a diff against saga_after_closed.py shows
+exactly what PROCESS_MANAGER_UNCLOSED is about.
+
+Both terminal handlers still run. on_shipment_dispatched sets "fulfilled" and
+on_payment_failed sets "cancelled" and issues the compensating commands. What
+neither does any more is close the saga, so its instances stay open and keep
+matching later events for the same order.
 
 Because no handler is marked end=True, `check` reports PROCESS_MANAGER_UNCLOSED
-for OrderFulfillmentPM. saga_after_closed.py fixes it by marking a terminating
+for OrderFulfillmentPM. saga_after_closed.py fixes it by marking the terminating
 handler on each path.
 
 The domain still initializes: PROCESS_MANAGER_UNCLOSED is an info-level
@@ -15,14 +21,21 @@ diagnostic, not an initialization error. The flow still runs too, which is the
 point: an unclosed saga looks healthy until you notice its instances never
 retire.
 
+Payment is the branch point. It confirms an amount up to PAYMENT_LIMIT and fails
+anything above it, so the same flow reaches either terminal path.
+
 Usage:
     from saga_before_unclosed import PlaceOrder, domain
 
     domain.init(traverse=False)
     with domain.domain_context():
-        # Runs the saga, which reaches "fulfilled" but never closes
+        # Runs the saga to "fulfilled", which never closes it
         domain.process(
             PlaceOrder(order_id="ORD-001", customer_id="CUST-1", total=100.0)
+        )
+        # Over the limit: payment fails and the saga compensates, still open
+        domain.process(
+            PlaceOrder(order_id="ORD-002", customer_id="CUST-1", total=900.0)
         )
 """
 
@@ -32,9 +45,16 @@ from protean.fields import Float, Identifier, String
 # Domain setup
 domain = Domain(__file__, "ecommerce")
 
-# Run the saga in-process, exactly as saga_after_closed.py does.
+# Run the saga in-process: events reach the process manager as soon as an
+# aggregate is saved, and commands reach their handlers as soon as they are
+# issued. A deployed domain leaves both asynchronous and lets the server drive
+# each step.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
+
+# The amount Payment confirms up to. Above it, payment fails and the saga
+# compensates.
+PAYMENT_LIMIT = 500.0
 
 
 # --- Commands (the saga issues these to drive each aggregate forward) ---
@@ -75,6 +95,20 @@ class CreateShipment:
     order_id: Identifier(required=True)
 
 
+@domain.command(part_of="Inventory")
+class CancelReservation:
+    """Compensating command: release a stock reservation."""
+
+    reservation_id: Identifier(required=True)
+
+
+@domain.command(part_of="Order")
+class CancelOrder:
+    """Compensating command: cancel the order."""
+
+    order_id: Identifier(required=True)
+
+
 # --- Events (the saga reacts to these) ---
 
 
@@ -101,6 +135,14 @@ class PaymentConfirmed:
 
     order_id: Identifier(required=True)
     payment_id: Identifier(required=True)
+
+
+@domain.event(part_of="Payment")
+class PaymentFailed:
+    """Raised when payment for an order fails."""
+
+    order_id: Identifier(required=True)
+    reason: String(required=True)
 
 
 @domain.event(part_of="Shipping")
@@ -131,6 +173,10 @@ class Order:
         )
         return order
 
+    def cancel(self) -> None:
+        """Cancel the order. This is the compensating step for CancelOrder."""
+        self.status = "cancelled"
+
 
 @domain.aggregate
 class Inventory:
@@ -148,6 +194,10 @@ class Inventory:
         )
         return reservation
 
+    def release(self) -> None:
+        """Release the reservation. The compensating step for CancelReservation."""
+        self.status = "released"
+
 
 @domain.aggregate
 class Payment:
@@ -159,9 +209,20 @@ class Payment:
 
     @classmethod
     def charge(cls, order_id: str, amount: float) -> "Payment":
-        """Charge the order and confirm it."""
-        payment = cls(order_id=order_id, amount=amount, status="confirmed")
-        payment.raise_(PaymentConfirmed(order_id=order_id, payment_id=payment.id))
+        """Charge the order, and report the outcome as an event.
+
+        This is the saga's branch point: the confirmed path goes on to shipping,
+        the failed path compensates.
+        """
+        payment = cls(order_id=order_id, amount=amount)
+        if amount > PAYMENT_LIMIT:
+            payment.status = "failed"
+            payment.raise_(
+                PaymentFailed(order_id=order_id, reason="amount over the limit")
+            )
+        else:
+            payment.status = "confirmed"
+            payment.raise_(PaymentConfirmed(order_id=order_id, payment_id=payment.id))
         return payment
 
 
@@ -185,12 +246,20 @@ class Shipping:
 
 @domain.command_handler(part_of=Order)
 class OrderCommandHandler:
-    """Handle the command that starts the flow."""
+    """Handle the commands that drive Order: the one that starts the flow, and
+    the one the saga issues to compensate."""
 
     @handle(PlaceOrder)
     def place_order(self, command: PlaceOrder) -> None:
         order = Order.place(command.order_id, command.customer_id, command.total)
         current_domain.repository_for(Order).add(order)
+
+    @handle(CancelOrder)
+    def cancel_order(self, command: CancelOrder) -> None:
+        repository = current_domain.repository_for(Order)
+        order = repository.get(command.order_id)
+        order.cancel()
+        repository.add(order)
 
 
 @domain.command_handler(part_of=Inventory)
@@ -201,6 +270,13 @@ class InventoryCommandHandler:
     def create_reservation(self, command: CreateReservation) -> None:
         reservation = Inventory.reserve(command.order_id)
         current_domain.repository_for(Inventory).add(reservation)
+
+    @handle(CancelReservation)
+    def cancel_reservation(self, command: CancelReservation) -> None:
+        repository = current_domain.repository_for(Inventory)
+        reservation = repository.get(command.reservation_id)
+        reservation.release()
+        repository.add(reservation)
 
 
 @domain.command_handler(part_of=Payment)
@@ -237,12 +313,19 @@ class ShippingCommandHandler:
 class OrderFulfillmentPM:
     """Coordinate order fulfillment, but never close the saga.
 
-    Every handler advances the flow, yet none is marked end=True and none calls
+    Every handler advances the flow and both terminal paths are reached, yet
+    neither terminal handler is marked end=True and none calls
     mark_as_complete(). The saga never retires an instance, so `check` reports
     PROCESS_MANAGER_UNCLOSED.
+
+    - on_shipment_dispatched: the success terminal, unmarked.
+    - on_payment_failed: the failure terminal, unmarked. It still issues the
+      compensating commands to release the stock reservation and cancel the
+      order.
     """
 
     order_id: Identifier()
+    reservation_id: Identifier()
     total: Float()
     status: String(default="new")
 
@@ -257,6 +340,8 @@ class OrderFulfillmentPM:
     @handle(StockReserved, correlate="order_id")
     def on_stock_reserved(self, event: StockReserved) -> None:
         """Request payment once stock is reserved."""
+        # Remember the reservation: the failure path needs it to compensate.
+        self.reservation_id = event.reservation_id
         self.status = "awaiting_payment"
         current_domain.process(
             RequestPayment(order_id=self.order_id, amount=self.total)
@@ -270,5 +355,12 @@ class OrderFulfillmentPM:
 
     @handle(ShipmentDispatched, correlate="order_id")
     def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
-        """Set a terminal status, but never close the saga (no end=True)."""
+        """Reach the success terminal, but never close the saga (no end=True)."""
         self.status = "fulfilled"
+
+    @handle(PaymentFailed, correlate="order_id")
+    def on_payment_failed(self, event: PaymentFailed) -> None:
+        """Compensate earlier steps, but never close the saga (no end=True)."""
+        self.status = "cancelled"
+        current_domain.process(CancelReservation(reservation_id=self.reservation_id))
+        current_domain.process(CancelOrder(order_id=self.order_id))
