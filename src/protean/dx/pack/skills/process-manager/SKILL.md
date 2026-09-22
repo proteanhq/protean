@@ -131,7 +131,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     )
 ```
 
-Commands issued inside a handler are committed atomically as part of the same Unit of Work.
+`current_domain.process()` appends the command to the event store as soon as it is called, before the enclosing Unit of Work commits. If the handler fails after issuing a command, the process manager's own state changes roll back. The already-appended command stays in the store.
 
 ## Process manager vs event handler
 
@@ -229,7 +229,7 @@ If you find yourself tracking state in external stores from an event handler, or
 ### Core Concepts
 - [Correlation](references/correlation.md) - String vs dictionary correlation, routing mechanics
 - [Lifecycle Management](references/lifecycle.md) - Start events, completion, transition events
-- [Command Issuance](references/command-issuance.md) - Issuing commands, coordinator pattern, atomicity
+- [Command Issuance](references/command-issuance.md) - Issuing commands, coordinator pattern, command persistence
 - [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them
 
 ### Complete Examples

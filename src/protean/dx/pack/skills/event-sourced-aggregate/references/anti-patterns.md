@@ -70,7 +70,7 @@ def open(cls, account_id, owner_name):
     return cls(account_id=account_id, owner_name=owner_name)
 ```
 
-When this aggregate is loaded from the event store, there are no events to replay, so the aggregate would be empty.
+With no events raised, the event-sourced repository's `add()` persists nothing (it no-ops when the aggregate has no events). A later `repo.get()` then raises `ObjectNotFoundError` because the stream is empty.
 
 ### The Fix
 

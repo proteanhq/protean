@@ -72,7 +72,7 @@ class Account:
 6. **Use factory classmethods for creation** — Create instance, raise initial event, return instance. This ensures the creation event is always the first event in the aggregate's stream
 7. **Import `apply` from `protean.core.aggregate`** — `from protean import apply` also works and is the same decorator; this skill uses the `protean.core.aggregate` path throughout
 8. **Events must be registered with `part_of`** — Associate each event with its aggregate: `@domain.event(part_of="Account")`
-9. **Version auto-increments with each event** — Each `raise_()` call increments `_version`, providing optimistic concurrency control
+9. **Version auto-increments with each event** — Each raised domain event increments `_version`, which drives optimistic concurrency control. Fact-event snapshots (rule 11) do not increment `_version`
 10. **ES repository is selected automatically** — `domain.repository_for(Account)` returns an event-sourced repository when the aggregate has `event_sourced=True`
 11. **Fact events auto-generate state snapshots** — Use `@domain.aggregate(event_sourced=True, fact_events=True)` to auto-publish complete state after each persist
 12. **First event's `@apply` must set ALL fields** — `from_events()` creates a blank aggregate and applies all events through `@apply`, so the first event's handler must establish all state including identity
@@ -96,7 +96,7 @@ def closed(self, event: AccountClosed):
 
 When `close()` is called:
 1. The business method validates preconditions
-2. `raise_()` appends the event, invokes the `@apply` handler (wrapped in invariant checks), and increments `_version`
+2. `raise_()` increments `_version`, appends the event, then invokes the `@apply` handler (wrapped in invariant checks)
 3. The `@apply` handler mutates state (`self.status = "CLOSED"`)
 4. The event is persisted to the event store when the repository saves
 

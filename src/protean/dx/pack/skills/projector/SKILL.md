@@ -218,17 +218,16 @@ class MyProjector:
         ...
 ```
 
-### Using complex field types in projections
+### Using references or associations in projections
 
 ```python
 @domain.projection
 class OrderView:
     customer = Reference(Customer)  # Wrong! No references in projections
     items = HasMany(OrderItem)      # Wrong! No associations
-    address = ValueObject(Address)  # Wrong! No value objects
 ```
 
-Instead: Flatten data into basic field types (String, Integer, Float, Identifier, DateTime, etc.)
+Instead: Flatten references and associations into basic field types (String, Integer, Float, Identifier, DateTime, etc.). ValueObject fields are allowed. They persist as flattened shadow fields.
 
 ### Projection not registered with domain
 

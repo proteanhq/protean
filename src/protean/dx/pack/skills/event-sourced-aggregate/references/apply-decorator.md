@@ -73,10 +73,10 @@ User._events_cls_map[fqn(UserActivated)]  # → UserActivated
 ```
 # In business method:
 self.raise_(event)
+  → increments aggregate._version
   → appends event to aggregate._events
   → invokes matching @apply handler (wrapped in invariant checks via atomic_change)
   → @apply handler mutates state
-  → increments aggregate._version
 ```
 
 ### When replaying events (loading from event store)

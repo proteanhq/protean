@@ -7,7 +7,7 @@ Event-sourced aggregates use a specialized repository that persists events to an
 When an aggregate has `event_sourced=True`, `domain.repository_for()` automatically returns an event-sourced repository:
 
 ```python
-from protean.globals import current_domain
+from protean import current_domain
 
 # For standard aggregates → returns standard repository
 repo = current_domain.repository_for(Product)
