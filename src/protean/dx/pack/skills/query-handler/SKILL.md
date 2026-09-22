@@ -47,7 +47,7 @@ class OrderQueryHandler:
 4. **One method per query** - Each query type is answered by exactly one `@read` method
 5. **Method signature is `(self, query)`** - The dispatched query instance is passed in
 6. **No Unit of Work, no side effects** - Reads are stateless; never mutate state or persist from a query handler
-7. **Read through `view_for`** - Use `current_domain.view_for(Projection)` to get a read-only query interface: `.get(id)`, `.query.filter(...).all()`, `.count()`, `.exists()`
+7. **Read through `view_for`** - Use `current_domain.view_for(Projection)` to get a read-only query interface: `.get(id)`, `.query.filter(...).all()`, `.count()`, `.exists(id)`
 8. **Dispatch with `domain.dispatch(query)`** - This routes the query to its handler and returns the result (synchronous)
 
 ## Handler options

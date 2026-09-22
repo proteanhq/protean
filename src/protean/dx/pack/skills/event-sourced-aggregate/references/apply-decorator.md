@@ -32,10 +32,19 @@ The decorator validates at class definition time:
 - **Wrong type**: Raises `IncorrectUsageError` if the annotation is not an Event class (e.g., a Command)
 - **Missing argument**: Raises `IncorrectUsageError` if no event parameter is provided
 
+**What the check actually catches**: the "too many arguments" check counts type-annotated parameters, and the return annotation counts too. It raises only when that count goes over 2. It never counts the real parameter list, so an extra parameter with no type annotation slips past it at class definition time. That shape fails later, at replay, with a `TypeError`. Write to the contract above regardless: an extra parameter is wrong whether or not the decorator happens to catch it.
+
 ```python
-# WRONG — too many arguments
+# WRONG, too many arguments
 @apply
 def activated(self, event: UserActivated, actor: str, reason: str):  # IncorrectUsageError
+    ...
+
+# WRONG, but NOT caught here: the extra parameter has no type annotation, so the
+# check (which only counts annotated parameters) doesn't see it. This passes at
+# class definition time and fails later, at replay, with a TypeError.
+@apply
+def activated(self, event: UserActivated, extra):
     ...
 
 # WRONG — missing type annotation
@@ -51,7 +60,7 @@ def activated(self, command: ActivateUser):  # IncorrectUsageError
 
 ## Projection Maps
 
-During domain initialization, Protean scans all `@apply` methods and builds two class-level maps:
+When the aggregate is registered (the moment `@domain.aggregate` decorates the class), Protean scans all `@apply` methods and builds two class-level maps:
 
 1. **`_projections`**: Maps event fully-qualified name (FQN) to the set of `@apply` methods that handle it
 2. **`_events_cls_map`**: Maps event FQN to the Event class itself
@@ -59,7 +68,7 @@ During domain initialization, Protean scans all `@apply` methods and builds two 
 These maps are used during event replay to find the correct handler for each event.
 
 ```python
-# After domain.init(), the aggregate class has:
+# Once the aggregate is registered, the aggregate class has:
 User._projections[fqn(UserActivated)]  # → {User.activated}
 User._events_cls_map[fqn(UserActivated)]  # → UserActivated
 ```

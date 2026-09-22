@@ -19,7 +19,7 @@ metadata:
 |--------|--------------|------------|
 | **Decorator** | `@domain.event_handler` | `@domain.subscriber` |
 | **Message source** | Internal event store | External message broker |
-| **Association** | `part_of` an aggregate | `stream` on a broker |
+| **Association** | `part_of` an aggregate or `stream_category` | `stream` on a broker |
 | **Payload type** | Typed domain event objects | Raw `dict` payloads |
 | **Dispatch** | `@handle(EventClass)` per event type | Single `__call__(payload)` for all messages |
 | **Processing config** | `event_processing` | `message_processing` |

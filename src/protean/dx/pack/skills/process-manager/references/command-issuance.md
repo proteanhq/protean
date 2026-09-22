@@ -42,7 +42,7 @@ Do NOT import from `protean.utils.globals` — that is an internal module.
 
 1. Handler runs, updating PM state and calling `current_domain.process()` to issue commands
 2. Each `process()` call appends its command to the event store right away
-3. When the handler returns, the Unit of Work commits the PM's own transition event to the PM's stream
+3. When the handler returns, the PM's own transition event is appended directly to the event store, on the PM's stream, still inside the Unit of Work block
 
 If the handler raises after issuing a command, the Unit of Work rolls back the PM's state changes. Commands appended by earlier `process()` calls stay in the store.
 
