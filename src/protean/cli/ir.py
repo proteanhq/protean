@@ -274,7 +274,7 @@ def diff(
             generate_event_model_diff(result, left_ir=baseline_ir, right_ir=current_ir)
         )
     else:
-        _print_diff_text(result)
+        _print_diff_text(result, report)
         # Only when the (exclusion-filtered) report has classified changes — a
         # vacuous FULL beside no schema changes is noise.
         if report.breaking_changes or report.safe_changes:
@@ -382,8 +382,14 @@ def _print_avro_verdict(report: CompatibilityReport) -> None:
         print(f"  [dim]breaks {direction}:[/dim] {change.message}")
 
 
-def _print_diff_text(result: dict[str, Any]) -> None:
-    """Print a rich-formatted text diff to the terminal."""
+def _print_diff_text(
+    result: dict[str, Any], report: CompatibilityReport | None = None
+) -> None:
+    """Print a rich-formatted text diff to the terminal.
+
+    *report* is the classification over every persisted element. Without it the
+    only breaking changes named here are the published-event contract ones.
+    """
     summary = result.get("summary", {})
 
     if not summary.get("has_changes", False):
@@ -404,12 +410,28 @@ def _print_diff_text(result: dict[str, Any]) -> None:
         f"[yellow]~{counts.get('changed', 0)} changed[/yellow]"
     )
 
-    # Breaking changes (prominent)
-    breaking = result.get("contracts", {}).get("breaking_changes", [])
-    if breaking:
-        print(f"\n[bold red]Breaking Changes ({len(breaking)}):[/bold red]")
-        for bc in breaking:
-            print(f"  [red]! {bc['message']}[/red]")
+    # Breaking changes (prominent). Two sources. The published-event contract
+    # diff, and the classified report over every persisted element. The second
+    # matters because a change can be breaking for a reason Avro has no opinion
+    # about: moving an event-sourced aggregate's stream category does not touch a
+    # payload byte, so the verdict stays FULL and the "breaks FORWARD/BACKWARD"
+    # lines never mention it. Before this it appeared nowhere in the text output
+    # while still setting the exit code, so the command said "breaking changes
+    # are present — see above" with nothing above naming one.
+    messages = [
+        bc["message"] for bc in result.get("contracts", {}).get("breaking_changes", [])
+    ]
+    if report is not None:
+        seen = set(messages)
+        messages += [
+            change.message
+            for change in report.breaking_changes
+            if change.message not in seen
+        ]
+    if messages:
+        print(f"\n[bold red]Breaking Changes ({len(messages)}):[/bold red]")
+        for message in messages:
+            print(f"  [red]! {message}[/red]")
 
     # Clusters
     clusters = result.get("clusters", {})
