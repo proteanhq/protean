@@ -1086,6 +1086,7 @@ def _types(report: CompatibilityReport) -> set[str]:
     return {c.change_type for c in report.breaking_changes}
 
 
+@pytest.mark.no_test_domain
 class TestReplayHazards:
     """A change that stops an event-sourced aggregate being rebuilt is reported
     on its own, whether or not the aggregate has any other change."""
