@@ -66,14 +66,16 @@ class Order:
 If events carry the old field names, you need an upcaster:
 
 ```python
+from protean.core.upcaster import BaseUpcaster
+
 @domain.event(part_of="Order")
 class OrderPlaced:
     __version__ = 2
     order_id = Identifier(required=True)
     total = ValueObject(Money)  # Was: total_amount + total_currency
 
-@domain.upcaster(event_cls=OrderPlaced, version=1)
-class OrderPlacedV1Upcaster:
+@domain.upcaster(event_type=OrderPlaced, from_version=1, to_version=2)
+class OrderPlacedV1Upcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         data["total"] = {
             "amount": data.pop("total_amount", 0.0),

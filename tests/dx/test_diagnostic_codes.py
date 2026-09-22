@@ -75,6 +75,68 @@ def test_every_skill_in_the_reverse_index_exists():
     )
 
 
+# The workflow/refactor/analysis family (#1554). The six skills that teach a
+# coded fix pin to their exact declared codes; the eight that teach none pin to
+# an empty list. Scoped to this family's own skills so the building-block and
+# event/CQRS passes can add their declarations without colliding here.
+_FAMILY_CODE_TEACHING_SKILLS = {
+    "add-field": ["UNBOUNDED_INDEXED_STRING", "UNINDEXED_FILTER_PATH"],
+    "add-validation": ["AGGREGATE_NO_INVARIANTS", "VALUE_OBJECT_INVARIANT_FAILED"],
+    "add-read-model": ["PROJECTION_WITHOUT_PROJECTOR", "UNSOURCED_PROJECTION_FIELD"],
+    "refactor-extract-value-object": ["VALUE_OBJECT_MUTABLE_FIELD"],
+    "refactor-introduce-events": ["EVENT_WITHOUT_DATA", "UNRAISED_EVENT"],
+    "refactor-move-logic-to-aggregate": ["AGGREGATE_NO_INVARIANTS"],
+}
+
+_FAMILY_NO_CODE_SKILLS = [
+    "add-command",
+    "add-event",
+    "add-use-case",
+    "add-domain-service-flow",
+    "add-subscriber-flow",
+    "coverage-analysis",
+    "generate-test-scaffold",
+    "audit-domain",
+]
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_FAMILY_CODE_TEACHING_SKILLS.items())
+)
+def test_family_skill_declares_its_exact_codes(skill, expected):
+    # Pin each code-teaching skill in this family to the exact list it declares,
+    # so dropping or mistyping a code in its frontmatter reds here rather than
+    # slipping through the "is a real DiagnosticCode" check above.
+    assert pack.skill_diagnostic_codes(skill) == expected
+
+
+@pytest.mark.parametrize("skill", _FAMILY_NO_CODE_SKILLS)
+def test_family_skill_that_teaches_no_code_declares_none(skill):
+    # The workflow and analysis skills that compose element skills without
+    # teaching a coded convention declare no diagnostic codes. Pin the negative
+    # direction so a stray declaration on one of them is caught.
+    assert pack.skill_diagnostic_codes(skill) == []
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_FAMILY_CODE_TEACHING_SKILLS.items())
+)
+def test_family_skill_names_every_code_it_declares_in_its_body(skill, expected):
+    # A declaration is a promise that the skill explains the fix for that code,
+    # because build_diagnostic points a reader at the skill by name. Require the
+    # code to appear in the prose below the frontmatter, so a skill cannot claim
+    # a code it never mentions. Scoped to this family for the same reason as the
+    # tests above: the seed skill predates the rule and other passes land later.
+    text = pack.read_pack_text(pack.SKILLS_DIR, skill, pack.SKILL_FILE)
+    _, _, body = text.partition("\n---\n")
+    assert body, f"{skill} has no body below its frontmatter"
+
+    missing = [code for code in expected if code not in body]
+    assert not missing, (
+        f"{skill} declares {missing} but never names them below its frontmatter"
+    )
+
+
 def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
     # protean-overview declares the seed code, so it must be named. Assert
     # inclusion, not the whole list: another skill declaring the same code later

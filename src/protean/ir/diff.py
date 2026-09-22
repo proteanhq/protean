@@ -848,6 +848,15 @@ _AVRO_CHANGE_SAFETY: dict[str, tuple[bool, bool]] = {
     # gate are separate axes.
     "visibility_public_to_internal": (True, True),
     "visibility_internal_to_public": (True, True),
+    # Replay hazards say an event-sourced aggregate can no longer be rebuilt
+    # from its history. They move where the history is read from, or drop the
+    # handler that reads it; none of them changes a payload's bytes, so like a
+    # visibility flip they are neutral for Avro decode and breaking in the
+    # report.
+    "event_sourcing_changed": (True, True),
+    "stream_category_changed": (True, True),
+    "identity_field_changed": (True, True),
+    "apply_handler_removed": (True, True),
 }
 
 
@@ -963,6 +972,8 @@ def classify_changes(
     - Visibility public → internal (``published: True`` → absent): breaking
     - Visibility internal → public (absent → ``published: True``): safe
     - Change ``__type__`` string: breaking
+    - Break replay on an event-sourced aggregate: breaking (see
+      :func:`_classify_replay_hazards`)
 
     Two evolution-aware refinements apply to every persisted element (not only
     published event contracts):
@@ -982,6 +993,10 @@ def classify_changes(
 
     _classify_clusters(diff_result.get("clusters", {}), report, current_version)
     _classify_projections(diff_result.get("projections", {}), report, current_version)
+    # Replay hazards on an event-sourced aggregate: read from the two IRs rather
+    # than the diff, because the question is about the aggregate's state on both
+    # sides (is it event-sourced at all?), not only about what moved.
+    _classify_replay_hazards(report, left_ir, right_ir)
 
     # Downgrade breaking changes on an event whose version bump is covered by a
     # registered upcaster (the upcaster transforms old payloads to the new
@@ -1107,6 +1122,150 @@ def _apply_upcaster_mitigation(
         change.mitigated_by = citation
         report.safe_changes.append(change)
     report.breaking_changes = still_breaking
+
+
+def _classify_replay_hazards(
+    report: CompatibilityReport,
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> None:
+    """Flag the changes that stop an event-sourced aggregate being rebuilt.
+
+    An event-sourced aggregate's authoritative state is a stream of events,
+    reconstructed by reading that stream and applying the events in it. (A
+    snapshot may also be stored, holding serialized aggregate state, but it is a
+    rebuildable cache: ``_load_aggregate_current`` discards one that no longer
+    constructs and replays instead.) What breaks that reconstruction is a change
+    to where the history is read from, or to what reads it. None of those is a
+    field change, so none is reported anywhere else today:
+
+    - **Event sourcing turned on or off.** A classic aggregate converted to
+      event sourcing kept its existing state as table rows, which replay cannot
+      reconstruct. An event-sourced aggregate converted to classic has its
+      existing state only as a stream, which the table-backed loader never
+      reads.
+    - **The stream category moved.** ``BaseAggregate`` writes to
+      ``f"{stream_category}-{identifier}"`` (``core/aggregate.py``), so moving
+      the category leaves the whole history under the old name and a load of an
+      existing aggregate finds an empty stream.
+    - **The identity field moved to another field.** The identifier half of that
+      same stream name is the value of whichever field carries the identity, so
+      pointing the identity at a different field asks for a stream keyed by a
+      value no writer ever used. A change to the identity field's *type* is
+      already reported as ``field_type_changed``, which covers the case where
+      the name holds still but ``str(value)`` does not.
+    - **An ``@apply`` handler was dropped while its event survives.** Replay
+      applies every stored event through its handler and
+      ``BaseAggregate._apply_handler`` raises ``IncorrectUsageError`` when an
+      event has none ("There is no silent fallback"), so historical events of
+      that type stop the rebuild. Deleting the event class and its handler
+      together is one act, not two, and ``element_removed`` on the event is the
+      report for it.
+
+    Each is emitted as its own breaking change against the aggregate, rather
+    than folded into the severity of some other change. An operator who moved a
+    stream category has to read that fact to act on it, and the hazard is just
+    as breaking when the aggregate has no other change at all.
+
+    Read from the two IRs rather than from *diff_result*: whether an aggregate
+    is event-sourced is a fact about both sides, not only about what moved.
+    """
+    left_clusters = left_ir.get("clusters", {})
+    # Events this diff dropped from the domain, read across every cluster: an
+    # aggregate can apply an event that belongs to another aggregate's cluster.
+    removed_events = set(_events_by_fqn(left_ir)) - set(_events_by_fqn(right_ir))
+    for fqn, right_cluster in right_ir.get("clusters", {}).items():
+        left_cluster = left_clusters.get(fqn)
+        if left_cluster is None:
+            # A newly added aggregate has no history to strand.
+            continue
+        left_aggregate = left_cluster.get("aggregate", {})
+        right_aggregate = right_cluster.get("aggregate", {})
+        left_options = left_aggregate.get("options", {})
+        right_options = right_aggregate.get("options", {})
+        left_es = bool(left_options.get("is_event_sourced"))
+        right_es = bool(right_options.get("is_event_sourced"))
+        if not left_es and not right_es:
+            # Classic on both sides: it is a table, and its field changes are
+            # already classified. Nothing here applies.
+            continue
+
+        if left_es != right_es:
+            direction = (
+                "classic to event-sourced" if right_es else "event-sourced to classic"
+            )
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="event_sourcing_changed",
+                    message=(
+                        f"AGGREGATE '{fqn}' changed from {direction}; "
+                        f"existing state cannot be read the new way"
+                    ),
+                )
+            )
+            # The remaining checks compare two event-sourced snapshots. With the
+            # storage mode itself moving there is no like-for-like stream to ask
+            # about, and the change above already says the rebuild is broken.
+            continue
+
+        left_category = left_options.get("stream_category")
+        right_category = right_options.get("stream_category")
+        if left_category != right_category:
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="stream_category_changed",
+                    message=(
+                        f"Stream category changed for AGGREGATE '{fqn}': "
+                        f"'{left_category}' → '{right_category}'; existing "
+                        f"events stay under the old category"
+                    ),
+                )
+            )
+
+        left_identity = left_aggregate.get("identity_field")
+        right_identity = right_aggregate.get("identity_field")
+        if left_identity != right_identity:
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="identity_field_changed",
+                    message=(
+                        f"Identity field changed for AGGREGATE '{fqn}': "
+                        f"'{left_identity}' → '{right_identity}'; existing "
+                        f"events are keyed by the old field's value"
+                    ),
+                )
+            )
+
+        right_apply_handlers = right_aggregate.get("apply_handlers", {})
+        for event_fqn in left_aggregate.get("apply_handlers", {}):
+            # Not when this diff deleted the event itself. Removing an event
+            # class and its `@apply` method together is one act, and
+            # `element_removed` on the event is the report for it; a second
+            # entry here would say the same thing twice. Any other shape still
+            # reports, including a handler naming an event neither snapshot
+            # registers, where nothing else would.
+            if (
+                event_fqn not in right_apply_handlers
+                and event_fqn not in removed_events
+            ):
+                report.breaking_changes.append(
+                    CompatibilityChange(
+                        severity="breaking",
+                        element_fqn=fqn,
+                        change_type="apply_handler_removed",
+                        message=(
+                            f"AGGREGATE '{fqn}' dropped its @apply handler for "
+                            f"'{event_fqn}'; stored events of that type stop "
+                            f"the rebuild"
+                        ),
+                    )
+                )
 
 
 def _classify_clusters(

@@ -214,7 +214,7 @@ class OrderEventHandler:
 
 ## Key rules
 
-1. **Events use `part_of="String"`**, handlers use `part_of=ClassRef` (event handlers require the class — a string `part_of` raises at registration) - don't mix them up
+1. **Events use `part_of="String"`**, handlers use `part_of=ClassRef` (a string reference on a handler also works, resolved lazily at `init`; the class is just the usual convention when it is in scope) - don't mix them up
 2. **Events are past-tense** (`OrderPlaced`), commands are imperative (`PlaceOrder`)
 3. **Multiple handlers per event** - Unlike commands, the same event can be handled by many handlers
 4. **Event handlers do NOT return values** - Fire-and-forget pattern
