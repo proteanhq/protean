@@ -18,8 +18,10 @@ def on_payment_failed(self, event: PaymentFailed) -> None:
 ```
 
 By the time payment fails, the saga has already reserved stock, so it releases
-that reservation and cancels the order. Commands issued inside a handler commit
-atomically with the saga's own transition, in one Unit of Work.
+that reservation and cancels the order. Each compensating command runs as its
+own step against its target aggregate, separate from the saga's transition.
+That is why you compensate instead of rolling back: there is no shared
+transaction to undo.
 
 ## Points to keep in mind
 
