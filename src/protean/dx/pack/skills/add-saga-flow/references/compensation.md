@@ -21,8 +21,12 @@ By the time payment fails, the saga has already reserved stock, so it releases
 that reservation and cancels the order.
 
 Issuing a compensating command is not a rollback of the step it undoes. Each
-command runs later as its own step against its target aggregate, so undoing the
-earlier steps is a set of new steps, each committing on its own.
+command is a new step against its target aggregate, and `command_processing`
+decides when it runs. A deployed domain leaves it asynchronous: the server picks
+the command up later and runs it in its own Unit of Work. The assets here set it
+to `"sync"`, so the command handler runs inline, and its Unit of Work joins the
+saga handler's rather than opening one of its own. Under `"sync"` the
+compensating steps commit with the saga's transition, not after it.
 
 Whether a command issued just before the handler fails is written at all depends
 on the event store. The memory store writes the command through the handler's
