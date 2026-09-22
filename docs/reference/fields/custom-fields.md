@@ -94,6 +94,12 @@ against. Protean serializes a custom value in a filter the same way, so both
 `filter(brand=Color("#3366FF"))` and `filter(brand="#3366FF")` find the record,
 and `unique=True` catches a duplicate.
 
+The generated schemas (JSON Schema, Avro, Protobuf) read the field's Python type.
+A custom field over a primitive is typed as that primitive: `Custom(int, ...)` is
+an integer. A custom field over a class of your own is typed as a string, because
+Protean cannot know what your `to_dict()` returns. So if you publish schemas, have
+`to_dict()` return a string, as the `Color` example does.
+
 ## Prove your field with the conformance suite
 
 Protean ships a reusable check your `Custom` field can run against itself. Give it

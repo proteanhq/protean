@@ -122,8 +122,10 @@ paths and when each applies.
 - A custom field emits `"kind": "custom"` in the IR, so the IR schema carries a
   `field_custom` definition for it. Without that definition every IR document from a
   domain holding one custom field failed schema validation.
-- The IR type name for a custom field falls back to `String`, because the IR type
-  map has no entry for `field_kind="custom"`. This is a display label in the emitted
-  IR only; it does not affect persistence or reflection, and the `field_custom`
-  schema definition accepts any type name, so naming it properly later needs no
-  schema change. A dedicated IR type name for custom fields is left for later.
+- The IR type name for a custom field comes from the field's Python type, not from
+  a blanket fallback: `Custom(int, ...)` is `Integer`, `Custom(float, ...)` is
+  `Float`. The JSON Schema, Avro and Protobuf generators read that name, so the
+  blanket `String` would have published an integer field as a string. A custom
+  field over a class of the author's own keeps the `String` fallback, because the
+  stored shape is whatever that type's `to_dict()` returns and the builder cannot
+  know it; the reference page asks such a type to serialize to a string.

@@ -541,9 +541,15 @@ class IRBuilder:
             ``str | int | UUID``  → ``str``  (first non-None arg)
             ``list[str]``  → ``list[str]``  (unchanged)
             ``Literal['A','B'] | None``  → ``str``  (first Literal arg type)
+            ``Annotated[int, PlainValidator(...)]``  → ``int``
         """
         if python_type is None:
             return None
+
+        # A custom field's annotation carries its Pydantic validators and
+        # serializers, so the concrete type sits under an ``Annotated`` wrapper.
+        if hasattr(python_type, "__metadata__"):
+            return IRBuilder._unwrap_type(typing.get_args(python_type)[0])
 
         origin = typing.get_origin(python_type)
 
@@ -607,6 +613,18 @@ class IRBuilder:
             result = _TYPE_MAP.get((python_type, kind))
             if result:
                 return result
+            if kind == "custom":
+                # A custom field over a primitive stores that primitive —
+                # ``as_dict`` hands the value back untouched — so the IR has to
+                # name that shape. The schema, Avro and Protobuf generators read
+                # this name, and without the lookup ``Custom(int, ...)`` is
+                # persisted as an integer but published as a string. An
+                # arbitrary class serializes through its own ``to_dict``, whose
+                # shape the builder cannot know, so it keeps the String
+                # fallback.
+                primitive = _TYPE_MAP.get((python_type, "standard"))
+                if primitive:
+                    return primitive
         return "String"  # Fallback
 
     @staticmethod

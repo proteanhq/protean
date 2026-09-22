@@ -256,6 +256,23 @@ class TestCustomReflection:
         assert resolved.field_kind == "custom"
         assert resolved.as_dict(Point(3, 4)) == "3,4"
 
+    def test_supplied_serializer_is_attached_to_the_field(self, test_domain):
+        # ``as_dict`` goes through the value's ``to_dict()`` and would pass even
+        # if the serializers never reached the annotation. ``model_dump`` is the
+        # one path that runs the supplied ``PlainSerializer``.
+        @test_domain.aggregate
+        class Marker:
+            at: Point = Custom(
+                Point,
+                validators=[PlainValidator(parse_point)],
+                serializers=[PlainSerializer(lambda p: f"({p.x}|{p.y})")],
+                required=True,
+            )
+
+        test_domain.init(traverse=False)
+
+        assert Marker(at="3,4").model_dump()["at"] == "(3|4)"
+
 
 class TestCustomConstraintPassthrough:
     """``**constraints`` reach the field, including the type-specific ones."""
