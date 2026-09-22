@@ -813,11 +813,6 @@ class CompatibilityChange:
     # registered upcaster transforms old payloads, this names the mitigating
     # upcaster coverage (e.g. "upcaster OrderPlaced v1->v3").
     mitigated_by: str | None = None
-    # The name of the field this change is about, for the change types that
-    # concern one field (``field_removed``). Lets a per-field mitigation match a
-    # specific removal when an element removes several fields with only some
-    # reserved. ``None`` for changes that are not about a single field.
-    field_name: str | None = None
     # Per-field Avro safety overrides. ``None`` means "not applicable — use the
     # ``_AVRO_CHANGE_SAFETY`` table default for this change type". They are set
     # only where safety is per-field rather than fixed by the change type:
@@ -826,6 +821,11 @@ class CompatibilityChange:
     # default sets ``backward_safe=False`` (Avro cannot emit a callable default).
     backward_safe: bool | None = None
     forward_safe: bool | None = None
+    # The name of the field this change is about, for the change types that
+    # concern one field (``field_removed``). Lets a per-field mitigation match a
+    # specific removal when an element removes several fields with only some
+    # reserved. ``None`` for changes that are not about a single field.
+    field_name: str | None = None
 
 
 # Avro compatibility safety per change type: (backward_safe, forward_safe).
