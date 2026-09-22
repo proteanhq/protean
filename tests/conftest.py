@@ -26,6 +26,17 @@ def pytest_configure(config):
     )
     sys.path.insert(0, docs_src_path)
 
+    # Pin the terminal width every CLI test sees. Click wraps its own error and
+    # help output to the terminal, and `CliRunner` inherits the ambient
+    # environment, so an assertion on a message passes or fails depending on the
+    # width of whatever ran the suite and on how long that machine's `tmp_path`
+    # is: a long path pushes a wrap into the middle of the phrase being
+    # asserted, and the substring stops matching. `test_empty_note_aborts`
+    # asserts "non-empty string 'note'" and gets "non-empty string \n'note'"
+    # on a machine whose temp paths run long, while CI never sees it. Set once
+    # here rather than on each of the ~40 `CliRunner()` instances in the suite.
+    os.environ["COLUMNS"] = "1000"
+
 
 def pytest_addoption(parser):
     """Additional options for running tests with pytest"""
