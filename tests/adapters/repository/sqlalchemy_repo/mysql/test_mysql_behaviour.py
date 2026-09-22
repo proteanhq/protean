@@ -401,3 +401,79 @@ class TestAssociationColumnWidth:
         finally:
             provider._metadata.drop_all(provider._engine)
             provider.close()
+
+
+class TestStorageEngineAndRowFormat:
+    """The provider's guarantees are written against InnoDB with DYNAMIC rows,
+    and both are operator settings on the server. The tables Protean creates
+    name them.
+    """
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_created_tables_are_innodb_with_dynamic_rows(self, uri):
+        domain = Domain(
+            name="MySQL storage",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.register(Note)
+        domain.init(traverse=False)
+
+        provider = domain.providers["default"]
+        try:
+            with domain.domain_context():
+                domain.repository_for(Note)._dao
+                provider._metadata.create_all(provider._engine)
+
+                with provider._engine.connect() as conn:
+                    engine, row_format = conn.execute(
+                        text(
+                            "SELECT engine, row_format "
+                            "FROM information_schema.tables "
+                            "WHERE table_schema = DATABASE() "
+                            "AND table_name = 'note'"
+                        )
+                    ).one()
+
+            assert engine == "InnoDB"
+            assert row_format == "Dynamic"
+        finally:
+            provider._metadata.drop_all(provider._engine)
+            provider.close()
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_a_compact_table_caps_the_key_at_767_bytes(self, uri):
+        """Why the row format is named. The width guard checks against 3072,
+        which is the DYNAMIC limit. Under COMPACT the server refuses a key this
+        guard would have passed."""
+        domain = Domain(
+            name="MySQL row format",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.init(traverse=False)
+        provider = domain.providers["default"]
+        try:
+            with provider._engine.connect() as conn:
+                with pytest.raises(DatabaseError) as exc:
+                    conn.execute(
+                        text(
+                            "CREATE TABLE compact_probe ("
+                            "  s VARCHAR(300) CHARACTER SET utf8mb4,"
+                            "  INDEX ix (s)"
+                            ") ENGINE=InnoDB ROW_FORMAT=COMPACT"
+                        )
+                    )
+
+            # 1200 bytes, inside the 3072 the guard allows and past the 767
+            # a COMPACT row gives. MySQL and MariaDB word it differently.
+            assert "767 bytes" in str(exc.value)
+        finally:
+            with provider._engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS compact_probe"))
+                conn.commit()
+            provider.close()

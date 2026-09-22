@@ -112,10 +112,39 @@ class TestMarkerRegistration:
 class TestBuiltinDbConfigs:
     """Tests for BUILTIN_DB_CONFIGS constant."""
 
-    def test_all_known_providers_present(self):
-        """All known providers have an entry."""
-        expected = {"MEMORY", "POSTGRESQL", "ELASTICSEARCH", "SQLITE", "MSSQL"}
-        assert set(BUILTIN_DB_CONFIGS.keys()) == expected
+    def test_every_registered_provider_has_a_config(self):
+        """Read from the entry points, because a hand-written list here goes
+        stale in silence: a provider with no entry falls through to
+        ``{"provider": <key>}`` with no ``database_uri``, and ``Domain.init()``
+        cannot reach a server. MySQL shipped that way."""
+        from importlib import metadata
+
+        registered = {
+            ep.name for ep in metadata.entry_points().select(group="protean.providers")
+        }
+        configured = {config["provider"] for config in BUILTIN_DB_CONFIGS.values()}
+
+        assert registered <= configured, (
+            f"No conformance config for {sorted(registered - configured)}. "
+            f"Add one to BUILTIN_DB_CONFIGS."
+        )
+
+    def test_every_server_backed_config_names_a_uri(self):
+        """The memory provider is the only one that needs no server."""
+        for key, config in BUILTIN_DB_CONFIGS.items():
+            if config["provider"] == "memory":
+                continue
+            assert config.get("database_uri"), f"{key} config has no database_uri"
+
+    def test_both_mysql_servers_are_keyed_separately(self):
+        """One provider, two servers, and SQLAlchemy reports a different
+        dialect name for each, so each needs its own key and URI."""
+        assert BUILTIN_DB_CONFIGS["MYSQL"]["provider"] == "mysql"
+        assert BUILTIN_DB_CONFIGS["MARIADB"]["provider"] == "mysql"
+        assert (
+            BUILTIN_DB_CONFIGS["MYSQL"]["database_uri"]
+            != BUILTIN_DB_CONFIGS["MARIADB"]["database_uri"]
+        )
 
     def test_each_config_has_provider_key(self):
         """Every config dict has a 'provider' key."""

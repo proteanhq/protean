@@ -885,6 +885,28 @@ class TestTableArgs:
         assert table.kwargs["mysql_charset"] == "utf8mb4"
         assert table.kwargs["mysql_collate"] == "utf8mb4_bin"
 
+    @pytest.mark.parametrize(
+        ("uri", "dialect"),
+        [(MYSQL_URI, "mysql"), (MARIADB_URI, "mariadb")],
+        ids=["mysql-uri", "mariadb-uri"],
+    )
+    def test_table_names_the_engine_and_row_format(self, uri, dialect):
+        """Both are server settings, and two guarantees rest on them. A MyISAM
+        table cannot give the Unit of Work a real transaction (ADR-0027), and
+        the 3072-byte key the width guard checks against is the DYNAMIC limit:
+        under COMPACT it is 767, so the guard would pass a key the server then
+        refuses with 1071."""
+        domain = host_domain([Article])
+        provider = mysql_provider(domain, uri)
+        with domain.domain_context():
+            table = provider.construct_database_model_class(Article).__table__
+        ddl = str(CreateTable(table).compile(provider._engine))
+
+        assert table.kwargs[f"{dialect}_engine"] == "InnoDB"
+        assert table.kwargs[f"{dialect}_row_format"] == "DYNAMIC"
+        assert "ENGINE=InnoDB" in ddl
+        assert "ROW_FORMAT=DYNAMIC" in ddl
+
 
 class IndexedJob(BaseAggregate):
     owner: String(max_length=50)

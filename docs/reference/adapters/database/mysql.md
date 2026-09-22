@@ -128,8 +128,8 @@ The case-insensitive lookups (`iexact`, `icontains`) are unaffected: they lower
 both sides of the comparison, so they keep matching every case.
 
 A [custom database model](../../../guides/change-state/database-models.md) keeps
-every table kwarg it declares except `mysql_charset` and `mysql_collate`, which
-the provider owns. The two have to agree, and a model that set only the charset
+every table kwarg it declares except `mysql_charset`, `mysql_collate`,
+`mysql_engine` and `mysql_row_format`, which the provider owns. The two have to agree, and a model that set only the charset
 would get the provider's collation over a different character set, which MySQL
 rejects at `CREATE TABLE`.
 
@@ -204,6 +204,22 @@ custom model and leaves it to `protean db setup`.
 `protean schema render --indexes` runs the same check for the `mysql` and
 `mariadb` dialects, so a rendered `.sql` file never carries DDL the server would
 reject on apply.
+
+## Storage engine and row format
+
+Tables are created `ENGINE=InnoDB ROW_FORMAT=DYNAMIC`, named rather than taken
+from the server, because two of the provider's guarantees rest on them.
+
+A MyISAM table is not transactional at all, and
+[ADR-0027](../../../adr/0027-unit-of-work-is-a-real-transaction.md) makes the
+Unit of Work one real transaction. `default_storage_engine` is an operator
+setting, so a server set to MyISAM would give you non-transactional tables with
+nothing to say so.
+
+The 3072-byte index key limit above is the `DYNAMIC` and `COMPRESSED` figure.
+Under `COMPACT` or `REDUNDANT` it is 767 bytes, and `innodb_default_row_format`
+is an operator setting too, so on such a server the key-width guard would pass
+an index the server then refuses.
 
 ## Timestamps
 

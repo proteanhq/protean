@@ -386,6 +386,12 @@ _MYSQL_DIALECTS = frozenset({"mysql", "mariadb"})
 _MYSQL_CHARSET = "utf8mb4"
 _MYSQL_DEFAULT_COLLATION = "utf8mb4_0900_as_cs"
 
+# The storage engine and row format the provider's guarantees are written
+# against. Both are server settings the operator can change, so the tables
+# Protean creates name them instead of hoping.
+_MYSQL_ENGINE = "InnoDB"
+_MYSQL_ROW_FORMAT = "DYNAMIC"
+
 # InnoDB caps an index key at 3072 bytes, and a ``utf8mb4`` character takes up to
 # 4 bytes, so a VARCHAR longer than 768 characters cannot be indexed in full —
 # which is what a primary key, a unique constraint, or any declared index needs.
@@ -575,18 +581,28 @@ def _merge_table_args(
 def _mysql_table_kwargs(
     dialect_name: str, options: dict[str, typing.Any]
 ) -> dict[str, typing.Any]:
-    """Table-level charset and collation kwargs for MySQL or MariaDB.
+    """Table-level kwargs for MySQL or MariaDB.
 
     SQLAlchemy keys dialect table kwargs by dialect name, and quietly ignores a
     prefix that does not match — ``mysql_charset`` on the ``mariadb`` dialect
     emits no ``CHARSET`` clause and raises nothing — so the prefix comes from
     the live dialect name rather than a fixed string.
+
+    The engine and row format are named rather than inherited from the server,
+    because two of the provider's guarantees rest on them. ``ADR-0027`` makes
+    the Unit of Work one real transaction, which a MyISAM table cannot give at
+    all, and ``default_storage_engine`` is an operator setting. The 3072-byte
+    index key the width guard checks against is the ``DYNAMIC`` and
+    ``COMPRESSED`` limit; under ``COMPACT`` or ``REDUNDANT`` it is 767, so the
+    guard would pass a key the server then refuses.
     """
     if dialect_name not in _MYSQL_DIALECTS:
         return {}
     return {
         f"{dialect_name}_charset": _MYSQL_CHARSET,
         f"{dialect_name}_collate": options.get("collation") or _MYSQL_DEFAULT_COLLATION,
+        f"{dialect_name}_engine": _MYSQL_ENGINE,
+        f"{dialect_name}_row_format": _MYSQL_ROW_FORMAT,
     }
 
 
