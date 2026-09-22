@@ -708,6 +708,22 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
             f"`reserved` on aggregate `{aggregate_cls.__name__}` must be field "
             f"names (strings)"
         )
+
+    # A reserved name stands for a field that once existed, so it has to look
+    # like a field name. An empty or private name never can, and reserving a
+    # private one would make `__setattr__` swallow writes to Protean's own
+    # internals: reserving `_replaying` would drop the `finally` reset in
+    # `_apply` and leave the aggregate stuck in replay mode forever.
+    unusable = [
+        name for name in reserved if name.startswith("_") or not name.isidentifier()
+    ]
+    if unusable:
+        raise IncorrectUsageError(
+            f"Name(s) {sorted(unusable)} in `reserved` on aggregate "
+            f"`{aggregate_cls.__name__}` are not field names; a reserved name "
+            f"must be the name of a field that once existed"
+        )
+
     aggregate_cls.meta_.reserved = reserved
 
     # Scan `declared_fields`, not `model_fields`: value-object and association

@@ -187,6 +187,24 @@ def test_reserved_rejects_a_non_string_element(test_domain):
             bad_id: Identifier(identifier=True)
 
 
+def test_reserved_rejects_a_private_name(test_domain):
+    """Reserving `_replaying` would make `__setattr__` drop the `finally` reset
+    in `_apply`, leaving every aggregate of this class stuck in replay mode."""
+    with pytest.raises(IncorrectUsageError, match="not field names"):
+
+        @test_domain.aggregate(event_sourced=True, reserved=["_replaying"])
+        class Bad(BaseAggregate):
+            bad_id: Identifier(identifier=True)
+
+
+def test_reserved_rejects_a_name_that_is_not_an_identifier(test_domain):
+    with pytest.raises(IncorrectUsageError, match="not field names"):
+
+        @test_domain.aggregate(event_sourced=True, reserved=["", "note"])
+        class Bad(BaseAggregate):
+            bad_id: Identifier(identifier=True)
+
+
 def test_reserved_accepts_a_bare_string(test_domain):
     @test_domain.aggregate(event_sourced=True, reserved="note")
     class Wrapped(BaseAggregate):
