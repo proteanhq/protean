@@ -129,6 +129,66 @@ class TestCustomFieldDefaultInIR:
 
 
 @pytest.fixture(scope="module")
+def fact_event_ir():
+    domain = Domain(name="Custom Field Fact Event IR")
+
+    @domain.aggregate(fact_events=True)
+    class Backdrop:
+        name: String(required=True)
+        brand: Custom(
+            Color,
+            validators=[PlainValidator(parse_color)],
+            serializers=[PlainSerializer(lambda color: color.hex, return_type=str)],
+            default=Color("#000000"),
+        )
+
+    domain.init(traverse=False)
+    return IRBuilder(domain).build()
+
+
+@pytest.mark.no_test_domain
+class TestCustomDefaultOnAGeneratedElement:
+    """A generated element carries no ``FieldSpec``.
+
+    Fact-event generation and value-object projection rebuild a field from the
+    source element's ``FieldInfo``, so the builder reads the default off the
+    resolved field instead. A custom default is a live instance of the custom
+    type there too, and the checksum is computed over ``json.dumps``.
+    """
+
+    def test_fact_event_custom_default_is_serialized(self, fact_event_ir):
+        cluster = next(
+            c
+            for fqn, c in fact_event_ir["clusters"].items()
+            if fqn.endswith(".Backdrop")
+        )
+        fact_event = next(
+            event
+            for name, event in cluster["events"].items()
+            if name.endswith("BackdropFactEvent")
+        )
+        assert fact_event["fields"]["brand"]["kind"] == "custom"
+        assert fact_event["fields"]["brand"]["default"] == "#000000"
+
+    def test_ir_with_a_fact_event_custom_default_serializes_to_json(
+        self, fact_event_ir
+    ):
+        json.dumps(fact_event_ir)
+
+    def test_ir_with_a_fact_event_custom_default_validates_against_the_schema(
+        self, fact_event_ir
+    ):
+        try:
+            validate(instance=fact_event_ir, schema=load_schema())
+        except ValidationError as exc:
+            pytest.fail(
+                f"IR with a fact-event custom default failed schema validation:\n"
+                f"  Path: {'.'.join(str(p) for p in exc.absolute_path)}\n"
+                f"  Message: {exc.message}"
+            )
+
+
+@pytest.fixture(scope="module")
 def custom_type_fields():
     domain = Domain(name="Custom Field Type Names")
 

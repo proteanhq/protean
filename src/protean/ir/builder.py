@@ -510,13 +510,15 @@ class IRBuilder:
                 else:
                     entry["default"] = self._serialize_default(field, spec.default)
         elif field.default is not None:
-            # Fallback to ResolvedField default if no spec. A custom field always
-            # carries its spec (the ``Custom`` factory builds one), so this path
-            # never sees a custom default and needs no serialization.
+            # Fallback to ResolvedField default if no spec. Generated elements —
+            # a fact event, a value object projected from an entity — rebuild
+            # their fields from ``FieldInfo`` and carry no spec, so a custom
+            # default arrives here as a live instance and needs the same
+            # serialization.
             if callable(field.default):
                 entry["default"] = "<callable>"
             else:
-                entry["default"] = field.default
+                entry["default"] = self._serialize_default(field, field.default)
 
         return entry
 
