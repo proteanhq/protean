@@ -413,6 +413,67 @@ class TestDeclaredIndexKeyWidths:
 
         assert table is not None
 
+    def test_a_value_object_shadow_column_is_measured(self):
+        """``validate_indexes`` accepts an index over a value object's shadow
+        column, so the guard has to resolve one. A ``_ShadowField`` carries no
+        ``max_length`` of its own, so the width comes from the value object's
+        field underneath it.
+        """
+
+        class Profile(BaseValueObject):
+            bio: String(max_length=900)
+
+        class Author(BaseAggregate):
+            profile: ValueObject(Profile)
+
+        domain = host_domain([])
+        domain.register(Profile)
+        domain.register(Author, indexes=[Index("profile_bio", name="ix_bio")])
+        domain.init(traverse=False)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            _check_mysql_index_key_widths([Index("profile_bio", name="ix_bio")], Author)
+
+        assert "profile_bio" in str(exc.value)
+        assert "3600 bytes" in str(exc.value)
+
+    def test_an_unbounded_value_object_shadow_column_is_rejected(self):
+        """The case that used to reach ``create_all()`` and fail with MySQL's
+        own 1071, which is the error this guard exists to replace."""
+
+        class Handle(BaseValueObject):
+            nickname: String(max_length=None)
+
+        class Member(BaseAggregate):
+            handle: ValueObject(Handle)
+
+        domain = host_domain([])
+        domain.register(Handle)
+        domain.register(Member, indexes=[Index("handle_nickname", name="ix_nick")])
+        domain.init(traverse=False)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            _check_mysql_index_key_widths(
+                [Index("handle_nickname", name="ix_nick")], Member
+            )
+
+        assert "handle_nickname" in str(exc.value)
+        assert "no max_length" in str(exc.value)
+
+    def test_a_shadow_column_within_the_cap_is_accepted(self):
+        class Address(BaseValueObject):
+            city: String(max_length=100)
+
+        class Store(BaseAggregate):
+            address: ValueObject(Address)
+
+        domain = host_domain([])
+        domain.register(Address)
+        domain.register(Store, indexes=[Index("address_city", name="ix_city")])
+        domain.init(traverse=False)
+
+        _check_mysql_index_key_widths([Index("address_city", name="ix_city")], Store)
+
     def test_the_guard_is_mysql_only(self):
         """PostgreSQL has no such cap, so the same declaration is fine there."""
 
@@ -505,6 +566,37 @@ class TestIndexDdl:
 
         assert "orcale" in str(exc.value)
         assert "mysql" in str(exc.value)
+
+
+class WideSlug(BaseAggregate):
+    slug: String(max_length=769)
+
+
+class TestRenderPathKeyWidths:
+    """The rendered ``.sql`` artifact is meant to be applied, so the offline
+    renderer runs the same key-width guard the live model builder runs. It used
+    to emit DDL InnoDB rejects at apply time.
+    """
+
+    @pytest.mark.parametrize(
+        "dialect", ["mysql", "mariadb"], ids=["mysql-dialect", "mariadb-dialect"]
+    )
+    def test_an_oversized_key_is_rejected_on_the_render_path(self, dialect):
+        host_domain([WideSlug], indexes=[Index("slug", name="ix_wide")])
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            render_index_ddl(WideSlug, dialect)
+
+        assert "ix_wide" in str(exc.value)
+        assert "3076 bytes" in str(exc.value)
+
+    def test_other_dialects_still_render_the_same_declaration(self):
+        """PostgreSQL has no such cap, so nothing changes there."""
+        host_domain([WideSlug], indexes=[Index("slug", name="ix_wide")])
+
+        assert render_index_ddl(WideSlug, "postgresql") == [
+            "CREATE INDEX ix_wide ON wide_slug (slug)"
+        ]
 
 
 class PartialJob(BaseAggregate):

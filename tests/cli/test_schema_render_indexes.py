@@ -37,6 +37,25 @@ class Product:
 """
 
 
+# A domain whose only index covers the identity: rendering it for MySQL reads
+# ``identity_type`` off ``current_domain``, which needs a pushed context.
+_IDENTITY_DOMAIN_MODULE = """
+from protean import Domain, Index
+from protean.fields import String
+
+domain = Domain(name="KeyedCLI")
+domain.config["databases"]["default"] = {
+    "provider": "sqlite",
+    "database_uri": "sqlite:///:memory:",
+}
+
+
+@domain.aggregate(indexes=[Index("id", "slug", name="ix_keyed")])
+class Article:
+    slug: String(max_length=64)
+"""
+
+
 class TestApplyErrors:
     def test_requires_indexes_flag(self):
         result = runner.invoke(app, ["render", "--domain=x"])
@@ -54,6 +73,46 @@ class TestApplyErrors:
         )
         assert result.exit_code != 0
         assert "Error loading Protean domain" in result.output
+
+
+class TestMysqlKeyWidths:
+    """``write_index_ddl`` runs the MySQL key-width guard through
+    ``render_index_ddl``. The guard sizes an identifier column from the
+    domain's ``identity_type``, which it reads off ``current_domain``, and
+    ``load_domain`` leaves no context pushed — so the writer pushes one.
+    """
+
+    @pytest.fixture
+    def keyed_domain(self, test_domain):
+        @test_domain.aggregate(indexes=[Index("id", "slug", name="ix_keyed")])
+        class Article(BaseAggregate):
+            slug = String(max_length=64)
+
+        test_domain.init(traverse=False)
+        return test_domain
+
+    @pytest.fixture
+    def wide_domain(self, test_domain):
+        @test_domain.aggregate(indexes=[Index("slug", name="ix_wide")])
+        class Essay(BaseAggregate):
+            slug = String(max_length=769)
+
+        test_domain.init(traverse=False)
+        return test_domain
+
+    def test_an_index_over_the_identity_renders(self, keyed_domain, tmp_path):
+        written = write_index_ddl(keyed_domain, str(tmp_path), ["mysql"])
+
+        assert [p.name for p in written] == ["article.indexes.mysql.sql"]
+
+    def test_an_oversized_key_is_rejected_before_any_file_is_written(
+        self, wide_domain, tmp_path
+    ):
+        with pytest.raises(IncorrectUsageError) as exc:
+            write_index_ddl(wide_domain, str(tmp_path), ["mysql"])
+
+        assert "ix_wide" in str(exc.value)
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestWriteIndexDDL:
@@ -186,6 +245,31 @@ class TestApplyCommandLive:
         pg = out / "schemas" / "Product" / "product.indexes.postgresql.sql"
         assert pg.exists()
         assert "CREATE INDEX ix_prod_active" in pg.read_text(encoding="utf-8")
+
+    def test_mysql_render_reads_identity_type_off_a_pushed_context(
+        self, tmp_path, monkeypatch
+    ):
+        """``load_domain`` initialises the domain but pushes no context, so the
+        writer pushes one for the MySQL key-width guard."""
+        module = tmp_path / "keyed_cli_domain.py"
+        module.write_text(_IDENTITY_DOMAIN_MODULE, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        out = tmp_path / "out"
+        result = runner.invoke(
+            app,
+            [
+                "render",
+                "--indexes",
+                "--domain=keyed_cli_domain",
+                "--dialects=mysql",
+                f"--output={out}",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        ddl = out / "schemas" / "Article" / "article.indexes.mysql.sql"
+        assert "CREATE INDEX ix_keyed" in ddl.read_text(encoding="utf-8")
 
     def test_apply_reports_when_no_indexes(self, tmp_path, monkeypatch):
         module = tmp_path / "plain_cli_domain.py"

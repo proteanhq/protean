@@ -20,6 +20,8 @@ SERVICES=(
   "postgres:55432"
   "message-db:55433"
   "mssql:51433"
+  "mysql:53306"
+  "mariadb:53307"
 )
 
 listening() {   # <port>

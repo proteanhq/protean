@@ -593,12 +593,19 @@ def _mysql_index_key_width(
     A string field with no ``max_length`` maps to ``TEXT``, which InnoDB cannot
     index at all without a prefix length; those are returned by name rather than
     given a width, because no width would make them indexable.
+
+    An index may name a declared field or the persisted attribute behind it,
+    since ``validate_indexes`` accepts both. A value-object attribute arrives as
+    a ``_ShadowField`` wrapping the value object's own field, so it is unwrapped
+    the same way the model mapper unwraps it.
     """
     width = 0
     unbounded: list[str] = []
-    entity_fields = fields(entity_cls)
+    entity_fields = {**attributes(entity_cls), **fields(entity_cls)}
     for field_name in index.fields:
         field_obj = entity_fields.get(field_name)
+        if isinstance(field_obj, _ShadowField):
+            field_obj = field_obj.field_obj
         if not isinstance(field_obj, ResolvedField):
             continue
 
@@ -644,7 +651,8 @@ def _check_mysql_index_key_widths(declared: typing.Any, entity_cls: typing.Any) 
             raise IncorrectUsageError(
                 f"Index {name!r} on '{entity_cls.__name__}' covers "
                 f"{', '.join(unbounded)}, which {'have' if len(unbounded) > 1 else 'has'} "
-                f"no max_length and so map to TEXT. InnoDB cannot index a TEXT "
+                f"no max_length and so {'map' if len(unbounded) > 1 else 'maps'} "
+                f"to TEXT. InnoDB cannot index a TEXT "
                 f"column without a prefix length, so declare one "
                 f"(e.g. Field(max_length=255))."
             )
@@ -698,12 +706,22 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     irrelevant to index DDL) and compiles them with the target dialect. Used by
     ``protean schema render --indexes`` to write ``.sql`` artifacts without a
     live database connection.
+
+    Needs an active domain context on the MySQL and MariaDB dialects: the
+    key-width guard sizes an identifier column from the domain's
+    ``identity_type``. ``write_index_ddl`` pushes one.
     """
     check_index_ddl_dialect(dialect_name)
 
     declared = getattr(entity_cls.meta_, "indexes", ()) or ()
     if not declared:
         return []
+
+    if dialect_name in _MYSQL_DIALECTS:
+        # Same guard as the live model builder. Rendering is offline, but the
+        # DDL it writes is meant to be applied, and InnoDB rejects an oversized
+        # key at apply time with an error that names no fields.
+        _check_mysql_index_key_widths(declared, entity_cls)
 
     attr_for = _attribute_map(entity_cls)
     table_name = entity_cls.meta_.schema_name or entity_cls.derive_schema_name()

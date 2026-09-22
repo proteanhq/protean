@@ -15,10 +15,13 @@ from datetime import datetime
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DatabaseError
 
-from protean import Domain, UnitOfWork
+from protean import Domain, Index, UnitOfWork
 from protean.core.aggregate import BaseAggregate
-from protean.fields import DateTime, Dict, Integer, List, String, Text
+from protean.core.value_object import BaseValueObject
+from protean.exceptions import IncorrectUsageError
+from protean.fields import DateTime, Dict, Integer, List, String, Text, ValueObject
 from tests.shared import MARIADB_URI, MYSQL_URI
 
 pytestmark = [pytest.mark.mysql, pytest.mark.no_test_domain]
@@ -225,3 +228,102 @@ class TestTransactionBehaviour:
             surviving = conn.execute(text("SELECT COUNT(*) FROM note")).scalar()
 
         assert surviving == 1
+
+
+class TestIndexKeyWidthGuard:
+    """The guard exists to replace MySQL's own 1071 with a message that names
+    the field. These run it against a live server, including the value-object
+    shadow column, which reached ``create_all()`` before.
+    """
+
+    @staticmethod
+    def build(uri, aggregate_cls, value_object_cls, indexes):
+        domain = Domain(
+            name="MySQL key widths",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.register(value_object_cls)
+        domain.register(aggregate_cls, indexes=indexes)
+        domain.init(traverse=False)
+
+        provider = domain.providers["default"]
+        try:
+            with domain.domain_context():
+                domain.repository_for(aggregate_cls)._dao
+                provider._metadata.create_all(provider._engine)
+        finally:
+            provider._metadata.drop_all(provider._engine)
+            provider.close()
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_an_unbounded_value_object_column_is_named(self, uri):
+        class Profile(BaseValueObject):
+            handle: String(max_length=None)
+
+        class Author(BaseAggregate):
+            profile: ValueObject(Profile)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            self.build(
+                uri, Author, Profile, [Index("profile_handle", name="ix_handle")]
+            )
+
+        assert "profile_handle" in str(exc.value)
+        assert "no max_length" in str(exc.value)
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_an_oversized_value_object_column_is_named(self, uri):
+        class Bio(BaseValueObject):
+            text: String(max_length=900)
+
+        class Writer(BaseAggregate):
+            bio: ValueObject(Bio)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            self.build(uri, Writer, Bio, [Index("bio_text", name="ix_bio")])
+
+        assert "bio_text" in str(exc.value)
+        assert "3600 bytes" in str(exc.value)
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_what_the_servers_do_without_the_guard(self, uri):
+        """The two servers disagree, and neither outcome is one to ship.
+
+        MySQL raises 1071 with the table's SQL echoed back and no mention of
+        the aggregate or the declaration. MariaDB does not raise at all: it
+        demotes the key to a 768-character prefix and files 1071 as a note, so
+        the index quietly covers part of the column.
+        """
+        domain = Domain(
+            name="MySQL raw key",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.init(traverse=False)
+        provider = domain.providers["default"]
+        create = (
+            "CREATE TABLE wide_probe ("
+            "  bio_text VARCHAR(900) CHARACTER SET utf8mb4,"
+            "  INDEX ix_bio (bio_text)"
+            ")"
+        )
+        try:
+            with provider._engine.connect() as conn:
+                try:
+                    conn.execute(text(create))
+                except DatabaseError as exc:
+                    assert "max key length is 3072 bytes" in str(exc)
+                    return
+
+                definition = conn.execute(text("SHOW CREATE TABLE wide_probe")).one()[1]
+                assert "`bio_text`(768)" in definition
+        finally:
+            with provider._engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS wide_probe"))
+                conn.commit()
+            provider.close()

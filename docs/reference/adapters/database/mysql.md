@@ -179,6 +179,14 @@ Each field fits on its own; together they overrun the key. Only string columns
 count toward the total, since nothing else in a Protean model comes close (the
 widest is a UUID identity at `CHAR(32)`, 128 bytes).
 
+An index may name a value object's shadow column (`Index("address_city")` for a
+`city` field on an embedded `Address`), and those are measured the same way,
+from the value object's own field.
+
+`protean schema render --indexes` runs the same check for the `mysql` and
+`mariadb` dialects, so a rendered `.sql` file never carries DDL the server would
+reject on apply.
+
 ## Timestamps
 
 MySQL's `DATETIME` carries zero fractional-second digits unless the column says
