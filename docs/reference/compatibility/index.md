@@ -190,8 +190,10 @@ a downgrade the checker can verify against the actual schema:
 - A `deprecated` mark with a `removal` version earns the expected-removal grace.
 - A registered [upcaster](../../patterns/event-versioning-and-evolution.md) chain
   earns the mitigation for an event's version bump.
-- Making an aggregate event-sourced earns the downgrade for its field removals,
-  because its state is then rebuilt from events rather than read from a table.
+- An aggregate that is event-sourced on both sides of the change earns the
+  downgrade for its field removals, because its state is rebuilt from events
+  instead of read from a table. Converting an aggregate to event sourcing earns
+  nothing: its existing state is table rows that replay cannot rebuild.
 
 `exclude` earns nothing. It silences the alert without proving the change is
 safe, so it is the coarse last resort for the element types the checker cannot
