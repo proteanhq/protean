@@ -1039,6 +1039,279 @@ class TestRenameOnEventStillSafe:
 # ------------------------------------------------------------------
 
 
+# ------------------------------------------------------------------
+# Replay hazards on an event-sourced aggregate
+# ------------------------------------------------------------------
+
+
+def _es_options(stream_category: str | None = "order", **overrides: object) -> dict:
+    """Aggregate options for an event-sourced aggregate."""
+    options: dict = {
+        "auto_add_id_field": True,
+        "fact_events": False,
+        "is_event_sourced": True,
+        "limit": 100,
+        "provider": "default",
+        "schema_name": None,
+        "stream_category": stream_category,
+    }
+    options.update(overrides)
+    return options
+
+
+def _es_cluster(
+    fields: dict | None = None,
+    events: dict | None = None,
+    apply_handlers: dict | None = None,
+    identity_field: str = "id",
+    options: dict | None = None,
+) -> dict:
+    """An event-sourced aggregate cluster, with @apply handlers."""
+    cluster = _make_cluster(
+        "Order",
+        fields=fields if fields is not None else {"id": _std(), "note": _std()},
+        events=events,
+        options=options or _es_options(),
+    )
+    cluster["aggregate"]["identity_field"] = identity_field
+    cluster["aggregate"]["apply_handlers"] = (
+        apply_handlers
+        if apply_handlers is not None
+        else {"app.OrderPlaced": "on_order_placed"}
+    )
+    return cluster
+
+
+def _types(report: CompatibilityReport) -> set[str]:
+    return {c.change_type for c in report.breaking_changes}
+
+
+class TestReplayHazards:
+    """A change that stops an event-sourced aggregate being rebuilt is reported
+    on its own, whether or not the aggregate has any other change."""
+
+    def test_stream_category_move_is_breaking(self):
+        left = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        right = _minimal_ir(
+            clusters={"app.Order": _es_cluster(options=_es_options("orders"))}
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "stream_category_changed" in _types(report)
+
+    def test_identity_field_move_is_breaking(self):
+        left = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std(), "ref": _std(), "note": _std()},
+                    identity_field="ref",
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "identity_field_changed" in _types(report)
+
+    def test_dropped_apply_handler_is_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    apply_handlers={
+                        "app.OrderPlaced": "on_placed",
+                        "app.OrderPaid": "on_paid",
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    apply_handlers={"app.OrderPlaced": "on_placed"}
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "apply_handler_removed" in _types(report)
+        dropped = [
+            c
+            for c in report.breaking_changes
+            if c.change_type == "apply_handler_removed"
+        ]
+        assert len(dropped) == 1
+        assert "app.OrderPaid" in dropped[0].message
+
+    def test_every_dropped_handler_is_reported(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    apply_handlers={
+                        "app.OrderPlaced": "on_placed",
+                        "app.OrderPaid": "on_paid",
+                        "app.OrderShipped": "on_shipped",
+                    }
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    apply_handlers={"app.OrderPlaced": "on_placed"}
+                )
+            }
+        )
+        report = _run(left, right)
+        dropped = [
+            c
+            for c in report.breaking_changes
+            if c.change_type == "apply_handler_removed"
+        ]
+        assert len(dropped) == 2
+
+    def test_classic_to_event_sourced_is_breaking(self):
+        left = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"id": _std()})}
+        )
+        right = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "event_sourcing_changed" in _types(report)
+
+    def test_event_sourced_to_classic_is_breaking(self):
+        left = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        right = _minimal_ir(
+            clusters={"app.Order": _make_cluster("Order", fields={"id": _std()})}
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "event_sourcing_changed" in _types(report)
+
+    def test_storage_mode_flip_reports_once_not_four_times(self):
+        """With event sourcing itself moving there is no like-for-like stream to
+        ask about, so the flip is the whole answer."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()},
+                    apply_handlers={"app.OrderPlaced": "on_placed"},
+                )
+            }
+        )
+        right_cluster = _make_cluster("Order", fields={"ref": _std()}, options=None)
+        right_cluster["aggregate"]["identity_field"] = "ref"
+        right_cluster["aggregate"]["apply_handlers"] = {}
+        right = _minimal_ir(clusters={"app.Order": right_cluster})
+        report = _run(left, right)
+        assert (
+            _types(report)
+            & {
+                "stream_category_changed",
+                "identity_field_changed",
+                "apply_handler_removed",
+            }
+            == set()
+        )
+        assert "event_sourcing_changed" in _types(report)
+
+    def test_hazard_fires_with_no_field_change_at_all(self):
+        """The point of reporting the hazard in its own right: an aggregate whose
+        stream category moved and whose fields did not move is still breaking."""
+        left = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        right = _minimal_ir(
+            clusters={"app.Order": _es_cluster(options=_es_options("orders"))}
+        )
+        report = _run(left, right)
+        assert [c.change_type for c in report.breaking_changes] == [
+            "stream_category_changed"
+        ]
+
+    def test_unchanged_event_sourced_aggregate_has_no_hazard(self):
+        left = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        right = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        report = _run(left, right)
+        assert report.is_breaking is False
+
+    def test_added_event_sourced_aggregate_has_no_hazard(self):
+        left = _minimal_ir(clusters={})
+        right = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        report = _run(left, right)
+        assert (
+            _types(report)
+            & {
+                "event_sourcing_changed",
+                "stream_category_changed",
+                "identity_field_changed",
+                "apply_handler_removed",
+            }
+            == set()
+        )
+
+    def test_classic_aggregate_stream_category_is_not_a_replay_hazard(self):
+        """Classic on both sides: state is a table, so nothing here applies. The
+        broader question of a classic aggregate's event stream is out of scope."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"id": _std()},
+                    options=_es_options("order", is_event_sourced=False),
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"id": _std()},
+                    options=_es_options("orders", is_event_sourced=False),
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is False
+
+    def test_identity_field_type_change_is_already_reported(self):
+        """The boundary: the identity field's name holding still while its type
+        moves is `field_type_changed`, not a new hazard type."""
+        left = _minimal_ir(
+            clusters={"app.Order": _es_cluster(fields={"id": _std("Float")})}
+        )
+        right = _minimal_ir(
+            clusters={"app.Order": _es_cluster(fields={"id": _std("Integer")})}
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "field_type_changed" in _types(report)
+        assert "identity_field_changed" not in _types(report)
+
+    def test_removed_rebuilding_event_is_already_reported(self):
+        """The other boundary: an event dropped from the domain is
+        `element_removed` on the event."""
+        placed = _make_event(
+            "OrderPlaced", "app.OrderPlaced", {"amount": _std("Float")}
+        )
+        left = _minimal_ir(
+            clusters={"app.Order": _es_cluster(events={"app.OrderPlaced": placed})}
+        )
+        right = _minimal_ir(clusters={"app.Order": _es_cluster(events={})})
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "element_removed" in _types(report)
+
+    def test_hazards_are_neutral_for_the_avro_verdict(self):
+        """A stream move changes where bytes are read from, not the bytes, so it
+        is breaking in the report and neutral for Avro decode (the same split
+        the visibility flips use)."""
+        left = _minimal_ir(clusters={"app.Order": _es_cluster()})
+        right = _minimal_ir(
+            clusters={"app.Order": _es_cluster(options=_es_options("orders"))}
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert report.avro_verdict == "FULL"
+
+
 class TestClassifyTypeStringChanged:
     def test_type_string_change_in_event_is_breaking(self):
         left_event = _make_event("OrderPlaced", "app.OrderPlaced")
