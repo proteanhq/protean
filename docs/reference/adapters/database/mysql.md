@@ -183,6 +183,12 @@ An index may name a value object's shadow column (`Index("address_city")` for a
 `city` field on an embedded `Address`), and those are measured the same way,
 from the value object's own field.
 
+A [custom database model](../../../guides/change-state/database-models.md)
+declares its own columns, and InnoDB caps the column. So when an aggregate has
+one, the width comes from the column the model declares, not from the field. A
+model that narrows `String(max_length=900)` to `Column(String(100))` indexes
+fine, and one that widens a short field past the cap raises.
+
 `protean schema render --indexes` runs the same check for the `mysql` and
 `mariadb` dialects, so a rendered `.sql` file never carries DDL the server would
 reject on apply.

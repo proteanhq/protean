@@ -630,7 +630,48 @@ def _mysql_index_key_width(
     return width, unbounded
 
 
-def _check_mysql_index_key_widths(declared: typing.Any, entity_cls: typing.Any) -> None:
+def _mysql_index_key_width_from_columns(
+    index: typing.Any, column_for: Callable[[str], typing.Any]
+) -> tuple[int, list[str]]:
+    """Bytes the columns of ``index`` contribute, and any that map to TEXT.
+
+    The column-mapping loop leaves an attribute alone when the model already
+    declares it, so a custom database model decides its own column widths. It
+    can narrow a wide field or widen a narrow one, and InnoDB measures the
+    column. Measuring the field instead rejected an index over a narrowed
+    column and passed one over a widened column, which then failed at
+    ``create_all()`` with the 1071 this guard exists to replace.
+
+    A column ``column_for`` cannot resolve is skipped: indexing a value object
+    by its logical name is one such case, and ``_make_sa_indexes`` raises its
+    own error for it.
+    """
+    width = 0
+    unbounded: list[str] = []
+    for field_name in index.fields:
+        column_type = getattr(column_for(field_name), "type", None)
+
+        if isinstance(column_type, GUID):
+            # CHAR(32) on MySQL, per ``GUID.load_dialect_impl``.
+            width += 32 * _MYSQL_BYTES_PER_CHAR
+            continue
+
+        # ``Text`` is a ``String`` with no length, and maps to a TEXT column
+        # InnoDB cannot index without a prefix length.
+        if not isinstance(column_type, sa_types.String):
+            continue
+        if column_type.length:
+            width += column_type.length * _MYSQL_BYTES_PER_CHAR
+        else:
+            unbounded.append(field_name)
+    return width, unbounded
+
+
+def _check_mysql_index_key_widths(
+    declared: typing.Any,
+    entity_cls: typing.Any,
+    column_for: Callable[[str], typing.Any] | None = None,
+) -> None:
     """Reject a declared ``Index`` whose key cannot fit InnoDB's 3072-byte cap.
 
     The column-level guard in the model builder only sees a field's own
@@ -638,6 +679,10 @@ def _check_mysql_index_key_widths(declared: typing.Any, entity_cls: typing.Any) 
     ``Index(...)`` API reached ``create_all()`` and failed there with MySQL's
     ``Specified key was too long`` instead of a message naming the fields.
     Composite indexes are summed, since InnoDB caps the whole key.
+
+    Pass ``column_for`` to measure the columns the model will really index,
+    which is what InnoDB caps. The offline renderer builds a throwaway table
+    whose columns carry no real types, so it measures the declared fields.
     """
     for index in declared:
         if not isinstance(index, ProteanIndex):
@@ -645,7 +690,10 @@ def _check_mysql_index_key_widths(declared: typing.Any, entity_cls: typing.Any) 
 
         covered = ", ".join(index.fields)
         name = index.name or f"over {covered}"
-        width, unbounded = _mysql_index_key_width(index, entity_cls)
+        if column_for is None:
+            width, unbounded = _mysql_index_key_width(index, entity_cls)
+        else:
+            width, unbounded = _mysql_index_key_width_from_columns(index, column_for)
 
         if unbounded:
             raise IncorrectUsageError(
@@ -681,13 +729,17 @@ def _build_sa_indexes(
     if not declared:
         return [], []
 
-    if dialect_name in _MYSQL_DIALECTS:
-        _check_mysql_index_key_widths(declared, entity_cls)
-
     attr_for = _attribute_map(entity_cls)
 
     def column_for(field_name: str) -> typing.Any:
         return getattr(model_cls, attr_for.get(field_name, field_name))
+
+    def declared_column_for(field_name: str) -> typing.Any:
+        """``column_for`` without the AttributeError, for the width guard."""
+        return getattr(model_cls, attr_for.get(field_name, field_name), None)
+
+    if dialect_name in _MYSQL_DIALECTS:
+        _check_mysql_index_key_widths(declared, entity_cls, declared_column_for)
 
     return _make_sa_indexes(
         declared,
@@ -786,7 +838,7 @@ def _mysql_column_type(
 ) -> tuple[typing.Any, dict[str, typing.Any]]:
     """Adjust a mapped column type for MySQL and MariaDB.
 
-    Two things differ from the other dialects:
+    What differs from the other dialects:
 
     * ``DATETIME`` drops microseconds unless the column declares fractional
       seconds.

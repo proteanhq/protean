@@ -14,6 +14,7 @@ assertion is the only thing standing between the adapter and a wrong answer.
 import logging
 
 import pytest
+from sqlalchemy import Column
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import mysql as mysql_dialect
 from sqlalchemy.schema import CreateTable
@@ -31,6 +32,7 @@ from protean.adapters.repository.sqlalchemy import (
     render_index_ddl,
 )
 from protean.core.aggregate import BaseAggregate
+from protean.core.database_model import BaseDatabaseModel
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import DateTime, Dict, Integer, List, String, Text, ValueObject
@@ -490,6 +492,103 @@ class TestDeclaredIndexKeyWidths:
             table = provider.construct_database_model_class(WideElsewhere).__table__
 
         assert "ix_pg" in {index.name for index in table.indexes}
+
+
+class TestMappedColumnKeyWidths:
+    """On the live path the guard measures the columns the model will really
+    index. A custom database model keeps its own column definitions, so the
+    declared field is not what InnoDB ends up capping.
+    """
+
+    @staticmethod
+    def table_with_custom_model(aggregate_cls, model_cls, indexes):
+        """The table built from a user-declared database model.
+
+        A custom model goes through ``decorate_database_model_class``, not
+        ``construct_database_model_class``, which is the path the repository
+        takes when an aggregate has a model registered against it.
+        """
+        domain = host_domain([])
+        domain.register(aggregate_cls, indexes=indexes)
+        domain.register(model_cls, part_of=aggregate_cls)
+        domain.init(traverse=False)
+        provider = mysql_provider(domain)
+        with domain.domain_context():
+            decorated = provider.decorate_database_model_class(aggregate_cls, model_cls)
+            return decorated.__table__
+
+    def test_a_narrowed_column_is_accepted(self):
+        """The field is past the cap, the column the model declares is not.
+        Measuring the field rejected a schema MySQL accepts."""
+
+        class Doc(BaseAggregate):
+            slug: String(max_length=900)
+
+        class DocCustomModel(BaseDatabaseModel):
+            slug = Column(sa_types.String(100))
+
+        table = self.table_with_custom_model(
+            Doc, DocCustomModel, [Index("slug", name="ix_narrow")]
+        )
+
+        assert table.c["slug"].type.length == 100
+        assert "ix_narrow" in {index.name for index in table.indexes}
+
+    def test_a_widened_column_is_rejected(self):
+        """The field fits and the column does not. Measuring the field let this
+        through to ``create_all()``, which is where MySQL raises 1071."""
+
+        class Note(BaseAggregate):
+            slug: String(max_length=50)
+
+        class NoteCustomModel(BaseDatabaseModel):
+            slug = Column(sa_types.String(900))
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            self.table_with_custom_model(
+                Note, NoteCustomModel, [Index("slug", name="ix_wide")]
+            )
+
+        assert "ix_wide" in str(exc.value)
+        assert "3600 bytes" in str(exc.value)
+
+    def test_a_column_mapped_to_text_cannot_be_indexed(self):
+        class Essay(BaseAggregate):
+            body: String(max_length=100)
+
+        class EssayCustomModel(BaseDatabaseModel):
+            body = Column(sa_types.Text())
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            self.table_with_custom_model(
+                Essay, EssayCustomModel, [Index("body", name="ix_body")]
+            )
+
+        assert "body" in str(exc.value)
+        assert "no max_length" in str(exc.value)
+
+    def test_a_value_object_shadow_column_is_measured_on_the_live_path(self):
+        """The shadow column is a real column, so it needs no name resolution
+        here. The offline renderer has no columns and resolves the name."""
+
+        class Bio(BaseValueObject):
+            text: String(max_length=900)
+
+        class Writer(BaseAggregate):
+            bio: ValueObject(Bio)
+
+        domain = host_domain([])
+        domain.register(Bio)
+        domain.register(Writer, indexes=[Index("bio_text", name="ix_bio")])
+        domain.init(traverse=False)
+        provider = mysql_provider(domain)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            with domain.domain_context():
+                provider.construct_database_model_class(Writer)
+
+        assert "bio_text" in str(exc.value)
+        assert "3600 bytes" in str(exc.value)
 
 
 class TestTableArgs:

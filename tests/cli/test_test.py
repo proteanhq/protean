@@ -164,9 +164,15 @@ class TestTestRunner:
         suites = mock_runner.generate_test_suites()
 
         # Full Matrix, one per database, one per broker, one per non-memory
-        # event store. Derived rather than written down, so adding a database
-        # does not leave a stale number here.
-        expected = 1 + len(TEST_CONFIGS["databases"]) + len(TEST_CONFIGS["brokers"]) + 1
+        # event store. Every term is derived, so adding an adapter to
+        # TEST_CONFIGS that the generator does not pick up fails here.
+        event_stores = [s for s in TEST_CONFIGS["eventstores"] if s != "MEMORY"]
+        expected = (
+            1
+            + len(TEST_CONFIGS["databases"])
+            + len(TEST_CONFIGS["brokers"])
+            + len(event_stores)
+        )
         assert len(suites) == expected
         suite_names = [suite.name for suite in suites]
 
