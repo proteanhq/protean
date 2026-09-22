@@ -47,7 +47,7 @@ class ProductInventory:
 
 ## Key rules
 
-1. **At least one identifier field** - Every projection must have a field with `identifier=True`
+1. **At least one identifier field** - Every non-abstract projection must have a field with `identifier=True`; abstract projections are exempt from this check
 2. **No Reference or Association fields** - `Reference` and Associations (`HasOne`/`HasMany`) are rejected. Basic field types and `ValueObject` fields are allowed; a `ValueObject` is stored as flattened shadow fields (e.g. `address_street`, `address_city`)
 3. **Use @domain.projection decorator** - Register with domain: `@domain.projection` or `domain.register(MyProjection)`
 4. **Projections are denormalized** - Flatten nested/related data into basic fields
@@ -56,7 +56,7 @@ class ProductInventory:
 7. **Default query limit is 100** - Can be overridden; set to `None` or negative for unlimited
 8. **Schema name auto-derived** - Defaults to underscore-cased class name (e.g., `ProductInventory` -> `product_inventory`)
 9. **Identifier values are immutable** - Once set, the identifier field cannot be changed
-10. **Identifier values auto-generate when omitted** - Non-abstract projections generate an identifier value on creation if you do not supply one (a UUID by default), the same as aggregates
+10. **Identifier values auto-generate when omitted, for `Identifier`/`Auto` fields** - An `identifier=True` field declared as `Identifier` or `Auto` generates a value on creation if you do not supply one (a UUID by default), the same as aggregates. An `identifier=True` field declared with another field type (e.g. `String`) gets no default and stays required
 
 ## Projection options
 
