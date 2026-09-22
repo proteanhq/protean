@@ -32,7 +32,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Turn event sourcing on or off for an aggregate | **Breaking** (`event_sourcing_changed`) |
 | Move an event-sourced aggregate's `stream_category` | **Breaking** (`stream_category_changed`) |
 | Point an event-sourced aggregate's identity at another field | **Breaking** (`identity_field_changed`) |
-| Drop an `@apply` handler from an event-sourced aggregate | **Breaking** (`apply_handler_removed`) |
+| Drop an `@apply` handler while its event survives | **Breaking** (`apply_handler_removed`) |
 
 These rules apply to all persisted elements: aggregates, entities, value
 objects, commands, events, database models, and projections.
@@ -48,13 +48,15 @@ moving the stream category leaves the whole history under the old name, and
 pointing the identity at another field asks for a stream keyed by a value no
 writer ever used. Either way a load of an existing aggregate finds nothing.
 Turning event sourcing on or off changes where state lives, and the old state
-cannot be read the new way. Dropping an `@apply` handler leaves historical
-events of that type with nothing to apply them, and the rebuild raises.
+cannot be read the new way. Dropping an `@apply` handler while its event survives leaves
+historical events of that type with nothing to apply them, and the rebuild
+raises.
 
 Two related cases are already covered by the general rules above and are not
 reported again here: a change to the identity field's *type* is a
 `field_type_changed`, and an event removed from the domain outright is an
-`element_removed` on that event.
+`element_removed` on that event. Deleting an event class and its `@apply`
+method together is one act, so it reports once, as the removal.
 
 ### Evolution-aware classification
 

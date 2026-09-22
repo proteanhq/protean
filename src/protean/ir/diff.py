@@ -1114,12 +1114,13 @@ def _classify_replay_hazards(
       value no writer ever used. A change to the identity field's *type* is
       already reported as ``field_type_changed``, which covers the case where
       the name holds still but ``str(value)`` does not.
-    - **An ``@apply`` handler was dropped.** Replay applies every stored event
-      through its handler and ``BaseAggregate._apply_handler`` raises
-      ``IncorrectUsageError`` when an event has none ("There is no silent
-      fallback"), so historical events of that type stop the rebuild. A
-      rebuilding event removed from the domain outright is already reported as
-      ``element_removed`` on the event.
+    - **An ``@apply`` handler was dropped while its event survives.** Replay
+      applies every stored event through its handler and
+      ``BaseAggregate._apply_handler`` raises ``IncorrectUsageError`` when an
+      event has none ("There is no silent fallback"), so historical events of
+      that type stop the rebuild. Deleting the event class and its handler
+      together is one act, not two, and ``element_removed`` on the event is the
+      report for it.
 
     Each is emitted as its own breaking change against the aggregate, rather
     than folded into the severity of some other change. An operator who moved a
@@ -1130,6 +1131,9 @@ def _classify_replay_hazards(
     is event-sourced is a fact about both sides, not only about what moved.
     """
     left_clusters = left_ir.get("clusters", {})
+    # Events this diff dropped from the domain, read across every cluster: an
+    # aggregate can apply an event that belongs to another aggregate's cluster.
+    removed_events = set(_events_by_fqn(left_ir)) - set(_events_by_fqn(right_ir))
     for fqn, right_cluster in right_ir.get("clusters", {}).items():
         left_cluster = left_clusters.get(fqn)
         if left_cluster is None:
@@ -1200,7 +1204,16 @@ def _classify_replay_hazards(
 
         right_apply_handlers = right_aggregate.get("apply_handlers", {})
         for event_fqn in left_aggregate.get("apply_handlers", {}):
-            if event_fqn not in right_apply_handlers:
+            # Not when this diff deleted the event itself. Removing an event
+            # class and its `@apply` method together is one act, and
+            # `element_removed` on the event is the report for it; a second
+            # entry here would say the same thing twice. Any other shape still
+            # reports, including a handler naming an event neither snapshot
+            # registers, where nothing else would.
+            if (
+                event_fqn not in right_apply_handlers
+                and event_fqn not in removed_events
+            ):
                 report.breaking_changes.append(
                     CompatibilityChange(
                         severity="breaking",

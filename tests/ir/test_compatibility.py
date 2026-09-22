@@ -1299,6 +1299,55 @@ class TestReplayHazards:
         assert report.is_breaking is True
         assert "element_removed" in _types(report)
 
+    def test_event_and_its_handler_deleted_together_report_once(self):
+        """Deleting the event class and its `@apply` method is one act. The
+        report is `element_removed` on the event, not that plus a handler
+        removal saying the same thing."""
+        placed = _make_event(
+            "OrderPlaced", "app.OrderPlaced", {"amount": _std("Float")}
+        )
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    events={"app.OrderPlaced": placed},
+                    apply_handlers={"app.OrderPlaced": "on_placed"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={"app.Order": _es_cluster(events={}, apply_handlers={})}
+        )
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert "element_removed" in _types(report)
+        assert "apply_handler_removed" not in _types(report)
+
+    def test_dropped_handler_for_a_surviving_event_still_reports(self):
+        """The control: the event is still in the domain, so losing its handler
+        is a hazard of its own and nothing else reports it."""
+        placed = _make_event(
+            "OrderPlaced", "app.OrderPlaced", {"amount": _std("Float")}
+        )
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    events={"app.OrderPlaced": placed},
+                    apply_handlers={"app.OrderPlaced": "on_placed"},
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    events={"app.OrderPlaced": placed}, apply_handlers={}
+                )
+            }
+        )
+        report = _run(left, right)
+        assert [c.change_type for c in report.breaking_changes] == [
+            "apply_handler_removed"
+        ]
+
     def test_hazards_are_neutral_for_the_avro_verdict(self):
         """A stream move changes where bytes are read from, not the bytes, so it
         is breaking in the report and neutral for Avro decode (the same split
