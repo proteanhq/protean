@@ -11,7 +11,7 @@ operational walkthrough that ties these together, see the
 
 ### SQLAlchemy providers
 
-Pool defaults for `postgresql` and `mssql` providers (SQLite uses
+Pool defaults for the `postgresql`, `mssql` and `mysql` providers (SQLite uses
 `SingletonThreadPool` and ignores these keys).
 
 | Key | Default | Purpose |

@@ -303,6 +303,7 @@ dependencies.
 - [Memory](./reference/adapters/database/memory.md): Default in-memory provider for development and testing.
 - [SQLite](./reference/adapters/database/sqlite.md): File-based relational provider using SQLAlchemy.
 - [PostgreSQL](./reference/adapters/database/postgresql.md): SQLAlchemy-based adapter for PostgreSQL.
+- [MySQL](./reference/adapters/database/mysql.md): SQLAlchemy and PyMySQL adapter for MySQL and MariaDB.
 - [MSSQL](./reference/adapters/database/mssql.md): SQLAlchemy and pyodbc adapter for Microsoft SQL Server.
 - [Elasticsearch](./reference/adapters/database/elasticsearch.md): Document store adapter for search and analytics.
 - [Custom Database Adapters](./reference/adapters/database/custom-databases.md): Build your own database adapter with entry-point registration.
