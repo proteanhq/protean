@@ -24,21 +24,24 @@ from protean.adapters.repository.sqlalchemy import (
     _MYSQL_DIALECTS,
     SADAO,
     MysqlProvider,
+    PostgresqlProvider,
     SqliteProvider,
+    _check_mysql_index_key_widths,
     _mysql_table_kwargs,
     render_index_ddl,
 )
 from protean.core.aggregate import BaseAggregate
-from protean.exceptions import IncorrectUsageError
-from protean.fields import DateTime, Dict, Integer, List, String, Text
+from protean.core.value_object import BaseValueObject
+from protean.exceptions import ConfigurationError, IncorrectUsageError
+from protean.fields import DateTime, Dict, Integer, List, String, Text, ValueObject
 from protean.port.provider import DatabaseCapabilities
 from protean.utils import Database
-from tests.shared import MARIADB_URI, MYSQL_URI
+from tests.shared import MARIADB_URI, MYSQL_URI, POSTGRES_URI
 
 pytestmark = pytest.mark.no_test_domain
 
 
-def host_domain(aggregates, indexes=None):
+def host_domain(aggregates, indexes=None, identity_type="uuid"):
     """A memory-backed domain that owns the registered aggregates.
 
     The MySQL provider is built separately against this domain, so nothing in
@@ -48,7 +51,7 @@ def host_domain(aggregates, indexes=None):
     domain = Domain(
         name="MySQL mapping",
         config={
-            "identity_type": "uuid",
+            "identity_type": identity_type,
             "databases": {"default": {"provider": "memory"}},
         },
     )
@@ -66,9 +69,11 @@ def mysql_provider(domain, uri=MYSQL_URI, **config):
     )
 
 
-def table_for(aggregate_cls, uri=MYSQL_URI, **config):
+def table_for(
+    aggregate_cls, uri=MYSQL_URI, indexes=None, identity_type="uuid", **config
+):
     """The SQLAlchemy ``Table`` the MySQL provider builds for ``aggregate_cls``."""
-    domain = host_domain([aggregate_cls])
+    domain = host_domain([aggregate_cls], indexes=indexes, identity_type=identity_type)
     provider = mysql_provider(domain, uri, **config)
     with domain.domain_context():
         return provider.construct_database_model_class(aggregate_cls).__table__
@@ -120,35 +125,39 @@ class TestProviderConfiguration:
 
         assert args["connect_args"]["charset"] == "utf8mb4"
 
-    def test_charset_and_collation_are_not_forwarded_to_create_engine(self):
-        """Both are provider config, not SQLAlchemy engine arguments.
+    def test_collation_is_not_forwarded_to_create_engine(self):
+        """It is provider config, not a SQLAlchemy engine argument.
 
         ``_additional_engine_args`` forwards every unrecognised ``conn_info``
         key to ``create_engine``, which rejects an unknown keyword, so a
         provider adding a config key has to exclude it explicitly.
         """
-        provider = mysql_provider(
-            host_domain([]), charset="utf8mb4", collation="utf8mb4_bin"
-        )
+        provider = mysql_provider(host_domain([]), collation="utf8mb4_bin")
         args = provider._additional_engine_args()
 
-        assert "charset" not in args
         assert "collation" not in args
         assert args["connect_args"]["charset"] == "utf8mb4"
 
-    def test_charset_and_collation_defaults(self):
-        provider = mysql_provider(host_domain([]))
-
-        assert provider.collation == _MYSQL_DEFAULT_COLLATION
-        assert provider.charset == "utf8mb4"
-
-    def test_charset_and_collation_overrides(self):
-        provider = mysql_provider(
-            host_domain([]), charset="utf8mb3", collation="utf8mb4_bin"
+    def test_collation_default_and_override(self):
+        assert mysql_provider(host_domain([])).collation == _MYSQL_DEFAULT_COLLATION
+        assert (
+            mysql_provider(host_domain([]), collation="utf8mb4_bin").collation
+            == "utf8mb4_bin"
         )
 
-        assert provider.collation == "utf8mb4_bin"
-        assert provider.charset == "utf8mb3"
+    def test_the_charset_is_pinned(self):
+        """A narrower charset cannot hold the 4-byte characters Protean stores,
+        so it is not a config key."""
+        assert mysql_provider(host_domain([])).charset == "utf8mb4"
+
+    def test_a_collation_from_another_charset_is_rejected(self):
+        """MySQL rejects the pair at CREATE TABLE with "COLLATION ... is not
+        valid for CHARACTER SET ..."; this names the config key instead."""
+        with pytest.raises(ConfigurationError) as exc:
+            mysql_provider(host_domain([]), collation="latin1_general_cs")
+
+        assert "latin1_general_cs" in str(exc.value)
+        assert "utf8mb4" in str(exc.value)
 
 
 class TestColumnTypes:
@@ -239,6 +248,161 @@ class TestKeyColumnGuards:
         assert table_for(LongProse).c["essay"].type.length == 4000
 
 
+class TestDeclaredIndexKeyWidths:
+    """InnoDB caps the whole index key at 3072 bytes. The column-level guard
+    only sees a field's own identifier/unique flags, so an index declared
+    through the public ``Index(...)`` API used to reach ``create_all()`` and
+    fail there with MySQL's own message."""
+
+    def test_a_single_wide_field_is_rejected(self):
+        class WideIndexed(BaseAggregate):
+            slug: String(max_length=769)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(WideIndexed, indexes=[Index("slug", name="ix_wide")])
+
+        assert "ix_wide" in str(exc.value)
+        assert "slug" in str(exc.value)
+        assert "3072" in str(exc.value)
+
+    def test_a_composite_index_sums_its_fields(self):
+        """Each field fits on its own; together they overrun the key."""
+
+        class Composite(BaseAggregate):
+            first: String(max_length=500)
+            second: String(max_length=500)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(Composite, indexes=[Index("first", "second", name="ix_both")])
+
+        assert "first, second" in str(exc.value)
+        assert "4000 bytes" in str(exc.value)
+
+    def test_a_text_field_cannot_be_indexed(self):
+        """An unbounded string maps to TEXT, which InnoDB cannot index without
+        a prefix length."""
+
+        class Prose(BaseAggregate):
+            essay: Text()
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(Prose, indexes=[Index("essay", name="ix_essay")])
+
+        assert "essay" in str(exc.value)
+
+    def test_an_index_within_the_cap_is_accepted(self):
+        class Fits(BaseAggregate):
+            slug: String(max_length=768)
+
+        table = table_for(Fits, indexes=[Index("slug", name="ix_fits")])
+
+        assert "ix_fits" in {index.name for index in table.indexes}
+
+    def test_non_string_columns_do_not_count_against_the_cap(self):
+        """A UUID identity is CHAR(32) and an Integer is 4 bytes; neither can
+        approach the cap, so only string widths are summed."""
+
+        class Mixed(BaseAggregate):
+            slug: String(max_length=700)
+            rank: Integer()
+
+        table = table_for(Mixed, indexes=[Index("slug", "rank", "id", name="ix_mix")])
+
+        assert "ix_mix" in {index.name for index in table.indexes}
+
+    def test_a_string_identity_counts_toward_the_key(self):
+        """An identifier is sized by the domain's identity_type, not by its own
+        max_length: a string identity is VARCHAR(255), 1020 bytes."""
+
+        class KeyedByString(BaseAggregate):
+            slug: String(max_length=600)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(
+                KeyedByString,
+                indexes=[Index("id", "slug", name="ix_str_id")],
+                identity_type="string",
+            )
+
+        assert "3420 bytes" in str(exc.value)
+
+    def test_a_uuid_identity_is_char_32_not_varchar_255(self):
+        """The same index fits when the identity is a UUID, because CHAR(32) is
+        128 bytes rather than 1020."""
+
+        class KeyedByUuid(BaseAggregate):
+            slug: String(max_length=600)
+
+        table = table_for(KeyedByUuid, indexes=[Index("id", "slug", name="ix_uuid_id")])
+
+        assert "ix_uuid_id" in {index.name for index in table.indexes}
+
+    def test_a_value_object_field_is_not_measured(self):
+        """A value object flattens into shadow columns and is not a
+        ``ResolvedField``, so it contributes no width of its own.
+
+        Checked against the helper rather than a built model: indexing a value
+        object by its logical name fails later in the index builder, which
+        resolves `price` against the model's `price_amount` / `price_currency`
+        shadow columns. That is a pre-existing limitation shared by every SQL
+        provider, so it is not what this test is about.
+        """
+
+        class Money(BaseValueObject):
+            amount: Integer()
+            currency: String(max_length=3)
+
+        class Priced(BaseAggregate):
+            price: ValueObject(Money)
+            slug: String(max_length=700)
+
+        domain = host_domain([])
+        domain.register(Money)
+        domain.register(Priced)
+        domain.init(traverse=False)
+
+        # 700 chars is 2800 bytes; the value object adds nothing, so this is
+        # under the cap and must not raise.
+        _check_mysql_index_key_widths(
+            [Index("price", "slug", name="ix_priced")], Priced
+        )
+
+    def test_a_non_field_index_entry_is_skipped(self):
+        """``Index.from_sql`` produces a RawIndex, whose verbatim DDL the
+        framework does not measure."""
+
+        class Raw(BaseAggregate):
+            slug: String(max_length=769)
+
+        table = table_for(
+            Raw,
+            indexes=[
+                Index.from_sql(
+                    "mysql", "CREATE INDEX ix_raw ON raw (slug(50))", name="ix_raw"
+                )
+            ],
+        )
+
+        assert table is not None
+
+    def test_the_guard_is_mysql_only(self):
+        """PostgreSQL has no such cap, so the same declaration is fine there."""
+
+        class WideElsewhere(BaseAggregate):
+            slug: String(max_length=769)
+
+        domain = host_domain([WideElsewhere], indexes=[Index("slug", name="ix_pg")])
+        provider = PostgresqlProvider(
+            name="postgresql",
+            domain=domain,
+            conn_info={"provider": "postgresql", "database_uri": POSTGRES_URI},
+        )
+        with domain.domain_context():
+            table = provider.construct_database_model_class(WideElsewhere).__table__
+
+        assert "ix_pg" in {index.name for index in table.indexes}
+
+
 class TestTableArgs:
     """SQLAlchemy ignores a dialect table-kwarg prefix that does not match the
     dialect — ``mysql_charset`` on the ``mariadb`` dialect emits no CHARSET
@@ -265,7 +429,7 @@ class TestTableArgs:
     def test_no_kwargs_for_a_dialect_that_is_not_mysql(self):
         """The helper runs for every dialect; only MySQL gets table kwargs."""
         assert _mysql_table_kwargs("postgresql", {}) == {}
-        assert _mysql_table_kwargs("sqlite", {"charset": "utf8mb4"}) == {}
+        assert _mysql_table_kwargs("sqlite", {"collation": "utf8mb4_bin"}) == {}
 
     def test_a_non_mysql_provider_carries_no_type_options(self):
         """`_type_options` is the seam the MySQL provider fills; the base
@@ -278,13 +442,13 @@ class TestTableArgs:
 
         assert provider._model_type_options() == {}
 
-    def test_overrides_reach_the_table(self):
+    def test_a_collation_override_reaches_the_table(self):
         domain = host_domain([Article])
-        provider = mysql_provider(domain, charset="utf8mb3", collation="utf8mb4_bin")
+        provider = mysql_provider(domain, collation="utf8mb4_bin")
         with domain.domain_context():
             table = provider.construct_database_model_class(Article).__table__
 
-        assert table.kwargs["mysql_charset"] == "utf8mb3"
+        assert table.kwargs["mysql_charset"] == "utf8mb4"
         assert table.kwargs["mysql_collate"] == "utf8mb4_bin"
 
 

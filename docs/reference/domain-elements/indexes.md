@@ -120,8 +120,10 @@ matches on whichever the connection URI selects.
   by `create_all()` / `protean db setup`. Unsupported `where`/`include` log a
   warning and fall back to a full index.
 - **MySQL** additionally caps an indexed string: InnoDB allows 3072 bytes per
-  index key, which is 768 `utf8mb4` characters, so a longer `String` column
-  cannot be a primary key or `unique=True`. See the
+  index key, which is 768 `utf8mb4` characters across the **whole** index, so a
+  declaration whose string columns exceed that raises `IncorrectUsageError`
+  naming the index and its fields. A composite index is the sum of its columns.
+  See the
   [MySQL provider page](../adapters/database/mysql.md#string-columns-used-as-keys).
 - **Memory** validates declarations for shape and enforces **unique** indexes:
   a duplicate insert or update that violates a single-column or composite

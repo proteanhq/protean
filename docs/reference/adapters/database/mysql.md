@@ -34,8 +34,7 @@ database_uri = "mariadb+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"
 |--------|---------|-------------|
 | `provider` | Required | Must be `"mysql"`, for MySQL and for MariaDB |
 | `database_uri` | Required | PyMySQL connection string |
-| `charset` | `utf8mb4` | Connection charset and the default charset of created tables |
-| `collation` | `utf8mb4_0900_as_cs` | Default collation of created tables |
+| `collation` | `utf8mb4_0900_as_cs` | Default collation of created tables; must be a `utf8mb4_` collation |
 | `pool_size` | 5 | Connections held open in the pool |
 | `max_overflow` | 10 | Connections opened beyond `pool_size` under load |
 
@@ -90,6 +89,12 @@ Two consequences:
   `collation = "utf8mb4_bin"`. An unknown collation fails at `CREATE TABLE`
   with the server's own error.
 
+The charset is pinned to `utf8mb4` and is not configurable: a narrower charset
+cannot hold the 4-byte characters Protean stores. MySQL names a collation after
+the charset it belongs to and rejects a mismatched pair, so a `collation` from
+another charset is refused at `domain.init()` naming the config key, rather than
+at `CREATE TABLE` with MySQL's own message.
+
 The case-insensitive lookups (`iexact`, `icontains`) are unaffected: they lower
 both sides of the comparison, so they keep matching every case.
 
@@ -129,6 +134,21 @@ A `String` field with no `max_length` becomes a `TEXT` column, because MySQL
 cannot create a `VARCHAR` without a length. `TEXT` cannot be a key column
 either without an index prefix length, so that combination raises the same
 error.
+
+The cap applies to a declared [`Index`](../../domain-elements/indexes.md) too,
+and InnoDB measures the whole key, so a composite index is the sum of its string
+columns:
+
+```python
+@domain.aggregate(indexes=[Index("tenant", "slug")])
+class Document:
+    tenant: String(max_length=500)   # 2000 bytes
+    slug: String(max_length=500)     # 2000 bytes, and 4000 together: raises
+```
+
+Each field fits on its own; together they overrun the key. Only string columns
+count toward the total, since nothing else in a Protean model comes close (the
+widest is a UUID identity at `CHAR(32)`, 128 bytes).
 
 ## Timestamps
 

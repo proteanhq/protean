@@ -369,9 +369,11 @@ _INCLUDE_INDEX_DIALECTS = frozenset({"postgresql", "mssql"})
 # off the dialect name has to accept both, so they are named once here.
 _MYSQL_DIALECTS = frozenset({"mysql", "mariadb"})
 
-# Defaults for the table charset and collation, overridable per provider through
-# the ``charset`` and ``collation`` config keys. Both are emitted as table
-# defaults, which every column inherits.
+# The charset is pinned, not configurable: Protean stores 4-byte characters, and
+# any narrower charset silently truncates or raises on them. The collation is
+# configurable through the ``collation`` config key, and must be one of this
+# charset's — MySQL rejects a mismatched pair at CREATE TABLE. Both are emitted
+# as table defaults, which every column inherits.
 #
 # MySQL 8 defaults to ``utf8mb4_0900_ai_ci`` and MariaDB to
 # ``utf8mb4_uca1400_ai_ci``. Both are accent-insensitive and case-insensitive, so
@@ -381,13 +383,15 @@ _MYSQL_DIALECTS = frozenset({"mysql", "mariadb"})
 # other provider has. It is present on MySQL 8.0.1+ and on MariaDB 10.10+ (where
 # it is an alias for ``utf8mb4_uca1400_as_cs``); an older MariaDB should set
 # ``collation = "utf8mb4_bin"``.
-_MYSQL_DEFAULT_CHARSET = "utf8mb4"
+_MYSQL_CHARSET = "utf8mb4"
 _MYSQL_DEFAULT_COLLATION = "utf8mb4_0900_as_cs"
 
 # InnoDB caps an index key at 3072 bytes, and a ``utf8mb4`` character takes up to
-# 4 bytes, so a VARCHAR longer than this cannot be indexed in full — which is
-# what a primary key or a unique constraint needs.
-_MYSQL_MAX_INDEXED_VARCHAR = 768
+# 4 bytes, so a VARCHAR longer than 768 characters cannot be indexed in full —
+# which is what a primary key, a unique constraint, or any declared index needs.
+_MYSQL_MAX_INDEX_KEY_BYTES = 3072
+_MYSQL_BYTES_PER_CHAR = 4
+_MYSQL_MAX_INDEXED_VARCHAR = _MYSQL_MAX_INDEX_KEY_BYTES // _MYSQL_BYTES_PER_CHAR
 
 # MySQL's ``DATETIME`` carries zero fractional-second digits unless the column
 # says otherwise, so microseconds are dropped on write with no error. Protean
@@ -569,9 +573,91 @@ def _mysql_table_kwargs(
     if dialect_name not in _MYSQL_DIALECTS:
         return {}
     return {
-        f"{dialect_name}_charset": options.get("charset") or _MYSQL_DEFAULT_CHARSET,
+        f"{dialect_name}_charset": _MYSQL_CHARSET,
         f"{dialect_name}_collate": options.get("collation") or _MYSQL_DEFAULT_COLLATION,
     }
+
+
+def _mysql_index_key_width(
+    index: typing.Any, entity_cls: typing.Any
+) -> tuple[int, list[str]]:
+    """Bytes the string columns of ``index`` contribute, and any TEXT fields.
+
+    A ``utf8mb4`` character is up to 4 bytes and InnoDB sizes an index key by
+    the column's maximum width, so a ``String(max_length=L)`` costs ``4 * L``.
+    Only string columns are counted: they are the only type in a Protean model
+    wide enough to reach the 3072-byte cap on their own (the widest other column
+    is a UUID identity at ``CHAR(32)``, 128 bytes). A key that overruns on some
+    exotic combination still gets MySQL's own error.
+
+    A string field with no ``max_length`` maps to ``TEXT``, which InnoDB cannot
+    index at all without a prefix length; those are returned by name rather than
+    given a width, because no width would make them indexable.
+    """
+    width = 0
+    unbounded: list[str] = []
+    entity_fields = fields(entity_cls)
+    for field_name in index.fields:
+        field_obj = entity_fields.get(field_name)
+        if not isinstance(field_obj, ResolvedField):
+            continue
+
+        if field_obj.identifier:
+            # An identifier is mapped by ``_get_identity_type`` from the domain's
+            # ``identity_type``, not from its declared max_length: a string
+            # identity is VARCHAR(255), a UUID is CHAR(32), an integer is 4 bytes
+            # and cannot matter here.
+            identity_type = _get_identity_type()
+            if identity_type is sa_types.String:
+                width += 255 * _MYSQL_BYTES_PER_CHAR
+            elif identity_type is GUID:
+                width += 32 * _MYSQL_BYTES_PER_CHAR
+            continue
+
+        if _resolve_python_type(field_obj) is not str:
+            continue
+        if field_obj.max_length:
+            width += field_obj.max_length * _MYSQL_BYTES_PER_CHAR
+        else:
+            unbounded.append(field_name)
+    return width, unbounded
+
+
+def _check_mysql_index_key_widths(declared: typing.Any, entity_cls: typing.Any) -> None:
+    """Reject a declared ``Index`` whose key cannot fit InnoDB's 3072-byte cap.
+
+    The column-level guard in the model builder only sees a field's own
+    ``identifier`` / ``unique`` flags, so an index declared through the public
+    ``Index(...)`` API reached ``create_all()`` and failed there with MySQL's
+    ``Specified key was too long`` instead of a message naming the fields.
+    Composite indexes are summed, since InnoDB caps the whole key.
+    """
+    for index in declared:
+        if not isinstance(index, ProteanIndex):
+            continue
+
+        covered = ", ".join(index.fields)
+        name = index.name or f"over {covered}"
+        width, unbounded = _mysql_index_key_width(index, entity_cls)
+
+        if unbounded:
+            raise IncorrectUsageError(
+                f"Index {name!r} on '{entity_cls.__name__}' covers "
+                f"{', '.join(unbounded)}, which {'have' if len(unbounded) > 1 else 'has'} "
+                f"no max_length and so map to TEXT. InnoDB cannot index a TEXT "
+                f"column without a prefix length, so declare one "
+                f"(e.g. Field(max_length=255))."
+            )
+
+        if width > _MYSQL_MAX_INDEX_KEY_BYTES:
+            raise IncorrectUsageError(
+                f"Index {name!r} on '{entity_cls.__name__}' covers {covered}, "
+                f"whose string columns need {width} bytes. InnoDB caps an index "
+                f"key at {_MYSQL_MAX_INDEX_KEY_BYTES} bytes, which is "
+                f"{_MYSQL_MAX_INDEXED_VARCHAR} utf8mb4 characters across the "
+                f"whole index. Shorten the fields' max_length, or index fewer "
+                f"of them."
+            )
 
 
 def _build_sa_indexes(
@@ -586,6 +672,9 @@ def _build_sa_indexes(
     declared = getattr(entity_cls.meta_, "indexes", ()) or ()
     if not declared:
         return [], []
+
+    if dialect_name in _MYSQL_DIALECTS:
+        _check_mysql_index_key_widths(declared, entity_cls)
 
     attr_for = _attribute_map(entity_cls)
 
@@ -2189,20 +2278,21 @@ class MysqlProvider(SAProvider):
     ``mariadb+pymysql://`` one, and every dialect-sensitive branch in this module
     accepts both through :data:`_MYSQL_DIALECTS`.
 
-    Two config keys beyond the shared ones:
+    One config key beyond the shared ones: ``collation`` (default
+    ``utf8mb4_0900_as_cs``), the collation tables are created with and every
+    string column inherits. The server default is accent-insensitive and
+    case-insensitive on both MySQL and MariaDB, which would make ``exact``,
+    ``contains``, ``startswith`` and ``endswith`` match case-insensitively.
 
-    * ``charset`` (default ``utf8mb4``) — the connection charset and the table
-      default charset.
-    * ``collation`` (default ``utf8mb4_0900_as_cs``) — the collation every string
-      column is created with. The server default is accent-insensitive and
-      case-insensitive on both MySQL and MariaDB, which would make ``exact``,
-      ``contains``, ``startswith`` and ``endswith`` match case-insensitively.
+    The charset is pinned to ``utf8mb4`` and is not configurable, so a collation
+    from another charset is rejected at construction rather than at
+    ``CREATE TABLE``.
     """
 
     __database__ = SAProvider.databases.mysql.value
 
     _NON_ENGINE_CONN_KEYS: ClassVar[frozenset[str]] = (
-        SAProvider._NON_ENGINE_CONN_KEYS | {"charset", "collation"}
+        SAProvider._NON_ENGINE_CONN_KEYS | {"collation"}
     )
 
     @property
@@ -2216,16 +2306,50 @@ class MysqlProvider(SAProvider):
 
     @property
     def charset(self) -> str:
-        """The charset for the connection and for created tables."""
-        return str(self.conn_info.get("charset") or _MYSQL_DEFAULT_CHARSET)
+        """The charset for the connection and for created tables.
+
+        Pinned rather than configurable: a narrower charset cannot hold the
+        4-byte characters Protean stores.
+        """
+        return _MYSQL_CHARSET
+
+    _collation: str
+
+    def __init__(
+        self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
+    ) -> None:
+        # Resolve the collation before the engine is built, so a bad one fails
+        # at ``domain.init()`` naming the config key, not at the first
+        # ``CREATE TABLE`` with MySQL's own message.
+        self._collation = self._resolve_collation(name, conn_info)
+        super().__init__(name, domain, conn_info)
+
+    @staticmethod
+    def _resolve_collation(name: str, conn_info: dict[str, typing.Any]) -> str:
+        """The configured collation, checked against the pinned charset.
+
+        MySQL names a collation after the charset it belongs to, and rejects a
+        mismatched pair at ``CREATE TABLE`` with "COLLATION ... is not valid for
+        CHARACTER SET ...". Checking the prefix names the config key instead.
+        """
+        collation = str(conn_info.get("collation") or _MYSQL_DEFAULT_COLLATION)
+        if not collation.startswith(f"{_MYSQL_CHARSET}_"):
+            raise ConfigurationError(
+                f"Database '{name}' sets collation='{collation}', which does not "
+                f"belong to the '{_MYSQL_CHARSET}' charset the MySQL provider "
+                f"uses. Choose a '{_MYSQL_CHARSET}_' collation "
+                f"(e.g. '{_MYSQL_DEFAULT_COLLATION}', or 'utf8mb4_bin' on "
+                f"MariaDB before 10.10)."
+            )
+        return collation
 
     @property
     def collation(self) -> str:
-        """The collation every string column is created with."""
-        return str(self.conn_info.get("collation") or _MYSQL_DEFAULT_COLLATION)
+        """The collation tables are created with, and every string column takes."""
+        return self._collation
 
     def _model_type_options(self) -> dict[str, typing.Any]:
-        return {"charset": self.charset, "collation": self.collation}
+        return {"collation": self.collation}
 
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
