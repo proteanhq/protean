@@ -12,7 +12,16 @@ pip install "protean[mysql]"
 ```
 
 PyMySQL is written in Python, so the extra installs from a wheel everywhere and
-needs no `libmysqlclient` on the machine.
+needs no `libmysqlclient` on the machine. The extra pulls `cryptography` with
+it, which PyMySQL's RSA key exchange needs to authenticate a `sha256_password`
+user over an unencrypted connection.
+
+!!!note "Leave TLS on"
+    PyMySQL negotiates TLS by default and MySQL 8 auto-generates a certificate,
+    so the password goes over the encrypted channel and the RSA exchange is
+    never reached. Disabling it (`ssl_disabled`) puts a `caching_sha2_password`
+    user — MySQL 8's default — on PyMySQL's full-authentication path, which
+    fails there with an `AttributeError` from inside the driver.
 
 ## Configuration
 

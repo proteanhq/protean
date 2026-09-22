@@ -11,11 +11,17 @@ leg fails for a capability the provider never claimed.
 This test diffs the two, so the second copy cannot be forgotten.
 """
 
+import pytest
+
 from protean.cli.test import TestRunner
 from tests.adapters.repository.generic.conftest import (
     _ALL_CAPABILITY_MARKERS,
     _DB_CAPABILITY_MARKERS,
 )
+
+# This guard compares two dicts and touches no database, so it opts out of the
+# autouse domain rather than standing up one per test.
+pytestmark = pytest.mark.no_test_domain
 
 
 def cli_markers_by_database():

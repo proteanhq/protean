@@ -125,6 +125,20 @@ class TestProviderConfiguration:
 
         assert args["connect_args"]["charset"] == "utf8mb4"
 
+    def test_caller_connect_args_cannot_drop_the_charset(self):
+        """``_additional_engine_args`` overlays every unrecognised conn_info key
+        onto the defaults, so a caller's own ``connect_args`` replaced this
+        provider's dict wholesale and took ``charset`` with it — silently
+        restoring the 4-byte-character failure the pin exists to prevent."""
+        provider = mysql_provider(
+            host_domain([]), connect_args={"read_timeout": 5, "charset": "latin1"}
+        )
+        connect_args = provider._additional_engine_args()["connect_args"]
+
+        assert connect_args["charset"] == "utf8mb4"
+        # The caller's other keys survive; only charset is reasserted.
+        assert connect_args["read_timeout"] == 5
+
     def test_collation_is_not_forwarded_to_create_engine(self):
         """It is provider config, not a SQLAlchemy engine argument.
 
@@ -149,6 +163,20 @@ class TestProviderConfiguration:
         """A narrower charset cannot hold the 4-byte characters Protean stores,
         so it is not a config key."""
         assert mysql_provider(host_domain([])).charset == "utf8mb4"
+
+    @pytest.mark.parametrize("value", ["", "   ", False, 0, 123, None])
+    def test_a_falsy_or_non_string_collation_is_rejected(self, value):
+        """A plain ``or`` default would let every falsy value through in
+        silence, so a config wrong in a falsy way would be accepted while the
+        same mistake spelled truthily raised."""
+        with pytest.raises(ConfigurationError) as exc:
+            mysql_provider(host_domain([]), collation=value)
+
+        assert "collation" in str(exc.value)
+
+    def test_an_absent_collation_takes_the_default(self):
+        """Absence is the only thing that falls back."""
+        assert mysql_provider(host_domain([])).collation == _MYSQL_DEFAULT_COLLATION
 
     def test_a_collation_from_another_charset_is_rejected(self):
         """MySQL rejects the pair at CREATE TABLE with "COLLATION ... is not

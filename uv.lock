@@ -2344,8 +2344,9 @@ mssql = [
     { name = "sqlalchemy" },
 ]
 mysql = [
+    { name = "cffi", marker = "platform_python_implementation != 'PyPy'" },
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
-    { name = "pymysql" },
+    { name = "pymysql", extra = ["rsa"] },
     { name = "sqlalchemy" },
 ]
 postgresql = [
@@ -2429,6 +2430,7 @@ types = [
 [package.metadata]
 requires-dist = [
     { name = "bleach", specifier = ">=6.1.0" },
+    { name = "cffi", marker = "platform_python_implementation != 'PyPy' and extra == 'mysql'", specifier = ">=2.0.0" },
     { name = "cffi", marker = "platform_python_implementation != 'PyPy' and extra == 'sendgrid'", specifier = ">=2.0.0" },
     { name = "copier", marker = "extra == 'scaffold'", specifier = ">=9.4.0,<10" },
     { name = "elasticsearch", marker = "extra == 'elasticsearch'", specifier = ">=8.18.0,<9.0.0" },
@@ -2453,7 +2455,7 @@ requires-dist = [
     { name = "protean", extras = ["shell", "scaffold", "mcp"], marker = "extra == 'cli'" },
     { name = "psycopg2-binary", marker = "extra == 'postgresql'", specifier = ">=2.9.11" },
     { name = "pydantic", specifier = ">=2.12.0,<3.0" },
-    { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1.1" },
+    { name = "pymysql", extras = ["rsa"], marker = "extra == 'mysql'", specifier = ">=1.1.1" },
     { name = "pyodbc", marker = "extra == 'mssql'", specifier = ">=5.3.0" },
     { name = "python-dateutil", specifier = ">=2.8.2" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=8.0.0,<8.2.0" },
@@ -2819,6 +2821,11 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b1/d4/c15b459e25a23767d2f4065ef40968920320f04e302889574310c21c96a3/pymysql-1.2.3.tar.gz", hash = "sha256:d5b288529782e536ae171866df3ca9dc4f6cbfb3cc2f18e6f837fbb90dbc262b", size = 50629, upload-time = "2026-09-17T12:22:49.146Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/4b/0a906d8184f011ff8dbd4722743783867589b33269d2c5fff238d636fdcb/pymysql-1.2.3-py3-none-any.whl", hash = "sha256:14f1c68e2ed859243ae5ca41ffbe677027fc46bc136a9f0be8a4e928e5e7415a", size = 46740, upload-time = "2026-09-17T12:22:47.826Z" },
+]
+
+[package.optional-dependencies]
+rsa = [
+    { name = "cryptography" },
 ]
 
 [[package]]

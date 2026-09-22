@@ -2332,7 +2332,21 @@ class MysqlProvider(SAProvider):
         mismatched pair at ``CREATE TABLE`` with "COLLATION ... is not valid for
         CHARACTER SET ...". Checking the prefix names the config key instead.
         """
-        collation = str(conn_info.get("collation") or _MYSQL_DEFAULT_COLLATION)
+        if "collation" not in conn_info:
+            return _MYSQL_DEFAULT_COLLATION
+
+        collation = conn_info["collation"]
+        # Absence, then type, then emptiness. A plain ``or`` here would let
+        # ``False``, ``0`` and ``""`` fall through to the default, so a config
+        # that is wrong in a falsy way would be accepted in silence while the
+        # same mistake spelled truthily raised.
+        if not isinstance(collation, str) or not collation.strip():
+            raise ConfigurationError(
+                f"Database '{name}' sets collation={collation!r}. It must be a "
+                f"non-empty '{_MYSQL_CHARSET}_' collation name "
+                f"(e.g. '{_MYSQL_DEFAULT_COLLATION}'), or be left out to take "
+                f"the default."
+            )
         if not collation.startswith(f"{_MYSQL_CHARSET}_"):
             raise ConfigurationError(
                 f"Database '{name}' sets collation='{collation}', which does not "
@@ -2369,9 +2383,26 @@ class MysqlProvider(SAProvider):
             "isolation_level": "READ COMMITTED",
             # PyMySQL's default charset has varied across releases; pinning it
             # here keeps 4-byte characters working regardless of the driver and
-            # server defaults.
+            # server defaults. ``_additional_engine_args`` reasserts it after
+            # the caller's own ``connect_args`` are merged in.
             "connect_args": {"charset": self.charset},
         }
+
+    def _additional_engine_args(self) -> dict[str, typing.Any]:
+        """Merge the caller's ``connect_args`` instead of letting them replace.
+
+        The shared implementation overlays every unrecognised ``conn_info`` key
+        onto the defaults, so a caller passing ``connect_args`` of their own
+        replaced this provider's whole dict and took ``charset`` with it. That
+        silently restored the 4-byte-character failure the pinned charset
+        exists to prevent, and nothing raised. Their keys still win on
+        everything else; only ``charset`` is reasserted.
+        """
+        extra_args = super()._additional_engine_args()
+        connect_args = dict(extra_args.get("connect_args") or {})
+        connect_args["charset"] = self.charset
+        extra_args["connect_args"] = connect_args
+        return extra_args
 
     def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
         """Set Database specific session parameters.
