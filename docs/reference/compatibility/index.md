@@ -109,6 +109,21 @@ The checker understands three evolution mechanisms:
   path; its breaking field changes stay breaking, and `exclude` is the only way
   to silence them.
 
+  The rule also refuses on what it cannot read, not only on what it can watch
+  move. Four things leave it without an answer, and each one leaves the aggregate
+  breaking. A `List` or `Dict` whose members are a value object: the IR records
+  the member class by bare name and none of its fields, so a member field can be
+  dropped with the event's entry unmoved. A value object embedded only in an
+  event: Protean records a value object against a cluster only when an aggregate
+  or entity field references it or it declares `part_of`, so an event-only one is
+  in the IR nowhere and there are no two shapes to compare. An apply-handler
+  naming an event in neither snapshot's registry. And an identity field the
+  aggregate's own field list does not carry. In each case a stored payload could
+  have been stranded while every entry the checker can read held still, so there
+  is nothing to earn a downgrade from. A covered bump still earns it on the event
+  that carries the unreadable shape, because an upcaster is the author's own
+  assertion that the new shape is reachable from every stored one.
+
   A **field type change** is not on this list. An event-sourced aggregate can
   still have a stored snapshot of its own state, and Protean loads that snapshot
   directly, replaying the event stream only when the snapshot no longer

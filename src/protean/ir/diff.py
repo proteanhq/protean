@@ -1192,11 +1192,85 @@ def _field_shape_moved(
     )
 
 
+# What a stored payload can be said to do under a new shape, in three values
+# rather than two. ``held`` and ``moved`` are answers the IR can give. ``unknown``
+# is the answer it cannot: this traversal only follows the shapes it has been
+# taught, and the question it answers feeds a downgrade, so a shape it cannot
+# follow has to read as "no evidence", never as "unchanged". That is the standing
+# rule here. Teaching the traversal one more shape closes one case; making the
+# unfollowable case say ``unknown`` closes the class, including the shapes nobody
+# has thought of yet. Every caller refuses on ``unknown`` exactly as it refuses
+# on ``moved``.
+#
+# Where a verdict can be ``unknown``, in full. Four cases, and the list is meant
+# to stay closed: a new one is a bug in this comment as much as in the code.
+#
+# 1. A field kind that can carry a nested payload but resolves no shape for it:
+#    a ``value_object`` or ``value_object_list`` entry with no ``target`` string,
+#    and a ``list`` or ``dict`` whose ``content_type`` names a class rather than
+#    one of :data:`_REPLAY_RESOLVABLE_CONTENT_TYPES`. ``IRBuilder`` writes a bare
+#    ``__name__`` for a ``List(SomeValueObject)`` (see
+#    ``IRBuilder._python_type_name``), so the members' own fields appear nowhere
+#    in the IR under that field.
+# 2. A ``target`` fqn absent from the value objects of one snapshot or of both.
+#    ``IRBuilder`` places a value object in a cluster only when an aggregate or
+#    entity field references it or it declares ``part_of``, so a value object
+#    embedded only in an event is in no cluster at all and there is no pair of
+#    shapes to compare.
+# 3. An event named in an aggregate's ``apply_handlers`` and absent from the
+#    events of either snapshot. Replay reads that event's stream and this file
+#    cannot say what shape its stored payloads have to satisfy.
+# 4. An aggregate's ``identity_field`` absent from its own ``fields`` on either
+#    side. The stream key carries that field's value as a string, so its shape
+#    decides whether replay asks for the stream the history was written under.
+#
+# Cases 1 and 2 are answered per field, by :func:`_nested_payload_verdict`.
+# Cases 3 and 4 are answered per aggregate, in
+# :func:`_apply_es_aggregate_mitigation`.
+ReplayVerdict = Literal["held", "moved", "unknown"]
+
+_REPLAY_HELD: ReplayVerdict = "held"
+_REPLAY_MOVED: ReplayVerdict = "moved"
+_REPLAY_UNKNOWN: ReplayVerdict = "unknown"
+
+# Ordered least to most refusing, so the worst verdict over a set of fields is
+# the one that decides. ``moved`` outranks ``unknown`` only so a report names a
+# definite change where it has one; both refuse.
+_REPLAY_RANK: dict[ReplayVerdict, int] = {
+    _REPLAY_HELD: 0,
+    _REPLAY_UNKNOWN: 1,
+    _REPLAY_MOVED: 2,
+}
+
+
 # Field kinds whose value is an embedded value object payload rather than a
 # scalar. The field entry names its value object as a ``target`` fqn and says
 # nothing about that value object's own fields, so the shape a stored payload
 # has to satisfy is only reachable by following the target.
 _VALUE_OBJECT_FIELD_KINDS = frozenset({"value_object", "value_object_list"})
+
+# Field kinds whose entry names the shape of its members in a ``content_type``
+# rather than a ``target``.
+_CONTENT_TYPED_FIELD_KINDS = frozenset({"list", "dict"})
+
+# The ``content_type`` names ``IRBuilder._python_type_name`` emits for a type
+# whose shape is fully described by the name itself. Anything else is that type's
+# bare ``__name__``: a value object class, an enum, some other element whose own
+# fields the IR does not record under this field. Those are unresolvable, so they
+# read as ``unknown``. A ``list`` or ``dict`` carrying no ``content_type`` at all
+# holds arbitrary values with no nested shape to compare, so it holds.
+_REPLAY_RESOLVABLE_CONTENT_TYPES = frozenset(
+    {"String", "Integer", "Float", "Boolean", "dict", "Date", "DateTime"}
+)
+
+
+def _worst_replay_verdict(verdicts: Collection[ReplayVerdict]) -> ReplayVerdict:
+    """The most refusing verdict in *verdicts*, or ``held`` when it is empty."""
+    worst: ReplayVerdict = _REPLAY_HELD
+    for verdict in verdicts:
+        if _REPLAY_RANK[verdict] > _REPLAY_RANK[worst]:
+            worst = verdict
+    return worst
 
 
 def _post_invariants_added(
@@ -1216,14 +1290,14 @@ def _post_invariants_added(
     return bool(right_post - left_post)
 
 
-def _embedded_value_object_moved(
+def _nested_payload_verdict(
     left_field: dict[str, Any],
     right_field: dict[str, Any],
     left_value_objects: dict[str, dict[str, Any]],
     right_value_objects: dict[str, dict[str, Any]],
     seen: frozenset[str],
-) -> bool:
-    """Whether the value object *right_field* embeds changed shape under it.
+) -> ReplayVerdict:
+    """What a stored value nested under this field does against its new shape.
 
     A value object field serializes as a nested dict of that value object's
     fields, and is deserialized by constructing the value object from it. So
@@ -1240,48 +1314,75 @@ def _embedded_value_object_moved(
     rejects it. And an added post-invariant counts as a move, because
     constructing the value object runs it against the stored nested payload.
 
+    Returns ``unknown`` wherever the nested shape cannot be reached: a value
+    object field with no target, a target registered in neither snapshot or in
+    only one, or a ``list``/``dict`` whose ``content_type`` names a class rather
+    than a self-describing type. Those are cases 1 and 2 of the four listed
+    beside :data:`_REPLAY_UNKNOWN`. A field carrying no nested payload at all
+    holds.
+
     *seen* carries the targets already being compared further up the stack, so a
     value object that embeds itself terminates instead of recursing forever.
     """
-    if left_field.get("kind") not in _VALUE_OBJECT_FIELD_KINDS:
-        return False
-    target = right_field.get("target")
-    # A moved ``kind`` or ``target`` is already a shape move by the field's own
-    # attributes, so this only has to answer the stable-target case.
-    if not isinstance(target, str) or target in seen:
-        return False
-    left_target = left_value_objects.get(target)
-    right_target = right_value_objects.get(target)
-    if left_target is None or right_target is None:
-        # The value object is registered on one side only, so there is no pair
-        # of shapes to compare and no evidence the stored nested payload still
-        # constructs. That reads as moved: the answer feeds a downgrade.
-        return left_target is not right_target
-    if _post_invariants_added(left_target, right_target):
-        return True
-    return _payload_fields_moved(
-        left_target.get("fields", {}),
-        right_target.get("fields", {}),
-        left_value_objects,
-        right_value_objects,
-        seen | {target},
-        resolves_aliases=False,
-    )
+    kinds = {left_field.get("kind"), right_field.get("kind")}
+    if kinds & _VALUE_OBJECT_FIELD_KINDS:
+        target = right_field.get("target")
+        if not isinstance(target, str):
+            # A value object field with no target names no shape to follow.
+            return _REPLAY_UNKNOWN
+        if target in seen:
+            # Already being compared further up this stack; its verdict is
+            # decided there.
+            return _REPLAY_HELD
+        left_target = left_value_objects.get(target)
+        right_target = right_value_objects.get(target)
+        if left_target is None or right_target is None:
+            # Registered on one side only, or on neither. Either way there is no
+            # pair of shapes to compare, so there is no evidence the stored
+            # nested payload still constructs. ``IRBuilder`` leaves an
+            # event-only value object out of every cluster, so "on neither" is
+            # an ordinary domain, not a malformed IR.
+            return _REPLAY_UNKNOWN
+        if _post_invariants_added(left_target, right_target):
+            return _REPLAY_MOVED
+        return _payload_fields_verdict(
+            left_target.get("fields", {}),
+            right_target.get("fields", {}),
+            left_value_objects,
+            right_value_objects,
+            seen | {target},
+            resolves_aliases=False,
+        )
+
+    if kinds & _CONTENT_TYPED_FIELD_KINDS:
+        content_types = {
+            left_field.get("content_type"),
+            right_field.get("content_type"),
+        } - {None}
+        if content_types - _REPLAY_RESOLVABLE_CONTENT_TYPES:
+            # A bare class name. ``IRBuilder`` writes ``List(SomeValueObject)``
+            # as ``{"kind": "list", "content_type": "SomeValueObject"}``: not an
+            # fqn, and the members' own fields appear nowhere under this field.
+            # A member field could have been removed with this entry unmoved.
+            return _REPLAY_UNKNOWN
+        return _REPLAY_HELD
+
+    return _REPLAY_HELD
 
 
-def _payload_fields_moved(
+def _payload_fields_verdict(
     left_fields: dict[str, Any],
     right_fields: dict[str, Any],
     left_value_objects: dict[str, dict[str, Any]],
     right_value_objects: dict[str, dict[str, Any]],
     seen: frozenset[str] = frozenset(),
     resolves_aliases: bool = True,
-) -> bool:
-    """Whether a payload written for *left_fields* can still satisfy *right_fields*.
+) -> ReplayVerdict:
+    """What a payload written for *left_fields* does against *right_fields*.
 
     Used for an event's own fields and, through
-    :func:`_embedded_value_object_moved`, for the fields of every value object
-    those fields embed.
+    :func:`_nested_payload_verdict`, for the fields of every value object those
+    fields embed.
 
     *resolves_aliases* says whether a ``renamed_from`` alias declared on these
     fields actually maps an old stored key onto its new field. It does on an
@@ -1297,34 +1398,42 @@ def _payload_fields_moved(
     renames = _detect_field_renames(added, removed) if resolves_aliases else {}
     renamed_new = set(renames.values())
     if set(removed) - set(renames):
-        return True
+        return _REPLAY_MOVED
     if any(
         name not in renamed_new and field.get("required") and "default" not in field
         for name, field in added.items()
     ):
-        return True
+        return _REPLAY_MOVED
     # Every old field name paired with the right-side field that has to accept
     # its stored values: the same name, or the new name a rename aliases it to.
     paired = {name: name for name in left_fields.keys() & right_fields.keys()}
     paired.update(renames)
-    return any(
-        _field_shape_moved(left_fields[old_name], right_fields[new_name])
-        or _embedded_value_object_moved(
-            left_fields[old_name],
-            right_fields[new_name],
-            left_value_objects,
-            right_value_objects,
-            seen,
+    verdicts: list[ReplayVerdict] = []
+    for old_name, new_name in paired.items():
+        if _field_shape_moved(left_fields[old_name], right_fields[new_name]):
+            return _REPLAY_MOVED
+        verdicts.append(
+            _nested_payload_verdict(
+                left_fields[old_name],
+                right_fields[new_name],
+                left_value_objects,
+                right_value_objects,
+                seen,
+            )
         )
-        for old_name, new_name in paired.items()
-    )
+    return _worst_replay_verdict(verdicts)
 
 
-def _payload_changed_events(
+def _payload_event_verdicts(
     left_ir: dict[str, Any],
     right_ir: dict[str, Any],
-) -> set[str]:
-    """Event fqns whose new shape a stored old payload can no longer satisfy.
+) -> dict[str, ReplayVerdict]:
+    """Per event fqn, what a stored old payload does against the new shape.
+
+    Only events whose verdict is not ``held`` appear, so an absent fqn means a
+    stored payload still satisfies the new shape. A ``moved`` event's payload can
+    fail; an ``unknown`` event's payload cannot be judged from the IR at all (see the
+    cases listed beside :data:`_REPLAY_UNKNOWN`). Callers refuse on both.
 
     Read from the two IRs rather than from the classified report. ``diff_ir``
     records every field-attribute delta, but :func:`_classify_field_changes`
@@ -1336,11 +1445,10 @@ def _payload_changed_events(
     payload sitting in the event store, and strict deserialization rejects it
     ("Extra inputs are not permitted"). Only an upcaster drops it.
 
-    An event counts as changed when a field was removed, when a required field
+    An event reads as ``moved`` when a field was removed, when a required field
     with no default was added (a stored payload omits it), when a field's shape
-    moved (see :data:`_REPLAY_INERT_FIELD_ATTRS`), when a value object one of
-    its fields embeds moved in any of those ways (see
-    :func:`_embedded_value_object_moved`), or when the ``__type__`` string
+    moved (see :data:`_REPLAY_INERT_FIELD_ATTRS`), when a value object one of its
+    fields embeds moved in any of those ways, or when the ``__type__`` string
     changed, which leaves a stored message unable to resolve back to the event
     class.
 
@@ -1358,23 +1466,24 @@ def _payload_changed_events(
     left_value_objects = _value_objects_by_fqn(left_ir)
     right_value_objects = _value_objects_by_fqn(right_ir)
 
-    changed: set[str] = set()
+    verdicts: dict[str, ReplayVerdict] = {}
     for event_fqn, right_entry in right_events.items():
         left_entry = left_events.get(event_fqn)
         if left_entry is None:
             continue
         if left_entry.get("__type__") != right_entry.get("__type__"):
-            changed.add(event_fqn)
+            verdicts[event_fqn] = _REPLAY_MOVED
             continue
 
-        if _payload_fields_moved(
+        verdict = _payload_fields_verdict(
             left_entry.get("fields", {}),
             right_entry.get("fields", {}),
             left_value_objects,
             right_value_objects,
-        ):
-            changed.add(event_fqn)
-    return changed
+        )
+        if verdict != _REPLAY_HELD:
+            verdicts[event_fqn] = verdict
+    return verdicts
 
 
 def _apply_upcaster_mitigation(
@@ -1436,7 +1545,7 @@ def _apply_es_aggregate_mitigation(
     without a bump in this diff), a payload change made without a version bump, or
     no bump at all leaves the aggregate breaking, because nothing was earned. That
     first condition is answered from the two IRs, by
-    :func:`_payload_changed_events`: the classified report names only some of the
+    :func:`_payload_event_verdicts`: the classified report names only some of the
     shape changes that strand a stored payload, so reading it would miss the rest.
     A version bump covered on an ``@apply`` handler added in this diff earns
     nothing either: that handler never rebuilt historical state, so its coverage
@@ -1480,12 +1589,15 @@ def _apply_es_aggregate_mitigation(
     # rather than inferred from the handler maps: a handler can outlive the event
     # it applies, and it is the event registration replay needs to resolve a
     # stored message back to a class.
-    removed_events = set(_events_by_fqn(left_ir)) - set(_events_by_fqn(right_ir))
-    # Every event a stored payload can no longer satisfy, read from the two IRs.
+    left_event_fqns = set(_events_by_fqn(left_ir))
+    right_event_fqns = set(_events_by_fqn(right_ir))
+    removed_events = left_event_fqns - right_event_fqns
+    # Per event, what a stored old payload does against the new shape: `moved`
+    # when it can fail, `unknown` when the IR cannot say, absent when it holds.
     # `coverage` only ever reports "covered" for a version bump, so an event whose
     # shape moved without one is absent from it, and that absence does not mean
     # the payload is unchanged.
-    payload_changed_events = _payload_changed_events(left_ir, right_ir)
+    payload_verdicts = _payload_event_verdicts(left_ir, right_ir)
     # Per aggregate fqn, the citation to attach when its field changes are earned-safe.
     aggregate_citation: dict[str, str] = {}
     for fqn, cluster in right_ir.get("clusters", {}).items():
@@ -1524,12 +1636,16 @@ def _apply_es_aggregate_mitigation(
         # and `str(5.0)` becomes `str(5)`, so a load asks for `account-5` while
         # every historical event sits under `account-5.0`. Any move in the
         # identity field's own shape can do that, so read the field entry out of
-        # both snapshots and reject the whole diff when it moved. Absent on both
-        # sides (a partial IR) compares equal and decides nothing.
-        if _field_shape_moved(
-            left_aggregate.get("fields", {}).get(identity_field, {}),
-            aggregate.get("fields", {}).get(identity_field, {}),
-        ):
+        # both snapshots and reject the whole diff when it moved. Absent from
+        # either side's `fields` is case 4 of the unknowns listed beside
+        # :data:`_REPLAY_UNKNOWN`: real IR always carries the identity field
+        # there, so an absence is a shape this pass cannot read, and an unreadable
+        # shape earns nothing.
+        left_identity = left_aggregate.get("fields", {}).get(identity_field)
+        right_identity = aggregate.get("fields", {}).get(identity_field)
+        if left_identity is None or right_identity is None:
+            continue
+        if _field_shape_moved(left_identity, right_identity):
             continue
         rebuilding_events = aggregate.get("apply_handlers", {})
         if not rebuilding_events:
@@ -1545,14 +1661,27 @@ def _apply_es_aggregate_mitigation(
             for event_fqn in left_rebuilding_events
         ):
             continue
+        # Case 3 of the unknowns listed beside :data:`_REPLAY_UNKNOWN`. A handler
+        # names an event replay reads a stream for, so an event absent from either
+        # snapshot's registry leaves this pass with no shape to compare and no
+        # coverage to consult. Nothing is earned.
+        if any(
+            event_fqn not in left_event_fqns or event_fqn not in right_event_fqns
+            for event_fqn in set(rebuilding_events) | set(left_rebuilding_events)
+        ):
+            continue
 
         covering_citations: list[str] = []
         has_gap = False
         for event_fqn in rebuilding_events:
             status, citation = coverage.get(event_fqn, ("unchanged", None))
-            # A payload change is only survivable when an upcaster covers it.
+            # One rule over both refusing verdicts: a rebuilding event whose
+            # payload does not plainly hold is survivable only when an upcaster
+            # covers it. An upcaster is the author's assertion that the new shape
+            # is reachable from every stored one, which is as good an answer for
+            # a shape this pass cannot read as for one it read as moved.
             if status == "gap" or (
-                event_fqn in payload_changed_events and status != "covered"
+                event_fqn in payload_verdicts and status != "covered"
             ):
                 has_gap = True
                 break
