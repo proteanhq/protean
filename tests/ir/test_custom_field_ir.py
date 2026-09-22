@@ -171,3 +171,48 @@ class TestCustomFieldTypeName:
     ):
         assert custom_type_fields[name]["kind"] == "custom"
         assert custom_type_fields[name]["type"] == ir_type
+
+
+class Badge:
+    """A custom type that happens to carry its own ``__metadata__``.
+
+    ``Custom`` accepts any class, and a plain class is free to use the name
+    ``__metadata__`` for something of its own. The builder must not read that as
+    a ``typing.Annotated`` wrapper.
+    """
+
+    __metadata__ = ("issued-by-the-badge-office",)
+
+    def __init__(self, value: str) -> None:
+        self.label = str(value)
+
+    def to_dict(self) -> str:
+        return self.label
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Badge) and other.label == self.label
+
+
+@pytest.mark.no_test_domain
+class TestCustomTypeWithItsOwnMetadata:
+    def test_a_custom_type_carrying_metadata_still_emits(self):
+        domain = Domain(name="Custom Field Metadata Clash")
+
+        @domain.aggregate
+        class Member:
+            name: String(required=True)
+            badge: Custom(
+                Badge,
+                validators=[PlainValidator(lambda v: Badge(v))],
+                serializers=[PlainSerializer(lambda b: b.label, return_type=str)],
+            )
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+
+        cluster = next(
+            c for fqn, c in ir["clusters"].items() if fqn.endswith(".Member")
+        )
+        badge = cluster["aggregate"]["fields"]["badge"]
+        assert badge["kind"] == "custom"
+        assert badge["type"] == "String"

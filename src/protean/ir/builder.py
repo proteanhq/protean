@@ -548,7 +548,9 @@ class IRBuilder:
 
         # A custom field's annotation carries its Pydantic validators and
         # serializers, so the concrete type sits under an ``Annotated`` wrapper.
-        if hasattr(python_type, "__metadata__"):
+        # ``Custom`` accepts any class, and a class is free to carry an unrelated
+        # ``__metadata__`` attribute, so ask ``get_origin`` instead of sniffing it.
+        if typing.get_origin(python_type) is typing.Annotated:
             return IRBuilder._unwrap_type(typing.get_args(python_type)[0])
 
         origin = typing.get_origin(python_type)
