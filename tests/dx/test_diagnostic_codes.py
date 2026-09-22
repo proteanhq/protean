@@ -83,6 +83,7 @@ _FAMILY_CODE_TEACHING_SKILLS = {
     "add-field": ["UNBOUNDED_INDEXED_STRING", "UNINDEXED_FILTER_PATH"],
     "add-validation": ["AGGREGATE_NO_INVARIANTS", "VALUE_OBJECT_INVARIANT_FAILED"],
     "add-read-model": ["PROJECTION_WITHOUT_PROJECTOR", "UNSOURCED_PROJECTION_FIELD"],
+    "add-saga-flow": ["PROCESS_MANAGER_UNCLOSED"],
     "refactor-extract-value-object": ["VALUE_OBJECT_MUTABLE_FIELD"],
     "refactor-introduce-events": ["EVENT_WITHOUT_DATA", "UNRAISED_EVENT"],
     "refactor-move-logic-to-aggregate": ["AGGREGATE_NO_INVARIANTS"],

@@ -120,6 +120,32 @@ class TestCompletedPMSkipsEvents:
 
         assert len(messages) == 2
 
+    def test_completed_pm_skips_a_repeated_start_event(self, test_domain):
+        """A start event for a completed correlation value does not reopen it.
+
+        The start event is the one case that could go the other way: it reaches
+        ``_load_or_create`` with ``is_start=True``, which creates an instance
+        when none is found. A completed instance is found, so it is skipped.
+        """
+        order_id = str(uuid4())
+
+        OrderFulfillmentPM._handle(
+            OrderPlaced(order_id=order_id, customer_id="CUST-1", total=100.0)
+        )
+        OrderFulfillmentPM._handle(
+            PaymentFailed(payment_id=str(uuid4()), order_id=order_id, reason="Declined")
+        )
+
+        OrderFulfillmentPM._handle(
+            OrderPlaced(order_id=order_id, customer_id="CUST-1", total=100.0)
+        )
+
+        stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
+        messages = test_domain.event_store.store.read(stream_name)
+
+        assert len(messages) == 2
+        assert messages[-1].to_domain_object().is_complete is True
+
 
 class TestMultipleInstances:
     def test_multiple_pm_instances_tracked_independently(self, test_domain):
