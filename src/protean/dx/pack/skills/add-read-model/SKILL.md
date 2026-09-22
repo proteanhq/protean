@@ -45,7 +45,7 @@ Before building a read model, understand:
 Create a flat data structure with only basic field types. Every projection needs at least one `identifier=True` field.
 
 ```python
-from protean.fields import DateTime, Float, Identifier, Integer, String
+from protean.fields import Float, Identifier, Integer, String
 
 @domain.projection
 class ProductListing:
@@ -53,9 +53,9 @@ class ProductListing:
     name: String(max_length=200, required=True)
     price: Float()
     stock_quantity: Integer(default=0)
-    category_name: String()        # Flattened from Category aggregate
-    last_updated: DateTime()
 ```
+
+Every field here is written by the Step 4 projector. Declare a field only once a projector handler fills it; a field no handler writes renders as a dead column, which `check` reports as `UNSOURCED_PROJECTION_FIELD`. To flatten a field from another aggregate (say a category name), source it from that aggregate's event in the projector, as the cross-aggregate example below shows.
 
 **Key rules for projections** (see [projection](../projection/SKILL.md)):
 - Basic field types only — no Reference, HasMany, HasOne, or ValueObject
@@ -257,18 +257,27 @@ Instead: query the projection (`domain.repository_for(ProductListing)` or `view_
 ### A projection field no projector writes
 
 ```python
-# Wrong! last_updated is declared but no projector handler ever sets it
 @domain.projection
 class ProductListing:
     product_id: Identifier(identifier=True)
     name: String()
-    last_updated: DateTime()   # no @on handler writes this, so it stays empty
+    last_updated: DateTime()
+
+# Wrong! The projector writes product_id and name but never last_updated
+@domain.projector(projector_for=ProductListing, aggregates=[Product])
+class ProductListingProjector:
+    @on(ProductAdded)
+    def on_added(self, event):
+        repo = domain.repository_for(ProductListing)
+        repo.add(ProductListing(product_id=event.product_id, name=event.name))
+        # last_updated stays empty, so it renders as a dead column
 ```
 
 Instead: write every projection field from the projector handler for the event that carries
-it, or drop the field. `check` reports an unsourced field as `UNSOURCED_PROJECTION_FIELD`.
-A projection with no projector at all reports as `PROJECTION_WITHOUT_PROJECTOR`; add a
-projector, or set `externally_populated=True` when a subscriber fills it.
+it, or drop the field. `check` reports a field the projector leaves unwritten as
+`UNSOURCED_PROJECTION_FIELD`. A projection with no projector at all is a different report,
+`PROJECTION_WITHOUT_PROJECTOR`; add a projector, or set `externally_populated=True` when a
+subscriber fills it.
 
 ### Forgetting sync processing in tests
 

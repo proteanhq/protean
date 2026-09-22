@@ -140,7 +140,7 @@ class User:
     name = String(max_length=100)
 ```
 
-An indexed `String` field must carry a `max_length`. An index over an unbounded string is
+An indexed `String` field should carry a `max_length`. An index over an unbounded string is
 unportable: the DDL fails on SQL Server, needs a prefix length on MySQL, and is inefficient
 on PostgreSQL. Size the length to the field's domain.
 

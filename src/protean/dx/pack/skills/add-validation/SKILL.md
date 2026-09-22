@@ -114,6 +114,8 @@ class Money:
 
 **Validation timing**: After all fields are set during VO initialization.
 
+**When a VO invariant fails**: The value object validates its invariants at construction and is immutable afterward, so a broken invariant raises `ValidationError` right there. The default code on that raise is `VALUE_OBJECT_INVARIANT_FAILED`, unless you set a custom `code=` on the invariant. The values you built the VO from are what broke the rule. To fix it, build the value object from values that satisfy the invariant, or catch the `ValidationError` where you build it; its messages name the field and rule that failed. Set `@invariant.post(code=...)` to raise a more specific catalog code in place of the default.
+
 ## Layer 3: Aggregate invariants
 
 Use for business rules that enforce consistency across an aggregate's state. Supports both `@invariant.pre` (before change) and `@invariant.post` (after change).

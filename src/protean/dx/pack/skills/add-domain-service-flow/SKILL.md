@@ -125,7 +125,7 @@ service = PlaceOrderService(order, inventories)
 service()  # Runs: pre invariants → __call__ → post invariants
 ```
 
-The `BaseDomainService.__init__` call is required so the pre and post invariants are wired. These examples call it explicitly. `super().__init__(*(aggregates))` works too: the framework rebinds each method's `__class__` cell after it rebuilds the class, so zero-argument `super()` resolves correctly.
+The `BaseDomainService.__init__` call is required so the pre and post invariants are wired. `super().__init__(*(aggregates))` works too: the framework rebinds each method's `__class__` cell after it rebuilds the class, so zero-argument `super()` resolves correctly.
 
 ## Domain service vs other patterns
 
