@@ -42,6 +42,7 @@ from protean.utils.reflection import (
     _FIELDS,
     _ID_FIELD_NAME,
     association_fields,
+    declared_fields,
     fields,
     reference_fields,
     value_object_fields,
@@ -709,7 +710,11 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
         )
     aggregate_cls.meta_.reserved = reserved
 
-    collisions = [name for name in aggregate_cls.model_fields if name in reserved]
+    # Scan `declared_fields`, not `model_fields`: value-object and association
+    # fields (HasMany/HasOne/Reference) live only in the former, so scanning
+    # `model_fields` would miss them and let a live VO or association silently
+    # collide with a reserved name (dropped on every replay).
+    collisions = [name for name in declared_fields(aggregate_cls) if name in reserved]
     if collisions:
         raise IncorrectUsageError(
             f"Field(s) {sorted(collisions)} on aggregate "

@@ -136,9 +136,10 @@ Declaring the removed name in `reserved` on the aggregate settles it. During
 replay only, an assignment to a reserved name is dropped instead of raising, so
 the aggregate rebuilds without the removed field. The live `raise_` path never
 takes this relaxation, so a write to a removed field on a new event still raises.
-This is the same shape as `renamed_from` and `deprecated`: a declaration that
-does the migration work. The downgrade is earned by that declaration, never
-applied automatically. Reusing a reserved name for a live field raises at
+This is the same shape as `renamed_from`: a declaration the author adds that
+carries a runtime effect, and like `deprecated` it also earns a safe rating from
+the checker. The downgrade is earned by that declaration, never applied
+automatically. Reusing a reserved name for a live field raises at
 registration, and the compatibility checker downgrades the field removal to safe
 only when the aggregate declares the name.
 

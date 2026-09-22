@@ -744,7 +744,7 @@ class IRBuilder:
         # get no IR noise. Sorted for a stable, comparable snapshot.
         reserved = getattr(cls.meta_, "reserved", ())
         if reserved:
-            options["reserved"] = sorted(reserved)
+            options["reserved"] = sorted(set(reserved))
         entry["options"] = dict(sorted(options.items()))
 
         return dict(sorted(entry.items()))

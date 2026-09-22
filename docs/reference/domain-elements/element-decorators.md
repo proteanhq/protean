@@ -66,7 +66,7 @@ logic, enforce invariants, and own the transaction lifecycle.
 | `stream_category` | `snake_case(cls)` | Message stream category |
 | `database_model` | `None` | Custom database model class |
 | `limit` | `100` | Default query result limit |
-| `reserved` | `()` | Names of removed fields that must never be reused. On an event-sourced aggregate, this earns the `field_removed` change a safe rating in `protean ir diff` and drops assignments to the name during replay. See [Removing a field from an event-sourced aggregate](../compatibility/index.md) |
+| `reserved` | `()` | Names of removed fields that must never be reused. On an event-sourced aggregate, this earns the `field_removed` change a safe rating in `protean ir diff` and drops assignments to the name during replay. See [Removing a field from an event-sourced aggregate](../migration/v0-18.md#removing-a-field-from-an-event-sourced-aggregate-needs-reserved) |
 
 Boolean element options are bare predicates (`event_sourced`, `fact_events`,
 `abstract`), not `is_`-prefixed.

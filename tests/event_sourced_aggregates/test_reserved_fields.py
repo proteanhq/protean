@@ -12,9 +12,11 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.aggregate import BaseAggregate, apply
+from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Float, Identifier, String
+from protean.fields import Float, HasMany, Identifier, String, ValueObject
 
 
 class OrderPlaced(BaseEvent):
@@ -33,6 +35,15 @@ class OrderNoted(BaseEvent):
 class OrderTypoed(BaseEvent):
     order_id: Identifier(required=True)
     value: String(required=True)
+
+
+class Address(BaseValueObject):
+    street: String(max_length=100)
+    zip_code: String(max_length=10)
+
+
+class LineItem(BaseEntity):
+    name: String(max_length=50)
 
 
 class Order(BaseAggregate):
@@ -117,6 +128,19 @@ def test_replay_still_raises_on_a_name_that_is_neither_field_nor_reserved():
         Order.from_events([placed, typoed])
 
 
+def test_replaying_flag_is_reset_when_a_handler_raises_mid_apply():
+    """An exception mid-replay must not leave a live aggregate stuck in replay
+    mode. The ``finally`` in ``_apply`` resets ``_replaying`` even when the
+    handler raises, so a later live write to a removed field still raises."""
+    placed = _placed()
+    order = Order.from_events([placed])
+
+    with pytest.raises(PydanticValidationError):
+        order._apply(OrderTypoed(order_id=placed.order_id, value="oops"))
+
+    assert order._replaying is False
+
+
 def test_declaring_a_field_over_a_reserved_name_raises(test_domain):
     with pytest.raises(IncorrectUsageError) as exc:
 
@@ -126,6 +150,41 @@ def test_declaring_a_field_over_a_reserved_name_raises(test_domain):
             note: String()
 
     assert "reserved" in str(exc.value)
+
+
+def test_declaring_a_value_object_field_over_a_reserved_name_raises(test_domain):
+    """A live value-object field lives in ``declared_fields`` but not in
+    ``model_fields``. The collision check must scan the former so this raises
+    instead of silently dropping ``address`` on every replay."""
+    with pytest.raises(IncorrectUsageError) as exc:
+
+        @test_domain.aggregate(event_sourced=True, reserved=["address"])
+        class Bad(BaseAggregate):
+            bad_id: Identifier(identifier=True)
+            address = ValueObject(Address)
+
+    assert "reserved" in str(exc.value)
+
+
+def test_declaring_an_association_field_over_a_reserved_name_raises(test_domain):
+    """An association field (``HasMany``) also lives only in
+    ``declared_fields``, so it must be caught by the collision check too."""
+    with pytest.raises(IncorrectUsageError) as exc:
+
+        @test_domain.aggregate(event_sourced=True, reserved=["items"])
+        class Bad(BaseAggregate):
+            bad_id: Identifier(identifier=True)
+            items = HasMany(LineItem)
+
+    assert "reserved" in str(exc.value)
+
+
+def test_reserved_rejects_a_non_string_element(test_domain):
+    with pytest.raises(IncorrectUsageError, match="field names"):
+
+        @test_domain.aggregate(event_sourced=True, reserved=["note", 123])
+        class Bad(BaseAggregate):
+            bad_id: Identifier(identifier=True)
 
 
 def test_reserved_accepts_a_bare_string(test_domain):
