@@ -20,6 +20,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Add required field without default | **Breaking** |
 | Remove field from any persisted element | **Breaking** |
 | Remove a field deprecated past its removal version | Safe (expected removal) |
+| Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
 | Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
@@ -65,8 +66,19 @@ method together is one act, so it reports once, as the removal.
 
 ### Evolution-aware classification
 
-The checker understands two evolution mechanisms:
+The checker understands three evolution mechanisms:
 
+- **Reserved field on an event-sourced aggregate**: Removing a field from an
+  event-sourced aggregate is safe only when the aggregate declares the field name
+  in `reserved`. The declaration does the migration: during replay an assignment
+  to a reserved name (from a retained `@apply` handler for a retired event) is
+  dropped instead of raising, so the aggregate still rebuilds. Only the
+  aggregate's own field removal is earned this way, and only when the aggregate is
+  event-sourced on both sides. A type change or a newly required field stays
+  breaking (a stored snapshot can survive a type change and skip replay, and
+  replay runs no required-field check), and the [replay hazards](#replay-hazards-on-an-event-sourced-aggregate)
+  above still report on their own. Reusing a reserved name for a live field raises
+  at registration.
 - **Deprecation grace**: A field marked `deprecated` and removed at or past its
   `removal` version is an *expected removal* (safe), not a breaking one. This
   applies to every persisted element, including internal and event-sourced

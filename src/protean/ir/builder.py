@@ -731,19 +731,21 @@ class IRBuilder:
         entry["module"] = cls.__module__
         entry["name"] = cls.__name__
 
-        entry["options"] = dict(
-            sorted(
-                {
-                    "auto_add_id_field": cls.meta_.auto_add_id_field,
-                    "fact_events": cls.meta_.fact_events,
-                    "is_event_sourced": cls.meta_.is_event_sourced,
-                    "limit": cls.meta_.limit,
-                    "provider": cls.meta_.provider,
-                    "schema_name": cls.meta_.schema_name,
-                    "stream_category": cls.meta_.stream_category,
-                }.items()
-            )
-        )
+        options: dict[str, Any] = {
+            "auto_add_id_field": cls.meta_.auto_add_id_field,
+            "fact_events": cls.meta_.fact_events,
+            "is_event_sourced": cls.meta_.is_event_sourced,
+            "limit": cls.meta_.limit,
+            "provider": cls.meta_.provider,
+            "schema_name": cls.meta_.schema_name,
+            "stream_category": cls.meta_.stream_category,
+        }
+        # Sparse: only emit `reserved` when declared, so aggregates without it
+        # get no IR noise. Sorted for a stable, comparable snapshot.
+        reserved = getattr(cls.meta_, "reserved", ())
+        if reserved:
+            options["reserved"] = sorted(reserved)
+        entry["options"] = dict(sorted(options.items()))
 
         return dict(sorted(entry.items()))
 

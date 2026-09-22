@@ -813,6 +813,11 @@ class CompatibilityChange:
     # registered upcaster transforms old payloads, this names the mitigating
     # upcaster coverage (e.g. "upcaster OrderPlaced v1->v3").
     mitigated_by: str | None = None
+    # The name of the field this change is about, for the change types that
+    # concern one field (``field_removed``). Lets a per-field mitigation match a
+    # specific removal when an element removes several fields with only some
+    # reserved. ``None`` for changes that are not about a single field.
+    field_name: str | None = None
     # Per-field Avro safety overrides. ``None`` means "not applicable — use the
     # ``_AVRO_CHANGE_SAFETY`` table default for this change type". They are set
     # only where safety is per-field rather than fixed by the change type:
@@ -868,8 +873,10 @@ def _change_avro_safety(change: CompatibilityChange) -> tuple[bool, bool]:
     backward = table_backward if change.backward_safe is None else change.backward_safe
     forward = table_forward if change.forward_safe is None else change.forward_safe
     if change.mitigated_by is not None:
-        # A registered upcaster transforms old payloads to the new shape at read
-        # time, so a new-schema reader can decode old data -> backward-safe.
+        # The change is earned safe: a registered upcaster transforms old
+        # payloads to the new shape at read time, or an event-sourced
+        # aggregate's `reserved` declaration drops the removed name at replay.
+        # Either way old data reaches the new shape -> backward-safe.
         backward = True
     return backward, forward
 
@@ -988,6 +995,10 @@ def classify_changes(
       registered upcaster chain covers has its schema-transformation changes
       downgraded to safe (see :func:`_apply_upcaster_mitigation`). This reads
       ``__version__`` from the IR directly and needs no ``current_version``.
+    - **Reserved mitigation**: a field removed from an event-sourced aggregate
+      that declares the name in ``reserved`` is downgraded to safe (see
+      :func:`_apply_reserved_mitigation`). The declaration does the migration:
+      replay drops assignments to the reserved name instead of raising.
     """
     report = CompatibilityReport()
 
@@ -1002,6 +1013,11 @@ def classify_changes(
     # registered upcaster (the upcaster transforms old payloads to the new
     # shape), citing the mitigating coverage.
     _apply_upcaster_mitigation(report, left_ir, right_ir)
+
+    # Downgrade a removed field on an event-sourced aggregate that declares the
+    # field name in `reserved` (the declaration does the migration: replay drops
+    # assignments to the name), citing the reserved declaration.
+    _apply_reserved_mitigation(report, left_ir, right_ir)
 
     return report
 
@@ -1121,6 +1137,65 @@ def _apply_upcaster_mitigation(
         change.severity = "safe"
         change.mitigated_by = citation
         report.safe_changes.append(change)
+    report.breaking_changes = still_breaking
+
+
+def _apply_reserved_mitigation(
+    report: CompatibilityReport,
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> None:
+    """Downgrade a removed field an event-sourced aggregate declares reserved.
+
+    Removing a field from an event-sourced aggregate is safe only when the
+    aggregate declares the field name in ``reserved``. The declaration does the
+    migration: at replay a retained ``@apply`` handler's assignment to that name
+    is dropped instead of raising. So a ``field_removed`` change downgrades to
+    safe, cited ``reserved``, when the aggregate is event-sourced in both
+    snapshots and the removed name is reserved in the new snapshot.
+
+    Only the aggregate's own field removal matches: the mitigation is keyed by
+    ``(element_fqn, field_name)``, and a child entity or value object in the
+    cluster carries its own ``element_fqn``, so its removal never matches. A type
+    change and a newly required field are left breaking (a stored snapshot can
+    survive a type change and skip replay, and replay runs no required-field
+    check).
+    """
+    if not report.breaking_changes:
+        return
+
+    left_clusters = left_ir.get("clusters", {})
+    reserved_by_aggregate: dict[str, set[str]] = {}
+    for fqn, right_cluster in right_ir.get("clusters", {}).items():
+        left_cluster = left_clusters.get(fqn)
+        if left_cluster is None:
+            continue
+        left_agg = left_cluster.get("aggregate", {})
+        right_agg = right_cluster.get("aggregate", {})
+        left_es = bool(left_agg.get("options", {}).get("is_event_sourced"))
+        right_es = bool(right_agg.get("options", {}).get("is_event_sourced"))
+        if not (left_es and right_es):
+            continue
+        reserved = right_agg.get("options", {}).get("reserved") or []
+        if reserved:
+            reserved_by_aggregate[fqn] = set(reserved)
+
+    if not reserved_by_aggregate:
+        return
+
+    still_breaking: list[CompatibilityChange] = []
+    for change in report.breaking_changes:
+        reserved = reserved_by_aggregate.get(change.element_fqn)
+        if (
+            change.change_type == "field_removed"
+            and reserved is not None
+            and change.field_name in reserved
+        ):
+            change.severity = "safe"
+            change.mitigated_by = "reserved"
+            report.safe_changes.append(change)
+        else:
+            still_breaking.append(change)
     report.breaking_changes = still_breaking
 
 
@@ -1532,6 +1607,7 @@ def _classify_field_changes(
                         f"(expected removal, deprecated since "
                         f"v{deprecated['since']})"
                     ),
+                    field_name=field_name,
                     forward_safe=forward_safe,
                 )
             )
@@ -1559,6 +1635,7 @@ def _classify_field_changes(
                     element_fqn=fqn,
                     change_type="field_removed",
                     message=message,
+                    field_name=field_name,
                     forward_safe=forward_safe,
                 )
             )
