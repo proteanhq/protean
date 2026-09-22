@@ -20,15 +20,17 @@ def on_payment_failed(self, event: PaymentFailed) -> None:
 By the time payment fails, the saga has already reserved stock, so it releases
 that reservation and cancels the order.
 
-Each `current_domain.process(...)` call writes its command to the event store as
-soon as you call it, before the handler's Unit of Work commits. The command is
-durable from that point on. If the handler raises after issuing one command, that
-command is already written and still runs, while the saga's own state change rolls
-back with the Unit of Work. So issuing a compensating command stands apart from the
-saga's transition: each command runs later as its own step against its target
-aggregate. Undoing the earlier steps is not one rollback: it is a set of new steps,
-each committing on its own. Keep compensating commands idempotent so re-issuing one
-is safe.
+Issuing a compensating command is not a rollback of the step it undoes. Each
+command runs later as its own step against its target aggregate, so undoing the
+earlier steps is a set of new steps, each committing on its own.
+
+Whether a command issued just before the handler fails is written at all depends
+on the event store. The memory store writes the command through the handler's
+Unit of Work, so the failure discards it: raising inside a start handler that had
+just issued a command left the store with zero commands and zero saga
+transitions. Message-DB writes straight through on its own connection, so there
+the command survives while the saga's transition does not. Do not design around
+either case. Keep compensating commands idempotent so re-issuing one is safe.
 
 ## Points to keep in mind
 
