@@ -210,6 +210,10 @@ emitted during `protean db setup`:
   without the predicate and a warning is logged.
 - Covering columns (`include=`) are **not** supported. The index is created
   without them and a warning is logged.
+- A `Dict` or `List` field maps to a `JSON` column, and MySQL indexes one only
+  through a generated column on a JSON path. Protean does not emit generated
+  columns, so an `Index` over such a field raises `IncorrectUsageError`, as
+  does `unique=True` on one. Index a scalar field instead.
 
 `protean schema render --indexes --dialects mysql` (or `mariadb`) writes the
 `CREATE INDEX` statements to `.sql` files without touching a database.

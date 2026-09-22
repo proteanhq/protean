@@ -271,6 +271,30 @@ class TestApplyCommandLive:
         ddl = out / "schemas" / "Article" / "article.indexes.mysql.sql"
         assert "CREATE INDEX ix_keyed" in ddl.read_text(encoding="utf-8")
 
+    def test_an_unknown_dialect_reads_as_a_usage_error(self, tmp_path, monkeypatch):
+        """Through the command, not the helper. The helper raises
+        IncorrectUsageError, and without translation the caller saw a traceback
+        instead of the message it carries."""
+        module = tmp_path / "shop_cli_domain.py"
+        module.write_text(_DOMAIN_MODULE, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        result = runner.invoke(
+            app,
+            [
+                "render",
+                "--indexes",
+                "--domain=shop_cli_domain",
+                "--dialects=bogus",
+                f"--output={tmp_path / 'out'}",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "Unknown index DDL dialect 'bogus'" in result.output
+        assert "Traceback" not in result.output
+
     def test_apply_reports_when_no_indexes(self, tmp_path, monkeypatch):
         module = tmp_path / "plain_cli_domain.py"
         module.write_text(

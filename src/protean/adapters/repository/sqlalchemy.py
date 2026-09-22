@@ -580,7 +580,7 @@ def _mysql_table_kwargs(
 
 def _mysql_index_key_width(
     index: typing.Any, entity_cls: typing.Any
-) -> tuple[int, list[str]]:
+) -> tuple[int, list[str], list[str]]:
     """Bytes the string columns of ``index`` contribute, and any TEXT fields.
 
     A ``utf8mb4`` character is up to 4 bytes and InnoDB sizes an index key by
@@ -592,7 +592,9 @@ def _mysql_index_key_width(
 
     A string field with no ``max_length`` maps to ``TEXT``, which InnoDB cannot
     index at all without a prefix length; those are returned by name rather than
-    given a width, because no width would make them indexable.
+    given a width, because no width would make them indexable. A ``Dict`` or
+    ``List`` maps to ``JSON``, which MySQL indexes only through a generated
+    column on a JSON path, so those come back by name too.
 
     An index may name a declared field or the persisted attribute behind it,
     since ``validate_indexes`` accepts both. A value-object attribute arrives as
@@ -601,12 +603,19 @@ def _mysql_index_key_width(
     """
     width = 0
     unbounded: list[str] = []
+    json_columns: list[str] = []
     entity_fields = {**attributes(entity_cls), **fields(entity_cls)}
     for field_name in index.fields:
         field_obj = entity_fields.get(field_name)
         if isinstance(field_obj, _ShadowField):
             field_obj = field_obj.field_obj
         if not isinstance(field_obj, ResolvedField):
+            continue
+
+        if _resolve_python_type(field_obj) in (dict, list) and not getattr(
+            field_obj, "pickled", False
+        ):
+            json_columns.append(field_name)
             continue
 
         if field_obj.identifier:
@@ -627,13 +636,13 @@ def _mysql_index_key_width(
             width += field_obj.max_length * _MYSQL_BYTES_PER_CHAR
         else:
             unbounded.append(field_name)
-    return width, unbounded
+    return width, unbounded, json_columns
 
 
 def _mysql_index_key_width_from_columns(
     index: typing.Any, column_for: Callable[[str], typing.Any]
-) -> tuple[int, list[str]]:
-    """Bytes the columns of ``index`` contribute, and any that map to TEXT.
+) -> tuple[int, list[str], list[str]]:
+    """Bytes the columns of ``index`` contribute, and any MySQL cannot index.
 
     The column-mapping loop leaves an attribute alone when the model already
     declares it, so a custom database model decides its own column widths. It
@@ -648,8 +657,13 @@ def _mysql_index_key_width_from_columns(
     """
     width = 0
     unbounded: list[str] = []
+    json_columns: list[str] = []
     for field_name in index.fields:
         column_type = getattr(column_for(field_name), "type", None)
+
+        if isinstance(column_type, sa_types.JSON):
+            json_columns.append(field_name)
+            continue
 
         if isinstance(column_type, GUID):
             # CHAR(32) on MySQL, per ``GUID.load_dialect_impl``.
@@ -664,7 +678,7 @@ def _mysql_index_key_width_from_columns(
             width += column_type.length * _MYSQL_BYTES_PER_CHAR
         else:
             unbounded.append(field_name)
-    return width, unbounded
+    return width, unbounded, json_columns
 
 
 def _check_mysql_index_key_widths(
@@ -691,9 +705,21 @@ def _check_mysql_index_key_widths(
         covered = ", ".join(index.fields)
         name = index.name or f"over {covered}"
         if column_for is None:
-            width, unbounded = _mysql_index_key_width(index, entity_cls)
+            width, unbounded, json_columns = _mysql_index_key_width(index, entity_cls)
         else:
-            width, unbounded = _mysql_index_key_width_from_columns(index, column_for)
+            width, unbounded, json_columns = _mysql_index_key_width_from_columns(
+                index, column_for
+            )
+
+        if json_columns:
+            raise IncorrectUsageError(
+                f"Index {name!r} on '{entity_cls.__name__}' covers "
+                f"{', '.join(json_columns)}, which "
+                f"{'map' if len(json_columns) > 1 else 'maps'} to MySQL's JSON "
+                f"type. MySQL indexes a JSON column only through a generated "
+                f"column on a JSON path, which Protean does not emit. Index a "
+                f"scalar field instead."
+            )
 
         if unbounded:
             raise IncorrectUsageError(
@@ -847,6 +873,8 @@ def _mysql_column_type(
       primary key or carry a unique constraint without an index prefix length,
       so that combination raises instead, as does a ``VARCHAR`` past InnoDB's
       3072-byte key limit.
+    * A ``JSON`` column is indexable only through a generated column on a JSON
+      path, so a ``Dict`` or ``List`` used as a key column raises.
 
     Collation is not set per column. It comes from the table default that
     :func:`_mysql_table_kwargs` emits, which every column inherits.
@@ -858,6 +886,14 @@ def _mysql_column_type(
     if resolved_type is _datetime and sa_type_cls is sa_types.DateTime:
         kwargs["fsp"] = _MYSQL_DATETIME_FSP
         return mysql.DATETIME, kwargs
+
+    if sa_type_cls is mysql.JSON and is_key_column:
+        raise IncorrectUsageError(
+            f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+            f"unique column holding JSON. MySQL indexes a JSON column only "
+            f"through a generated column on a JSON path, which Protean does "
+            f"not emit, so the constraint cannot be created."
+        )
 
     if sa_type_cls is not sa_types.String:
         return sa_type_cls, kwargs

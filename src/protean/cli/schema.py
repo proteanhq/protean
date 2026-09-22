@@ -30,6 +30,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from protean.cli._ir_utils import load_domain, load_domain_ir, load_ir_file
+from protean.exceptions import IncorrectUsageError
 from protean.ir.generators.base import short_name
 from protean.utils import _fully_qualified_name
 
@@ -254,7 +255,14 @@ def render(
     dialect_list = [d.strip() for d in dialects.split(",") if d.strip()]
 
     live_domain = load_domain(domain)
-    written = write_index_ddl(live_domain, output, dialect_list)
+    try:
+        written = write_index_ddl(live_domain, output, dialect_list)
+    except IncorrectUsageError as exc:
+        # A misspelt --dialects value, or an index declaration the target
+        # database cannot create. Both are the caller's to fix, so they read
+        # as a usage error instead of a traceback.
+        print(f"[red]Error:[/red] {exc.args[0]}")
+        raise typer.Abort() from exc
 
     if not written:
         print(

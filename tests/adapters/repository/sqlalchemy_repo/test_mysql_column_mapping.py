@@ -494,6 +494,59 @@ class TestDeclaredIndexKeyWidths:
         assert "ix_pg" in {index.name for index in table.indexes}
 
 
+class JsonHolder(BaseAggregate):
+    payload: Dict()
+    labels: List()
+    name: String(max_length=50)
+
+
+class TestJsonKeyColumns:
+    """MySQL indexes a JSON column only through a generated column on a JSON
+    path, which Protean does not emit. Both routes to one reached
+    ``create_all()`` and failed there with MySQL's error 3152.
+    """
+
+    def test_a_unique_json_field_is_rejected(self):
+        class Tagged(BaseAggregate):
+            payload: Dict(unique=True)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(Tagged)
+
+        assert "payload" in str(exc.value)
+        assert "generated column" in str(exc.value)
+
+    @pytest.mark.parametrize("field_name", ["payload", "labels"])
+    def test_an_index_over_a_json_field_is_rejected(self, field_name):
+        """A ``Dict`` and a ``List`` both map to JSON on MySQL."""
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(JsonHolder, indexes=[Index(field_name, name="ix_json")])
+
+        assert field_name in str(exc.value)
+        assert "generated column" in str(exc.value)
+
+    def test_a_composite_index_naming_a_json_field_is_rejected(self):
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(JsonHolder, indexes=[Index("name", "payload", name="ix_mixed")])
+
+        assert "payload" in str(exc.value)
+
+    def test_the_render_path_rejects_it_too(self):
+        """The renderer has no real column types, so it reads the field."""
+        host_domain([JsonHolder], indexes=[Index("payload", name="ix_json")])
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            render_index_ddl(JsonHolder, "mysql")
+
+        assert "payload" in str(exc.value)
+        assert "generated column" in str(exc.value)
+
+    def test_an_index_over_plain_fields_is_untouched(self):
+        table = table_for(JsonHolder, indexes=[Index("name", name="ix_name")])
+
+        assert "ix_name" in {index.name for index in table.indexes}
+
+
 class TestMappedColumnKeyWidths:
     """On the live path the guard measures the columns the model will really
     index. A custom database model keeps its own column definitions, so the
