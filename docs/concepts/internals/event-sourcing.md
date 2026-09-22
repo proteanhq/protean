@@ -63,14 +63,26 @@ Raises `NotImplementedError` if no handler is registered.
 
 ### `_apply(event)`
 
-The replay-specific method. Calls `_apply_handler()` then increments
-`_version`. Used exclusively during aggregate reconstitution from events:
+The replay-specific method. Sets `_replaying` for the duration of the handler,
+calls `_apply_handler()`, resets `_replaying` in a `finally` block, then
+increments `_version`. Used exclusively during aggregate reconstitution from
+events:
 
 ```python
 def _apply(self, event):
-    self._apply_handler(event)
+    self._replaying = True
+    try:
+        self._apply_handler(event)
+    finally:
+        self._replaying = False
     self._version += 1
 ```
+
+`_replaying` is the replay-only signal that lets an assignment to a
+[`reserved`](../../reference/domain-elements/element-decorators.md) (removed)
+field name drop instead of raising. The live `raise_()` path calls
+`_apply_handler()` directly and never sets the flag, so a live write to a
+removed field still raises.
 
 ## Aggregate Construction
 
