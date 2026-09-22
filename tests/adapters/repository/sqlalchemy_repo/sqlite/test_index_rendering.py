@@ -151,6 +151,44 @@ class TestMergeTableArgs:
 
         assert _merge_table_args(("existing",), ["i1"]) == ("existing", "i1")
 
+    def test_table_kwargs_merge_into_the_trailing_dict(self):
+        """The MySQL provider passes charset and collation this way."""
+        from protean.adapters.repository.sqlalchemy import _merge_table_args
+
+        extra = {"mysql_charset": "utf8mb4"}
+
+        assert _merge_table_args(None, [], extra) == (extra,)
+        assert _merge_table_args(None, ["i1"], extra) == ("i1", extra)
+        assert _merge_table_args(("existing",), ["i1"], extra) == (
+            "existing",
+            "i1",
+            extra,
+        )
+
+    def test_a_model_s_own_table_kwargs_win(self):
+        """A hand-written `__table_args__` is never overwritten."""
+        from protean.adapters.repository.sqlalchemy import _merge_table_args
+
+        declared = {"mysql_charset": "latin1", "schema": "reporting"}
+        extra = {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
+
+        assert _merge_table_args(declared, ["i1"], extra) == (
+            "i1",
+            {
+                "mysql_charset": "latin1",
+                "mysql_collate": "utf8mb4_bin",
+                "schema": "reporting",
+            },
+        )
+        assert _merge_table_args(("existing", declared), [], extra) == (
+            "existing",
+            {
+                "mysql_charset": "latin1",
+                "mysql_collate": "utf8mb4_bin",
+                "schema": "reporting",
+            },
+        )
+
 
 @pytest.mark.sqlite
 class TestPartialIndexPredicate:

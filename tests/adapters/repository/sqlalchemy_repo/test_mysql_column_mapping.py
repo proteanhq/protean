@@ -24,6 +24,8 @@ from protean.adapters.repository.sqlalchemy import (
     _MYSQL_DIALECTS,
     SADAO,
     MysqlProvider,
+    SqliteProvider,
+    _mysql_table_kwargs,
     render_index_ddl,
 )
 from protean.core.aggregate import BaseAggregate
@@ -259,6 +261,22 @@ class TestTableArgs:
         assert table.kwargs[f"{dialect}_collate"] == _MYSQL_DEFAULT_COLLATION
         assert "CHARSET=utf8mb4" in ddl
         assert f"COLLATE {_MYSQL_DEFAULT_COLLATION}" in ddl
+
+    def test_no_kwargs_for_a_dialect_that_is_not_mysql(self):
+        """The helper runs for every dialect; only MySQL gets table kwargs."""
+        assert _mysql_table_kwargs("postgresql", {}) == {}
+        assert _mysql_table_kwargs("sqlite", {"charset": "utf8mb4"}) == {}
+
+    def test_a_non_mysql_provider_carries_no_type_options(self):
+        """`_type_options` is the seam the MySQL provider fills; the base
+        provider leaves it empty, so nothing else changes shape."""
+        provider = SqliteProvider(
+            name="sqlite",
+            domain=host_domain([]),
+            conn_info={"provider": "sqlite", "database_uri": "sqlite:///:memory:"},
+        )
+
+        assert provider._model_type_options() == {}
 
     def test_overrides_reach_the_table(self):
         domain = host_domain([Article])
