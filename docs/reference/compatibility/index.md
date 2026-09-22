@@ -41,9 +41,12 @@ checked on event-sourced aggregates and nowhere else.
 
 ### Replay hazards on an event-sourced aggregate
 
-An event-sourced aggregate stores no schema of its own. Its state is rebuilt by
-reading a stream and applying the events in it, so the checker reports the
-changes that stop that rebuild, whether or not the aggregate's fields moved.
+An event-sourced aggregate's authoritative state is a stream of events, rebuilt
+by reading that stream and applying the events in it. A snapshot may be stored
+alongside it, holding serialized aggregate state, and that snapshot is a
+rebuildable cache: Protean discards one that no longer constructs and replays
+the stream instead. So the checker reports the changes that stop that rebuild,
+whether or not the aggregate's fields moved.
 
 The stream an aggregate reads is named `f"{stream_category}-{identifier}"`, so
 moving the stream category leaves the whole history under the old name, and
