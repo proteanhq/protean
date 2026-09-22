@@ -90,13 +90,16 @@ def _anchors(text: str) -> set[str]:
         if not line.startswith("#"):
             continue
         title = line.lstrip("#").strip()
-        slug = re.sub(r"[^\w\s-]", "", title.lower())
-        # python-markdown's slugify collapses a run of hyphens and spaces into
-        # one separator, so a heading naming a CLI flag (`--dialects`) publishes
-        # `-dialects`, not `---dialects`. Substituting only on whitespace kept
-        # the double hyphen and made this model disagree with the published
-        # page, which passed a link that 404s.
-        slug = re.sub(r"[-\s]+", "-", slug).strip("-")
+        # These two lines are `markdown.extensions.toc.slugify` with the
+        # default `-` separator, in its order: strip the punctuation, then
+        # trim, then lower, then collapse each run of hyphens and spaces into
+        # one separator. It collapses but does not trim that separator, so a
+        # heading naming a CLI flag (`--dialects`) publishes `-dialects`.
+        # Writing the steps in another order, or trimming the boundary hyphen,
+        # made this model disagree with the published page and pass links
+        # that 404.
+        slug = re.sub(r"[^\w\s-]", "", title).strip().lower()
+        slug = re.sub(r"[-\s]+", "-", slug)
         candidate, repeat = slug, 0
         while candidate in anchors:
             repeat += 1
@@ -306,6 +309,53 @@ class TestAnchorsMatchWhatMkdocsPublishes:
         """
         anchors = _anchors("```bash\n# Before\n```\n## Before\n## Before\n")
         assert anchors == {"before", "before_1"}
+
+    @pytest.mark.parametrize(
+        "heading,expected",
+        [
+            ("## --dialects", "-dialects"),
+            ("## String columns used as keys", "string-columns-used-as-keys"),
+            ("## retention_maxlen trims streams", "retention_maxlen-trims-streams"),
+            ("## `protean db setup`", "protean-db-setup"),
+            ("## Who is affected?", "who-is-affected"),
+            ("## Upgrading from 0.16", "upgrading-from-016"),
+        ],
+        ids=[
+            "leading-hyphens",
+            "plain-words",
+            "underscore",
+            "backticks",
+            "question-mark",
+            "version-dot",
+        ],
+    )
+    def test_a_heading_slugs_the_way_the_page_publishes_it(self, heading, expected):
+        """A leading hyphen is the one that bit: python-markdown collapses a run
+        of hyphens but does not trim it, so `## --dialects` publishes
+        `#-dialects`. Trimming it here rejected that valid link and accepted a
+        broken one."""
+        assert _anchors(heading) == {expected}
+
+    def test_the_slug_model_agrees_with_python_markdown(self):
+        """The two lines in `_anchors` are a copy of python-markdown's own
+        `slugify`. This is the differential that catches the copy drifting,
+        upstream or here."""
+        slugify = pytest.importorskip("markdown.extensions.toc").slugify
+
+        titles = [
+            "--dialects",
+            "-leading",
+            "trailing-",
+            "String columns used as keys",
+            "retention_maxlen trims streams",
+            "`protean db setup`",
+            "Who is affected?",
+            "Upgrading from 0.16",
+            "A  B   C",
+            "*emphasis* and _more_",
+        ]
+        for title in titles:
+            assert _anchors(f"## {title}") == {slugify(title, "-")}, title
 
     def test_the_computed_anchors_match_the_published_ones(self):
         """Checked against a real `mkdocs build` when this was written.

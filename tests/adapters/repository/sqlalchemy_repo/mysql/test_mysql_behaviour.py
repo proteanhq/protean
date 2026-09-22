@@ -282,7 +282,7 @@ class TestIndexKeyWidthGuard:
             )
 
         assert "profile_handle" in str(exc.value)
-        assert "no max_length" in str(exc.value)
+        assert "TEXT" in str(exc.value)
 
     @pytest.mark.parametrize("uri", SERVERS)
     def test_an_oversized_value_object_column_is_named(self, uri):

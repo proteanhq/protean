@@ -471,7 +471,7 @@ class TestDeclaredIndexKeyWidths:
             )
 
         assert "handle_nickname" in str(exc.value)
-        assert "no max_length" in str(exc.value)
+        assert "TEXT" in str(exc.value)
 
     def test_a_shadow_column_within_the_cap_is_accepted(self):
         class Address(BaseValueObject):
@@ -616,12 +616,22 @@ class TestMappedColumnKeyWidths:
         assert "ix_wide" in str(exc.value)
         assert "3600 bytes" in str(exc.value)
 
-    def test_a_column_mapped_to_text_cannot_be_indexed(self):
+    @pytest.mark.parametrize(
+        "column_type",
+        [sa_types.Text(), sa_types.Text(100)],
+        ids=["text", "text-with-a-length-hint"],
+    )
+    def test_a_column_mapped_to_text_cannot_be_indexed(self, column_type):
+        """``Text`` subclasses ``String`` and takes a length hint that MySQL
+        ignores, so ``Text(100)`` is still a TEXT column. Reading that hint as a
+        width let the index through, and the server answered with 1170,
+        "BLOB/TEXT column used in key specification without a key length"."""
+
         class Essay(BaseAggregate):
             body: String(max_length=100)
 
         class EssayCustomModel(BaseDatabaseModel):
-            body = Column(sa_types.Text())
+            body = Column(column_type)
 
         with pytest.raises(IncorrectUsageError) as exc:
             self.table_with_custom_model(
@@ -629,7 +639,7 @@ class TestMappedColumnKeyWidths:
             )
 
         assert "body" in str(exc.value)
-        assert "no max_length" in str(exc.value)
+        assert "TEXT" in str(exc.value)
 
     def test_a_value_object_shadow_column_is_measured_on_the_live_path(self):
         """The shadow column is a real column, so it needs no name resolution
@@ -729,6 +739,42 @@ class TestAssociationColumns:
                 render_index_ddl(Note, "mysql")
 
         assert expected in str(exc.value)
+
+
+class TestConnectArgsValidation:
+    """``_additional_engine_args`` reads ``connect_args`` as
+    ``dict(value or {})``. Without a type check the falsy wrong shapes are
+    accepted in silence while the truthy ones raise out of ``dict()``, and
+    turning a setting off is the likelier thing to write than turning it on.
+    """
+
+    @pytest.mark.parametrize(
+        "value", [False, 0, "", None, "charset=utf8", ["charset"], 3]
+    )
+    def test_a_non_mapping_is_rejected_by_name(self, value):
+        with pytest.raises(ConfigurationError) as exc:
+            mysql_provider(host_domain([]), connect_args=value)
+
+        assert "connect_args" in str(exc.value)
+
+    def test_an_empty_mapping_is_accepted(self):
+        """Absent and empty both mean "nothing of my own", and neither is a
+        mistake."""
+        provider = mysql_provider(host_domain([]), connect_args={})
+
+        assert provider._additional_engine_args()["connect_args"] == {
+            "charset": "utf8mb4"
+        }
+
+    def test_the_charset_is_reasserted_over_the_callers_own(self):
+        provider = mysql_provider(
+            host_domain([]), connect_args={"charset": "latin1", "ssl_ca": "/ca.pem"}
+        )
+
+        assert provider._additional_engine_args()["connect_args"] == {
+            "charset": "utf8mb4",
+            "ssl_ca": "/ca.pem",
+        }
 
 
 class TestCustomTableArgs:

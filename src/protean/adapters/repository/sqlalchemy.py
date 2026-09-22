@@ -717,8 +717,14 @@ def _mysql_index_key_width_from_columns(
             width += 32 * _MYSQL_BYTES_PER_CHAR
             continue
 
-        # ``Text`` is a ``String`` with no length, and maps to a TEXT column
-        # InnoDB cannot index without a prefix length.
+        # ``Text`` subclasses ``String`` and accepts a length hint, which MySQL
+        # ignores: ``Text(100)`` is still a TEXT column and still needs a
+        # prefix length to be indexed. So the subclass is checked first, and
+        # its ``length`` is not read.
+        if isinstance(column_type, sa_types.Text):
+            unbounded.append(field_name)
+            continue
+
         if not isinstance(column_type, sa_types.String):
             continue
         if column_type.length:
@@ -771,11 +777,11 @@ def _check_mysql_index_key_widths(
         if unbounded:
             raise IncorrectUsageError(
                 f"Index {name!r} on '{entity_cls.__name__}' covers "
-                f"{', '.join(unbounded)}, which {'have' if len(unbounded) > 1 else 'has'} "
-                f"no max_length and so {'map' if len(unbounded) > 1 else 'maps'} "
-                f"to TEXT. InnoDB cannot index a TEXT "
-                f"column without a prefix length, so declare one "
-                f"(e.g. Field(max_length=255))."
+                f"{', '.join(unbounded)}, which "
+                f"{'map' if len(unbounded) > 1 else 'maps'} to a TEXT column. "
+                f"InnoDB cannot index TEXT without a prefix length. Give the "
+                f"field a max_length (e.g. Field(max_length=255)), or map it "
+                f"to a VARCHAR column."
             )
 
         if width > _MYSQL_MAX_INDEX_KEY_BYTES:
@@ -2445,7 +2451,7 @@ class MysqlProvider(SAProvider):
     ``mariadb+pymysql://`` one, and every dialect-sensitive branch in this module
     accepts both through :data:`_MYSQL_DIALECTS`.
 
-    One config key beyond the shared ones: ``collation`` (default
+    Beyond the shared config keys it reads ``collation`` (default
     ``utf8mb4_0900_as_cs``), the collation tables are created with and every
     string column inherits. The server default is accent-insensitive and
     case-insensitive on both MySQL and MariaDB, which would make ``exact``,
@@ -2489,7 +2495,31 @@ class MysqlProvider(SAProvider):
         # at ``domain.init()`` naming the config key, not at the first
         # ``CREATE TABLE`` with MySQL's own message.
         self._collation = self._resolve_collation(name, conn_info)
+        self._validate_connect_args(name, conn_info)
         super().__init__(name, domain, conn_info)
+
+    @staticmethod
+    def _validate_connect_args(name: str, conn_info: dict[str, typing.Any]) -> None:
+        """Reject a ``connect_args`` that is not a table of driver arguments.
+
+        Absence, then type. ``_additional_engine_args`` reads it as
+        ``dict(value or {})``, which turns ``False``, ``0`` and ``""`` into an
+        empty mapping and accepts them in silence, while the same mistake
+        spelled truthily raises out of ``dict()`` with the driver's own
+        message. Turning a setting off is the likelier thing to write than
+        turning it on, so the falsy shapes are the ones that most need naming.
+        """
+        if "connect_args" not in conn_info:
+            return
+
+        connect_args = conn_info["connect_args"]
+        if not isinstance(connect_args, dict):
+            raise ConfigurationError(
+                f"Database '{name}' sets connect_args={connect_args!r}. It must "
+                f"be a table of driver connection arguments "
+                f'(e.g. connect_args = {{ ssl_ca = "/path/ca.pem" }}), or be '
+                f"left out."
+            )
 
     @staticmethod
     def _resolve_collation(name: str, conn_info: dict[str, typing.Any]) -> str:
