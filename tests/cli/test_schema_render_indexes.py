@@ -106,6 +106,18 @@ class TestWriteIndexDDL:
         assert "postgres" in str(exc.value)
         assert list(tmp_path.iterdir()) == []
 
+    def test_an_unknown_dialect_is_rejected_with_no_indexes_declared(
+        self, test_domain, tmp_path
+    ):
+        """A domain with no indexes never reaches the renderer, so the check
+        has to happen before the registry walk or the typo goes unreported."""
+        test_domain.init(traverse=False)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            write_index_ddl(test_domain, str(tmp_path), ["postgres"])
+
+        assert "postgres" in str(exc.value)
+
     def test_file_contains_create_index_ddl(self, shop_domain, tmp_path):
         written = write_index_ddl(shop_domain, str(tmp_path), ["postgresql"])
         assert len(written) == 1

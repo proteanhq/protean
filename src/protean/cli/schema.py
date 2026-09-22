@@ -143,7 +143,16 @@ def write_index_ddl(
     of written paths. This is the database-agnostic path: it never executes
     DDL, only renders it for review or manual application.
     """
-    from protean.adapters.repository.sqlalchemy import render_index_ddl  # noqa: PLC0415
+    from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
+        check_index_ddl_dialect,
+        render_index_ddl,
+    )
+
+    # Check every requested dialect before walking the registry. A domain with
+    # no index declarations never reaches ``render_index_ddl``, so without this
+    # a misspelt `--dialects` would report "Wrote 0 schema files" and look fine.
+    for dialect in dialects:
+        check_index_ddl_dialect(dialect)
 
     output = Path(output_dir)
     written: list[Path] = []

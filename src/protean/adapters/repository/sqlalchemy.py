@@ -394,6 +394,25 @@ _MYSQL_MAX_INDEXED_VARCHAR = 768
 # writes microsecond-precision timestamps.
 _MYSQL_DATETIME_FSP = 6
 
+# Dialects ``render_index_ddl`` can compile ``CREATE INDEX`` for.
+_INDEX_DDL_DIALECTS = frozenset({"postgresql", "sqlite", "mssql", "mysql", "mariadb"})
+
+
+def check_index_ddl_dialect(dialect_name: str) -> None:
+    """Reject a dialect name index DDL cannot be compiled for.
+
+    An unknown name used to fall through to the SQLite dialect, which compiles
+    without complaint and hands back plausible DDL for the wrong database. The
+    check is separate from the rendering so ``protean schema render`` can run it
+    on every requested dialect up front, before it knows whether any element
+    declares an index.
+    """
+    if dialect_name not in _INDEX_DDL_DIALECTS:
+        raise IncorrectUsageError(
+            f"Unknown index DDL dialect '{dialect_name}'. "
+            f"Supported: {', '.join(sorted(_INDEX_DDL_DIALECTS))}."
+        )
+
 
 def _q_field_names(criteria: Q) -> set[str]:
     """Collect the field names referenced by a ``Q`` predicate (recursively)."""
@@ -591,6 +610,8 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     ``protean schema render --indexes`` to write ``.sql`` artifacts without a
     live database connection.
     """
+    check_index_ddl_dialect(dialect_name)
+
     declared = getattr(entity_cls.meta_, "indexes", ()) or ()
     if not declared:
         return []
@@ -633,14 +654,8 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
         "mysql": mysql.dialect(),
         "mariadb": mysql.mariadb.MariaDBDialect(),
     }
-    # An unknown name used to fall back to the SQLite dialect, which compiles
-    # without complaint and hands back plausible DDL for the wrong database. A
-    # misspelt ``--dialects`` value is worth an error.
-    if dialect_name not in dialect_impls:
-        raise IncorrectUsageError(
-            f"Unknown index DDL dialect '{dialect_name}'. "
-            f"Supported: {', '.join(sorted(dialect_impls))}."
-        )
+    # Guarded at the top of this function, so every name here is known.
+    assert dialect_impls.keys() == _INDEX_DDL_DIALECTS
     dialect = dialect_impls[dialect_name]
 
     statements = [
