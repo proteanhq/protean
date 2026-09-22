@@ -70,6 +70,12 @@ def _saga_statuses(domain: Domain, pm_cls: type, order_id: str) -> list[str]:
     return [message.to_domain_object().state["status"] for message in messages]
 
 
+def _final_transition(domain: Domain, pm_cls: type, order_id: str):
+    """The last transition the saga wrote for this instance."""
+    stream = f"{pm_cls.meta_.stream_category}-{order_id}"
+    return domain.event_store.store.read(stream)[-1].to_domain_object()
+
+
 def _run_saga(namespace: dict[str, Any], domain: Domain, order_id: str, total: float):
     """Place an order, which runs the saga in-process, and return its statuses."""
     with domain.domain_context():
@@ -128,6 +134,16 @@ def test_after_asset_runs_the_success_path():
         "fulfilled",
     ]
 
+    with domain.domain_context():
+        final = _final_transition(
+            domain, namespace["OrderFulfillmentPM"], "ORD-SUCCESS"
+        )
+
+    # The success terminal is marked end=True, so the saga closes here. Without
+    # this the test passes on the status alone, and dropping end=True from
+    # on_shipment_dispatched would go unnoticed.
+    assert final.is_complete is True
+
 
 def test_after_asset_runs_the_compensating_path():
     namespace, domain = _load("saga_after_closed.py", "_saga_after_failure_")
@@ -138,8 +154,12 @@ def test_after_asset_runs_the_compensating_path():
     assert statuses == ["reserving_stock", "awaiting_payment", "cancelled"]
 
     with domain.domain_context():
-        stream = f"{namespace['OrderFulfillmentPM'].meta_.stream_category}-ORD-FAILED"
-        final = domain.event_store.store.read(stream)[-1].to_domain_object()
+        final = _final_transition(domain, namespace["OrderFulfillmentPM"], "ORD-FAILED")
+
+        # The failure terminal is marked end=True too, so the compensating path
+        # closes the saga as well. PROCESS_MANAGER_UNCLOSED cannot catch a
+        # missing end=True here, because the success terminal already clears it.
+        assert final.is_complete is True
 
         # Both compensating commands ran: the reservation is released and the
         # order is cancelled.
@@ -165,3 +185,10 @@ def test_before_asset_runs_the_flow_without_closing_it():
         "shipping",
         "fulfilled",
     ]
+
+    with domain.domain_context():
+        final = _final_transition(domain, namespace["OrderFulfillmentPM"], "ORD-OPEN")
+
+    # No handler is marked end=True and none calls mark_as_complete(), so the
+    # instance stays open after the flow has run to its last step.
+    assert final.is_complete is False

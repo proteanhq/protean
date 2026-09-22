@@ -68,8 +68,9 @@ with a dict, for example `correlate={"order_id": "ext_order_ref"}`.
 
 ### 3. Write the start handler
 
-Exactly one handler opens the saga. Mark it `start=True`. It stores the fields
-the later steps need and issues the first command.
+A start handler opens the saga. Mark it `start=True`. It stores the fields the
+later steps need and issues the first command. A saga needs at least one; give it
+one per event that can begin the flow.
 
 ```python
 @handle(OrderPlaced, start=True, correlate="order_id")
