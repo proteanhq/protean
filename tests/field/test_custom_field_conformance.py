@@ -665,7 +665,7 @@ class TestConformanceHarnessGuards:
     def test_rejects_a_non_fieldspec(self):
         with pytest.raises(TypeError):
             run_custom_field_conformance(
-                object(),  # type: ignore[arg-type]
+                object(),
                 valid_input="x",
                 expected="x",
                 invalid_input="y",

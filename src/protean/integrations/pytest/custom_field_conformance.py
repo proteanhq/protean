@@ -32,7 +32,7 @@ from protean.utils.reflection import fields
 
 
 def run_custom_field_conformance(
-    field: FieldSpec,
+    field: Any,
     *,
     valid_input: Any,
     expected: Any,
@@ -40,16 +40,19 @@ def run_custom_field_conformance(
 ) -> None:
     """Assert a ``Custom`` field honours the custom-field contract.
 
-    ``field`` is the ``Custom(...)`` spec under test. ``valid_input`` is a raw
-    value the field should parse; ``expected`` is what it should parse to
-    (compared with ``==``, so the custom type needs a meaningful ``__eq__``).
-    ``invalid_input`` is a raw value the field should reject.
+    ``field`` is the ``Custom(...)`` field under test. It is typed ``Any``
+    because a type checker sees ``Custom(Color)`` as ``Color``, not as the
+    declaration object it is at runtime; the guards below check the real object.
+    ``valid_input`` is a raw value the field should parse; ``expected`` is what
+    it should parse to (compared with ``==``, so the custom type needs a
+    meaningful ``__eq__``). ``invalid_input`` is a raw value the field should
+    reject.
 
     Raises ``AssertionError`` on any contract violation.
     """
     if not isinstance(field, FieldSpec):
         raise TypeError(
-            "run_custom_field_conformance expects a FieldSpec built by Custom(); "
+            "run_custom_field_conformance expects a field built by Custom(); "
             f"got {type(field).__name__}"
         )
     # Every built-in factory returns a FieldSpec too, so the isinstance check

@@ -2,6 +2,9 @@
 
 from protean.domain import Domain
 from protean.fields import Custom, String
+from protean.integrations.pytest.custom_field_conformance import (
+    run_custom_field_conformance,
+)
 
 domain = Domain(__file__, "CustomFieldDomain")
 
@@ -36,3 +39,13 @@ class Brand:
 
 brand = Brand(name="acme", color=Color("#FF0000"))
 reveal_type(brand.color)  # E: Revealed type is "tests.ext.fixtures.custom_field.Color"
+
+
+# The conformance harness takes the Custom() field a type checker sees as the
+# custom type itself, so this call must type-check.
+run_custom_field_conformance(
+    c_required,
+    valid_input="#FF0000",
+    expected=Color("#FF0000"),
+    invalid_input="nope",
+)
