@@ -20,7 +20,7 @@ class UserView:
     email: String()
 ```
 
-Error: `"Projection 'UserView' needs to have at least one identifier"`
+Error: `` "Projection `UserView` needs to have at least one identifier" ``
 
 ## 2. Projection with no projector
 

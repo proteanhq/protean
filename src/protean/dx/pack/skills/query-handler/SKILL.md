@@ -43,7 +43,7 @@ class OrderQueryHandler:
 
 1. **part_of is the projection** - Associate the handler with the projection it reads: `@domain.query_handler(part_of="OrderSummary")` (the read model, not an aggregate)
 2. **Use the `@read` decorator** - Each method is decorated `@read(QueryClass)` (the read-side counterpart to `@handle`); import it: `from protean import read`
-3. **Handlers RETURN values** - Unlike command/event handlers, a query handler returns its result; `domain.dispatch(query)` hands that value back to the caller
+3. **Handlers RETURN values** - A query handler always returns its result, unlike an event handler, which never returns a value to a caller; a command handler only returns one when processed synchronously. `domain.dispatch(query)` hands the query handler's result back to the caller
 4. **One method per query** - Each query type is answered by exactly one `@read` method
 5. **Method signature is `(self, query)`** - The dispatched query instance is passed in
 6. **No Unit of Work, no side effects** - Reads are stateless; never mutate state or persist from a query handler

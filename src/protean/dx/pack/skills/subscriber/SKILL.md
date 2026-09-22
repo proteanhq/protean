@@ -61,7 +61,7 @@ class PaymentConfirmationSubscriber:
 4. **broker defaults to "default"** - Optionally specify broker: `@domain.subscriber(stream="...", broker="my_broker")`
 5. **Use message_processing for sync mode** - `domain.config["message_processing"] = "sync"` (NOT `event_processing`)
 6. **No return values** - Subscribers follow fire-and-forget, return values are discarded
-7. **One subscriber per stream** - Each subscriber class handles all messages on its stream
+7. **Multiple subscribers can share a stream** - Nothing stops two subscriber classes from registering on the same stream; each gets its own subscription and processes the stream's messages independently
 8. **Anti-corruption layer** - Translate external schemas into domain language at the subscriber boundary
 
 ## Subscriber options

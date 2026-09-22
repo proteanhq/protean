@@ -46,7 +46,7 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 4. **`event_type` is always the CURRENT event class** — Not the old version. The upcaster knows which event it targets by its current definition
 5. **Bump `__version__` on the event class** — Set `__version__ = 2` on the event when you add an upcaster targeting v2. Default version is `1`
 6. **One upcaster per version step** — Write v1→v2 and v2→v3 separately. Never skip versions that existed in production
-7. **Keep upcasters pure** — No I/O, no database queries, no external API calls. Upcasting runs on every deserialization and must be fast
+7. **Keep upcasters pure** — No I/O, no database queries, no external API calls. Upcasting runs on the deserialization path for old-version events and must be fast
 8. **Chains build automatically** — Register individual steps; the framework chains them into v1→v2→v3 during `domain.init()`
 9. **Validated at startup** — `domain.init()` detects duplicates, cycles, non-convergent chains, and missing event classes. All errors are caught at startup, never at runtime
 10. **Works everywhere transparently** — Event-sourced aggregate reconstruction (`@apply`), event handlers (`@handle`), and projectors all receive upcast events
@@ -188,7 +188,7 @@ class V2ToV3(BaseUpcaster): ...
 ### Performing I/O in upcast()
 
 ```python
-# WRONG — upcasting runs on every deserialization
+# WRONG — upcasting runs on the deserialization path and must stay fast
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         user = db.query(User, data["user_id"])  # NO! No I/O
