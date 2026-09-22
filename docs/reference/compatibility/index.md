@@ -34,8 +34,10 @@ Protean classifies changes to persisted domain elements using these rules:
 | Point an event-sourced aggregate's identity at another field | **Breaking** (`identity_field_changed`) |
 | Drop an `@apply` handler while its event survives | **Breaking** (`apply_handler_removed`) |
 
-These rules apply to all persisted elements: aggregates, entities, value
-objects, commands, events, database models, and projections.
+Most of these rules apply to every persisted element: aggregates, entities,
+value objects, commands, events, database models, and projections. The last four
+rows are the exception. They read attributes only an aggregate has, so they are
+checked on event-sourced aggregates and nowhere else.
 
 ### Replay hazards on an event-sourced aggregate
 
@@ -52,7 +54,7 @@ cannot be read the new way. Dropping an `@apply` handler while its event survive
 historical events of that type with nothing to apply them, and the rebuild
 raises.
 
-Two related cases are already covered by the general rules above and are not
+Some related cases are already covered by the general rules above and are not
 reported again here: a change to the identity field's *type* is a
 `field_type_changed`, and an event removed from the domain outright is an
 `element_removed` on that event. Deleting an event class and its `@apply`

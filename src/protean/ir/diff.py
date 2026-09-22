@@ -1095,9 +1095,10 @@ def _classify_replay_hazards(
     """Flag the changes that stop an event-sourced aggregate being rebuilt.
 
     An event-sourced aggregate holds no stored schema of its own; its state is
-    reconstructed by reading a stream and applying the events in it. Four
-    changes break that reconstruction outright, and none of them is a field
-    change, so none is reported anywhere else today:
+    reconstructed by reading a stream and applying the events in it. What breaks
+    that reconstruction is a change to where the history is read from, or to
+    what reads it. None of those is a field change, so none is reported
+    anywhere else today:
 
     - **Event sourcing turned on or off.** A classic aggregate converted to
       event sourcing kept its existing state as table rows, which replay cannot
