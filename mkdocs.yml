@@ -4,6 +4,13 @@ repo_name: proteanhq/protean
 repo_url: https://github.com/proteanhq/protean
 copyright: Copyright &copy; 2019 - 2026 Subhash Bhushan
 
+# A renamed heading silently strands every link to its old anchor, and mkdocs
+# reports that at info level by default. There is no error level for it, so
+# `mkdocs build --strict` is what turns this warning into a failure.
+validation:
+  links:
+    anchors: warn
+
 theme:
   name: material
   custom_dir: docs/overrides

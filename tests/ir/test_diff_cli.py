@@ -166,6 +166,98 @@ class TestDiffText:
 
 
 @pytest.mark.no_test_domain
+class TestAvroNeutralBreaksAreNamed:
+    """A break Avro has no opinion about still has to be named in the text
+    output. Moving an event-sourced aggregate's stream category strands its
+    whole history without touching a payload byte, so the Avro verdict stays
+    FULL and the "breaks FORWARD/BACKWARD" lines say nothing about it. Before
+    the classified report reached this output, the command exited 1 and printed
+    "breaking changes are present - see above" with nothing above naming one."""
+
+    @staticmethod
+    def _es_ir(stream_category="order", identity_field="id", apply_handlers=None):
+        return _minimal_ir(
+            clusters={
+                "app.Order": {
+                    "aggregate": {
+                        "element_type": "AGGREGATE",
+                        "fields": {"id": {"kind": "standard", "type": "String"}},
+                        "fqn": "app.Order",
+                        "identity_field": identity_field,
+                        "invariants": {"post": [], "pre": []},
+                        "module": "app",
+                        "name": "Order",
+                        "options": {
+                            "auto_add_id_field": True,
+                            "fact_events": False,
+                            "is_event_sourced": True,
+                            "limit": 100,
+                            "provider": "default",
+                            "schema_name": None,
+                            "stream_category": stream_category,
+                        },
+                        "apply_handlers": (
+                            {"app.OrderPlaced": "on_placed"}
+                            if apply_handlers is None
+                            else apply_handlers
+                        ),
+                    },
+                    "application_services": {},
+                    "command_handlers": {},
+                    "commands": {},
+                    "database_models": {},
+                    "entities": {},
+                    "event_handlers": {},
+                    "events": {},
+                    "repositories": {},
+                    "value_objects": {},
+                }
+            }
+        )
+
+    def _run(self, tmp_path, left_ir, right_ir):
+        left = _write_ir(tmp_path, "left.json", left_ir)
+        right = _write_ir(tmp_path, "right.json", right_ir)
+        return runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
+
+    def test_a_moved_stream_category_is_named(self, tmp_path):
+        result = self._run(
+            tmp_path, self._es_ir(), self._es_ir(stream_category="orders")
+        )
+        assert result.exit_code == 1
+        flat = " ".join(result.output.split())
+        assert "Breaking Changes" in flat
+        assert "Stream category changed" in flat
+        # The Avro verdict has nothing to say about it, which is the whole point.
+        assert "Avro compatibility: FULL" in flat
+
+    def test_a_moved_identity_field_is_named(self, tmp_path):
+        left = self._es_ir()
+        left["clusters"]["app.Order"]["aggregate"]["fields"]["ref"] = {
+            "kind": "standard",
+            "type": "String",
+        }
+        right = self._es_ir(identity_field="ref")
+        right["clusters"]["app.Order"]["aggregate"]["fields"]["ref"] = {
+            "kind": "standard",
+            "type": "String",
+        }
+        result = self._run(tmp_path, left, right)
+        assert result.exit_code == 1
+        assert "Identity field changed" in " ".join(result.output.split())
+
+    def test_a_dropped_apply_handler_is_named(self, tmp_path):
+        result = self._run(tmp_path, self._es_ir(), self._es_ir(apply_handlers={}))
+        assert result.exit_code == 1
+        assert "dropped its @apply handler" in " ".join(result.output.split())
+
+    def test_an_unchanged_domain_names_nothing(self, tmp_path):
+        result = self._run(tmp_path, self._es_ir(), self._es_ir())
+        assert result.exit_code == 0
+        assert "Breaking Changes" not in result.output
+
+
+@pytest.mark.no_test_domain
 class TestDiffTextCoverage:
     """Exercise all text output paths for coverage."""
 
