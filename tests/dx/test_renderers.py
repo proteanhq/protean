@@ -25,8 +25,10 @@ from protean.dx.renderers import (
     OPENCODE_MCP_KEY,
     OPENCODE_SERVER_NAME,
     OPENCODE_TARGET,
+    REQUIRED_TARGETS,
     _strip_leading_h1,
     agents_managed_file,
+    baseline_managed_files,
     claude_bridge_managed_file,
     copilot_managed_file,
     cursor_managed_file,
@@ -165,6 +167,38 @@ def test_mcp_registration_imports_without_the_mcp_extra() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "sdk-free-ok" in result.stdout
+
+
+def test_baseline_is_every_required_target_in_managed_files_order() -> None:
+    """The scaffold's baseline is REQUIRED_TARGETS, read from managed_files.
+
+    protean new writes this set and protean dx check requires it, so the two read
+    the same list. AGENTS.md comes before the CLAUDE.md bridge that points at it.
+    """
+    baseline = baseline_managed_files("0.18.0")
+
+    assert [f.target for f in baseline] == ["AGENTS.md", "CLAUDE.md"]
+    assert {f.target for f in baseline} == set(REQUIRED_TARGETS)
+    assert all(f.version == "0.18.0" for f in baseline)
+    # Byte-identical to what a dx install writes for those targets.
+    rendered = {f.target: f for f in managed_files("0.18.0")}
+    assert all(f == rendered[f.target] for f in baseline)
+
+
+def test_baseline_rejects_a_required_target_with_no_renderer(monkeypatch) -> None:
+    """A required target no renderer produces is a loud failure, not a short list.
+
+    Silently returning the shorter set would let protean new write a project that
+    fails its own protean dx check, which is the drift this baseline exists to
+    prevent.
+    """
+    monkeypatch.setattr(
+        "protean.dx.renderers.REQUIRED_TARGETS",
+        frozenset({AGENTS_TARGET, CLAUDE_BRIDGE_TARGET, "GEMINI.md"}),
+    )
+
+    with pytest.raises(ValueError, match="GEMINI.md"):
+        baseline_managed_files("0.18.0")
 
 
 def test_managed_files_returns_canonical_then_per_editor() -> None:

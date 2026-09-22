@@ -4,10 +4,19 @@ This is the file-producing half of ``protean new``, lifted out of the Typer
 command so the CLI, the MCP server, tests, or any programmatic caller can run it
 directly. The core owns exactly the scaffolding: the lazy ``copier`` import
 guard, project-name validation, target-directory resolution, the ``--force``
-clear, the copier render, and writing the derived manifest
-(:mod:`protean.scaffold.manifest`) and the ``AGENTS.md`` root file. It leaves the
-post-generation setup (``uv sync``, ``git init``, pre-commit, console tips) in
-the CLI, because that is console and subprocess work, not scaffolding.
+clear, the copier render, writing the derived manifest
+(:mod:`protean.scaffold.manifest`), and writing the dx-managed baseline
+(``AGENTS.md``, the ``CLAUDE.md`` bridge, and ``.protean/dx-state.json``) through
+the ``dx`` renderers. It leaves the post-generation setup (``uv sync``,
+``git init``, pre-commit, console tips) in the CLI, because that is console and
+subprocess work, not scaffolding.
+
+``protean new`` writes the same agent-facing files ``protean dx`` manages. It
+renders the managed-block ``AGENTS.md`` from the same renderer that
+``protean dx install`` uses, at the same pack version, so the two produce the
+same bytes and a scaffolded project is already dx-managed. ``protean new`` writes
+only the universal baseline; ``.mcp.json`` and the per-editor files stay
+``protean dx install`` choices.
 
 :func:`create_project` returns the sorted list of project-relative POSIX paths it
 created (apply) or would create (dry-run). Under ``dry_run`` it touches nothing
@@ -19,7 +28,13 @@ inputs.
 ``copier`` is the optional ``[scaffold]`` extra, so it is imported inside the
 function (its first statement), never at module top: this keeps
 ``import protean.scaffold`` side-effect free on a base install, and the guard
-fires before any directory is cleared.
+fires before any directory is cleared. The ``protean.dx`` renderers and writer
+are imported function-local for a different reason: the writer imports
+:mod:`protean.scaffold.apply`, and importing that runs this package's
+``__init__``, which imports this module. So when ``protean.dx`` is imported
+first, a module-top ``from protean.dx import ...`` here would run while
+``protean.dx`` is still half-initialized and raise ``ImportError`` (the name is
+not bound yet).
 """
 
 from __future__ import annotations
@@ -31,7 +46,6 @@ import tempfile
 from pathlib import Path
 
 import protean
-from protean.ir.generators.agents import generate_agents_md
 from protean.scaffold.manifest import write_manifest
 
 __all__ = ["create_project"]
@@ -109,7 +123,8 @@ def create_project(
 
     Renders the bundled project template into ``<output_folder>/<project_name>``,
     then writes the derived manifest (``.protean/project.json``) and the
-    ``AGENTS.md`` root file. Returns the sorted list of project-relative POSIX
+    dx-managed baseline (``AGENTS.md``, the ``CLAUDE.md`` bridge, and
+    ``.protean/dx-state.json``). Returns the sorted list of project-relative POSIX
     paths that were created.
 
     Args:
@@ -142,7 +157,8 @@ def create_project(
         ValueError: *project_name* is not a string, is empty, is ``.`` or
             ``..``, or carries a forbidden character; or the target path
             resolves outside *output_folder*, which is what a symlink left at
-            the target does.
+            the target does; or a required dx target has no renderer. All are
+            raised before any directory is cleared.
         FileNotFoundError: *output_folder* does not exist.
         FileExistsError: Something already sits at the target path (a non-empty
             directory, or a non-directory such as a file or symlink) and *force*
@@ -153,6 +169,16 @@ def create_project(
     # the CLI translates into an install hint rather than after the target
     # directory has already been cleared.
     from copier import run_copy  # noqa: PLC0415
+
+    # The dx substrate is imported function-local to break an import cycle: the
+    # writer (:mod:`protean.dx.managed_files`) imports
+    # :mod:`protean.scaffold.apply`, and importing that runs this package's
+    # ``__init__``, which imports this module. When ``protean.dx`` is imported
+    # first, a module-top ``from protean.dx import ...`` here would run while
+    # ``protean.dx`` is still half-initialized and raise ``ImportError``.
+    from protean.dx import apply_managed_file  # noqa: PLC0415
+    from protean.dx.pack import PACK_VERSION  # noqa: PLC0415
+    from protean.dx.renderers import baseline_managed_files  # noqa: PLC0415
 
     if not _is_valid_project_name(project_name):
         raise ValueError("Invalid project name")
@@ -180,8 +206,16 @@ def create_project(
     data_dict = dict(data or {})
     data_dict["project_name"] = project_name
 
+    # Render the dx baseline up front, for the same reason copier is imported
+    # first: rendering reads the packaged pack and the diagnostics registry, so a
+    # stripped or unreadable pack fails here, while the target is still
+    # untouched. Rendering it inside ``render_into`` would fail after ``force``
+    # had cleared the target and copier had written into it, leaving a
+    # half-scaffolded project that is not dx-managed.
+    baseline = baseline_managed_files(PACK_VERSION)
+
     def render_into(destination: str, quiet: bool = False) -> list[str]:
-        """Render the template plus manifest and AGENTS.md into *destination*.
+        """Render the template, manifest, and dx baseline into *destination*.
 
         *quiet* silences copier's own ``create <path>`` log. A dry run renders
         into a temp directory the caller never sees, so that log would announce
@@ -197,14 +231,23 @@ def create_project(
             pretend=False,
             quiet=quiet,
         )
-        # The manifest is the first thing to create ``.protean/``. AGENTS.md is
-        # generated from the diagnostics registry and the installed version (not
-        # a static template file), so it stays byte-identical to
-        # ``protean docs generate --type=agents``.
+        # The manifest is the first thing to create ``.protean/``, and it is
+        # written before the dx files so the state file and CLAUDE.md are not
+        # captured as manifest entries. The dx baseline goes through the same
+        # renderers and writer ``protean dx install`` uses, at the same pack
+        # version, so the scaffold's AGENTS.md is byte-identical to a dx install
+        # and the project is already dx-managed. The set comes from
+        # ``baseline_managed_files``, the same ``REQUIRED_TARGETS`` baseline
+        # ``protean dx check`` requires, so a target added to that baseline is
+        # written here too and a fresh project never fails its own check.
+        # ``apply_managed_file`` writes the managed-block AGENTS.md, creates the
+        # CLAUDE.md bridge, and records both in ``.protean/dx-state.json``.
+        # ``.mcp.json`` and the per-editor files stay ``protean dx install``
+        # choices.
         write_manifest(destination or ".")
-        (Path(destination or ".") / "AGENTS.md").write_text(
-            generate_agents_md(version=protean.__version__), encoding="utf-8"
-        )
+        dest = Path(destination or ".")
+        for managed_file in baseline:
+            apply_managed_file(dest, managed_file)
         return _relative_file_paths(destination or ".")
 
     if dry_run:

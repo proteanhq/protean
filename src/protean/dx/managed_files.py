@@ -1101,13 +1101,13 @@ def _resolve_state_path(project_root: Path) -> Path:
     treated as absent, read, or written.
     """
     state_dir = project_root / _STATE_DIR
-    if state_dir.is_symlink():
+    if _is_symlink(state_dir):
         raise ManagedFileError(
             f"State directory {state_dir} is a symlink; refusing to follow it "
             "outside the project tree."
         )
     state_path = state_dir / _STATE_FILENAME
-    if state_path.is_symlink():
+    if _is_symlink(state_path):
         raise ManagedFileError(
             f"State file {state_path} is a symlink; refusing to follow it outside "
             "the project tree."
@@ -1115,20 +1115,44 @@ def _resolve_state_path(project_root: Path) -> Path:
     return state_path
 
 
+def _is_symlink(path: Path) -> bool:
+    """Return whether *path* is a symlink, treating an unreadable parent as not one.
+
+    ``Path.is_symlink()`` needs search permission on the parent directory. When the
+    parent is unreadable it raises ``PermissionError`` on Python 3.11 through 3.13,
+    while Python 3.14 swallows it and answers ``False``. Answer ``False`` on every
+    version so the caller keeps going and the later read or write fails with the
+    real environment error (an unreadable ``.protean`` surfaces as the ``ValueError``
+    :func:`load_state` raises, not a raw ``OSError`` that leaks past it).
+    """
+    try:
+        return path.is_symlink()
+    except OSError:
+        return False
+
+
 def load_state(project_root: Path | str) -> ManagedFileState:
     """Load the state file from ``<project_root>/.protean/dx-state.json``.
 
     Returns an empty :class:`ManagedFileState` when the file is absent, which is
     how a first apply reads. Raises :exc:`ValueError` when the file exists but
-    cannot be read, is not valid JSON, or does not carry the state shape (an
-    unknown ``state_version`` included), and :exc:`ManagedFileError` when the
-    state directory or state file is a symlink.
+    cannot be read (an unreadable file or directory included), is not valid JSON,
+    or does not carry the state shape (an unknown ``state_version`` included),
+    and :exc:`ManagedFileError` when the state directory or state file is a
+    symlink.
     """
     state_path = _resolve_state_path(Path(project_root))
-    if not state_path.exists():
-        return ManagedFileState()
+    # Read first and let a missing file say so, rather than probing with
+    # ``exists()``. ``Path.exists()`` swallows the ``OSError`` an unreadable
+    # ``.protean`` directory raises and answers ``False``, so an unreadable state
+    # file would read as an absent one: every recorded target would silently
+    # count as never installed. Only ``FileNotFoundError`` means absent; a
+    # permission error and every other read failure surface as the environment
+    # error they are.
     try:
         content = state_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ManagedFileState()
     except UnicodeDecodeError as exc:
         raise ValueError(f"State file {state_path} is not valid utf-8: {exc}") from exc
     except OSError as exc:

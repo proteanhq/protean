@@ -67,15 +67,22 @@ The command creates a complete project structure with the following components:
 
 - `pyproject.toml`: Python project configuration with uv
 - `README.md`: Project documentation
-- `AGENTS.md`: Hard rules for an agent working on the project, one per
-  error-level Protean diagnostic. Generated from the diagnostics registry, so
-  regenerate it after upgrading Protean with
-  `protean docs generate --type=agents --output=AGENTS.md`.
+- `AGENTS.md`: Guidance for an agent working on the project, inside a managed
+  block. This is the dx-managed form, the same file `protean dx install` writes,
+  which composes the packaged pack guidance with the error-level Protean
+  diagnostic rules. It is written and maintained by
+  [`protean dx`](dx.md); refresh it with `protean dx refresh` after upgrading
+  Protean.
+- `CLAUDE.md`: A one-line bridge (`@AGENTS.md`) that points Claude at the
+  `AGENTS.md` guidance. Also maintained by `protean dx`.
 - `Makefile`: Common development tasks
 - `.gitignore`: Git ignore patterns
 - `.pre-commit-config.yaml`: Pre-commit hooks configuration
 - `.env.example`: Environment variables template
 - `.dockerignore`: Docker ignore patterns
+- `.protean/dx-state.json`: Records the managed files `protean dx` wrote
+  (`AGENTS.md`, `CLAUDE.md`) and the pack version, so `protean dx check` and
+  `refresh` can verify and update them.
 
 ### Docker Configuration
 

@@ -14,13 +14,17 @@ the whole file) and the user owns everything around it.
 Verbs::
 
     protean dx install     # write the files (create or refresh the block)
-    protean dx refresh     # re-render the block to the installed version
+    protean dx refresh     # re-render what is installed, to that version
     protean dx diff        # show what install would change; write nothing
     protean dx check       # exit non-zero when a target has drifted; write nothing
 
-``install`` and ``refresh`` are the same idempotent apply: both create a missing
-file and refresh a stale block, and both leave the user's own edits alone.
-``check`` is the CI gate. ``diff`` is the read-only preview.
+Both writing verbs are the same idempotent apply, and both leave the user's own
+edits alone; they differ in scope. ``install`` writes every target, so it is the
+verb that opts a project into ``.mcp.json`` and the per-editor files. ``refresh``
+writes the required baseline plus the optional targets already installed, so
+re-rendering after an upgrade never adds a file the user did not choose. ``check``
+is the CI gate and verifies the same scope ``refresh`` writes. ``diff`` is the
+read-only preview of every target.
 """
 
 from __future__ import annotations
@@ -36,7 +40,7 @@ from rich.markup import escape
 from protean.cli.result import EXIT_FAILURE, EXIT_OK, EXIT_USAGE
 
 if TYPE_CHECKING:
-    from protean.dx import ApplyResult, ManagedFile
+    from protean.dx import ApplyResult, ApplyStatus, ManagedFile
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -63,6 +67,9 @@ def install(path: Annotated[str, _PATH_OPTION] = ".") -> None:
     ``.mcp.json`` or ``opencode.json`` keeps the user's other servers. A region
     the user edited by hand is reported as a conflict and left untouched; the
     command then exits non-zero.
+
+    ``install`` writes every target, so it is the verb that opts a project into
+    the optional files. ``refresh`` re-renders only what the project already has.
     """
     _apply(path)
 
@@ -71,10 +78,15 @@ def install(path: Annotated[str, _PATH_OPTION] = ".") -> None:
 def refresh(path: Annotated[str, _PATH_OPTION] = ".") -> None:
     """Re-render the managed blocks to the installed framework version.
 
-    The same idempotent apply as ``install``: run it after upgrading Protean to
-    bring a project's AGENTS.md block up to the new version.
+    Run it after upgrading Protean to bring a project's managed regions up to the
+    new version. The same idempotent apply as ``install``, scoped to what the
+    project already has: the required baseline (AGENTS.md and the CLAUDE.md
+    bridge) plus every optional target present on disk or recorded in
+    ``.protean/dx-state.json``. So refreshing a project scaffolded by ``protean
+    new``, which carries only the baseline, does not create ``.mcp.json`` or the
+    per-editor files; ``install`` is the verb that adds those.
     """
-    _apply(path)
+    _apply(path, only_installed_optional=True)
 
 
 @app.command()
@@ -87,9 +99,14 @@ def diff(path: Annotated[str, _PATH_OPTION] = ".") -> None:
 def check(path: Annotated[str, _PATH_OPTION] = ".") -> None:
     """Exit non-zero when a target has drifted from the installed version.
 
-    Writes nothing. A target is drifted when it is missing, its managed block is
-    stale, or the user edited inside the block (a conflict). Wire this into CI to
-    fail when a project's agent files fall out of step with the framework.
+    Writes nothing. Verifies the same scope ``refresh`` writes: the required
+    baseline (AGENTS.md and the CLAUDE.md bridge) plus every optional target
+    already installed (``.mcp.json`` and the per-editor files, each verified only
+    once it is present on disk or recorded in ``.protean/dx-state.json``). A
+    verified target is drifted when it is missing, its managed region is stale, or
+    the user edited inside it (a conflict). An optional file the user never chose
+    is not counted. Wire this into CI to fail
+    when a project's agent files fall out of step with the framework.
     """
     _check(path)
 
@@ -134,7 +151,45 @@ def _render_managed_files() -> tuple[ManagedFile, ...]:
         raise typer.Exit(code=EXIT_USAGE) from exc
 
 
-def _apply(path: str) -> None:
+def _recorded_targets(root: Path) -> frozenset[str] | None:
+    """Return the targets ``.protean/dx-state.json`` records, or ``None`` on error.
+
+    The scope both ``refresh`` and ``check`` work out reads the state file. A
+    corrupt or unreadable one is the same environment error (exit ``2``) the
+    per-file paths raise via their own ``load_state``. Report it once here and let
+    the caller stop. If it were swallowed, every optional target would read as
+    not-installed and be skipped without warning. ``load_state`` keeps a
+    ``ValueError`` contract for a corrupt or unreadable file and raises
+    ``ManagedFileError`` for a symlinked state path.
+    """
+    from protean.dx import ManagedFileError, load_state  # noqa: PLC0415
+
+    try:
+        return frozenset(load_state(root).entries)
+    except (ValueError, ManagedFileError) as exc:
+        print(_error_line(".protean/dx-state.json", exc))
+        return None
+
+
+def _in_scope(target: str, status: ApplyStatus, recorded: frozenset[str]) -> bool:
+    """Say whether *target* is in the installed scope ``refresh`` and ``check`` use.
+
+    In scope: the required baseline
+    (:data:`~protean.dx.renderers.REQUIRED_TARGETS`), and any optional target
+    already installed, meaning present on disk (*status* is anything but
+    ``CREATE``) or recorded in ``.protean/dx-state.json``. Out of scope: an
+    optional target the user never chose, so ``check`` does not count it as drift
+    and ``refresh`` does not write it. ``install`` is the verb that opts in.
+    """
+    from protean.dx import ApplyStatus  # noqa: PLC0415
+    from protean.dx.renderers import REQUIRED_TARGETS  # noqa: PLC0415
+
+    if target in REQUIRED_TARGETS or target in recorded:
+        return True
+    return status is not ApplyStatus.CREATE
+
+
+def _apply(path: str, *, only_installed_optional: bool = False) -> None:
     """Apply every managed file under *path*, reporting each target's outcome.
 
     A conflict on one file is reported and the remaining files are still applied,
@@ -142,17 +197,46 @@ def _apply(path: str) -> None:
     is refused (unreadable or malformed, a refused symlink or out-of-root path,
     or a corrupt state file) or the pack cannot render, ``1`` when any block
     conflicts, ``0`` otherwise.
+
+    With *only_installed_optional*, write the required baseline plus only those
+    optional targets already installed, the same scope ``check`` verifies (see
+    :func:`_in_scope`). This is what ``refresh`` passes, so re-rendering a
+    baseline-only project to a new version does not opt it into ``.mcp.json`` and
+    every editor file. ``install`` leaves the flag off and writes every target.
     """
     from protean.dx import (  # noqa: PLC0415
         ManagedFileConflict,
         ManagedFileError,
         apply_managed_file,
+        diff_managed_file,
     )
 
     root = _project_root(path)
     had_conflict = False
     had_error = False
+
+    recorded: frozenset[str] = frozenset()
+    if only_installed_optional:
+        scoped = _recorded_targets(root)
+        if scoped is None:
+            raise typer.Exit(code=EXIT_USAGE)
+        recorded = scoped
+
     for managed_file in _render_managed_files():
+        if only_installed_optional:
+            # Decide scope from the same reader ``check`` uses, so ``refresh``
+            # writes exactly the set ``check`` verifies. ``diff_managed_file``
+            # runs the path checks and reports ``CREATE`` only for a target that
+            # is genuinely absent; a refused target is reported here instead of
+            # being skipped as uninstalled.
+            try:
+                pending = diff_managed_file(root, managed_file)
+            except ManagedFileError as exc:
+                had_error = True
+                print(_error_line(managed_file.target, exc))
+                continue
+            if not _in_scope(managed_file.target, pending.status, recorded):
+                continue
         try:
             result = apply_managed_file(root, managed_file)
         except ManagedFileConflict as exc:
@@ -173,7 +257,9 @@ def _apply(path: str) -> None:
         raise typer.Exit(code=EXIT_FAILURE)
 
 
-def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool, bool]:
+def _scan(
+    path: str, *, show_diff: bool = False, only_installed_optional: bool = False
+) -> tuple[bool, bool, bool]:
     """Diff every managed file under *path* and print each target's pending line.
 
     Mutates nothing; shared by ``diff`` and ``check``. With *show_diff*, also print
@@ -183,6 +269,15 @@ def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool, bool]:
     ``drifted`` when any target is not ``NO_CHANGE`` (missing, stale, or a
     hand-edited conflict), and ``had_conflict`` when any target's managed block
     was edited by hand, which needs resolving before a re-install can update it.
+
+    With *only_installed_optional*, report the installed scope (see
+    :func:`_in_scope`): the required baseline plus only those optional targets
+    already installed. This is what ``check`` passes so a freshly scaffolded
+    project, which ships only the baseline, reports clean while an optional editor
+    file the user never chose is not counted as drift. Every target is still
+    diffed: an optional one drops out only when the diff comes back ``CREATE`` and
+    the state file has no entry for it, so a refused target is reported either
+    way. ``diff`` leaves the flag off and previews every target.
     """
     from protean.dx import (  # noqa: PLC0415
         ApplyStatus,
@@ -194,24 +289,44 @@ def _scan(path: str, *, show_diff: bool = False) -> tuple[bool, bool, bool]:
     had_error = False
     drifted = False
     had_conflict = False
+
+    recorded: frozenset[str] = frozenset()
+    if only_installed_optional:
+        scoped = _recorded_targets(root)
+        if scoped is None:
+            return True, False, False
+        recorded = scoped
+
     for managed_file in _render_managed_files():
+        # Diff first, scope after. ``diff_managed_file`` is the one reader of the
+        # target: it runs the path checks (outside the root, a symlink anywhere on
+        # the way) and reports ``CREATE`` only for a target that is genuinely
+        # absent. Deciding scope from its result instead of a separate presence
+        # probe keeps ``check`` from stepping around those checks, and keeps the
+        # filesystem errors inside this one boundary.
         try:
             result = diff_managed_file(root, managed_file)
         except ManagedFileError as exc:
             had_error = True
             print(_error_line(managed_file.target, exc))
-        else:
-            if result.status is not ApplyStatus.NO_CHANGE:
-                drifted = True
-            if result.status is ApplyStatus.CONFLICT:
-                had_conflict = True
-            print(_pending_line(result, managed_file))
-            if show_diff:
-                body = _unified_diff(root, result)
-                if body:
-                    # Print the diff plain: it is content, not a status line, and
-                    # a stray bracket in it must not be read as rich markup.
-                    typer.echo(body)
+            continue
+        if only_installed_optional and not _in_scope(
+            managed_file.target, result.status, recorded
+        ):
+            # An optional target the user never chose: absent on disk and not
+            # recorded in the state file. Not drift, so leave it out of the report.
+            continue
+        if result.status is not ApplyStatus.NO_CHANGE:
+            drifted = True
+        if result.status is ApplyStatus.CONFLICT:
+            had_conflict = True
+        print(_pending_line(result, managed_file))
+        if show_diff:
+            body = _unified_diff(root, result)
+            if body:
+                # Print the diff plain: it is content, not a status line, and a
+                # stray bracket in it must not be read as rich markup.
+                typer.echo(body)
     return had_error, drifted, had_conflict
 
 
@@ -255,27 +370,30 @@ def _diff(path: str) -> None:
 
 
 def _check(path: str) -> None:
-    """Report drift for each managed file and exit non-zero when any has drifted.
+    """Report drift for each verified managed file and exit non-zero on any drift.
 
-    Writes nothing. Exits ``2`` when a target is refused or the pack cannot
-    render, ``1`` when any target is missing, stale, or conflicted, ``0`` when
-    every target is up to date.
+    Verifies the required baseline plus every optional target already installed
+    (see :func:`check`). Writes nothing. Exits ``2`` when a target is refused or
+    the pack cannot render, ``1`` when any verified target is missing, stale, or
+    conflicted, ``0`` when every verified target is up to date.
     """
-    had_error, drifted, had_conflict = _scan(path)
+    had_error, drifted, had_conflict = _scan(path, only_installed_optional=True)
     if had_error:
         raise typer.Exit(code=EXIT_USAGE)
     if drifted:
-        # A conflict is not fixed by re-installing: install refuses a hand-edited
+        # ``refresh`` is the fix: it writes exactly the scope ``check`` verifies,
+        # so it never adds an optional file the project does not have. A conflict
+        # is not fixed by re-applying at all: the writer refuses a hand-edited
         # block. Point the user at resolving it first, so the next step is
         # actionable for every drift type.
         if had_conflict:
             print(
                 "[yellow]Drift detected.[/yellow] Resolve the conflicts above, then "
-                "run `protean dx install`."
+                "run `protean dx refresh`."
             )
         else:
             print(
-                "[yellow]Drift detected.[/yellow] Run `protean dx install` to update."
+                "[yellow]Drift detected.[/yellow] Run `protean dx refresh` to update."
             )
         raise typer.Exit(code=EXIT_FAILURE)
     print("[green]Up to date.[/green]")

@@ -13,6 +13,7 @@ compares scaffolded keys against what each adapter actually reads.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -23,9 +24,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import protean
 from protean.cli import app
-from protean.ir.generators.agents import generate_agents_md
+from protean.cli.dx import app as dx_app
 
 # These generate and start their own projects; the autouse domain fixture would
 # build an unrelated Domain per test for nothing.
@@ -262,8 +262,15 @@ class TestGeneratedProjectStarts:
         )
 
 
-class TestGeneratedProjectShipsAgentsMd:
-    """A generated project ships the negative-constraint AGENTS.md."""
+class TestGeneratedProjectIsDxManaged:
+    """A generated project is dx-managed from birth.
+
+    `protean new` writes the same managed-block AGENTS.md that `protean dx
+    install` writes, plus the CLAUDE.md bridge and the dx state file, so a fresh
+    project passes `protean dx check` with no manual step. It writes only this
+    universal baseline; `.mcp.json` and the per-editor files stay `dx install`
+    choices.
+    """
 
     def test_agents_md_is_written_and_non_empty(self, tmp_path):
         """`protean new` writes AGENTS.md at the project root."""
@@ -272,19 +279,69 @@ class TestGeneratedProjectShipsAgentsMd:
         assert agents.exists(), "protean new must write AGENTS.md at the project root"
         assert agents.read_text(encoding="utf-8").strip(), "AGENTS.md is empty"
 
-    def test_agents_md_matches_the_generator(self, tmp_path):
-        """The new-time write and the generator cannot drift: same bytes.
+    def test_agents_md_equals_a_dx_install(self, tmp_path):
+        """The scaffold and `dx install` write byte-identical AGENTS.md.
 
-        Both go through ``generate_agents_md`` at the installed version, so the
-        scaffolded file must equal what `protean docs generate --type=agents`
-        would emit.
+        Both go through the same dx renderers at the same pack version, so a
+        scaffolded project's AGENTS.md must equal what `protean dx install` writes
+        into a bare directory. This replaces the old byte-identity to `docs
+        generate --type=agents`: the scaffold now ships the richer managed-block
+        form, not the bare diagnostics rules.
         """
         project = _generate(tmp_path, [])
-        expected = generate_agents_md(version=protean.__version__)
-        assert (project / "AGENTS.md").read_text(encoding="utf-8") == expected
 
-    def test_dry_run_writes_no_agents_md(self, tmp_path):
-        """A --dry-run touches nothing, so it writes no AGENTS.md."""
+        installed_dir = tmp_path / "dx-installed"
+        installed_dir.mkdir()
+        result = CliRunner().invoke(dx_app, ["install", "-p", str(installed_dir)])
+        assert result.exit_code == 0, result.output
+
+        scaffolded = (project / "AGENTS.md").read_text(encoding="utf-8")
+        from_install = (installed_dir / "AGENTS.md").read_text(encoding="utf-8")
+        assert scaffolded == from_install
+        # The managed-block form, not the bare generator output.
+        assert "<!-- PROTEAN:BEGIN protean -->" in scaffolded
+        assert "# Protean agent guidance" in scaffolded
+
+    def test_ships_the_claude_bridge_and_dx_state(self, tmp_path):
+        """The scaffold writes the CLAUDE.md bridge and records the dx state."""
+        project = _generate(tmp_path, [])
+
+        claude = project / "CLAUDE.md"
+        assert claude.read_text(encoding="utf-8") == (
+            "<!-- PROTEAN:BEGIN protean -->\n@AGENTS.md\n<!-- PROTEAN:END protean -->\n"
+        )
+
+        state_file = project / ".protean" / "dx-state.json"
+        assert state_file.exists(), "protean new must write the dx state file"
+        entries = json.loads(state_file.read_text(encoding="utf-8"))["entries"]
+        assert set(entries) == {"AGENTS.md", "CLAUDE.md"}
+
+    def test_ships_only_the_baseline_not_the_optional_files(self, tmp_path):
+        """`.mcp.json` and the per-editor files stay `dx install` choices."""
+        project = _generate(tmp_path, [])
+        for rel in (
+            ".mcp.json",
+            ".cursor/rules/protean.mdc",
+            ".github/copilot-instructions.md",
+            "opencode.json",
+        ):
+            assert not (project / rel).exists(), (
+                f"protean new must not write the optional dx file {rel}"
+            )
+
+    def test_dx_check_passes_on_a_fresh_project(self, tmp_path):
+        """`protean dx check` exits 0 on a freshly scaffolded project.
+
+        The baseline is present and no optional file was installed, so a clean
+        scaffold reports up to date with no manual `dx install` step.
+        """
+        project = _generate(tmp_path, [])
+        result = CliRunner().invoke(dx_app, ["check", "-p", str(project)])
+        assert result.exit_code == 0, result.output
+        assert "Up to date" in result.output
+
+    def test_dry_run_writes_no_baseline_files(self, tmp_path):
+        """A --dry-run touches nothing: no AGENTS.md, CLAUDE.md, or state file."""
         out = tmp_path / "out"
         out.mkdir(parents=True, exist_ok=True)
         result = CliRunner().invoke(
@@ -300,7 +357,38 @@ class TestGeneratedProjectShipsAgentsMd:
             ],
         )
         assert result.exit_code == 0, f"protean new --dry-run failed: {result.output}"
-        assert not (out / "scaffolded" / "AGENTS.md").exists()
+        project = out / "scaffolded"
+        assert not (project / "AGENTS.md").exists()
+        assert not (project / "CLAUDE.md").exists()
+        assert not (project / ".protean" / "dx-state.json").exists()
+
+    def test_dry_run_lists_the_same_files_an_apply_creates(self, tmp_path):
+        """The dry-run file list is the exact set an apply creates.
+
+        A dry run renders through the same path into a temp dir, so its returned
+        list must equal what an apply into a real target returns. Comparing the
+        whole sets catches a divergence (an extra or missing file, or a different
+        relative-path form) that a membership check would miss, and confirms the
+        baseline dx files (CLAUDE.md, the state file) are in both.
+        """
+        from protean.scaffold import create_project
+
+        dry_out = tmp_path / "dry"
+        dry_out.mkdir(parents=True, exist_ok=True)
+        listed = create_project(
+            "scaffolded", output_folder=str(dry_out), dry_run=True, defaults=True
+        )
+
+        apply_out = tmp_path / "apply"
+        apply_out.mkdir(parents=True, exist_ok=True)
+        created = create_project(
+            "scaffolded", output_folder=str(apply_out), defaults=True
+        )
+
+        assert set(listed) == set(created)
+        assert {"AGENTS.md", "CLAUDE.md", ".protean/dx-state.json"} <= set(listed)
+        # A dry run touches nothing at the target.
+        assert not (dry_out / "scaffolded").exists()
 
 
 class TestGeneratedConfigIsValidToml:

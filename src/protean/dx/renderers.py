@@ -67,7 +67,9 @@ __all__ = [
     "OPENCODE_MCP_KEY",
     "OPENCODE_SERVER_NAME",
     "OPENCODE_TARGET",
+    "REQUIRED_TARGETS",
     "agents_managed_file",
+    "baseline_managed_files",
     "claude_bridge_managed_file",
     "copilot_managed_file",
     "cursor_managed_file",
@@ -85,6 +87,17 @@ __all__ = [
 AGENTS_TARGET = "AGENTS.md"
 CLAUDE_BRIDGE_TARGET = "CLAUDE.md"
 BLOCK_ID = "protean"
+
+# The universal baseline every dx-managed project carries: the canonical
+# AGENTS.md and the CLAUDE.md bridge that points at it. This is the one place
+# the baseline is named. ``protean new`` writes exactly this set through
+# :func:`baseline_managed_files`, which selects these targets out of
+# :func:`managed_files`, and ``protean dx check`` always verifies it. The
+# remaining targets (``.mcp.json`` and the per-editor files) are optional: the
+# user picks their own editors, so ``check`` verifies one only once it is
+# installed. Naming a target here makes the scaffold write it and ``check``
+# require it in the same edit, so the two cannot drift apart.
+REQUIRED_TARGETS = frozenset({AGENTS_TARGET, CLAUDE_BRIDGE_TARGET})
 
 # The ``.mcp.json`` target and the key-path it manages: Protean's own entry under
 # ``mcpServers``, the top-level key an MCP client reads a project ``.mcp.json``
@@ -295,3 +308,23 @@ def managed_files(version: str) -> tuple[ManagedFile, ...]:
         copilot_managed_file(version),
         opencode_managed_file(version),
     )
+
+
+def baseline_managed_files(version: str) -> tuple[ManagedFile, ...]:
+    """Return the required baseline: the managed files every project must carry.
+
+    Selected out of :func:`managed_files` by :data:`REQUIRED_TARGETS`, so the set
+    ``protean new`` writes is the same set ``protean dx check`` requires, read
+    from one place. Order follows :func:`managed_files`, so AGENTS.md is written
+    before the CLAUDE.md bridge that points at it.
+
+    Raises:
+        ValueError: if a name in :data:`REQUIRED_TARGETS` has no renderer. That
+            would leave the scaffold unable to write a target ``check`` requires,
+            so a freshly scaffolded project would fail its own check.
+    """
+    baseline = tuple(f for f in managed_files(version) if f.target in REQUIRED_TARGETS)
+    if len(baseline) != len(REQUIRED_TARGETS):
+        missing = sorted(REQUIRED_TARGETS - {f.target for f in baseline})
+        raise ValueError(f"No renderer for required dx target(s): {', '.join(missing)}")
+    return baseline

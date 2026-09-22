@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from protean.cli.dx import app
 from protean.dx.pack import PACK_VERSION
+from protean.dx.renderers import REQUIRED_TARGETS
 
 # The dx commands are pure filesystem work and never load a domain.
 pytestmark = pytest.mark.no_test_domain
@@ -21,6 +22,23 @@ def _install(project: Path) -> None:
     """Install the dx files into *project* and assert it succeeded."""
     result = runner.invoke(app, ["install", "-p", str(project)])
     assert result.exit_code == 0, result.output
+
+
+def _install_baseline(project: Path) -> None:
+    """Write only the required baseline (AGENTS.md + CLAUDE.md), the scaffold shape.
+
+    ``protean new`` writes exactly this set through the same renderers, so a
+    baseline-only directory reproduces a freshly scaffolded project without
+    driving the whole ``new`` flow.
+    """
+    from protean.dx import apply_managed_file, pack
+    from protean.dx.renderers import baseline_managed_files
+
+    # Read the version off the module at call time, not the name bound at import,
+    # so a test that monkeypatches ``protean.dx.pack.PACK_VERSION`` stamps the
+    # baseline with the patched version.
+    for managed_file in baseline_managed_files(pack.PACK_VERSION):
+        apply_managed_file(project, managed_file)
 
 
 def _state_file(project: Path) -> Path:
@@ -119,11 +137,159 @@ def test_install_defaults_to_the_current_directory(tmp_path: Path, monkeypatch) 
 
 
 def test_refresh_creates_when_missing(tmp_path: Path) -> None:
-    """Refresh is the same idempotent apply, so it also creates a missing file."""
+    """Refresh is the same idempotent apply, so it also creates a missing baseline.
+
+    The required baseline is always in scope, so refresh writes it even on an
+    empty directory. The optional targets are not: refresh never opts a project
+    into a file it does not have.
+    """
     result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
     assert (tmp_path / "AGENTS.md").exists()
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_refresh_keeps_a_baseline_only_project_baseline_only(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The documented upgrade flow does not opt a scaffolded project into extras.
+
+    A project from ``protean new`` carries only the baseline. Refreshing it after
+    a version bump must bring the baseline up to the new version and leave
+    ``.mcp.json`` and the per-editor files uncreated, since those stay ``install``
+    choices.
+    """
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.9")
+    _install_baseline(tmp_path)
+
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.10")
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    agents = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "9.9.10" in agents
+    assert "9.9.9" not in agents
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists(), f"refresh must not create {rel}"
+    # A file it did not write is not reported either.
+    flat = " ".join(result.output.split())
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, flat
+    # And the project still passes its own check, which verifies the same scope.
+    check = runner.invoke(app, ["check", "-p", str(tmp_path)])
+    assert check.exit_code == 0, check.output
+
+
+def test_refresh_updates_every_installed_target(tmp_path: Path, monkeypatch) -> None:
+    """A project that installed everything gets everything refreshed.
+
+    Scoping refresh to the installed set must not narrow it for a user who ran
+    ``install``: all six targets are recorded in state, so all six come along.
+    """
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.9")
+    _install(tmp_path)
+
+    monkeypatch.setattr("protean.dx.pack.PACK_VERSION", "9.9.10")
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    for rel in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".mcp.json",
+        _CURSOR_RULE,
+        _COPILOT_FILE,
+        _OPENCODE_CONFIG,
+    ):
+        assert rel in flat, f"refresh must report {rel}: {flat}"
+    assert "9.9.9" not in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "9.9.9" not in (tmp_path / _CURSOR_RULE).read_text(encoding="utf-8")
+
+
+def test_refresh_scopes_in_an_optional_file_present_on_disk(tmp_path: Path) -> None:
+    """An optional file the user put on disk is refreshed, with no state entry.
+
+    Presence on disk is the same opt-in signal ``check`` reads, so refresh writes
+    the managed registration into a hand-written ``.mcp.json`` while still leaving
+    the editor files alone.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {}}) + "\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    registered = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert "protean" in registered["mcpServers"]
+    for rel in (_CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_refresh_recreates_a_recorded_optional_target_deleted_from_disk(
+    tmp_path: Path,
+) -> None:
+    """A recorded optional file deleted from disk comes back on refresh.
+
+    ``install`` records every optional target in state. If the user later removes
+    one, refresh must recreate it: the state entry keeps it in scope even though
+    the diff comes back ``CREATE`` (the file is gone), so ``recorded + CREATE``
+    means recreate, not skip-as-uninstalled.
+    """
+    _install(tmp_path)
+    (tmp_path / ".mcp.json").unlink()
+    assert not (tmp_path / ".mcp.json").exists()
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    registered = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+    assert "protean" in registered["mcpServers"]
+    flat = " ".join(result.output.split())
+    assert "created .mcp.json" in flat, flat
+
+
+def test_refresh_stops_on_a_corrupt_state_file(tmp_path: Path) -> None:
+    """The scope read runs before any write, so a corrupt state file writes nothing.
+
+    Refresh cannot tell which optional targets are installed without the state
+    file, so it reports the state file and exits 2 rather than guessing (and
+    writing every target).
+    """
+    _install_baseline(tmp_path)
+    agents_before = (tmp_path / "AGENTS.md").read_bytes()
+    _state_file(tmp_path).write_text("{ not json", encoding="utf-8")
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert ".protean/dx-state.json" in flat, flat
+    assert (tmp_path / "AGENTS.md").read_bytes() == agents_before
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_refresh_reports_a_refused_optional_target(tmp_path: Path) -> None:
+    """A dangling symlink at an optional target is an error, not a silent skip.
+
+    The scope decision runs through the same diff the writer's path checks live
+    in, so a target dx refuses to write through is reported and exits 2 instead of
+    reading as a file the project never installed.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").symlink_to(tmp_path / "nowhere.json")
+
+    result = runner.invoke(app, ["refresh", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert "error .mcp.json" in flat, flat
+    assert "symlink" in flat, flat
 
 
 def test_refresh_rewrites_a_stale_block_and_keeps_user_edits(
@@ -331,6 +497,148 @@ def test_diff_previews_mcp_json_then_install_no_ops(tmp_path: Path) -> None:
     assert "created" not in second.output
 
 
+# --- check: the required-baseline split -------------------------------------
+
+
+def test_check_passes_on_baseline_only(tmp_path: Path) -> None:
+    """The scaffold shape (baseline present, no optional files) passes check."""
+    _install_baseline(tmp_path)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Up to date" in result.output
+    # The optional files were never written and were not created by the check.
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert not (tmp_path / rel).exists()
+
+
+def test_check_ignores_a_never_installed_optional_file(tmp_path: Path) -> None:
+    """An optional file the user never chose is not counted, nor even reported.
+
+    check scans only the baseline plus already-installed optional targets, so a
+    never-installed editor file is neither drift nor a scanned line.
+    """
+    _install_baseline(tmp_path)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"
+
+
+def test_check_scopes_in_an_optional_file_present_on_disk(tmp_path: Path) -> None:
+    """An optional file present on disk is verified, even with no state entry.
+
+    A user who hand-wrote a bare .mcp.json (no managed entry, so nothing recorded
+    in state) is telling check they want that file managed. check scopes it in and
+    flags the missing registration.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {}}) + "\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    assert "Drift detected" in result.output
+    assert ".mcp.json" in result.output
+    # Only the on-disk .mcp.json is scoped in. The other optional files are absent
+    # on disk and unrecorded, so check skips them. The old "scan all six" code
+    # would have listed each as "not installed yet".
+    flat = " ".join(result.output.split())
+    for rel in (_CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"
+
+
+@pytest.mark.parametrize("required", sorted(REQUIRED_TARGETS))
+def test_check_flags_each_required_file_on_its_own(
+    tmp_path: Path, required: str
+) -> None:
+    """Every required file is verified on its own, not only as a pair.
+
+    Deleting one and leaving the other in place must still fail the check. With
+    both deleted at once (test_check_fails_on_fresh_dir), a target dropped from
+    REQUIRED_TARGETS by mistake would still look covered: the other one carries
+    the assertion. Parametrized over the constant, so a target added to the
+    baseline gets this case for free.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / required).unlink()
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    assert "Drift detected" in result.output
+    # Flatten whitespace: rich wraps the line at the terminal width.
+    flat = " ".join(result.output.split())
+    assert f"create {required} — not installed yet" in flat, flat
+    # Scope is unchanged by the deletion: the optional files stay out.
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel not in flat, f"check must not scan the un-installed {rel}: {flat}"
+
+
+def test_check_scopes_in_a_dangling_symlink_at_an_optional_target(
+    tmp_path: Path,
+) -> None:
+    """A dangling symlink at an unrecorded optional target is an error, not a skip.
+
+    A presence probe on ``Path.exists`` would read a dangling symlink as absent
+    and let check exit 0 over a symlink dx refuses to write through. check diffs
+    every target and scopes one out only when the diff itself says the target is
+    absent, so the refusal is reached and reported.
+    """
+    _install_baseline(tmp_path)
+    (tmp_path / ".mcp.json").symlink_to(tmp_path / "nowhere.json")
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert "error .mcp.json" in flat, flat
+    assert "symlink" in flat, flat
+
+
+def test_check_reports_an_optional_target_under_a_symlinked_parent(
+    tmp_path: Path,
+) -> None:
+    """An optional target whose parent directory leaves the project is an error.
+
+    ``.cursor`` points outside the project, so the rule file is absent and is not
+    a symlink itself: a presence probe on the final path component would skip it
+    and let check exit 0, while install refuses the same target for climbing out
+    of the root. check runs the per-file diff first, so it reports that refusal.
+    """
+    _install_baseline(tmp_path)
+    outside = tmp_path.parent / "outside-cursor"
+    outside.mkdir()
+    (tmp_path / ".cursor").symlink_to(outside, target_is_directory=True)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert f"error {_CURSOR_RULE}" in flat, flat
+    assert "outside the project root" in flat, flat
+
+
+def test_diff_still_previews_all_six_on_baseline_only(tmp_path: Path) -> None:
+    """diff is unscoped: on a baseline-only project it still previews the optional
+    files as pending creates, where check ignores them."""
+    _install_baseline(tmp_path)
+
+    result = runner.invoke(app, ["diff", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    for rel in (".mcp.json", _CURSOR_RULE, _COPILOT_FILE, _OPENCODE_CONFIG):
+        assert rel in result.output, f"diff must still preview {rel}"
+    # Flatten whitespace: rich wraps the line at the terminal width.
+    assert "not installed yet" in " ".join(result.output.split())
+
+
 # --- conflict ---------------------------------------------------------------
 
 
@@ -494,14 +802,47 @@ def test_install_error_outranks_conflict(tmp_path: Path) -> None:
 
 
 def test_corrupt_state_file_fails_loud(tmp_path: Path) -> None:
-    """A malformed state file is surfaced as a clean error, not a traceback."""
-    _install(tmp_path)
+    """A malformed state file is a clean error naming the state file, not a trace.
+
+    On a baseline-only project the scope read of the state file runs first, so a
+    corrupt file is attributed to ``.protean/dx-state.json`` and the scan stops
+    before the per-file loop. If the early scope read were dropped, the loop would
+    instead hit ``AGENTS.md``'s own ``load_state`` and name ``AGENTS.md``, so
+    asserting the state file (and not ``AGENTS.md``) pins the early return.
+    """
+    _install_baseline(tmp_path)
     _state_file(tmp_path).write_text("{ not json", encoding="utf-8")
 
     result = runner.invoke(app, ["check", "-p", str(tmp_path)])
 
     assert result.exit_code == 2, result.output
-    assert "error" in result.output
+    flat = " ".join(result.output.split())
+    assert "error" in flat, flat
+    assert ".protean/dx-state.json" in flat, flat
+    # The scan stopped at the scope read and never reached the per-file loop.
+    assert "AGENTS.md" not in flat, flat
+
+
+def test_symlinked_state_file_fails_loud(tmp_path: Path) -> None:
+    """A symlinked state file is refused as a clean error (the ManagedFileError arm).
+
+    The scope read calls ``load_state``, which refuses to follow a symlinked state
+    path and raises ``ManagedFileError`` (not the ``ValueError`` a corrupt file
+    raises). check surfaces it as exit 2 naming the state file.
+    """
+    _install_baseline(tmp_path)
+    state = _state_file(tmp_path)
+    real = tmp_path / "elsewhere.json"
+    real.write_text(state.read_text(encoding="utf-8"), encoding="utf-8")
+    state.unlink()
+    state.symlink_to(real)
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 2, result.output
+    flat = " ".join(result.output.split())
+    assert "error" in flat, flat
+    assert ".protean/dx-state.json" in flat, flat
 
 
 def test_render_failure_reports_a_clean_error(tmp_path: Path, monkeypatch) -> None:

@@ -157,6 +157,36 @@ def test_nonempty_target_needs_force():
         assert os.path.isfile(os.path.join(project_dir, "README.md"))
 
 
+def test_a_dx_render_failure_leaves_the_target_untouched(monkeypatch):
+    """A baseline that cannot render fails before ``force`` clears anything.
+
+    The dx baseline is rendered up front, like copier is imported up front. If it
+    were rendered inside the write step, a stripped pack would fail after force
+    had cleared the user's directory and copier had written into it, leaving them
+    with neither their files nor a dx-managed project.
+    """
+
+    def _boom(_version):
+        raise ValueError("No renderer for required dx target(s): AGENTS.md")
+
+    monkeypatch.setattr("protean.dx.renderers.baseline_managed_files", _boom)
+
+    with isolated_filesystem() as output_folder:
+        project_dir = os.path.join(output_folder, PROJECT_NAME)
+        os.makedirs(project_dir)
+        sentinel = os.path.join(project_dir, "keep.txt")
+        with open(sentinel, "w", encoding="utf-8") as handle:
+            handle.write("precious")
+
+        with pytest.raises(ValueError, match="No renderer for required dx target"):
+            create_project(
+                PROJECT_NAME, output_folder, ANSWERS, force=True, defaults=True
+            )
+
+        assert os.path.isfile(sentinel), "the target must not be cleared"
+        assert os.listdir(project_dir) == ["keep.txt"], "nothing may be rendered"
+
+
 def test_non_directory_target_needs_force():
     """A file or broken symlink at the target raises without force; force clears it.
 
