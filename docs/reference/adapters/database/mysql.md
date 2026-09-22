@@ -13,15 +13,35 @@ pip install "protean[mysql]"
 
 PyMySQL is written in Python, so the extra installs from a wheel everywhere and
 needs no `libmysqlclient` on the machine. The extra pulls `cryptography` with
-it, which PyMySQL's RSA key exchange needs to authenticate a `sha256_password`
-user over an unencrypted connection.
+it, which PyMySQL needs for the RSA key exchange that `caching_sha2_password`
+and `sha256_password` use on an unencrypted connection.
 
-!!!note "Leave TLS on"
-    PyMySQL negotiates TLS by default and MySQL 8 auto-generates a certificate,
-    so the password goes over the encrypted channel and the RSA exchange is
-    never reached. Disabling it (`ssl_disabled`) puts a `caching_sha2_password`
-    user — MySQL 8's default — on PyMySQL's full-authentication path, which
-    fails there with an `AttributeError` from inside the driver.
+## Configure TLS explicitly
+
+**Do not assume the driver encrypts the connection.** Whether PyMySQL starts
+TLS without being told to depends on the version: on `pymysql==1.1.1`, the
+floor this extra declares, a connection with no SSL options is plaintext, and
+passing `ssl={}` or `ssl_disabled=False` does not change that. A current
+release does negotiate TLS. Pin nothing on that difference.
+
+On a plaintext connection the password crosses the wire under MySQL 8's
+default `caching_sha2_password` through an RSA exchange, so the transport is
+worth setting deliberately:
+
+Add the CA to the database block, alongside the keys above:
+
+```toml
+connect_args = { ssl_ca = "/etc/ssl/certs/mysql-ca.pem" }
+```
+
+MySQL 8 generates a CA at first start, at `/var/lib/mysql/ca.pem` on the
+server. Verify the connection rather than trusting the config:
+
+```sql
+SHOW STATUS LIKE 'Ssl_cipher';
+```
+
+An empty value means the connection is in the clear.
 
 ## Configuration
 

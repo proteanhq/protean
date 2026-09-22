@@ -43,7 +43,12 @@ LIVE_URI = {
 
 
 def toml_snippets():
-    """Every ```toml fence in the doc that configures a database."""
+    """Every ```toml fence in the doc that configures a whole database.
+
+    The page also carries fragments meant to be pasted into a database block
+    (the TLS `connect_args` line), which are not domains on their own. A fence
+    naming `provider` is a complete config; anything else is a fragment.
+    """
     text = DOC.read_text(encoding="utf-8")
     return [s for s in re.findall(r"```toml\n(.*?)```", text, re.S) if "provider" in s]
 

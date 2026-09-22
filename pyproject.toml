@@ -105,15 +105,18 @@ mssql = [
 # is faster and would trade that away.
 #
 # The `rsa` extra pulls `cryptography`, which PyMySQL's RSA key exchange needs.
-# PyMySQL negotiates TLS by default and sends the password over that, so the RSA
-# path is only reached on an unencrypted connection. There, a `sha256_password`
-# user fails without it ("'cryptography' package is required for
-# sha256_password or caching_sha2_password auth methods") and connects with it.
-# Naming an unactionable package is the wrong first experience for an adapter
-# whose job is being installable, so the extra carries it. `cffi` rides along
-# for the same reason it does under sendgrid: it is cryptography's own
-# dependency and declares no floor, and 2.0.0 is the first release with cp314
-# wheels (ADR-0020).
+# That exchange is the normal path, not an edge case: on `pymysql==1.1.1`, the
+# floor below, a connection with no SSL options is plaintext, and MySQL 8's
+# default `caching_sha2_password` then authenticates over RSA. Without
+# cryptography that raises "'cryptography' package is required for
+# sha256_password or caching_sha2_password auth methods", which names a package
+# rather than the extra to install — the wrong first experience for an adapter
+# whose job is being installable. Do not drop this on the assumption that the
+# driver encrypts the transport; whether it does depends on the resolved
+# version, which is why the provider doc says to configure TLS explicitly and
+# verify it. `cffi` rides along for the same reason it does under sendgrid: it
+# is cryptography's own dependency and declares no floor, and 2.0.0 is the first
+# release with cp314 wheels (ADR-0020).
 mysql = [
     "sqlalchemy>=2.0.36,<2.1",
     "pymysql[rsa]>=1.1.1",
