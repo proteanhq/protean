@@ -14,6 +14,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [aggregate, command-handler, event-handler]
+  diagnostic_codes: [AGGREGATE_NO_INVARIANTS]
 ---
 
 # Refactor: Move Logic to Aggregate
@@ -138,6 +139,11 @@ Move validation from handlers into `@invariant.post`:
         if self.total and self.total.amount > 50000:
             raise ValidationError({"total": ["Exceeds maximum order amount"]})
 ```
+
+Do not skip this step. An aggregate that ends the refactor with rich methods but no
+`@invariant.pre` or `@invariant.post` is still reported as `AGGREGATE_NO_INVARIANTS`: the
+logic moved off the handler, but the consistency boundary enforces nothing. The rules you
+deleted from the handler in Step 1 are the invariants to declare here.
 
 ### Step 4: Slim down the handler
 

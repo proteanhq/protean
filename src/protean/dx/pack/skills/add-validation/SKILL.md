@@ -8,6 +8,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [aggregate, value-object, entity, command-handler, custom-validator]
+  diagnostic_codes: [AGGREGATE_NO_INVARIANTS, VALUE_OBJECT_INVARIANT_FAILED]
 ---
 
 # Add Validation
@@ -113,6 +114,8 @@ class Money:
 
 **Validation timing**: After all fields are set during VO initialization.
 
+**When a VO invariant fails**: The value object validates its invariants at construction and is immutable afterward, so a broken invariant raises `ValidationError` right there. The default code on that raise is `VALUE_OBJECT_INVARIANT_FAILED`, unless you set a custom `code=` on the invariant. The values you built the VO from are what broke the rule. To fix it, build the value object from values that satisfy the invariant, or catch the `ValidationError` where you build it; its messages name the field and rule that failed. Set `@invariant.post(code=...)` to raise a more specific catalog code in place of the default.
+
 ## Layer 3: Aggregate invariants
 
 Use for business rules that enforce consistency across an aggregate's state. Supports both `@invariant.pre` (before change) and `@invariant.post` (after change).
@@ -161,6 +164,13 @@ class Order:
 - Rules that depend on the aggregate's current state
 
 **Validation timing**: Pre-invariants before attribute changes; post-invariants after initialization and attribute changes.
+
+**An aggregate with no invariants at all**: `check` reports `AGGREGATE_NO_INVARIANTS` for an
+aggregate that declares neither `@invariant.pre` nor `@invariant.post`. An aggregate is a
+consistency boundary, so one that enforces no rule is usually an anemic data holder. Add the
+business rules it must always satisfy, or reconsider whether the concept is an aggregate: a
+plain value-carrier is often better modelled as a value object or as an entity inside another
+aggregate.
 
 ### Atomic changes
 

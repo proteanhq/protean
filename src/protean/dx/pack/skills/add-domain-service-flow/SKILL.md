@@ -125,7 +125,7 @@ service = PlaceOrderService(order, inventories)
 service()  # Runs: pre invariants → __call__ → post invariants
 ```
 
-The `BaseDomainService.__init__` call is required. Use the explicit form (not `super()`) because the `@domain.domain_service` decorator modifies the class.
+The `BaseDomainService.__init__` call is required so the pre and post invariants are wired. `super().__init__(*(aggregates))` works too: the framework rebinds each method's `__class__` cell after it rebuilds the class, so zero-argument `super()` resolves correctly.
 
 ## Domain service vs other patterns
 
@@ -173,15 +173,6 @@ class PlaceOrderService:
 ```
 
 Instead: call `BaseDomainService.__init__(self, *(order, inventories))` so pre/post invariants run.
-
-### Calling logic directly instead of via `__call__`
-
-```python
-service = PlaceOrderService(order, inventories)
-service.run()  # Wrong! Bypasses pre/post invariants
-```
-
-Instead: invoke the instance — `service()` — so invariants execute around the logic.
 
 ## Complete examples
 

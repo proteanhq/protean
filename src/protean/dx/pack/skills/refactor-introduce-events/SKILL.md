@@ -14,6 +14,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [event, event-handler, aggregate, command-handler]
+  diagnostic_codes: [EVENT_WITHOUT_DATA, UNRAISED_EVENT]
 ---
 
 # Refactor: Introduce Events
@@ -117,6 +118,10 @@ class OrderPlaced:
 **Event fields**: include everything the event handler needs. The handler shouldn't need to
 look up the source aggregate to get context.
 
+An event with no fields carries nothing beyond its name, so a handler cannot react to what
+actually changed. `check` reports that as `EVENT_WITHOUT_DATA`. Add the fields that capture
+the change, or confirm the event is meant as a bare signal.
+
 ### Step 3: Raise the event in the source aggregate
 
 ```python
@@ -135,6 +140,12 @@ class Order:
             )
         )
 ```
+
+Raise the event from the aggregate or entity method that makes the change it records. An
+event nothing raises there is reported as `UNRAISED_EVENT`. The check reads only aggregate
+and entity method bodies, so an event raised from a command handler, a subscriber, or a
+module-level factory still shows up; that is the signal to move the raise onto the aggregate
+method, which is the refactor this skill performs.
 
 ### Step 4: Create an event handler for the target aggregate
 

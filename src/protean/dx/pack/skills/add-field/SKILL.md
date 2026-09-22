@@ -8,6 +8,7 @@ metadata:
   version: "0.1"
   category: workflow
   composes: [aggregate, entity, value-object]
+  diagnostic_codes: [UNBOUNDED_INDEXED_STRING, UNINDEXED_FILTER_PATH]
 ---
 
 # Add Field
@@ -124,6 +125,30 @@ email = String(validators=[EmailValidator()])
 | State-dependent guard | Method body | `if self.status != "DRAFT": raise ...` |
 
 **Never duplicate**: if a rule can be expressed as a field parameter, don't also add an invariant.
+
+### Step 5: Index fields you filter on, and bound the strings you index
+
+If a repository filters on a field, add an index led by that field so the query does not
+force a full table scan:
+
+```python
+from protean import Index
+
+@domain.aggregate(indexes=[Index("email")])
+class User:
+    email = String(required=True, max_length=254)
+    name = String(max_length=100)
+```
+
+An indexed `String` field should carry a `max_length`. An index over an unbounded string is
+unportable: the DDL fails on SQL Server, needs a prefix length on MySQL, and is inefficient
+on PostgreSQL. Size the length to the field's domain.
+
+- **`UNINDEXED_FILTER_PATH`**: a repository filter on a field with no covering index. Add
+  an index led by that field (`indexes=[Index("field")]`), or leave it alone when the table
+  stays small or the query is a one-off.
+- **`UNBOUNDED_INDEXED_STRING`**: an indexed `String` field with no `max_length`. Give it a
+  bounded length, or drop it from the index if it does not need indexing.
 
 ## HasMany auto-generated methods
 
