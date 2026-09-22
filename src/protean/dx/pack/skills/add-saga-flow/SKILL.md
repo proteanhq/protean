@@ -7,7 +7,7 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: workflow
-  composes: [process-manager, event, command, command-handler, event-handler]
+  composes: [process-manager, event, command, command-handler]
   diagnostic_codes: [PROCESS_MANAGER_UNCLOSED]
 ---
 
@@ -30,11 +30,11 @@ broker.
 
 | Step | Event it reacts to | Command it issues | Handler kind |
 |------|--------------------|-------------------|--------------|
-| Start | `OrderPlaced` | `ReserveStock` | start |
+| Start | `OrderPlaced` | `CreateReservation` | start |
 | Reserve | `StockReserved` | `RequestPayment` | intermediate |
-| Pay | `PaymentConfirmed` | `DispatchShipment` | intermediate |
+| Pay | `PaymentConfirmed` | `CreateShipment` | intermediate |
 | Ship | `ShipmentDispatched` | (none) | end (success) |
-| Fail | `PaymentFailed` | `ReleaseReservation`, `CancelOrder` | end (compensating) |
+| Fail | `PaymentFailed` | `CancelReservation`, `CancelOrder` | end (compensating) |
 
 The full flow is in [saga_after_closed.py](assets/saga_after_closed.py).
 
@@ -45,7 +45,7 @@ The full flow is in [saga_after_closed.py](assets/saga_after_closed.py).
 The saga reacts to one [event](../event/SKILL.md) per step and issues one
 [command](../command/SKILL.md) to drive the next aggregate. Name events in the
 past tense (`OrderPlaced`, `StockReserved`) and commands in the imperative
-(`ReserveStock`, `RequestPayment`). Every event carries the correlation field,
+(`CreateReservation`, `RequestPayment`). Every event carries the correlation field,
 here `order_id`, so the saga can route each event to the right instance.
 
 ### 2. Pick the correlation key
@@ -65,7 +65,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
     self.total = event.total
     self.status = "reserving_stock"
-    current_domain.process(ReserveStock(order_id=event.order_id))
+    current_domain.process(CreateReservation(order_id=event.order_id))
 ```
 
 ### 4. Write the intermediate handlers
@@ -106,7 +106,7 @@ stock reservation and cancels the order:
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
-    current_domain.process(ReleaseReservation(order_id=self.order_id))
+    current_domain.process(CancelReservation(order_id=self.order_id))
     current_domain.process(CancelOrder(order_id=self.order_id))
 ```
 
@@ -116,8 +116,8 @@ full.
 ## The anti-pattern: an unclosed saga
 
 A saga with handlers but no `end=True` on any of them never retires an instance.
-Its stream grows without bound and it keeps accepting events. `check` reports
-`PROCESS_MANAGER_UNCLOSED` for it.
+Its instances stay open and it keeps matching later events for them. `check`
+reports `PROCESS_MANAGER_UNCLOSED` for it.
 
 [saga_before_unclosed.py](assets/saga_before_unclosed.py) is the flow with the
 terminal handlers removed. It advances through every step and sets a `fulfilled`

@@ -13,7 +13,7 @@ step already taken, then ends the saga.
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
-    current_domain.process(ReleaseReservation(order_id=self.order_id))
+    current_domain.process(CancelReservation(order_id=self.order_id))
     current_domain.process(CancelOrder(order_id=self.order_id))
 ```
 
@@ -30,9 +30,13 @@ transaction to undo.
   holds no business logic itself.
 - **Compensate the steps that ran.** Track progress in the saga's state so the
   failure handler undoes the steps the flow actually reached.
-- **End the failure path.** Mark the failure handler `end=True` so the saga
-  closes after compensating. A failure path with no terminal leaves the saga
-  open and `check` reports `PROCESS_MANAGER_UNCLOSED`.
+- **End every terminal path.** Mark the failure handler `end=True` so the saga
+  closes after compensating. `check` reports `PROCESS_MANAGER_UNCLOSED` only when
+  no handler in the whole process manager is marked `end=True`, so a closed
+  success path hides an unclosed failure path from the check. Ending only the
+  success path passes `check` while the failure path still leaves instances open.
+  Mark each terminal handler `end=True` so every path that ends the flow closes
+  its instance.
 
 The full flow, with both the success terminal and the compensating failure
 terminal, is in [saga_after_closed.py](../assets/saga_after_closed.py).

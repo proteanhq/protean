@@ -58,7 +58,9 @@ def test_before_asset_reports_process_manager_unclosed():
     findings = _findings(ir, "PROCESS_MANAGER_UNCLOSED")
     assert len(findings) > 0, "the before asset must report PROCESS_MANAGER_UNCLOSED"
     finding = findings[0]
-    assert "OrderFulfillmentPM" in finding["element"]
+    # Pin the full FQN, run_name prefix included, so a cross-contaminated PM from
+    # the after asset (``_saga_after_.OrderFulfillmentPM``) cannot satisfy this.
+    assert finding["element"] == "_saga_before_.OrderFulfillmentPM"
     assert finding["level"] == "info"
 
 

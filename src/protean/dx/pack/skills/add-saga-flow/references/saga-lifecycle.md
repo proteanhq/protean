@@ -5,9 +5,9 @@ aggregates. It has three kinds of handler, set by parameters on `@handle`.
 
 ## Start
 
-Exactly one handler opens the saga. Mark it `start=True`. It runs when an event
-arrives and no instance exists yet for that correlation value, so it creates a
-new instance.
+Exactly one handler opens the saga. Mark it `start=True`. It runs whenever its
+event arrives. When no instance exists yet for that correlation value it creates
+one; when an instance already exists it loads that instance and runs on it.
 
 ```python
 @handle(OrderPlaced, start=True, correlate="order_id")
@@ -15,7 +15,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
     self.total = event.total
     self.status = "reserving_stock"
-    current_domain.process(ReserveStock(order_id=event.order_id))
+    current_domain.process(CreateReservation(order_id=event.order_id))
 ```
 
 ## Intermediate
@@ -49,8 +49,8 @@ one for each failure path.
 ## PROCESS_MANAGER_UNCLOSED
 
 `check` reports `PROCESS_MANAGER_UNCLOSED` when a process manager has handlers
-but none is marked `end=True`. Such a saga never retires an instance: its stream
-grows without bound and it keeps accepting events forever.
+but none is marked `end=True`. Such a saga never retires an instance: its
+instances stay open and it keeps matching later events for them.
 
 Mark a terminating handler `end=True` on every path that ends the flow, and the
 code clears. `mark_as_complete()` inside a handler also completes an instance at

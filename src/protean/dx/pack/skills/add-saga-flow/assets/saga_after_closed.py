@@ -3,11 +3,11 @@ Order fulfillment saga, closed correctly.
 
 One process manager coordinates the flow across Order, Inventory, Payment, and
 Shipping. It issues a command at each step and drives the next aggregate forward
-when that step's event arrives. The saga closes on two paths:
+when that step's event arrives. The saga closes on each terminal path:
 
 - Success: ShipmentDispatched ends the saga (end=True).
 - Failure: PaymentFailed ends the saga (end=True) and issues compensating
-  commands to release the stock reservation and cancel the order.
+  commands to cancel the stock reservation and the order.
 
 Because a handler is marked end=True on each terminal path, `check` reports no
 PROCESS_MANAGER_UNCLOSED for this domain. Contrast with saga_before_unclosed.py,
@@ -35,8 +35,8 @@ domain = Domain(__file__, "ecommerce")
 
 
 @domain.command(part_of="Inventory")
-class ReserveStock:
-    """Reserve stock for an order."""
+class CreateReservation:
+    """Create a stock reservation for an order."""
 
     order_id: Identifier(required=True)
 
@@ -50,15 +50,15 @@ class RequestPayment:
 
 
 @domain.command(part_of="Shipping")
-class DispatchShipment:
-    """Dispatch the shipment once payment is confirmed."""
+class CreateShipment:
+    """Create the shipment once payment is confirmed."""
 
     order_id: Identifier(required=True)
 
 
 @domain.command(part_of="Inventory")
-class ReleaseReservation:
-    """Compensating command: release a stock reservation."""
+class CancelReservation:
+    """Compensating command: cancel a stock reservation."""
 
     order_id: Identifier(required=True)
 
@@ -159,10 +159,11 @@ class Shipping:
     ]
 )
 class OrderFulfillmentPM:
-    """Coordinate order fulfillment across four aggregates.
+    """Coordinate order fulfillment across the Order, Inventory, Payment, and
+    Shipping aggregates.
 
     Each handler advances the saga's state and issues the command for the next
-    step. Two handlers close the saga:
+    step. Terminal handlers close the saga:
 
     - on_shipment_dispatched (end=True): the success terminal.
     - on_payment_failed (end=True): the failure terminal, which also issues the
@@ -179,7 +180,7 @@ class OrderFulfillmentPM:
         self.order_id = event.order_id
         self.total = event.total
         self.status = "reserving_stock"
-        current_domain.process(ReserveStock(order_id=event.order_id))
+        current_domain.process(CreateReservation(order_id=event.order_id))
 
     @handle(StockReserved, correlate="order_id")
     def on_stock_reserved(self, event: StockReserved) -> None:
@@ -193,7 +194,7 @@ class OrderFulfillmentPM:
     def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
         """Dispatch the shipment once payment is confirmed."""
         self.status = "shipping"
-        current_domain.process(DispatchShipment(order_id=self.order_id))
+        current_domain.process(CreateShipment(order_id=self.order_id))
 
     @handle(ShipmentDispatched, correlate="order_id", end=True)
     def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
@@ -204,5 +205,5 @@ class OrderFulfillmentPM:
     def on_payment_failed(self, event: PaymentFailed) -> None:
         """Close the saga on the failure path and compensate earlier steps."""
         self.status = "cancelled"
-        current_domain.process(ReleaseReservation(order_id=self.order_id))
+        current_domain.process(CancelReservation(order_id=self.order_id))
         current_domain.process(CancelOrder(order_id=self.order_id))

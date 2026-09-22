@@ -4,7 +4,7 @@ Order fulfillment saga, left unclosed. This is the anti-pattern.
 The same flow as saga_after_closed.py, but no handler is marked end=True and
 there is no compensating failure path. The saga starts, advances through stock
 reservation, payment, and shipment, and sets a "fulfilled" status, but it never
-signals completion. Its instances stay open forever and keep accepting events.
+signals completion. Its instances stay open and keep matching later events.
 
 Because no handler is marked end=True, `check` reports PROCESS_MANAGER_UNCLOSED
 for OrderFulfillmentPM. saga_after_closed.py fixes it by marking a terminating
@@ -32,8 +32,8 @@ domain = Domain(__file__, "ecommerce")
 
 
 @domain.command(part_of="Inventory")
-class ReserveStock:
-    """Reserve stock for an order."""
+class CreateReservation:
+    """Create a stock reservation for an order."""
 
     order_id: Identifier(required=True)
 
@@ -47,8 +47,8 @@ class RequestPayment:
 
 
 @domain.command(part_of="Shipping")
-class DispatchShipment:
-    """Dispatch the shipment once payment is confirmed."""
+class CreateShipment:
+    """Create the shipment once payment is confirmed."""
 
     order_id: Identifier(required=True)
 
@@ -151,7 +151,7 @@ class OrderFulfillmentPM:
         self.order_id = event.order_id
         self.total = event.total
         self.status = "reserving_stock"
-        current_domain.process(ReserveStock(order_id=event.order_id))
+        current_domain.process(CreateReservation(order_id=event.order_id))
 
     @handle(StockReserved, correlate="order_id")
     def on_stock_reserved(self, event: StockReserved) -> None:
@@ -165,7 +165,7 @@ class OrderFulfillmentPM:
     def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
         """Dispatch the shipment once payment is confirmed."""
         self.status = "shipping"
-        current_domain.process(DispatchShipment(order_id=self.order_id))
+        current_domain.process(CreateShipment(order_id=self.order_id))
 
     @handle(ShipmentDispatched, correlate="order_id")
     def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
