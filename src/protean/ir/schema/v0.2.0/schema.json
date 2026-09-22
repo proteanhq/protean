@@ -226,7 +226,8 @@
         { "$ref": "#/$defs/field_has_one" },
         { "$ref": "#/$defs/field_has_many" },
         { "$ref": "#/$defs/field_reference" },
-        { "$ref": "#/$defs/field_status" }
+        { "$ref": "#/$defs/field_status" },
+        { "$ref": "#/$defs/field_custom" }
       ]
     },
 
@@ -384,6 +385,23 @@
         "auto_generated": { "type": "boolean" }
       },
       "required": ["kind", "target"],
+      "additionalProperties": true
+    },
+
+    "field_custom": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "custom" },
+        "type": { "type": "string" },
+        "required": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "default": {},
+        "max_value": { "type": "number" },
+        "min_value": { "type": "number" },
+        "description": { "type": "string" },
+        "auto_generated": { "type": "boolean" }
+      },
+      "required": ["kind", "type"],
       "additionalProperties": true
     },
 

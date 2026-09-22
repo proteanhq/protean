@@ -499,21 +499,40 @@ class IRBuilder:
         if spec is not None and getattr(spec, "_pickled_deprecated", False):
             entry["deprecated_pickled"] = True
 
-        # Default — from FieldSpec for accurate representation
+        # Default — from FieldSpec for accurate representation. A custom field's
+        # default is an instance of the custom type, which JSON cannot encode, so
+        # it goes through the field's ``as_dict`` — the same serialization the
+        # persistence and event paths use.
         if spec is not None:
             if spec.default is not _UNSET:
                 if callable(spec.default):
                     entry["default"] = "<callable>"
                 else:
-                    entry["default"] = spec.default
+                    entry["default"] = self._serialize_default(field, spec.default)
         elif field.default is not None:
-            # Fallback to ResolvedField default if no spec
+            # Fallback to ResolvedField default if no spec. Generated elements —
+            # a fact event, a value object projected from an entity — rebuild
+            # their fields from ``FieldInfo`` and carry no spec, so a custom
+            # default arrives here as a live instance and needs the same
+            # serialization.
             if callable(field.default):
                 entry["default"] = "<callable>"
             else:
-                entry["default"] = field.default
+                entry["default"] = self._serialize_default(field, field.default)
 
         return entry
+
+    @staticmethod
+    def _serialize_default(field: Any, default: Any) -> Any:
+        """Return a JSON-encodable form of a field's default.
+
+        Only a custom field needs this: its default is an instance of the custom
+        type, and the IR is written out as JSON (and hashed into the canonical
+        baselines). Every other field kind keeps its default verbatim.
+        """
+        if field.field_kind == "custom":
+            return field.as_dict(default)
+        return default
 
     @staticmethod
     def _unwrap_type(python_type: type | None) -> type | None:
@@ -524,9 +543,17 @@ class IRBuilder:
             ``str | int | UUID``  → ``str``  (first non-None arg)
             ``list[str]``  → ``list[str]``  (unchanged)
             ``Literal['A','B'] | None``  → ``str``  (first Literal arg type)
+            ``Annotated[int, PlainValidator(...)]``  → ``int``
         """
         if python_type is None:
             return None
+
+        # A custom field's annotation carries its Pydantic validators and
+        # serializers, so the concrete type sits under an ``Annotated`` wrapper.
+        # ``Custom`` accepts any class, and a class is free to carry an unrelated
+        # ``__metadata__`` attribute, so ask ``get_origin`` instead of sniffing it.
+        if typing.get_origin(python_type) is typing.Annotated:
+            return IRBuilder._unwrap_type(typing.get_args(python_type)[0])
 
         origin = typing.get_origin(python_type)
 
@@ -590,6 +617,18 @@ class IRBuilder:
             result = _TYPE_MAP.get((python_type, kind))
             if result:
                 return result
+            if kind == "custom":
+                # A custom field over a primitive stores that primitive —
+                # ``as_dict`` hands the value back untouched — so the IR has to
+                # name that shape. The schema, Avro and Protobuf generators read
+                # this name, and without the lookup ``Custom(int, ...)`` is
+                # persisted as an integer but published as a string. An
+                # arbitrary class serializes through its own ``to_dict``, whose
+                # shape the builder cannot know, so it keeps the String
+                # fallback.
+                primitive = _TYPE_MAP.get((python_type, "standard"))
+                if primitive:
+                    return primitive
         return "String"  # Fallback
 
     @staticmethod

@@ -114,3 +114,5 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0040](0040-schema-evolution-ladder.md) | The Schema-Evolution Ladder |
 | [0041](0041-textual-event-model-grammar-over-ir.md) | Textual Event-Model Grammar over the IR |
 | [0042](0042-subscription-owns-retry-and-dead-lettering.md) | The Subscription Owns Retry and Dead-Lettering |
+| [0043](0043-typed-query-dispatch.md) | Typed query dispatch through a generic query base |
+| [0044](0044-custom-field-extension-contract.md) | The custom-field extension point is a public `Custom` factory |

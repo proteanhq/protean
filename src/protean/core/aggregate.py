@@ -25,7 +25,7 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.basic import ValueObjectList
-from protean.fields.resolved import ResolvedField
+from protean.fields.resolved import ResolvedField, custom_field_declaration
 from protean.fields.tempdata import AssociationCache
 from protean.utils import (
     DomainObjects,
@@ -591,14 +591,22 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
             # Regular Pydantic model field
             finfo = model_field_info.get(key)
             if finfo:
-                annotations[key] = finfo.annotation
-                if finfo.default is not PydanticUndefined:
-                    namespace[key] = finfo.default
-                elif finfo.default_factory is not None:
-                    namespace[key] = PydanticField(
-                        default_factory=finfo.default_factory
-                    )
-                # else: required field — no default needed
+                # A custom field (built by ``Custom``) needs its Pydantic
+                # metadata and its kind marker carried onto the fact event
+                # field; ``custom_field_declaration`` builds both. Every
+                # built-in field has a native schema, so its metadata (length
+                # bounds, sanitize) is intentionally left off as before.
+                if value.field_kind == "custom":
+                    annotations[key], namespace[key] = custom_field_declaration(finfo)
+                else:
+                    annotations[key] = finfo.annotation
+                    if finfo.default is not PydanticUndefined:
+                        namespace[key] = finfo.default
+                    elif finfo.default_factory is not None:
+                        namespace[key] = PydanticField(
+                            default_factory=finfo.default_factory
+                        )
+                    # else: required field — no default needed
 
     ns = {"__annotations__": annotations, **namespace}
     event_cls = type(

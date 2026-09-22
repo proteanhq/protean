@@ -316,6 +316,7 @@ nav:
       - reference/fields/index.md
       - reference/fields/defining-fields.md
       - reference/fields/simple-fields.md
+      - reference/fields/custom-fields.md
       - reference/fields/container-fields.md
       - reference/fields/association-fields.md
       - reference/fields/arguments.md
@@ -454,6 +455,7 @@ nav:
       - "0041 · Event-model grammar over IR": adr/0041-textual-event-model-grammar-over-ir.md
       - "0042 · Subscription owns retry and dead-lettering": adr/0042-subscription-owns-retry-and-dead-lettering.md
       - "0043 · Typed query dispatch": adr/0043-typed-query-dispatch.md
+      - "0044 · Custom-field extension contract": adr/0044-custom-field-extension-contract.md
     - Troubleshooting:
       - reference/troubleshooting.md
 

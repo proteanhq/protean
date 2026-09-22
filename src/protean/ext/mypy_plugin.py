@@ -119,6 +119,13 @@ _ASSOCIATION_FIELD_NAMES: dict[str, str] = {
     "protean.fields.embedded.ValueObject": "value_object",
 }
 
+# The custom-field factory. Like the association fields, its type comes from the
+# first positional argument (the custom Python type), so it cannot live in
+# FIELD_TYPE_MAP. Unlike them, it follows the scalar factories' optionality
+# rules: Custom(Color) is ``Color | None``, Custom(Color, required=True) is
+# ``Color``.
+_CUSTOM_FIELD_NAMES: set[str] = {"protean.fields.simple.Custom"}
+
 # Container fields always provide an implicit default (empty list/dict)
 # when the user doesn't supply one, so they should never be Optional.
 _FIELDS_WITH_IMPLICIT_DEFAULT: set[str] = {
@@ -151,8 +158,24 @@ def _build_reexport_map() -> None:
             reexported = f"{parts[0]}.{parts[1]}.{parts[-1]}"
             _REEXPORT_MAP[reexported] = canonical
 
+    for canonical in _CUSTOM_FIELD_NAMES:
+        parts = canonical.split(".")
+        if len(parts) >= 4:
+            reexported = f"{parts[0]}.{parts[1]}.{parts[-1]}"
+            _REEXPORT_MAP[reexported] = canonical
+
 
 _build_reexport_map()
+
+
+def _resolve_custom_fullname(fullname: str) -> str | None:
+    """Match a fullname to the ``Custom`` factory, via the re-export map."""
+    if fullname in _CUSTOM_FIELD_NAMES:
+        return fullname
+    canonical = _REEXPORT_MAP.get(fullname)
+    if canonical is not None and canonical in _CUSTOM_FIELD_NAMES:
+        return canonical
+    return None
 
 
 def _resolve_association_fullname(fullname: str) -> str | None:
@@ -311,6 +334,10 @@ class ProteanPlugin(Plugin):
                 return _association_field_hook(ctx, kind)
 
             return assoc_hook
+
+        # Check the custom field factory, whose type is its first argument
+        if _resolve_custom_fullname(fullname) is not None:
+            return _custom_field_hook
 
         # Check re-exported names (protean.fields.String, etc.)
         canonical = _REEXPORT_MAP.get(fullname)
@@ -592,6 +619,9 @@ def _build_short_name_map() -> None:
     for canonical in _ASSOCIATION_FIELD_NAMES:
         short = canonical.rsplit(".", 1)[-1]
         _SHORT_NAME_TO_CANONICAL[short] = canonical
+    for canonical in _CUSTOM_FIELD_NAMES:
+        short = canonical.rsplit(".", 1)[-1]
+        _SHORT_NAME_TO_CANONICAL[short] = canonical
 
 
 _build_short_name_map()
@@ -739,8 +769,13 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
             continue
 
         # Check if it's an association field (HasMany, HasOne, ValueObject, Reference)
+        # or a custom field. Both name their type in the first argument, which
+        # the RawExpressionType of an annotation-style declaration does not carry.
         resolved = _resolve_association_fullname(callee_fullname)
-        if resolved is not None:
+        if (
+            resolved is not None
+            or _resolve_custom_fullname(callee_fullname) is not None
+        ):
             fields.append((field_name, AnyType(TypeOfAny.special_form)))
 
         if _DEBUG:
@@ -860,11 +895,14 @@ def _resolve_field_type_for_init(
             return UnionType([base_type, NoneType()])
         return base_type
 
-    # Check association fields
-    resolved = _resolve_association_fullname(callee_fullname)
-    if resolved is not None:
-        # For association fields, return Any since the target class
-        # reference may not be resolved at MRO time
+    # Check association and custom fields. Both take their target class as the
+    # first argument, and that reference may not be resolved at MRO time, so the
+    # __init__ parameter is Any. The attribute's own type still comes from the
+    # function hook, which runs after name resolution.
+    if (
+        _resolve_association_fullname(callee_fullname) is not None
+        or _resolve_custom_fullname(callee_fullname) is not None
+    ):
         return AnyType(TypeOfAny.special_form)
 
     return None
@@ -1012,20 +1050,15 @@ def _synthesize_has_many_methods(ctx: ClassDefContext) -> None:
 # ---------------------------------------------------------------------------
 # Association / embedded field hook
 # ---------------------------------------------------------------------------
-def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
-    """Override the return type of HasOne/HasMany/ValueObject fields.
+def _extract_first_arg_type(ctx: FunctionContext) -> MypyType | None:
+    """Return the class named by a factory's first positional argument.
 
-    Extracts the first positional argument (the target class) and returns:
-    - ``HasOne(X)``       → ``X | None``
-    - ``HasMany(X)``      → ``list[X]``
-    - ``ValueObject(X)``  → ``X | None``
-
-    When the target class cannot be resolved (e.g. a forward-reference
-    string), falls back to the default return type.
+    ``HasOne(OrderItem)``, ``ValueObject(Address)`` and ``Custom(Color)`` all
+    take the target class there. Returns ``None`` when the argument is missing or
+    unresolvable (a forward-reference string, for instance).
     """
-    # The target class is always the first positional argument
     if not ctx.args or not ctx.args[0]:
-        return ctx.default_return_type
+        return None
 
     first_arg_type: MypyType = ctx.arg_types[0][0]
 
@@ -1048,6 +1081,44 @@ def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
         target_type = first_arg_type.args[0]
 
     if target_type is None or isinstance(target_type, AnyType):
+        return None
+    return target_type
+
+
+def _custom_field_hook(ctx: FunctionContext) -> Type:
+    """Override the return type of the ``Custom`` field factory.
+
+    ``Custom(Color)`` is ``Color | None`` and ``Custom(Color, required=True)`` is
+    ``Color``, matching what the field resolves to at runtime. The type comes
+    from the first positional argument, so it cannot come from FIELD_TYPE_MAP the
+    way a built-in factory's does.
+    """
+    target_type = _extract_first_arg_type(ctx)
+    if target_type is None:
+        return ctx.default_return_type
+
+    is_required = _get_kwarg_bool(ctx, "required", default=False)
+    is_identifier = _get_kwarg_bool(ctx, "identifier", default=False)
+    has_default = _has_kwarg(ctx, "default")
+
+    if not is_required and not has_default and not is_identifier:
+        return UnionType([target_type, NoneType()])
+    return target_type
+
+
+def _association_field_hook(ctx: FunctionContext, kind: str) -> Type:
+    """Override the return type of HasOne/HasMany/ValueObject fields.
+
+    Extracts the first positional argument (the target class) and returns:
+    - ``HasOne(X)``       → ``X | None``
+    - ``HasMany(X)``      → ``list[X]``
+    - ``ValueObject(X)``  → ``X | None``
+
+    When the target class cannot be resolved (e.g. a forward-reference
+    string), falls back to the default return type.
+    """
+    target_type = _extract_first_arg_type(ctx)
+    if target_type is None:
         # Forward reference string or unresolvable — fall back
         return ctx.default_return_type
 

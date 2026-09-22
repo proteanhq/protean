@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from protean._deprecation import warn_from_registry
 from protean.exceptions import NotSupportedError
+from protean.fields.resolved import serialize_custom_value
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
 from protean.utils.reflection import attributes, fields, id_field
@@ -138,12 +139,21 @@ class QuerySet:
             #   so we look for the key name in both fields and attributes.
             #
             # If we don't find it in either, we raise an error.
-            attr_name = self._resolve_attribute_name(extracted_key_name)
+            field_obj = self._resolve_field(extracted_key_name)
+            attr_name = field_obj.attribute_name
+            # A field returned from a registered entity always has its
+            # ``attribute_name`` populated (set during ``__set_name__``).
+            assert attr_name is not None
 
             # Replace the field name in the composite key with the attribute name
             new_key_name = key.replace(extracted_key_name, attr_name)
-            # Add the new key and value to the new kwargs
-            new_kwargs[new_key_name] = value
+            # Add the new key and value to the new kwargs. A custom field is
+            # stored as whatever its ``as_dict`` returns, so a filter carrying a
+            # live instance is serialized the same way; otherwise the criterion
+            # compares against, or binds to the driver, an object the store never
+            # saw. Plain values (a raw primitive, an ``__isnull`` flag) pass
+            # through untouched, and an ``__in`` list is serialized item by item.
+            new_kwargs[new_key_name] = serialize_custom_value(field_obj, value)
 
         if negate:
             clone._add_q(~Q(*args, **new_kwargs))
@@ -270,8 +280,8 @@ class QuerySet:
         clone._only_fields = resolved
         return clone
 
-    def _resolve_attribute_name(self, name: str) -> str:
-        """Resolve a field or attribute name to its persisted attribute name.
+    def _resolve_field(self, name: str) -> Any:
+        """Resolve a field or attribute name to the field object behind it.
 
         Accepts both field names and attribute names, mirroring the lookup used
         by ``filter`` and ``order_by``.
@@ -280,16 +290,23 @@ class QuerySet:
         """
         entity_fields = fields(self._entity_cls)
         if name in entity_fields:
-            attr_name = entity_fields[name].attribute_name
-        else:
-            entity_attributes = attributes(self._entity_cls)
-            if name in entity_attributes:
-                attr_name = entity_attributes[name].attribute_name
-            else:
-                raise KeyError(
-                    f"Key '{name}' not found in either fields or attributes "
-                    f"of {self._entity_cls}"
-                )
+            return entity_fields[name]
+
+        entity_attributes = attributes(self._entity_cls)
+        if name in entity_attributes:
+            return entity_attributes[name]
+
+        raise KeyError(
+            f"Key '{name}' not found in either fields or attributes "
+            f"of {self._entity_cls}"
+        )
+
+    def _resolve_attribute_name(self, name: str) -> str:
+        """Resolve a field or attribute name to its persisted attribute name.
+
+        :raises KeyError: if ``name`` is neither a field nor an attribute.
+        """
+        attr_name: str | None = self._resolve_field(name).attribute_name
 
         # A field returned from a registered entity's ``fields()``/``attributes()``
         # always has its ``attribute_name`` populated (set during ``__set_name__``);

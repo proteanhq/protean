@@ -64,6 +64,9 @@ supported, and `protean check` will not warn you before they move.
 - **`protean.fields`**: The field factories, the association fields, and the
   `validators` module. Not every name in `protean.fields.__all__` is Stable:
   see the index.
+- **`Custom`**, the factory for a field over a custom Python type. It is the
+  supported extension point for a type Protean has no built-in factory for; see
+  the [custom fields reference](fields/custom-fields.md).
 - **`protean.exceptions`**: Every exception and warning class.
 - **`protean.testing`**: The public testing DSL.
 - **`protean.integrations.*` public names**, including the FastAPI helpers and
@@ -183,6 +186,7 @@ or `protean.integrations.*`; see their own reference pages for those.
 | `value_object_from_entity` | `protean` | Stable |
 | `Auto` | `protean.fields` | Stable |
 | `Boolean` | `protean.fields` | Stable |
+| `Custom` | `protean.fields` | Stable |
 | `Date` | `protean.fields` | Stable |
 | `DateTime` | `protean.fields` | Stable |
 | `Decimal` | `protean.fields` | Stable |

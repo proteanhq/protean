@@ -17,6 +17,7 @@ from typing import (
     TypeVar,
     cast,
     dataclass_transform,
+    get_origin,
 )
 from uuid import UUID
 
@@ -318,10 +319,11 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
                 return
             if isinstance(annot_value, str) and "'identifier': True" in annot_value:
                 return
-            # Handle resolved Annotated types (no from __future__)
-            metadata = getattr(annot_value, "__metadata__", None)
-            if metadata is not None:
-                for meta in metadata:
+            # Handle resolved Annotated types (no from __future__). A plain
+            # class is free to carry an unrelated ``__metadata__`` attribute, so
+            # ask ``get_origin`` rather than sniffing for the attribute.
+            if get_origin(annot_value) is Annotated:
+                for meta in annot_value.__metadata__:
                     if isinstance(meta, FieldInfo):
                         extra = meta.json_schema_extra
                         if isinstance(extra, dict) and extra.get("identifier"):

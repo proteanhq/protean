@@ -400,6 +400,8 @@ rules govern field representation:
 | `"has_one"` | `HasOne(SomeEntity)` | 1:1 child association |
 | `"has_many"` | `HasMany(SomeEntity)` | 1:N child association |
 | `"reference"` | `Reference(SomeAggregate)` | Back-reference to parent |
+| `"status"` | `Status` | State field with a closed set of values |
+| `"custom"` | `Custom(SomeType, ...)` | Field over a custom Python type |
 
 ### Field Attributes
 

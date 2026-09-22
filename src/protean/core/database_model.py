@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from protean.core.queryset import Record
 from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.fields.resolved import serialize_custom_value
 from protean.utils import DomainObjects, _coerce_uuid_to_str, _derive_element_class
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import attributes, declared_fields, id_field
@@ -208,7 +209,16 @@ def _entity_to_dict(
         else:
             value = getattr(entity, attribute_name, None)
             key = attribute_name
-        item_dict[key] = value
+
+        # A custom field (built by ``Custom``) holds an instance of a type the
+        # store knows nothing about: SQLAlchemy maps it to a string column and
+        # Elasticsearch indexes it raw, so the driver rejects the object on
+        # write. Serialize it here, at the boundary every adapter's
+        # ``from_entity`` goes through, so every adapter stores the same plain
+        # value. ``to_entity`` hands that value back to the field's parser. This
+        # covers a custom field inside an embedded value object too, because its
+        # shadow attribute carries the real field.
+        item_dict[key] = serialize_custom_value(attr_obj, value)
     return item_dict
 
 

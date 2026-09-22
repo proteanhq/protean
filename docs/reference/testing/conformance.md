@@ -261,6 +261,58 @@ protean test test-adapter --provider=your-provider-name --uri="your://connection
 Review which capabilities pass and which fail. Fix failures in your adapter
 implementation and re-run until all declared capabilities pass.
 
+## Custom Field Conformance
+
+The same idea applies to custom fields built with
+[`Custom`](../fields/custom-fields.md). Protean ships a reusable check a `Custom`
+field runs against itself, so you can prove your field before you depend on it.
+
+```python
+from protean.integrations.pytest.custom_field_conformance import (
+    run_custom_field_conformance,
+)
+```
+
+`run_custom_field_conformance(field, *, valid_input, expected, invalid_input)`
+takes the `Custom(...)` field under test, a raw value that should parse, the value
+it should parse to, and a raw value it should reject. It builds its own in-memory
+domain, declares a throwaway aggregate carrying the field, and asserts the whole
+custom-field contract:
+
+- **The outcome of each validation stage.** A required field rejects a missing
+  value; an optional one resolves it to its default, or to `None`; the cast parses
+  a raw value into the type and rejects one it cannot parse.
+- **The `ResolvedField` reflection.** The field surfaces as a `ResolvedField` with
+  the declared `required`, and its `as_dict` output is JSON-serializable.
+- **A serialize, persist, reload, and event-replay round-trip.** The value saves,
+  reloads equal, and replays equal from the aggregate's fact event.
+
+It raises `AssertionError` on any violation, so drop it straight into a test:
+
+```python
+from pydantic import PlainSerializer, PlainValidator
+
+from protean.fields import Custom
+
+
+def test_color_field_conformance():
+    field = Custom(
+        Color,
+        validators=[PlainValidator(parse_color)],
+        serializers=[PlainSerializer(lambda c: c.hex, return_type=str)],
+        required=True,
+    )
+    run_custom_field_conformance(
+        field,
+        valid_input="#3366ff",
+        expected=Color("#3366FF"),
+        invalid_input="not-a-color",
+    )
+```
+
+The custom type needs a meaningful `__eq__` (the harness compares with `==`) and a
+`to_dict()` that returns a value your parser accepts back, so the round-trip holds.
+
 ## Related pages
 
 - Learn about [database capabilities](../adapters/database/index.md#database-capabilities)

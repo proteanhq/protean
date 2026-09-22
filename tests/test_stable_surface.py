@@ -111,6 +111,18 @@ class TestIndexMatchesShippedExports:
         unknown = {tier for tier in index.values() if tier not in TIERS}
         assert not unknown, f"Unknown tier(s) in the export index: {sorted(unknown)}"
 
+    def test_custom_field_factory_is_stable(self, index):
+        """`Custom` ships Stable, the tier this issue's decision ratified.
+
+        `Custom` lives in `protean.fields`, so `test_top_level_exports_are_all_stable`
+        (which guards only the top-level `protean` module) never reaches it, and the
+        parametrized tier check only asserts a recognized tier. Without this, a
+        demotion to Provisional would keep the suite green.
+        """
+        assert index.get(("protean.fields", "Custom")) == "Stable", (
+            "`Custom` must be classified Stable in the export index."
+        )
+
     def test_top_level_exports_are_all_stable(self, index):
         """`protean.__all__` is the headline surface: it is Stable by definition."""
         not_stable = {
