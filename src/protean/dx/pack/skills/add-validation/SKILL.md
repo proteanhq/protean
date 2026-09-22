@@ -165,6 +165,13 @@ class Order:
 
 **Validation timing**: Pre-invariants before attribute changes; post-invariants after initialization and attribute changes.
 
+**An aggregate with no invariants at all**: `check` reports `AGGREGATE_NO_INVARIANTS` for an
+aggregate that declares neither `@invariant.pre` nor `@invariant.post`. An aggregate is a
+consistency boundary, so one that enforces no rule is usually an anemic data holder. Add the
+business rules it must always satisfy, or reconsider whether the concept is an aggregate: a
+plain value-carrier is often better modelled as a value object or as an entity inside another
+aggregate.
+
 ### Atomic changes
 
 When multiple attributes need to change together, use `atomic_change` to defer validation until all changes are made:

@@ -118,6 +118,25 @@ def test_family_skill_that_teaches_no_code_declares_none(skill):
     assert pack.skill_diagnostic_codes(skill) == []
 
 
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_FAMILY_CODE_TEACHING_SKILLS.items())
+)
+def test_family_skill_names_every_code_it_declares_in_its_body(skill, expected):
+    # A declaration is a promise that the skill explains the fix for that code,
+    # because build_diagnostic points a reader at the skill by name. Require the
+    # code to appear in the prose below the frontmatter, so a skill cannot claim
+    # a code it never mentions. Scoped to this family for the same reason as the
+    # tests above: the seed skill predates the rule and other passes land later.
+    text = pack.read_pack_text(pack.SKILLS_DIR, skill, pack.SKILL_FILE)
+    _, _, body = text.partition("\n---\n")
+    assert body, f"{skill} has no body below its frontmatter"
+
+    missing = [code for code in expected if code not in body]
+    assert not missing, (
+        f"{skill} declares {missing} but never names them below its frontmatter"
+    )
+
+
 def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
     # protean-overview declares the seed code, so it must be named. Assert
     # inclusion, not the whole list: another skill declaring the same code later

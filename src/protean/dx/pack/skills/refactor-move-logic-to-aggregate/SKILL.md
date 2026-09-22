@@ -140,6 +140,11 @@ Move validation from handlers into `@invariant.post`:
             raise ValidationError({"total": ["Exceeds maximum order amount"]})
 ```
 
+Do not skip this step. An aggregate that ends the refactor with rich methods but no
+`@invariant.pre` or `@invariant.post` is still reported as `AGGREGATE_NO_INVARIANTS`: the
+logic moved off the handler, but the consistency boundary enforces nothing. The rules you
+deleted from the handler in Step 1 are the invariants to declare here.
+
 ### Step 4: Slim down the handler
 
 The handler becomes load → call → persist:
