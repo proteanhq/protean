@@ -25,8 +25,6 @@ This one shows how to build the whole saga around it.
 ## Worked example: order fulfillment
 
 The saga coordinates four aggregates: Order, Inventory, Payment, and Shipping.
-It is broker-free, so it initializes and runs the flow without any external
-broker.
 
 | Step | Event it reacts to | Command it issues | Handler kind |
 |------|--------------------|-------------------|--------------|
@@ -36,7 +34,16 @@ broker.
 | Ship | `ShipmentDispatched` | (none) | end (success) |
 | Fail | `PaymentFailed` | `CancelReservation`, `CancelOrder` | end (compensating) |
 
-The full flow is in [saga_after_closed.py](assets/saga_after_closed.py).
+The full flow is in [saga_after_closed.py](assets/saga_after_closed.py). It has
+every piece the flow needs: a command handler for each command the saga issues,
+and an aggregate method that raises the event driving the next step. Payment is
+the branch point, confirming an amount up to a limit and failing anything above
+it, so the same flow reaches either terminal path.
+
+The asset sets `event_processing` and `command_processing` to `"sync"`, so
+processing one `PlaceOrder` command runs the whole saga in-process, with no
+broker and no server. A deployed domain leaves both asynchronous and lets the
+server drive each step.
 
 ## Steps
 
@@ -47,6 +54,11 @@ The saga reacts to one [event](../event/SKILL.md) per step and issues one
 past tense (`OrderPlaced`, `StockReserved`) and commands in the imperative
 (`CreateReservation`, `RequestPayment`). Every event carries the correlation field,
 here `order_id`, so the saga can route each event to the right instance.
+
+Each command needs a [command-handler](../command-handler/SKILL.md), and each
+step's aggregate method needs to raise the event for the next step. Without
+them the saga stalls after the first command, and `check` reports
+`UNUSED_COMMAND` and `AGGREGATE_WITHOUT_COMMAND_HANDLER`.
 
 ### 2. Pick the correlation key
 
@@ -78,6 +90,8 @@ work.
 ```python
 @handle(StockReserved, correlate="order_id")
 def on_stock_reserved(self, event: StockReserved) -> None:
+    # Remember the reservation: the failure path needs it to compensate.
+    self.reservation_id = event.reservation_id
     self.status = "awaiting_payment"
     current_domain.process(RequestPayment(order_id=self.order_id, amount=self.total))
 ```
@@ -106,9 +120,12 @@ stock reservation and cancels the order:
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
-    current_domain.process(CancelReservation(order_id=self.order_id))
+    current_domain.process(CancelReservation(reservation_id=self.reservation_id))
     current_domain.process(CancelOrder(order_id=self.order_id))
 ```
+
+The saga stored `reservation_id` when the stock was reserved. That is how the
+failure handler knows which reservation to release.
 
 The [compensation reference](references/compensation.md) covers the pattern in
 full.

@@ -11,14 +11,19 @@ for OrderFulfillmentPM. saga_after_closed.py fixes it by marking a terminating
 handler on each path.
 
 The domain still initializes: PROCESS_MANAGER_UNCLOSED is an info-level
-diagnostic, not an initialization error.
+diagnostic, not an initialization error. The flow still runs too, which is the
+point: an unclosed saga looks healthy until you notice its instances never
+retire.
 
 Usage:
-    from saga_before_unclosed import OrderFulfillmentPM, domain
+    from saga_before_unclosed import PlaceOrder, domain
 
     domain.init(traverse=False)
     with domain.domain_context():
-        pm = OrderFulfillmentPM(order_id="ORD-001", status="new")
+        # Runs the saga, which reaches "fulfilled" but never closes
+        domain.process(
+            PlaceOrder(order_id="ORD-001", customer_id="CUST-1", total=100.0)
+        )
 """
 
 from protean import Domain, current_domain, handle
@@ -27,8 +32,25 @@ from protean.fields import Float, Identifier, String
 # Domain setup
 domain = Domain(__file__, "ecommerce")
 
+# Run the saga in-process, exactly as saga_after_closed.py does.
+domain.config["event_processing"] = "sync"
+domain.config["command_processing"] = "sync"
+
 
 # --- Commands (the saga issues these to drive each aggregate forward) ---
+
+
+@domain.command(part_of="Order")
+class PlaceOrder:
+    """Place an order. This command starts the flow.
+
+    The caller chooses the order id: it is the saga's correlation key, so every
+    later step carries it.
+    """
+
+    order_id: Identifier(required=True)
+    customer_id: Identifier(required=True)
+    total: Float(required=True)
 
 
 @domain.command(part_of="Inventory")
@@ -89,7 +111,7 @@ class ShipmentDispatched:
     tracking_id: Identifier(required=True)
 
 
-# --- Aggregates ---
+# --- Aggregates (each step's work, and the event that reports it) ---
 
 
 @domain.aggregate
@@ -100,12 +122,31 @@ class Order:
     total: Float(required=True)
     status: String(default="new")
 
+    @classmethod
+    def place(cls, order_id: str, customer_id: str, total: float) -> "Order":
+        """Place an order. OrderPlaced starts the saga."""
+        order = cls(id=order_id, customer_id=customer_id, total=total, status="placed")
+        order.raise_(
+            OrderPlaced(order_id=order.id, customer_id=customer_id, total=total)
+        )
+        return order
+
 
 @domain.aggregate
 class Inventory:
-    """Inventory aggregate holding stock for a product."""
+    """Inventory aggregate holding a stock reservation for an order."""
 
     order_id: Identifier(required=True)
+    status: String(default="reserved")
+
+    @classmethod
+    def reserve(cls, order_id: str) -> "Inventory":
+        """Reserve stock for an order and report it with StockReserved."""
+        reservation = cls(order_id=order_id)
+        reservation.raise_(
+            StockReserved(order_id=order_id, reservation_id=reservation.id)
+        )
+        return reservation
 
 
 @domain.aggregate
@@ -113,6 +154,15 @@ class Payment:
     """Payment aggregate representing a financial transaction."""
 
     order_id: Identifier(required=True)
+    amount: Float(required=True)
+    status: String(default="pending")
+
+    @classmethod
+    def charge(cls, order_id: str, amount: float) -> "Payment":
+        """Charge the order and confirm it."""
+        payment = cls(order_id=order_id, amount=amount, status="confirmed")
+        payment.raise_(PaymentConfirmed(order_id=order_id, payment_id=payment.id))
+        return payment
 
 
 @domain.aggregate
@@ -120,6 +170,57 @@ class Shipping:
     """Shipping aggregate representing a shipment."""
 
     order_id: Identifier(required=True)
+    status: String(default="dispatched")
+
+    @classmethod
+    def dispatch(cls, order_id: str) -> "Shipping":
+        """Dispatch the shipment for an order."""
+        shipment = cls(order_id=order_id)
+        shipment.raise_(ShipmentDispatched(order_id=order_id, tracking_id=shipment.id))
+        return shipment
+
+
+# --- Command handlers (each does the work the saga asks for) ---
+
+
+@domain.command_handler(part_of=Order)
+class OrderCommandHandler:
+    """Handle the command that starts the flow."""
+
+    @handle(PlaceOrder)
+    def place_order(self, command: PlaceOrder) -> None:
+        order = Order.place(command.order_id, command.customer_id, command.total)
+        current_domain.repository_for(Order).add(order)
+
+
+@domain.command_handler(part_of=Inventory)
+class InventoryCommandHandler:
+    """Handle the commands the saga issues to Inventory."""
+
+    @handle(CreateReservation)
+    def create_reservation(self, command: CreateReservation) -> None:
+        reservation = Inventory.reserve(command.order_id)
+        current_domain.repository_for(Inventory).add(reservation)
+
+
+@domain.command_handler(part_of=Payment)
+class PaymentCommandHandler:
+    """Handle the commands the saga issues to Payment."""
+
+    @handle(RequestPayment)
+    def request_payment(self, command: RequestPayment) -> None:
+        payment = Payment.charge(command.order_id, command.amount)
+        current_domain.repository_for(Payment).add(payment)
+
+
+@domain.command_handler(part_of=Shipping)
+class ShippingCommandHandler:
+    """Handle the commands the saga issues to Shipping."""
+
+    @handle(CreateShipment)
+    def create_shipment(self, command: CreateShipment) -> None:
+        shipment = Shipping.dispatch(command.order_id)
+        current_domain.repository_for(Shipping).add(shipment)
 
 
 # --- Process Manager (the saga, left open) ---
