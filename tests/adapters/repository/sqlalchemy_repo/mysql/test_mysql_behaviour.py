@@ -19,9 +19,19 @@ from sqlalchemy.exc import DatabaseError
 
 from protean import Domain, Index, UnitOfWork
 from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
-from protean.fields import DateTime, Dict, Integer, List, String, Text, ValueObject
+from protean.fields import (
+    DateTime,
+    Dict,
+    HasMany,
+    Integer,
+    List,
+    String,
+    Text,
+    ValueObject,
+)
 from tests.shared import MARIADB_URI, MYSQL_URI
 
 pytestmark = [pytest.mark.mysql, pytest.mark.no_test_domain]
@@ -326,4 +336,68 @@ class TestIndexKeyWidthGuard:
             with provider._engine.connect() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS wide_probe"))
                 conn.commit()
+            provider.close()
+
+
+class TestAssociationColumnWidth:
+    """A string identity left the association column with no length, which
+    MySQL maps to TEXT. The foreign key then could not be indexed and did not
+    match the VARCHAR(255) identity it points at.
+    """
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_the_foreign_key_matches_the_identity_it_points_at(self, uri):
+        class Comment(BaseEntity):
+            body: String(max_length=100)
+
+        class Post(BaseAggregate):
+            title: String(max_length=50)
+            comments = HasMany(Comment)
+
+        domain = Domain(
+            name="MySQL associations",
+            config={
+                "identity_type": "string",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.register(Post)
+        domain.register(
+            Comment, part_of=Post, indexes=[Index("post_id", name="ix_post")]
+        )
+        domain.init(traverse=False)
+
+        provider = domain.providers["default"]
+        try:
+            with domain.domain_context():
+                domain.repository_for(Comment)._dao
+                provider._metadata.create_all(provider._engine)
+
+                with provider._engine.connect() as conn:
+                    columns = dict(
+                        conn.execute(
+                            text(
+                                "SELECT column_name, column_type "
+                                "FROM information_schema.columns "
+                                "WHERE table_schema = DATABASE() "
+                                "AND table_name = 'comment'"
+                            )
+                        ).all()
+                    )
+                    indexed = (
+                        conn.execute(
+                            text(
+                                "SELECT column_name FROM information_schema.statistics "
+                                "WHERE table_schema = DATABASE() "
+                                "AND table_name = 'comment' AND index_name = 'ix_post'"
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+
+            assert columns["post_id"] == columns["id"] == "varchar(255)"
+            assert indexed == ["post_id"]
+        finally:
+            provider._metadata.drop_all(provider._engine)
             provider.close()

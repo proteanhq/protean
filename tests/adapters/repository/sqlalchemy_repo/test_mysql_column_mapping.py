@@ -23,6 +23,7 @@ from protean import Domain, Index, Q
 from protean.adapters.repository.sqlalchemy import (
     _MYSQL_DEFAULT_COLLATION,
     _MYSQL_DIALECTS,
+    GUID,
     SADAO,
     MysqlProvider,
     PostgresqlProvider,
@@ -33,9 +34,19 @@ from protean.adapters.repository.sqlalchemy import (
 )
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
+from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, IncorrectUsageError
-from protean.fields import DateTime, Dict, Integer, List, String, Text, ValueObject
+from protean.fields import (
+    DateTime,
+    Dict,
+    HasMany,
+    Integer,
+    List,
+    String,
+    Text,
+    ValueObject,
+)
 from protean.port.provider import DatabaseCapabilities
 from protean.utils import Database
 from tests.shared import MARIADB_URI, MYSQL_URI, POSTGRES_URI
@@ -642,6 +653,142 @@ class TestMappedColumnKeyWidths:
 
         assert "bio_text" in str(exc.value)
         assert "3600 bytes" in str(exc.value)
+
+
+class TestAssociationColumns:
+    """An association column holds the referenced aggregate's identity, so it
+    takes that column's width. Under a string identity it had no length at all,
+    which MySQL maps to TEXT: unindexable, and a mismatch with the VARCHAR(255)
+    it points at.
+    """
+
+    @staticmethod
+    def build(identity_type, indexes=None):
+        class Comment(BaseEntity):
+            body: String(max_length=100)
+
+        class Post(BaseAggregate):
+            title: String(max_length=50)
+            comments = HasMany(Comment)
+
+        domain = host_domain([], identity_type=identity_type)
+        domain.register(Post)
+        domain.register(
+            Comment, part_of=Post, **({"indexes": indexes} if indexes else {})
+        )
+        domain.init(traverse=False)
+        provider = mysql_provider(domain)
+        with domain.domain_context():
+            table = provider.construct_database_model_class(Comment).__table__
+            return table, Comment
+
+    def test_a_string_identity_reference_is_varchar_255(self):
+        table, _ = self.build("string")
+
+        assert str(table.c["post_id"].type) == "VARCHAR(255)"
+        assert str(table.c["id"].type) == "VARCHAR(255)"
+
+    def test_a_uuid_identity_reference_stays_char_32(self):
+        table, _ = self.build("uuid")
+
+        assert isinstance(table.c["post_id"].type, GUID)
+
+    def test_an_index_over_a_string_identity_reference_is_accepted(self):
+        """It used to be rejected, with a message telling the caller to declare
+        max_length on a column they never wrote."""
+        table, _ = self.build("string", indexes=[Index("post_id", name="ix_post")])
+
+        assert "ix_post" in {index.name for index in table.indexes}
+
+    @pytest.mark.parametrize(
+        "identity_type,expected",
+        [("string", "4020 bytes"), ("uuid", "3128 bytes")],
+        ids=["string-identity", "uuid-identity"],
+    )
+    def test_the_render_path_counts_the_reference_column(self, identity_type, expected):
+        """The renderer reads the field, and a reference field is not a
+        ResolvedField, so it used to contribute nothing and the two paths
+        disagreed by the width of the identity column."""
+
+        class Note(BaseEntity):
+            text: String(max_length=750)
+
+        class Journal(BaseAggregate):
+            title: String(max_length=50)
+            notes = HasMany(Note)
+
+        domain = host_domain([], identity_type=identity_type)
+        domain.register(Journal)
+        domain.register(
+            Note, part_of=Journal, indexes=[Index("text", "journal_id", name="ix_tj")]
+        )
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            with pytest.raises(IncorrectUsageError) as exc:
+                render_index_ddl(Note, "mysql")
+
+        assert expected in str(exc.value)
+
+
+class TestCustomTableArgs:
+    def test_a_model_cannot_take_over_the_charset(self):
+        """MySQL rejects a charset and collation that disagree with error 1253,
+        and a model that set both would drop the case-sensitive collation every
+        string lookup depends on."""
+
+        class Doc(BaseAggregate):
+            slug: String(max_length=50)
+
+        class DocCustomModel(BaseDatabaseModel):
+            slug = Column(sa_types.String(50))
+            __table_args__ = {"mysql_charset": "latin1", "schema": "reporting"}
+
+        domain = host_domain([])
+        domain.register(Doc)
+        domain.register(DocCustomModel, part_of=Doc)
+        domain.init(traverse=False)
+        provider = mysql_provider(domain)
+
+        with domain.domain_context():
+            table = provider.decorate_database_model_class(
+                Doc, DocCustomModel
+            ).__table__
+
+        assert table.kwargs["mysql_charset"] == "utf8mb4"
+        assert table.kwargs["mysql_collate"] == _MYSQL_DEFAULT_COLLATION
+        # Everything else the model declared survives.
+        assert table.schema == "reporting"
+
+
+class TestRenderWithACustomModel:
+    """A custom model declares its own columns and the renderer cannot see
+    them, so it measures nothing rather than measuring the wrong thing.
+    ``protean db setup`` still guards against the real columns.
+    """
+
+    @staticmethod
+    def render(field_len, col_len):
+        class Doc(BaseAggregate):
+            slug: String(max_length=field_len)
+
+        class DocCustomModel(BaseDatabaseModel):
+            slug = Column(sa_types.String(col_len))
+
+        domain = host_domain([])
+        domain.register(Doc, indexes=[Index("slug", name="ix_slug")])
+        domain.register(DocCustomModel, part_of=Doc)
+        domain.init(traverse=False)
+        with domain.domain_context():
+            return render_index_ddl(Doc, "mysql")
+
+    def test_a_narrowed_column_is_not_rejected(self):
+        """Measuring the field rejected DDL the server accepts."""
+        assert self.render(900, 100) == ["CREATE INDEX ix_slug ON doc (slug)"]
+
+    def test_a_widened_column_is_left_to_db_setup(self):
+        """Nothing offline can know this column is too wide."""
+        assert self.render(50, 900) == ["CREATE INDEX ix_slug ON doc (slug)"]
 
 
 class TestTableArgs:

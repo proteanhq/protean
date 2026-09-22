@@ -127,6 +127,12 @@ at `CREATE TABLE` with MySQL's own message.
 The case-insensitive lookups (`iexact`, `icontains`) are unaffected: they lower
 both sides of the comparison, so they keep matching every case.
 
+A [custom database model](../../../guides/change-state/database-models.md) keeps
+every table kwarg it declares except `mysql_charset` and `mysql_collate`, which
+the provider owns. The two have to agree, and a model that set only the charset
+would get the provider's collation over a different character set, which MySQL
+rejects at `CREATE TABLE`.
+
 ## Isolation level
 
 InnoDB defaults to `REPEATABLE READ`, under which a transaction keeps reading
@@ -183,11 +189,17 @@ An index may name a value object's shadow column (`Index("address_city")` for a
 `city` field on an embedded `Address`), and those are measured the same way,
 from the value object's own field.
 
+An association column holds the referenced aggregate's identity, so it is that
+column's width: `CHAR(32)` under a UUID identity, `VARCHAR(255)` under a string
+one. Both count toward the key.
+
 A [custom database model](../../../guides/change-state/database-models.md)
 declares its own columns, and InnoDB caps the column. So when an aggregate has
 one, the width comes from the column the model declares, not from the field. A
 model that narrows `String(max_length=900)` to `Column(String(100))` indexes
-fine, and one that widens a short field past the cap raises.
+fine, and one that widens a short field past the cap raises. `protean schema
+render` cannot see those columns, so it skips the check for an aggregate with a
+custom model and leaves it to `protean db setup`.
 
 `protean schema render --indexes` runs the same check for the `mysql` and
 `mariadb` dialects, so a rendered `.sql` file never carries DDL the server would

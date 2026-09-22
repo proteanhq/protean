@@ -165,28 +165,29 @@ class TestMergeTableArgs:
             extra,
         )
 
-    def test_a_model_s_own_table_kwargs_win(self):
-        """A hand-written `__table_args__` is never overwritten."""
+    def test_the_provider_s_charset_and_collation_win(self):
+        """A model keeps every kwarg of its own, except the charset and
+        collation the provider manages.
+
+        The pair has to agree: a model setting only `mysql_charset` used to get
+        the provider's collation over a different character set, which MySQL
+        rejects with error 1253. Setting both would drop the case-sensitive
+        collation every string lookup depends on.
+        """
         from protean.adapters.repository.sqlalchemy import _merge_table_args
 
         declared = {"mysql_charset": "latin1", "schema": "reporting"}
         extra = {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
+        merged = {
+            "mysql_charset": "utf8mb4",
+            "mysql_collate": "utf8mb4_bin",
+            "schema": "reporting",
+        }
 
-        assert _merge_table_args(declared, ["i1"], extra) == (
-            "i1",
-            {
-                "mysql_charset": "latin1",
-                "mysql_collate": "utf8mb4_bin",
-                "schema": "reporting",
-            },
-        )
+        assert _merge_table_args(declared, ["i1"], extra) == ("i1", merged)
         assert _merge_table_args(("existing", declared), [], extra) == (
             "existing",
-            {
-                "mysql_charset": "latin1",
-                "mysql_collate": "utf8mb4_bin",
-                "schema": "reporting",
-            },
+            merged,
         )
 
 

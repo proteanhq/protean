@@ -68,9 +68,9 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import IdentityType, _fully_qualified_name, occ_trace
+from protean.utils import Database, IdentityType, _fully_qualified_name, occ_trace
 from protean.utils.container import Options
-from protean.utils.globals import current_domain, current_uow
+from protean.utils.globals import _domain_context_stack, current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
 from protean.utils.query import F, Q
 from protean.utils.reflection import attributes, fields, id_field
@@ -393,6 +393,11 @@ _MYSQL_MAX_INDEX_KEY_BYTES = 3072
 _MYSQL_BYTES_PER_CHAR = 4
 _MYSQL_MAX_INDEXED_VARCHAR = _MYSQL_MAX_INDEX_KEY_BYTES // _MYSQL_BYTES_PER_CHAR
 
+# Width of a string identity column, and so of any column referencing one.
+# Without an explicit length the column is the database's choice, which MSSQL
+# rejects outright and MySQL maps to TEXT.
+_IDENTITY_STRING_LENGTH = 255
+
 # MySQL's ``DATETIME`` carries zero fractional-second digits unless the column
 # says otherwise, so microseconds are dropped on write with no error. Protean
 # writes microsecond-precision timestamps.
@@ -543,8 +548,15 @@ def _merge_table_args(
     SQLAlchemy allows ``__table_args__`` to be a dict (table kwargs), a tuple of
     positional args, or a tuple whose last element is a dict of table kwargs.
     The trailing dict (when present) must stay last, so indexes are inserted
-    before it and ``table_kwargs`` is merged into it. A key the model already
-    declares wins, so a hand-written ``__table_args__`` is never overwritten.
+    before it and ``table_kwargs`` is merged into it. Everything the model
+    declares is preserved, except the keys in ``table_kwargs``: those are the
+    provider's charset and collation, and they win.
+
+    They have to. The pair has to agree, so a model setting only
+    ``mysql_charset`` gets the provider's collation over a different character
+    set and MySQL rejects the table with error 1253. Setting both would be
+    worse: it silently drops the case-sensitive collation every string lookup
+    in the framework depends on.
     """
     indexes = tuple(sa_indexes)
     extra = dict(table_kwargs or {})
@@ -553,10 +565,10 @@ def _merge_table_args(
         return (*indexes, extra) if extra else indexes
     if isinstance(existing, dict):
         # Pure table-kwargs dict — indexes go first, dict stays last.
-        return (*indexes, {**extra, **existing})
+        return (*indexes, {**existing, **extra})
     existing = tuple(existing)
     if existing and isinstance(existing[-1], dict):
-        return (*existing[:-1], *indexes, {**extra, **existing[-1]})
+        return (*existing[:-1], *indexes, {**existing[-1], **extra})
     return (*existing, *indexes, extra) if extra else (*existing, *indexes)
 
 
@@ -576,6 +588,42 @@ def _mysql_table_kwargs(
         f"{dialect_name}_charset": _MYSQL_CHARSET,
         f"{dialect_name}_collate": options.get("collation") or _MYSQL_DEFAULT_COLLATION,
     }
+
+
+def _owns_schema_through_a_custom_model(entity_cls: typing.Any) -> bool:
+    """Whether a custom database model declares this entity's MySQL columns.
+
+    The offline renderer has no engine and builds a throwaway table, so it
+    cannot see the columns such a model declares. Measuring the entity's fields
+    instead answers the wrong question in both directions: it rejects an index
+    over a column the model narrowed, and passes one over a column the model
+    widened past the cap. So the renderer leaves those alone and ``protean db
+    setup`` catches them against the real columns.
+
+    MariaDB has no database type of its own; a model for either server is
+    registered under ``mysql``.
+    """
+    if _domain_context_stack.top is None:
+        return False
+    registered = current_domain._database_models.get(
+        _fully_qualified_name(entity_cls), {}
+    )
+    return bool(registered.get(Database.mysql.value) or registered.get(None))
+
+
+def _mysql_identity_key_width() -> int:
+    """Bytes an identity column contributes to an index key.
+
+    Mapped by ``_get_identity_type`` from the domain's ``identity_type``, not
+    from anything the field declares: a string identity is VARCHAR(255) and a
+    UUID is CHAR(32). An integer identity is 4 bytes and cannot matter here.
+    """
+    identity_type = _get_identity_type()
+    if identity_type is sa_types.String:
+        return _IDENTITY_STRING_LENGTH * _MYSQL_BYTES_PER_CHAR
+    if identity_type is GUID:
+        return 32 * _MYSQL_BYTES_PER_CHAR
+    return 0
 
 
 def _mysql_index_key_width(
@@ -609,6 +657,17 @@ def _mysql_index_key_width(
         field_obj = entity_fields.get(field_name)
         if isinstance(field_obj, _ShadowField):
             field_obj = field_obj.field_obj
+
+        # An identifier, and an association column referencing one, are both
+        # sized from the domain's ``identity_type`` rather than from anything
+        # the field declares. A ``_ReferenceField`` is not a ``ResolvedField``,
+        # so it has to be handled ahead of that check.
+        if type(field_obj) is _ReferenceField or (
+            isinstance(field_obj, ResolvedField) and field_obj.identifier
+        ):
+            width += _mysql_identity_key_width()
+            continue
+
         if not isinstance(field_obj, ResolvedField):
             continue
 
@@ -616,18 +675,6 @@ def _mysql_index_key_width(
             field_obj, "pickled", False
         ):
             json_columns.append(field_name)
-            continue
-
-        if field_obj.identifier:
-            # An identifier is mapped by ``_get_identity_type`` from the domain's
-            # ``identity_type``, not from its declared max_length: a string
-            # identity is VARCHAR(255), a UUID is CHAR(32), an integer is 4 bytes
-            # and cannot matter here.
-            identity_type = _get_identity_type()
-            if identity_type is sa_types.String:
-                width += 255 * _MYSQL_BYTES_PER_CHAR
-            elif identity_type is GUID:
-                width += 32 * _MYSQL_BYTES_PER_CHAR
             continue
 
         if _resolve_python_type(field_obj) is not str:
@@ -795,7 +842,9 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     if not declared:
         return []
 
-    if dialect_name in _MYSQL_DIALECTS:
+    if dialect_name in _MYSQL_DIALECTS and not _owns_schema_through_a_custom_model(
+        entity_cls
+    ):
         # Same guard as the live model builder. Rendering is offline, but the
         # DDL it writes is meant to be applied, and InnoDB rejects an oversized
         # key at apply time with an error that names no fields.
@@ -1076,11 +1125,23 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         "unique": field_obj.unique,
                     }
 
-                    # For identifier fields mapped to String, set length to 255
+                    # For identifier fields mapped to String, set the identity
+                    # length.
                     #   Without explicit length, we are leaving the decision to the database. And that
                     #   will not work for MSSQL.
                     if field_obj.identifier and sa_type_cls == sa_types.String:
-                        type_kwargs["length"] = 255
+                        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
+                    elif (
+                        dialect_name in _MYSQL_DIALECTS
+                        and type(field_obj) is _ReferenceField
+                        and sa_type_cls is sa_types.String
+                    ):
+                        # An association column holds the referenced aggregate's
+                        # identity, so it takes that column's width. Without it
+                        # MySQL maps the foreign key to TEXT, which it cannot
+                        # index or join on, and the key-width guard then reports
+                        # a missing max_length on a column nobody declared.
+                        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
                     elif resolved_type is str and isinstance(field_obj, ResolvedField):
                         type_kwargs["length"] = field_obj.max_length
                     elif resolved_type is decimal.Decimal and isinstance(
