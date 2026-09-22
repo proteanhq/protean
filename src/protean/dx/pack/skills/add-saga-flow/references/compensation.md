@@ -13,15 +13,18 @@ step already taken, then ends the saga.
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
     self.status = "cancelled"
-    current_domain.process(CancelReservation(order_id=self.order_id))
+    current_domain.process(CancelReservation(reservation_id=self.reservation_id))
     current_domain.process(CancelOrder(order_id=self.order_id))
 ```
 
 By the time payment fails, the saga has already reserved stock, so it releases
-that reservation and cancels the order. Each compensating command runs as its
-own step against its target aggregate, separate from the saga's transition.
-That is why you compensate instead of rolling back: there is no shared
-transaction to undo.
+that reservation and cancels the order.
+
+Issuing a compensating command is atomic with the saga's transition: both commit
+in the handler's Unit of Work, so a handler that fails issues nothing. Each
+command then runs later, as its own step against its target aggregate. Undoing
+the earlier steps is not one rollback: it is a set of new steps, each committing
+on its own.
 
 ## Points to keep in mind
 
@@ -29,7 +32,9 @@ transaction to undo.
   handler decides how to undo the step. The saga only issues the command; it
   holds no business logic itself.
 - **Compensate the steps that ran.** Track progress in the saga's state so the
-  failure handler undoes the steps the flow actually reached.
+  failure handler undoes the steps the flow actually reached. The handler above
+  releases the reservation by the `reservation_id` the saga stored when the
+  stock was reserved.
 - **End every terminal path.** Mark the failure handler `end=True` so the saga
   closes after compensating. `check` reports `PROCESS_MANAGER_UNCLOSED` only when
   no handler in the whole process manager is marked `end=True`, so a closed
