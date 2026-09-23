@@ -1084,6 +1084,8 @@ def _mysql_column_type(
       3072-byte key limit.
     * A ``JSON`` column is indexable only through a generated column on a JSON
       path, so a ``Dict`` or ``List`` used as a key column raises.
+    * A ``PickleType`` column is a BLOB, which has the same prefix-length
+      problem as ``TEXT``, so a key column stored as one raises too.
 
     Collation is not set per column. It comes from the table default that
     :func:`_mysql_table_kwargs` emits, which every column inherits.
@@ -1102,6 +1104,22 @@ def _mysql_column_type(
             f"unique column holding JSON. MySQL indexes a JSON column only "
             f"through a generated column on a JSON path, which Protean does "
             f"not emit, so the constraint cannot be created."
+        )
+
+    # ``ValueObjectList(..., pickled=True)`` reaches here as ``PickleType``,
+    # which is a BLOB. InnoDB cannot index one without a prefix length, so a
+    # unique constraint on it fails at ``CREATE TABLE`` with 1170. The declared
+    # ``Index`` path already refuses these; this is the column-flag path.
+    if (
+        is_key_column
+        and isinstance(sa_type_cls, type)
+        and issubclass(sa_type_cls, (sa_types.LargeBinary, sa_types.PickleType))
+    ):
+        raise IncorrectUsageError(
+            f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+            f"unique column stored as a BLOB. InnoDB cannot index a BLOB "
+            f"without a prefix length, so it cannot carry a key. Drop the "
+            f"constraint, or store the value in a bounded String column."
         )
 
     if sa_type_cls is not sa_types.String:
@@ -2605,11 +2623,15 @@ class MysqlProvider(SAProvider):
     ``mariadb+pymysql://`` one, and every dialect-sensitive branch in this module
     accepts both through :data:`_MYSQL_DIALECTS`.
 
-    Beyond the shared config keys it reads ``collation`` (default
-    ``utf8mb4_0900_as_cs``), the collation tables are created with and every
-    string column inherits. The server default is accent-insensitive and
-    case-insensitive on both MySQL and MariaDB, which would make ``exact``,
-    ``contains``, ``startswith`` and ``endswith`` match case-insensitively.
+    Beyond the shared config keys it reads ``collation``, the collation tables
+    are created with and every string column inherits. The server default is
+    accent-insensitive and case-insensitive on both MySQL and MariaDB, which
+    would make ``exact``, ``contains``, ``startswith`` and ``endswith`` match
+    case-insensitively.
+
+    Left unset, the collation follows the dialect: ``utf8mb4_0900_as_cs`` on
+    MySQL and ``utf8mb4_uca1400_as_cs`` on MariaDB. See
+    :meth:`_default_collation` for why neither name serves both.
 
     The charset is pinned to ``utf8mb4`` and is not configurable, so a collation
     from another charset is rejected at construction rather than at

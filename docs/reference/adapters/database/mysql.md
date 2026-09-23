@@ -174,7 +174,8 @@ class User:
 A `String` field with no `max_length` becomes a `TEXT` column, because MySQL
 cannot create a `VARCHAR` without a length. `TEXT` cannot be a key column
 either without an index prefix length, so that combination raises the same
-error.
+error. A `ValueObjectList(..., pickled=True)` is stored as a BLOB, which has
+the same problem, so `unique=True` on one raises too.
 
 The cap applies to a declared [`Index`](../../domain-elements/indexes.md) too,
 and InnoDB measures the whole key, so a composite index is the sum of its string

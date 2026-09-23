@@ -50,8 +50,10 @@ from protean.fields import (
     String,
     Text,
     ValueObject,
+    ValueObjectList,
 )
 from protean.fields import Decimal as ProteanDecimal
+from protean.fields.embedded import ValueObject as VOField
 from protean.port.provider import DatabaseCapabilities
 from protean.utils import Database
 from tests.shared import MARIADB_URI, MYSQL_URI, POSTGRES_URI
@@ -284,6 +286,50 @@ class TestKeyColumnGuards:
             slug: String(max_length=768, unique=True)
 
         assert table_for(AtLimit).c["slug"].type.length == 768
+
+    def test_a_unique_pickled_value_object_list_is_rejected(self):
+        """``ValueObjectList`` keeps a live ``pickled`` flag, and a pickled one
+        maps to ``PickleType``, which is a BLOB. A unique constraint on it
+        reached ``create_all()`` and failed with 1170, and there is no declared
+        ``Index`` for the width guard to catch it by."""
+
+        class Item(BaseValueObject):
+            sku: String(max_length=20)
+
+        class Cart(BaseAggregate):
+            items = ValueObjectList(VOField(Item), pickled=True, unique=True)
+
+        domain = host_domain([])
+        domain.register(Item)
+        domain.register(Cart)
+        domain.init(traverse=False)
+        provider = mysql_provider(domain)
+
+        with domain.domain_context(), pytest.raises(IncorrectUsageError) as exc:
+            provider.construct_database_model_class(Cart)
+
+        assert "items" in str(exc.value)
+        assert "BLOB" in str(exc.value)
+
+    def test_a_pickled_value_object_list_that_is_not_a_key_is_accepted(self):
+        """The constraint is the problem, not the column."""
+
+        class Item(BaseValueObject):
+            sku: String(max_length=20)
+
+        class Basket(BaseAggregate):
+            items = ValueObjectList(VOField(Item), pickled=True)
+
+        domain = host_domain([])
+        domain.register(Item)
+        domain.register(Basket)
+        domain.init(traverse=False)
+        provider = mysql_provider(domain)
+
+        with domain.domain_context():
+            table = provider.construct_database_model_class(Basket).__table__
+
+        assert isinstance(table.c["items"].type, sa_types.PickleType)
 
     def test_a_long_string_that_is_not_a_key_is_accepted(self):
         """The cap is an index limit, so an unindexed column is unaffected."""
