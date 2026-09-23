@@ -14,13 +14,13 @@ The complete implementation is in [assets/repository_custom.py](../assets/reposi
 
 Key highlights:
 - Custom repository defined with `@domain.repository(part_of=Aggregate)`
-- Query methods use `self._dao` for database access
-- `self._dao.query.filter()` for building queries
+- Query methods use the public helpers `self.query`, `self.find_by()`, `self.find()`, and `self.exists()`
+- `self.query.filter()` for building queries
 - Methods return domain objects, not raw database records
 
-## The DAO Interface
+## The query interface
 
-Inside a custom repository, `self._dao` provides access to the Data Access Object. The DAO is the low-level interface to the database.
+Inside a custom repository, `self.query` returns a `QuerySet` for fluent filtering, ordering, and pagination. Use `self.find_by()` to load a single aggregate, `self.find()` to run a composable `Q` expression, and `self.exists()` to test for a match without loading it. `self._dao` remains available as an internal escape hatch for infrastructure work (hard deletion, test teardown), so reach for the public helpers in routine domain queries.
 
 ### Basic Filtering
 
@@ -28,12 +28,12 @@ Inside a custom repository, `self._dao` provides access to the Data Access Objec
 @domain.repository(part_of=Product)
 class ProductRepository:
     def find_by_category(self, category):
-        return self._dao.query.filter(category=category).all()
+        return self.query.filter(category=category).all()
 ```
 
 ### Filter Operators
 
-The DAO query interface supports Django-style lookups:
+The query interface supports Django-style lookups:
 
 | Operator | Example | SQL Equivalent |
 |----------|---------|----------------|
@@ -50,7 +50,7 @@ The DAO query interface supports Django-style lookups:
 ```python
 def find_active_electronics(self):
     return (
-        self._dao.query
+        self.query
         .filter(category="electronics")
         .filter(is_active=True)
         .all()
@@ -62,7 +62,7 @@ def find_active_electronics(self):
 ```python
 def find_cheapest(self, limit=10):
     return (
-        self._dao.query
+        self.query
         .order_by("price")
         .limit(limit)
         .all()
@@ -74,7 +74,7 @@ def find_cheapest(self, limit=10):
 ```python
 def find_by_email(self, email):
     """Find a user by email. Raises ObjectNotFoundError if not found."""
-    return self._dao.find_by(email=email)
+    return self.find_by(email=email)
 ```
 
 `find_by()` raises `ObjectNotFoundError` if no record matches and `TooManyObjectsError` if multiple records match.
@@ -103,14 +103,14 @@ repo.find_by_category("books") # Custom method
 
 ## Raw Queries
 
-For database-specific optimizations, use `self._dao` with raw queries:
+For database-specific optimizations, use `self.query.raw()`:
 
 ```python
 @domain.repository(part_of=Report)
 class ReportRepository:
     def find_summary_stats(self):
         """Use raw query for complex aggregation."""
-        return self._dao.query.raw(
+        return self.query.raw(
             "SELECT report_type, SUM(total_value) FROM reports GROUP BY report_type"
         )
 ```

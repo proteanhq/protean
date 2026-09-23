@@ -192,6 +192,82 @@ def test_event_cqrs_skill_names_every_code_it_declares_in_its_body(skill, expect
     )
 
 
+# The building-block element family (#1552). The six skills that teach a coded
+# fix pin to their exact declared codes; the six that teach none pin to an empty
+# list, mirroring the two families above. Scoped to this family's own skills for
+# the same reason: the other passes own the rest and must not collide here.
+_BUILDING_BLOCK_CODE_TEACHING_SKILLS = {
+    "aggregate": [
+        "AGGREGATE_NOT_NOUN",
+        "AGGREGATE_NO_INVARIANTS",
+        "AGGREGATE_TOO_LARGE",
+        "AGGREGATE_WITHOUT_COMMAND_HANDLER",
+        "CROSS_AGGREGATE_REFERENCE",
+    ],
+    "value-object": ["VALUE_OBJECT_MUTABLE_FIELD", "VALUE_OBJECT_INVARIANT_FAILED"],
+    "command": ["COMMAND_NOT_IMPERATIVE", "UNUSED_COMMAND"],
+    "event": [
+        "EVENT_NOT_PAST_TENSE",
+        "EVENT_WITHOUT_DATA",
+        "UNRAISED_EVENT",
+        "UNHANDLED_EVENT",
+    ],
+    "command-handler": [
+        "COMMAND_HANDLER_CROSS_CLUSTER",
+        "HANDLER_PERSISTS_AND_CALLS_OUT",
+    ],
+    "event-handler": [
+        "EVENT_HANDLER_FOREIGN_EVENT",
+        "HANDLER_TOO_BROAD",
+        "HANDLER_PERSISTS_AND_CALLS_OUT",
+    ],
+}
+
+_BUILDING_BLOCK_NO_CODE_SKILLS = [
+    "entity",
+    "application-service",
+    "domain-service",
+    "repository",
+    "api-endpoint",
+    "custom-validator",
+]
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_BUILDING_BLOCK_CODE_TEACHING_SKILLS.items())
+)
+def test_building_block_skill_declares_its_exact_codes(skill, expected):
+    # Pin each code-teaching skill in this family to the exact list it declares,
+    # so dropping or mistyping a code in its frontmatter reds here rather than
+    # slipping through the "is a real DiagnosticCode" check above.
+    assert pack.skill_diagnostic_codes(skill) == expected
+
+
+@pytest.mark.parametrize("skill", _BUILDING_BLOCK_NO_CODE_SKILLS)
+def test_building_block_skill_that_teaches_no_code_declares_none(skill):
+    # The building-block skills with no coded convention (DiagnosticCode has no
+    # ENTITY_*, REPOSITORY_*, or service codes) declare nothing. Pin the negative
+    # direction so a stray declaration on one of them is caught.
+    assert pack.skill_diagnostic_codes(skill) == []
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_BUILDING_BLOCK_CODE_TEACHING_SKILLS.items())
+)
+def test_building_block_skill_names_every_code_it_declares_in_its_body(skill, expected):
+    # A declaration is a promise that the skill explains the fix for that code.
+    # Require the code to appear in the prose below the frontmatter, so a skill
+    # cannot claim a code it never mentions.
+    text = pack.read_pack_text(pack.SKILLS_DIR, skill, pack.SKILL_FILE)
+    _, _, body = text.partition("\n---\n")
+    assert body, f"{skill} has no body below its frontmatter"
+
+    missing = [code for code in expected if code not in body]
+    assert not missing, (
+        f"{skill} declares {missing} but never names them below its frontmatter"
+    )
+
+
 def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
     # protean-overview declares the seed code, so it must be named. Assert
     # inclusion, not the whole list: another skill declaring the same code later

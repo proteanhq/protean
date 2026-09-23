@@ -7,6 +7,12 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - AGGREGATE_NOT_NOUN
+    - AGGREGATE_NO_INVARIANTS
+    - AGGREGATE_TOO_LARGE
+    - AGGREGATE_WITHOUT_COMMAND_HANDLER
+    - CROSS_AGGREGATE_REFERENCE
 ---
 
 # Aggregate
@@ -37,7 +43,7 @@ class Post:
 3. **Aggregates are transaction boundaries** - All changes within an aggregate are saved together
 4. **Aggregates have automatic identity** - An `id` field is auto-generated unless `auto_add_id_field=False`
 5. **Aggregates are versioned** - Every aggregate has a `_version` field for optimistic concurrency control
-6. **Maximum 500 entities per aggregate** - Keep aggregates focused and split if growing too large
+6. **Keep aggregates small** - `check` flags an aggregate with more entities than the configured `aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. Split a growing aggregate, or raise the limit if the size is intentional
 7. **Entities accessed only through aggregates** - Never reference entities directly from outside
 8. **Each aggregate is independent** - Don't load other aggregates within aggregate methods
 
@@ -410,6 +416,16 @@ def set_price(self, p):
 ✅ **Instead**: `price: Float(required=True, min_value=0.01)` — field handles it.
 
 See [Anti-patterns](references/anti-patterns.md) for additional mistakes: oversized aggregates, direct entity access, transaction boundary violations, manually recreating auto-generated helpers.
+
+### What `check` reports
+
+`check` inspects your aggregates and reports these diagnostics:
+
+- `AGGREGATE_NO_INVARIANTS`: the aggregate declares no `@invariant.pre` or `@invariant.post` method, so it enforces no business rules and is usually an anemic data holder. Add the invariants it must always satisfy, or reconsider whether this concept is an aggregate.
+- `AGGREGATE_NOT_NOUN`: the aggregate's name is a verb or gerund (`OrderProcessing`). Rename it to the domain-concept noun it models (`Order`).
+- `AGGREGATE_TOO_LARGE`: the aggregate has more fields than the configured `[lint] aggregate_size_limit`. Split it into smaller aggregates, or raise the limit if the size is intentional.
+- `AGGREGATE_WITHOUT_COMMAND_HANDLER`: the aggregate has no command handler, so nothing can change its state. Add a command handler for it, or model it as a read-only projection if no writes are expected.
+- `CROSS_AGGREGATE_REFERENCE`: a field holds a direct `Reference` to another aggregate root. Hold the other aggregate by its identifier instead (`<other>_id: Identifier()`) and load it through its own repository when needed.
 
 ## Detailed references
 

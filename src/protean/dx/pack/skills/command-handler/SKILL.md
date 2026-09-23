@@ -7,6 +7,9 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - COMMAND_HANDLER_CROSS_CLUSTER
+    - HANDLER_PERSISTS_AND_CALLS_OUT
 ---
 
 # Command Handler
@@ -181,6 +184,13 @@ def handle_place_order(self, command):
     order = Order(...)
     domain.repository_for(Order).add(order)
 ```
+
+### What `check` reports
+
+`check` inspects your command handlers and reports these diagnostics:
+
+- `COMMAND_HANDLER_CROSS_CLUSTER`: the handler processes a command that belongs to another cluster, which puts that aggregate's write path outside its own consistency boundary. Move the handler into the owning cluster, or model the interaction as an event reaction across the boundary.
+- `HANDLER_PERSISTS_AND_CALLS_OUT`: one handler method both persists through a repository and calls an external system, so a mid-method failure can leave the write and the outbound call out of step. Split the method into one that persists and one that calls out; when the call must follow the write, have the persisting method raise an event and handle that. If the write genuinely needs the call's result, keep both and pass the remote system's idempotency key so a retry does not duplicate the effect.
 
 ## Detailed references
 

@@ -21,7 +21,7 @@ The complete implementation is in [assets/repository_with_database.py](../assets
 class ReportRepository:
     """Works with any database."""
     def find_by_type(self, report_type):
-        return self._dao.query.filter(report_type=report_type).all()
+        return self.query.filter(report_type=report_type).all()
 ```
 
 This repository is used regardless of which database provider is active.
@@ -34,7 +34,7 @@ class PostgresReportRepository:
     """Only used when the provider is PostgreSQL."""
     def find_by_type(self, report_type):
         # Can use PostgreSQL-specific query optimizations
-        return self._dao.query.filter(report_type=report_type).all()
+        return self.query.filter(report_type=report_type).all()
 ```
 
 ### Resolution Priority
@@ -54,17 +54,17 @@ You can have both a generic and a database-specific repository:
 class ReportRepository:
     """Generic repository — used for SQLite, in-memory, etc."""
     def find_by_type(self, report_type):
-        return self._dao.query.filter(report_type=report_type).all()
+        return self.query.filter(report_type=report_type).all()
 
 @domain.repository(part_of=Report, database="postgresql")
 class PostgresReportRepository:
     """PostgreSQL-specific — used when connected to PostgreSQL."""
     def find_by_type(self, report_type):
-        return self._dao.query.filter(report_type=report_type).all()
+        return self.query.filter(report_type=report_type).all()
 
     def find_high_value_reports(self, min_value):
         """PostgreSQL-optimized query."""
-        return self._dao.query.filter(total_value__gte=min_value).all()
+        return self.query.filter(total_value__gte=min_value).all()
 ```
 
 ## Configuration

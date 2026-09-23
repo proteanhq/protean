@@ -7,6 +7,9 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - VALUE_OBJECT_MUTABLE_FIELD
+    - VALUE_OBJECT_INVARIANT_FAILED
 ---
 
 # Value Object
@@ -349,6 +352,13 @@ This is fundamentally different from entities, where identity matters:
 - **Not using invariants for cross-field validations** — Use `@invariant.post` instead of `__init__` validation.
 
 See [Anti-patterns](references/anti-patterns.md) for detailed examples of each mistake.
+
+### What `check` reports
+
+`check` inspects your value objects and reports these diagnostics:
+
+- `VALUE_OBJECT_MUTABLE_FIELD`: the value object has a mutable collection field (such as a `List`), which breaks its value semantics. Replace it with an immutable representation, or move the collection onto the containing entity or aggregate. If the values carry their own identity, model them as an entity.
+- `VALUE_OBJECT_INVARIANT_FAILED`: an `@invariant.post` on the value object did not hold when it was built, so construction raised a `ValidationError`. Build the value object from values that satisfy its invariants, or catch the `ValidationError`; the error message names the invariant that failed.
 
 ## Quick example
 
