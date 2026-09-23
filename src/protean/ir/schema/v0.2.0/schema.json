@@ -435,7 +435,8 @@
         "schema_name": { "type": "string" },
         "stream_category": { "type": "string" },
         "auto_add_id_field": { "type": "boolean" },
-        "limit": { "type": "integer", "minimum": 1 }
+        "limit": { "type": "integer", "minimum": 1 },
+        "reserved": { "type": "array", "items": { "type": "string" } }
       },
       "required": [
         "is_event_sourced", "fact_events", "provider",

@@ -123,6 +123,36 @@ snapshot-breaking change: a field renamed or removed, or a required field added.
 the snapshot fix (#1362) can align a snapshot with the rung that matches its
 change.
 
+### Reserved names on an event-sourced aggregate
+
+Removing a field from an event-sourced aggregate is its own rung. The three
+mechanisms above act on a payload as it is decoded; this one acts on the
+aggregate as its stream replays. An event-sourced aggregate's authoritative
+state is its event stream, and a retained `@apply` handler for a retired event
+can still assign a field that has since been removed. That assignment would raise
+under `extra="forbid"` and stop the rebuild.
+
+Declaring the removed name in `reserved` on the aggregate settles it. During
+replay only, an assignment to a reserved name is dropped instead of raising, so
+the aggregate rebuilds without the removed field. The live `raise_` path never
+takes this relaxation, so a write to a removed field on a new event still raises.
+This is the same shape as `renamed_from`: a declaration the author adds that
+carries a runtime effect, and like `deprecated` it also earns a safe rating from
+the checker. The downgrade is earned by that declaration, never applied
+automatically. Reusing a reserved name for a live field raises at
+registration, and the compatibility checker downgrades the field removal to safe
+only when the aggregate declares the name.
+
+`reserved` covers a field removal, nothing wider. A type change or a newly
+required field on an event-sourced aggregate stays breaking, and the replay
+hazards (a moved stream category, a moved identity, a dropped handler whose event
+survives) stay their own breaking changes.
+
+The declaration has to stay for as long as the events do. Taking a name back out
+of `reserved` is a replay hazard in its own right, reported as
+`reservation_removed`: replay stops dropping the assignment, so the handler that
+the reservation kept working raises again.
+
 ## Consequences
 
 An adopter facing a schema change now has one place that says which mechanism

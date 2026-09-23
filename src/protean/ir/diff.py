@@ -821,6 +821,12 @@ class CompatibilityChange:
     # default sets ``backward_safe=False`` (Avro cannot emit a callable default).
     backward_safe: bool | None = None
     forward_safe: bool | None = None
+    # The name of the field this change is about, for the change types that
+    # concern one field (``field_removed``, ``reservation_removed``). Lets a
+    # per-field mitigation match a specific removal when an element removes
+    # several fields with only some reserved. ``None`` for changes that are not
+    # about a single field.
+    field_name: str | None = None
 
 
 # Avro compatibility safety per change type: (backward_safe, forward_safe).
@@ -857,6 +863,7 @@ _AVRO_CHANGE_SAFETY: dict[str, tuple[bool, bool]] = {
     "stream_category_changed": (True, True),
     "identity_field_changed": (True, True),
     "apply_handler_removed": (True, True),
+    "reservation_removed": (True, True),
 }
 
 
@@ -868,8 +875,10 @@ def _change_avro_safety(change: CompatibilityChange) -> tuple[bool, bool]:
     backward = table_backward if change.backward_safe is None else change.backward_safe
     forward = table_forward if change.forward_safe is None else change.forward_safe
     if change.mitigated_by is not None:
-        # A registered upcaster transforms old payloads to the new shape at read
-        # time, so a new-schema reader can decode old data -> backward-safe.
+        # The change is earned safe: a registered upcaster transforms old
+        # payloads to the new shape at read time, or an event-sourced
+        # aggregate's `reserved` declaration drops the removed name at replay.
+        # Either way old data reaches the new shape -> backward-safe.
         backward = True
     return backward, forward
 
@@ -975,8 +984,9 @@ def classify_changes(
     - Break replay on an event-sourced aggregate: breaking (see
       :func:`_classify_replay_hazards`)
 
-    Two evolution-aware refinements apply to every persisted element (not only
-    published event contracts):
+    Three evolution-aware refinements apply on top of the rules above. The
+    first two cover every persisted element, not only published event
+    contracts. The third covers only an event-sourced aggregate:
 
     - **Deprecation grace**: a field deprecated and removed at/past its
       ``removal`` version is a safe (expected) removal. This needs
@@ -988,6 +998,10 @@ def classify_changes(
       registered upcaster chain covers has its schema-transformation changes
       downgraded to safe (see :func:`_apply_upcaster_mitigation`). This reads
       ``__version__`` from the IR directly and needs no ``current_version``.
+    - **Reserved mitigation**: a field removed from an event-sourced aggregate
+      that declares the name in ``reserved`` is downgraded to safe (see
+      :func:`_apply_reserved_mitigation`). The declaration does the migration:
+      replay drops assignments to the reserved name instead of raising.
     """
     report = CompatibilityReport()
 
@@ -1002,6 +1016,11 @@ def classify_changes(
     # registered upcaster (the upcaster transforms old payloads to the new
     # shape), citing the mitigating coverage.
     _apply_upcaster_mitigation(report, left_ir, right_ir)
+
+    # Downgrade a removed field on an event-sourced aggregate that declares the
+    # field name in `reserved` (the declaration does the migration: replay drops
+    # assignments to the name), citing the reserved declaration.
+    _apply_reserved_mitigation(report, left_ir, right_ir)
 
     return report
 
@@ -1124,6 +1143,65 @@ def _apply_upcaster_mitigation(
     report.breaking_changes = still_breaking
 
 
+def _apply_reserved_mitigation(
+    report: CompatibilityReport,
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> None:
+    """Downgrade a removed field an event-sourced aggregate declares reserved.
+
+    Removing a field from an event-sourced aggregate is safe only when the
+    aggregate declares the field name in ``reserved``. The declaration does the
+    migration: at replay a retained ``@apply`` handler's assignment to that name
+    is dropped instead of raising. So a ``field_removed`` change downgrades to
+    safe, cited ``reserved``, when the aggregate is event-sourced in both
+    snapshots and the removed name is reserved in the new snapshot.
+
+    Only the aggregate's own field removal matches: the mitigation is keyed by
+    ``(element_fqn, field_name)``, and a child entity or value object in the
+    cluster carries its own ``element_fqn``, so its removal never matches. A type
+    change and a newly required field are left breaking (a stored snapshot can
+    survive a type change and skip replay, and replay runs no required-field
+    check).
+    """
+    if not report.breaking_changes:
+        return
+
+    left_clusters = left_ir.get("clusters", {})
+    reserved_by_aggregate: dict[str, set[str]] = {}
+    for fqn, right_cluster in right_ir.get("clusters", {}).items():
+        left_cluster = left_clusters.get(fqn)
+        if left_cluster is None:
+            continue
+        left_agg = left_cluster.get("aggregate", {})
+        right_agg = right_cluster.get("aggregate", {})
+        left_es = bool(left_agg.get("options", {}).get("is_event_sourced"))
+        right_es = bool(right_agg.get("options", {}).get("is_event_sourced"))
+        if not (left_es and right_es):
+            continue
+        reserved = right_agg.get("options", {}).get("reserved") or []
+        if reserved:
+            reserved_by_aggregate[fqn] = set(reserved)
+
+    if not reserved_by_aggregate:
+        return
+
+    still_breaking: list[CompatibilityChange] = []
+    for change in report.breaking_changes:
+        reserved = reserved_by_aggregate.get(change.element_fqn)
+        if (
+            change.change_type == "field_removed"
+            and reserved is not None
+            and change.field_name in reserved
+        ):
+            change.severity = "safe"
+            change.mitigated_by = "reserved"
+            report.safe_changes.append(change)
+        else:
+            still_breaking.append(change)
+    report.breaking_changes = still_breaking
+
+
 def _classify_replay_hazards(
     report: CompatibilityReport,
     left_ir: dict[str, Any],
@@ -1161,6 +1239,13 @@ def _classify_replay_hazards(
       that type stop the rebuild. Deleting the event class and its handler
       together is one act, not two, and ``element_removed`` on the event is the
       report for it.
+    - **A name was dropped from ``reserved``.** The reservation is what makes
+      replay drop an assignment to a removed field's name
+      (``BaseEntity.__setattr__``), so taking it back takes back the removal it
+      earned: a retained ``@apply`` handler for a retired event that still
+      writes the name hits ``extra="forbid"`` again and the rebuild raises. The
+      removal itself was reported in the diff that made it, so without this
+      nothing has anything to say about the reservation going away.
 
     Each is emitted as its own breaking change against the aggregate, rather
     than folded into the severity of some other change. An operator who moved a
@@ -1266,6 +1351,27 @@ def _classify_replay_hazards(
                         ),
                     )
                 )
+
+        # A name dropped from `reserved` takes back the field removal that
+        # declaration earned. Reported per name, so an aggregate that drops one
+        # reservation and keeps another names the one it dropped.
+        left_reserved = set(left_options.get("reserved") or ())
+        right_reserved = set(right_options.get("reserved") or ())
+        for name in sorted(left_reserved - right_reserved):
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="reservation_removed",
+                    message=(
+                        f"AGGREGATE '{fqn}' no longer reserves '{name}'; replay "
+                        f"stops dropping an assignment to that name, which a "
+                        f"retained @apply handler for a retired event can still "
+                        f"make"
+                    ),
+                    field_name=name,
+                )
+            )
 
 
 def _classify_clusters(
@@ -1532,6 +1638,7 @@ def _classify_field_changes(
                         f"(expected removal, deprecated since "
                         f"v{deprecated['since']})"
                     ),
+                    field_name=field_name,
                     forward_safe=forward_safe,
                 )
             )
@@ -1559,6 +1666,7 @@ def _classify_field_changes(
                     element_fqn=fqn,
                     change_type="field_removed",
                     message=message,
+                    field_name=field_name,
                     forward_safe=forward_safe,
                 )
             )

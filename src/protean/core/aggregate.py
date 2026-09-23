@@ -42,6 +42,7 @@ from protean.utils.reflection import (
     _FIELDS,
     _ID_FIELD_NAME,
     association_fields,
+    declared_fields,
     fields,
     reference_fields,
     value_object_fields,
@@ -70,6 +71,7 @@ class BaseAggregate(BaseEntity):
     | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
     | ``schema_name`` | ``str`` | The storage table/collection name. |
     | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
+    | ``reserved`` | ``tuple[str, ...]`` | Field names that once existed and must never be reused. Removing a field from an event-sourced aggregate is safe only when its name is reserved. |
     """
 
     element_type: ClassVar[str] = DomainObjects.AGGREGATE
@@ -124,6 +126,7 @@ class BaseAggregate(BaseEntity):
         ),
         ("limit", 100),
         ("suppress_checks", ()),
+        ("reserved", ()),
     ]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -348,8 +351,19 @@ class BaseAggregate(BaseEntity):
         """Event-Sourcing: apply an event during replay.
 
         Calls the handler then increments ``_version`` once per event.
+
+        Sets ``_replaying`` for the duration of the handler so that an
+        assignment to a reserved (removed) field name is dropped instead of
+        raising. This is the replay-only signal: the live ``raise_`` path calls
+        ``_apply_handler`` directly and never sets the flag, so a live write to
+        a removed field still raises. Reset in ``finally`` so an exception in a
+        handler cannot leave a live aggregate stuck in replay mode.
         """
-        self._apply_handler(event)
+        self._replaying = True
+        try:
+            self._apply_handler(event)
+        finally:
+            self._replaying = False
         self._version += 1
 
     @classmethod
@@ -383,6 +397,7 @@ class BaseAggregate(BaseEntity):
             "_temp_cache": AssociationCache(),
             "_events": [],
             "_disable_invariant_checks": True,  # Suppress during replay
+            "_replaying": False,  # Set True per-event by `_apply`
             "_invariants": defaultdict(dict),
         }
         object.__setattr__(aggregate, "__pydantic_private__", private)
@@ -678,6 +693,56 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     # bounded contexts) with the canonical spelling, and a stale marker would
     # make `check()` falsely flag already-migrated code.
     aggregate_cls._deprecated_options_used = ("is_event_sourced",) if alias_used else ()
+
+    # Normalize the `reserved` option to a tuple of field names and forbid
+    # reusing any of them for a live field. `reserved` names fields that once
+    # existed and must never be declared again; replay drops assignments to
+    # them (see `_apply` / `BaseEntity.__setattr__`).
+    reserved = aggregate_cls.meta_.reserved
+    if isinstance(reserved, str):
+        reserved = (reserved,)
+    else:
+        try:
+            reserved = tuple(reserved)
+        except TypeError:
+            # A scalar like `reserved=123` or `reserved=None` is not iterable.
+            # Wrap it so the string check below reports it the same way as a
+            # non-string element, instead of leaking a raw `TypeError`.
+            reserved = (reserved,)
+    if not all(isinstance(name, str) for name in reserved):
+        raise IncorrectUsageError(
+            f"`reserved` on aggregate `{aggregate_cls.__name__}` must be field "
+            f"names (strings)"
+        )
+
+    # A reserved name stands for a field that once existed, so it has to look
+    # like a field name. An empty or private name never can, and reserving a
+    # private one would make `__setattr__` swallow writes to Protean's own
+    # internals: reserving `_replaying` would drop the `finally` reset in
+    # `_apply` and leave the aggregate stuck in replay mode forever.
+    unusable = [
+        name for name in reserved if name.startswith("_") or not name.isidentifier()
+    ]
+    if unusable:
+        raise IncorrectUsageError(
+            f"Name(s) {sorted(unusable)} in `reserved` on aggregate "
+            f"`{aggregate_cls.__name__}` are not field names; a reserved name "
+            f"must be the name of a field that once existed"
+        )
+
+    aggregate_cls.meta_.reserved = reserved
+
+    # Scan `declared_fields`, not `model_fields`: value-object and association
+    # fields (HasMany/HasOne/Reference) live only in the former, so scanning
+    # `model_fields` would miss them and let a live VO or association silently
+    # collide with a reserved name (dropped on every replay).
+    collisions = [name for name in declared_fields(aggregate_cls) if name in reserved]
+    if collisions:
+        raise IncorrectUsageError(
+            f"Field(s) {sorted(collisions)} on aggregate "
+            f"`{aggregate_cls.__name__}` reuse a reserved name; a reserved name "
+            f"can never be declared again as a field"
+        )
 
     # Iterate through methods marked as `@invariant` and record them for later use
     for klass in aggregate_cls.__mro__:

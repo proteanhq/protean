@@ -221,6 +221,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     _temp_cache: AssociationCache = PrivateAttr(default_factory=AssociationCache)
     _events: list[Any] = PrivateAttr(default_factory=list)
     _disable_invariant_checks: bool = PrivateAttr(default=False)
+    # Set True only for the duration of an ``@apply`` handler during event
+    # replay (by ``BaseAggregate._apply``). While set, ``__setattr__`` drops an
+    # assignment to a reserved (removed) field name instead of raising.
+    _replaying: bool = PrivateAttr(default=False)
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
         if cls is BaseEntity:
@@ -939,6 +943,18 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     # Mutation with validation + invariant checks
     # ------------------------------------------------------------------
     def __setattr__(self, name: str, value: Any) -> None:
+        # During event replay only, drop an assignment to a reserved (removed)
+        # field name. A retained ``@apply`` handler for a retired event can
+        # still target a name whose field is gone; replay must tolerate it. The
+        # live ``raise_`` path never sets ``_replaying``, so a live write to a
+        # removed field still falls through to ``extra="forbid"`` and raises. A
+        # name that is neither a field nor reserved also falls through and
+        # raises, so a typo in a retained handler stays an error.
+        if getattr(self, "_replaying", False) and name in getattr(
+            type(self).meta_, "reserved", ()
+        ):
+            return
+
         if name in self.__class__.model_fields and getattr(self, "_initialized", False):
             # Prevent mutation of identifier fields once set
             id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
