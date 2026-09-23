@@ -5,7 +5,7 @@ when --db is not a SQLAlchemy-backed database, avoiding noisy SKIPPED messages.
 """
 
 # Database types backed by SQLAlchemy
-_SA_DATABASES = {"POSTGRESQL", "SQLITE", "MSSQL"}
+_SA_DATABASES = {"POSTGRESQL", "SQLITE", "MSSQL", "MYSQL", "MARIADB"}
 
 
 def pytest_collection_modifyitems(config, items):

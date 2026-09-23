@@ -7,6 +7,7 @@ import pytest
 
 from protean.exceptions import ConfigurationError
 from protean.port.provider import ProviderRegistry, registry
+from tests.shared import module_unavailable
 
 
 @pytest.mark.no_test_domain
@@ -487,6 +488,35 @@ class TestProviderRegistryIntegration:
 
         provider_cls = registry.get("sqlite")
         assert provider_cls == SqliteProvider
+
+    def test_mysql_provider_registration(self):
+        """Test MySQL provider registration when sqlalchemy is available."""
+        pytest.importorskip("sqlalchemy", reason="SQLAlchemy package not available")
+
+        from protean.adapters.repository.sqlalchemy import register_mysql
+
+        register_mysql()
+
+        assert "mysql" in registry._providers
+
+        from protean.adapters.repository.sqlalchemy import MysqlProvider
+
+        provider_cls = registry.get("mysql")
+        assert provider_cls == MysqlProvider
+
+    def test_mysql_provider_registration_without_sqlalchemy(self):
+        """Registering without the extra installed logs and registers nothing.
+
+        The provider is an optional adapter, so `import protean` has to keep
+        working when SQLAlchemy is absent.
+        """
+        from protean.adapters.repository.sqlalchemy import register_mysql
+
+        registry._providers.pop("mysql", None)
+        with module_unavailable("sqlalchemy"):
+            register_mysql()
+
+        assert "mysql" not in registry._providers
 
     def test_mssql_provider_registration(self):
         """Test MSSQL provider registration when sqlalchemy is available."""

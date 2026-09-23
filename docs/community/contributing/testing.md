@@ -97,15 +97,30 @@ services:
     image: ${MESSAGE_DB_IMAGE:-ethangarofolo/message-db:1.3.1}
     # configuration...
 
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.4}
+    # configuration...
+
+  mariadb:
+    image: ${MARIADB_IMAGE:-mariadb:11.4}
+    # configuration...
+
   ...
 ```
 
 The development environment includes:
 
 - PostgreSQL for relational database testing
+- MySQL and MariaDB, both served by the one `mysql` provider
+- SQL Server for the MSSQL provider
 - Elasticsearch for document store testing
 - Redis for caching and simple key-value storage
 - Message-DB for event sourcing and messaging
+
+Services listen on non-standard ports so they do not clash with anything else
+on the machine: PostgreSQL 55432, Message-DB 55433, Redis 56379, SQL Server
+51433, MySQL 53306, MariaDB 53307, Elasticsearch 59200. The ports live in
+`tests/shared.py`, which lists the other files to change alongside them.
 
 To start the development environment, Protean provides easy `make` commands:
 
@@ -145,6 +160,8 @@ use these exact refs when overriding:
 | `POSTGRES_IMAGE` | `ghcr.io/proteanhq/mirror/postgres:16` |
 | `MESSAGE_DB_IMAGE` | `ghcr.io/proteanhq/mirror/message-db:1.2.6` |
 | `MSSQL_IMAGE` | `ghcr.io/proteanhq/mirror/mssql-server:2022-latest` |
+| `MYSQL_IMAGE` | `ghcr.io/proteanhq/mirror/mysql:8.4` |
+| `MARIADB_IMAGE` | `ghcr.io/proteanhq/mirror/mariadb:11.4` |
 
 ## Tests Organization
 
@@ -264,6 +281,22 @@ Pytest markers are used to categorize tests and control their execution. Protean
 These markers can be used with pytest's `-m` option to selectively run tests for a specific database, e.g., `pytest -m database --db=POSTGRESQL --ignore=tests/support/`.
 
 Refer to `tests/conftest.py` for other database options.
+
+#### Running the MySQL leg
+
+The `mysql` provider serves MySQL and MariaDB, and SQLAlchemy reports a
+different dialect name for each, so both are in the matrix. `make up` starts
+both containers. To run the conformance battery against them:
+
+```shell
+uv run pytest --mysql --db MYSQL tests/adapters/repository/generic
+uv run pytest --mysql --db MARIADB tests/adapters/repository/generic
+```
+
+`--mysql` also enables the server-specific tests in
+`tests/adapters/repository/sqlalchemy_repo/mysql/`, which run against both.
+`native_array` is the only capability the provider does not claim, so those
+tests are deselected.
 
 ### `protean test test-adapter`
 
@@ -418,7 +451,7 @@ The CI pipeline:
 
 - Runs on each pull request and push to main
 - Runs the in-memory core suite on every Python version (3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease; the 3.15 leg is experimental and non-blocking while 3.15 is a prerelease)
-- Runs the full adapter suite (PostgreSQL, Redis, Elasticsearch, Message-DB, MSSQL) on the newest stable Python per PR, and across every version in the nightly run
+- Runs the full adapter suite (PostgreSQL, Redis, Elasticsearch, Message-DB, MSSQL, MySQL, MariaDB) on the newest stable Python per PR, and across every version in the nightly run
 - Enforces the coverage floor and reports coverage to Codecov
 
 Pull requests cannot be merged until the required checks pass. This ensures:

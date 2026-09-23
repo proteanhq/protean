@@ -59,8 +59,16 @@ class Processing(Enum):
 
 
 class Database(Enum):
+    """Database names a repository may be bound to via ``database=``.
+
+    Validated in ``protean.core.repository``, so a provider missing from this
+    list cannot be named on a repository even when it is registered and working.
+    """
+
     elasticsearch = "elasticsearch"
     memory = "memory"
+    mssql = "mssql"
+    mysql = "mysql"
     postgresql = "postgresql"
     sqlite = "sqlite"
 

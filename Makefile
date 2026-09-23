@@ -62,4 +62,4 @@ verify-specs:
 	./specs/check.sh
 
 cov: up
-	uv run pytest --slow --sqlite --postgresql --elasticsearch --redis --message_db --cov=protean --cov-config .coveragerc tests
+	uv run pytest --slow --sqlite --postgresql --mysql --elasticsearch --redis --message_db --cov=protean --cov-config .coveragerc tests

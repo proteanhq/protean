@@ -386,6 +386,7 @@ nav:
         - reference/adapters/database/memory.md
         - reference/adapters/database/sqlite.md
         - reference/adapters/database/postgresql.md
+        - reference/adapters/database/mysql.md
         - reference/adapters/database/mssql.md
         - reference/adapters/database/elasticsearch.md
         - reference/adapters/database/custom-databases.md
