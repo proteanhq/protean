@@ -64,6 +64,7 @@ EXPECTED_TEACHING_SKILLS = frozenset(
         "event",
         "event-handler",
         "event-sourced-aggregate",
+        "extract-bounded-context",
         "generate-test-scaffold",
         "message-enrichment",
         "process-manager",
