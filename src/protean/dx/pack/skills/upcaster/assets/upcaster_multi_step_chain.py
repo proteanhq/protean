@@ -144,6 +144,7 @@ class Product:
         self.name = event.name
         self.price = event.price
         self.currency = event.currency
+        self.discount_pct = 0.0
 
     @apply
     def on_price_changed(self, event: ProductPriceChanged):
