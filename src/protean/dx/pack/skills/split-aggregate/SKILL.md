@@ -89,15 +89,15 @@ loading and locking units. Load the `Order` through its own repository when a
 
 The two aggregates commit in separate transactions, so the step that spans them
 happens as two writes joined by an event. `Order` raises `OrderPlaced` when it is
-placed. An event handler in `Order`'s own cluster reacts and issues an
-`OpenShipment` command, and `Shipment`'s command handler opens the shipment.
+placed. An event handler in `Order`'s own cluster reacts and issues a
+`StartShipment` command, and `Shipment`'s command handler starts the shipment.
 
 ```python
 @domain.event_handler(part_of=Order)
 class ShipmentInitiation:
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced) -> None:
-        current_domain.process(OpenShipment(order_id=event.order_id))
+        current_domain.process(StartShipment(order_id=event.order_id))
 ```
 
 The handler stays in `Order`'s cluster because it reacts to `Order`'s own event.

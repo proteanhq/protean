@@ -12,7 +12,7 @@ shape that avoids it.
 
 Order and Shipment stay decoupled through a domain event. Order raises
 OrderPlaced when it is placed. An event handler in Order's own cluster reacts to
-that event and issues an OpenShipment command, and Shipment's command handler
+that event and issues a StartShipment command, and Shipment's command handler
 creates the shipment. Order never holds a handle to Shipment; it only emits the
 fact that it was placed.
 
@@ -25,7 +25,7 @@ Usage:
 
     domain.init(traverse=False)
     with domain.domain_context():
-        # Places the order, which opens its shipment by identity.
+        # Places the order, which starts its shipment by identity.
         domain.process(
             PlaceOrder(order_id="ORD-001", customer_id="CUST-1", total=100.0)
         )
@@ -38,7 +38,7 @@ from protean.fields import DateTime, Float, HasMany, Identifier, Integer, String
 domain = Domain(__file__, "ecommerce")
 
 # Run the hop in-process: OrderPlaced reaches the event handler as soon as the
-# order is saved, and OpenShipment reaches its handler as soon as it is issued.
+# order is saved, and StartShipment reaches its handler as soon as it is issued.
 domain.config["event_processing"] = "sync"
 domain.config["command_processing"] = "sync"
 
@@ -56,8 +56,8 @@ class PlaceOrder:
 
 
 @domain.command(part_of="Shipment")
-class OpenShipment:
-    """Open the shipment for a placed order, by the order's identity."""
+class StartShipment:
+    """Start the shipment for a placed order, by the order's identity."""
 
     order_id: Identifier(required=True)
 
@@ -149,8 +149,8 @@ class Shipment:
     delivery_attempts = HasMany("DeliveryAttempt")
 
     @classmethod
-    def open(cls, order_id: str) -> "Shipment":
-        """Open a shipment for a placed order."""
+    def start(cls, order_id: str) -> "Shipment":
+        """Start a shipment for a placed order."""
         return cls(order_id=order_id, status="pending")
 
     @invariant.post
@@ -200,9 +200,9 @@ class OrderCommandHandler:
 class ShipmentCommandHandler:
     """The write path for Shipment."""
 
-    @handle(OpenShipment)
-    def open_shipment(self, command: OpenShipment) -> None:
-        shipment = Shipment.open(command.order_id)
+    @handle(StartShipment)
+    def start_shipment(self, command: StartShipment) -> None:
+        shipment = Shipment.start(command.order_id)
         current_domain.repository_for(Shipment).add(shipment)
 
 
@@ -211,7 +211,7 @@ class ShipmentCommandHandler:
 
 @domain.event_handler(part_of=Order)
 class ShipmentInitiation:
-    """React to Order's own OrderPlaced event and open its shipment.
+    """React to Order's own OrderPlaced event and start its shipment.
 
     The handler sits in Order's cluster, because it reacts to Order's own event
     (a handler that reacts to another cluster's event is what `check` reports as
@@ -222,4 +222,4 @@ class ShipmentInitiation:
 
     @handle(OrderPlaced)
     def on_order_placed(self, event: OrderPlaced) -> None:
-        current_domain.process(OpenShipment(order_id=event.order_id))
+        current_domain.process(StartShipment(order_id=event.order_id))

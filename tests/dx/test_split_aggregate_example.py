@@ -118,19 +118,20 @@ def test_after_asset_clears_cross_aggregate_reference():
 
 def test_after_asset_reports_no_warnings():
     """The skill tells readers to resolve what ``check`` reports, so the asset it
-    holds up as the fix must not leave warnings of its own: an unhandled event, a
-    command with no handler, an aggregate with no write path, or a cross-cluster
-    event handler (EVENT_HANDLER_FOREIGN_EVENT), which the event handler avoids by
-    sitting in Order's own cluster."""
+    holds up as the fix must not leave any diagnostic of its own, warning or
+    advisory: an unhandled event, a command with no handler, an aggregate with no
+    write path, a cross-cluster event handler (EVENT_HANDLER_FOREIGN_EVENT, which
+    the event handler avoids by sitting in Order's own cluster), or a command name
+    that COMMAND_NOT_IMPERATIVE would flag."""
     ir = _build_ir("split_order_after.py", "_split_after_warnings_")
 
-    assert _warnings(ir) == []
+    assert ir["diagnostics"] == []
 
 
 def test_after_asset_opens_the_shipment_by_identity():
     """The cross-aggregate link is a real domain event, not just prose. Placing
-    an order raises OrderPlaced, the event handler issues OpenShipment, and
-    Shipment's command handler opens a shipment carrying the order's id."""
+    an order raises OrderPlaced, the event handler issues StartShipment, and
+    Shipment's command handler starts a shipment carrying the order's id."""
     namespace, domain = _load("split_order_after.py", "_split_after_run_")
 
     with domain.domain_context():
