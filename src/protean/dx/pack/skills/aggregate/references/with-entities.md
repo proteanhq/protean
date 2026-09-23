@@ -115,13 +115,11 @@ order.line_items[0].order     # Full aggregate reference
 
 ## Entity Limits
 
-Protean loads the entire aggregate object graph eagerly. To prevent performance issues:
+Protean loads the entire aggregate object graph eagerly. To keep aggregates small, `check` flags one holding more entities than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. When flagged, consider:
 
-- **Maximum 500 entities** per aggregate
-- If you exceed this, consider:
-  - Splitting into multiple aggregates
-  - Making the entity an aggregate itself
-  - Redesigning aggregate boundaries
+- Splitting into multiple aggregates
+- Making the entity an aggregate itself
+- Redesigning aggregate boundaries
 
 ## Transaction Boundaries
 
