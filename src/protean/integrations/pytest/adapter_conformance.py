@@ -60,7 +60,13 @@ from protean.port.provider import DatabaseCapabilities
 # anyway — the BUILTIN_DB_CONFIGS dict is never reached.
 # ---------------------------------------------------------------------------
 try:
-    from tests.shared import ELASTICSEARCH_URI, MSSQL_URI, POSTGRES_URI
+    from tests.shared import (
+        ELASTICSEARCH_URI,
+        MARIADB_URI,
+        MSSQL_URI,
+        MYSQL_URI,
+        POSTGRES_URI,
+    )
 except ModuleNotFoundError:  # pragma: no cover — tests.shared is always importable in-repo; this fallback is only for downstream installs without the test tree
     POSTGRES_URI = "postgresql://postgres:postgres@localhost:5432/postgres"
     ELASTICSEARCH_URI: dict[str, list[str]] = {"hosts": ["localhost"]}  # type: ignore[no-redef]
@@ -69,6 +75,8 @@ except ModuleNotFoundError:  # pragma: no cover — tests.shared is always impor
         "?driver=ODBC+Driver+18+for+SQL+Server"
         "&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
     )
+    MYSQL_URI = "mysql+pymysql://root:protean@localhost:3306/protean"
+    MARIADB_URI = "mariadb+pymysql://root:protean@localhost:3306/protean"
 
 BUILTIN_DB_CONFIGS: dict[str, dict[str, Any]] = {
     "MEMORY": {"provider": "memory"},
@@ -90,6 +98,20 @@ BUILTIN_DB_CONFIGS: dict[str, dict[str, Any]] = {
     "MSSQL": {
         "provider": "mssql",
         "database_uri": MSSQL_URI,
+        "pool_size": 1,
+        "max_overflow": 2,
+    },
+    # One provider, two servers. SQLAlchemy reports a different dialect name
+    # for each, so both are keys here.
+    "MYSQL": {
+        "provider": "mysql",
+        "database_uri": MYSQL_URI,
+        "pool_size": 1,
+        "max_overflow": 2,
+    },
+    "MARIADB": {
+        "provider": "mysql",
+        "database_uri": MARIADB_URI,
         "pool_size": 1,
         "max_overflow": 2,
     },

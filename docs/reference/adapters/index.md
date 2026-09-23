@@ -22,6 +22,7 @@ Current implementations:
 - [Memory](./database/memory.md): The default in-memory provider, with no external dependencies.
 - [SQLite](./database/sqlite.md): A file-based relational provider.
 - [PostgreSQL](./database/postgresql.md): A full-capability relational provider.
+- [MySQL](./database/mysql.md): MySQL and MariaDB, over SQLAlchemy and PyMySQL.
 - [MSSQL](./database/mssql.md): Microsoft SQL Server, over SQLAlchemy and pyodbc.
 - [Elasticsearch](./database/elasticsearch.md): A document store for search and analytics.
 

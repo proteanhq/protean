@@ -47,6 +47,7 @@ EXPECTED_TEACHING_SKILLS = frozenset(
         "add-event",
         "add-field",
         "add-read-model",
+        "add-saga-flow",
         "add-subscriber-flow",
         "add-use-case",
         "add-validation",

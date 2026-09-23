@@ -21,7 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         # Per-PR cost control. The FULL adapter suite (`-c FULL`, which starts
-        # Postgres/Redis/Elasticsearch/MSSQL/MessageDB) is the expensive part, so
+        # Postgres/Redis/Elasticsearch/MSSQL/MySQL/MariaDB/MessageDB) is the
+        # expensive part, so
         # only the newest stable Python runs it (check `Python 3.14 Full`); the
         # other stable versions run the fast in-memory CORE suite with no Docker.
         # The lowest-direct leg (`Python 3.14 Tests`) re-resolves the dependencies

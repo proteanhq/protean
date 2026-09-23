@@ -170,7 +170,7 @@ protean schema render --indexes --domain=my_app.domain --output=build
 |--------|-------------|---------|
 | `--indexes` | Render index DDL (required; nothing is applied without it) | `false` |
 | `--domain`, `-d` | Path to the domain module (e.g. `my_app.domain`) | |
-| `--dialects` | Comma-separated dialects to render | `postgresql,sqlite,mssql` |
+| `--dialects` | Comma-separated dialects to render (`postgresql`, `sqlite`, `mssql`, `mysql`, `mariadb`); an unknown name is rejected | `postgresql,sqlite,mssql,mysql` |
 | `--output`, `-o` | Root output directory | `.protean` |
 
 `--indexes` requires `--domain`: rendering partial-index predicates needs the

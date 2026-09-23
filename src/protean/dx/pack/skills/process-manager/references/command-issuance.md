@@ -36,16 +36,15 @@ from protean import current_domain
 
 Do NOT import from `protean.utils.globals` — that is an internal module.
 
-## Atomicity
+## Command persistence
 
-Commands issued inside a handler are committed **atomically** as part of the same Unit of Work:
+`current_domain.process()` appends the command to the event store as soon as it is called. This append is independent of the enclosing Unit of Work:
 
-1. Handler runs (updates PM state, issues commands)
-2. Transition event is persisted to PM's stream
-3. Commands are enqueued for processing
-4. Unit of Work commits everything atomically
+1. Handler runs, updating PM state and calling `current_domain.process()` to issue commands
+2. Each `process()` call appends its command to the event store right away
+3. When the handler returns, the PM's own transition event is appended directly to the event store, on the PM's stream, still inside the Unit of Work block
 
-If the handler fails (raises an exception), the entire operation is rolled back — no transition is persisted and no commands are issued.
+If the handler raises after issuing a command, the Unit of Work rolls back the PM's state changes. Commands appended by earlier `process()` calls stay in the store.
 
 ## The Coordinator Pattern
 
@@ -87,7 +86,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     current_domain.process(ReserveInventory(order_id=event.order_id))
 ```
 
-All commands are part of the same Unit of Work and committed together.
+Each `process()` call appends its command to the event store at the point it is called.
 
 ## Related
 

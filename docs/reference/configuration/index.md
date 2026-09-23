@@ -325,7 +325,7 @@ class User:
 1. `sqlite` is the key of the database definition in the `[databases.sqlite]`
 section.
 
-SQLAlchemy providers (`postgresql`, `mssql`) accept pool tuning keys
+SQLAlchemy providers (`postgresql`, `mssql`, `mysql`) accept pool tuning keys
 directly on the `[databases.<name>]` block:
 
 | Key | Default | Purpose |

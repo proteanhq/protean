@@ -81,7 +81,7 @@ class ProductDiscontinued:
 # --- Event-sourced aggregate with fact events ---
 
 
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Product:
     """Event-sourced product with automatic fact events.
 

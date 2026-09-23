@@ -138,6 +138,12 @@ document the change in the 0.18 migration guide. The actionable error plus the
   ADR-0020 newest-Python-wheel floor still holds where each package is actually
   installed.*
 
+  *Amended (September 2026, #1580): the `mysql` extra carries both floors. It
+  is a SQLAlchemy extra, so it pulls `greenlet` like the other three, and
+  `pymysql[rsa]` pulls `cryptography`, so it pulls `cffi` the way `sendgrid`
+  does. The rule is unchanged: a floor sits on every extra whose tree reaches
+  the package.*
+
   *Amended (August 2026, #1375): `werkzeug` left core. `current_domain`,
   `current_uow`, and `g` are now backed by a small stdlib `contextvars`
   implementation that preserves the push/pop nesting semantics of the old

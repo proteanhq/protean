@@ -86,7 +86,7 @@ class UpcastAccountOpenedV1ToV2(BaseUpcaster):
 # --- Aggregate ---
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class BankAccount:
     """Event-sourced bank account aggregate.
 

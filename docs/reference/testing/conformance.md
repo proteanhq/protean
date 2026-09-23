@@ -120,7 +120,7 @@ The plugin registers these pytest CLI options:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--db` | `MEMORY` | Built-in provider key (`MEMORY`, `POSTGRESQL`, `SQLITE`, `ELASTICSEARCH`, `MSSQL`) |
+| `--db` | `MEMORY` | Built-in provider key (`MEMORY`, `POSTGRESQL`, `SQLITE`, `ELASTICSEARCH`, `MSSQL`, `MYSQL`, `MARIADB`) |
 | `--db-provider` | —  | Provider name for custom/external adapters (e.g. `dynamodb`) |
 | `--db-uri` | —  | Database connection URI for custom adapters |
 | `--db-extra` | —  | JSON string of extra provider config (e.g. `'{"pool_size": 5}'`) |

@@ -83,6 +83,7 @@ _FAMILY_CODE_TEACHING_SKILLS = {
     "add-field": ["UNBOUNDED_INDEXED_STRING", "UNINDEXED_FILTER_PATH"],
     "add-validation": ["AGGREGATE_NO_INVARIANTS", "VALUE_OBJECT_INVARIANT_FAILED"],
     "add-read-model": ["PROJECTION_WITHOUT_PROJECTOR", "UNSOURCED_PROJECTION_FIELD"],
+    "add-saga-flow": ["PROCESS_MANAGER_UNCLOSED"],
     "refactor-extract-value-object": ["VALUE_OBJECT_MUTABLE_FIELD"],
     "refactor-introduce-events": ["EVENT_WITHOUT_DATA", "UNRAISED_EVENT"],
     "refactor-move-logic-to-aggregate": ["AGGREGATE_NO_INVARIANTS"],
@@ -137,6 +138,60 @@ def test_family_skill_names_every_code_it_declares_in_its_body(skill, expected):
     )
 
 
+# The event-driven/CQRS element family (#1553). The eight skills that teach a
+# coded fix pin to their exact declared codes; the one that teaches none
+# (`query`) pins to an empty list, mirroring the workflow/refactor/analysis
+# family's tests above. Scoped to this family's own skills for the same reason.
+_EVENT_CQRS_CODE_TEACHING_SKILLS = {
+    "event-sourced-aggregate": ["ES_AGGREGATE_NO_EVENTS", "ES_EVENT_MISSING_APPLY"],
+    "projection": [
+        "PROJECTION_WITHOUT_PROJECTOR",
+        "UNSOURCED_PROJECTION_FIELD",
+        "USAGE_NOT_A_PROJECTION",
+    ],
+    "projector": ["PROJECTOR_HANDLES_ORPHANED_EVENT"],
+    "query-handler": ["QUERY_HANDLER_WITHOUT_QUERY"],
+    "subscriber": ["SUBSCRIBER_NO_STREAMS"],
+    "upcaster": ["UPCASTER_GAP"],
+    "process-manager": ["PROCESS_MANAGER_UNCLOSED"],
+    "message-enrichment": ["USAGE_ENRICHER_NOT_CALLABLE"],
+}
+
+_EVENT_CQRS_NO_CODE_SKILLS = ["query"]
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_EVENT_CQRS_CODE_TEACHING_SKILLS.items())
+)
+def test_event_cqrs_skill_declares_its_exact_codes(skill, expected):
+    # Pin each code-teaching skill in this family to the exact list it
+    # declares, so dropping or mistyping a code in its frontmatter reds here
+    # rather than slipping through the "is a real DiagnosticCode" check above.
+    assert pack.skill_diagnostic_codes(skill) == expected
+
+
+@pytest.mark.parametrize("skill", _EVENT_CQRS_NO_CODE_SKILLS)
+def test_event_cqrs_skill_that_teaches_no_code_declares_none(skill):
+    assert pack.skill_diagnostic_codes(skill) == []
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_EVENT_CQRS_CODE_TEACHING_SKILLS.items())
+)
+def test_event_cqrs_skill_names_every_code_it_declares_in_its_body(skill, expected):
+    # A declaration is a promise that the skill explains the fix for that
+    # code. Require the code to appear in the prose below the frontmatter, so
+    # a skill cannot claim a code it never mentions.
+    text = pack.read_pack_text(pack.SKILLS_DIR, skill, pack.SKILL_FILE)
+    _, _, body = text.partition("\n---\n")
+    assert body, f"{skill} has no body below its frontmatter"
+
+    missing = [code for code in expected if code not in body]
+    assert not missing, (
+        f"{skill} declares {missing} but never names them below its frontmatter"
+    )
+
+
 def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
     # protean-overview declares the seed code, so it must be named. Assert
     # inclusion, not the whole list: another skill declaring the same code later
@@ -145,6 +200,17 @@ def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
     teachers = pack.diagnostic_code_skills()["AGGREGATE_NO_INVARIANTS"]
 
     assert "protean-overview" in teachers
+    assert teachers == sorted(set(teachers))
+
+
+def test_reverse_index_maps_a_family_code_to_its_skill():
+    # The event-driven/CQRS family wires each skill to the codes it teaches.
+    # Assert one such mapping end to end: the projection skill declares
+    # PROJECTION_WITHOUT_PROJECTOR, and the reverse index names it as a teacher.
+    assert "PROJECTION_WITHOUT_PROJECTOR" in pack.skill_diagnostic_codes("projection")
+
+    teachers = pack.diagnostic_code_skills()["PROJECTION_WITHOUT_PROJECTOR"]
+    assert "projection" in teachers
     assert teachers == sorted(set(teachers))
 
 
@@ -159,6 +225,19 @@ def test_build_diagnostic_surfaces_teaching_skills():
     )
 
     assert "protean-overview" in diag["teaching_skills"]
+    assert diag["teaching_skills"] == sorted(set(diag["teaching_skills"]))
+
+
+def test_build_diagnostic_surfaces_a_family_teaching_skill():
+    # A diagnostic for a code the event-driven/CQRS family declares carries the
+    # teaching skill on the built diagnostic, the same way the seed code does.
+    diag = build_diagnostic(
+        DiagnosticCode.PROJECTION_WITHOUT_PROJECTOR,
+        element="my_app.OrderSummary",
+        message="OrderSummary has no projector to populate it.",
+    )
+
+    assert "projection" in diag["teaching_skills"]
     assert diag["teaching_skills"] == sorted(set(diag["teaching_skills"]))
 
 

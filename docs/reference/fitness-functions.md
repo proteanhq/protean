@@ -517,7 +517,9 @@ persists. See
 | **Level** | `warning` |
 
 **Why.** An index over an unbounded string field is unportable: the DDL fails on
-SQL Server, needs a prefix length on MySQL, and is inefficient on PostgreSQL.
+SQL Server, needs a prefix length on MySQL and MariaDB, and is inefficient on
+PostgreSQL. The SQL Server and MySQL providers raise `IncorrectUsageError` when
+they hit one, so this rule is the build-time warning for the same mismatch.
 
 **Fix.** Give the field a bounded length (`String(max_length=N)`) sized to its
 domain, or remove it from the index if it does not need to be indexed.
