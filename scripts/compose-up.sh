@@ -80,7 +80,13 @@ await_queries() {  # <service>:<host-port>...
       # checkout's Compose project. The port check above exists precisely
       # because the service may belong to another worktree's project, where
       # `docker-compose exec` here would find nothing and wait out the clock.
-      container="$(docker ps --filter "publish=$port" --format '{{.Names}}' | head -n1)"
+      # `--filter publish=` is Docker-only. Podman's docker-compatible CLI
+      # rejects it with "publish is an invalid filter", so the lookup found
+      # nothing on every try, waited out the full clock and failed `make up`
+      # on a box where every service was up and answering. Both engines print
+      # the published port in the Ports column, so match on that instead.
+      container="$(docker ps --format '{{.Names}}\t{{.Ports}}' \
+        | awk -F'\t' -v p=":$port->" 'index($2, p) { print $1; exit }')"
       if [ -n "$container" ] && docker exec "$container" sh -c "$check" >/dev/null 2>&1; then
         continue 2
       fi
