@@ -32,8 +32,9 @@ class ProductInventory:
     stock levels. It is populated by a projector (see projector)
     in response to domain events from the Product aggregate.
 
-    Projections only support basic field types - no References,
-    Associations, or ValueObjects.
+    Projections support basic field types and ValueObject fields
+    (stored as flattened shadow fields); References and Associations
+    are not allowed.
     """
 
     product_id: Identifier(identifier=True, required=True)

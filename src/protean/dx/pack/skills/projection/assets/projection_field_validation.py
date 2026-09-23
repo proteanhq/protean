@@ -2,18 +2,19 @@
 Projection field type validation and restrictions.
 
 This example demonstrates:
-- Projections only allow basic field types
-- ValueObject, Reference, and Association fields are rejected at class definition time
+- Projections allow basic field types and ValueObject fields
+- Reference and Association fields are rejected at class definition time
+- ValueObject fields are allowed and stored as flattened shadow fields
 - At least one identifier field is required
 - Validation errors with clear messages
 - How to correctly flatten complex data into basic fields
 
 Usage:
     # These raise IncorrectUsageError:
-    # - Projection with ValueObject field
     # - Projection with Reference field
     # - Projection with HasOne field
     # - Projection without identifier field
+    # A ValueObject field is allowed and creates flattened shadow fields.
 """
 
 from protean import Domain
@@ -57,22 +58,22 @@ class User(BaseAggregate):
     name: String()
 
 
-# --- Correct projection: basic field types only ---
+# --- Correct projection: basic fields and a ValueObject ---
 
 
 @domain.projection
 class UserView:
-    """Correctly defined projection with only basic field types.
+    """Correctly defined projection using basic fields and a ValueObject.
 
-    Instead of using ValueObject(Email), we flatten the email
-    into a basic String field. This is the correct approach
-    for projections.
+    `ValueObject(Email)` is allowed: it is stored as flattened shadow
+    fields (`email_address`). An entity like Role is not allowed, so its
+    data is flattened by hand into a basic String field.
     """
 
     user_id: Identifier(identifier=True, required=True)
     name: String(max_length=100, required=True)
-    email_address: String(required=True)  # Flattened from Email value object
-    role_name: String(max_length=50)  # Flattened from Role entity
+    email = ValueObject(Email)  # Stored as the shadow field `email_address`
+    role_name: String(max_length=50)  # Flattened by hand from the Role entity
     age: Integer(default=0)
 
 

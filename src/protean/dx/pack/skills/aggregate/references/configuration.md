@@ -257,14 +257,16 @@ The stream category is used by:
 ```python
 # Event-sourced aggregate
 @domain.aggregate(
-    is_event_sourced=True,
+    event_sourced=True,
     stream_category="order"
 )
 class Order:
     ...
 
-# Events are stored in: order-{aggregate_id}
-# Commands are sent to: order:command-{aggregate_id}
+# An explicit stream_category is still prefixed with the domain name at
+# registration, so in a domain named `test`:
+# Events are stored in: test::order-{aggregate_id}
+# Commands are sent to: test::order:command-{aggregate_id}
 ```
 
 **Related:** See [Stream Categories](https://protean.readthedocs.io/guides/essentials/stream-categories.html) documentation.

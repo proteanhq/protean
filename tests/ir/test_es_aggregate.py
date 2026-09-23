@@ -2,9 +2,33 @@
 
 import pytest
 
+from protean.domain import Domain
+from protean.fields import Float, Identifier, String
 from protean.ir.builder import IRBuilder
 
 from .elements import build_es_aggregate_domain
+
+
+def _order_cluster(reserved=None):
+    """Build a single-aggregate domain and return the Order cluster's IR."""
+    domain = Domain(name="Shop", root_path=".")
+
+    options = {"event_sourced": True}
+    if reserved is not None:
+        options["reserved"] = reserved
+
+    @domain.aggregate(**options)
+    class Order:
+        order_id = Identifier(identifier=True)
+        amount = Float()
+        label = String()
+
+    domain.init(traverse=False)
+    ir = IRBuilder(domain).build()
+    for cluster in ir["clusters"].values():
+        if cluster["aggregate"]["name"] == "Order":
+            return cluster
+    pytest.fail("Order cluster not found")
 
 
 @pytest.fixture
@@ -50,3 +74,20 @@ class TestESAggregateExtraction:
 
     def test_events_in_cluster(self, bank_cluster):
         assert len(bank_cluster["events"]) >= 2
+
+
+@pytest.mark.no_test_domain
+class TestReservedOptionExtraction:
+    """`reserved` is recorded in the aggregate's IR options, sparsely."""
+
+    def test_reserved_recorded_sorted(self):
+        cluster = _order_cluster(reserved=["note", "archived"])
+        assert cluster["aggregate"]["options"]["reserved"] == ["archived", "note"]
+
+    def test_reserved_absent_when_not_declared(self):
+        cluster = _order_cluster()
+        assert "reserved" not in cluster["aggregate"]["options"]
+
+    def test_reserved_absent_when_empty(self):
+        cluster = _order_cluster(reserved=[])
+        assert "reserved" not in cluster["aggregate"]["options"]

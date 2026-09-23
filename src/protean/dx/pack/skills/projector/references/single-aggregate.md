@@ -43,8 +43,8 @@ class Product:
 
 The projection defines the read-optimized data structure. Projections:
 - Must have at least one `identifier` field
-- Can only use basic field types (String, Integer, Float, Identifier, DateTime, etc.)
-- Cannot use References, Associations, or ValueObjects
+- Use basic field types (String, Integer, Float, Identifier, DateTime, etc.) and `ValueObject` fields (stored as flattened shadow fields)
+- Cannot use References or Associations (`HasOne`/`HasMany`)
 
 ```python
 @domain.projection

@@ -25,6 +25,7 @@ framework import validates the whole example corpus in a couple of seconds.
 
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import sys
@@ -157,3 +158,178 @@ def test_every_example_builds_and_initializes(tmp_path):
         "examples failed to build and initialize:\n" + "\n".join(report["failures"])
     )
     assert result.returncode == 0
+
+
+# --- The creation handler must establish every defaulted field ---------------
+#
+# `from_events()` builds a blank aggregate by setting every field to `None`,
+# bypassing declared field defaults, then replays the events through `@apply`.
+# So a field the creation event's handler leaves alone stays `None` and never
+# reaches its declared default. The pack teaches exactly this, in
+# `event-sourced-aggregate/SKILL.md` ("First event's `@apply` must set ALL
+# fields") and again in its `references/anti-patterns.md` ("First Event's
+# @apply Not Setting All Required Fields"), and then one asset broke it in the
+# same PR that wrote the rule down: `Product` in
+# `upcaster/assets/upcaster_multi_step_chain.py` declared
+# `discount_pct = Float(default=0.0)` and never set it in `on_created`, so
+# replaying a freshly created product produced `discount_pct = None`.
+#
+# This finds the creation handler by reading the source rather than by
+# position: the factory classmethod names the event it raises, and the handler
+# is the `@apply` method annotated with that event type. A positional rule
+# ("the first `@apply` wins") would pass on a reordered asset that is wrong.
+
+
+def _declared_defaults(class_node: ast.ClassDef) -> set[str]:
+    """Field names in an aggregate body declared with a `default=`.
+
+    Both declaration styles are in the pack: `balance = Float(default=0.0)` and
+    the annotated `balance: Float(default=0.0)`.
+    """
+    defaults = set()
+    for stmt in class_node.body:
+        if isinstance(stmt, ast.AnnAssign):
+            target, value = stmt.target, stmt.annotation
+        elif isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+            target, value = stmt.targets[0], stmt.value
+        else:
+            continue
+        if not isinstance(target, ast.Name) or not isinstance(value, ast.Call):
+            continue
+        if any(kw.arg == "default" for kw in value.keywords):
+            defaults.add(target.id)
+    return defaults
+
+
+def _is_event_sourced(class_node: ast.ClassDef) -> bool:
+    for decorator in class_node.decorator_list:
+        if not isinstance(decorator, ast.Call):
+            continue
+        for kw in decorator.keywords:
+            if kw.arg == "event_sourced" and getattr(kw.value, "value", False) is True:
+                return True
+    return False
+
+
+def _creation_event(class_node: ast.ClassDef) -> str | None:
+    """The event type the aggregate's factory classmethod raises.
+
+    A factory is a classmethod that returns an instance it built, so the first
+    `self.raise_()`/`<name>.raise_()` inside a classmethod names the creation
+    event. Returns `None` when the asset has no factory classmethod.
+    """
+    for stmt in class_node.body:
+        if not isinstance(stmt, ast.FunctionDef):
+            continue
+        if not any(
+            isinstance(d, ast.Name) and d.id == "classmethod"
+            for d in stmt.decorator_list
+        ):
+            continue
+        for node in ast.walk(stmt):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "raise_"
+                and node.args
+                and isinstance(node.args[0], ast.Call)
+                and isinstance(node.args[0].func, ast.Name)
+            ):
+                return node.args[0].func.id
+    return None
+
+
+def _apply_handler(class_node: ast.ClassDef, event: str) -> ast.FunctionDef | None:
+    """The `@apply` method whose event parameter is annotated with `event`."""
+    for stmt in class_node.body:
+        if not isinstance(stmt, ast.FunctionDef):
+            continue
+        if not any(
+            isinstance(d, ast.Name) and d.id == "apply" for d in stmt.decorator_list
+        ):
+            continue
+        args = stmt.args.args
+        if (
+            len(args) == 2
+            and isinstance(args[1].annotation, ast.Name)
+            and args[1].annotation.id == event
+        ):
+            return stmt
+    return None
+
+
+def _fields_assigned(func: ast.FunctionDef) -> set[str]:
+    assigned = set()
+    for node in ast.walk(func):
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AugAssign):
+            targets = [node.target]
+        for target in targets:
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+            ):
+                assigned.add(target.attr)
+    return assigned
+
+
+def _event_sourced_aggregates() -> list[tuple[Path, ast.ClassDef]]:
+    found = []
+    for path in ASSETS:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        found.extend(
+            (path, node)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and _is_event_sourced(node)
+        )
+    return found
+
+
+def test_the_event_sourced_aggregate_sweep_is_not_vacuous():
+    """A sweep that finds nothing would pass while checking nothing."""
+    aggregates = _event_sourced_aggregates()
+    assert len(aggregates) >= 6, (
+        "expected the pack's event-sourced example aggregates, found "
+        f"{[node.name for _, node in aggregates]}"
+    )
+
+
+def test_creation_handler_sets_every_defaulted_field():
+    unset = []
+    unchecked = []
+    for path, node in _event_sourced_aggregates():
+        event = _creation_event(node)
+        if event is None:
+            unchecked.append(
+                f"{path.name}: {node.name} has no factory classmethod that "
+                "raises a creation event"
+            )
+            continue
+        handler = _apply_handler(node, event)
+        if handler is None:
+            unchecked.append(
+                f"{path.name}: {node.name} raises {event} but has no `@apply` "
+                f"handler annotated with {event}"
+            )
+            continue
+        missing = _declared_defaults(node) - _fields_assigned(handler)
+        if missing:
+            unset.append(
+                f"{path.name}: {node.name}.{handler.name} (handles {event}) "
+                f"leaves {sorted(missing)} unset"
+            )
+
+    assert not unchecked, (
+        "every event-sourced example aggregate must expose the pair this "
+        "check reads (a factory that raises a creation event, and the `@apply` "
+        "handler for it), or the check goes blind on that aggregate while the "
+        "aggregate count still passes:\n  " + "\n  ".join(unchecked)
+    )
+    assert not unset, (
+        "`from_events()` bypasses declared field defaults, so a field the "
+        "creation event's `@apply` handler does not set replays as `None`. "
+        "These examples teach that bug:\n  " + "\n  ".join(unset)
+    )

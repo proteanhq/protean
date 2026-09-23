@@ -112,7 +112,7 @@ class OrderConfirmed:
 # --- Aggregate ---
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     """Event-sourced order aggregate with line items.
 

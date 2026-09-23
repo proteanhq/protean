@@ -7,6 +7,8 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - PROJECTOR_HANDLES_ORPHANED_EVENT
 ---
 
 # Projector
@@ -80,7 +82,7 @@ class ProductInventoryProjector:
 6. **Implicit UnitOfWork** - Each handler method runs within a UnitOfWork context automatically
 7. **Multiple projectors per event** - Different projectors can process the same event into different projections
 8. **Import on from protean.core.projector** - `from protean.core.projector import on` (not from protean directly)
-9. **Projections use basic fields only** - Projections cannot contain References, Associations, or ValueObjects
+9. **Projections reject References and Associations** - `Reference` and Associations (`HasOne`/`HasMany`) are not allowed; basic field types and `ValueObject` fields are allowed (a `ValueObject` is stored as flattened shadow fields)
 10. **Idempotency** - Design projector methods to handle duplicate events gracefully
 
 ## Projector options
@@ -90,6 +92,14 @@ class ProductInventoryProjector:
 | `projector_for` | The projection class this projector maintains | Yes |
 | `aggregates` | List of aggregate classes whose events to listen to | Yes (unless stream_categories provided) |
 | `stream_categories` | List of stream category names to listen to | Yes (unless aggregates provided) |
+| `retries` | Max retry attempts on transient exceptions; overrides `server.transient_retry` | No |
+| `backoff` | Retry delay strategy: `"exponential"`, `"linear"`, or `"fixed"` | No |
+| `retry_exceptions` | Exception types (classes or dotted paths) treated as transient for retry | No |
+| `subscription_type` | `"stream"` or `"event_store"` | No |
+| `subscription_profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"` | No |
+| `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |
+| `idempotent` | When `True`, each handler records a delivery marker in the same UnitOfWork as its write, so a redelivered event applies exactly once on a relational provider. On the in-memory provider the marker only skips a sequential redelivery; it is neither atomic nor concurrency-safe. For a cache-backed projection the option is a no-op, so the handler must write an idempotent upsert | No |
+| `suppress_checks` | Diagnostic codes to suppress for this projector | No |
 
 ## Quick example: Multiple events in one projector
 
@@ -216,17 +226,31 @@ class MyProjector:
         ...
 ```
 
-### Using complex field types in projections
+### Handling an event the domain never registers
+
+```python
+@domain.projector(projector_for=ProductInventory, aggregates=[Product])
+class MyProjector:
+    @on(ProductRenamed)  # Wrong! ProductRenamed was renamed/removed
+    def on_product_renamed(self, event):
+        ...
+```
+
+A projector `@on` handler wired to an event the domain does not register can
+never be dispatched, usually a stale reference after a rename or removal.
+`check` reports this as `PROJECTOR_HANDLES_ORPHANED_EVENT`. Register the
+event, or remove the handler for the orphaned type.
+
+### Using references or associations in projections
 
 ```python
 @domain.projection
 class OrderView:
     customer = Reference(Customer)  # Wrong! No references in projections
     items = HasMany(OrderItem)      # Wrong! No associations
-    address = ValueObject(Address)  # Wrong! No value objects
 ```
 
-Instead: Flatten data into basic field types (String, Integer, Float, Identifier, DateTime, etc.)
+Instead: Flatten references and associations into basic field types (String, Integer, Float, Identifier, DateTime, etc.). ValueObject fields are allowed. They persist as flattened shadow fields.
 
 ### Projection not registered with domain
 

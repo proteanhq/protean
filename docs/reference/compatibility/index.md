@@ -20,6 +20,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Add required field without default | **Breaking** |
 | Remove field from any persisted element | **Breaking** |
 | Remove a field deprecated past its removal version | Safe (expected removal) |
+| Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
 | Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
@@ -33,11 +34,13 @@ Protean classifies changes to persisted domain elements using these rules:
 | Move an event-sourced aggregate's `stream_category` | **Breaking** (`stream_category_changed`) |
 | Point an event-sourced aggregate's identity at another field | **Breaking** (`identity_field_changed`) |
 | Drop an `@apply` handler while its event survives | **Breaking** (`apply_handler_removed`) |
+| Drop a name from an event-sourced aggregate's `reserved` | **Breaking** (`reservation_removed`) |
 
 Most of these rules apply to every persisted element: aggregates, entities,
-value objects, commands, events, database models, and projections. The last four
-rows are the exception. They read attributes only an aggregate has, so they are
-checked on event-sourced aggregates and nowhere else.
+value objects, commands, events, database models, and projections. Six rows are
+the exception: the last five, and the `reserved` field-removal row above them.
+They read attributes only an aggregate has, so they are checked on event-sourced
+aggregates and nowhere else.
 
 ### Replay hazards on an event-sourced aggregate
 
@@ -55,7 +58,9 @@ writer ever used. Either way a load of an existing aggregate finds nothing.
 Turning event sourcing on or off changes where state lives, and the old state
 cannot be read the new way. Dropping an `@apply` handler while its event survives leaves
 historical events of that type with nothing to apply them, and the rebuild
-raises.
+raises. Dropping a name from `reserved` takes back the field removal that
+declaration earned: replay stops dropping an assignment to the name, so a
+retained handler that still writes it raises again.
 
 Some related cases are already covered by the general rules above and are not
 reported again here: a change to the identity field's *type* is a
@@ -65,8 +70,19 @@ method together is one act, so it reports once, as the removal.
 
 ### Evolution-aware classification
 
-The checker understands two evolution mechanisms:
+The checker understands three evolution mechanisms:
 
+- **Reserved field on an event-sourced aggregate**: Removing a field from an
+  event-sourced aggregate is safe only when the aggregate declares the field name
+  in `reserved`. The declaration does the migration: during replay an assignment
+  to a reserved name (from a retained `@apply` handler for a retired event) is
+  dropped instead of raising, so the aggregate still rebuilds. Only the
+  aggregate's own field removal is earned this way, and only when the aggregate is
+  event-sourced on both sides. A type change or a newly required field stays
+  breaking (a stored snapshot can survive a type change and skip replay, and
+  replay runs no required-field check), and the [replay hazards](#replay-hazards-on-an-event-sourced-aggregate)
+  above still report on their own. Reusing a reserved name for a live field raises
+  at registration.
 - **Deprecation grace**: A field marked `deprecated` and removed at or past its
   `removal` version is an *expected removal* (safe), not a breaking one. This
   applies to every persisted element, including internal and event-sourced

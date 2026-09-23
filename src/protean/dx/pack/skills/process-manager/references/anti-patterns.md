@@ -20,11 +20,11 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
 ```
 
-Protean raises `ConfigurationError` during `domain.init()` if any PM handler is missing `correlate`.
+Protean raises `IncorrectUsageError` during `domain.init()` if any PM handler is missing `correlate`.
 
 ## 2. No `start=True` Handler
 
-Every process manager must have exactly one handler marked with `start=True`. Without it, no new PM instances can be created.
+Every process manager must have at least one handler marked with `start=True`. Without it, no new PM instances can be created.
 
 **Wrong:**
 ```python
@@ -88,26 +88,21 @@ class OrderPM:
         self.mark_as_complete()  # PM properly terminates
 ```
 
-## 5. Inconsistent Correlation Keys
+## 5. Assuming Correlation Matches by Field Name
 
-All events in a process must carry the same correlation field so they route to the same PM instance. If events from different aggregates use different field names, use dictionary correlation.
+Each handler's `correlate` spec is resolved independently. The framework extracts a value via `getattr(event, field_name)` and looks up the PM instance purely by that value. Field name plays no part in the lookup. So this routes correctly even though the field names differ:
 
-**Wrong:**
 ```python
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event) -> None: ...
 
-@handle(PaymentConfirmed, correlate="payment_order_id")  # Different field!
+@handle(PaymentConfirmed, correlate="payment_order_id")  # Different field name
 def on_payment(self, event) -> None: ...
 ```
 
-The PM cannot route `PaymentConfirmed` because `payment_order_id` doesn't match PM's `order_id`.
+`PaymentConfirmed` routes to the same PM instance as long as `event.payment_order_id` holds the same value as the order's `order_id`. Dictionary correlation, `correlate={"order_id": "payment_order_id"}`, resolves the same way. The framework reads the dict's value. The dict's key exists purely to document the mapping for readers.
 
-**Right** — Use dictionary correlation:
-```python
-@handle(PaymentConfirmed, correlate={"order_id": "payment_order_id"})
-def on_payment(self, event) -> None: ...
-```
+What actually breaks routing: an attribute whose value does not match the target instance's identifying value, or an attribute the event does not carry at all (raises `AttributeError`).
 
 ## 6. Using Event Handler When Process Manager Is Needed
 
