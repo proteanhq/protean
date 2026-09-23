@@ -259,7 +259,7 @@ Every element carries a consistent set of base attributes:
 The aggregate element includes options, identity, fields, invariants, and
 (for event-sourced aggregates) apply handlers.
 
-**Options reference (v0.1.0):**
+**Options reference:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -270,6 +270,7 @@ The aggregate element includes options, identity, fields, invariants, and
 | `stream_category` | string | `{normalized_name}::{underscore(class_name)}` | Event stream prefix |
 | `auto_add_id_field` | bool | `true` | Auto-inject an `id` field |
 | `limit` | int | `100` | Default query result limit |
+| `reserved` | array of string | omitted | Field names that once existed and can never be declared again, sorted. Present only when the aggregate declares one |
 
 **Invariants** are grouped by stage, always fully present:
 

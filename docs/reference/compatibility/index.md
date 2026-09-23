@@ -34,9 +34,10 @@ Protean classifies changes to persisted domain elements using these rules:
 | Move an event-sourced aggregate's `stream_category` | **Breaking** (`stream_category_changed`) |
 | Point an event-sourced aggregate's identity at another field | **Breaking** (`identity_field_changed`) |
 | Drop an `@apply` handler while its event survives | **Breaking** (`apply_handler_removed`) |
+| Drop a name from an event-sourced aggregate's `reserved` | **Breaking** (`reservation_removed`) |
 
 Most of these rules apply to every persisted element: aggregates, entities,
-value objects, commands, events, database models, and projections. The last four
+value objects, commands, events, database models, and projections. The last five
 rows are the exception. They read attributes only an aggregate has, so they are
 checked on event-sourced aggregates and nowhere else.
 
@@ -56,7 +57,9 @@ writer ever used. Either way a load of an existing aggregate finds nothing.
 Turning event sourcing on or off changes where state lives, and the old state
 cannot be read the new way. Dropping an `@apply` handler while its event survives leaves
 historical events of that type with nothing to apply them, and the rebuild
-raises.
+raises. Dropping a name from `reserved` takes back the field removal that
+declaration earned: replay stops dropping an assignment to the name, so a
+retained handler that still writes it raises again.
 
 Some related cases are already covered by the general rules above and are not
 reported again here: a change to the identity field's *type* is a

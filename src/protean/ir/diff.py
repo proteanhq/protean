@@ -822,9 +822,10 @@ class CompatibilityChange:
     backward_safe: bool | None = None
     forward_safe: bool | None = None
     # The name of the field this change is about, for the change types that
-    # concern one field (``field_removed``). Lets a per-field mitigation match a
-    # specific removal when an element removes several fields with only some
-    # reserved. ``None`` for changes that are not about a single field.
+    # concern one field (``field_removed``, ``reservation_removed``). Lets a
+    # per-field mitigation match a specific removal when an element removes
+    # several fields with only some reserved. ``None`` for changes that are not
+    # about a single field.
     field_name: str | None = None
 
 
@@ -862,6 +863,7 @@ _AVRO_CHANGE_SAFETY: dict[str, tuple[bool, bool]] = {
     "stream_category_changed": (True, True),
     "identity_field_changed": (True, True),
     "apply_handler_removed": (True, True),
+    "reservation_removed": (True, True),
 }
 
 
@@ -1236,6 +1238,13 @@ def _classify_replay_hazards(
       that type stop the rebuild. Deleting the event class and its handler
       together is one act, not two, and ``element_removed`` on the event is the
       report for it.
+    - **A name was dropped from ``reserved``.** The reservation is what makes
+      replay drop an assignment to a removed field's name
+      (``BaseEntity.__setattr__``), so taking it back takes back the removal it
+      earned: a retained ``@apply`` handler for a retired event that still
+      writes the name hits ``extra="forbid"`` again and the rebuild raises. The
+      removal itself was reported in the diff that made it, so without this
+      nothing has anything to say about the reservation going away.
 
     Each is emitted as its own breaking change against the aggregate, rather
     than folded into the severity of some other change. An operator who moved a
@@ -1341,6 +1350,27 @@ def _classify_replay_hazards(
                         ),
                     )
                 )
+
+        # A name dropped from `reserved` takes back the field removal that
+        # declaration earned. Reported per name, so an aggregate that drops one
+        # reservation and keeps another names the one it dropped.
+        left_reserved = set(left_options.get("reserved") or ())
+        right_reserved = set(right_options.get("reserved") or ())
+        for name in sorted(left_reserved - right_reserved):
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="reservation_removed",
+                    message=(
+                        f"AGGREGATE '{fqn}' no longer reserves '{name}'; replay "
+                        f"stops dropping an assignment to that name, which a "
+                        f"retained @apply handler for a retired event can still "
+                        f"make"
+                    ),
+                    field_name=name,
+                )
+            )
 
 
 def _classify_clusters(

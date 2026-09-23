@@ -148,6 +148,11 @@ required field on an event-sourced aggregate stays breaking, and the replay
 hazards (a moved stream category, a moved identity, a dropped handler whose event
 survives) stay their own breaking changes.
 
+The declaration has to stay for as long as the events do. Taking a name back out
+of `reserved` is a replay hazard in its own right, reported as
+`reservation_removed`: replay stops dropping the assignment, so the handler that
+the reservation kept working raises again.
+
 ## Consequences
 
 An adopter facing a schema change now has one place that says which mechanism

@@ -1820,6 +1820,154 @@ class TestEventSourcedAggregateFieldRemoval:
         assert report.safe_changes[0].mitigated_by == "reserved"
 
 
+@pytest.mark.no_test_domain
+class TestReservationRemoved:
+    """Dropping a name from an event-sourced aggregate's ``reserved`` takes back
+    the field removal that declaration earned. The removal was reported in the
+    diff that made it, so this is the only place the reservation going away is
+    reported at all."""
+
+    def test_dropping_a_reservation_is_breaking(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options(reserved=["note"])
+                )
+            }
+        )
+        right = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert [c.change_type for c in report.breaking_changes] == [
+            "reservation_removed"
+        ]
+        change = report.breaking_changes[0]
+        assert change.element_fqn == "app.Order"
+        assert change.field_name == "note"
+        assert "no longer reserves 'note'" in change.message
+
+    def test_keeping_the_reservation_reports_nothing(self):
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options(reserved=["note"])
+                )
+            }
+        )
+        report = _run(left, left)
+        assert report.is_breaking is False
+        assert "reservation_removed" not in _types(report)
+
+    def test_only_the_dropped_name_is_reported(self):
+        """Per name: an aggregate that keeps one reservation and drops the other
+        names the one it dropped."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()},
+                    options=_es_options(reserved=["memo", "note"]),
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options(reserved=["note"])
+                )
+            }
+        )
+        report = _run(left, right)
+        assert [c.field_name for c in report.breaking_changes] == ["memo"]
+
+    def test_adding_a_reservation_reports_nothing(self):
+        """A name arriving in ``reserved`` is the declaration being made, which
+        the removal it earns is reported for."""
+        left = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options(reserved=["note"])
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is False
+        assert "reservation_removed" not in _types(report)
+
+    def test_a_classic_aggregate_dropping_a_reservation_reports_nothing(self):
+        """Nothing replays a classic aggregate, so its reserved names carry no
+        replay meaning to take back."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"id": _std()},
+                    options=_es_options(
+                        "order", is_event_sourced=False, reserved=["note"]
+                    ),
+                )
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order",
+                    fields={"id": _std()},
+                    options=_es_options("order", is_event_sourced=False),
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is False
+        assert "reservation_removed" not in _types(report)
+
+    def test_a_removed_aggregate_reports_only_its_removal(self):
+        """The whole aggregate going away takes its reservations with it, and
+        ``element_removed`` is the report for that."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options(reserved=["note"])
+                )
+            }
+        )
+        right = _minimal_ir(clusters={})
+        report = _run(left, right)
+        assert [c.change_type for c in report.breaking_changes] == ["element_removed"]
+
+    def test_dropping_a_reservation_leaves_the_avro_verdict_full(self):
+        """A replay hazard moves no payload bytes, so it is neutral for Avro
+        decode and breaking in the report."""
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options(reserved=["note"])
+                )
+            }
+        )
+        right = _minimal_ir(clusters={"app.Order": _es_cluster(fields={"id": _std()})})
+        report = _run(left, right)
+        assert report.is_breaking is True
+        assert report.avro_verdict == "FULL"
+
+    def test_a_removal_earned_in_the_same_diff_is_not_double_reported(self):
+        """The field goes and the name arrives in ``reserved`` together. Nothing
+        was taken back, so only the downgraded removal is reported."""
+        left = _minimal_ir(
+            clusters={"app.Order": _es_cluster(fields={"id": _std(), "note": _std()})}
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _es_cluster(
+                    fields={"id": _std()}, options=_es_options(reserved=["note"])
+                )
+            }
+        )
+        report = _run(left, right)
+        assert report.is_breaking is False
+        assert [c.change_type for c in report.safe_changes] == ["field_removed"]
+
+
 class TestClassifyTypeStringChanged:
     def test_type_string_change_in_event_is_breaking(self):
         left_event = _make_event("OrderPlaced", "app.OrderPlaced")
