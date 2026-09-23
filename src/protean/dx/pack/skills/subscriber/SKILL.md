@@ -61,7 +61,7 @@ class PaymentConfirmationSubscriber:
 4. **broker defaults to "default"** - Optionally specify broker: `@domain.subscriber(stream="...", broker="my_broker")`
 5. **Use message_processing for sync mode** - `domain.config["message_processing"] = "sync"` (NOT `event_processing`)
 6. **No return values** - Subscribers follow fire-and-forget, return values are discarded
-7. **Multiple subscribers can share a stream** - Nothing stops two subscriber classes from registering on the same stream; each gets its own subscription and processes the stream's messages independently
+7. **One subscriber per stream** - Each subscriber class handles all messages on its stream
 8. **Anti-corruption layer** - Translate external schemas into domain language at the subscriber boundary
 
 ## Subscriber options
@@ -70,6 +70,7 @@ class PaymentConfirmationSubscriber:
 |--------|---------|----------|
 | `stream` | Name of the external broker stream to consume | Yes |
 | `broker` | Broker name (defaults to `"default"`) | No |
+| `suppress_checks` | Diagnostic codes to suppress for this subscriber | No |
 
 ## Quick example: Multiple subscribers
 
@@ -143,6 +144,9 @@ class MySubscriber:
     def __call__(self, payload: dict) -> None:
         pass
 ```
+
+A subscriber with no stream has nothing to consume, so it is registered but
+can never be invoked. `check` reports this as `SUBSCRIBER_NO_STREAMS`.
 
 ### Using @handle decorator
 

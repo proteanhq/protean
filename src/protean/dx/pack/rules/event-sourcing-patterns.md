@@ -7,11 +7,11 @@ globs: "**/*.py"
 
 ## `@apply` Is the Single Source of Truth
 
-For event-sourced aggregates (`is_event_sourced=True`), all state mutations happen in
+For event-sourced aggregates (`event_sourced=True`), all state mutations happen in
 `@apply` handlers — never in business methods directly:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     def place(self, items):
         # Validate and raise — do NOT mutate state here

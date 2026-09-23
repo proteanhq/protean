@@ -226,6 +226,21 @@ class MyProjector:
         ...
 ```
 
+### Handling an event the domain never registers
+
+```python
+@domain.projector(projector_for=ProductInventory, aggregates=[Product])
+class MyProjector:
+    @on(ProductRenamed)  # Wrong! ProductRenamed was renamed/removed
+    def on_product_renamed(self, event):
+        ...
+```
+
+A projector `@on` handler wired to an event the domain does not register can
+never be dispatched, usually a stale reference after a rename or removal.
+`check` reports this as `PROJECTOR_HANDLES_ORPHANED_EVENT`. Register the
+event, or remove the handler for the orphaned type.
+
 ### Using references or associations in projections
 
 ```python

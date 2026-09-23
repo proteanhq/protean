@@ -260,7 +260,11 @@ def closed(self, event: AccountClosed):
 
 ### Missing @apply handler for an event
 
-Every event type raised by the aggregate must have a corresponding `@apply` method. Missing one raises `IncorrectUsageError` at runtime (`No @apply handler registered for event ...`) because `raise_()` invokes `@apply` automatically.
+Every event type raised by the aggregate must have a corresponding `@apply` method. Missing one raises `IncorrectUsageError` at runtime (`No @apply handler registered for event ...`) because `raise_()` invokes `@apply` automatically. `check` reports this ahead of time as `ES_EVENT_MISSING_APPLY`.
+
+### Event-sourced aggregate with no events
+
+An `event_sourced=True` aggregate that raises no domain events has no state history and cannot be rebuilt by replay. `check` reports this as `ES_AGGREGATE_NO_EVENTS`: declare at least one event with `part_of=<Aggregate>` and raise it from the aggregate's behaviour, or drop `event_sourced=True` if the aggregate is not meant to be event-sourced.
 
 ### Forgetting to raise initial event in factory
 

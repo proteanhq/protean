@@ -118,6 +118,16 @@ Instead: `getattr(g, "request_id", None)`.
 Extensions are for cross-cutting metadata (tenant, request, actor), not domain
 payload. Domain data belongs in the command/event fields.
 
+### Registering a non-callable enricher
+
+```python
+domain.register_event_enricher(some_dict)  # Wrong! Not callable
+```
+
+An enricher is invoked to augment a message or aggregate, so it must be
+callable. Registering anything else raises `IncorrectUsageError` with code
+`USAGE_ENRICHER_NOT_CALLABLE`.
+
 ## Detailed references
 
 - [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them

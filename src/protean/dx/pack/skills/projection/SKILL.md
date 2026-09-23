@@ -163,6 +163,9 @@ page = repo._dao.query.filter(stock_quantity__lt=10).all(with_total=False).items
 See the `repository` skill for the full querying surface (filtering, ordering,
 pagination, Q objects).
 
+`view_for()` and `connection_for()` operate on projections only; passing a
+non-projection element (an aggregate, say) raises `USAGE_NOT_A_PROJECTION`.
+
 ## Common mistakes
 
 ### Missing identifier field
@@ -216,6 +219,14 @@ domain.register(MyProjection, provider=None, cache=None)  # Wrong!
 ```
 
 Instead: Always have at least a provider or a cache
+
+### No projector to populate it
+
+A projection with no projector is never populated, so queries against it always return empty. `check` reports this as `PROJECTION_WITHOUT_PROJECTOR`. Add a projector for the projection, or set `externally_populated=True` if a subscriber fills it instead.
+
+### Field the projector never writes
+
+A projection field no projector handler ever writes renders as a dead column. `check` reports this as `UNSOURCED_PROJECTION_FIELD`. Write every field from the projector handler for the event that carries it, or drop the field.
 
 ### Confusing projection with aggregate
 

@@ -155,6 +155,10 @@ class OrderQueryHandler:
 
 Instead: `part_of` is the projection the handler reads from.
 
+### Query handler with no query to serve
+
+A projection with a query handler but no `@domain.query(part_of=...)` registered for it has a read path nothing can invoke. `check` reports this as `QUERY_HANDLER_WITHOUT_QUERY`. Register a query for the handler to serve, or remove the query handler if the projection needs no read path.
+
 ## Detailed references
 
 - [Anti-patterns](references/anti-patterns.md) - Common mistakes and how to avoid them

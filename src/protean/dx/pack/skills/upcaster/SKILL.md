@@ -185,6 +185,10 @@ class V1ToV2(BaseUpcaster): ...
 class V2ToV3(BaseUpcaster): ...
 ```
 
+An event at its current version with no upcaster path covering a stored
+predecessor version fails to deserialize at read time. `check` reports this
+build-time signal as `UPCASTER_GAP`.
+
 ### Performing I/O in upcast()
 
 ```python

@@ -79,10 +79,12 @@ class OrderFulfillmentPM:
 |--------|---------|----------|
 | `stream_categories` | List of stream categories to subscribe to | Yes (unless `aggregates` provided) |
 | `aggregates` | List of aggregate classes (categories inferred) | Alternative to `stream_categories` |
+| `stream_category` | Stream name the PM's own transition events are written to; derived from the class name if unset | No |
 | `subscription_type` | `"stream"` or `"event_store"` | No |
 | `subscription_profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"` | No |
 | `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |
-| `sequential_by` | `True` opts into per-instance sequential processing, partitioned by the field the subscribed category's `correlate` spec maps to (ADR-0028) | No |
+| `sequential_by` | `True` opts into per-instance sequential processing, partitioned by the field the subscribed category's `correlate` spec maps to | No |
+| `suppress_checks` | Diagnostic codes to suppress for this process manager | No |
 
 ## @handle parameters for process managers
 
@@ -215,7 +217,7 @@ Instead: Keep business logic in aggregates. PM only coordinates.
 
 ### Missing terminal state
 
-A PM without `end=True` or `mark_as_complete()` on any handler will never finish. Its stream will grow indefinitely and it will continue accepting events.
+A PM without `end=True` or `mark_as_complete()` on any handler will never finish. Its stream will grow indefinitely and it will continue accepting events. `check` reports a PM with no `end=True` handler as `PROCESS_MANAGER_UNCLOSED`.
 
 ### Correlation matches by value
 
