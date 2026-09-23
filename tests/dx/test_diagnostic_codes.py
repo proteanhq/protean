@@ -87,6 +87,7 @@ _FAMILY_CODE_TEACHING_SKILLS = {
     "refactor-extract-value-object": ["VALUE_OBJECT_MUTABLE_FIELD"],
     "refactor-introduce-events": ["EVENT_WITHOUT_DATA", "UNRAISED_EVENT"],
     "refactor-move-logic-to-aggregate": ["AGGREGATE_NO_INVARIANTS"],
+    "split-aggregate": ["AGGREGATE_TOO_LARGE", "CROSS_AGGREGATE_REFERENCE"],
 }
 
 _FAMILY_NO_CODE_SKILLS = [
