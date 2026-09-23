@@ -117,3 +117,49 @@ def test_loading_the_cli_does_not_pull_optional_stacks():
     """
     pulled = _optional_stacks_pulled_by("from protean.cli import app")
     assert pulled == "", f"loading the CLI pulled optional stacks: {pulled}"
+
+
+# Packages that reach an install only as somebody else's transitive dependency.
+# ADR-0029 moved their floors out of core onto every extra whose tree pulls
+# them, and both the ADR and the 0.18 migration guide name those extras. The
+# lists are hand-written, so they go stale the moment an extra is added: the
+# `mysql` extra pulls both and neither document mentioned it.
+TRANSITIVE_FLOORS = ("greenlet", "cffi")
+
+ADR_0029 = (
+    Path(__file__).resolve().parents[1]
+    / "docs"
+    / "adr"
+    / "0029-runtime-dependency-boundary-and-extras.md"
+)
+MIGRATION_V0_18 = (
+    Path(__file__).resolve().parents[1]
+    / "docs"
+    / "reference"
+    / "migration"
+    / "v0-18.md"
+)
+
+
+def _extras_declaring(package: str) -> set[str]:
+    """Every extra that pins a floor for ``package``."""
+    extras = _pyproject()["project"]["optional-dependencies"]
+    return {
+        name
+        for name, specs in extras.items()
+        if any(_dist_name(spec) == package for spec in specs)
+    }
+
+
+@pytest.mark.parametrize("package", TRANSITIVE_FLOORS)
+@pytest.mark.parametrize("document", [ADR_0029, MIGRATION_V0_18], ids=["adr", "guide"])
+def test_every_extra_carrying_a_transitive_floor_is_documented(package, document):
+    text = " ".join(document.read_text(encoding="utf-8").split())
+
+    missing = sorted(
+        name for name in _extras_declaring(package) if f"`{name}`" not in text
+    )
+    assert not missing, (
+        f"{document.name} does not mention {missing} among the extras carrying "
+        f"the {package} floor."
+    )

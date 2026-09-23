@@ -384,6 +384,29 @@ class TestAnchorsMatchWhatMkdocsPublishes:
             )
 
 
+class TestFragmentLinksSurviveAssembly:
+    """A fragment's links end up in the repository-root `CHANGELOG.md`.
+
+    A path relative to `docs/` resolves there against the repository root, so
+    `reference/adapters/database/mysql.md` points at a directory that does not
+    exist. It reads fine in the fragment and 404s in the changelog, on GitHub
+    and on PyPI alike. Two fragments had one.
+    """
+
+    def test_every_link_is_absolute_or_an_anchor(self, fragments):
+        offenders = []
+        for p in fragments:
+            for target in re.findall(r"\]\(([^)]+)\)", p.read_text(encoding="utf-8")):
+                if target.startswith(("http://", "https://", "#")):
+                    continue
+                offenders.append(f"{p.name}: {target}")
+
+        assert not offenders, (
+            "Link to the published docs site instead, the way every other "
+            f"fragment does: {offenders}"
+        )
+
+
 class TestABreakCannotHideInProse:
     """The guard above only fires on fragments that *declare* a break.
 
