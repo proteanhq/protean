@@ -743,15 +743,17 @@ def _mysql_identity_key_width() -> int:
     """Bytes an identity column contributes to an index key.
 
     Mapped by ``_get_identity_type`` from the domain's ``identity_type``, not
-    from anything the field declares: a string identity is VARCHAR(255) and a
-    UUID is CHAR(32). An integer identity is 4 bytes and cannot matter here.
+    from anything the field declares: a string identity is VARCHAR(255), a UUID
+    is CHAR(32), an integer is INT. The integer is only four bytes, and four
+    bytes is the whole difference at the boundary: a ``VARCHAR(768)`` fills the
+    budget, so an index over it and the identity is 3076 and refused.
     """
     identity_type = _get_identity_type()
     if identity_type is sa_types.String:
         return _IDENTITY_STRING_LENGTH * _MYSQL_BYTES_PER_CHAR
     if identity_type is GUID:
         return 32 * _MYSQL_BYTES_PER_CHAR
-    return 0
+    return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Integer]
 
 
 def _mysql_index_key_width(

@@ -468,6 +468,36 @@ class TestDeclaredIndexKeyWidths:
 
         assert "3420 bytes" in str(exc.value)
 
+    @pytest.mark.parametrize(
+        "max_length,fits",
+        [(767, True), (768, False)],
+        ids=["exactly-fills-the-budget", "four-bytes-over"],
+    )
+    def test_an_integer_identity_counts_its_four_bytes(self, max_length, fits):
+        """An INT identity is small, and four bytes is the whole margin at the
+        boundary: a VARCHAR(768) fills the budget, so an index over it and the
+        identity is 3076 and InnoDB refuses it. Measured on the render path,
+        because an integer identity cannot currently build a model at all
+        (`Integer() takes no arguments`, filed separately)."""
+
+        class Keyed(BaseAggregate):
+            slug: String(max_length=max_length)
+
+        domain = host_domain([], identity_type="integer")
+        domain.register(Keyed, indexes=[Index("slug", "id", name="ix_keyed")])
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            if fits:
+                assert render_index_ddl(Keyed, "mysql") == [
+                    "CREATE INDEX ix_keyed ON keyed (slug, id)"
+                ]
+                return
+            with pytest.raises(IncorrectUsageError) as exc:
+                render_index_ddl(Keyed, "mysql")
+
+        assert "3076 bytes" in str(exc.value)
+
     def test_a_uuid_identity_is_char_32_not_varchar_255(self):
         """The same index fits when the identity is a UUID, because CHAR(32) is
         128 bytes rather than 1020."""

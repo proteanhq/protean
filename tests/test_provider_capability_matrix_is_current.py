@@ -69,13 +69,23 @@ def _matrix() -> tuple[list[str], dict[str, list[bool]]]:
 
 
 def _provider_names() -> set[str]:
-    """Registered provider names, from the entry points.
+    """Protean's own provider names, from its entry points.
 
     Read here rather than from ``registry.list()``, which is empty until
     something triggers plugin discovery. A guard that enumerates an empty set
     passes on every page, including a blank one.
+
+    Scoped to the ``protean`` distribution because ``protean.providers`` is a
+    public extension point. A third-party provider is not something this page
+    documents, and enumerating every installed distribution would fail the
+    guard for whoever has one, after importing their plugin to ask.
     """
-    return {ep.name for ep in metadata.entry_points().select(group="protean.providers")}
+    return {
+        ep.name
+        for ep in metadata.distribution("protean").entry_points.select(
+            group="protean.providers"
+        )
+    }
 
 
 def _declared(provider_name: str) -> DatabaseCapabilities:
@@ -83,6 +93,26 @@ def _declared(provider_name: str) -> DatabaseCapabilities:
     # ``capabilities`` is a property on the class; read it off the descriptor so
     # nothing has to be constructed against a live server.
     return provider_cls.capabilities.fget(provider_cls)  # type: ignore[attr-defined]
+
+
+def _install_a_third_party_provider(tmp_path, monkeypatch):
+    """Put a distribution advertising `protean.providers` on sys.path.
+
+    `protean.providers` is a public extension point, so this is a supported
+    thing for someone to have installed. It must not turn a guard about
+    Protean's own providers red.
+    """
+    dist = tmp_path / "acme_protean_db-1.0.dist-info"
+    dist.mkdir()
+    (dist / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: acme-protean-db\nVersion: 1.0\n",
+        encoding="utf-8",
+    )
+    (dist / "entry_points.txt").write_text(
+        "[protean.providers]\nacmedb = acme_protean_db:register\n", encoding="utf-8"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    metadata.MetadataPathFinder.invalidate_caches()
 
 
 class TestCapabilityMatrix:
@@ -130,3 +160,20 @@ class TestCapabilityMatrix:
             name for name in _provider_names() if f"\n{name} = " not in snippet
         )
         assert not missing, f"Entry-point snippet does not list {missing}."
+
+    def test_a_third_party_provider_does_not_fail_the_guard(
+        self, tmp_path, monkeypatch
+    ):
+        """Read across every installed distribution, this page would have to
+        document everyone's adapters, and asking one for its capabilities would
+        import it."""
+        _install_a_third_party_provider(tmp_path, monkeypatch)
+
+        assert "acmedb" in {
+            ep.name for ep in metadata.entry_points().select(group="protean.providers")
+        }
+        assert "acmedb" not in _provider_names()
+
+        self.test_every_registered_provider_has_a_column()
+        self.test_every_tick_matches_what_the_provider_declares()
+        self.test_every_registered_provider_is_in_the_entry_point_snippet()

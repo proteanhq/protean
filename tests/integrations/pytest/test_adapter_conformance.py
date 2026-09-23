@@ -112,15 +112,23 @@ class TestMarkerRegistration:
 class TestBuiltinDbConfigs:
     """Tests for BUILTIN_DB_CONFIGS constant."""
 
-    def test_every_registered_provider_has_a_config(self):
+    def test_every_builtin_provider_has_a_config(self):
         """Read from the entry points, because a hand-written list here goes
         stale in silence: a provider with no entry falls through to
         ``{"provider": <key>}`` with no ``database_uri``, and ``Domain.init()``
-        cannot reach a server. MySQL shipped that way."""
+        cannot reach a server. MySQL shipped that way.
+
+        Only Protean's own, since ``BUILTIN_DB_CONFIGS`` is by definition the
+        built-ins. A third-party provider brings its own config, and reading
+        every installed distribution would fail this for anyone who has one.
+        """
         from importlib import metadata
 
         registered = {
-            ep.name for ep in metadata.entry_points().select(group="protean.providers")
+            ep.name
+            for ep in metadata.distribution("protean").entry_points.select(
+                group="protean.providers"
+            )
         }
         configured = {config["provider"] for config in BUILTIN_DB_CONFIGS.values()}
 
@@ -135,6 +143,32 @@ class TestBuiltinDbConfigs:
             if config["provider"] == "memory":
                 continue
             assert config.get("database_uri"), f"{key} config has no database_uri"
+
+    def test_a_third_party_provider_needs_no_builtin_config(
+        self, tmp_path, monkeypatch
+    ):
+        """`protean.providers` is a public extension point, and an external
+        adapter brings its own config. Enumerating every installed
+        distribution would fail this for whoever has one installed."""
+        from importlib import metadata
+
+        dist = tmp_path / "acme_protean_db-1.0.dist-info"
+        dist.mkdir()
+        (dist / "METADATA").write_text(
+            "Metadata-Version: 2.1\nName: acme-protean-db\nVersion: 1.0\n",
+            encoding="utf-8",
+        )
+        (dist / "entry_points.txt").write_text(
+            "[protean.providers]\nacmedb = acme_protean_db:register\n",
+            encoding="utf-8",
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+        metadata.MetadataPathFinder.invalidate_caches()
+
+        assert "acmedb" in {
+            ep.name for ep in metadata.entry_points().select(group="protean.providers")
+        }
+        self.test_every_builtin_provider_has_a_config()
 
     def test_both_mysql_servers_are_keyed_separately(self):
         """One provider, two servers, and SQLAlchemy reports a different

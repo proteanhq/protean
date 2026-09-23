@@ -199,7 +199,7 @@ widths are the column's storage size, measured against both servers:
 | a `DOUBLE` or `REAL` column | `DOUBLE` | 8 |
 | `DateTime` | `DATETIME(6)` | 8 |
 | `Decimal(precision, scale)` | `DECIMAL` | 4 per 9 digits |
-| Identity, and any reference to one | `CHAR(32)` or `VARCHAR(255)` | 128 or 1020 |
+| Identity, and any reference to one | `CHAR(32)`, `VARCHAR(255)` or `INT` | 128, 1020 or 4 |
 
 A type not in this table counts as nothing rather than as a guess, so a key
 that overruns on one still gets MySQL's own error.
