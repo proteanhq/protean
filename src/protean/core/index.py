@@ -32,11 +32,12 @@ if TYPE_CHECKING:
 # renders nothing, on any adapter, so ``validate_indexes`` rejects it at
 # ``Domain.init()`` rather than letting the index be silently dropped.
 #
-# The adapter sources its renderer's dialect keys from this same constant (see
-# ``protean/adapters/repository/sqlalchemy.py``), so the accepted set and the
-# rendered set cannot drift apart. On ``main`` these are the keys of
-# ``dialect_impls`` in that module. When a new SQL provider lands (for example
-# MySQL/MariaDB) its dialect name is added here and the renderer picks it up.
+# The renderer in ``protean/adapters/repository/sqlalchemy.py`` holds a matching
+# map, ``_SA_DIALECT_FACTORIES``, with one SQLAlchemy compiler per name in this
+# set. The two are declared separately and
+# ``test_factory_map_covers_every_rendered_dialect`` fails if they go out of
+# step. Adding a dialect (for example MySQL/MariaDB, once a provider lands)
+# means adding the name here and its factory there.
 RENDERED_INDEX_DIALECTS = frozenset({"postgresql", "sqlite", "mssql"})
 
 
