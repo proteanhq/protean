@@ -135,7 +135,7 @@ def generate(
 # matches MySQL's for the index forms the framework emits, so rendering both by
 # default writes a second copy of the same file per element. An explicit
 # ``--dialects`` is checked against ``RENDERED_INDEX_DIALECTS``, which accepts
-# all five names.
+# MariaDB along with every other name the framework renders for.
 _DEFAULT_INDEX_DIALECTS = "postgresql,sqlite,mssql,mysql"
 
 
