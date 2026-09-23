@@ -2,7 +2,7 @@
 Basic event-sourced aggregate with the @apply pattern.
 
 This example demonstrates:
-- Enabling event sourcing with `is_event_sourced=True`
+- Enabling event sourcing with `event_sourced=True`
 - The `@apply` decorator for event replay/reconstruction
 - Factory classmethod pattern for aggregate creation
 - Business methods that mutate state AND raise events
@@ -69,7 +69,7 @@ class UserNameChanged:
 # --- Aggregate ---
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class User:
     """Event-sourced user aggregate.
 

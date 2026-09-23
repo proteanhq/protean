@@ -7,6 +7,8 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - SUBSCRIBER_NO_STREAMS
 ---
 
 # Subscriber
@@ -17,7 +19,7 @@ metadata:
 |--------|--------------|------------|
 | **Decorator** | `@domain.event_handler` | `@domain.subscriber` |
 | **Message source** | Internal event store | External message broker |
-| **Association** | `part_of` an aggregate | `stream` on a broker |
+| **Association** | `part_of` an aggregate or `stream_category` | `stream` on a broker |
 | **Payload type** | Typed domain event objects | Raw `dict` payloads |
 | **Dispatch** | `@handle(EventClass)` per event type | Single `__call__(payload)` for all messages |
 | **Processing config** | `event_processing` | `message_processing` |
@@ -68,6 +70,7 @@ class PaymentConfirmationSubscriber:
 |--------|---------|----------|
 | `stream` | Name of the external broker stream to consume | Yes |
 | `broker` | Broker name (defaults to `"default"`) | No |
+| `suppress_checks` | Diagnostic codes to suppress for this subscriber | No |
 
 ## Quick example: Multiple subscribers
 
@@ -141,6 +144,13 @@ class MySubscriber:
     def __call__(self, payload: dict) -> None:
         pass
 ```
+
+A subscriber with no stream has nothing to consume, so it never registers:
+`@domain.subscriber` raises `IncorrectUsageError` at class definition time,
+with the message "Subscriber `MySubscriber` needs to be associated with a
+stream". `check` reports the same problem as `SUBSCRIBER_NO_STREAMS`, which it
+can only see in materialized IR that was loaded or hand-edited after the
+stream was removed.
 
 ### Using @handle decorator
 

@@ -1,12 +1,14 @@
 ---
 name: upcaster
-description: "Define a Protean event upcaster — a class that transforms old event payloads to match the current schema version, enabling event schema evolution without breaking stored events. Upcasters extend BaseUpcaster, implement an upcast(data) method, and are registered with @domain.upcaster(event_type=EventClass, from_version='v1', to_version='v2'). The framework automatically chains individual upcasters and applies them lazily during deserialization. Use when the user asks to 'create an upcaster', 'handle event schema migration', 'evolve an event schema', 'add a field to an existing event', 'rename a field in an event', 'migrate old events', 'transform stored events', 'handle event versioning', or when they need to change an event's schema while keeping old stored events compatible."
+description: "Define a Protean event upcaster — a class that transforms old event payloads to match the current schema version, enabling event schema evolution without breaking stored events. Upcasters extend BaseUpcaster, implement an upcast(data) method, and are registered with @domain.upcaster(event_type=EventClass, from_version=1, to_version=2). The framework automatically chains individual upcasters and applies them lazily during deserialization. Use when the user asks to 'create an upcaster', 'handle event schema migration', 'evolve an event schema', 'add a field to an existing event', 'rename a field in an event', 'migrate old events', 'transform stored events', 'handle event versioning', or when they need to change an event's schema while keeping old stored events compatible."
 license: Apache-2.0
 compatibility: Requires Python 3.11+, protean framework
 metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - UPCASTER_GAP
 ---
 
 # Upcaster
@@ -44,9 +46,9 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 4. **`event_type` is always the CURRENT event class** — Not the old version. The upcaster knows which event it targets by its current definition
 5. **Bump `__version__` on the event class** — Set `__version__ = 2` on the event when you add an upcaster targeting v2. Default version is `1`
 6. **One upcaster per version step** — Write v1→v2 and v2→v3 separately. Never skip versions that existed in production
-7. **Keep upcasters pure** — No I/O, no database queries, no external API calls. Upcasting runs on every deserialization and must be fast
+7. **Keep upcasters pure** — No I/O, no database queries, no external API calls. Upcasting runs on the deserialization path for old-version events and must be fast
 8. **Chains build automatically** — Register individual steps; the framework chains them into v1→v2→v3 during `domain.init()`
-9. **Validated at startup** — `domain.init()` detects duplicates, cycles, non-convergent chains, and missing event classes. All errors are caught at startup, never at runtime
+9. **Chain registration is validated at startup** — `domain.init()` detects duplicates, cycles, non-convergent chains, and missing event classes. It does not catch a missing step: a stored payload whose version has no upcaster path is passed through unchanged and fails to deserialize at read time. `check` reports that gap as `UPCASTER_GAP`
 10. **Works everywhere transparently** — Event-sourced aggregate reconstruction (`@apply`), event handlers (`@handle`), and projectors all receive upcast events
 11. **Lazy, zero-overhead for current events** — Current-version events take a fast path (direct type-string lookup). The upcaster chain is only consulted for old-version type strings
 
@@ -140,7 +142,7 @@ A stored v1 event passes through both: v1→v2→v3. A stored v2 event passes th
 Upcasting is especially valuable for ES aggregates because every reconstruction replays all events. With upcasters, `@apply` handlers only handle the current schema:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Order:
     order_id = Identifier(identifier=True)
     total_amount = Float()
@@ -183,10 +185,14 @@ class V1ToV2(BaseUpcaster): ...
 class V2ToV3(BaseUpcaster): ...
 ```
 
+An event at its current version with no upcaster path covering a stored
+predecessor version fails to deserialize at read time. `check` reports this
+build-time signal as `UPCASTER_GAP`.
+
 ### Performing I/O in upcast()
 
 ```python
-# WRONG — upcasting runs on every deserialization
+# WRONG — upcasting runs on the deserialization path and must stay fast
 class SlowUpcaster(BaseUpcaster):
     def upcast(self, data: dict) -> dict:
         user = db.query(User, data["user_id"])  # NO! No I/O

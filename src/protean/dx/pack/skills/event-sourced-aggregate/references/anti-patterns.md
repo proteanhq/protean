@@ -36,7 +36,7 @@ def closed(self, event: AccountClosed):
 
 ### The Problem
 
-If an event type is raised but no `@apply` method is registered for it, Protean raises `NotImplementedError` at runtime — both when `raise_()` is called (live path) and when replaying events via `from_events()` or `repo.get()`.
+If an event type is raised but no `@apply` method is registered for it, Protean raises `IncorrectUsageError` at runtime — both when `raise_()` is called (live path) and when replaying events via `from_events()` or `repo.get()`.
 
 ```python
 @domain.event(part_of="Order")
@@ -44,7 +44,7 @@ class OrderArchived:
     order_id: Identifier(required=True)
 
 # No @apply method for OrderArchived!
-# from_events() or repo.get() → NotImplementedError
+# from_events() or repo.get() → IncorrectUsageError
 ```
 
 ### The Fix
@@ -70,7 +70,7 @@ def open(cls, account_id, owner_name):
     return cls(account_id=account_id, owner_name=owner_name)
 ```
 
-When this aggregate is loaded from the event store, there are no events to replay, so the aggregate would be empty.
+With no events raised, the event-sourced repository's `add()` persists nothing (it no-ops when the aggregate has no events). A later `repo.get()` then raises `ObjectNotFoundError` because the stream is empty.
 
 ### The Fix
 
@@ -88,7 +88,7 @@ def open(cls, account_id, owner_name):
 
 ### The Problem
 
-`from_events()` creates a blank aggregate and applies all events through `@apply`. The first event's `@apply` handler must set ALL fields including identity, otherwise the aggregate will have missing or default values.
+`from_events()` creates a blank aggregate by setting every field to `None` directly, bypassing declared field defaults, then applies all events through `@apply`. The first event's `@apply` handler must set ALL fields including identity: any field it leaves unset stays `None`, never its declared default.
 
 ```python
 # WRONG — @apply handler doesn't set all fields
@@ -133,12 +133,15 @@ Either use the auto-selected repository:
 repo = current_domain.repository_for(Account)  # Auto-selects ES repo
 ```
 
-Or define an explicit ES repository:
+Or define an explicit ES repository by subclassing `BaseEventSourcedRepository`:
 
 ```python
-@domain.event_sourced_repository(part_of=Account)
-class AccountRepository:
+from protean.core.event_sourced_repository import BaseEventSourcedRepository
+
+class AccountRepository(BaseEventSourcedRepository):
     pass
+
+domain.register(AccountRepository, part_of=Account)
 ```
 
 ## 6. Overly Large Events
@@ -181,7 +184,7 @@ Mutating state directly without raising events means changes won't be persisted 
 
 ```python
 # WRONG — direct mutation without event
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     def update_name(self, name):
         self.name = name  # Won't persist — no event raised!
@@ -192,7 +195,7 @@ class Account:
 ALL state changes must go through `raise_()` and `@apply`:
 
 ```python
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Account:
     def update_name(self, name):
         self.raise_(NameUpdated(account_id=self.account_id, name=name))

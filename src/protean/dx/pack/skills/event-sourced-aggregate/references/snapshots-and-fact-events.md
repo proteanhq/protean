@@ -39,7 +39,8 @@ Snapshots are stored in a special stream:
 {stream_category}:snapshot-{aggregate_id}
 ```
 
-Example: `account:snapshot-ACC-001`
+`stream_category` already carries the domain name prefix (`{domain_name}::{aggregate_name}`, set at registration), so
+for a domain named `test` the snapshot stream for `Account` is `test::account:snapshot-ACC-001`.
 
 Note the `:` separator (not `-`) which distinguishes snapshot streams from event streams.
 
@@ -60,7 +61,7 @@ Fact events are auto-generated events that capture the **complete current state*
 ### Enabling Fact Events
 
 ```python
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Product:
     name: String(required=True)
     price: Float(required=True)
@@ -83,7 +84,7 @@ Fact events use a distinct stream:
 {stream_category}-fact-{aggregate_id}
 ```
 
-Example: `product-fact-PROD-001`
+`stream_category` already carries the domain name prefix, so for a domain named `test` the fact stream for `Product` is `test::product-fact-PROD-001`.
 
 This separation allows subscribers to independently consume delta events or fact events.
 
@@ -116,7 +117,7 @@ This separation allows subscribers to independently consume delta events or fact
 You can use both snapshots and fact events on the same aggregate:
 
 ```python
-@domain.aggregate(is_event_sourced=True, fact_events=True)
+@domain.aggregate(event_sourced=True, fact_events=True)
 class Order:
     ...
 

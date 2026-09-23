@@ -92,5 +92,5 @@ All transition events for this PM instance are stored in this stream.
 ## Related
 
 - [Lifecycle Management](./lifecycle.md) - How correlation interacts with start/end
-- [Anti-patterns](./anti-patterns.md) - Inconsistent correlation keys
+- [Anti-patterns](./anti-patterns.md) - Assuming correlation matches by field name
 - [Event Handler skill](../../event-handler/SKILL.md) - Compare with stateless handlers (no correlation)

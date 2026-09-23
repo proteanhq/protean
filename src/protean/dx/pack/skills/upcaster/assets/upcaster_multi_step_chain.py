@@ -35,7 +35,17 @@ from protean.fields import Float, Identifier, String
 domain = Domain()
 
 
-# --- Event (current version: v4) ---
+# --- Events ---
+
+
+@domain.event(part_of="Product")
+class ProductCreated:
+    """Product was added to the catalog. Establishes all initial state."""
+
+    product_id = Identifier(required=True)
+    name = String(required=True, max_length=200)
+    price = Float(required=True)
+    currency = String(required=True)
 
 
 @domain.event(part_of="Product")
@@ -90,7 +100,7 @@ class UpcastPriceChangedV3ToV4(BaseUpcaster):
 # --- Aggregate ---
 
 
-@domain.aggregate(is_event_sourced=True)
+@domain.aggregate(event_sourced=True)
 class Product:
     """Event-sourced product aggregate."""
 
@@ -103,7 +113,15 @@ class Product:
     @classmethod
     def create(cls, product_id, name, price, currency="USD"):
         """Factory: create a new product."""
-        return cls(product_id=product_id, name=name, price=price, currency=currency)
+        product = cls(
+            product_id=product_id, name=name, price=price, currency=currency
+        )
+        product.raise_(
+            ProductCreated(
+                product_id=product_id, name=name, price=price, currency=currency
+            )
+        )
+        return product
 
     def change_price(self, new_price, currency=None, discount_pct=0.0):
         """Change the product's price."""
@@ -117,6 +135,16 @@ class Product:
                 discount_pct=discount_pct,
             )
         )
+
+    # --- @apply methods (for replaying events during state reconstruction) ---
+
+    @apply
+    def on_created(self, event: ProductCreated):
+        self.product_id = event.product_id
+        self.name = event.name
+        self.price = event.price
+        self.currency = event.currency
+        self.discount_pct = 0.0
 
     @apply
     def on_price_changed(self, event: ProductPriceChanged):
