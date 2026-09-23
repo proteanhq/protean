@@ -10,7 +10,7 @@ import pytest
 from protean import Index, Q
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.core.index import RawIndex
+from protean.core.index import RENDERED_INDEX_DIALECTS, RawIndex
 from protean.core.projection import BaseProjection
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, Integer, String
@@ -167,3 +167,88 @@ class TestIndexValidation:
 
         test_domain.init(traverse=False)
         assert isinstance(Job.meta_.indexes[0], RawIndex)
+
+
+class TestRawIndexDialectValidation:
+    """A ``RawIndex`` names one dialect. A name the framework cannot render for
+    (a typo, or a dialect with no provider) would be dropped silently at every
+    call site, so validation rejects it at ``Domain.init()``."""
+
+    def test_misspelt_dialect_rejected(self, test_domain):
+        @test_domain.aggregate(
+            indexes=[
+                Index.from_sql(
+                    "postgres",  # typo for "postgresql"
+                    "CREATE INDEX ix_job_gin ON job USING gin (data)",
+                    name="ix_job_gin",
+                )
+            ]
+        )
+        class Job(BaseAggregate):
+            status = String(max_length=32)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+
+        message = str(exc.value)
+        assert "Job" in message  # the element
+        assert "ix_job_gin" in message  # the index (name)
+        # The whole clause, not a bare "postgres": that substring is already in
+        # the allowed "postgresql" the message lists, so a looser assertion
+        # would still pass if the message stopped naming the offending value.
+        assert "targets unknown dialect 'postgres'." in message
+
+    def test_unknown_dialect_without_a_provider_rejected(self, test_domain):
+        @test_domain.aggregate(
+            indexes=[
+                Index.from_sql("oracle", "CREATE INDEX ix_job_status ON job (status)")
+            ]
+        )
+        class Job(BaseAggregate):
+            status = String(max_length=32)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+
+        message = str(exc.value)
+        assert "Job" in message
+        assert "targets unknown dialect 'oracle'." in message
+        # With no explicit name, the DDL identifies the index.
+        assert "CREATE INDEX ix_job_status ON job (status)" in message
+
+    @pytest.mark.parametrize(
+        "dialect",
+        sorted(RENDERED_INDEX_DIALECTS),
+        # Explicit, non-colliding ids: a bare dialect name as a parametrize id
+        # becomes a test keyword, which the suite's db-gate would read as a
+        # marker and skip the case (see tests/conftest.py).
+        ids=[f"known_{d}" for d in sorted(RENDERED_INDEX_DIALECTS)],
+    )
+    def test_known_dialect_survives_on_meta(self, test_domain, dialect):
+        @test_domain.aggregate(
+            indexes=[Index.from_sql(dialect, "CREATE INDEX x ON job (status)")]
+        )
+        class Job(BaseAggregate):
+            status = String(max_length=32)
+
+        test_domain.init(traverse=False)
+
+        raw = Job.meta_.indexes[0]
+        assert isinstance(raw, RawIndex)
+        assert raw.dialect == dialect
+
+    @pytest.mark.parametrize("dialect", ["PostgreSQL", " postgresql", "postgresql "])
+    def test_dialect_matched_by_exact_string(self, test_domain, dialect):
+        # Every consumer matches the dialect by exact string, so a name that
+        # differs only in case or whitespace renders nothing. Validation rejects
+        # it for the same reason it rejects a typo.
+        @test_domain.aggregate(
+            indexes=[Index.from_sql(dialect, "CREATE INDEX x ON job (status)")]
+        )
+        class Job(BaseAggregate):
+            status = String(max_length=32)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+
+        assert f"targets unknown dialect '{dialect}'." in str(exc.value)

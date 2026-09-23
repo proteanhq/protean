@@ -41,6 +41,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import sqlite as sqlite_dialect
+from sqlalchemy.dialects.mysql import mariadb as mariadb_dialect
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
@@ -51,8 +52,8 @@ from sqlalchemy.schema import CreateIndex
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
+from protean.core.index import RENDERED_INDEX_DIALECTS, RawIndex
 from protean.core.index import Index as ProteanIndex
-from protean.core.index import RawIndex
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import (
@@ -360,6 +361,32 @@ _PARTIAL_INDEX_OPS = {
     "isnull": lambda c, v: c.is_(None) if v else c.isnot(None),
 }
 
+# The SQLAlchemy dialect implementation to compile ``CreateIndex`` against, for
+# each dialect the framework renders index DDL for. The rendered set is owned by
+# ``RENDERED_INDEX_DIALECTS`` in ``protean.core.index`` (the same set
+# ``validate_indexes`` accepts a ``RawIndex`` dialect against), and
+# ``render_index_ddl`` rejects any name outside it, so the accepted set and the
+# rendered set cannot drift. Adding a dialect to the core constant requires
+# adding its factory here; ``test_factory_map_covers_every_rendered_dialect``
+# fails if the two go out of step.
+#
+# SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are declared
+# without full annotations, so mypy flags the calls as untyped even though the
+# package ships ``py.typed``. The sqlite and mysql equivalents are annotated.
+# Typing the map values as a zero-arg callable keeps the call site clean and
+# needs no per-call ignore. MariaDB has no module-level factory, so the dialect
+# class stands in for one.
+_SA_DIALECT_FACTORIES: dict[str, typing.Callable[[], typing.Any]] = {
+    "postgresql": psql.dialect,
+    "sqlite": sqlite_dialect.dialect,
+    "mssql": mssql.dialect,
+    "mysql": mysql.dialect,
+    # ``mariadb`` is a submodule of ``sqlalchemy.dialects.mysql``, and reaching
+    # it as an attribute of ``mysql`` raises on SQLAlchemy 2.0.36 unless
+    # something has already imported it, hence the by-name import above.
+    "mariadb": mariadb_dialect.MariaDBDialect,
+}
+
 # Dialects that support each opt-in index feature.
 _PARTIAL_INDEX_DIALECTS = frozenset({"postgresql", "sqlite"})
 _INCLUDE_INDEX_DIALECTS = frozenset({"postgresql", "mssql"})
@@ -417,9 +444,6 @@ _IDENTITY_STRING_LENGTH = 255
 # writes microsecond-precision timestamps.
 _MYSQL_DATETIME_FSP = 6
 
-# Dialects ``render_index_ddl`` can compile ``CREATE INDEX`` for.
-_INDEX_DDL_DIALECTS = frozenset({"postgresql", "sqlite", "mssql", "mysql", "mariadb"})
-
 
 def check_index_ddl_dialect(dialect_name: str) -> None:
     """Reject a dialect name index DDL cannot be compiled for.
@@ -429,11 +453,15 @@ def check_index_ddl_dialect(dialect_name: str) -> None:
     check is separate from the rendering so ``protean schema render`` can run it
     on every requested dialect up front, before it knows whether any element
     declares an index.
+
+    The accepted names are ``RENDERED_INDEX_DIALECTS``, the same set
+    ``validate_indexes`` accepts a ``RawIndex`` dialect against, so a dialect a
+    domain can declare is always one the renderer can compile.
     """
-    if dialect_name not in _INDEX_DDL_DIALECTS:
+    if dialect_name not in RENDERED_INDEX_DIALECTS:
         raise IncorrectUsageError(
             f"Unknown index DDL dialect '{dialect_name}'. "
-            f"Supported: {', '.join(sorted(_INDEX_DDL_DIALECTS))}."
+            f"Supported: {', '.join(sorted(RENDERED_INDEX_DIALECTS))}."
         )
 
 
@@ -1005,6 +1033,12 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     ``protean schema render --indexes`` to write ``.sql`` artifacts without a
     live database connection.
 
+    ``dialect_name`` must be a member of
+    :data:`~protean.core.index.RENDERED_INDEX_DIALECTS`. Anything else raises
+    :class:`IncorrectUsageError`: there is no compiler for it, and falling back
+    to another dialect's compiler would emit that dialect's DDL under the
+    requested name.
+
     Needs an active domain context on the MySQL and MariaDB dialects: the
     key-width guard sizes an identifier column from the domain's
     ``identity_type``. ``write_index_ddl`` pushes one.
@@ -1049,21 +1083,9 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
         declared, column_for, attr_for, table_name, dialect_name, entity_cls.__name__
     )
 
-    dialect_impls = {
-        # SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are
-        # declared without full annotations, so mypy flags the calls as
-        # untyped even though the package ships ``py.typed``. The sqlite and
-        # mysql equivalents are annotated, hence no ignore there. See the redis
-        # adapter for the same scoped-ignore precedent.
-        "postgresql": psql.dialect(),  # type: ignore[no-untyped-call]
-        "sqlite": sqlite_dialect.dialect(),
-        "mssql": mssql.dialect(),  # type: ignore[no-untyped-call]
-        "mysql": mysql.dialect(),
-        "mariadb": mysql.mariadb.MariaDBDialect(),
-    }
-    # Guarded at the top of this function, so every name here is known.
-    assert dialect_impls.keys() == _INDEX_DDL_DIALECTS
-    dialect = dialect_impls[dialect_name]
+    # ``dialect_name`` is checked against the core constant above, and the
+    # factory map covers every member of it, so this lookup always hits.
+    dialect = _SA_DIALECT_FACTORIES[dialect_name]()
 
     statements = [
         str(CreateIndex(sa_index).compile(dialect=dialect)).strip()

@@ -12,10 +12,13 @@ from sqlalchemy import inspect
 
 from protean import Index, Q
 from protean.adapters.repository.sqlalchemy import (
+    _SA_DIALECT_FACTORIES,
     _merge_table_args,
     render_index_ddl,
 )
 from protean.core.aggregate import BaseAggregate
+from protean.core.index import RENDERED_INDEX_DIALECTS
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
 
 
@@ -122,6 +125,39 @@ class TestRenderIndexDDL:
         test_domain.register(Plain)
         test_domain.init(traverse=False)
         assert render_index_ddl(Plain, "postgresql") == []
+
+
+class TestRenderUnknownDialect:
+    """There is no compiler for a dialect outside ``RENDERED_INDEX_DIALECTS``.
+    Compiling with another dialect's would write that dialect's DDL under the
+    requested name, so the renderer raises instead."""
+
+    def test_unknown_dialect_raises(self, test_domain):
+        test_domain.register(IndexedJob, indexes=JOB_INDEXES)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            render_index_ddl(IndexedJob, "oracle")
+
+        assert "Unknown index DDL dialect 'oracle'" in str(exc.value)
+
+    def test_unknown_dialect_raises_before_the_no_indexes_shortcut(self, test_domain):
+        # The check runs ahead of the empty-declarations early return, so an
+        # element with no indexes reports the bad dialect rather than [].
+        class Plain(BaseAggregate):
+            name = String(max_length=32)
+
+        test_domain.register(Plain)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(IncorrectUsageError):
+            render_index_ddl(Plain, "oracle")
+
+    def test_factory_map_covers_every_rendered_dialect(self):
+        # Drift guard: ``render_index_ddl`` indexes the factory map with any
+        # name the core constant accepts, so a dialect added to one and not the
+        # other is a KeyError at render time.
+        assert set(_SA_DIALECT_FACTORIES) == set(RENDERED_INDEX_DIALECTS)
 
 
 class TestMergeTableArgs:
