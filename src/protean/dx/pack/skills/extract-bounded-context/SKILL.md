@@ -97,13 +97,19 @@ class OrderPlaced:
     address = String(required=True)
 ```
 
-Broker names are local to a `Domain`, so the consuming context declares the same
-broker for itself. Without this, sales dispatches to its `events` broker while
-fulfilment listens on its own `default` and nothing arrives:
+Broker names are local to a `Domain`, so the consuming context declares the
+broker for itself too. Without this, sales dispatches to its `events` broker
+while fulfilment listens on its own `default` and nothing arrives:
 
 ```python
 fulfilment.config["brokers"]["events"] = {"provider": "inline"}
 ```
+
+Deployed, both entries name the same broker endpoint (the same Redis, say) and
+the outbox relay carries the event between the contexts. `inline` is demo-only:
+each `Domain` builds its own `InlineBroker` with its own messages and
+subscribers, so two `inline` entries are two separate objects. That is why the
+worked example relays the message across by hand.
 
 The other context consumes the event through a subscriber that translates it into
 its own command. The subscriber is the anti-corruption layer. It binds to that

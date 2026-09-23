@@ -99,11 +99,17 @@ fulfilment = Domain(name="Fulfilment")
 fulfilment.config["command_processing"] = "sync"
 fulfilment.config["message_processing"] = "sync"
 # Broker names are local to each `Domain`, so configuring `events` on sales does
-# not give fulfilment a broker by that name. Fulfilment declares its own entry
-# pointing at the same broker infrastructure, and the subscriber binds to it by
-# name below. Without this the sales outbox would publish to sales' `events`
-# broker while fulfilment listened on its own `default`, and nothing would
-# arrive.
+# not give fulfilment a broker by that name. Fulfilment declares its own entry,
+# and the subscriber binds to it by name below. Without this the sales outbox
+# would publish to sales' `events` broker while fulfilment listened on its own
+# `default`, and nothing would arrive.
+#
+# `inline` is demo-only, and it is the one place this example departs from a
+# deployment. Each `Domain` builds its own `InlineBroker` with its own messages
+# and subscribers, so these two `events` entries are two separate objects, not
+# one shared bus. `relay_last_order_event` below is what carries the message
+# from sales' instance to fulfilment's. Deployed, you point both configs at the
+# same broker endpoint (the same Redis, say) and the outbox relay does it.
 fulfilment.config["brokers"]["events"] = {"provider": "inline"}
 
 
@@ -141,8 +147,8 @@ SALES_ORDER_PLACED = "Sales.OrderPlaced.v1"
 # The stream is the sales aggregate's category, `sales::order`. That is what the
 # outbox publishes on: `OutboxProcessor` routes each row by
 # `metadata.domain.stream_category`, not by the event's own name. `broker` names
-# fulfilment's own `events` entry, which points at the same broker sales
-# dispatches to.
+# fulfilment's own `events` entry, the one a deployed pair would point at the
+# same endpoint as sales'.
 @fulfilment.subscriber(stream="sales::order", broker="events")
 class OrderPlacedSubscriber:
     """Anti-corruption layer for the sales `OrderPlaced` event.

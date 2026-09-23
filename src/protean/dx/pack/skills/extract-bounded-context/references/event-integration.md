@@ -39,15 +39,27 @@ sales.config["outbox"]["external_brokers"] = ["events"]
 ### 1b. The consuming context declares the same broker
 
 Broker names are local to a `Domain`. A second `Domain` does not see the first
-one's `events` entry, so the consumer declares its own pointing at the same
-broker infrastructure, and the subscriber binds to it by name. Leave this out and
-sales dispatches to its `events` broker while fulfilment listens on its own
-`default`, so the deployed pair stays silent while a one-process demo still
-appears to work:
+one's `events` entry, so the consumer declares its own and the subscriber binds
+to it by name. Leave this out and sales dispatches to its `events` broker while
+fulfilment listens on its own `default`, so the deployed pair stays silent while
+a one-process demo still appears to work:
 
 ```python
 fulfilment.config["brokers"]["events"] = {"provider": "inline"}
 ```
+
+Declaring the name on both sides is the necessary half. The other half is that
+the two entries must resolve to the same running broker, which is a deployment
+concern: give both configs the same endpoint, such as one Redis both contexts
+connect to.
+
+`inline` does not do that, and the worked example uses it anyway. Each `Domain`
+builds its own `InlineBroker`, holding its own messages and subscribers, so the
+sales `events` broker and the fulfilment `events` broker are two objects in one
+process. Sales' outbox publishes into sales' instance and fulfilment never sees
+it. The example bridges the gap with a hand relay that republishes onto
+fulfilment's instance. Read `inline` here as a stand-in that keeps the example
+runnable with no infrastructure, and reach for a real broker when you deploy.
 
 ### 2. The event carries plain data
 
