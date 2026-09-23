@@ -32,6 +32,7 @@ import pytest
 from protean import dx
 from protean.domain import Domain
 from protean.ir.builder import IRBuilder
+from protean.utils.eventing import Message
 
 # These build domains directly from package data; they never touch the autouse
 # ``test_domain`` fixture, so skip it and its initialization cost.
@@ -122,6 +123,7 @@ def test_after_flow_creates_a_shipment_from_the_sales_event():
     Order = namespace["Order"]
     PlaceOrder = namespace["PlaceOrder"]
     Shipment = namespace["Shipment"]
+    OrderPlaced = namespace["OrderPlaced"]
     relay_last_order_event = namespace["relay_last_order_event"]
     sales.init(traverse=False)
     fulfilment.init(traverse=False)
@@ -144,6 +146,22 @@ def test_after_flow_creates_a_shipment_from_the_sales_event():
     assert fact.metadata.domain.stream_category == "sales::order"
     assert set(external) == {"data", "metadata"}
     assert external["data"]["order_id"] == order_id
+
+    # Prove the producer side too, so this does not rest on `has_outbox` alone:
+    # the published event must actually reach an outbox row, and that row must
+    # carry the category the subscriber subscribes to and the same envelope the
+    # relay publishes. `_outbox_repos` is private, but it is the only way to see
+    # the rows without running the server, and the asset itself does not use it.
+    with sales.domain_context():
+        rows = sales._outbox_repos["default"]._dao.query.all().items
+    published = [row for row in rows if row.type == OrderPlaced.__type__]
+    assert published, (
+        "the published OrderPlaced must reach an outbox row; without one a "
+        "deployed OutboxProcessor has nothing to dispatch to fulfilment"
+    )
+    row = published[-1]
+    assert row.metadata_.domain.stream_category == "sales::order"
+    assert Message(data=row.data, metadata=row.metadata_).to_external_dict() == external
 
     relay_last_order_event()
 
