@@ -8,7 +8,8 @@ allows, so `check` no longer reports AGGREGATE_TOO_LARGE.
 Shipment links back to Order by identity: it holds the order's id in a plain
 `Identifier` field. Reaching across to the `Order` root with a `Reference` field
 is what `check` reports as CROSS_AGGREGATE_REFERENCE; the identity link is the
-shape that avoids it.
+shape that avoids it. Here that field is also Shipment's own identity, so an
+order has one shipment and a redelivered OrderPlaced cannot open a second one.
 
 Order and Shipment stay decoupled through a domain event. Order raises
 OrderPlaced when it is placed. An event handler in Order's own cluster reacts to
@@ -32,7 +33,7 @@ Usage:
 """
 
 from protean import Domain, current_domain, handle, invariant
-from protean.exceptions import ValidationError
+from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.fields import DateTime, Float, HasMany, Identifier, Integer, String
 
 domain = Domain(__file__, "ecommerce")
@@ -139,9 +140,18 @@ class Shipment:
     `order_id` is the identity link back to Order: the order's id held in a
     plain field. A `Reference` to the Order root here is what trips
     CROSS_AGGREGATE_REFERENCE.
+
+    It is also the shipment's own identity. This example gives an order one
+    shipment, so the order's id identifies the shipment too, and a second
+    shipment for the same order cannot be stored. That matters because events
+    are delivered at least once: without a deterministic id, a redelivered
+    OrderPlaced would insert a second shipment under a fresh auto-generated id.
+    A domain that ships one order in several parcels would give Shipment its own
+    id instead, and then the handler guard below is the only thing standing
+    between a redelivery and a duplicate.
     """
 
-    order_id: Identifier(required=True)
+    order_id: Identifier(identifier=True)
     status: String(default="pending")
 
     packages = HasMany("Package")
@@ -154,10 +164,21 @@ class Shipment:
         return cls(order_id=order_id, status="pending")
 
     @invariant.post
-    def must_reference_an_order(self) -> None:
-        """A shipment must name the order it fulfils."""
-        if not self.order_id:
-            raise ValidationError({"order_id": ["Shipment must reference an order"]})
+    def cannot_be_delivered_before_it_is_packed(self) -> None:
+        """Nothing can be out for delivery before it has been packed.
+
+        This rule spans two of the extracted entities, which is the argument for
+        making fulfilment its own aggregate: they have to stay correct together,
+        in one transaction.
+        """
+        if self.delivery_attempts and not self.packages:
+            raise ValidationError(
+                {
+                    "delivery_attempts": [
+                        "A shipment cannot be delivered before it is packed"
+                    ]
+                }
+            )
 
 
 @domain.entity(part_of="Shipment")
@@ -202,8 +223,16 @@ class ShipmentCommandHandler:
 
     @handle(StartShipment)
     def start_shipment(self, command: StartShipment) -> None:
-        shipment = Shipment.start(command.order_id)
-        current_domain.repository_for(Shipment).add(shipment)
+        repository = current_domain.repository_for(Shipment)
+        try:
+            repository.get(command.order_id)
+        except ObjectNotFoundError:
+            repository.add(Shipment.start(command.order_id))
+        else:
+            # The shipment is already open. A redelivered OrderPlaced reissues
+            # StartShipment, and starting over would throw away whatever
+            # progress the shipment has made since.
+            return
 
 
 # --- The cross-aggregate link: a domain event, not a reference ---

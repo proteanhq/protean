@@ -10,6 +10,8 @@ does not run the event-driven hop. This harness does both:
 - It runs the after asset's flow: placing an order opens its shipment through a
   domain event, so the asset's claim that the two aggregates stay linked by
   identity and by an event holds.
+- It redelivers that event, because delivery is at-least-once, and asserts the
+  after asset opens one shipment and leaves it alone.
 
 Each asset is executed under its own ``run_name`` so the two domains' element
 registrations land in separate namespaces and cannot collide (both assets define
@@ -148,3 +150,44 @@ def test_after_asset_opens_the_shipment_by_identity():
     # link was driven by the OrderPlaced event, not by a direct reference.
     assert shipment.order_id == "ORD-1"
     assert shipment.status == "pending"
+
+
+def test_after_asset_survives_a_redelivered_event():
+    """Events are delivered at least once, so a reader who copies this asset gets
+    a redelivered ``OrderPlaced`` sooner or later. The asset must not open a
+    second shipment for the same order when that happens: ``order_id`` is
+    ``Shipment``'s own identity, and the command handler no-ops on a shipment
+    that is already open."""
+    namespace, domain = _load("split_order_after.py", "_split_after_redeliver_")
+
+    with domain.domain_context():
+        domain.process(
+            namespace["PlaceOrder"](order_id="ORD-1", customer_id="CUST-1", total=100.0)
+        )
+
+        # The shipment moves on before the duplicate lands, so a handler that
+        # started over would be visible as a reset back to "pending". Look it up
+        # by order_id rather than by identity, so this step does not depend on
+        # order_id being the identity and the assertions below stay the thing
+        # under test.
+        repository = domain.repository_for(namespace["Shipment"])
+        shipment = repository._dao.find_by(order_id="ORD-1")
+        shipment.status = "in_transit"
+        repository.add(shipment)
+
+        # Redeliver the same event straight to the handler, the way a restarted
+        # subscription would.
+        namespace["ShipmentInitiation"]().on_order_placed(
+            namespace["OrderPlaced"](
+                order_id="ORD-1", customer_id="CUST-1", total=100.0
+            )
+        )
+
+        shipments = repository._dao.query.filter(order_id="ORD-1").all().items
+
+    assert len(shipments) == 1, (
+        "a redelivered OrderPlaced must not open a second shipment"
+    )
+    assert shipments[0].status == "in_transit", (
+        "the handler must leave an open shipment alone, not restart it"
+    )

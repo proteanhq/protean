@@ -39,8 +39,14 @@ by identity: store the other aggregate's id in a plain field.
 ```python
 @domain.aggregate
 class Shipment:
-    order_id: Identifier(required=True)   # the Order's id, held by value
+    order_id: Identifier(identifier=True)   # the Order's id, held by value
 ```
+
+Whether that field is also the new aggregate's own identity is a modelling
+call. An order with one shipment can use it as the identity, which makes a
+duplicate impossible to store. An order that ships in several parcels cannot,
+and needs a `required=True` field plus a handler that refuses to create a
+second shipment for an order it has already seen.
 
 Avoid a `Reference` field pointing at the other aggregate's root:
 
@@ -62,3 +68,8 @@ has to happen as two writes. Carry it with a domain event: one aggregate raises
 the event on its state change, and a handler reacts and drives the other
 aggregate through a command. That keeps the link one-directional and decoupled,
 and it never reintroduces a direct object reference.
+
+Events are delivered at least once, so the second write has to survive a repeat.
+Where it creates the other aggregate, a redelivery creates a second one unless
+the id is deterministic and the handler no-ops on an aggregate that already
+exists.

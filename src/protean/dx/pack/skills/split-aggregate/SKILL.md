@@ -62,7 +62,7 @@ Create the new aggregate and move the extracted entities under it with
 ```python
 @domain.aggregate
 class Shipment:
-    order_id: Identifier(required=True)   # identity link back to Order
+    order_id: Identifier(identifier=True)   # identity link back to Order
     status: String(default="pending")
 
     packages = HasMany("Package")
@@ -85,6 +85,11 @@ The identity field carries the link and keeps the two aggregates as separate
 loading and locking units. Load the `Order` through its own repository when a
 `Shipment` needs it.
 
+In this example an order has one shipment, so `order_id` is also `Shipment`'s
+own identity (`identifier=True`). Pick that deliberately: it is what makes the
+step below safe to repeat. Where an order can ship in several parcels, give
+`Shipment` its own id and keep `order_id` a plain `required=True` field.
+
 ### 3. Carry the cross-aggregate step with a domain event
 
 The two aggregates commit in separate transactions, so the step that spans them
@@ -99,6 +104,28 @@ class ShipmentInitiation:
     def on_order_placed(self, event: OrderPlaced) -> None:
         current_domain.process(StartShipment(order_id=event.order_id))
 ```
+
+Events are delivered at least once, so write the receiving end to survive a
+repeat. `OrderPlaced` can arrive twice, which reissues `StartShipment`, so
+`Shipment`'s command handler returns without doing anything when the shipment is
+already open:
+
+```python
+@handle(StartShipment)
+def start_shipment(self, command: StartShipment) -> None:
+    repository = current_domain.repository_for(Shipment)
+    try:
+        repository.get(command.order_id)
+    except ObjectNotFoundError:
+        repository.add(Shipment.start(command.order_id))
+    else:
+        return   # already open; starting over would discard its progress
+```
+
+Without both the deterministic id and this guard, a second delivery inserts a
+second shipment for the same order. See
+[Idempotent Event Handlers](https://docs.proteanhq.com/patterns/idempotent-event-handlers/)
+for the full set of strategies.
 
 The handler stays in `Order`'s cluster because it reacts to `Order`'s own event.
 A handler that reacts to another cluster's event trips
@@ -120,6 +147,11 @@ both aggregates.
 3. **Keep the event handler in the cluster that owns the event.** A handler that
    reacts to another cluster's event trips `EVENT_HANDLER_FOREIGN_EVENT`. Hand
    off to the other aggregate with a command.
+
+4. **Make the cross-aggregate step safe to repeat.** Events are delivered at
+   least once. A step that creates the other aggregate will create it twice
+   unless the new aggregate has a deterministic id and the handler no-ops when
+   it already exists.
 
 ## Related skills
 
