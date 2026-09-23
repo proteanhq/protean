@@ -36,8 +36,7 @@ if TYPE_CHECKING:
 # ``protean/adapters/repository/sqlalchemy.py``), so the accepted set and the
 # rendered set cannot drift apart. On ``main`` these are the keys of
 # ``dialect_impls`` in that module. When a new SQL provider lands (for example
-# MySQL/MariaDB, #1581) its dialect name is added here and the renderer picks
-# it up.
+# MySQL/MariaDB) its dialect name is added here and the renderer picks it up.
 RENDERED_INDEX_DIALECTS = frozenset({"postgresql", "sqlite", "mssql"})
 
 

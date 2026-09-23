@@ -151,9 +151,14 @@ resolution), raising `IncorrectUsageError` on:
 - a field that is not declared on the element (in `fields`, `desc`, or
   `include`);
 - a `desc` entry not present in `fields`;
-- a list entry that is neither an `Index` nor a `RawIndex`.
+- a list entry that is neither an `Index` nor a `RawIndex`;
+- a `RawIndex` whose `dialect` is not one the framework renders DDL for
+  (`mssql`, `postgresql`, `sqlite`).
 
-`RawIndex` entries are opaque verbatim DDL and are not introspected.
+A `RawIndex`'s DDL string stays opaque: only its `dialect` is checked. A name
+outside the rendered set (a typo like `postgres`, or a dialect with no
+renderer) would be silently dropped at every call site, so validation rejects
+it here instead.
 
 ---
 
