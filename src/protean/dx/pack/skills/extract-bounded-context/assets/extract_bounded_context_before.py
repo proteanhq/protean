@@ -1,14 +1,14 @@
 """
-One domain holding two bounded contexts that reference each other in a cycle
-(before extraction).
+A single domain whose sales and fulfilment contexts reference each other in a
+cycle (before extraction).
 
 Sales and fulfilment live in a single `Domain`. `Order` (sales) points at its
 `Shipment` and `Shipment` (fulfilment) points back at its `Order`, both by
-in-process `Reference` identity fields. Those two cross-cluster references form a
+in-process `Reference` identity fields. Those cross-cluster references form a
 directed cycle, so `check` reports `CIRCULAR_CLUSTER_DEPENDENCY` on both clusters
 (and `CROSS_AGGREGATE_REFERENCE` on each reference).
 
-The fix is to split the two contexts into separate `Domain` objects that talk by
+The fix is to split the contexts into separate `Domain` objects that talk by
 domain events across the seam. See extract_bounded_context_after.py.
 """
 

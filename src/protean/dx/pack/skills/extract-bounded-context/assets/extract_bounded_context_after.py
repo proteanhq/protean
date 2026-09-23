@@ -2,7 +2,7 @@
 Sales and fulfilment split into two `Domain` objects that talk by events across
 the seam (after extraction).
 
-This is extract_bounded_context_before.py with the two contexts pulled apart:
+This is extract_bounded_context_before.py with the contexts pulled apart:
 
 - The sales domain owns `Order` and publishes `OrderPlaced` when an order is
   placed. It holds no reference into fulfilment.
@@ -89,7 +89,7 @@ fulfilment.config["message_processing"] = "sync"
 @fulfilment.aggregate
 class Shipment:
     # The order is held by identity across the seam, not by a Reference into the
-    # sales domain. That is what keeps the two contexts free of the cycle.
+    # sales domain. That is what keeps the contexts free of the cycle.
     order_id = Identifier(required=True)
     address = String(required=True, max_length=200)
     status = String(default="pending", max_length=20)
