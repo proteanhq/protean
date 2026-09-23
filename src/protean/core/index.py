@@ -36,9 +36,10 @@ if TYPE_CHECKING:
 # map, ``_SA_DIALECT_FACTORIES``, with one SQLAlchemy compiler per name in this
 # set. The two are declared separately and
 # ``test_factory_map_covers_every_rendered_dialect`` fails if they go out of
-# step. Adding a dialect (for example MySQL/MariaDB, once a provider lands)
-# means adding the name here and its factory there.
-RENDERED_INDEX_DIALECTS = frozenset({"postgresql", "sqlite", "mssql"})
+# step. Adding a dialect means adding the name here and its factory there.
+RENDERED_INDEX_DIALECTS = frozenset(
+    {"postgresql", "sqlite", "mssql", "mysql", "mariadb"}
+)
 
 
 @dataclass(frozen=True, init=False)

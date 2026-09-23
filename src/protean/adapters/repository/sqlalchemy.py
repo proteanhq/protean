@@ -16,6 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, ClassVar
 
 import sqlalchemy.dialects.mssql as mssql
+import sqlalchemy.dialects.mysql as mysql
 import sqlalchemy.dialects.postgresql as psql
 from sqlalchemy import (
     DDL,
@@ -67,9 +68,9 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import FieldSpec
 from protean.port.dao import BaseDAO, BaseLookup
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import IdentityType, _fully_qualified_name, occ_trace
+from protean.utils import Database, IdentityType, _fully_qualified_name, occ_trace
 from protean.utils.container import Options
-from protean.utils.globals import current_domain, current_uow
+from protean.utils.globals import _domain_context_stack, current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
 from protean.utils.query import F, Q
 from protean.utils.reflection import attributes, fields, id_field
@@ -370,17 +371,94 @@ _PARTIAL_INDEX_OPS = {
 #
 # SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are declared
 # without full annotations, so mypy flags the calls as untyped even though the
-# package ships ``py.typed``. The sqlite equivalent is annotated. Typing the map
-# values as a zero-arg callable keeps the call site clean.
+# package ships ``py.typed``. The sqlite and mysql equivalents are annotated.
+# Typing the map values as a zero-arg callable keeps the call site clean and
+# needs no per-call ignore. MariaDB has no module-level factory, so the dialect
+# class stands in for one.
 _SA_DIALECT_FACTORIES: dict[str, typing.Callable[[], typing.Any]] = {
     "postgresql": psql.dialect,
     "sqlite": sqlite_dialect.dialect,
     "mssql": mssql.dialect,
+    "mysql": mysql.dialect,
+    "mariadb": mysql.mariadb.MariaDBDialect,
 }
 
 # Dialects that support each opt-in index feature.
 _PARTIAL_INDEX_DIALECTS = frozenset({"postgresql", "sqlite"})
 _INCLUDE_INDEX_DIALECTS = frozenset({"postgresql", "mssql"})
+
+# SQLAlchemy reports two dialect names for the one provider: ``mysql+pymysql://``
+# is ``mysql`` and ``mariadb+pymysql://`` is ``mariadb``. Every branch that keys
+# off the dialect name has to accept both, so they are named once here.
+_MYSQL_DIALECTS = frozenset({"mysql", "mariadb"})
+
+# The charset is pinned, not configurable: Protean stores 4-byte characters, and
+# any narrower charset silently truncates or raises on them. The collation is
+# configurable through the ``collation`` config key, and must be one of this
+# charset's — MySQL rejects a mismatched pair at CREATE TABLE. Both are emitted
+# as table defaults, which every column inherits.
+#
+# MySQL 8 defaults to ``utf8mb4_0900_ai_ci`` and MariaDB to
+# ``utf8mb4_uca1400_ai_ci``. Both are accent-insensitive and case-insensitive, so
+# ``exact``, ``contains``, ``startswith`` and ``endswith`` would all match
+# case-insensitively on a table that takes the server default. The
+# accent-sensitive, case-sensitive collation below restores the behaviour every
+# other provider has. It is present on MySQL 8.0.1+ and on MariaDB 10.10+ (where
+# it is an alias for ``utf8mb4_uca1400_as_cs``); an older MariaDB should set
+# ``collation = "utf8mb4_bin"``.
+_MYSQL_CHARSET = "utf8mb4"
+
+# The accent- and case-sensitive utf8mb4 collation, spelled the way each server
+# spells it. MySQL has had `utf8mb4_0900_as_cs` since 8.0.1 and has never had a
+# `uca1400` name. MariaDB is the other way round: `utf8mb4_uca1400_as_cs` since
+# 10.10, and the `utf8mb4_0900_*` aliases only from 11.4.5. Checked by creating
+# a table on 10.6, 10.11, 11.4.4 and 11.4.13. Using one name for both fails at
+# CREATE TABLE on every MariaDB before 11.4.5, 10.11 LTS included.
+_MYSQL_DEFAULT_COLLATION = "utf8mb4_0900_as_cs"
+_MARIADB_DEFAULT_COLLATION = "utf8mb4_uca1400_as_cs"
+
+# The storage engine and row format the provider's guarantees are written
+# against. Both are server settings the operator can change, so the tables
+# Protean creates name them instead of hoping.
+_MYSQL_ENGINE = "InnoDB"
+_MYSQL_ROW_FORMAT = "DYNAMIC"
+
+# InnoDB caps an index key at 3072 bytes, and a ``utf8mb4`` character takes up to
+# 4 bytes, so a VARCHAR longer than 768 characters cannot be indexed in full —
+# which is what a primary key, a unique constraint, or any declared index needs.
+_MYSQL_MAX_INDEX_KEY_BYTES = 3072
+_MYSQL_BYTES_PER_CHAR = 4
+_MYSQL_MAX_INDEXED_VARCHAR = _MYSQL_MAX_INDEX_KEY_BYTES // _MYSQL_BYTES_PER_CHAR
+
+# Width of a string identity column, and so of any column referencing one.
+# Without an explicit length the column is the database's choice, which MSSQL
+# rejects outright and MySQL maps to TEXT.
+_IDENTITY_STRING_LENGTH = 255
+
+# MySQL's ``DATETIME`` carries zero fractional-second digits unless the column
+# says otherwise, so microseconds are dropped on write with no error. Protean
+# writes microsecond-precision timestamps.
+_MYSQL_DATETIME_FSP = 6
+
+
+def check_index_ddl_dialect(dialect_name: str) -> None:
+    """Reject a dialect name index DDL cannot be compiled for.
+
+    An unknown name used to fall through to the SQLite dialect, which compiles
+    without complaint and hands back plausible DDL for the wrong database. The
+    check is separate from the rendering so ``protean schema render`` can run it
+    on every requested dialect up front, before it knows whether any element
+    declares an index.
+
+    The accepted names are ``RENDERED_INDEX_DIALECTS``, the same set
+    ``validate_indexes`` accepts a ``RawIndex`` dialect against, so a dialect a
+    domain can declare is always one the renderer can compile.
+    """
+    if dialect_name not in RENDERED_INDEX_DIALECTS:
+        raise IncorrectUsageError(
+            f"Unknown index DDL dialect '{dialect_name}'. "
+            f"Supported: {', '.join(sorted(RENDERED_INDEX_DIALECTS))}."
+        )
 
 
 def _q_field_names(criteria: Q) -> set[str]:
@@ -499,25 +577,413 @@ def _attribute_map(entity_cls: typing.Any) -> dict[str, str]:
 
 
 def _merge_table_args(
-    existing: typing.Any, sa_indexes: list[SAIndex]
+    existing: typing.Any,
+    sa_indexes: list[SAIndex],
+    table_kwargs: dict[str, typing.Any] | None = None,
 ) -> tuple[typing.Any, ...]:
-    """Append SQLAlchemy ``Index`` objects to a model's ``__table_args__``.
+    """Append SQLAlchemy ``Index`` objects and table kwargs to ``__table_args__``.
 
     SQLAlchemy allows ``__table_args__`` to be a dict (table kwargs), a tuple of
     positional args, or a tuple whose last element is a dict of table kwargs.
     The trailing dict (when present) must stay last, so indexes are inserted
-    before it.
+    before it and ``table_kwargs`` is merged into it. Everything the model
+    declares is preserved, except the keys in ``table_kwargs``: those are the
+    provider's charset and collation, and they win.
+
+    They have to. The pair has to agree, so a model setting only
+    ``mysql_charset`` gets the provider's collation over a different character
+    set and MySQL rejects the table with error 1253. Setting both would be
+    worse: it silently drops the case-sensitive collation every string lookup
+    in the framework depends on.
     """
     indexes = tuple(sa_indexes)
+    extra = dict(table_kwargs or {})
+
     if not existing:
-        return indexes
+        return (*indexes, extra) if extra else indexes
     if isinstance(existing, dict):
         # Pure table-kwargs dict — indexes go first, dict stays last.
-        return (*indexes, existing)
+        return (*indexes, {**existing, **extra})
     existing = tuple(existing)
     if existing and isinstance(existing[-1], dict):
-        return (*existing[:-1], *indexes, existing[-1])
-    return (*existing, *indexes)
+        return (*existing[:-1], *indexes, {**existing[-1], **extra})
+    return (*existing, *indexes, extra) if extra else (*existing, *indexes)
+
+
+def _mysql_table_kwargs(
+    dialect_name: str, options: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Table-level kwargs for MySQL or MariaDB.
+
+    SQLAlchemy keys dialect table kwargs by dialect name, and quietly ignores a
+    prefix that does not match — ``mysql_charset`` on the ``mariadb`` dialect
+    emits no ``CHARSET`` clause and raises nothing — so the prefix comes from
+    the live dialect name rather than a fixed string.
+
+    The engine and row format are named rather than inherited from the server,
+    because two of the provider's guarantees rest on them. ``ADR-0027`` makes
+    the Unit of Work one real transaction, which a MyISAM table cannot give at
+    all, and ``default_storage_engine`` is an operator setting. The 3072-byte
+    index key the width guard checks against is the ``DYNAMIC`` and
+    ``COMPRESSED`` limit; under ``COMPACT`` or ``REDUNDANT`` it is 767, so the
+    guard would pass a key the server then refuses.
+    """
+    if dialect_name not in _MYSQL_DIALECTS:
+        return {}
+    return {
+        f"{dialect_name}_charset": _MYSQL_CHARSET,
+        f"{dialect_name}_collate": options.get("collation")
+        or (
+            _MARIADB_DEFAULT_COLLATION
+            if dialect_name == "mariadb"
+            else _MYSQL_DEFAULT_COLLATION
+        ),
+        f"{dialect_name}_engine": _MYSQL_ENGINE,
+        f"{dialect_name}_row_format": _MYSQL_ROW_FORMAT,
+    }
+
+
+def _owns_schema_through_a_custom_model(entity_cls: typing.Any) -> bool:
+    """Whether a custom database model declares this entity's MySQL columns.
+
+    The offline renderer has no engine and builds a throwaway table, so it
+    cannot see the columns such a model declares. Measuring the entity's fields
+    instead answers the wrong question in both directions: it rejects an index
+    over a column the model narrowed, and passes one over a column the model
+    widened past the cap. So the renderer leaves those alone and ``protean db
+    setup`` catches them against the real columns.
+
+    MariaDB has no database type of its own; a model for either server is
+    registered under ``mysql``.
+    """
+    if _domain_context_stack.top is None:
+        return False
+    registered = current_domain._database_models.get(
+        _fully_qualified_name(entity_cls), {}
+    )
+    return bool(registered.get(Database.mysql.value) or registered.get(None))
+
+
+# InnoDB sizes an index key part by the column's storage width, and applies the
+# 3072-byte cap to the whole key, so a non-string column in a composite index
+# counts too. Measured against MySQL 8.4 and MariaDB 11.4, which agree exactly:
+# `VARCHAR(768)` utf8mb4 fills the budget on its own, and adding an `INT` to the
+# index is refused.
+_MYSQL_FIXED_KEY_WIDTHS: dict[typing.Any, int] = {
+    sa_types.Boolean: 1,  # TINYINT
+    sa_types.SmallInteger: 2,
+    sa_types.Integer: 4,
+    sa_types.BigInteger: 8,
+    sa_types.Date: 3,
+}
+
+# MySQL turns ``FLOAT(p)`` into a DOUBLE once ``p`` passes this, and doubles the
+# storage with it. The manual says the switch is at 24; both servers actually
+# make FLOAT(24) four bytes and FLOAT(25) eight, so the measurement wins.
+_MYSQL_FLOAT_MAX_SINGLE_PRECISION = 24
+
+# Bytes a DECIMAL's digits pack into: four per nine digits, then this much for
+# what is left over, applied to the integer and fractional parts separately.
+_MYSQL_DECIMAL_LEFTOVER_BYTES = (0, 1, 1, 2, 2, 3, 3, 4, 4)
+
+# A DATETIME is five bytes plus its fractional-second digits, one byte per two.
+_MYSQL_DATETIME_BASE_BYTES = 5
+
+
+def _mysql_decimal_key_width(precision: int | None, scale: int | None) -> int:
+    """Bytes a DECIMAL column contributes to an index key.
+
+    MySQL's own packing: nine digits per four bytes, with a partial group
+    costing ``_MYSQL_DECIMAL_LEFTOVER_BYTES``. Integer and fractional digits
+    pack separately. With no precision declared the column is the server
+    default, ``DECIMAL(10,0)``.
+    """
+    precision = 10 if precision is None else precision
+    scale = 0 if scale is None else scale
+    integer_digits = max(precision - scale, 0)
+
+    def packed(digits: int) -> int:
+        return (digits // 9) * 4 + _MYSQL_DECIMAL_LEFTOVER_BYTES[digits % 9]
+
+    return packed(integer_digits) + packed(scale)
+
+
+def _mysql_datetime_key_width(fsp: int | None) -> int:
+    """Bytes a DATETIME contributes, from its fractional-second precision."""
+    return _MYSQL_DATETIME_BASE_BYTES + ((fsp or 0) + 1) // 2
+
+
+def _mysql_fixed_column_key_width(column_type: typing.Any) -> int:
+    """Bytes a non-string mapped column contributes to an index key.
+
+    Walks the MRO so a dialect subclass is measured as what it is: MySQL's
+    ``DATETIME`` carries the fractional-second digits the provider pins, and
+    ``BigInteger`` has to be found before ``Integer``. A type not listed
+    contributes nothing, which keeps an exotic column from being rejected on a
+    guess; one that overruns still gets MySQL's own error.
+    """
+    if isinstance(column_type, sa_types.DateTime):
+        return _mysql_datetime_key_width(getattr(column_type, "fsp", None))
+
+    # ``Double``, ``DOUBLE`` and ``REAL`` all subclass ``Float``, so the MRO
+    # would find the four-byte entry for columns MySQL stores in eight. REAL is
+    # a DOUBLE unless the server runs with ``REAL_AS_FLOAT``, which is off by
+    # default; counting it as eight over-counts only there, and only for a key
+    # within four bytes of the cap.
+    if isinstance(column_type, sa_types.Float):
+        precision = getattr(column_type, "precision", None)
+        if isinstance(column_type, (sa_types.Double, sa_types.REAL)) or (
+            precision is not None and precision > _MYSQL_FLOAT_MAX_SINGLE_PRECISION
+        ):
+            return 8
+        return 4
+
+    for klass in type(column_type).__mro__:
+        if klass in _MYSQL_FIXED_KEY_WIDTHS:
+            return _MYSQL_FIXED_KEY_WIDTHS[klass]
+        if klass is sa_types.Numeric:
+            return _mysql_decimal_key_width(
+                getattr(column_type, "precision", None),
+                getattr(column_type, "scale", None),
+            )
+    return 0
+
+
+def _mysql_fixed_field_key_width(field_obj: typing.Any) -> int:
+    """The same, for a declared field, which is all the renderer can see.
+
+    A ``DateTime`` field is mapped to ``DATETIME(6)`` by ``_mysql_column_type``,
+    so it is measured at that precision here.
+    """
+    python_type = _resolve_python_type(field_obj)
+    if python_type is bool:
+        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Boolean]
+    if python_type is int:
+        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Integer]
+    if python_type is float:
+        # A ``Float`` field maps to a bare ``FLOAT``, which is four bytes. The
+        # eight-byte types only arrive through a custom model, which the
+        # renderer cannot see anyway.
+        return 4
+    if python_type is _date:
+        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Date]
+    if python_type is _datetime:
+        return _mysql_datetime_key_width(_MYSQL_DATETIME_FSP)
+    if python_type is decimal.Decimal:
+        return _mysql_decimal_key_width(
+            getattr(field_obj, "precision", None), getattr(field_obj, "scale", None)
+        )
+    return 0
+
+
+def _mysql_identity_key_width() -> int:
+    """Bytes an identity column contributes to an index key.
+
+    Mapped by ``_get_identity_type`` from the domain's ``identity_type``, not
+    from anything the field declares: a string identity is VARCHAR(255), a UUID
+    is CHAR(32), an integer is INT. The integer is only four bytes, and four
+    bytes is the whole difference at the boundary: a ``VARCHAR(768)`` fills the
+    budget, so an index over it and the identity is 3076 and refused.
+    """
+    identity_type = _get_identity_type()
+    if identity_type is sa_types.String:
+        return _IDENTITY_STRING_LENGTH * _MYSQL_BYTES_PER_CHAR
+    if identity_type is GUID:
+        return 32 * _MYSQL_BYTES_PER_CHAR
+    return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Integer]
+
+
+def _mysql_index_key_width(
+    index: typing.Any, entity_cls: typing.Any
+) -> tuple[int, list[str], list[str]]:
+    """Bytes the string columns of ``index`` contribute, and any TEXT fields.
+
+    A ``utf8mb4`` character is up to 4 bytes and InnoDB sizes an index key by
+    the column's maximum width, so a ``String(max_length=L)`` costs ``4 * L``.
+    InnoDB caps the whole key, so every column in it counts. A string is the
+    only one wide enough to reach 3072 bytes on its own, but a fixed-width
+    column alongside a near-limit string is what pushes it over: a
+    ``VARCHAR(768)`` fills the budget exactly, and adding an ``Integer`` to the
+    index is refused. A type with no width listed contributes nothing rather
+    than a guess, and a key that overruns on such a column still gets MySQL's
+    own error.
+
+    A string field with no ``max_length`` maps to ``TEXT``, which InnoDB cannot
+    index at all without a prefix length; those are returned by name rather than
+    given a width, because no width would make them indexable. A ``Dict``, a
+    ``List`` or a ``ValueObjectList`` maps to ``JSON``, which MySQL indexes
+    only through a generated column on a JSON path, so those come back by name
+    too. A pickled ``ValueObjectList`` is a BLOB, which has the ``TEXT``
+    problem instead.
+
+    An index may name a declared field or the persisted attribute behind it,
+    since ``validate_indexes`` accepts both. A value-object attribute arrives as
+    a ``_ShadowField`` wrapping the value object's own field, so it is unwrapped
+    the same way the model mapper unwraps it.
+    """
+    width = 0
+    unbounded: list[str] = []
+    json_columns: list[str] = []
+    entity_fields = {**attributes(entity_cls), **fields(entity_cls)}
+    for field_name in index.fields:
+        field_obj = entity_fields.get(field_name)
+        if isinstance(field_obj, _ShadowField):
+            field_obj = field_obj.field_obj
+
+        # An identifier, and an association column referencing one, are both
+        # sized from the domain's ``identity_type`` rather than from anything
+        # the field declares. A ``_ReferenceField`` is not a ``ResolvedField``,
+        # so it has to be handled ahead of that check.
+        if type(field_obj) is _ReferenceField or (
+            isinstance(field_obj, ResolvedField) and field_obj.identifier
+        ):
+            width += _mysql_identity_key_width()
+            continue
+
+        # A ``ValueObjectList`` is not a ``ResolvedField`` either. It maps to
+        # JSON, or to a BLOB when ``pickled``, and neither is indexable. The
+        # live path refuses both from the column, so the renderer reads the
+        # same verdict off the field.
+        if isinstance(field_obj, ValueObjectList):
+            if getattr(field_obj, "pickled", False):
+                unbounded.append(field_name)
+            else:
+                json_columns.append(field_name)
+            continue
+
+        if not isinstance(field_obj, ResolvedField):
+            continue
+
+        if _resolve_python_type(field_obj) in (dict, list) and not getattr(
+            field_obj, "pickled", False
+        ):
+            json_columns.append(field_name)
+            continue
+
+        if _resolve_python_type(field_obj) is not str:
+            width += _mysql_fixed_field_key_width(field_obj)
+            continue
+        if field_obj.max_length:
+            width += field_obj.max_length * _MYSQL_BYTES_PER_CHAR
+        else:
+            unbounded.append(field_name)
+    return width, unbounded, json_columns
+
+
+def _mysql_index_key_width_from_columns(
+    index: typing.Any, column_for: Callable[[str], typing.Any]
+) -> tuple[int, list[str], list[str]]:
+    """Bytes the columns of ``index`` contribute, and any MySQL cannot index.
+
+    The column-mapping loop leaves an attribute alone when the model already
+    declares it, so a custom database model decides its own column widths. It
+    can narrow a wide field or widen a narrow one, and InnoDB measures the
+    column. Measuring the field instead rejected an index over a narrowed
+    column and passed one over a widened column, which then failed at
+    ``create_all()`` with the 1071 this guard exists to replace.
+
+    A column ``column_for`` cannot resolve is skipped: indexing a value object
+    by its logical name is one such case, and ``_make_sa_indexes`` raises its
+    own error for it.
+    """
+    width = 0
+    unbounded: list[str] = []
+    json_columns: list[str] = []
+    for field_name in index.fields:
+        column_type = getattr(column_for(field_name), "type", None)
+
+        if isinstance(column_type, sa_types.JSON):
+            json_columns.append(field_name)
+            continue
+
+        if isinstance(column_type, GUID):
+            # CHAR(32) on MySQL, per ``GUID.load_dialect_impl``.
+            width += 32 * _MYSQL_BYTES_PER_CHAR
+            continue
+
+        # ``Text`` subclasses ``String`` and accepts a length hint, which MySQL
+        # ignores: ``Text(100)`` is still a TEXT column and still needs a
+        # prefix length to be indexed. So the subclass is checked first, and
+        # its ``length`` is not read. A binary column is a BLOB and has the
+        # same problem, with the same error, 1170. ``PickleType`` is named
+        # because it is a ``TypeDecorator`` over ``LargeBinary`` and so is not
+        # an instance of it.
+        if isinstance(
+            column_type,
+            (sa_types.Text, sa_types.LargeBinary, sa_types.PickleType),
+        ):
+            unbounded.append(field_name)
+            continue
+
+        if not isinstance(column_type, sa_types.String):
+            width += _mysql_fixed_column_key_width(column_type)
+            continue
+        if column_type.length:
+            width += column_type.length * _MYSQL_BYTES_PER_CHAR
+        else:
+            unbounded.append(field_name)
+    return width, unbounded, json_columns
+
+
+def _check_mysql_index_key_widths(
+    declared: typing.Any,
+    entity_cls: typing.Any,
+    column_for: Callable[[str], typing.Any] | None = None,
+) -> None:
+    """Reject a declared ``Index`` whose key cannot fit InnoDB's 3072-byte cap.
+
+    The column-level guard in the model builder only sees a field's own
+    ``identifier`` / ``unique`` flags, so an index declared through the public
+    ``Index(...)`` API reached ``create_all()`` and failed there with MySQL's
+    ``Specified key was too long`` instead of a message naming the fields.
+    Composite indexes are summed, since InnoDB caps the whole key.
+
+    Pass ``column_for`` to measure the columns the model will really index,
+    which is what InnoDB caps. The offline renderer builds a throwaway table
+    whose columns carry no real types, so it measures the declared fields.
+    """
+    for index in declared:
+        if not isinstance(index, ProteanIndex):
+            continue
+
+        covered = ", ".join(index.fields)
+        name = index.name or f"over {covered}"
+        if column_for is None:
+            width, unbounded, json_columns = _mysql_index_key_width(index, entity_cls)
+        else:
+            width, unbounded, json_columns = _mysql_index_key_width_from_columns(
+                index, column_for
+            )
+
+        if json_columns:
+            raise IncorrectUsageError(
+                f"Index {name!r} on '{entity_cls.__name__}' covers "
+                f"{', '.join(json_columns)}, which "
+                f"{'map' if len(json_columns) > 1 else 'maps'} to MySQL's JSON "
+                f"type. MySQL indexes a JSON column only through a generated "
+                f"column on a JSON path, which Protean does not emit. Index a "
+                f"scalar field instead."
+            )
+
+        if unbounded:
+            raise IncorrectUsageError(
+                f"Index {name!r} on '{entity_cls.__name__}' covers "
+                f"{', '.join(unbounded)}, which "
+                f"{'map' if len(unbounded) > 1 else 'maps'} to a TEXT or BLOB "
+                f"column. InnoDB cannot index either without a prefix length. "
+                f"Give the field a max_length (e.g. Field(max_length=255)), or "
+                f"map it to a VARCHAR column."
+            )
+
+        if width > _MYSQL_MAX_INDEX_KEY_BYTES:
+            raise IncorrectUsageError(
+                f"Index {name!r} on '{entity_cls.__name__}' covers {covered}, "
+                f"needing {width} bytes. InnoDB caps an index key at "
+                f"{_MYSQL_MAX_INDEX_KEY_BYTES} bytes across every column in it, "
+                f"which is {_MYSQL_MAX_INDEXED_VARCHAR} utf8mb4 characters if "
+                f"the key is all string. Shorten the fields' max_length, or "
+                f"index fewer of them."
+            )
 
 
 def _build_sa_indexes(
@@ -537,6 +1003,13 @@ def _build_sa_indexes(
 
     def column_for(field_name: str) -> typing.Any:
         return getattr(model_cls, attr_for.get(field_name, field_name))
+
+    def declared_column_for(field_name: str) -> typing.Any:
+        """``column_for`` without the AttributeError, for the width guard."""
+        return getattr(model_cls, attr_for.get(field_name, field_name), None)
+
+    if dialect_name in _MYSQL_DIALECTS:
+        _check_mysql_index_key_widths(declared, entity_cls, declared_column_for)
 
     return _make_sa_indexes(
         declared,
@@ -561,17 +1034,24 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     :class:`IncorrectUsageError`: there is no compiler for it, and falling back
     to another dialect's compiler would emit that dialect's DDL under the
     requested name.
+
+    Needs an active domain context on the MySQL and MariaDB dialects: the
+    key-width guard sizes an identifier column from the domain's
+    ``identity_type``. ``write_index_ddl`` pushes one.
     """
-    if dialect_name not in RENDERED_INDEX_DIALECTS:
-        raise IncorrectUsageError(
-            f"Cannot render index DDL for unknown dialect '{dialect_name}'. "
-            f"The framework renders index DDL only for "
-            f"{sorted(RENDERED_INDEX_DIALECTS)}."
-        )
+    check_index_ddl_dialect(dialect_name)
 
     declared = getattr(entity_cls.meta_, "indexes", ()) or ()
     if not declared:
         return []
+
+    if dialect_name in _MYSQL_DIALECTS and not _owns_schema_through_a_custom_model(
+        entity_cls
+    ):
+        # Same guard as the live model builder. Rendering is offline, but the
+        # DDL it writes is meant to be applied, and InnoDB rejects an oversized
+        # key at apply time with an error that names no fields.
+        _check_mysql_index_key_widths(declared, entity_cls)
 
     attr_for = _attribute_map(entity_cls)
     table_name = entity_cls.meta_.schema_name or entity_cls.derive_schema_name()
@@ -611,6 +1091,97 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
         raw.ddl.strip() for raw in raw_indexes if raw.dialect == dialect_name
     )
     return statements
+
+
+def _mysql_column_type(
+    sa_type_cls: typing.Any,
+    type_kwargs: dict[str, typing.Any],
+    *,
+    resolved_type: type | None,
+    attribute_name: str,
+    owner_name: str,
+    is_key_column: bool,
+) -> tuple[typing.Any, dict[str, typing.Any]]:
+    """Adjust a mapped column type for MySQL and MariaDB.
+
+    What differs from the other dialects:
+
+    * ``DATETIME`` drops microseconds unless the column declares fractional
+      seconds.
+    * MySQL cannot create a ``VARCHAR`` without a length, so a ``String`` field
+      with no ``max_length`` becomes ``TEXT``. A ``TEXT`` column cannot be a
+      primary key or carry a unique constraint without an index prefix length,
+      so that combination raises instead, as does a ``VARCHAR`` past InnoDB's
+      3072-byte key limit.
+    * A ``JSON`` column is indexable only through a generated column on a JSON
+      path, so a ``Dict`` or ``List`` used as a key column raises.
+    * A ``PickleType`` column is a BLOB, which has the same prefix-length
+      problem as ``TEXT``, so a key column stored as one raises too.
+
+    Collation is not set per column. It comes from the table default that
+    :func:`_mysql_table_kwargs` emits, which every column inherits.
+
+    Returns the (possibly replaced) type class and its keyword arguments.
+    """
+    kwargs = dict(type_kwargs)
+
+    if resolved_type is _datetime and sa_type_cls is sa_types.DateTime:
+        kwargs["fsp"] = _MYSQL_DATETIME_FSP
+        return mysql.DATETIME, kwargs
+
+    if sa_type_cls is mysql.JSON and is_key_column:
+        raise IncorrectUsageError(
+            f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+            f"unique column holding JSON. MySQL indexes a JSON column only "
+            f"through a generated column on a JSON path, which Protean does "
+            f"not emit, so the constraint cannot be created."
+        )
+
+    # ``ValueObjectList(..., pickled=True)`` reaches here as ``PickleType``,
+    # which is a BLOB. InnoDB cannot index one without a prefix length, so a
+    # unique constraint on it fails at ``CREATE TABLE`` with 1170. The declared
+    # ``Index`` path already refuses these; this is the column-flag path.
+    if (
+        is_key_column
+        and isinstance(sa_type_cls, type)
+        and issubclass(sa_type_cls, (sa_types.LargeBinary, sa_types.PickleType))
+    ):
+        raise IncorrectUsageError(
+            f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+            f"unique column stored as a BLOB. InnoDB cannot index a BLOB "
+            f"without a prefix length, so it cannot carry a key. Drop the "
+            f"constraint, or store the value in a bounded String column."
+        )
+
+    if sa_type_cls is not sa_types.String:
+        return sa_type_cls, kwargs
+
+    length = kwargs.get("length")
+
+    if not length:
+        if is_key_column:
+            raise IncorrectUsageError(
+                f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+                f"unique column with no max_length. MySQL cannot index a TEXT "
+                f"column without a prefix length, so declare one "
+                f"(e.g. Field(max_length=255))."
+            )
+        # An unlengthed VARCHAR is a compile error on MySQL, and every other
+        # provider accepts the field, so map it to TEXT rather than reject a
+        # domain that works elsewhere.
+        kwargs.pop("length", None)
+        return sa_types.Text, kwargs
+
+    if is_key_column and length > _MYSQL_MAX_INDEXED_VARCHAR:
+        raise IncorrectUsageError(
+            f"Field '{attribute_name}' on '{owner_name}' is a primary key or "
+            f"unique column with max_length={length}. InnoDB caps an index key "
+            f"at 3072 bytes, which is {_MYSQL_MAX_INDEXED_VARCHAR} utf8mb4 "
+            f"characters, so the column cannot be indexed in full. Reduce "
+            f"max_length to {_MYSQL_MAX_INDEXED_VARCHAR} or below."
+        )
+
+    return sa_type_cls, kwargs
 
 
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
@@ -742,6 +1313,15 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                             type_args.append(
                                 None
                             )  # Store as JSON string with serialization
+                    elif dialect_name in _MYSQL_DIALECTS:
+                        # MySQL 8 has a real JSON type. It has no array type, so
+                        # a list goes to JSON as well — the same call MSSQL makes
+                        # through ``MSSQLJSON``. MariaDB's ``JSON`` is an alias
+                        # for ``LONGTEXT`` with a CHECK constraint, and both
+                        # round-trip a Python list or dict through the engine's
+                        # JSON serializer.
+                        if resolved_type in (dict, list) and not pickled:
+                            sa_type_cls = mysql.JSON
 
                     # Default to the text type if no mapping is found
                     if not sa_type_cls:
@@ -754,11 +1334,23 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         "unique": field_obj.unique,
                     }
 
-                    # For identifier fields mapped to String, set length to 255
+                    # For identifier fields mapped to String, set the identity
+                    # length.
                     #   Without explicit length, we are leaving the decision to the database. And that
                     #   will not work for MSSQL.
                     if field_obj.identifier and sa_type_cls == sa_types.String:
-                        type_kwargs["length"] = 255
+                        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
+                    elif (
+                        dialect_name in _MYSQL_DIALECTS
+                        and type(field_obj) is _ReferenceField
+                        and sa_type_cls is sa_types.String
+                    ):
+                        # An association column holds the referenced aggregate's
+                        # identity, so it takes that column's width. Without it
+                        # MySQL maps the foreign key to TEXT, which it cannot
+                        # index or join on, and the key-width guard then reports
+                        # a missing max_length on a column nobody declared.
+                        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
                     elif resolved_type is str and isinstance(field_obj, ResolvedField):
                         type_kwargs["length"] = field_obj.max_length
                     elif resolved_type is decimal.Decimal and isinstance(
@@ -771,6 +1363,10 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                         if field_obj.scale is not None:
                             type_kwargs["scale"] = field_obj.scale
 
+                    is_key_column = bool(
+                        col_args.get("primary_key") or col_args.get("unique")
+                    )
+
                     # MSSQL requires explicit length on VARCHAR columns used
                     # as primary keys or in unique constraints.  Raise early
                     # with a clear message instead of letting the DB fail with
@@ -778,7 +1374,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     if (
                         dialect_name == "mssql"
                         and sa_type_cls == sa_types.String
-                        and (col_args.get("primary_key") or col_args.get("unique"))
+                        and is_key_column
                         and not type_kwargs.get("length")
                     ):
                         raise IncorrectUsageError(
@@ -789,6 +1385,16 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                             f"MSSQL requires an explicit max_length for "
                             f"indexed/unique string columns "
                             f"(e.g. Field(max_length=255))."
+                        )
+
+                    if dialect_name in _MYSQL_DIALECTS:
+                        sa_type_cls, type_kwargs = _mysql_column_type(
+                            sa_type_cls,
+                            type_kwargs,
+                            resolved_type=resolved_type,
+                            attribute_name=attribute_name,
+                            owner_name=entity_cls.__name__,
+                            is_key_column=is_key_column,
                         )
 
                     # Update the attributes of the class
@@ -804,9 +1410,12 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
             entity_cls = cls.__dict__["meta_"].part_of
             raw_dialect = cls.__dict__["engine"].dialect.name
             sa_indexes, raw_indexes = _build_sa_indexes(cls, entity_cls, raw_dialect)
-            if sa_indexes:
+            table_kwargs = _mysql_table_kwargs(
+                raw_dialect, cls.__dict__.get("_type_options") or {}
+            )
+            if sa_indexes or table_kwargs:
                 cls.__table_args__ = _merge_table_args(
-                    cls.__dict__.get("__table_args__"), sa_indexes
+                    cls.__dict__.get("__table_args__"), sa_indexes, table_kwargs
                 )
 
         # Native optimistic-concurrency guard: with a ``_version`` column the
@@ -1492,6 +2101,24 @@ class SAProvider(BaseProvider):
         postgresql = "postgresql"
         sqlite = "sqlite"
         mssql = "mssql"
+        mysql = "mysql"
+
+    # Config keys that describe the provider rather than the SQLAlchemy engine.
+    # Everything else in ``conn_info`` is forwarded to ``create_engine`` as a
+    # keyword argument, so a provider that adds a config key of its own has to
+    # add it here too or ``create_engine`` rejects it.
+    _NON_ENGINE_CONN_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"provider", "database_uri", "schema", "managed"}
+    )
+
+    def _model_type_options(self) -> dict[str, typing.Any]:
+        """Provider-specific knobs the model builder reads when mapping columns.
+
+        Carried onto every constructed model class as ``_type_options``, so
+        column mapping can see provider config without reaching back through the
+        engine. Empty for providers that need none.
+        """
+        return {}
 
     def _additional_engine_args(self) -> dict[str, typing.Any]:
         """Construct additional arguments for the engine"""
@@ -1502,7 +2129,7 @@ class SAProvider(BaseProvider):
             {
                 key: value
                 for key, value in self.conn_info.items()
-                if key not in ["provider", "database_uri", "schema", "managed"]
+                if key not in self._NON_ENGINE_CONN_KEYS
             }
         )
 
@@ -1799,7 +2426,12 @@ class SAProvider(BaseProvider):
             )
 
             custom_attrs.update(
-                {"meta_": meta_, "engine": self._engine, "metadata": self._metadata}
+                {
+                    "meta_": meta_,
+                    "engine": self._engine,
+                    "metadata": self._metadata,
+                    "_type_options": self._model_type_options(),
+                }
             )
             # User class is in the MRO; custom methods/properties resolve via standard Python MRO
             decorated_database_database_model_cls = type(
@@ -1837,6 +2469,7 @@ class SAProvider(BaseProvider):
                 "meta_": meta_,
                 "engine": self._engine,
                 "metadata": self._metadata,
+                "_type_options": self._model_type_options(),
             }
             # Auto-generated model; no user-defined attributes to carry over
             database_model_cls = type(
@@ -2010,6 +2643,217 @@ class MssqlProvider(SAProvider):
         # Set SQL Server specific options if needed
         # For example, you might want to set specific isolation levels
         # conn.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED;"))
+        return conn
+
+
+class MysqlProvider(SAProvider):
+    """Provider for MySQL and MariaDB, on the PyMySQL driver.
+
+    One provider serves both servers. SQLAlchemy reports the dialect as
+    ``mysql`` for a ``mysql+pymysql://`` URI and ``mariadb`` for a
+    ``mariadb+pymysql://`` one, and every dialect-sensitive branch in this module
+    accepts both through :data:`_MYSQL_DIALECTS`.
+
+    Beyond the shared config keys it reads ``collation``, the collation tables
+    are created with and every string column inherits. The server default is
+    accent-insensitive and case-insensitive on both MySQL and MariaDB, which
+    would make ``exact``, ``contains``, ``startswith`` and ``endswith`` match
+    case-insensitively.
+
+    Left unset, the collation follows the dialect: ``utf8mb4_0900_as_cs`` on
+    MySQL and ``utf8mb4_uca1400_as_cs`` on MariaDB. See
+    :meth:`_default_collation` for why neither name serves both.
+
+    The charset is pinned to ``utf8mb4`` and is not configurable, so a collation
+    from another charset is rejected at construction rather than at
+    ``CREATE TABLE``.
+    """
+
+    __database__ = SAProvider.databases.mysql.value
+
+    _NON_ENGINE_CONN_KEYS: ClassVar[frozenset[str]] = (
+        SAProvider._NON_ENGINE_CONN_KEYS | {"collation"}
+    )
+
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """MySQL supports relational capabilities plus native JSON.
+
+        MySQL 8 has a real JSON type. It has no array type, so ``NATIVE_ARRAY``
+        is not declared and a list column is stored as JSON.
+        """
+        return DatabaseCapabilities.RELATIONAL | DatabaseCapabilities.NATIVE_JSON
+
+    @property
+    def charset(self) -> str:
+        """The charset for the connection and for created tables.
+
+        Pinned rather than configurable: a narrower charset cannot hold the
+        4-byte characters Protean stores.
+        """
+        return _MYSQL_CHARSET
+
+    _collation: str | None
+
+    def __init__(
+        self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
+    ) -> None:
+        # Resolve the collation before the engine is built, so a bad one fails
+        # at ``domain.init()`` naming the config key, not at the first
+        # ``CREATE TABLE`` with MySQL's own message. ``None`` means "not
+        # configured", and the default is chosen later, from the server.
+        self._collation = self._resolve_collation(name, conn_info)
+        self._validate_connect_args(name, conn_info)
+        super().__init__(name, domain, conn_info)
+
+    @staticmethod
+    def _validate_connect_args(name: str, conn_info: dict[str, typing.Any]) -> None:
+        """Reject a ``connect_args`` that is not a table of driver arguments.
+
+        Absence, then type. ``_additional_engine_args`` reads it as
+        ``dict(value or {})``, which turns ``False``, ``0`` and ``""`` into an
+        empty mapping and accepts them in silence, while the same mistake
+        spelled truthily raises out of ``dict()`` with the driver's own
+        message. Turning a setting off is the likelier thing to write than
+        turning it on, so the falsy shapes are the ones that most need naming.
+        """
+        if "connect_args" not in conn_info:
+            return
+
+        connect_args = conn_info["connect_args"]
+        if not isinstance(connect_args, dict):
+            raise ConfigurationError(
+                f"Database '{name}' sets connect_args={connect_args!r}. It must "
+                f"be a table of driver connection arguments "
+                f'(e.g. connect_args = {{ ssl_ca = "/path/ca.pem" }}), or be '
+                f"left out."
+            )
+
+    @staticmethod
+    def _resolve_collation(name: str, conn_info: dict[str, typing.Any]) -> str | None:
+        """The configured collation, checked against the pinned charset.
+
+        ``None`` when none is configured: the two servers spell the default
+        differently, so it is chosen from the live dialect instead.
+
+        MySQL names a collation after the charset it belongs to, and rejects a
+        mismatched pair at ``CREATE TABLE`` with "COLLATION ... is not valid for
+        CHARACTER SET ...". Checking the prefix names the config key instead.
+        """
+        if "collation" not in conn_info:
+            return None
+
+        collation = conn_info["collation"]
+        # Absence, then type, then emptiness. A plain ``or`` here would let
+        # ``False``, ``0`` and ``""`` fall through to the default, so a config
+        # that is wrong in a falsy way would be accepted in silence while the
+        # same mistake spelled truthily raised.
+        if not isinstance(collation, str) or not collation.strip():
+            raise ConfigurationError(
+                f"Database '{name}' sets collation={collation!r}. It must be a "
+                f"non-empty '{_MYSQL_CHARSET}_' collation name "
+                f"(e.g. '{_MYSQL_DEFAULT_COLLATION}'), or be left out to take "
+                f"the default."
+            )
+        if not collation.startswith(f"{_MYSQL_CHARSET}_"):
+            raise ConfigurationError(
+                f"Database '{name}' sets collation='{collation}', which does not "
+                f"belong to the '{_MYSQL_CHARSET}' charset the MySQL provider "
+                f"uses. Choose a '{_MYSQL_CHARSET}_' collation "
+                f"(e.g. '{_MYSQL_DEFAULT_COLLATION}', or 'utf8mb4_bin' on "
+                f"MariaDB before 10.10)."
+            )
+        return collation
+
+    @property
+    def collation(self) -> str:
+        """The collation tables are created with, and every string column takes."""
+        if self._collation is not None:
+            return self._collation
+        return self._default_collation()
+
+    def _default_collation(self) -> str:
+        """The default spelled the way the server being talked to spells it.
+
+        Read off the dialect rather than the URI scheme: SQLAlchemy keeps
+        ``dialect.name`` as ``mysql`` for a ``mysql+pymysql://`` URI pointed at
+        a MariaDB server, and sets ``_is_mariadb`` once it has connected. A
+        ``mariadb+pymysql://`` URI is known from the start.
+        """
+        dialect = self._engine.dialect
+        if dialect.name == "mariadb" or getattr(dialect, "_is_mariadb", False):
+            return _MARIADB_DEFAULT_COLLATION
+        return _MYSQL_DEFAULT_COLLATION
+
+    def _model_type_options(self) -> dict[str, typing.Any]:
+        return {"collation": self.collation}
+
+    def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
+        """Supplies additional database-specific arguments to SQLAlchemy Engine.
+
+        Return: a dictionary with database-specific SQLAlchemy Engine arguments.
+        """
+        return {
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_pre_ping": True,
+            "pool_recycle": 1800,
+            # InnoDB defaults to REPEATABLE READ, under which a transaction keeps
+            # reading the snapshot it opened with. ADR-0027 makes the Unit of Work
+            # one real transaction and expects a read to see what other
+            # transactions have committed, as PostgreSQL and SQL Server do at
+            # their defaults.
+            "isolation_level": "READ COMMITTED",
+            # PyMySQL's default charset has varied across releases; pinning it
+            # here keeps 4-byte characters working regardless of the driver and
+            # server defaults. ``_additional_engine_args`` reasserts it after
+            # the caller's own ``connect_args`` are merged in.
+            "connect_args": {"charset": self.charset},
+        }
+
+    def _additional_engine_args(self) -> dict[str, typing.Any]:
+        """Merge the caller's ``connect_args`` instead of letting them replace.
+
+        The shared implementation overlays every unrecognised ``conn_info`` key
+        onto the defaults, so a caller passing ``connect_args`` of their own
+        replaced this provider's whole dict and took ``charset`` with it. That
+        silently restored the 4-byte-character failure the pinned charset
+        exists to prevent, and nothing raised. Their keys still win on
+        everything else; only ``charset`` is reasserted.
+        """
+        extra_args = super()._additional_engine_args()
+        connect_args = dict(extra_args.get("connect_args") or {})
+        connect_args["charset"] = self.charset
+        extra_args["connect_args"] = connect_args
+        return extra_args
+
+    def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
+        """Set Database specific session parameters.
+
+        Depending on the database in use, this method supplies
+        additional arguments while constructing sessions.
+
+        Return: a dictionary with additional arguments and values.
+        """
+        # ADR-0027: the Unit of Work is one real database transaction. The engine
+        # runs at READ COMMITTED (not AUTOCOMMIT), and autoflush lets a read see
+        # the UoW's own pending writes, deferred within that transaction and
+        # rolled back with it.
+        return {"autoflush": True}
+
+    def _execute_database_specific_connection_statements(
+        self, conn: typing.Any
+    ) -> typing.Any:
+        """Execute connection statements depending on the database in use.
+        Overridden implementation for MySQL and MariaDB.
+
+        Arguments:
+        * conn: An active connection object to the database
+
+        Return: Updated connection object
+        """
+        # Case sensitivity is a property of the column collation here, set at DDL
+        # time, so there is no per-connection statement to run.
         return conn
 
 
@@ -2303,6 +3147,22 @@ def register_sqlite() -> None:
     except ImportError as e:
         logger.debug(
             f"SQLite provider not registered: sqlalchemy package not available ({e})"
+        )
+
+
+def register_mysql() -> None:
+    """Register MySQL provider with Protean if sqlalchemy is available."""
+    try:
+        import sqlalchemy  # noqa: F401, PLC0415
+
+        registry.register(
+            "mysql",
+            "protean.adapters.repository.sqlalchemy.MysqlProvider",
+        )
+        logger.debug("MySQL provider registered successfully")
+    except ImportError as e:
+        logger.debug(
+            f"MySQL provider not registered: sqlalchemy package not available ({e})"
         )
 
 

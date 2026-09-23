@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from protean import Index, Q
 from protean.cli.schema import app, write_index_ddl
 from protean.core.aggregate import BaseAggregate
+from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
 
 runner = CliRunner()
@@ -33,6 +34,25 @@ class Product:
     status: str
     priority: int = 0
     sku: str
+"""
+
+
+# A domain whose only index covers the identity: rendering it for MySQL reads
+# ``identity_type`` off ``current_domain``, which needs a pushed context.
+_IDENTITY_DOMAIN_MODULE = """
+from protean import Domain, Index
+from protean.fields import String
+
+domain = Domain(name="KeyedCLI")
+domain.config["databases"]["default"] = {
+    "provider": "sqlite",
+    "database_uri": "sqlite:///:memory:",
+}
+
+
+@domain.aggregate(indexes=[Index("id", "slug", name="ix_keyed")])
+class Article:
+    slug: String(max_length=64)
 """
 
 
@@ -65,8 +85,8 @@ class TestApplyErrors:
         assert result.exit_code != 0
         # Rich wraps to the terminal width, so match without the line breaks.
         flat = " ".join(result.output.split())
-        assert f"unknown dialect(s) ['{dialect}']" in flat
-        assert "'mssql', 'postgresql', 'sqlite'" in flat
+        assert f"Unknown index DDL dialect '{dialect}'" in flat
+        assert "mariadb, mssql, mysql, postgresql, sqlite" in flat
 
     def test_unknown_dialect_aborts_before_loading_the_domain(self):
         # The bad name is reported on its own, not behind a domain-load error.
@@ -96,6 +116,46 @@ class TestApplyErrors:
         )
         assert result.exit_code != 0
         assert "Error loading Protean domain" in result.output
+
+
+class TestMysqlKeyWidths:
+    """``write_index_ddl`` runs the MySQL key-width guard through
+    ``render_index_ddl``. The guard sizes an identifier column from the
+    domain's ``identity_type``, which it reads off ``current_domain``, and
+    ``load_domain`` leaves no context pushed — so the writer pushes one.
+    """
+
+    @pytest.fixture
+    def keyed_domain(self, test_domain):
+        @test_domain.aggregate(indexes=[Index("id", "slug", name="ix_keyed")])
+        class Article(BaseAggregate):
+            slug = String(max_length=64)
+
+        test_domain.init(traverse=False)
+        return test_domain
+
+    @pytest.fixture
+    def wide_domain(self, test_domain):
+        @test_domain.aggregate(indexes=[Index("slug", name="ix_wide")])
+        class Essay(BaseAggregate):
+            slug = String(max_length=769)
+
+        test_domain.init(traverse=False)
+        return test_domain
+
+    def test_an_index_over_the_identity_renders(self, keyed_domain, tmp_path):
+        written = write_index_ddl(keyed_domain, str(tmp_path), ["mysql"])
+
+        assert [p.name for p in written] == ["article.indexes.mysql.sql"]
+
+    def test_an_oversized_key_is_rejected_before_any_file_is_written(
+        self, wide_domain, tmp_path
+    ):
+        with pytest.raises(IncorrectUsageError) as exc:
+            write_index_ddl(wide_domain, str(tmp_path), ["mysql"])
+
+        assert "ix_wide" in str(exc.value)
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestWriteIndexDDL:
@@ -130,6 +190,35 @@ class TestWriteIndexDDL:
             "product.indexes.postgresql.sql",
             "product.indexes.sqlite.sql",
         ]
+
+    def test_mysql_and_mariadb_are_renderable_dialects(self, shop_domain, tmp_path):
+        written = write_index_ddl(shop_domain, str(tmp_path), ["mysql", "mariadb"])
+        names = sorted(p.name for p in written)
+        assert names == [
+            "product.indexes.mariadb.sql",
+            "product.indexes.mysql.sql",
+        ]
+
+    def test_an_unknown_dialect_is_rejected(self, shop_domain, tmp_path):
+        """It used to fall through to SQLite and write DDL for the wrong
+        database under the requested dialect's filename."""
+        with pytest.raises(IncorrectUsageError) as exc:
+            write_index_ddl(shop_domain, str(tmp_path), ["postgres"])
+
+        assert "postgres" in str(exc.value)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_an_unknown_dialect_is_rejected_with_no_indexes_declared(
+        self, test_domain, tmp_path
+    ):
+        """A domain with no indexes never reaches the renderer, so the check
+        has to happen before the registry walk or the typo goes unreported."""
+        test_domain.init(traverse=False)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            write_index_ddl(test_domain, str(tmp_path), ["postgres"])
+
+        assert "postgres" in str(exc.value)
 
     def test_file_contains_create_index_ddl(self, shop_domain, tmp_path):
         written = write_index_ddl(shop_domain, str(tmp_path), ["postgresql"])
@@ -199,6 +288,55 @@ class TestApplyCommandLive:
         pg = out / "schemas" / "Product" / "product.indexes.postgresql.sql"
         assert pg.exists()
         assert "CREATE INDEX ix_prod_active" in pg.read_text(encoding="utf-8")
+
+    def test_mysql_render_reads_identity_type_off_a_pushed_context(
+        self, tmp_path, monkeypatch
+    ):
+        """``load_domain`` initialises the domain but pushes no context, so the
+        writer pushes one for the MySQL key-width guard."""
+        module = tmp_path / "keyed_cli_domain.py"
+        module.write_text(_IDENTITY_DOMAIN_MODULE, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        out = tmp_path / "out"
+        result = runner.invoke(
+            app,
+            [
+                "render",
+                "--indexes",
+                "--domain=keyed_cli_domain",
+                "--dialects=mysql",
+                f"--output={out}",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        ddl = out / "schemas" / "Article" / "article.indexes.mysql.sql"
+        assert "CREATE INDEX ix_keyed" in ddl.read_text(encoding="utf-8")
+
+    def test_an_unknown_dialect_reads_as_a_usage_error(self, tmp_path, monkeypatch):
+        """Through the command, with a domain on disk. The check raises
+        IncorrectUsageError, and without translation the caller saw a traceback
+        instead of the message it carries."""
+        module = tmp_path / "shop_cli_domain.py"
+        module.write_text(_DOMAIN_MODULE, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        result = runner.invoke(
+            app,
+            [
+                "render",
+                "--indexes",
+                "--domain=shop_cli_domain",
+                "--dialects=bogus",
+                f"--output={tmp_path / 'out'}",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "Unknown index DDL dialect 'bogus'" in result.output
+        assert "Traceback" not in result.output
 
     def test_apply_reports_when_no_indexes(self, tmp_path, monkeypatch):
         module = tmp_path / "plain_cli_domain.py"

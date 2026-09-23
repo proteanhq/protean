@@ -1,5 +1,5 @@
 # The mirrored service images (Elasticsearch, Redis, Postgres, Message-DB,
-# MSSQL) can each be overridden to pull from this org's GHCR mirror instead of
+# MSSQL, MySQL, MariaDB) can each be overridden to pull from this org's GHCR mirror instead of
 # upstream (see docs/community/contributing/testing.md for the exact mirror refs
 # — the mirror carries CI's tag set, which differs from the defaults below).
 # The defaults keep local `make up` on upstream registries, so no auth or mirror
@@ -64,6 +64,24 @@ services:
       ACCEPT_EULA: Y
       SA_PASSWORD: "Protean123!"
       MSSQL_PID: "Developer"
+
+  # One provider (`mysql`) serves both servers, and SQLAlchemy reports a
+  # different dialect name for each, so both run in the test matrix.
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.4}
+    ports:
+      - "53306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: protean
+      MYSQL_DATABASE: protean
+
+  mariadb:
+    image: ${MARIADB_IMAGE:-mariadb:11.4}
+    ports:
+      - "53307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: protean
+      MARIADB_DATABASE: protean
 
 volumes:
   elasticsearch-data:

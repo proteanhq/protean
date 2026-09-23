@@ -62,6 +62,19 @@ SQL Server.
 
 [MSSQL provider reference](./mssql.md)
 
+### MySQL
+
+The `mysql` provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
+[PyMySQL](https://github.com/PyMySQL/PyMySQL) to communicate with MySQL and
+MariaDB. One provider serves both servers.
+
+- **Use cases**: Production environments on MySQL or MariaDB
+- **Capabilities**: Full relational set plus JSON columns. MySQL has no array
+  type, so a `List` field is stored as JSON
+- **Requires**: `pymysql`, which installs from a wheel everywhere
+
+[MySQL provider reference](./mysql.md)
+
 ### Elasticsearch
 
 The `elasticsearch` provider uses the
@@ -97,7 +110,7 @@ database_uri = "postgresql://postgres:postgres@localhost:5432/reports"
 Each database configuration must specify:
 
 - `provider`: The provider adapter to use (`memory`, `postgresql`, `sqlite`,
-  `mssql`, `elasticsearch`, or a third-party provider name)
+  `mssql`, `mysql`, `elasticsearch`, or a third-party provider name)
 - Additional provider-specific options (like `database_uri` for non-memory
   providers)
 
@@ -201,20 +214,20 @@ if provider.has_any_capability(
 
 ### Provider Capability Matrix
 
-|  | Memory | SQLite | PostgreSQL | MSSQL | Elasticsearch |
-|— |:------:|:------:|:----------:|:-----:|:-------------:|
-| CRUD | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| FILTER | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| BULK_OPERATIONS | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| ORDERING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| TRANSACTIONS |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
-| SIMULATED_TRANSACTIONS | :white_check_mark: |  |  |  |  |
-| OPTIMISTIC_LOCKING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| RAW_QUERIES | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
-| SCHEMA_MANAGEMENT |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| CONNECTION_POOLING |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
-| NATIVE_JSON |  |  | :white_check_mark: | :white_check_mark: |  |
-| NATIVE_ARRAY |  |  | :white_check_mark: | :white_check_mark: |  |
+|  | Memory | SQLite | PostgreSQL | MSSQL | MySQL | Elasticsearch |
+|— |:------:|:------:|:----------:|:-----:|:-----:|:-------------:|
+| CRUD | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| FILTER | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| BULK_OPERATIONS | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| ORDERING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| TRANSACTIONS |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| SIMULATED_TRANSACTIONS | :white_check_mark: |  |  |  |  |  |
+| OPTIMISTIC_LOCKING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| RAW_QUERIES | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| SCHEMA_MANAGEMENT |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| CONNECTION_POOLING |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| NATIVE_JSON |  |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| NATIVE_ARRAY |  |  | :white_check_mark: | :white_check_mark: |  |  |
 
 ## Provider Registry
 
@@ -234,6 +247,7 @@ memory = "protean.adapters.repository.memory:register"
 postgresql = "protean.adapters.repository.sqlalchemy:register_postgresql"
 sqlite = "protean.adapters.repository.sqlalchemy:register_sqlite"
 mssql = "protean.adapters.repository.sqlalchemy:register_mssql"
+mysql = "protean.adapters.repository.sqlalchemy:register_mysql"
 elasticsearch = "protean.adapters.repository.elasticsearch:register"
 ```
 

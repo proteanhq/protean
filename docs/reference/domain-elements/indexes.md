@@ -87,13 +87,13 @@ class Order:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `dialect` | `str` | Dialect the DDL targets (`"postgresql"`, `"sqlite"`, `"mssql"`). |
+| `dialect` | `str` | Dialect the DDL targets (`"postgresql"`, `"sqlite"`, `"mssql"`, `"mysql"`, `"mariadb"`). |
 | `ddl` | `str` | Verbatim `CREATE INDEX …` statement. |
 | `name` | <code>str &#124; None</code> | Optional name, for reporting. |
 
 `dialect` must be one the framework renders index DDL for: `"postgresql"`,
-`"sqlite"`, or `"mssql"`. The name is matched by exact string, so a typo
-(`"postgres"`) or an unsupported dialect (`"oracle"`) raises
+`"sqlite"`, `"mssql"`, `"mysql"`, or `"mariadb"`. The name is matched by exact
+string, so a typo (`"postgres"`) or an unsupported dialect (`"oracle"`) raises
 `IncorrectUsageError` at `Domain.init()`. Such a declaration would otherwise
 render no index on any dialect, so the error names it at the point you declare
 it rather than dropping it silently.
@@ -111,17 +111,27 @@ only where the dialect supports them, and otherwise degrade to a full index
 with a logged warning, declarations never fail because of an unsupported
 opt-in.
 
-| Feature | PostgreSQL | SQLite | SQL Server | Memory | Elasticsearch |
-|---------|:----------:|:------:|:----------:|:------:|:-------------:|
-| Composite, `unique`, `desc`, naming | ✅ | ✅ | ✅ | `unique` enforced; rest advisory | — |
-| `where` (partial index) | ✅ | ✅ | ⚠️ falls back | advisory | — |
-| `include` (covering columns) | ✅ | ⚠️ falls back | ✅ | advisory | — |
-| `Index.from_sql` | matched dialect only | matched dialect only | matched dialect only | — | — |
+| Feature | PostgreSQL | SQLite | SQL Server | MySQL | Memory | Elasticsearch |
+|---------|:----------:|:------:|:----------:|:-----:|:------:|:-------------:|
+| Composite, `unique`, `desc`, naming | ✅ | ✅ | ✅ | ✅ | `unique` enforced; rest advisory | — |
+| `where` (partial index) | ✅ | ✅ | ⚠️ falls back | ⚠️ falls back | advisory | — |
+| `include` (covering columns) | ✅ | ⚠️ falls back | ✅ | ⚠️ falls back | advisory | — |
+| `Index.from_sql` | matched dialect only | matched dialect only | matched dialect only | matched dialect only | — | — |
 
-- **SQLAlchemy providers (PostgreSQL, SQLite, SQL Server)** translate
+The MySQL column above covers MariaDB too: one provider serves both, and
+SQLAlchemy names their dialects `mysql` and `mariadb`, so `Index.from_sql`
+matches on whichever the connection URI selects.
+
+- **SQLAlchemy providers (PostgreSQL, SQLite, SQL Server, MySQL)** translate
   declarations into SQLAlchemy `Index` constructs at table-build time, emitted
   by `create_all()` / `protean db setup`. Unsupported `where`/`include` log a
   warning and fall back to a full index.
+- **MySQL** additionally caps an indexed string: InnoDB allows 3072 bytes per
+  index key, which is 768 `utf8mb4` characters across the **whole** index, so a
+  declaration whose string columns exceed that raises `IncorrectUsageError`
+  naming the index and its fields. A composite index is the sum of its columns.
+  See the
+  [MySQL provider page](../adapters/database/mysql.md#string-columns-used-as-keys).
 - **Memory** validates declarations for shape and enforces **unique** indexes:
   a duplicate insert or update that violates a single-column or composite
   `Index(..., unique=True)` raises `ValidationError` (NULLs treated as distinct,

@@ -38,7 +38,15 @@ STYLE_BLOCK = """
 """
 
 TEST_CONFIGS = {
-    "databases": ["MEMORY", "POSTGRESQL", "SQLITE", "MSSQL", "ELASTICSEARCH"],
+    "databases": [
+        "MEMORY",
+        "POSTGRESQL",
+        "SQLITE",
+        "MSSQL",
+        "MYSQL",
+        "MARIADB",
+        "ELASTICSEARCH",
+    ],
     "brokers": [
         "REDIS",
         "INLINE",
@@ -53,6 +61,7 @@ TEST_CONFIGS = {
         "--message_db",
         "--elasticsearch",
         "--mssql",
+        "--mysql",
     ],
 }
 
@@ -115,6 +124,11 @@ class TestRunner:
             "POSTGRESQL": "RELATIONAL_FULL",
             "SQLITE": "RELATIONAL",
             "MSSQL": "RELATIONAL_FULL",
+            # One provider, two SQLAlchemy dialect names. Both are in the
+            # matrix because every dialect-sensitive branch in the adapter has to
+            # accept "mariadb" as well as "mysql".
+            "MYSQL": "RELATIONAL_JSON",
+            "MARIADB": "RELATIONAL_JSON",
             "ELASTICSEARCH": "DOCUMENT_STORE",
         }
 
@@ -128,6 +142,15 @@ class TestRunner:
                 "atomic_transactions",
                 "raw_queries",
                 "schema_management",
+            },
+            # MySQL 8 has a real JSON type and no array type.
+            "RELATIONAL_JSON": {
+                "basic_storage",
+                "transactional",
+                "atomic_transactions",
+                "raw_queries",
+                "schema_management",
+                "native_json",
             },
             "RELATIONAL_FULL": {
                 "basic_storage",

@@ -170,17 +170,20 @@ protean schema render --indexes --domain=my_app.domain --output=build
 |--------|-------------|---------|
 | `--indexes` | Render index DDL (required; nothing is applied without it) | `false` |
 | `--domain`, `-d` | Path to the domain module (e.g. `my_app.domain`) | |
-| `--dialects` | Comma-separated dialects to render | `mssql,postgresql,sqlite` |
+| `--dialects` | Comma-separated dialects to render (`postgresql`, `sqlite`, `mssql`, `mysql`, `mariadb`); an unknown name is rejected | `postgresql,sqlite,mssql,mysql` |
 | `--output`, `-o` | Root output directory | `.protean` |
 
 `--indexes` requires `--domain`: rendering partial-index predicates needs the
 live `Index` declarations (the `Q` objects), which an IR file does not carry.
 
-`--dialects` accepts only the three dialects the framework renders DDL for:
-`mssql`, `postgresql`, and `sqlite`. A name outside that set (`oracle`, or a
-typo like `postgres`) exits with an error naming the accepted set. There is no
-compiler for it, so the alternative would be a file named for a dialect that
-nothing rendered.
+`--dialects` accepts only the dialects the framework renders DDL for:
+`mariadb`, `mssql`, `mysql`, `postgresql`, and `sqlite`. A name outside that set
+(`oracle`, or a typo like `postgres`) exits with an error naming the accepted
+set. There is no compiler for it, so the alternative would be a file named for a
+dialect that nothing rendered.
+
+MariaDB is not in the default set. It is accepted when you ask for it, and its
+`CREATE INDEX` output matches MySQL's for the index forms Protean emits.
 
 **Output structure**
 

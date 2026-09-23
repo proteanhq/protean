@@ -46,7 +46,7 @@ Protean supports:
 | Engine | Behaviour on an unbounded indexed string |
 |---|---|
 | SQL Server | **Rejects** the index; a key column cannot exceed the maximum key length, and an unbounded (`nvarchar(max)`) column cannot participate in a key. |
-| MySQL | Requires an **explicit prefix length** (`INDEX (col(191))`); without one the DDL fails, and a prefix silently indexes only a leading slice of the value. |
+| MySQL | Requires an **explicit prefix length** (`INDEX (col(191))`); without one the DDL fails, and a prefix silently indexes only a leading slice of the value. InnoDB caps an index key at 3072 bytes, which is 768 `utf8mb4` characters, so the MySQL provider raises `IncorrectUsageError` naming the field rather than emitting DDL that fails or silently truncates. |
 | PostgreSQL | Accepts it, but with **storage and performance overhead**, large values bloat the index and can exceed the B-tree row-size limit at runtime. |
 
 Epic #941 set `max_length` on the Outbox string fields for exactly this reason:

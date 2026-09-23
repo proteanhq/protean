@@ -13,6 +13,7 @@ from sqlalchemy import inspect
 from protean import Index, Q
 from protean.adapters.repository.sqlalchemy import (
     _SA_DIALECT_FACTORIES,
+    _merge_table_args,
     render_index_ddl,
 )
 from protean.core.aggregate import BaseAggregate
@@ -138,7 +139,7 @@ class TestRenderUnknownDialect:
         with pytest.raises(IncorrectUsageError) as exc:
             render_index_ddl(IndexedJob, "oracle")
 
-        assert "unknown dialect 'oracle'" in str(exc.value)
+        assert "Unknown index DDL dialect 'oracle'" in str(exc.value)
 
     def test_unknown_dialect_raises_before_the_no_indexes_shortcut(self, test_domain):
         # The check runs ahead of the empty-declarations early return, so an
@@ -164,19 +165,13 @@ class TestMergeTableArgs:
     table kwargs); the trailing dict must stay last when indexes are appended."""
 
     def test_empty_returns_indexes(self):
-        from protean.adapters.repository.sqlalchemy import _merge_table_args
-
         assert _merge_table_args(None, ["i1", "i2"]) == ("i1", "i2")
 
     def test_dict_kept_last(self):
-        from protean.adapters.repository.sqlalchemy import _merge_table_args
-
         opts = {"schema": "reporting"}
         assert _merge_table_args(opts, ["i1"]) == ("i1", opts)
 
     def test_tuple_ending_in_dict_keeps_dict_last(self):
-        from protean.adapters.repository.sqlalchemy import _merge_table_args
-
         opts = {"schema": "reporting"}
         assert _merge_table_args(("existing", opts), ["i1"]) == (
             "existing",
@@ -185,9 +180,42 @@ class TestMergeTableArgs:
         )
 
     def test_plain_tuple_appends(self):
-        from protean.adapters.repository.sqlalchemy import _merge_table_args
-
         assert _merge_table_args(("existing",), ["i1"]) == ("existing", "i1")
+
+    def test_table_kwargs_merge_into_the_trailing_dict(self):
+        """The MySQL provider passes charset and collation this way."""
+        extra = {"mysql_charset": "utf8mb4"}
+
+        assert _merge_table_args(None, [], extra) == (extra,)
+        assert _merge_table_args(None, ["i1"], extra) == ("i1", extra)
+        assert _merge_table_args(("existing",), ["i1"], extra) == (
+            "existing",
+            "i1",
+            extra,
+        )
+
+    def test_the_provider_s_charset_and_collation_win(self):
+        """A model keeps every kwarg of its own, except the charset and
+        collation the provider manages.
+
+        The pair has to agree: a model setting only `mysql_charset` used to get
+        the provider's collation over a different character set, which MySQL
+        rejects with error 1253. Setting both would drop the case-sensitive
+        collation every string lookup depends on.
+        """
+        declared = {"mysql_charset": "latin1", "schema": "reporting"}
+        extra = {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_bin"}
+        merged = {
+            "mysql_charset": "utf8mb4",
+            "mysql_collate": "utf8mb4_bin",
+            "schema": "reporting",
+        }
+
+        assert _merge_table_args(declared, ["i1"], extra) == ("i1", merged)
+        assert _merge_table_args(("existing", declared), [], extra) == (
+            "existing",
+            merged,
+        )
 
 
 @pytest.mark.sqlite

@@ -34,6 +34,22 @@ _DB_CAPABILITY_MARKERS: dict[str, set[str]] = {
         "native_json",
         "native_array",
     },
+    "MYSQL": {
+        "basic_storage",
+        "transactional",
+        "atomic_transactions",
+        "raw_queries",
+        "schema_management",
+        "native_json",
+    },
+    "MARIADB": {
+        "basic_storage",
+        "transactional",
+        "atomic_transactions",
+        "raw_queries",
+        "schema_management",
+        "native_json",
+    },
     "ELASTICSEARCH": {"basic_storage", "schema_management"},
 }
 
