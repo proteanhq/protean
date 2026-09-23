@@ -108,16 +108,28 @@ def test_after_flow_creates_a_shipment_from_the_sales_event():
     # has one aggregate, so neither code can fire and those assertions cannot go
     # red on a broken extraction. This runs the flow the skill teaches so the
     # subscriber and event wiring are actually exercised: place an order in
-    # sales, carry the recorded OrderPlaced fact across the seam (as the demo's
-    # stand-in relay does), and assert fulfilment opens the matching shipment.
+    # sales, carry the recorded OrderPlaced fact across the seam through the
+    # asset's own relay, and assert fulfilment opens the matching shipment.
+    #
+    # The relay is the asset's `relay_last_order_event`, so this exercises the
+    # delivery contract the skill teaches rather than one the test invents: the
+    # stream is the sales aggregate's `stream_category` and the payload is the
+    # `{"data", "metadata"}` envelope `Message.to_external_dict()` produces,
+    # which is what `OutboxProcessor` publishes in a deployed system.
     namespace = _run_asset("extract_bounded_context_after.py", "_ebc_flow_")
     sales = namespace["sales"]
     fulfilment = namespace["fulfilment"]
     Order = namespace["Order"]
     PlaceOrder = namespace["PlaceOrder"]
     Shipment = namespace["Shipment"]
+    relay_last_order_event = namespace["relay_last_order_event"]
     sales.init(traverse=False)
     fulfilment.init(traverse=False)
+
+    assert sales.has_outbox, (
+        "the sales domain must have the outbox on, or a deployed domain would "
+        "dispatch nothing and the subscriber would never hear the event"
+    )
 
     with sales.domain_context():
         sales.process(PlaceOrder(customer_id="CUST-1", address="1 Market St"))
@@ -126,11 +138,16 @@ def test_after_flow_creates_a_shipment_from_the_sales_event():
     assert fact.data["customer_id"] == "CUST-1", "sales must record OrderPlaced"
     order_id = fact.data["order_id"]
 
+    # Pin the contract the subscriber is written against: the outbox routes by
+    # this category, and delivers this envelope.
+    external = fact.to_external_dict()
+    assert fact.metadata.domain.stream_category == "sales::order"
+    assert set(external) == {"data", "metadata"}
+    assert external["data"]["order_id"] == order_id
+
+    relay_last_order_event()
+
     with fulfilment.domain_context():
-        fulfilment.brokers["default"].publish(
-            "sales_order_placed",
-            {"order_id": order_id, "address": fact.data["address"]},
-        )
         shipments = fulfilment.repository_for(Shipment).query.all()
 
     assert shipments.total == 1, (

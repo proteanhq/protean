@@ -23,9 +23,15 @@ class OrderPlaced:
 `published=True` says the event leaves this context. `check` then expects no
 in-domain handler for it, and the domain dispatches it to the brokers named in
 `outbox.external_brokers`. Without an external broker configured, `check` reports
-`PUBLISHED_NO_EXTERNAL_BROKER`, so name the broker the other context reads:
+`PUBLISHED_NO_EXTERNAL_BROKER`, so name the broker the other context reads.
+
+Turn the outbox on as well. `Domain.has_outbox` is false under the default
+`event_store` subscription, and naming an external broker does not change that.
+With the outbox off the unit of work writes no outbox row, so nothing is
+dispatched and the other context never hears anything:
 
 ```python
+sales.config["server"]["default_subscription_type"] = "stream"
 sales.config["brokers"]["events"] = {"provider": "inline"}
 sales.config["outbox"]["external_brokers"] = ["events"]
 ```
@@ -44,13 +50,24 @@ into its own command. The subscriber is the anti-corruption layer: it is the one
 place that understands the external event's shape, so the rest of the context
 speaks only its own language.
 
+Two things about that shape. `OutboxProcessor` publishes each row on
+`metadata.domain.stream_category`, so the stream to subscribe to is the
+publishing aggregate's category, `sales::order`. And it publishes what
+`Message.to_external_dict()` returns, so the message arrives as
+`{"data": ..., "metadata": ...}` and the event's fields sit under `"data"`.
+The category stream carries every event of that aggregate, so the subscriber also
+checks the type header and returns early on the ones it does not act on:
+
 ```python
-@fulfilment.subscriber(stream="sales_order_placed")
+@fulfilment.subscriber(stream="sales::order")
 class OrderPlacedSubscriber:
     def __call__(self, payload: dict) -> None:
+        if payload["metadata"]["headers"]["type"] != OrderPlaced.__type__:
+            return
+        data = payload["data"]
         command = CreateShipment(
-            order_id=payload["order_id"],
-            address=payload["address"],
+            order_id=data["order_id"],
+            address=data["address"],
         )
         fulfilment.process(command)
 ```

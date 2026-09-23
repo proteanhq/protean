@@ -81,9 +81,15 @@ cross the seam.
 ### 3. Rewire the seam with events
 
 Replace each cross-seam reference with a domain event. The owning context
-publishes the event as part of its published language:
+publishes the event as part of its published language, and turns the outbox on so
+the event actually leaves the context:
 
 ```python
+sales.config["server"]["default_subscription_type"] = "stream"
+sales.config["brokers"]["events"] = {"provider": "inline"}
+sales.config["outbox"]["external_brokers"] = ["events"]
+
+
 @sales.event(part_of="Order", published=True)
 class OrderPlaced:
     order_id = Identifier(required=True)
@@ -92,20 +98,24 @@ class OrderPlaced:
 ```
 
 The other context consumes the event through a subscriber that translates it into
-its own command. The subscriber is the anti-corruption layer:
+its own command. The subscriber is the anti-corruption layer. It listens on the
+publishing aggregate's `stream_category`, and the fields sit under `payload["data"]`:
 
 ```python
-@fulfilment.subscriber(stream="sales_order_placed")
+@fulfilment.subscriber(stream="sales::order")
 class OrderPlacedSubscriber:
     def __call__(self, payload: dict) -> None:
+        if payload["metadata"]["headers"]["type"] != OrderPlaced.__type__:
+            return
+        data = payload["data"]
         fulfilment.process(
-            CreateShipment(order_id=payload["order_id"], address=payload["address"])
+            CreateShipment(order_id=data["order_id"], address=data["address"])
         )
 ```
 
 The [event-integration reference](references/event-integration.md) covers
-`published=True`, the `outbox.external_brokers` wiring, and holding the far side
-by identity in full.
+`published=True`, the outbox and `outbox.external_brokers` wiring, the stream and
+envelope the outbox delivers on, and holding the far side by identity in full.
 
 ## What the extraction clears
 
