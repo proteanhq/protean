@@ -299,12 +299,21 @@ def test_the_event_sourced_aggregate_sweep_is_not_vacuous():
 
 def test_creation_handler_sets_every_defaulted_field():
     unset = []
+    unchecked = []
     for path, node in _event_sourced_aggregates():
         event = _creation_event(node)
         if event is None:
+            unchecked.append(
+                f"{path.name}: {node.name} has no factory classmethod that "
+                "raises a creation event"
+            )
             continue
         handler = _apply_handler(node, event)
         if handler is None:
+            unchecked.append(
+                f"{path.name}: {node.name} raises {event} but has no `@apply` "
+                f"handler annotated with {event}"
+            )
             continue
         missing = _declared_defaults(node) - _fields_assigned(handler)
         if missing:
@@ -313,6 +322,12 @@ def test_creation_handler_sets_every_defaulted_field():
                 f"leaves {sorted(missing)} unset"
             )
 
+    assert not unchecked, (
+        "every event-sourced example aggregate must expose the pair this "
+        "check reads (a factory that raises a creation event, and the `@apply` "
+        "handler for it), or the check goes blind on that aggregate while the "
+        "aggregate count still passes:\n  " + "\n  ".join(unchecked)
+    )
     assert not unset, (
         "`from_events()` bypasses declared field defaults, so a field the "
         "creation event's `@apply` handler does not set replays as `None`. "
