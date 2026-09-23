@@ -39,7 +39,8 @@ Snapshots are stored in a special stream:
 {stream_category}:snapshot-{aggregate_id}
 ```
 
-Example: `account:snapshot-ACC-001`
+`stream_category` already carries the domain name prefix (`{domain_name}::{aggregate_name}`, set at registration), so
+for a domain named `test` the snapshot stream for `Account` is `test::account:snapshot-ACC-001`.
 
 Note the `:` separator (not `-`) which distinguishes snapshot streams from event streams.
 
