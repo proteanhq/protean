@@ -41,6 +41,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import sqlite as sqlite_dialect
+from sqlalchemy.dialects.mysql import mariadb as mariadb_dialect
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import DatabaseError
@@ -380,7 +381,10 @@ _SA_DIALECT_FACTORIES: dict[str, typing.Callable[[], typing.Any]] = {
     "sqlite": sqlite_dialect.dialect,
     "mssql": mssql.dialect,
     "mysql": mysql.dialect,
-    "mariadb": mysql.mariadb.MariaDBDialect,
+    # ``mariadb`` is a submodule of ``sqlalchemy.dialects.mysql``, and reaching
+    # it as an attribute of ``mysql`` raises on SQLAlchemy 2.0.36 unless
+    # something has already imported it, hence the by-name import above.
+    "mariadb": mariadb_dialect.MariaDBDialect,
 }
 
 # Dialects that support each opt-in index feature.
