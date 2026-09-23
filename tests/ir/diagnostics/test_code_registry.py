@@ -435,10 +435,20 @@ class TestBuildDiagnostic:
         d = build_diagnostic(
             DiagnosticCode.UNHANDLED_EVENT, element="app.Thing", message="m"
         )
-        assert set(Diagnostic.__required_keys__) == set(d)
+        # Every required key is present, and no key outside the typed shape is.
+        # Asserting equality against the required keys alone held only while no
+        # DX-pack skill declared it taught this code: the day one does,
+        # build_diagnostic attaches the optional ``teaching_skills`` and the
+        # shape is still right. Which codes carry optional data is the pack's
+        # business; the wire shape is this test's.
+        assert set(Diagnostic.__required_keys__) <= set(d)
+        assert set(d) <= set(Diagnostic.__required_keys__) | set(
+            Diagnostic.__optional_keys__
+        )
         assert "field" in Diagnostic.__optional_keys__
         assert "location" in Diagnostic.__optional_keys__
         assert "resolving_operation" in Diagnostic.__optional_keys__
+        assert "teaching_skills" in Diagnostic.__optional_keys__
 
     def test_resolving_operation_attached_from_registry(self):
         # A code that maps to a resolving command carries the operation as a
