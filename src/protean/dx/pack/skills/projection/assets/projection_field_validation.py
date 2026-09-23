@@ -58,22 +58,22 @@ class User(BaseAggregate):
     name: String()
 
 
-# --- Correct projection: basic field types only ---
+# --- Correct projection: basic fields and a ValueObject ---
 
 
 @domain.projection
 class UserView:
-    """Correctly defined projection with only basic field types.
+    """Correctly defined projection using basic fields and a ValueObject.
 
-    Instead of using ValueObject(Email), we flatten the email
-    into a basic String field. This is the correct approach
-    for projections.
+    `ValueObject(Email)` is allowed: it is stored as flattened shadow
+    fields (`email_address`). An entity like Role is not allowed, so its
+    data is flattened by hand into a basic String field.
     """
 
     user_id: Identifier(identifier=True, required=True)
     name: String(max_length=100, required=True)
-    email_address: String(required=True)  # Flattened from Email value object
-    role_name: String(max_length=50)  # Flattened from Role entity
+    email = ValueObject(Email)  # Stored as the shadow field `email_address`
+    role_name: String(max_length=50)  # Flattened by hand from the Role entity
     age: Integer(default=0)
 
 

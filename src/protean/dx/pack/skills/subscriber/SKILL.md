@@ -145,8 +145,12 @@ class MySubscriber:
         pass
 ```
 
-A subscriber with no stream has nothing to consume, so it is registered but
-can never be invoked. `check` reports this as `SUBSCRIBER_NO_STREAMS`.
+A subscriber with no stream has nothing to consume, so it never registers:
+`@domain.subscriber` raises `IncorrectUsageError` at class definition time,
+with the message "Subscriber `MySubscriber` needs to be associated with a
+stream". `check` reports the same problem as `SUBSCRIBER_NO_STREAMS`, which it
+can only see in materialized IR that was loaded or hand-edited after the
+stream was removed.
 
 ### Using @handle decorator
 
