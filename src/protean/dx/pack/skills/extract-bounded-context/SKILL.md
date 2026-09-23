@@ -140,8 +140,9 @@ envelope the outbox delivers on, and holding the far side by identity in full.
 
 ## What the extraction clears
 
-Once the two contexts hold each other by identity and talk by events, neither
-holds a `Reference` into the other. The cycle is gone, so `check` reports neither
+Fulfilment now holds the order by its identifier (`order_id`) and learns about
+orders from sales events. Sales holds no shipment identifier at all. Neither
+domain holds a `Reference` into the other. The cycle is gone, so `check` reports neither
 `CIRCULAR_CLUSTER_DEPENDENCY` nor `CROSS_AGGREGATE_REFERENCE` on either domain.
 
 ## Related skills

@@ -128,7 +128,8 @@ class Shipment:
     status = String(default="pending", max_length=20)
 ```
 
-`order_id` records which order this shipment is for. When fulfilment needs sales
-data it does not hold, it asks sales through its published events. A `Reference`
+`order_id` records which order this shipment is for. Any other sales data
+fulfilment needs has to arrive as a field on the event, the way `address` does
+here. Fulfilment never loads the sales order. A `Reference`
 here would pull the sales aggregate back across the seam and bring the cycle
 back with it.
