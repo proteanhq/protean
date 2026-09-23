@@ -1,7 +1,7 @@
 # Finding the seam
 
-Extraction starts by finding the boundary that is already there in the code.
-Extraction names it and makes it explicit. Three signals point at it.
+The boundary is usually already there in the code, drawn but not made explicit.
+The first step is to find it. These signals point at it:
 
 ## The signals
 
@@ -12,8 +12,8 @@ Two aggregate clusters hold identity references at each other, forming a cycle.
 reports this as `CIRCULAR_CLUSTER_DEPENDENCY`, once per cluster in the cycle.
 
 A cycle means neither cluster can be understood, loaded, or changed on its own.
-That is the clearest sign the two belong in separate contexts. Each one wants to
-own its side and hear about the other's changes across a boundary.
+That is the clearest sign the two belong in separate contexts, each owning its
+own side and learning about the other's changes across a boundary.
 
 ### A cross-aggregate reference
 
@@ -36,7 +36,7 @@ Once you see the seam, sort each aggregate onto one side of it. Ask which
 context's language owns the aggregate and which context changes it. `Order`,
 `Cart`, and `Payment` speak sales; `Shipment`, `Pick`, and `Manifest` speak
 fulfilment. An aggregate that seems to belong to both is usually two aggregates
-wearing one name, and the split is the moment to separate them.
+under one name, and the split is the moment to separate them.
 
 The references crossing the seam are the work list for the rewrite. Each one
 becomes an event published by the owning context and consumed by the other. See

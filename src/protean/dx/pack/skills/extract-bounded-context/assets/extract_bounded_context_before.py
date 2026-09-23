@@ -6,7 +6,9 @@ Sales and fulfilment live in a single `Domain`. `Order` (sales) points at its
 `Shipment` and `Shipment` (fulfilment) points back at its `Order`, both by
 in-process `Reference` identity fields. Those cross-cluster references form a
 directed cycle, so `check` reports `CIRCULAR_CLUSTER_DEPENDENCY` on both clusters
-(and `CROSS_AGGREGATE_REFERENCE` on each reference).
+and `CROSS_AGGREGATE_REFERENCE` on each reference. This minimal asset also draws
+a couple of warnings that are not the lesson here (each aggregate has no command
+handler and no invariants); the cycle is the one to fix.
 
 The fix is to split the contexts into separate `Domain` objects that talk by
 domain events across the seam. See extract_bounded_context_after.py.

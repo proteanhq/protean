@@ -1,24 +1,25 @@
 """
-Sales and fulfilment split into two `Domain` objects that talk by events across
-the seam (after extraction).
+Sales and fulfilment split into two `Domain` objects (after extraction).
 
-This is extract_bounded_context_before.py with the contexts pulled apart:
+This is extract_bounded_context_before.py with the two contexts pulled apart:
 
-- The sales domain owns `Order` and publishes `OrderPlaced` when an order is
-  placed. It holds no reference into fulfilment.
-- The fulfilment domain owns `Shipment`. It learns about a placed order through
-  a subscriber that consumes the sales event off a broker stream, translates it
-  in an anti-corruption layer, and dispatches a domain command. `Shipment` holds
-  the order by identity (`order_id`), not by a `Reference` back into sales.
+- The sales domain owns `Order` and raises `OrderPlaced` when an order is placed.
+  It holds no reference into fulfilment.
+- The fulfilment domain owns `Shipment`. It learns about a placed order from a
+  subscriber that reads the sales event off a broker stream, translates it in an
+  anti-corruption layer, and dispatches a domain command. `Shipment` holds the
+  order by identity (`order_id`), not by a `Reference` back into sales.
 
-Neither domain references the other's aggregates, so the cycle is gone:
-`check` reports no `CIRCULAR_CLUSTER_DEPENDENCY` and no `CROSS_AGGREGATE_REFERENCE`
-on either domain.
+Neither domain references the other's aggregates, so the cycle is gone: `check`
+reports no `CIRCULAR_CLUSTER_DEPENDENCY` and no `CROSS_AGGREGATE_REFERENCE` on
+either domain.
 
-The seam is a message broker. Here both domains run in one process, so the demo
-block bridges them by hand: it takes the payload the sales event carries and
-publishes it to the fulfilment broker stream the subscriber listens on. A
-deployed system puts a real broker or relay in that gap.
+How the event crosses the seam. `OrderPlaced` is marked `published=True`, and
+sales configures `outbox.external_brokers`, so a deployed sales domain hands the
+event to that broker for fulfilment to read. This example runs both domains in
+one process with no outbox relay running, so the demo does the relay's job by
+hand: it reads the `OrderPlaced` fact the sales context recorded and publishes it
+to the broker stream the fulfilment subscriber reads.
 """
 
 from protean import Domain, handle
@@ -29,9 +30,10 @@ from protean.fields import Identifier, String
 sales = Domain(name="Sales")
 sales.config["command_processing"] = "sync"
 sales.config["event_processing"] = "sync"
-# OrderPlaced leaves the sales context, so it dispatches to an external broker
-# the fulfilment context can read. Naming that broker here is what keeps the
-# published event honestly wired.
+# OrderPlaced is published outside the sales context, so it needs an external
+# broker to go to. Configuring one clears the `PUBLISHED_NO_EXTERNAL_BROKER`
+# warning `check` would otherwise report. A deployed sales domain dispatches
+# published events to this broker; fulfilment reads them from it.
 sales.config["brokers"]["events"] = {"provider": "inline"}
 sales.config["outbox"]["external_brokers"] = ["events"]
 
@@ -53,7 +55,7 @@ class Order:
     status = String(default="placed", max_length=20)
 
     def place(self) -> None:
-        """Place the order and announce it across the seam."""
+        """Place the order and raise OrderPlaced for fulfilment to read."""
         self.status = "placed"
         self.raise_(
             OrderPlaced(
@@ -113,9 +115,10 @@ class ShipmentCommandHandler:
 class OrderPlacedSubscriber:
     """Anti-corruption layer for the sales `OrderPlaced` event.
 
-    The sales context owns the meaning of `OrderPlaced`. Fulfilment consumes the
-    raw payload off the broker stream and translates it into its own command, so
-    the sales event's shape never leaks past this boundary.
+    `OrderPlaced` belongs to the sales context's published language. Fulfilment
+    reads the raw payload off the broker stream and translates it into its own
+    command here, so the sales event's shape stays out of the rest of the
+    fulfilment context.
     """
 
     def __call__(self, payload: dict) -> None:
@@ -131,18 +134,19 @@ if __name__ == "__main__":
     fulfilment.init(traverse=False)
 
     with sales.domain_context():
-        order = Order(customer_id="CUST-1", address="1 Market St")
-        order.place()
-        # The event the sales context published, captured before it is persisted.
-        placed = order._events[-1]
-        sales.repository_for(Order).add(order)
+        sales.process(PlaceOrder(customer_id="CUST-1", address="1 Market St"))
+        # The OrderPlaced fact the sales context recorded while handling the
+        # command. A deployed outbox relay reads it here and hands it to the
+        # external broker.
+        fact = sales.event_store.store.read(Order.meta_.stream_category)[-1]
 
-    # Bridge the seam: in production a broker or relay carries this. Here we hand
-    # the payload to the fulfilment stream the subscriber listens on.
+    # Stand in for the relay: hand the recorded event to the broker stream the
+    # fulfilment subscriber reads. A deployed system runs the outbox relay for
+    # this; one process has none, so the demo does it by hand.
     with fulfilment.domain_context():
         fulfilment.brokers["default"].publish(
             "sales_order_placed",
-            {"order_id": placed.order_id, "address": placed.address},
+            {"order_id": fact.data["order_id"], "address": fact.data["address"]},
         )
-        shipments = fulfilment.repository_for(Shipment)._dao.query.all().items
-        print(f"fulfilment opened {len(shipments)} shipment(s) from the sales event")
+        shipments = fulfilment.repository_for(Shipment).query.all()
+        print(f"fulfilment opened {shipments.total} shipment(s) from the sales event")

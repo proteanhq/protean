@@ -1,11 +1,11 @@
 # Event integration across the seam
 
 After the split, the two contexts still need to work together. They do it by
-sending events across the seam. One context publishes an event as a fact about
-what happened; the other consumes it and decides what to do. The seam is a
-message broker between them.
+sending events across the seam. The context that owns a change publishes an event
+as a fact about what happened. The other context reads that event and acts on it.
+A message broker carries the event from one to the other.
 
-## The three moves
+## The moves
 
 ### 1. The owning context publishes an event
 

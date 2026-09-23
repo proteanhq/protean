@@ -14,11 +14,11 @@ metadata:
 # Extract Bounded Context
 
 In Protean each `Domain` is a bounded context. When one domain grows to hold two
-languages, the two want to be separate contexts. This skill takes a set of
-aggregates out of one `Domain` into a second `Domain` and wires the two by domain
-events across the boundary.
+languages, that is a sign it holds two contexts that belong apart. This skill
+takes a set of aggregates out of one `Domain` into a second `Domain` and wires
+the two by domain events across the boundary.
 
-It composes three element skills: [add-subscriber-flow](../add-subscriber-flow/SKILL.md)
+It builds on the element skills [add-subscriber-flow](../add-subscriber-flow/SKILL.md)
 for the anti-corruption layer, [event](../event/SKILL.md) for the cross-context
 event, and [aggregate](../aggregate/SKILL.md) for the aggregates on each side.
 

@@ -12,7 +12,9 @@ extraction actually clears the smell it targets.
 - The after asset splits the two into separate ``Domain`` objects that talk by a
   published event across the seam. Neither holds a ``Reference`` into the other,
   so ``check`` reports neither ``CIRCULAR_CLUSTER_DEPENDENCY`` nor
-  ``CROSS_AGGREGATE_REFERENCE`` on either domain.
+  ``CROSS_AGGREGATE_REFERENCE`` on either domain. A third test runs the after
+  flow end to end and asserts a shipment is created from the sales event, so the
+  subscriber and the event wiring the skill teaches are actually exercised.
 
 Each asset is executed under its own ``run_name`` so the two runs' element
 registrations land in separate namespaces and cannot collide (both assets define
@@ -52,9 +54,14 @@ if not PACK_ROOT.is_dir():
     )
 
 
+def _run_asset(asset_name: str, run_name: str) -> dict:
+    """Run one asset and return its module namespace."""
+    return runpy.run_path(str(ASSETS_DIR / asset_name), run_name=run_name)
+
+
 def _domains(asset_name: str, run_name: str) -> list[Domain]:
     """Run one asset and return the initialized domains it defines, in order."""
-    namespace = runpy.run_path(str(ASSETS_DIR / asset_name), run_name=run_name)
+    namespace = _run_asset(asset_name, run_name)
     domains = [value for value in namespace.values() if isinstance(value, Domain)]
     for domain in domains:
         domain.init(traverse=False)
@@ -94,3 +101,43 @@ def test_after_asset_clears_the_targeted_codes_on_both_domains():
             f"{domain.name} must not report {CROSS_REFERENCE}; the seam now crosses "
             "by identity (order_id), with no Reference into the other context"
         )
+
+
+def test_after_flow_creates_a_shipment_from_the_sales_event():
+    # The IR tests above show the after clears the codes, but each after domain
+    # has one aggregate, so neither code can fire and those assertions cannot go
+    # red on a broken extraction. This runs the flow the skill teaches so the
+    # subscriber and event wiring are actually exercised: place an order in
+    # sales, carry the recorded OrderPlaced fact across the seam (as the demo's
+    # stand-in relay does), and assert fulfilment opens the matching shipment.
+    namespace = _run_asset("extract_bounded_context_after.py", "_ebc_flow_")
+    sales = namespace["sales"]
+    fulfilment = namespace["fulfilment"]
+    Order = namespace["Order"]
+    PlaceOrder = namespace["PlaceOrder"]
+    Shipment = namespace["Shipment"]
+    sales.init(traverse=False)
+    fulfilment.init(traverse=False)
+
+    with sales.domain_context():
+        sales.process(PlaceOrder(customer_id="CUST-1", address="1 Market St"))
+        fact = sales.event_store.store.read(Order.meta_.stream_category)[-1]
+
+    assert fact.data["customer_id"] == "CUST-1", "sales must record OrderPlaced"
+    order_id = fact.data["order_id"]
+
+    with fulfilment.domain_context():
+        fulfilment.brokers["default"].publish(
+            "sales_order_placed",
+            {"order_id": order_id, "address": fact.data["address"]},
+        )
+        shipments = fulfilment.repository_for(Shipment).query.all()
+
+    assert shipments.total == 1, (
+        "fulfilment must open exactly one shipment from the sales event; the "
+        "subscriber translates OrderPlaced into a CreateShipment command"
+    )
+    shipment = shipments.items[0]
+    assert shipment.order_id == order_id, "the shipment holds the order by identity"
+    assert shipment.address == "1 Market St"
+    assert shipment.status == "pending"
