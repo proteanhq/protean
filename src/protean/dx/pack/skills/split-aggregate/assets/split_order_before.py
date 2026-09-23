@@ -1,10 +1,10 @@
 """
 One oversized Order aggregate, before the split.
 
-Order has accreted two concerns. The order concern (items, discounts, gift
+Order has accreted a second concern. The order concern (items, discounts, gift
 wraps) and the fulfilment concern (packages, tracking events, delivery
-attempts) both live inside the one aggregate. That is six child entities in a
-single cluster, over the default `aggregate_size_limit` of five, so `check`
+attempts) both live inside the one aggregate. That puts more child entities in a
+single cluster than the default `aggregate_size_limit` allows, so `check`
 reports AGGREGATE_TOO_LARGE for Order.
 
 The fix is in split_order_after.py: pull the fulfilment concern out into its own
@@ -14,7 +14,7 @@ Usage:
     from split_order_before import PlaceOrder, domain
 
     domain.init(traverse=False)
-    # `check` reports AGGREGATE_TOO_LARGE for Order: six entities, limit five.
+    # `check` reports AGGREGATE_TOO_LARGE for Order: too many child entities.
 """
 
 from protean import Domain, handle, invariant
@@ -38,7 +38,7 @@ class Order:
     """An order that also carries its own fulfilment state.
 
     The order concern and the fulfilment concern are both here. That is the
-    smell: two lifecycles and two consistency boundaries inside one aggregate.
+    smell: separate lifecycles and separate consistency boundaries in one aggregate.
     """
 
     customer_id: Identifier(required=True)

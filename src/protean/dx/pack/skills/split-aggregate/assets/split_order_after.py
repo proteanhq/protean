@@ -2,15 +2,15 @@
 Order split into Order and Shipment, after the refactor.
 
 The fulfilment concern moved out of Order into its own Shipment aggregate. Each
-cluster now holds three entities, under the default `aggregate_size_limit`, so
-`check` no longer reports AGGREGATE_TOO_LARGE.
+cluster now holds fewer child entities than the default `aggregate_size_limit`
+allows, so `check` no longer reports AGGREGATE_TOO_LARGE.
 
 Shipment links back to Order by identity: it holds the order's id in a plain
 `Identifier` field. Reaching across to the `Order` root with a `Reference` field
 is what `check` reports as CROSS_AGGREGATE_REFERENCE; the identity link is the
 shape that avoids it.
 
-The two aggregates stay decoupled through a domain event. Order raises
+Order and Shipment stay decoupled through a domain event. Order raises
 OrderPlaced when it is placed. An event handler in Order's own cluster reacts to
 that event and issues an OpenShipment command, and Shipment's command handler
 creates the shipment. Order never holds a handle to Shipment; it only emits the
