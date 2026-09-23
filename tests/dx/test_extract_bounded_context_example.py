@@ -16,6 +16,15 @@ extraction actually clears the smell it targets.
   flow end to end and asserts a shipment is created from the sales event, so the
   subscriber and the event wiring the skill teaches are actually exercised.
 
+The after asset relays the event across the seam by hand, because both domains
+run in one process and the ``inline`` broker each configures is a separate
+object. That hand relay is the one thing in the example that a deployed system
+would do differently, so the flow test holds it against the real thing: it runs
+Protean's own external ``OutboxProcessor`` over the same outbox row, records what
+that hands the broker, and asserts the relay publishes exactly the same stream
+and envelope. A skill that drifted from how Protean dispatches externally would
+redden here instead of quietly teaching the wrong contract.
+
 Each asset is executed under its own ``run_name`` so the two runs' element
 registrations land in separate namespaces and cannot collide (both assets define
 same-named events and aggregates). The runner mirrors ``test_examples.py`` and
@@ -24,6 +33,7 @@ same-named events and aggregates). The runner mirrors ``test_examples.py`` and
 
 from __future__ import annotations
 
+import asyncio
 import runpy
 from pathlib import Path
 
@@ -32,6 +42,7 @@ import pytest
 from protean import dx
 from protean.domain import Domain
 from protean.ir.builder import IRBuilder
+from protean.server.engine import Engine
 from protean.utils.eventing import Message
 
 # These build domains directly from package data; they never touch the autouse
@@ -71,6 +82,49 @@ def _domains(asset_name: str, run_name: str) -> list[Domain]:
 
 def _findings(ir: dict, code: str) -> list[dict]:
     return [d for d in ir["diagnostics"] if d["code"] == code]
+
+
+def _record_publishes(broker, sink: list) -> None:
+    """Tee a broker's ``publish`` into ``sink`` as ``(stream, message)``."""
+    original = broker.publish
+
+    def publish(stream, message):
+        sink.append((stream, message))
+        return original(stream, message)
+
+    broker.publish = publish
+
+
+def _dispatch_externally(domain: Domain) -> list[tuple]:
+    """Run the real external ``OutboxProcessor`` and return what it published.
+
+    The asset relays by hand because both domains share one process. This drives
+    the framework's own processor over the same rows, so the test can hold the
+    hand relay against what a deployed system actually does.
+    """
+    sent: list[tuple] = []
+    _record_publishes(domain.brokers["events"], sent)
+
+    with domain.domain_context():
+        engine = Engine(domain)
+        loop = asyncio.new_event_loop()
+        try:
+            for processor in engine._outbox_processors.values():
+                loop.run_until_complete(processor.initialize())
+            for processor in engine._outbox_processors.values():
+                if processor.is_external:
+                    loop.run_until_complete(processor.tick())
+        finally:
+            loop.close()
+    return sent
+
+
+def _capture_relay(domain: Domain, relay) -> list[tuple]:
+    """Return what the asset's hand relay publishes on the consumer's broker."""
+    sent: list[tuple] = []
+    _record_publishes(domain.brokers["events"], sent)
+    relay()
+    return sent
 
 
 def test_before_asset_reports_circular_cluster_dependency():
@@ -190,7 +244,26 @@ def test_after_flow_creates_a_shipment_from_the_sales_event():
     assert row.metadata_.domain.stream_category == "sales::order"
     assert Message(data=row.data, metadata=row.metadata_).to_external_dict() == external
 
-    relay_last_order_event()
+    # The strongest check available without real shared infrastructure: run the
+    # framework's own external `OutboxProcessor` over that row and record what it
+    # hands the broker. Everything above asserts facts about the contract; this
+    # asserts against the code that implements it, so a change in how Protean
+    # dispatches externally reddens the skill rather than quietly outdating it.
+    dispatched = _dispatch_externally(sales)
+    assert dispatched, "the external OutboxProcessor must publish the outbox row"
+    assert dispatched == [("sales::order", external)], (
+        "the subscriber is written against this stream and envelope, so the real "
+        "processor must be the thing that produces them"
+    )
+
+    # The asset's hand relay must reproduce that exactly. This is what keeps the
+    # one-process demo honest: if the relay drifts from what the processor does,
+    # the demo would pass while a deployed pair broke.
+    relayed = _capture_relay(fulfilment, relay_last_order_event)
+    assert relayed == dispatched, (
+        "the asset's stand-in relay must publish what the real OutboxProcessor "
+        "publishes, or the demo proves nothing about the deployed path"
+    )
 
     with fulfilment.domain_context():
         shipments = fulfilment.repository_for(Shipment).query.all()
