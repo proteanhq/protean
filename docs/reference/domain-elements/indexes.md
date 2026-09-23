@@ -163,7 +163,7 @@ resolution), raising `IncorrectUsageError` on:
 - a `desc` entry not present in `fields`;
 - a list entry that is neither an `Index` nor a `RawIndex`;
 - a `RawIndex` whose `dialect` is not one the framework renders DDL for
-  (`mssql`, `postgresql`, `sqlite`).
+  (`mariadb`, `mssql`, `mysql`, `postgresql`, `sqlite`).
 
 A `RawIndex`'s DDL string stays opaque: only its `dialect` is checked. A name
 outside the rendered set (a typo like `postgres`, or a dialect with no
