@@ -88,7 +88,7 @@ more than one aggregate class.
 - Multiple `HasMany` associations pointing to unrelated entity types
 
 **Severity**: HIGH
-**Fix**: refactor-split-aggregate (planned)
+**Fix**: [split-aggregate](../split-aggregate/SKILL.md)
 
 ### 5. Manual UoW wrapping
 
