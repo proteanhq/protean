@@ -64,6 +64,32 @@ def _run_mypy(config: Path) -> tuple[list[str], list[str]]:
     return revealed, errors
 
 
+def _parse_pyright_report(stdout: str) -> dict | None:
+    """Pull pyright's ``--outputjson`` payload out of a stdout stream.
+
+    The stream is not always JSON from its first byte. The `pyright` PyPI
+    package launches the real checker through a node shim, and on a cold cache
+    that shim prints its platform probe to stdout first, as a Python repr:
+    ``{'x86': False, 'risc': False, 'lts': False}``. Handing the whole stream to
+    ``json.loads`` then fails on a run where pyright itself answered correctly,
+    and the whole matrix has to be run again to clear it.
+
+    So decode from the first brace that begins a real report object and ignore
+    whatever surrounds it. Returns None when the stream carries no report.
+    """
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(stdout):
+        if char != "{":
+            continue
+        try:
+            candidate, _ = decoder.raw_decode(stdout[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict) and "generalDiagnostics" in candidate:
+            return candidate
+    return None
+
+
 def _run_pyright() -> tuple[list[str], list[str]]:
     """Run pyright standard on the fixture; return (revealed_types, errors)."""
     pyright = shutil.which("pyright")
@@ -75,12 +101,11 @@ def _run_pyright() -> tuple[list[str], list[str]]:
         capture_output=True,
         text=True,
     )
-    try:
-        report = json.loads(proc.stdout)
-    except json.JSONDecodeError as exc:  # pragma: no cover — defensive
+    report = _parse_pyright_report(proc.stdout)
+    if report is None:
         raise AssertionError(
             f"pyright did not emit JSON:\nstdout={proc.stdout}\nstderr={proc.stderr}"
-        ) from exc
+        )
 
     revealed: list[str] = []
     errors: list[str] = []
@@ -111,3 +136,29 @@ class TestTypedDispatchPyright:
         revealed, errors = _run_pyright()
         assert not errors, f"pyright reported errors: {errors}"
         assert revealed == _EXPECTED_REVEALS, revealed
+
+
+class TestPyrightReportParsing:
+    """The report is read out of the stream, whatever the launcher printed first."""
+
+    def test_plain_json_stream(self) -> None:
+        report = _parse_pyright_report('{"generalDiagnostics": [], "version": "1.1"}')
+        assert report is not None
+        assert report["version"] == "1.1"
+
+    def test_node_probe_line_ahead_of_the_report(self) -> None:
+        # What the node shim prints on a cold cache: a Python repr, not JSON.
+        stdout = (
+            "{'x86': False, 'risc': False, 'lts': False}\n{\"generalDiagnostics\": []}"
+        )
+        report = _parse_pyright_report(stdout)
+        assert report == {"generalDiagnostics": []}
+
+    def test_json_object_without_diagnostics_is_not_the_report(self) -> None:
+        stdout = '{"version": "1.1"}\n{"generalDiagnostics": [{"severity": "error"}]}'
+        report = _parse_pyright_report(stdout)
+        assert report is not None
+        assert report["generalDiagnostics"] == [{"severity": "error"}]
+
+    def test_stream_with_no_report_returns_none(self) -> None:
+        assert _parse_pyright_report("pyright: command failed\n") is None
