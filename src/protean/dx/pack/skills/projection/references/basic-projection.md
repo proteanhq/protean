@@ -57,7 +57,7 @@ The identifier field serves as the primary key for the projection. It can be:
 
 Important properties:
 - Identifier values are **immutable** once set (raises `InvalidOperationError` on change)
-- Identifier values **auto-generate** when omitted only for `Identifier` and `Auto` identifier fields (a UUID by default), the same as aggregates. A `String` identifier used as an explicit business key (such as the `ssn` field above) has no default and must be supplied, or validation fails with "is required"
+- Identifier values **auto-generate** when omitted only for `Identifier` and `Auto` identifier fields (a UUID by default), the same as aggregates. `Auto(identifier=True, increment=True)` is the exception: it generates no UUID and stays `None` until the DAO assigns its integer sequence on persistence. A `String` identifier used as an explicit business key (such as the `ssn` field above) has no default and must be supplied, or validation fails with "is required"
 
 ## Projection properties
 

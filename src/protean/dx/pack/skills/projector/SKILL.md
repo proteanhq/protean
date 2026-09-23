@@ -98,7 +98,7 @@ class ProductInventoryProjector:
 | `subscription_type` | `"stream"` or `"event_store"` | No |
 | `subscription_profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"` | No |
 | `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |
-| `idempotent` | When `True`, each handler records a delivery marker in the same UnitOfWork as its write so a redelivered event applies exactly once | No |
+| `idempotent` | When `True`, each handler records a delivery marker in the same UnitOfWork as its write, so a redelivered event applies exactly once on a relational provider. On the in-memory provider the marker only skips a sequential redelivery; it is neither atomic nor concurrency-safe. For a cache-backed projection the option is a no-op, so the handler must write an idempotent upsert | No |
 | `suppress_checks` | Diagnostic codes to suppress for this projector | No |
 
 ## Quick example: Multiple events in one projector

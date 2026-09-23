@@ -56,7 +56,7 @@ class ProductInventory:
 7. **Default query limit is 100** - Can be overridden; set to `None` or negative for unlimited
 8. **Schema name auto-derived** - Defaults to underscore-cased class name (e.g., `ProductInventory` -> `product_inventory`)
 9. **Identifier values are immutable** - Once set, the identifier field cannot be changed
-10. **Identifier values auto-generate when omitted, for `Identifier`/`Auto` fields** - An `identifier=True` field declared as `Identifier` or `Auto` generates a value on creation if you do not supply one (a UUID by default), the same as aggregates. An `identifier=True` field declared with another field type (e.g. `String`) gets no default and stays required
+10. **Identifier values auto-generate when omitted, for `Identifier`/`Auto` fields** - An `identifier=True` field declared as `Identifier` or `Auto` generates a value on creation if you do not supply one (a UUID by default), the same as aggregates. `Auto(identifier=True, increment=True)` is the exception: it stays `None` at construction and the DAO assigns its integer sequence when the projection is persisted. An `identifier=True` field declared with another field type (e.g. `String`) gets no default and stays required
 
 ## Projection options
 

@@ -48,7 +48,7 @@ class UpcastOrderPlacedV1ToV2(BaseUpcaster):
 6. **One upcaster per version step** — Write v1→v2 and v2→v3 separately. Never skip versions that existed in production
 7. **Keep upcasters pure** — No I/O, no database queries, no external API calls. Upcasting runs on the deserialization path for old-version events and must be fast
 8. **Chains build automatically** — Register individual steps; the framework chains them into v1→v2→v3 during `domain.init()`
-9. **Validated at startup** — `domain.init()` detects duplicates, cycles, non-convergent chains, and missing event classes. All errors are caught at startup, never at runtime
+9. **Chain registration is validated at startup** — `domain.init()` detects duplicates, cycles, non-convergent chains, and missing event classes. It does not catch a missing step: a stored payload whose version has no upcaster path is passed through unchanged and fails to deserialize at read time. `check` reports that gap as `UPCASTER_GAP`
 10. **Works everywhere transparently** — Event-sourced aggregate reconstruction (`@apply`), event handlers (`@handle`), and projectors all receive upcast events
 11. **Lazy, zero-overhead for current events** — Current-version events take a fast path (direct type-string lookup). The upcaster chain is only consulted for old-version type strings
 

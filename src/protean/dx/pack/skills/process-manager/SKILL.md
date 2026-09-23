@@ -219,6 +219,8 @@ Instead: Keep business logic in aggregates. PM only coordinates.
 
 A PM without `end=True` or `mark_as_complete()` on any handler will never finish. Its stream will grow indefinitely and it will continue accepting events. `check` reports a PM with no `end=True` handler as `PROCESS_MANAGER_UNCLOSED`.
 
+The diagnostic reads the decorator flag only. It never inspects `mark_as_complete()` calls, so a PM that completes that way alone is still reported. Mark the terminating handler `end=True` to clear it, or pass `suppress_checks=("PROCESS_MANAGER_UNCLOSED",)` to `@domain.process_manager` when completion is genuinely decided at runtime.
+
 ### Correlation matches by value
 
 Each handler's `correlate` is resolved independently, by `getattr(event, field_name)`, and the PM instance is looked up purely by that value. `OrderPlaced` using `order_id` and `PaymentConfirmed` using `payment_order_id` route to the same instance correctly as long as both hold the same value. Dictionary correlate, `correlate={"order_id": "payment_order_id"}`, resolves the same way; use it to document the mapping for readers.
