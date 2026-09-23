@@ -21,6 +21,7 @@ from sqlalchemy.schema import CreateTable
 
 from protean import Domain, Index, Q
 from protean.adapters.repository.sqlalchemy import (
+    _MARIADB_DEFAULT_COLLATION,
     _MYSQL_DEFAULT_COLLATION,
     _MYSQL_DIALECTS,
     GUID,
@@ -749,13 +750,21 @@ class TestMappedColumnKeyWidths:
 
     @pytest.mark.parametrize(
         "column_type",
-        [sa_types.Text(), sa_types.Text(100)],
-        ids=["text", "text-with-a-length-hint"],
+        [
+            sa_types.Text(),
+            sa_types.Text(100),
+            sa_types.LargeBinary(),
+            sa_types.BLOB(),
+            sa_types.PickleType(),
+        ],
+        ids=["text", "text-with-a-length-hint", "large-binary", "blob", "pickle"],
     )
-    def test_a_column_mapped_to_text_cannot_be_indexed(self, column_type):
+    def test_a_column_mapped_to_text_or_blob_cannot_be_indexed(self, column_type):
         """``Text`` subclasses ``String`` and takes a length hint that MySQL
-        ignores, so ``Text(100)`` is still a TEXT column. Reading that hint as a
-        width let the index through, and the server answered with 1170,
+        ignores, so ``Text(100)`` is still a TEXT column. A binary column is a
+        BLOB and needs a prefix just the same, and ``PickleType`` is a
+        ``TypeDecorator`` over one, so it is not an instance of ``LargeBinary``
+        and has to be named. Every one of these answered with 1170,
         "BLOB/TEXT column used in key specification without a key length"."""
 
         class Essay(BaseAggregate):
@@ -770,7 +779,7 @@ class TestMappedColumnKeyWidths:
             )
 
         assert "body" in str(exc.value)
-        assert "TEXT" in str(exc.value)
+        assert "TEXT or BLOB" in str(exc.value)
 
     def test_a_value_object_shadow_column_is_measured_on_the_live_path(self):
         """The shadow column is a real column, so it needs no name resolution
@@ -986,10 +995,15 @@ class TestTableArgs:
             table = provider.construct_database_model_class(Article).__table__
         ddl = str(CreateTable(table).compile(provider._engine))
 
+        expected = (
+            _MARIADB_DEFAULT_COLLATION
+            if dialect == "mariadb"
+            else _MYSQL_DEFAULT_COLLATION
+        )
         assert table.kwargs[f"{dialect}_charset"] == "utf8mb4"
-        assert table.kwargs[f"{dialect}_collate"] == _MYSQL_DEFAULT_COLLATION
+        assert table.kwargs[f"{dialect}_collate"] == expected
         assert "CHARSET=utf8mb4" in ddl
-        assert f"COLLATE {_MYSQL_DEFAULT_COLLATION}" in ddl
+        assert f"COLLATE {expected}" in ddl
 
     def test_no_kwargs_for_a_dialect_that_is_not_mysql(self):
         """The helper runs for every dialect; only MySQL gets table kwargs."""

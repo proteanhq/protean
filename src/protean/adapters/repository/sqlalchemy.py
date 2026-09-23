@@ -384,7 +384,15 @@ _MYSQL_DIALECTS = frozenset({"mysql", "mariadb"})
 # it is an alias for ``utf8mb4_uca1400_as_cs``); an older MariaDB should set
 # ``collation = "utf8mb4_bin"``.
 _MYSQL_CHARSET = "utf8mb4"
+
+# The accent- and case-sensitive utf8mb4 collation, spelled the way each server
+# spells it. MySQL has had `utf8mb4_0900_as_cs` since 8.0.1 and has never had a
+# `uca1400` name. MariaDB is the other way round: `utf8mb4_uca1400_as_cs` since
+# 10.10, and the `utf8mb4_0900_*` aliases only from 11.4.5. Checked by creating
+# a table on 10.6, 10.11, 11.4.4 and 11.4.13. Using one name for both fails at
+# CREATE TABLE on every MariaDB before 11.4.5, 10.11 LTS included.
 _MYSQL_DEFAULT_COLLATION = "utf8mb4_0900_as_cs"
+_MARIADB_DEFAULT_COLLATION = "utf8mb4_uca1400_as_cs"
 
 # The storage engine and row format the provider's guarantees are written
 # against. Both are server settings the operator can change, so the tables
@@ -600,7 +608,12 @@ def _mysql_table_kwargs(
         return {}
     return {
         f"{dialect_name}_charset": _MYSQL_CHARSET,
-        f"{dialect_name}_collate": options.get("collation") or _MYSQL_DEFAULT_COLLATION,
+        f"{dialect_name}_collate": options.get("collation")
+        or (
+            _MARIADB_DEFAULT_COLLATION
+            if dialect_name == "mariadb"
+            else _MYSQL_DEFAULT_COLLATION
+        ),
         f"{dialect_name}_engine": _MYSQL_ENGINE,
         f"{dialect_name}_row_format": _MYSQL_ROW_FORMAT,
     }
@@ -854,8 +867,14 @@ def _mysql_index_key_width_from_columns(
         # ``Text`` subclasses ``String`` and accepts a length hint, which MySQL
         # ignores: ``Text(100)`` is still a TEXT column and still needs a
         # prefix length to be indexed. So the subclass is checked first, and
-        # its ``length`` is not read.
-        if isinstance(column_type, sa_types.Text):
+        # its ``length`` is not read. A binary column is a BLOB and has the
+        # same problem, with the same error, 1170. ``PickleType`` is named
+        # because it is a ``TypeDecorator`` over ``LargeBinary`` and so is not
+        # an instance of it.
+        if isinstance(
+            column_type,
+            (sa_types.Text, sa_types.LargeBinary, sa_types.PickleType),
+        ):
             unbounded.append(field_name)
             continue
 
@@ -913,10 +932,10 @@ def _check_mysql_index_key_widths(
             raise IncorrectUsageError(
                 f"Index {name!r} on '{entity_cls.__name__}' covers "
                 f"{', '.join(unbounded)}, which "
-                f"{'map' if len(unbounded) > 1 else 'maps'} to a TEXT column. "
-                f"InnoDB cannot index TEXT without a prefix length. Give the "
-                f"field a max_length (e.g. Field(max_length=255)), or map it "
-                f"to a VARCHAR column."
+                f"{'map' if len(unbounded) > 1 else 'maps'} to a TEXT or BLOB "
+                f"column. InnoDB cannot index either without a prefix length. "
+                f"Give the field a max_length (e.g. Field(max_length=255)), or "
+                f"map it to a VARCHAR column."
             )
 
         if width > _MYSQL_MAX_INDEX_KEY_BYTES:
@@ -2621,14 +2640,15 @@ class MysqlProvider(SAProvider):
         """
         return _MYSQL_CHARSET
 
-    _collation: str
+    _collation: str | None
 
     def __init__(
         self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
     ) -> None:
         # Resolve the collation before the engine is built, so a bad one fails
         # at ``domain.init()`` naming the config key, not at the first
-        # ``CREATE TABLE`` with MySQL's own message.
+        # ``CREATE TABLE`` with MySQL's own message. ``None`` means "not
+        # configured", and the default is chosen later, from the server.
         self._collation = self._resolve_collation(name, conn_info)
         self._validate_connect_args(name, conn_info)
         super().__init__(name, domain, conn_info)
@@ -2657,15 +2677,18 @@ class MysqlProvider(SAProvider):
             )
 
     @staticmethod
-    def _resolve_collation(name: str, conn_info: dict[str, typing.Any]) -> str:
+    def _resolve_collation(name: str, conn_info: dict[str, typing.Any]) -> str | None:
         """The configured collation, checked against the pinned charset.
+
+        ``None`` when none is configured: the two servers spell the default
+        differently, so it is chosen from the live dialect instead.
 
         MySQL names a collation after the charset it belongs to, and rejects a
         mismatched pair at ``CREATE TABLE`` with "COLLATION ... is not valid for
         CHARACTER SET ...". Checking the prefix names the config key instead.
         """
         if "collation" not in conn_info:
-            return _MYSQL_DEFAULT_COLLATION
+            return None
 
         collation = conn_info["collation"]
         # Absence, then type, then emptiness. A plain ``or`` here would let
@@ -2692,7 +2715,22 @@ class MysqlProvider(SAProvider):
     @property
     def collation(self) -> str:
         """The collation tables are created with, and every string column takes."""
-        return self._collation
+        if self._collation is not None:
+            return self._collation
+        return self._default_collation()
+
+    def _default_collation(self) -> str:
+        """The default spelled the way the server being talked to spells it.
+
+        Read off the dialect rather than the URI scheme: SQLAlchemy keeps
+        ``dialect.name`` as ``mysql`` for a ``mysql+pymysql://`` URI pointed at
+        a MariaDB server, and sets ``_is_mariadb`` once it has connected. A
+        ``mariadb+pymysql://`` URI is known from the start.
+        """
+        dialect = self._engine.dialect
+        if dialect.name == "mariadb" or getattr(dialect, "_is_mariadb", False):
+            return _MARIADB_DEFAULT_COLLATION
+        return _MYSQL_DEFAULT_COLLATION
 
     def _model_type_options(self) -> dict[str, typing.Any]:
         return {"collation": self.collation}

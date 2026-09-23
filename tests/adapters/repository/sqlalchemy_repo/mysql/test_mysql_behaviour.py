@@ -141,11 +141,15 @@ class TestCollation:
         self, mysql_domain, column
     ):
         """The collation is set once as a table default; VARCHAR and TEXT
-        columns both pick it up."""
+        columns both pick it up.
+
+        The two servers spell that collation differently, so the expected name
+        comes from the provider rather than a constant.
+        """
         _, charset, collation = column_info(mysql_domain, column)
 
         assert charset == "utf8mb4"
-        assert collation == "utf8mb4_0900_as_cs"
+        assert collation == mysql_domain.providers["default"].collation
 
 
 class TestStoredColumnTypes:
@@ -561,4 +565,94 @@ class TestCompositeKeyBoundary:
             with provider._engine.connect() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS boundary_probe"))
                 conn.commit()
+            provider.close()
+
+
+class TestDefaultCollationPerServer:
+    """MySQL and MariaDB spell the accent- and case-sensitive utf8mb4
+    collation differently, and neither name works on the other server. One
+    constant for both failed at CREATE TABLE with `Unknown collation` on every
+    MariaDB before 11.4.5, which includes 10.11 LTS.
+    """
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_the_default_is_the_one_the_server_has(self, uri):
+        domain = Domain(
+            name="MySQL collation default",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.register(Note)
+        domain.init(traverse=False)
+
+        provider = domain.providers["default"]
+        try:
+            with domain.domain_context():
+                domain.repository_for(Note)._dao
+                provider._metadata.create_all(provider._engine)
+
+                with provider._engine.connect() as conn:
+                    is_mariadb = (
+                        "mariadb"
+                        in str(conn.execute(text("SELECT VERSION()")).scalar()).lower()
+                    )
+                    table_collation = conn.execute(
+                        text(
+                            "SELECT table_collation FROM information_schema.tables "
+                            "WHERE table_schema = DATABASE() AND table_name = 'note'"
+                        )
+                    ).scalar()
+
+            expected = "utf8mb4_uca1400_as_cs" if is_mariadb else "utf8mb4_0900_as_cs"
+            assert provider.collation == expected
+            assert table_collation == expected
+        finally:
+            provider._metadata.drop_all(provider._engine)
+            provider.close()
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_each_server_only_offers_the_name_chosen_for_it(self, uri):
+        """Why the default follows the dialect.
+
+        MySQL has never had a `uca1400` collation, so the MariaDB name is not
+        an option there in any version. The reverse holds only up to a point:
+        MariaDB gained the `utf8mb4_0900_*` aliases in 11.4.5, so a recent
+        MariaDB answers to both while 10.11 LTS and 11.4.4 refuse the MySQL
+        name with `Unknown collation`. Checked by creating a table on 10.6,
+        10.11, 11.4.4 and 11.4.13.
+        """
+        domain = Domain(
+            name="MySQL collation probe",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.init(traverse=False)
+        provider = domain.providers["default"]
+        try:
+            with provider._engine.connect() as conn:
+                is_mariadb = (
+                    "mariadb"
+                    in str(conn.execute(text("SELECT VERSION()")).scalar()).lower()
+                )
+                offered = set(
+                    conn.execute(
+                        text(
+                            "SELECT collation_name FROM information_schema.collations "
+                            "WHERE collation_name IN "
+                            "('utf8mb4_0900_as_cs', 'utf8mb4_uca1400_as_cs')"
+                        )
+                    ).scalars()
+                )
+
+            if is_mariadb:
+                # It may or may not offer the MySQL name, by version.
+                assert provider.collation == "utf8mb4_uca1400_as_cs"
+            else:
+                assert offered == {"utf8mb4_0900_as_cs"}
+                assert provider.collation == "utf8mb4_0900_as_cs"
+        finally:
             provider.close()

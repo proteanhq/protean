@@ -63,7 +63,7 @@ database_uri = "mariadb+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"
 |--------|---------|-------------|
 | `provider` | Required | Must be `"mysql"`, for MySQL and for MariaDB |
 | `database_uri` | Required | PyMySQL connection string |
-| `collation` | `utf8mb4_0900_as_cs` | Default collation of created tables; must be a `utf8mb4_` collation |
+| `collation` | per dialect (see below) | Default collation of created tables; must be a `utf8mb4_` collation |
 | `pool_size` | 5 | Connections held open in the pool |
 | `max_overflow` | 10 | Connections opened beyond `pool_size` under load |
 
@@ -96,11 +96,14 @@ the server default, `exact`, `contains`, `startswith` and `endswith` would all
 match rows they should not. Every other Protean provider compares strings
 case-sensitively.
 
-The provider therefore creates each table with an explicit default collation,
-`utf8mb4_0900_as_cs`, which every string column in the table inherits:
+The provider therefore creates each table with an explicit accent- and
+case-sensitive collation, which every string column in the table inherits:
 
 ```sql
+-- MySQL
 CREATE TABLE person (...) CHARSET=utf8mb4 COLLATE utf8mb4_0900_as_cs
+-- MariaDB
+CREATE TABLE person (...) CHARSET=utf8mb4 COLLATE utf8mb4_uca1400_as_cs
 ```
 
 Setting the collation on the table rather than on each lookup keeps indexes
@@ -113,10 +116,13 @@ Two consequences:
 - The collation only reaches tables Protean creates. A table created by hand,
   or by an earlier migration, keeps whatever collation it was given, and string
   lookups against it behave the way that collation says.
-- `utf8mb4_0900_as_cs` needs MySQL 8.0.1+ or MariaDB 10.10+, where it is an
-  alias for `utf8mb4_uca1400_as_cs`. On an older MariaDB, set
-  `collation = "utf8mb4_bin"`. An unknown collation fails at `CREATE TABLE`
-  with the server's own error.
+- The two servers spell that collation differently, so the default follows the
+  dialect: `utf8mb4_0900_as_cs` on MySQL, `utf8mb4_uca1400_as_cs` on MariaDB.
+  Neither name is a safe default for both. MySQL has never had a `uca1400`
+  collation, and MariaDB only gained the `utf8mb4_0900_*` aliases in 11.4.5,
+  so 10.11 LTS and 11.4.4 refuse the MySQL name with `Unknown collation`.
+  MySQL needs 8.0.1+ and MariaDB needs 10.10+; on anything older, set
+  `collation = "utf8mb4_bin"`.
 
 The charset is pinned to `utf8mb4` and is not configurable: a narrower charset
 cannot hold the 4-byte characters Protean stores. MySQL names a collation after
@@ -192,6 +198,7 @@ widths are the column's storage size, measured against both servers:
 | Field | Column | Bytes |
 |-------|--------|------:|
 | `String(max_length=n)` | `VARCHAR(n)` | `4 * n` |
+| a `TEXT` or `BLOB` column | not indexable without a prefix | raises |
 | `Boolean` | `TINYINT` | 1 |
 | `Date` | `DATE` | 3 |
 | `Integer` | `INT` | 4 |
