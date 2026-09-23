@@ -130,8 +130,8 @@ def generate(
 
 
 # The default set of dialects to render, sourced from the one core constant so
-# the CLI never renders for a dialect the framework does not support (or misses
-# one it does).
+# the default covers every dialect the framework supports and no others. An
+# explicit ``--dialects`` is checked against the same constant in ``render``.
 _DEFAULT_INDEX_DIALECTS = ",".join(sorted(RENDERED_INDEX_DIALECTS))
 
 
@@ -242,6 +242,16 @@ def render(
         raise typer.Abort()
 
     dialect_list = [d.strip() for d in dialects.split(",") if d.strip()]
+
+    # An unknown name has no compiler. Reject it here so the user gets the
+    # accepted set, instead of a file named for a dialect nothing rendered.
+    unknown = [d for d in dialect_list if d not in RENDERED_INDEX_DIALECTS]
+    if unknown:
+        print(
+            f"[red]Error:[/red] unknown dialect(s) {sorted(unknown)}; "
+            f"--dialects accepts {sorted(RENDERED_INDEX_DIALECTS)}"
+        )
+        raise typer.Abort()
 
     live_domain = load_domain(domain)
     written = write_index_ddl(live_domain, output, dialect_list)

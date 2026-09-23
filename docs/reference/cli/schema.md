@@ -176,6 +176,12 @@ protean schema render --indexes --domain=my_app.domain --output=build
 `--indexes` requires `--domain`: rendering partial-index predicates needs the
 live `Index` declarations (the `Q` objects), which an IR file does not carry.
 
+`--dialects` accepts only the three dialects the framework renders DDL for:
+`mssql`, `postgresql`, and `sqlite`. A name outside that set (`oracle`, or a
+typo like `postgres`) exits with an error naming the accepted set. There is no
+compiler for it, so the alternative would be a file named for a dialect that
+nothing rendered.
+
 **Output structure**
 
 One `.sql` file per element per dialect is written under

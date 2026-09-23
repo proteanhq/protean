@@ -193,7 +193,10 @@ class TestRawIndexDialectValidation:
         message = str(exc.value)
         assert "Job" in message  # the element
         assert "ix_job_gin" in message  # the index (name)
-        assert "postgres" in message  # the bad dialect
+        # The whole clause, not a bare "postgres": that substring is already in
+        # the allowed "postgresql" the message lists, so a looser assertion
+        # would still pass if the message stopped naming the offending value.
+        assert "targets unknown dialect 'postgres'." in message
 
     def test_unknown_dialect_without_a_provider_rejected(self, test_domain):
         @test_domain.aggregate(
@@ -209,7 +212,7 @@ class TestRawIndexDialectValidation:
 
         message = str(exc.value)
         assert "Job" in message
-        assert "oracle" in message
+        assert "targets unknown dialect 'oracle'." in message
         # With no explicit name, the DDL identifies the index.
         assert "CREATE INDEX ix_job_status ON job (status)" in message
 
@@ -248,4 +251,4 @@ class TestRawIndexDialectValidation:
         with pytest.raises(IncorrectUsageError) as exc:
             test_domain.init(traverse=False)
 
-        assert dialect in str(exc.value)
+        assert f"targets unknown dialect '{dialect}'." in str(exc.value)

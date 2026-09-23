@@ -54,6 +54,49 @@ class TestApplyErrors:
         assert result.exit_code != 0
         assert "Error loading Protean domain" in result.output
 
+    @pytest.mark.parametrize("dialect", ["oracle", "postgres", "PostgreSQL"])
+    def test_unknown_dialect_aborts(self, dialect):
+        # Without this check the unknown name reached ``render_index_ddl``,
+        # which compiled with SQLite and wrote a file labelled for the dialect
+        # nothing rendered.
+        result = runner.invoke(
+            app, ["render", "--indexes", "--domain=x", f"--dialects={dialect}"]
+        )
+        assert result.exit_code != 0
+        # Rich wraps to the terminal width, so match without the line breaks.
+        flat = " ".join(result.output.split())
+        assert f"unknown dialect(s) ['{dialect}']" in flat
+        assert "'mssql', 'postgresql', 'sqlite'" in flat
+
+    def test_unknown_dialect_aborts_before_loading_the_domain(self):
+        # The bad name is reported on its own, not behind a domain-load error.
+        result = runner.invoke(
+            app,
+            [
+                "render",
+                "--indexes",
+                "--domain=nonexistent_module_xyz",
+                "--dialects=oracle",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Error loading Protean domain" not in result.output
+
+    def test_known_dialects_pass_the_check(self):
+        # A valid set gets past the dialect check and fails later, on the
+        # domain load, which is what proves the check let it through.
+        result = runner.invoke(
+            app,
+            [
+                "render",
+                "--indexes",
+                "--domain=nonexistent_module_xyz",
+                "--dialects=postgresql,sqlite",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Error loading Protean domain" in result.output
+
 
 class TestWriteIndexDDL:
     """Direct coverage of the writer used by the command."""

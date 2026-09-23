@@ -363,9 +363,10 @@ _PARTIAL_INDEX_OPS = {
 # each dialect the framework renders index DDL for. The rendered set is owned by
 # ``RENDERED_INDEX_DIALECTS`` in ``protean.core.index`` (the same set
 # ``validate_indexes`` accepts a ``RawIndex`` dialect against), and
-# ``render_index_ddl`` builds its impls by iterating that constant, so the
-# accepted set and the rendered set cannot drift. Adding a dialect to the core
-# constant requires adding its factory here.
+# ``render_index_ddl`` rejects any name outside it, so the accepted set and the
+# rendered set cannot drift. Adding a dialect to the core constant requires
+# adding its factory here; ``test_factory_map_covers_every_rendered_dialect``
+# fails if the two go out of step.
 #
 # SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are declared
 # without full annotations, so mypy flags the calls as untyped even though the
@@ -554,7 +555,20 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
     irrelevant to index DDL) and compiles them with the target dialect. Used by
     ``protean schema render --indexes`` to write ``.sql`` artifacts without a
     live database connection.
+
+    ``dialect_name`` must be a member of
+    :data:`~protean.core.index.RENDERED_INDEX_DIALECTS`. Anything else raises
+    :class:`IncorrectUsageError`: there is no compiler for it, and falling back
+    to another dialect's compiler would emit that dialect's DDL under the
+    requested name.
     """
+    if dialect_name not in RENDERED_INDEX_DIALECTS:
+        raise IncorrectUsageError(
+            f"Cannot render index DDL for unknown dialect '{dialect_name}'. "
+            f"The framework renders index DDL only for "
+            f"{sorted(RENDERED_INDEX_DIALECTS)}."
+        )
+
     declared = getattr(entity_cls.meta_, "indexes", ()) or ()
     if not declared:
         return []
@@ -585,12 +599,9 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
         declared, column_for, attr_for, table_name, dialect_name, entity_cls.__name__
     )
 
-    # Keys come from the core constant, so the set of dialects this renders for
-    # is exactly the set ``validate_indexes`` accepts.
-    dialect_impls = {
-        name: _SA_DIALECT_FACTORIES[name]() for name in RENDERED_INDEX_DIALECTS
-    }
-    dialect = dialect_impls.get(dialect_name, sqlite_dialect.dialect())
+    # ``dialect_name`` is checked against the core constant above, and the
+    # factory map covers every member of it, so this lookup always hits.
+    dialect = _SA_DIALECT_FACTORIES[dialect_name]()
 
     statements = [
         str(CreateIndex(sa_index).compile(dialect=dialect)).strip()
