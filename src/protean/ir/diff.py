@@ -984,8 +984,9 @@ def classify_changes(
     - Break replay on an event-sourced aggregate: breaking (see
       :func:`_classify_replay_hazards`)
 
-    Two evolution-aware refinements apply to every persisted element (not only
-    published event contracts):
+    Three evolution-aware refinements apply on top of the rules above. The
+    first two cover every persisted element, not only published event
+    contracts. The third covers only an event-sourced aggregate:
 
     - **Deprecation grace**: a field deprecated and removed at/past its
       ``removal`` version is a safe (expected) removal. This needs
