@@ -702,7 +702,13 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     if isinstance(reserved, str):
         reserved = (reserved,)
     else:
-        reserved = tuple(reserved)
+        try:
+            reserved = tuple(reserved)
+        except TypeError:
+            # A scalar like `reserved=123` or `reserved=None` is not iterable.
+            # Wrap it so the string check below reports it the same way as a
+            # non-string element, instead of leaking a raw `TypeError`.
+            reserved = (reserved,)
     if not all(isinstance(name, str) for name in reserved):
         raise IncorrectUsageError(
             f"`reserved` on aggregate `{aggregate_cls.__name__}` must be field "

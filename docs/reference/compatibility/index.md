@@ -37,9 +37,10 @@ Protean classifies changes to persisted domain elements using these rules:
 | Drop a name from an event-sourced aggregate's `reserved` | **Breaking** (`reservation_removed`) |
 
 Most of these rules apply to every persisted element: aggregates, entities,
-value objects, commands, events, database models, and projections. The last five
-rows are the exception. They read attributes only an aggregate has, so they are
-checked on event-sourced aggregates and nowhere else.
+value objects, commands, events, database models, and projections. Six rows are
+the exception: the last five, and the `reserved` field-removal row above them.
+They read attributes only an aggregate has, so they are checked on event-sourced
+aggregates and nowhere else.
 
 ### Replay hazards on an event-sourced aggregate
 

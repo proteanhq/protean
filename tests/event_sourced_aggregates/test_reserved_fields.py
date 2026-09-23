@@ -187,6 +187,16 @@ def test_reserved_rejects_a_non_string_element(test_domain):
             bad_id: Identifier(identifier=True)
 
 
+def test_reserved_rejects_a_scalar(test_domain):
+    """A non-iterable value must report the same usage error as a non-string
+    element, not leak the `TypeError` from building the tuple."""
+    with pytest.raises(IncorrectUsageError, match="field names"):
+
+        @test_domain.aggregate(event_sourced=True, reserved=123)
+        class Bad(BaseAggregate):
+            bad_id: Identifier(identifier=True)
+
+
 def test_reserved_rejects_a_private_name(test_domain):
     """Reserving `_replaying` would make `__setattr__` drop the `finally` reset
     in `_apply`, leaving every aggregate of this class stuck in replay mode."""
