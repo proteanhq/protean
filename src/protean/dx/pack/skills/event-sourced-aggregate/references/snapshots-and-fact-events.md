@@ -84,7 +84,7 @@ Fact events use a distinct stream:
 {stream_category}-fact-{aggregate_id}
 ```
 
-Example: `product-fact-PROD-001`
+`stream_category` already carries the domain name prefix, so for a domain named `test` the fact stream for `Product` is `test::product-fact-PROD-001`.
 
 This separation allows subscribers to independently consume delta events or fact events.
 

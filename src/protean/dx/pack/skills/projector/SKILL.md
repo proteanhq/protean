@@ -92,6 +92,14 @@ class ProductInventoryProjector:
 | `projector_for` | The projection class this projector maintains | Yes |
 | `aggregates` | List of aggregate classes whose events to listen to | Yes (unless stream_categories provided) |
 | `stream_categories` | List of stream category names to listen to | Yes (unless aggregates provided) |
+| `retries` | Max retry attempts on transient exceptions; overrides `server.transient_retry` | No |
+| `backoff` | Retry delay strategy: `"exponential"`, `"linear"`, or `"fixed"` | No |
+| `retry_exceptions` | Exception types (classes or dotted paths) treated as transient for retry | No |
+| `subscription_type` | `"stream"` or `"event_store"` | No |
+| `subscription_profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"` | No |
+| `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |
+| `idempotent` | When `True`, each handler records a delivery marker in the same UnitOfWork as its write so a redelivered event applies exactly once | No |
+| `suppress_checks` | Diagnostic codes to suppress for this projector | No |
 
 ## Quick example: Multiple events in one projector
 

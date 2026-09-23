@@ -82,6 +82,7 @@ class OrderFulfillmentPM:
 | `subscription_type` | `"stream"` or `"event_store"` | No |
 | `subscription_profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"` | No |
 | `subscription_config` | Custom config dict (messages_per_tick, max_retries, etc.) | No |
+| `sequential_by` | `True` opts into per-instance sequential processing, partitioned by the field the subscribed category's `correlate` spec maps to (ADR-0028) | No |
 
 ## @handle parameters for process managers
 
@@ -216,9 +217,9 @@ Instead: Keep business logic in aggregates. PM only coordinates.
 
 A PM without `end=True` or `mark_as_complete()` on any handler will never finish. Its stream will grow indefinitely and it will continue accepting events.
 
-### Inconsistent correlation keys
+### Correlation matches by value
 
-All events in a process must carry the same correlation field. If `OrderPlaced` uses `order_id` but `PaymentConfirmed` uses `payment_order_id`, the PM cannot route them to the same instance. Use dictionary correlate to map different names: `correlate={"order_id": "payment_order_id"}`.
+Each handler's `correlate` is resolved independently, by `getattr(event, field_name)`, and the PM instance is looked up purely by that value. `OrderPlaced` using `order_id` and `PaymentConfirmed` using `payment_order_id` route to the same instance correctly as long as both hold the same value. Dictionary correlate, `correlate={"order_id": "payment_order_id"}`, resolves the same way; use it to document the mapping for readers.
 
 ### Using event handler when process manager is needed
 

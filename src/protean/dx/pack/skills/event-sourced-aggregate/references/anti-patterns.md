@@ -88,7 +88,7 @@ def open(cls, account_id, owner_name):
 
 ### The Problem
 
-`from_events()` creates a blank aggregate and applies all events through `@apply`. The first event's `@apply` handler must set ALL fields including identity, otherwise the aggregate will have missing or default values.
+`from_events()` creates a blank aggregate by setting every field to `None` directly, bypassing declared field defaults, then applies all events through `@apply`. The first event's `@apply` handler must set ALL fields including identity: any field it leaves unset stays `None`, never its declared default.
 
 ```python
 # WRONG — @apply handler doesn't set all fields

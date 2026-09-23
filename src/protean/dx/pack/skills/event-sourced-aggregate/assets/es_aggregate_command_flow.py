@@ -158,6 +158,7 @@ class Account:
         self.account_id = event.account_id
         self.owner_name = event.owner_name
         self.balance = event.balance
+        self.status = "ACTIVE"
 
     @apply
     def money_deposited(self, event: MoneyDeposited):

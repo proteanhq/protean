@@ -32,7 +32,7 @@ The decorator validates at class definition time:
 - **Wrong type**: Raises `IncorrectUsageError` if the annotation is not an Event class (e.g., a Command)
 - **Missing argument**: Raises `IncorrectUsageError` if no event parameter is provided
 
-**What the check actually catches**: the "too many arguments" check counts type-annotated parameters, and the return annotation counts too. It raises only when that count goes over 2. It never counts the real parameter list, so an extra parameter with no type annotation slips past it at class definition time. That shape fails later, at replay, with a `TypeError`. Write to the contract above regardless: an extra parameter is wrong whether or not the decorator happens to catch it.
+**What the check actually catches**: the "too many arguments" check counts type-annotated parameters, and the return annotation counts too. It raises only when that count goes over 2. It never counts the real parameter list, so an extra parameter with no type annotation slips past it at class definition time. For an event-sourced aggregate, `raise_()` invokes the `@apply` handler synchronously, so that shape fails with a `TypeError` immediately, on the first live `raise_()` call, and the same way again on any later replay. Write to the contract above regardless: an extra parameter is wrong whether or not the decorator happens to catch it.
 
 ```python
 # WRONG, too many arguments
@@ -42,7 +42,8 @@ def activated(self, event: UserActivated, actor: str, reason: str):  # Incorrect
 
 # WRONG, but NOT caught here: the extra parameter has no type annotation, so the
 # check (which only counts annotated parameters) doesn't see it. This passes at
-# class definition time and fails later, at replay, with a TypeError.
+# class definition time and fails with a TypeError immediately, on the first
+# live raise_() call.
 @apply
 def activated(self, event: UserActivated, extra):
     ...
