@@ -69,9 +69,7 @@ class TicketRepository:
 
     def assigned(self):
         """Tickets that have an assignee (assignee IS NOT NULL)."""
-        return (
-            self.query.filter(assignee__isnull=False).all(with_total=False).items
-        )
+        return self.query.filter(assignee__isnull=False).all(with_total=False).items
 
     def unassigned_count(self) -> int:
         """How many tickets are unassigned — COUNT over the isnull filter."""
