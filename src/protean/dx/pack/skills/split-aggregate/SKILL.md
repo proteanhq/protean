@@ -88,7 +88,11 @@ loading and locking units. Load the `Order` through its own repository when a
 In this example an order has one shipment, so `order_id` is also `Shipment`'s
 own identity (`identifier=True`). Pick that deliberately: it is what makes the
 step below safe to repeat. Where an order can ship in several parcels, give
-`Shipment` its own id and keep `order_id` a plain `required=True` field.
+`Shipment` its own id and keep `order_id` a plain `required=True` field. The
+guard below has to change with it: `order_id` no longer names one shipment, so
+it cannot be the retry key either, and refusing every repeated `order_id` would
+refuse the second parcel too. Carry a deterministic shipment id on the command
+and look that up instead.
 
 ### 3. Carry the cross-aggregate step with a domain event
 

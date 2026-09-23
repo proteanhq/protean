@@ -44,9 +44,11 @@ class Shipment:
 
 Whether that field is also the new aggregate's own identity is a modelling
 call. An order with one shipment can use it as the identity, which makes a
-duplicate impossible to store. An order that ships in several parcels cannot,
-and needs a `required=True` field plus a handler that refuses to create a
-second shipment for an order it has already seen.
+duplicate impossible to store. An order that ships in several parcels cannot:
+`order_id` becomes a plain `required=True` field and the shipment gets its own
+id. The retry key moves with it. It has to name the individual shipment, since
+a handler that refused every repeated `order_id` would refuse the second
+parcel.
 
 Avoid a `Reference` field pointing at the other aggregate's root:
 

@@ -147,8 +147,9 @@ class Shipment:
     are delivered at least once: without a deterministic id, a redelivered
     OrderPlaced would insert a second shipment under a fresh auto-generated id.
     A domain that ships one order in several parcels would give Shipment its own
-    id instead, and then the handler guard below is the only thing standing
-    between a redelivery and a duplicate.
+    id instead. The handler guard below reads a shipment by `order_id` because
+    `order_id` is the identity here, so that domain would have to guard on a
+    deterministic shipment id carried on the command.
     """
 
     order_id: Identifier(identifier=True)
