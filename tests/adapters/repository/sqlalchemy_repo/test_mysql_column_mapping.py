@@ -393,6 +393,53 @@ class TestDeclaredIndexKeyWidths:
 
         assert "ix_fits" in {index.name for index in table.indexes}
 
+    @staticmethod
+    def edge_at_767(column_type):
+        """A 767-character string is 3068 bytes, four short of the cap, so the
+        verdict turns on whether the other column is a FLOAT or a DOUBLE."""
+
+        class Edge(BaseAggregate):
+            slug: String(max_length=767)
+            ratio: Float()
+
+        class EdgeCustomModel(BaseDatabaseModel):
+            ratio = Column(column_type)
+
+        return TestMappedColumnKeyWidths.table_with_custom_model(
+            Edge, EdgeCustomModel, [Index("slug", "ratio", name="ix_edge")]
+        )
+
+    @pytest.mark.parametrize(
+        "column_type",
+        [
+            sa_types.Double(),
+            mysql_dialect.DOUBLE(),
+            sa_types.REAL(),
+            sa_types.Float(25),
+            sa_types.Float(53),
+        ],
+        ids=["double", "mysql-double", "real", "float-25", "float-53"],
+    )
+    def test_an_eight_byte_float_is_not_measured_as_four(self, column_type):
+        """`Double`, `DOUBLE` and `REAL` all subclass `Float`, so measuring by
+        MRO alone gave them the four-byte FLOAT width and let the key through.
+        MySQL also turns `FLOAT(p)` into a DOUBLE, and both servers put that
+        switch at p=25, not the 24 the manual says."""
+        with pytest.raises(IncorrectUsageError) as exc:
+            self.edge_at_767(column_type)
+
+        assert "3076 bytes" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "column_type",
+        [sa_types.Float(), sa_types.Float(24), mysql_dialect.FLOAT()],
+        ids=["float", "float-24", "mysql-float"],
+    )
+    def test_a_four_byte_float_still_fits(self, column_type):
+        table = self.edge_at_767(column_type)
+
+        assert "ix_edge" in {index.name for index in table.indexes}
+
     def test_a_decimal_is_measured_from_its_precision_and_scale(self):
         """MySQL packs nine digits per four bytes: DECIMAL(10,2) is 5."""
 

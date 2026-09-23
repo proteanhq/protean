@@ -637,9 +637,13 @@ _MYSQL_FIXED_KEY_WIDTHS: dict[typing.Any, int] = {
     sa_types.SmallInteger: 2,
     sa_types.Integer: 4,
     sa_types.BigInteger: 8,
-    sa_types.Float: 4,
     sa_types.Date: 3,
 }
+
+# MySQL turns ``FLOAT(p)`` into a DOUBLE once ``p`` passes this, and doubles the
+# storage with it. The manual says the switch is at 24; both servers actually
+# make FLOAT(24) four bytes and FLOAT(25) eight, so the measurement wins.
+_MYSQL_FLOAT_MAX_SINGLE_PRECISION = 24
 
 # Bytes a DECIMAL's digits pack into: four per nine digits, then this much for
 # what is left over, applied to the integer and fractional parts separately.
@@ -684,6 +688,19 @@ def _mysql_fixed_column_key_width(column_type: typing.Any) -> int:
     if isinstance(column_type, sa_types.DateTime):
         return _mysql_datetime_key_width(getattr(column_type, "fsp", None))
 
+    # ``Double``, ``DOUBLE`` and ``REAL`` all subclass ``Float``, so the MRO
+    # would find the four-byte entry for columns MySQL stores in eight. REAL is
+    # a DOUBLE unless the server runs with ``REAL_AS_FLOAT``, which is off by
+    # default; counting it as eight over-counts only there, and only for a key
+    # within four bytes of the cap.
+    if isinstance(column_type, sa_types.Float):
+        precision = getattr(column_type, "precision", None)
+        if isinstance(column_type, (sa_types.Double, sa_types.REAL)) or (
+            precision is not None and precision > _MYSQL_FLOAT_MAX_SINGLE_PRECISION
+        ):
+            return 8
+        return 4
+
     for klass in type(column_type).__mro__:
         if klass in _MYSQL_FIXED_KEY_WIDTHS:
             return _MYSQL_FIXED_KEY_WIDTHS[klass]
@@ -707,7 +724,10 @@ def _mysql_fixed_field_key_width(field_obj: typing.Any) -> int:
     if python_type is int:
         return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Integer]
     if python_type is float:
-        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Float]
+        # A ``Float`` field maps to a bare ``FLOAT``, which is four bytes. The
+        # eight-byte types only arrive through a custom model, which the
+        # renderer cannot see anyway.
+        return 4
     if python_type is _date:
         return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Date]
     if python_type is _datetime:

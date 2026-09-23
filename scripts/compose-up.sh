@@ -53,10 +53,44 @@ for entry in "${SERVICES[@]}"; do
   fi
 done
 
+# An open port is not readiness for MySQL and MariaDB. The server answers on
+# 3306 while it is still running its first-run initialisation, before the
+# `protean` database exists, so a `Domain.init()` right after this script can
+# fail on a connection the port check called fine. CI waits for a real query
+# for the same reason, and `make test-full` starts testing the moment this
+# returns. Checked whether or not this run started them, because "already
+# listening" is exactly the state that lies.
+query_check() {  # <service>
+  case "$1" in
+    mysql)   echo 'mysql -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean' ;;
+    mariadb) echo 'mariadb -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean' ;;
+    *)       echo "" ;;
+  esac
+}
+
+await_queries() {  # <service>...
+  for name in "$@"; do
+    check="$(query_check "$name")"
+    [ -n "$check" ] || continue
+
+    echo "  waiting for $name to answer a query..."
+    for _ in $(seq 1 60); do
+      if docker-compose exec -T "$name" sh -c "$check" >/dev/null 2>&1; then
+        continue 2
+      fi
+      sleep 2
+    done
+    echo "  $name never answered SELECT 1; tests against it will fail" >&2
+    exit 1
+  done
+}
+
 if [ ${#missing[@]} -eq 0 ]; then
   echo "all backing services already up; nothing to start"
+  await_queries "${SERVICES[@]%%:*}"
   exit 0
 fi
 
 echo "starting: ${missing[*]}"
 docker-compose up -d "${missing[@]}"
+await_queries "${SERVICES[@]%%:*}"

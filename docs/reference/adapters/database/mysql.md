@@ -196,6 +196,7 @@ widths are the column's storage size, measured against both servers:
 | `Date` | `DATE` | 3 |
 | `Integer` | `INT` | 4 |
 | `Float` | `FLOAT` | 4 |
+| a `DOUBLE` or `REAL` column | `DOUBLE` | 8 |
 | `DateTime` | `DATETIME(6)` | 8 |
 | `Decimal(precision, scale)` | `DECIMAL` | 4 per 9 digits |
 | Identity, and any reference to one | `CHAR(32)` or `VARCHAR(255)` | 128 or 1020 |
