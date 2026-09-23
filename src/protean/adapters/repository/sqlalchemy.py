@@ -786,9 +786,11 @@ def _mysql_index_key_width(
 
     A string field with no ``max_length`` maps to ``TEXT``, which InnoDB cannot
     index at all without a prefix length; those are returned by name rather than
-    given a width, because no width would make them indexable. A ``Dict`` or
-    ``List`` maps to ``JSON``, which MySQL indexes only through a generated
-    column on a JSON path, so those come back by name too.
+    given a width, because no width would make them indexable. A ``Dict``, a
+    ``List`` or a ``ValueObjectList`` maps to ``JSON``, which MySQL indexes
+    only through a generated column on a JSON path, so those come back by name
+    too. A pickled ``ValueObjectList`` is a BLOB, which has the ``TEXT``
+    problem instead.
 
     An index may name a declared field or the persisted attribute behind it,
     since ``validate_indexes`` accepts both. A value-object attribute arrives as
@@ -812,6 +814,17 @@ def _mysql_index_key_width(
             isinstance(field_obj, ResolvedField) and field_obj.identifier
         ):
             width += _mysql_identity_key_width()
+            continue
+
+        # A ``ValueObjectList`` is not a ``ResolvedField`` either. It maps to
+        # JSON, or to a BLOB when ``pickled``, and neither is indexable. The
+        # live path refuses both from the column, so the renderer reads the
+        # same verdict off the field.
+        if isinstance(field_obj, ValueObjectList):
+            if getattr(field_obj, "pickled", False):
+                unbounded.append(field_name)
+            else:
+                json_columns.append(field_name)
             continue
 
         if not isinstance(field_obj, ResolvedField):

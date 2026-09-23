@@ -720,6 +720,37 @@ class TestJsonKeyColumns:
 
         assert "payload" in str(exc.value)
 
+    @pytest.mark.parametrize(
+        "pickled,expected",
+        [(False, "JSON"), (True, "TEXT or BLOB")],
+        ids=["json", "pickled-blob"],
+    )
+    def test_a_value_object_list_is_rejected_on_both_paths(self, pickled, expected):
+        """A ``ValueObjectList`` is not a ``ResolvedField``, so the renderer
+        skipped it and wrote `CREATE INDEX` for a column MySQL refuses, while
+        the live path read the mapped column and raised. Both agree now."""
+
+        class Item(BaseValueObject):
+            sku: String(max_length=20)
+
+        class Cart(BaseAggregate):
+            items = ValueObjectList(VOField(Item), pickled=pickled)
+
+        domain = host_domain([])
+        domain.register(Item)
+        domain.register(Cart, indexes=[Index("items", name="ix_items")])
+        domain.init(traverse=False)
+        provider = mysql_provider(domain)
+
+        with domain.domain_context():
+            with pytest.raises(IncorrectUsageError) as render_exc:
+                render_index_ddl(Cart, "mysql")
+            with pytest.raises(IncorrectUsageError) as live_exc:
+                provider.construct_database_model_class(Cart)
+
+        assert expected in str(render_exc.value)
+        assert expected in str(live_exc.value)
+
     def test_the_render_path_rejects_it_too(self):
         """The renderer has no real column types, so it reads the field."""
         host_domain([JsonHolder], indexes=[Index("payload", name="ix_json")])
