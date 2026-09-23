@@ -9,6 +9,7 @@ metadata:
   category: element
   diagnostic_codes:
     - COMMAND_HANDLER_CROSS_CLUSTER
+    - HANDLER_TOO_BROAD
     - HANDLER_PERSISTS_AND_CALLS_OUT
 ---
 
@@ -190,6 +191,7 @@ def handle_place_order(self, command):
 `check` inspects your command handlers and reports these diagnostics:
 
 - `COMMAND_HANDLER_CROSS_CLUSTER`: the handler processes a command that belongs to another cluster, which puts that aggregate's write path outside its own consistency boundary. Move the handler into the owning cluster, or model the interaction as an event reaction across the boundary.
+- `HANDLER_TOO_BROAD`: the handler handles more message types than the configured `[lint] handler_breadth_limit`, so it has grown into a catch-all. Split it into focused handlers, or raise the limit if the breadth is intentional.
 - `HANDLER_PERSISTS_AND_CALLS_OUT`: one handler method both persists through a repository and calls an external system, so a mid-method failure can leave the write and the outbound call out of step. Split the method into one that persists and one that calls out; when the call must follow the write, have the persisting method raise an event and handle that. If the write genuinely needs the call's result, keep both and pass the remote system's idempotency key so a retry does not duplicate the effect.
 
 ## Detailed references
