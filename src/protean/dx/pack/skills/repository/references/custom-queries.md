@@ -103,19 +103,33 @@ repo.find_by_category("books") # Custom method
 
 ## Raw Queries
 
-For database-specific optimizations, use `self.query.raw()`:
+For a database-specific filter that still returns whole aggregates, use `self.query.raw()`. It hydrates every row it gets back into a full aggregate, so the query has to select whole rows:
 
 ```python
 @domain.repository(part_of=Report)
 class ReportRepository:
-    def find_summary_stats(self):
-        """Use raw query for complex aggregation."""
+    def find_high_value(self):
+        """Use a raw query for a filter the query interface cannot express."""
         return self.query.raw(
+            "SELECT * FROM reports WHERE total_value > 10000"
+        )
+```
+
+A result that cannot become an aggregate, such as an aggregation or a two-column summary, needs the provider-level `raw()` instead. It hands back the rows as the database returned them:
+
+```python
+from protean.utils.globals import current_domain
+
+@domain.repository(part_of=Report)
+class ReportRepository:
+    def find_summary_stats(self):
+        """Aggregate in the database and read the rows back as they come."""
+        return current_domain.providers["default"].raw(
             "SELECT report_type, SUM(total_value) FROM reports GROUP BY report_type"
         )
 ```
 
-**Note**: Raw queries bypass the ORM and return provider-specific results. Use them sparingly and only when the standard query interface is insufficient.
+**Note**: Raw queries bypass the query interface. Use them sparingly and only when the standard query interface is insufficient.
 
 ## Related
 - [Default Repository](./default-repository.md) - The auto-generated repository

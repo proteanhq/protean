@@ -361,7 +361,7 @@ See [Anti-patterns](references/anti-patterns.md) for detailed examples of each m
 
 A second diagnostic surfaces at runtime. It depends on the values a value object is built from, so `check` cannot report it statically:
 
-- `VALUE_OBJECT_INVARIANT_FAILED`: an `@invariant.post` on the value object did not hold when it was built, so construction raised a `ValidationError` carrying this code. Build the value object from values that satisfy its invariants, or catch the `ValidationError`; the error message names the invariant that failed.
+- `VALUE_OBJECT_INVARIANT_FAILED`: an `@invariant.post` on the value object did not hold when it was built, so construction raised a `ValidationError` carrying this code. It is the default code for a failed post-invariant; an invariant declared with `@invariant.post(code=...)` carries that code instead. Build the value object from values that satisfy its invariants, or catch the `ValidationError`. The messages on the error are the ones the invariant itself raised, keyed by field.
 
 ## Quick example
 

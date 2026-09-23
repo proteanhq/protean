@@ -200,7 +200,7 @@ def test_event_cqrs_skill_names_every_code_it_declares_in_its_body(skill, expect
     )
 
 
-# The building-block element family (#1552). The six skills that teach a coded
+# The building-block element family. The six skills that teach a coded
 # fix pin to their exact declared codes; the six that teach none pin to an empty
 # list, mirroring the two families above. Scoped to this family's own skills for
 # the same reason: the other passes own the rest and must not collide here.
@@ -241,18 +241,42 @@ _BUILDING_BLOCK_NO_CODE_SKILLS = [
     "custom-validator",
 ]
 
+# The twelve skills the family covers, written out independently of the two lists
+# above. Without it, dropping a skill from both lists would leave the partition
+# check happy and the skill pinned by nothing.
+_BUILDING_BLOCK_FAMILY_SKILLS = frozenset(
+    {
+        "aggregate",
+        "api-endpoint",
+        "application-service",
+        "command",
+        "command-handler",
+        "custom-validator",
+        "domain-service",
+        "entity",
+        "event",
+        "event-handler",
+        "repository",
+        "value-object",
+    }
+)
+
 
 def test_building_block_family_lists_partition_real_skills():
     # The two family lists are hand-maintained. Guard that they stay a clean
-    # partition: no skill in both, no duplicates, and every named skill is a real
-    # pack skill. A skill dropped from the no-code list while gaining a wrong code
-    # would otherwise escape both pins.
+    # partition of the twelve: no skill in both, no duplicates, every skill in the
+    # family named by exactly one list, and every named skill a real pack skill.
     code_teaching = list(_BUILDING_BLOCK_CODE_TEACHING_SKILLS)
     named = code_teaching + _BUILDING_BLOCK_NO_CODE_SKILLS
 
     assert set(code_teaching).isdisjoint(_BUILDING_BLOCK_NO_CODE_SKILLS)
     assert len(named) == len(set(named)), "a skill is listed twice"
-    assert set(named) <= set(pack.iter_skills()), "a named skill is not in the pack"
+    assert set(named) == _BUILDING_BLOCK_FAMILY_SKILLS, (
+        "the two lists no longer cover exactly the twelve family skills"
+    )
+    assert set(pack.iter_skills()) >= _BUILDING_BLOCK_FAMILY_SKILLS, (
+        "a named skill is not in the pack"
+    )
 
 
 @pytest.mark.parametrize(

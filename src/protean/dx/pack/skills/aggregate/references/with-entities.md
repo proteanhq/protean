@@ -115,7 +115,7 @@ order.line_items[0].order     # Full aggregate reference
 
 ## Entity Limits
 
-Protean loads the entire aggregate object graph eagerly. To keep aggregates small, `check` flags one holding more entities than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. When flagged, consider:
+Protean loads the entire aggregate object graph eagerly. To keep aggregates small, `check` flags one declaring more entity types than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`. It counts the entity classes in the cluster, so an aggregate with one `HasMany` of a thousand rows is never flagged for size. When flagged, consider:
 
 - Splitting into multiple aggregates
 - Making the entity an aggregate itself
