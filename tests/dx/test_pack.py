@@ -75,6 +75,7 @@ EXPECTED_TEACHING_SKILLS = frozenset(
         "refactor-introduce-events",
         "refactor-move-logic-to-aggregate",
         "repository",
+        "split-aggregate",
         "subscriber",
         "upcaster",
         "value-object",
