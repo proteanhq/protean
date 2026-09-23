@@ -97,15 +97,30 @@ class OrderPlaced:
     address = String(required=True)
 ```
 
-The other context consumes the event through a subscriber that translates it into
-its own command. The subscriber is the anti-corruption layer. It listens on the
-publishing aggregate's `stream_category`, and the fields sit under `payload["data"]`:
+Broker names are local to a `Domain`, so the consuming context declares the same
+broker for itself. Without this, sales dispatches to its `events` broker while
+fulfilment listens on its own `default` and nothing arrives:
 
 ```python
-@fulfilment.subscriber(stream="sales::order")
+fulfilment.config["brokers"]["events"] = {"provider": "inline"}
+```
+
+The other context consumes the event through a subscriber that translates it into
+its own command. The subscriber is the anti-corruption layer. It binds to that
+shared broker, listens on the publishing aggregate's `stream_category`, and finds
+the fields under `payload["data"]`:
+
+```python
+# Fulfilment names the sales message type as a string. Importing `OrderPlaced`
+# would restore the dependency the extraction just removed, and the class is not
+# importable at all once the contexts live in separate processes.
+SALES_ORDER_PLACED = "Sales.OrderPlaced.v1"
+
+
+@fulfilment.subscriber(stream="sales::order", broker="events")
 class OrderPlacedSubscriber:
     def __call__(self, payload: dict) -> None:
-        if payload["metadata"]["headers"]["type"] != OrderPlaced.__type__:
+        if payload["metadata"]["headers"]["type"] != SALES_ORDER_PLACED:
             return
         data = payload["data"]
         fulfilment.process(

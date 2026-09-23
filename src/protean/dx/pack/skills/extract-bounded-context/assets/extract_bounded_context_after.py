@@ -98,6 +98,13 @@ class OrderCommandHandler:
 fulfilment = Domain(name="Fulfilment")
 fulfilment.config["command_processing"] = "sync"
 fulfilment.config["message_processing"] = "sync"
+# Broker names are local to each `Domain`, so configuring `events` on sales does
+# not give fulfilment a broker by that name. Fulfilment declares its own entry
+# pointing at the same broker infrastructure, and the subscriber binds to it by
+# name below. Without this the sales outbox would publish to sales' `events`
+# broker while fulfilment listened on its own `default`, and nothing would
+# arrive.
+fulfilment.config["brokers"]["events"] = {"provider": "inline"}
 
 
 @fulfilment.aggregate
@@ -123,10 +130,20 @@ class ShipmentCommandHandler:
         fulfilment.repository_for(Shipment).add(shipment)
 
 
+# The message type fulfilment agrees to accept, written out as the string sales
+# puts on the wire. Fulfilment does not import `OrderPlaced` to get it: the
+# extraction exists to end that dependency, and once the two contexts live in
+# separate modules or processes the import is not available anyway. The contract
+# fulfilment depends on is this name and the fields it unpacks below.
+SALES_ORDER_PLACED = "Sales.OrderPlaced.v1"
+
+
 # The stream is the sales aggregate's category, `sales::order`. That is what the
 # outbox publishes on: `OutboxProcessor` routes each row by
-# `metadata.domain.stream_category`, not by the event's own name.
-@fulfilment.subscriber(stream="sales::order")
+# `metadata.domain.stream_category`, not by the event's own name. `broker` names
+# fulfilment's own `events` entry, which points at the same broker sales
+# dispatches to.
+@fulfilment.subscriber(stream="sales::order", broker="events")
 class OrderPlacedSubscriber:
     """Anti-corruption layer for the sales `OrderPlaced` event.
 
@@ -141,7 +158,7 @@ class OrderPlacedSubscriber:
         # envelope, so the event's fields sit under "data". The category stream
         # carries every Order event, so ignore the ones fulfilment does not act
         # on.
-        if payload["metadata"]["headers"]["type"] != OrderPlaced.__type__:
+        if payload["metadata"]["headers"]["type"] != SALES_ORDER_PLACED:
             return
         data = payload["data"]
         command = CreateShipment(
@@ -165,7 +182,10 @@ def relay_last_order_event() -> None:
         message = sales.event_store.store.read(Order.meta_.stream_category)[-1]
 
     with fulfilment.domain_context():
-        fulfilment.brokers["default"].publish(
+        # `events` on both sides, the broker sales dispatches to and fulfilment
+        # subscribes on. Publishing to fulfilment's `default` here would deliver
+        # the message in this one process while a deployed pair stayed silent.
+        fulfilment.brokers["events"].publish(
             message.metadata.domain.stream_category,
             message.to_external_dict(),
         )

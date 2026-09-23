@@ -36,6 +36,19 @@ sales.config["brokers"]["events"] = {"provider": "inline"}
 sales.config["outbox"]["external_brokers"] = ["events"]
 ```
 
+### 1b. The consuming context declares the same broker
+
+Broker names are local to a `Domain`. A second `Domain` does not see the first
+one's `events` entry, so the consumer declares its own pointing at the same
+broker infrastructure, and the subscriber binds to it by name. Leave this out and
+sales dispatches to its `events` broker while fulfilment listens on its own
+`default`, so the deployed pair stays silent while a one-process demo still
+appears to work:
+
+```python
+fulfilment.config["brokers"]["events"] = {"provider": "inline"}
+```
+
 ### 2. The event carries plain data
 
 A published event carries the fields the other context needs as plain values.
@@ -58,11 +71,19 @@ publishing aggregate's category, `sales::order`. And it publishes what
 The category stream carries every event of that aggregate, so the subscriber also
 checks the type header and returns early on the ones it does not act on:
 
+The type it checks is written as a string. Importing `OrderPlaced` from sales
+would restore the dependency the extraction removed, and once the two contexts
+run as separate processes that import does not exist. The name and the fields
+unpacked below are the whole contract fulfilment depends on:
+
 ```python
-@fulfilment.subscriber(stream="sales::order")
+SALES_ORDER_PLACED = "Sales.OrderPlaced.v1"
+
+
+@fulfilment.subscriber(stream="sales::order", broker="events")
 class OrderPlacedSubscriber:
     def __call__(self, payload: dict) -> None:
-        if payload["metadata"]["headers"]["type"] != OrderPlaced.__type__:
+        if payload["metadata"]["headers"]["type"] != SALES_ORDER_PLACED:
             return
         data = payload["data"]
         command = CreateShipment(
@@ -71,6 +92,13 @@ class OrderPlacedSubscriber:
         )
         fulfilment.process(command)
 ```
+
+Broker delivery is at-least-once, so a redelivered `OrderPlaced` runs this
+subscriber again. This example keeps the seam in focus and does nothing about
+that, which is fine for a demo and wrong for production: `CreateShipment` would
+open a second shipment for the same order. Give the consumer a way to recognise
+work it has already done, such as a uniqueness constraint on the identifier it
+holds across the seam (`order_id` here).
 
 See [add-subscriber-flow](../../add-subscriber-flow/SKILL.md) for the subscriber
 and anti-corruption-layer pattern in full.
