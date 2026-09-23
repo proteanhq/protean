@@ -290,6 +290,7 @@ HIGH: Missing events — Inventory update should be event-driven, not direct (li
 - [refactor-extract-value-object](../refactor-extract-value-object/SKILL.md) — Fix primitive obsession
 - [refactor-move-logic-to-aggregate](../refactor-move-logic-to-aggregate/SKILL.md) — Fix logic leaks
 - [refactor-introduce-events](../refactor-introduce-events/SKILL.md) — Fix transaction boundary violations
+- [extract-bounded-context](../extract-bounded-context/SKILL.md): split one domain into two when the cross-aggregate references run both ways
 - [coverage-analysis](../coverage-analysis/SKILL.md) — Complementary: find untested code paths
 
 ## Verify your work
