@@ -422,8 +422,8 @@ See [Anti-patterns](references/anti-patterns.md) for additional mistakes: oversi
 `check` inspects your aggregates and reports these diagnostics:
 
 - `AGGREGATE_NO_INVARIANTS`: the aggregate declares no `@invariant.pre` or `@invariant.post` method, so it enforces no business rules and is usually an anemic data holder. Add the invariants it must always satisfy, or reconsider whether this concept is an aggregate.
-- `AGGREGATE_NOT_NOUN`: the aggregate's name is a verb or gerund (`OrderProcessing`). Rename it to the domain-concept noun it models (`Order`).
-- `AGGREGATE_TOO_LARGE`: the aggregate has more fields than the configured `[lint] aggregate_size_limit`. Split it into smaller aggregates, or raise the limit if the size is intentional.
+- `AGGREGATE_NOT_NOUN`: the aggregate's name ends in a suffix that reads as a verb, gerund, or adjective (`OrderProcessing`, `Cancelable`). Rename it to the domain-concept noun it models (`Order`).
+- `AGGREGATE_TOO_LARGE`: the aggregate holds more entities than the configured `[lint] aggregate_size_limit`. Split it into smaller aggregates, or raise the limit if the size is intentional.
 - `AGGREGATE_WITHOUT_COMMAND_HANDLER`: the aggregate has no command handler, so nothing can change its state. Add a command handler for it, or model it as a read-only projection if no writes are expected.
 - `CROSS_AGGREGATE_REFERENCE`: a field holds a direct `Reference` to another aggregate root. Hold the other aggregate by its identifier instead (`<other>_id: Identifier()`) and load it through its own repository when needed.
 

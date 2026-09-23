@@ -355,10 +355,13 @@ See [Anti-patterns](references/anti-patterns.md) for detailed examples of each m
 
 ### What `check` reports
 
-`check` inspects your value objects and reports these diagnostics:
+`check` inspects your value objects and reports this diagnostic:
 
 - `VALUE_OBJECT_MUTABLE_FIELD`: the value object has a mutable collection field (such as a `List`), which breaks its value semantics. Replace it with an immutable representation, or move the collection onto the containing entity or aggregate. If the values carry their own identity, model them as an entity.
-- `VALUE_OBJECT_INVARIANT_FAILED`: an `@invariant.post` on the value object did not hold when it was built, so construction raised a `ValidationError`. Build the value object from values that satisfy its invariants, or catch the `ValidationError`; the error message names the invariant that failed.
+
+A second diagnostic surfaces at runtime. It depends on the values a value object is built from, so `check` cannot report it statically:
+
+- `VALUE_OBJECT_INVARIANT_FAILED`: an `@invariant.post` on the value object did not hold when it was built, so construction raised a `ValidationError` carrying this code. Build the value object from values that satisfy its invariants, or catch the `ValidationError`; the error message names the invariant that failed.
 
 ## Quick example
 
