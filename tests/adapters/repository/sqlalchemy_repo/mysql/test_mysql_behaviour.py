@@ -103,7 +103,7 @@ class TestCollation:
     """The server default is accent-insensitive and case-insensitive on both
     servers, so without an explicit column collation every string lookup would
     match the wrong rows. The conformance battery expects case-sensitive
-    behaviour, which the other three providers give."""
+    behaviour, which every other relational provider gives."""
 
     @pytest.fixture(autouse=True)
     def _notes(self, mysql_domain):

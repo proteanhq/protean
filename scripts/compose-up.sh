@@ -68,29 +68,35 @@ query_check() {  # <service>
   esac
 }
 
-await_queries() {  # <service>...
-  for name in "$@"; do
+await_queries() {  # <service>:<host-port>...
+  for entry in "$@"; do
+    name="${entry%%:*}"; port="${entry##*:}"
     check="$(query_check "$name")"
     [ -n "$check" ] || continue
 
     echo "  waiting for $name to answer a query..."
     for _ in $(seq 1 60); do
-      if docker-compose exec -T "$name" sh -c "$check" >/dev/null 2>&1; then
+      # Find the container by the port it publishes, not through this
+      # checkout's Compose project. The port check above exists precisely
+      # because the service may belong to another worktree's project, where
+      # `docker-compose exec` here would find nothing and wait out the clock.
+      container="$(docker ps --filter "publish=$port" --format '{{.Names}}' | head -n1)"
+      if [ -n "$container" ] && docker exec "$container" sh -c "$check" >/dev/null 2>&1; then
         continue 2
       fi
       sleep 2
     done
-    echo "  $name never answered SELECT 1; tests against it will fail" >&2
+    echo "  $name never answered SELECT 1 on $port; tests against it will fail" >&2
     exit 1
   done
 }
 
 if [ ${#missing[@]} -eq 0 ]; then
   echo "all backing services already up; nothing to start"
-  await_queries "${SERVICES[@]%%:*}"
+  await_queries "${SERVICES[@]}"
   exit 0
 fi
 
 echo "starting: ${missing[*]}"
 docker-compose up -d "${missing[@]}"
-await_queries "${SERVICES[@]%%:*}"
+await_queries "${SERVICES[@]}"

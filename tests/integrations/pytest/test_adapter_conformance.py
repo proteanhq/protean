@@ -10,6 +10,7 @@ fixtures and hooks work end-to-end.
 
 import subprocess
 import sys
+from importlib import metadata
 from pathlib import Path
 from unittest import mock
 
@@ -122,8 +123,6 @@ class TestBuiltinDbConfigs:
         built-ins. A third-party provider brings its own config, and reading
         every installed distribution would fail this for anyone who has one.
         """
-        from importlib import metadata
-
         registered = {
             ep.name
             for ep in metadata.distribution("protean").entry_points.select(
@@ -150,8 +149,6 @@ class TestBuiltinDbConfigs:
         """`protean.providers` is a public extension point, and an external
         adapter brings its own config. Enumerating every installed
         distribution would fail this for whoever has one installed."""
-        from importlib import metadata
-
         dist = tmp_path / "acme_protean_db-1.0.dist-info"
         dist.mkdir()
         (dist / "METADATA").write_text(
