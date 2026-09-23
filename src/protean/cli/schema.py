@@ -30,6 +30,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from protean.cli._ir_utils import load_domain, load_domain_ir, load_ir_file
+from protean.core.index import RENDERED_INDEX_DIALECTS
 from protean.exceptions import IncorrectUsageError
 from protean.ir.generators.base import short_name
 from protean.utils import _fully_qualified_name
@@ -129,6 +130,12 @@ def generate(
         print(f"  {path}")
 
 
+# The dialects rendered when ``--dialects`` is not given. MariaDB is left out of
+# the default: it is accepted when asked for, and its ``CREATE INDEX`` output
+# matches MySQL's for the index forms the framework emits, so rendering both by
+# default writes a second copy of the same file per element. An explicit
+# ``--dialects`` is checked against ``RENDERED_INDEX_DIALECTS``, which accepts
+# MariaDB along with every other name the framework renders for.
 _DEFAULT_INDEX_DIALECTS = "postgresql,sqlite,mssql,mysql"
 
 
@@ -225,7 +232,7 @@ def render(
         str,
         typer.Option(
             "--dialects",
-            help="Comma-separated dialects (postgresql, sqlite, mssql, mysql, mariadb)",
+            help=f"Comma-separated dialects ({', '.join(sorted(RENDERED_INDEX_DIALECTS))})",
         ),
     ] = _DEFAULT_INDEX_DIALECTS,
     output: Annotated[
@@ -252,14 +259,28 @@ def render(
         print("[red]Error:[/red] --indexes requires --domain (live index declarations)")
         raise typer.Abort()
 
+    from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
+        check_index_ddl_dialect,
+    )
+
     dialect_list = [d.strip() for d in dialects.split(",") if d.strip()]
+
+    # An unknown name has no compiler. Reject it before the domain loads, so a
+    # typo is reported on its own instead of behind a domain-load error, and a
+    # file named for a dialect nothing rendered is never written.
+    for dialect in dialect_list:
+        try:
+            check_index_ddl_dialect(dialect)
+        except IncorrectUsageError as exc:
+            print(f"[red]Error:[/red] {exc.args[0]}")
+            raise typer.Abort() from exc
 
     live_domain = load_domain(domain)
     try:
         written = write_index_ddl(live_domain, output, dialect_list)
     except IncorrectUsageError as exc:
-        # A misspelt --dialects value, or an index declaration the target
-        # database cannot create. Both are the caller's to fix, so they read
+        # An index declaration the target database cannot create, such as a
+        # MySQL key wider than InnoDB allows. The caller's to fix, so it reads
         # as a usage error instead of a traceback.
         print(f"[red]Error:[/red] {exc.args[0]}")
         raise typer.Abort() from exc

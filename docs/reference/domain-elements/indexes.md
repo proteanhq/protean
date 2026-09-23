@@ -91,6 +91,13 @@ class Order:
 | `ddl` | `str` | Verbatim `CREATE INDEX …` statement. |
 | `name` | <code>str &#124; None</code> | Optional name, for reporting. |
 
+`dialect` must be one the framework renders index DDL for: `"postgresql"`,
+`"sqlite"`, `"mssql"`, `"mysql"`, or `"mariadb"`. The name is matched by exact
+string, so a typo (`"postgres"`) or an unsupported dialect (`"oracle"`) raises
+`IncorrectUsageError` at `Domain.init()`. Such a declaration would otherwise
+render no index on any dialect, so the error names it at the point you declare
+it rather than dropping it silently.
+
 `RawIndex` is the return type of `from_sql`. You never construct it directly, always go
 through `Index.from_sql`.
 
@@ -154,9 +161,14 @@ resolution), raising `IncorrectUsageError` on:
 - a field that is not declared on the element (in `fields`, `desc`, or
   `include`);
 - a `desc` entry not present in `fields`;
-- a list entry that is neither an `Index` nor a `RawIndex`.
+- a list entry that is neither an `Index` nor a `RawIndex`;
+- a `RawIndex` whose `dialect` is not one the framework renders DDL for
+  (`mariadb`, `mssql`, `mysql`, `postgresql`, `sqlite`).
 
-`RawIndex` entries are opaque verbatim DDL and are not introspected.
+A `RawIndex`'s DDL string stays opaque: only its `dialect` is checked. A name
+outside the rendered set (a typo like `postgres`, or a dialect with no
+renderer) would be silently dropped at every call site, so validation rejects
+it here instead.
 
 ---
 

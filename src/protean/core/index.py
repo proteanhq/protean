@@ -26,6 +26,22 @@ if TYPE_CHECKING:
     from protean.utils.query import Q
 
 
+# The SQL dialects the framework renders index DDL for. A ``RawIndex`` names
+# the single dialect its verbatim DDL targets, and every consumer matches that
+# name by exact string against the renderer's dialect. A name outside this set
+# renders nothing, on any adapter, so ``validate_indexes`` rejects it at
+# ``Domain.init()`` rather than letting the index be silently dropped.
+#
+# The renderer in ``protean/adapters/repository/sqlalchemy.py`` holds a matching
+# map, ``_SA_DIALECT_FACTORIES``, with one SQLAlchemy compiler per name in this
+# set. The two are declared separately and
+# ``test_factory_map_covers_every_rendered_dialect`` fails if they go out of
+# step. Adding a dialect means adding the name here and its factory there.
+RENDERED_INDEX_DIALECTS = frozenset(
+    {"postgresql", "sqlite", "mssql", "mysql", "mariadb"}
+)
+
+
 @dataclass(frozen=True, init=False)
 class Index:
     """A portable index declaration on an aggregate or entity.
@@ -144,8 +160,13 @@ def validate_indexes(element_cls: type) -> None:
     - Every field referenced by an :class:`Index` (in ``fields``, ``desc``,
       and ``include``) is declared on the element.
     - Every ``desc`` entry is also present in ``fields``.
+    - Every :class:`RawIndex` names a dialect the framework renders DDL for
+      (a member of :data:`RENDERED_INDEX_DIALECTS`). A ``RawIndex`` whose
+      ``dialect`` is unknown would render nothing on any adapter, so it is
+      rejected here rather than silently dropped at schema-generation time.
 
-    :class:`RawIndex` entries are opaque verbatim DDL and are not introspected.
+    The DDL string of a :class:`RawIndex` is opaque verbatim SQL and is not
+    introspected; only its ``dialect`` is checked.
     """
     meta = getattr(element_cls, "meta_", None)
     indexes = getattr(meta, "indexes", ()) or ()
@@ -168,6 +189,14 @@ def validate_indexes(element_cls: type) -> None:
 
     for index in indexes:
         if isinstance(index, RawIndex):
+            if index.dialect not in RENDERED_INDEX_DIALECTS:
+                identifier = index.name or index.ddl
+                raise IncorrectUsageError(
+                    f"RawIndex '{identifier}' on '{element_cls.__name__}' "
+                    f"targets unknown dialect '{index.dialect}'. The framework "
+                    f"renders index DDL only for "
+                    f"{sorted(RENDERED_INDEX_DIALECTS)}."
+                )
             continue
         if not isinstance(index, Index):
             raise IncorrectUsageError(
