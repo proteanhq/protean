@@ -1,0 +1,17 @@
+{
+  "name": "proteanhq",
+  "owner": {
+    "name": "Protean HQ",
+    "email": "hello@proteanhq.com"
+  },
+  "metadata": {
+    "description": "Official plugins for the Protean DDD framework"
+  },
+  "plugins": [
+    {
+      "name": "protean",
+      "source": "./plugins/protean",
+      "description": "Teaching skills for the Protean DDD framework, matched to the installed framework version."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "protean",
+  "description": "Teaching skills for the Protean DDD framework, matched to the installed framework version.",
+  "version": "0.17.0",
+  "author": {
+    "name": "Protean HQ",
+    "url": "https://proteanhq.com"
+  },
+  "license": "Apache-2.0"
+}

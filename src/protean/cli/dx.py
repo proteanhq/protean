@@ -17,6 +17,7 @@ Verbs::
     protean dx refresh     # re-render what is installed, to that version
     protean dx diff        # show what install would change; write nothing
     protean dx check       # exit non-zero when a target has drifted; write nothing
+    protean dx build-plugin  # render the packaged skills into the plugin tree
 
 Both writing verbs are the same idempotent apply, and both leave the user's own
 edits alone; they differ in scope. ``install`` writes every target, so it is the
@@ -24,7 +25,9 @@ verb that opts a project into ``.mcp.json`` and the per-editor files. ``refresh`
 writes the required baseline plus the optional targets already installed, so
 re-rendering after an upgrade never adds a file the user did not choose. ``check``
 is the CI gate and verifies the same scope ``refresh`` writes. ``diff`` is the
-read-only preview of every target.
+read-only preview of every target. ``build-plugin`` renders the committed Claude
+Code plugin tree from the packaged skills; its ``--check`` is the drift guard for
+that tree (:mod:`protean.dx.plugin`).
 """
 
 from __future__ import annotations
@@ -109,6 +112,90 @@ def check(path: Annotated[str, _PATH_OPTION] = ".") -> None:
     when a project's agent files fall out of step with the framework.
     """
     _check(path)
+
+
+@app.command(name="build-plugin")
+def build_plugin(
+    output: Annotated[
+        str,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Directory to write the plugin tree into. Defaults to the current directory.",
+        ),
+    ] = ".",
+    check: Annotated[
+        bool,
+        typer.Option(
+            "--check",
+            help=(
+                "Compare the committed plugin tree against a fresh render, "
+                "write nothing, and exit non-zero on drift."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """Render the packaged skills into the Claude Code plugin tree.
+
+    Writes ``.claude-plugin/marketplace.json`` and the ``plugins/protean/`` tree
+    from the packaged pack, stamped to the installed framework version. ``--check``
+    is the drift guard: it re-renders in memory, compares byte-exact against the
+    committed tree, writes nothing, and exits ``1`` on any drift. The bare verb
+    (re)writes the tree so it matches the render exactly, pruning any file a
+    removed skill left behind.
+    """
+    if check:
+        _check_plugin(output)
+    else:
+        _write_plugin_tree(output)
+
+
+def _plugin_version() -> str:
+    """Return the framework version the plugin tree is stamped to, or exit ``2``.
+
+    Reading the pack version fails only when the pack is stripped or unreadable
+    (a zip-imported wheel with the data removed). Surface that as the same clean
+    environment error (exit ``2``) the other verbs give, not a raw traceback.
+    """
+    from protean.dx.pack import PACK_VERSION  # noqa: PLC0415
+
+    return PACK_VERSION
+
+
+def _write_plugin_tree(output: str) -> None:
+    """Write the plugin tree under *output*; exit ``2`` when the target is unusable."""
+    from protean.dx.plugin import write_plugin  # noqa: PLC0415
+
+    root = _project_root(output)
+    try:
+        write_plugin(root, _plugin_version())
+    except OSError as exc:
+        print(f"[red]error[/red] could not write the plugin tree — {escape(str(exc))}")
+        raise typer.Exit(code=EXIT_USAGE) from exc
+    print(f"[green]Wrote the Claude Code plugin tree under {escape(str(root))}[/green]")
+
+
+def _check_plugin(output: str) -> None:
+    """Report drift between the committed plugin tree and a fresh render.
+
+    Writes nothing. Exits ``2`` when *output* is not a directory, ``1`` when the
+    committed tree drifts from the render (a file missing, stale, or orphaned),
+    ``0`` when it matches byte for byte.
+    """
+    from protean.dx.plugin import plugin_drift  # noqa: PLC0415
+
+    root = _project_root(output)
+    drift = plugin_drift(root, _plugin_version())
+    if drift:
+        for line in drift:
+            print(f"[yellow]drift[/yellow] {escape(line)}")
+        print(
+            "[yellow]Drift detected.[/yellow] Run `protean dx build-plugin` to "
+            "regenerate the tree."
+        )
+        raise typer.Exit(code=EXIT_FAILURE)
+    print("[green]Plugin tree is up to date.[/green]")
+    raise typer.Exit(code=EXIT_OK)
 
 
 def _project_root(path: str) -> Path:

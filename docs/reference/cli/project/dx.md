@@ -79,10 +79,11 @@ upgrading a scaffolded project leaves it baseline-only until you run `install`.
 ## Verbs
 
 ```shell
-protean dx install     # write the canonical and per-editor files
-protean dx refresh     # re-render what is installed, to the installed version
-protean dx diff        # preview what install would change (unified diff); write nothing
-protean dx check       # exit non-zero when a target has drifted; write nothing
+protean dx install       # write the canonical and per-editor files
+protean dx refresh       # re-render what is installed, to the installed version
+protean dx diff          # preview what install would change (unified diff); write nothing
+protean dx check         # exit non-zero when a target has drifted; write nothing
+protean dx build-plugin  # render the packaged skills into the Claude Code plugin tree
 ```
 
 `install` creates a missing file and refreshes a stale managed region, across every
@@ -91,7 +92,10 @@ files. `refresh` is the same idempotent apply, run after upgrading Protean, scop
 to what the project already has: the required baseline plus every optional target
 already installed. So `refresh` updates a project without adding a file you did not
 choose. `diff` and `check` write nothing: `diff` is the preview, printing a unified
-diff of each pending change, and `check` is the CI gate.
+diff of each pending change, and `check` is the CI gate. `build-plugin` is described
+in [Building the Claude Code plugin](#building-the-claude-code-plugin) below; unlike
+the other verbs, it renders Protean's own committed plugin tree rather than files
+in your project.
 
 A target has drifted when it is missing, its managed region is stale against the
 installed version, or you edited inside that region. `check` reports each verified
@@ -133,3 +137,47 @@ framework. It writes nothing and fails the job on drift.
 ```shell
 protean dx check
 ```
+
+## Building the Claude Code plugin
+
+`build-plugin` renders Protean's teaching skills into a Claude Code plugin. It is
+a maintainer command for the Protean repository itself, not a project verb: it
+projects the packaged skills at `src/protean/dx/pack/skills/` into a committed
+plugin tree that a Claude Code user can install.
+
+It writes two manifests and the skill tree:
+
+- `.claude-plugin/marketplace.json` at the repo root names the `proteanhq`
+  marketplace and lists one plugin, `protean`, sourced from `./plugins/protean`.
+- `plugins/protean/.claude-plugin/plugin.json` names the plugin and stamps it with
+  the installed framework version, so a consumer can tell which version's guidance
+  the skills carry.
+- `plugins/protean/skills/<name>/` holds each skill's `SKILL.md` and any `assets/`
+  and `references/`, copied byte for byte from the pack.
+
+This cut carries skills only: no commands, agents, or hooks, and the MCP server
+registration stays with the `.mcp.json` file that `install` writes.
+
+```shell
+protean dx build-plugin           # write (or regenerate) the committed tree
+protean dx build-plugin --check   # exit non-zero when the tree has drifted; write nothing
+```
+
+The bare verb writes the tree so it matches the render exactly, pruning any file a
+removed skill left behind. `--check` is the drift guard: it re-renders in memory,
+compares byte for byte against the committed tree, writes nothing, and exits `1`
+when a file is missing, stale, or orphaned. The framework version in `plugin.json`
+moves with a release (through a `.bumpversion.toml` entry), so the committed tree
+stays in step and the drift check does not fail on a version bump.
+
+### Installing it in Claude Code
+
+A Claude Code user adds the marketplace from the repository and installs the
+plugin:
+
+```shell
+/plugin marketplace add proteanhq/protean
+/plugin install protean@proteanhq
+```
+
+Installing the plugin makes the bundled skills available in Claude Code.

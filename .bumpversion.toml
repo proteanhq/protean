@@ -54,3 +54,12 @@ filename = "docs/guides/getting-started/installation.md"
 filename = "server.json"
 search = '"version": "{current_version}"'
 replace = '"version": "{new_version}"'
+
+# The Claude Code plugin manifest. Its version is the framework version, stamped
+# into the committed plugin tree the `dx build-plugin` renderer writes. Anchoring
+# on `"version": "..."` keeps the bump to that one line, so the committed tree
+# stays in step with the framework and its drift test does not red on a release.
+[[tool.bumpversion.files]]
+filename = "plugins/protean/.claude-plugin/plugin.json"
+search = '"version": "{current_version}"'
+replace = '"version": "{new_version}"'
