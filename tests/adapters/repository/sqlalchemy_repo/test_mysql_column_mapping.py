@@ -38,8 +38,11 @@ from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError, IncorrectUsageError
 from protean.fields import (
+    Boolean,
+    Date,
     DateTime,
     Dict,
+    Float,
     HasMany,
     Integer,
     List,
@@ -47,6 +50,7 @@ from protean.fields import (
     Text,
     ValueObject,
 )
+from protean.fields import Decimal as ProteanDecimal
 from protean.port.provider import DatabaseCapabilities
 from protean.utils import Database
 from tests.shared import MARIADB_URI, MYSQL_URI, POSTGRES_URI
@@ -339,9 +343,9 @@ class TestDeclaredIndexKeyWidths:
 
         assert "ix_fits" in {index.name for index in table.indexes}
 
-    def test_non_string_columns_do_not_count_against_the_cap(self):
-        """A UUID identity is CHAR(32) and an Integer is 4 bytes; neither can
-        approach the cap, so only string widths are summed."""
+    def test_a_mixed_index_well_inside_the_cap_is_accepted(self):
+        """700 characters is 2800 bytes, an Integer 4, a UUID identity 128:
+        2932 in total, and under the cap."""
 
         class Mixed(BaseAggregate):
             slug: String(max_length=700)
@@ -350,6 +354,56 @@ class TestDeclaredIndexKeyWidths:
         table = table_for(Mixed, indexes=[Index("slug", "rank", "id", name="ix_mix")])
 
         assert "ix_mix" in {index.name for index in table.indexes}
+
+    @pytest.mark.parametrize(
+        "field,width",
+        [
+            (Integer(), 4),
+            (Float(), 4),
+            (Boolean(), 1),
+            (Date(), 3),
+            (DateTime(), 8),
+        ],
+        ids=["integer", "float", "boolean", "date", "datetime"],
+    )
+    def test_a_fixed_width_column_pushes_a_full_key_over(self, field, width):
+        """InnoDB caps the whole key, so a non-string column counts. A
+        VARCHAR(768) fills the 3072-byte budget exactly, and anything added to
+        the index puts it over. Measured against both servers: the widths here
+        are what each type costs, and a DateTime is DATETIME(6), so 8."""
+
+        class Edge(BaseAggregate):
+            slug: String(max_length=768)
+            other = field
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(Edge, indexes=[Index("slug", "other", name="ix_edge")])
+
+        assert f"{3072 + width} bytes" in str(exc.value)
+
+    def test_the_key_that_exactly_fills_the_budget_is_accepted(self):
+        """The other side of the boundary: 767 characters plus an Integer is
+        3072 on the nose, which both servers create."""
+
+        class Fits(BaseAggregate):
+            slug: String(max_length=767)
+            rank: Integer()
+
+        table = table_for(Fits, indexes=[Index("slug", "rank", name="ix_fits")])
+
+        assert "ix_fits" in {index.name for index in table.indexes}
+
+    def test_a_decimal_is_measured_from_its_precision_and_scale(self):
+        """MySQL packs nine digits per four bytes: DECIMAL(10,2) is 5."""
+
+        class Priced(BaseAggregate):
+            slug: String(max_length=768)
+            amount = ProteanDecimal(precision=10, scale=2)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            table_for(Priced, indexes=[Index("slug", "amount", name="ix_priced")])
+
+        assert "3077 bytes" in str(exc.value)
 
     def test_a_string_identity_counts_toward_the_key(self):
         """An identifier is sized by the domain's identity_type, not by its own

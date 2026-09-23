@@ -181,9 +181,27 @@ class Document:
     slug: String(max_length=500)     # 2000 bytes, and 4000 together: raises
 ```
 
-Each field fits on its own; together they overrun the key. Only string columns
-count toward the total, since nothing else in a Protean model comes close (the
-widest is a UUID identity at `CHAR(32)`, 128 bytes).
+Each field fits on its own; together they overrun the key.
+
+Every column in the key counts, not just the strings. A string is the only one
+wide enough to reach 3072 bytes alone, but a fixed-width column alongside a
+near-limit string is what tips it over: `String(max_length=768)` fills the
+budget exactly, and `Index("slug", "rank")` with an `Integer` needs 3076. The
+widths are the column's storage size, measured against both servers:
+
+| Field | Column | Bytes |
+|-------|--------|------:|
+| `String(max_length=n)` | `VARCHAR(n)` | `4 * n` |
+| `Boolean` | `TINYINT` | 1 |
+| `Date` | `DATE` | 3 |
+| `Integer` | `INT` | 4 |
+| `Float` | `FLOAT` | 4 |
+| `DateTime` | `DATETIME(6)` | 8 |
+| `Decimal(precision, scale)` | `DECIMAL` | 4 per 9 digits |
+| Identity, and any reference to one | `CHAR(32)` or `VARCHAR(255)` | 128 or 1020 |
+
+A type not in this table counts as nothing rather than as a guess, so a key
+that overruns on one still gets MySQL's own error.
 
 An index may name a value object's shadow column (`Index("address_city")` for a
 `city` field on an embedded `Address`), and those are measured the same way,

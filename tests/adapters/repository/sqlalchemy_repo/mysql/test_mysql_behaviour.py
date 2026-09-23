@@ -477,3 +477,88 @@ class TestStorageEngineAndRowFormat:
                 conn.execute(text("DROP TABLE IF EXISTS compact_probe"))
                 conn.commit()
             provider.close()
+
+
+class TestCompositeKeyBoundary:
+    """InnoDB applies the 3072-byte cap to the whole key, so a fixed-width
+    column alongside a near-limit string is what pushes it over. These pin the
+    guard's boundary to the server's, on both sides.
+    """
+
+    @staticmethod
+    def build(uri, max_length):
+        class Edge(BaseAggregate):
+            slug: String(max_length=max_length)
+            rank: Integer()
+
+        domain = Domain(
+            name=f"MySQL boundary {max_length}",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.register(Edge, indexes=[Index("slug", "rank", name="ix_edge")])
+        domain.init(traverse=False)
+
+        provider = domain.providers["default"]
+        try:
+            with domain.domain_context():
+                domain.repository_for(Edge)._dao
+                provider._metadata.create_all(provider._engine)
+        finally:
+            provider._metadata.drop_all(provider._engine)
+            provider.close()
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_the_key_that_exactly_fills_the_budget_is_created(self, uri):
+        """767 characters is 3068 bytes, plus 4 for the Integer: 3072 on the
+        nose. Counting the Integer has to not reject this."""
+        self.build(uri, 767)
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_one_character_more_is_refused_by_the_guard(self, uri):
+        """3076. Skipping the Integer reported 3072 and let this reach
+        create_all(), where the server answers 1071."""
+        with pytest.raises(IncorrectUsageError) as exc:
+            self.build(uri, 768)
+
+        assert "3076 bytes" in str(exc.value)
+
+    @pytest.mark.parametrize("uri", SERVERS)
+    def test_the_server_refuses_exactly_what_the_guard_refuses(self, uri):
+        """The guard's boundary is only right if it is the server's. This is
+        the same pair of keys in raw DDL, with no Protean in the way."""
+        domain = Domain(
+            name="MySQL raw boundary",
+            config={
+                "identity_type": "uuid",
+                "databases": {"default": {"provider": "mysql", "database_uri": uri}},
+            },
+        )
+        domain.init(traverse=False)
+        provider = domain.providers["default"]
+
+        def create(length):
+            with provider._engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS boundary_probe"))
+                conn.execute(
+                    text(
+                        f"CREATE TABLE boundary_probe ("
+                        f"  s VARCHAR({length}) CHARACTER SET utf8mb4, n INT,"
+                        f"  INDEX ix (s, n)"
+                        f") ENGINE=InnoDB ROW_FORMAT=DYNAMIC"
+                    )
+                )
+                conn.commit()
+
+        try:
+            create(767)
+            with pytest.raises(DatabaseError) as exc:
+                create(768)
+            assert "3072 bytes" in str(exc.value)
+        finally:
+            with provider._engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS boundary_probe"))
+                conn.commit()
+            provider.close()

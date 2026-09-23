@@ -627,6 +627,98 @@ def _owns_schema_through_a_custom_model(entity_cls: typing.Any) -> bool:
     return bool(registered.get(Database.mysql.value) or registered.get(None))
 
 
+# InnoDB sizes an index key part by the column's storage width, and applies the
+# 3072-byte cap to the whole key, so a non-string column in a composite index
+# counts too. Measured against MySQL 8.4 and MariaDB 11.4, which agree exactly:
+# `VARCHAR(768)` utf8mb4 fills the budget on its own, and adding an `INT` to the
+# index is refused.
+_MYSQL_FIXED_KEY_WIDTHS: dict[typing.Any, int] = {
+    sa_types.Boolean: 1,  # TINYINT
+    sa_types.SmallInteger: 2,
+    sa_types.Integer: 4,
+    sa_types.BigInteger: 8,
+    sa_types.Float: 4,
+    sa_types.Date: 3,
+}
+
+# Bytes a DECIMAL's digits pack into: four per nine digits, then this much for
+# what is left over, applied to the integer and fractional parts separately.
+_MYSQL_DECIMAL_LEFTOVER_BYTES = (0, 1, 1, 2, 2, 3, 3, 4, 4)
+
+# A DATETIME is five bytes plus its fractional-second digits, one byte per two.
+_MYSQL_DATETIME_BASE_BYTES = 5
+
+
+def _mysql_decimal_key_width(precision: int | None, scale: int | None) -> int:
+    """Bytes a DECIMAL column contributes to an index key.
+
+    MySQL's own packing: nine digits per four bytes, with a partial group
+    costing ``_MYSQL_DECIMAL_LEFTOVER_BYTES``. Integer and fractional digits
+    pack separately. With no precision declared the column is the server
+    default, ``DECIMAL(10,0)``.
+    """
+    precision = 10 if precision is None else precision
+    scale = 0 if scale is None else scale
+    integer_digits = max(precision - scale, 0)
+
+    def packed(digits: int) -> int:
+        return (digits // 9) * 4 + _MYSQL_DECIMAL_LEFTOVER_BYTES[digits % 9]
+
+    return packed(integer_digits) + packed(scale)
+
+
+def _mysql_datetime_key_width(fsp: int | None) -> int:
+    """Bytes a DATETIME contributes, from its fractional-second precision."""
+    return _MYSQL_DATETIME_BASE_BYTES + ((fsp or 0) + 1) // 2
+
+
+def _mysql_fixed_column_key_width(column_type: typing.Any) -> int:
+    """Bytes a non-string mapped column contributes to an index key.
+
+    Walks the MRO so a dialect subclass is measured as what it is: MySQL's
+    ``DATETIME`` carries the fractional-second digits the provider pins, and
+    ``BigInteger`` has to be found before ``Integer``. A type not listed
+    contributes nothing, which keeps an exotic column from being rejected on a
+    guess; one that overruns still gets MySQL's own error.
+    """
+    if isinstance(column_type, sa_types.DateTime):
+        return _mysql_datetime_key_width(getattr(column_type, "fsp", None))
+
+    for klass in type(column_type).__mro__:
+        if klass in _MYSQL_FIXED_KEY_WIDTHS:
+            return _MYSQL_FIXED_KEY_WIDTHS[klass]
+        if klass is sa_types.Numeric:
+            return _mysql_decimal_key_width(
+                getattr(column_type, "precision", None),
+                getattr(column_type, "scale", None),
+            )
+    return 0
+
+
+def _mysql_fixed_field_key_width(field_obj: typing.Any) -> int:
+    """The same, for a declared field, which is all the renderer can see.
+
+    A ``DateTime`` field is mapped to ``DATETIME(6)`` by ``_mysql_column_type``,
+    so it is measured at that precision here.
+    """
+    python_type = _resolve_python_type(field_obj)
+    if python_type is bool:
+        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Boolean]
+    if python_type is int:
+        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Integer]
+    if python_type is float:
+        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Float]
+    if python_type is _date:
+        return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Date]
+    if python_type is _datetime:
+        return _mysql_datetime_key_width(_MYSQL_DATETIME_FSP)
+    if python_type is decimal.Decimal:
+        return _mysql_decimal_key_width(
+            getattr(field_obj, "precision", None), getattr(field_obj, "scale", None)
+        )
+    return 0
+
+
 def _mysql_identity_key_width() -> int:
     """Bytes an identity column contributes to an index key.
 
@@ -649,10 +741,13 @@ def _mysql_index_key_width(
 
     A ``utf8mb4`` character is up to 4 bytes and InnoDB sizes an index key by
     the column's maximum width, so a ``String(max_length=L)`` costs ``4 * L``.
-    Only string columns are counted: they are the only type in a Protean model
-    wide enough to reach the 3072-byte cap on their own (the widest other column
-    is a UUID identity at ``CHAR(32)``, 128 bytes). A key that overruns on some
-    exotic combination still gets MySQL's own error.
+    InnoDB caps the whole key, so every column in it counts. A string is the
+    only one wide enough to reach 3072 bytes on its own, but a fixed-width
+    column alongside a near-limit string is what pushes it over: a
+    ``VARCHAR(768)`` fills the budget exactly, and adding an ``Integer`` to the
+    index is refused. A type with no width listed contributes nothing rather
+    than a guess, and a key that overruns on such a column still gets MySQL's
+    own error.
 
     A string field with no ``max_length`` maps to ``TEXT``, which InnoDB cannot
     index at all without a prefix length; those are returned by name rather than
@@ -694,6 +789,7 @@ def _mysql_index_key_width(
             continue
 
         if _resolve_python_type(field_obj) is not str:
+            width += _mysql_fixed_field_key_width(field_obj)
             continue
         if field_obj.max_length:
             width += field_obj.max_length * _MYSQL_BYTES_PER_CHAR
@@ -742,6 +838,7 @@ def _mysql_index_key_width_from_columns(
             continue
 
         if not isinstance(column_type, sa_types.String):
+            width += _mysql_fixed_column_key_width(column_type)
             continue
         if column_type.length:
             width += column_type.length * _MYSQL_BYTES_PER_CHAR
@@ -803,11 +900,11 @@ def _check_mysql_index_key_widths(
         if width > _MYSQL_MAX_INDEX_KEY_BYTES:
             raise IncorrectUsageError(
                 f"Index {name!r} on '{entity_cls.__name__}' covers {covered}, "
-                f"whose string columns need {width} bytes. InnoDB caps an index "
-                f"key at {_MYSQL_MAX_INDEX_KEY_BYTES} bytes, which is "
-                f"{_MYSQL_MAX_INDEXED_VARCHAR} utf8mb4 characters across the "
-                f"whole index. Shorten the fields' max_length, or index fewer "
-                f"of them."
+                f"needing {width} bytes. InnoDB caps an index key at "
+                f"{_MYSQL_MAX_INDEX_KEY_BYTES} bytes across every column in it, "
+                f"which is {_MYSQL_MAX_INDEXED_VARCHAR} utf8mb4 characters if "
+                f"the key is all string. Shorten the fields' max_length, or "
+                f"index fewer of them."
             )
 
 

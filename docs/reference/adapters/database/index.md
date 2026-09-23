@@ -214,20 +214,20 @@ if provider.has_any_capability(
 
 ### Provider Capability Matrix
 
-|  | Memory | SQLite | PostgreSQL | MSSQL | Elasticsearch |
-|— |:------:|:------:|:----------:|:-----:|:-------------:|
-| CRUD | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| FILTER | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| BULK_OPERATIONS | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| ORDERING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| TRANSACTIONS |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
-| SIMULATED_TRANSACTIONS | :white_check_mark: |  |  |  |  |
-| OPTIMISTIC_LOCKING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| RAW_QUERIES | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
-| SCHEMA_MANAGEMENT |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| CONNECTION_POOLING |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
-| NATIVE_JSON |  |  | :white_check_mark: | :white_check_mark: |  |
-| NATIVE_ARRAY |  |  | :white_check_mark: | :white_check_mark: |  |
+|  | Memory | SQLite | PostgreSQL | MSSQL | MySQL | Elasticsearch |
+|— |:------:|:------:|:----------:|:-----:|:-----:|:-------------:|
+| CRUD | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| FILTER | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| BULK_OPERATIONS | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| ORDERING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| TRANSACTIONS |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| SIMULATED_TRANSACTIONS | :white_check_mark: |  |  |  |  |  |
+| OPTIMISTIC_LOCKING | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| RAW_QUERIES | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| SCHEMA_MANAGEMENT |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| CONNECTION_POOLING |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| NATIVE_JSON |  |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| NATIVE_ARRAY |  |  | :white_check_mark: | :white_check_mark: |  |  |
 
 ## Provider Registry
 
@@ -247,6 +247,7 @@ memory = "protean.adapters.repository.memory:register"
 postgresql = "protean.adapters.repository.sqlalchemy:register_postgresql"
 sqlite = "protean.adapters.repository.sqlalchemy:register_sqlite"
 mssql = "protean.adapters.repository.sqlalchemy:register_mssql"
+mysql = "protean.adapters.repository.sqlalchemy:register_mysql"
 elasticsearch = "protean.adapters.repository.elasticsearch:register"
 ```
 
