@@ -50,8 +50,8 @@ from sqlalchemy.schema import CreateIndex
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from protean.core.database_model import BaseDatabaseModel
+from protean.core.index import RENDERED_INDEX_DIALECTS, RawIndex
 from protean.core.index import Index as ProteanIndex
-from protean.core.index import RawIndex
 from protean.core.queryset import ResultSet
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import (
@@ -359,6 +359,24 @@ _PARTIAL_INDEX_OPS = {
     "isnull": lambda c, v: c.is_(None) if v else c.isnot(None),
 }
 
+# The SQLAlchemy dialect implementation to compile ``CreateIndex`` against, for
+# each dialect the framework renders index DDL for. The rendered set is owned by
+# ``RENDERED_INDEX_DIALECTS`` in ``protean.core.index`` (the same set
+# ``validate_indexes`` accepts a ``RawIndex`` dialect against), and
+# ``render_index_ddl`` builds its impls by iterating that constant, so the
+# accepted set and the rendered set cannot drift. Adding a dialect to the core
+# constant requires adding its factory here.
+#
+# SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are declared
+# without full annotations, so mypy flags the calls as untyped even though the
+# package ships ``py.typed``. The sqlite equivalent is annotated. Typing the map
+# values as a zero-arg callable keeps the call site clean.
+_SA_DIALECT_FACTORIES: dict[str, typing.Callable[[], typing.Any]] = {
+    "postgresql": psql.dialect,
+    "sqlite": sqlite_dialect.dialect,
+    "mssql": mssql.dialect,
+}
+
 # Dialects that support each opt-in index feature.
 _PARTIAL_INDEX_DIALECTS = frozenset({"postgresql", "sqlite"})
 _INCLUDE_INDEX_DIALECTS = frozenset({"postgresql", "mssql"})
@@ -567,15 +585,10 @@ def render_index_ddl(entity_cls: typing.Any, dialect_name: str) -> list[str]:
         declared, column_for, attr_for, table_name, dialect_name, entity_cls.__name__
     )
 
+    # Keys come from the core constant, so the set of dialects this renders for
+    # is exactly the set ``validate_indexes`` accepts.
     dialect_impls = {
-        # SQLAlchemy's ``psql.dialect`` / ``mssql.dialect`` factories are
-        # declared without full annotations, so mypy flags the calls as
-        # untyped even though the package ships ``py.typed``. The sqlite
-        # equivalent is annotated, hence no ignore there. See the redis
-        # adapter for the same scoped-ignore precedent.
-        "postgresql": psql.dialect(),  # type: ignore[no-untyped-call]
-        "sqlite": sqlite_dialect.dialect(),
-        "mssql": mssql.dialect(),  # type: ignore[no-untyped-call]
+        name: _SA_DIALECT_FACTORIES[name]() for name in RENDERED_INDEX_DIALECTS
     }
     dialect = dialect_impls.get(dialect_name, sqlite_dialect.dialect())
 

@@ -91,6 +91,13 @@ class Order:
 | `ddl` | `str` | Verbatim `CREATE INDEX …` statement. |
 | `name` | <code>str &#124; None</code> | Optional name, for reporting. |
 
+`dialect` must be one the framework renders index DDL for: `"postgresql"`,
+`"sqlite"`, or `"mssql"`. The name is matched by exact string, so a typo
+(`"postgres"`) or an unsupported dialect (`"oracle"`) raises
+`IncorrectUsageError` at `Domain.init()`. Such a declaration would otherwise
+render no index on any dialect, so the error names it at the point you declare
+it rather than dropping it silently.
+
 `RawIndex` is the return type of `from_sql`. You never construct it directly, always go
 through `Index.from_sql`.
 

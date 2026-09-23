@@ -30,6 +30,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from protean.cli._ir_utils import load_domain, load_domain_ir, load_ir_file
+from protean.core.index import RENDERED_INDEX_DIALECTS
 from protean.ir.generators.base import short_name
 from protean.utils import _fully_qualified_name
 
@@ -128,7 +129,10 @@ def generate(
         print(f"  {path}")
 
 
-_DEFAULT_INDEX_DIALECTS = "postgresql,sqlite,mssql"
+# The default set of dialects to render, sourced from the one core constant so
+# the CLI never renders for a dialect the framework does not support (or misses
+# one it does).
+_DEFAULT_INDEX_DIALECTS = ",".join(sorted(RENDERED_INDEX_DIALECTS))
 
 
 def write_index_ddl(
@@ -210,7 +214,7 @@ def render(
         str,
         typer.Option(
             "--dialects",
-            help="Comma-separated dialects (postgresql, sqlite, mssql)",
+            help=f"Comma-separated dialects ({', '.join(sorted(RENDERED_INDEX_DIALECTS))})",
         ),
     ] = _DEFAULT_INDEX_DIALECTS,
     output: Annotated[
