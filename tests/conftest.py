@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import structlog
 
+from tests.logging_isolation import LoggingSnapshot
 from tests.shared import (
     ELASTICSEARCH_URI,
     MARIADB_URI,
@@ -556,37 +557,6 @@ def _fd_report(request):
     )
 
 
-_LoggerState = tuple[int, list[logging.Handler], list[Any], bool, bool]
-
-
-def _is_pytest_handler(handler: logging.Handler) -> bool:
-    # pytest attaches its own capture handlers to the root logger around each
-    # test phase and removes them itself, so they are never ours to restore.
-    return type(handler).__module__ == "_pytest.logging"
-
-
-def _logger_state(logger: logging.Logger) -> _LoggerState:
-    return (
-        logger.level,
-        list(logger.handlers),
-        list(logger.filters),
-        logger.propagate,
-        logger.disabled,
-    )
-
-
-def _restore_logger(logger: logging.Logger, state: _LoggerState) -> None:
-    level, handlers, filters, propagate, disabled = state
-    if logger.level != level:
-        logger.setLevel(level)
-    if logger.handlers != handlers:
-        logger.handlers = handlers
-    if logger.filters != filters:
-        logger.filters = filters
-    logger.propagate = propagate
-    logger.disabled = disabled
-
-
 @pytest.fixture(autouse=True)
 def _restore_working_directory():
     """Put the process's working directory back after every test.
@@ -611,6 +581,9 @@ def _no_structlog_logger_cache():
     was active the first time it logged, and restoring the configuration
     afterwards does not reach it. Tests turn the cache off so every logger
     follows the configuration of the test it runs in.
+
+    A test that needs the cache (to check what ``configure_logging`` asks
+    for) patches ``structlog.configure`` back to its ``__wrapped__``.
     """
     real_configure = structlog.configure
 
@@ -618,6 +591,7 @@ def _no_structlog_logger_cache():
         kwargs["cache_logger_on_first_use"] = False
         real_configure(*args, **kwargs)
 
+    configure_without_cache.__wrapped__ = real_configure  # type: ignore[attr-defined]
     structlog.configure = configure_without_cache
     try:
         yield
@@ -629,48 +603,14 @@ def _no_structlog_logger_cache():
 def _isolate_logging_state():
     """Put the global logging configuration back after every test.
 
-    ``configure_logging`` and ``logging.config.dictConfig`` change process-wide
-    state: the root logger's level, handlers and filters, the level of named
-    loggers such as ``protean.server.engine``, the ``disabled`` flag that
-    ``dictConfig`` sets on loggers it does not mention, ``logging.disable``,
-    the structlog configuration, and the structlog context variables that
-    ``add_context`` binds. A test that calls them would otherwise
-    change what a later test's ``caplog`` sees, so the suite would pass or
-    fail depending on test order, which ``pytest-xdist`` changes.
-
-    Loggers created during the test are reset to the stdlib defaults. The
-    handlers pytest attaches for its own log capture are left alone.
+    A test that configures logging would otherwise change what a later test's
+    ``caplog`` sees, so the suite would pass or fail depending on test order,
+    which ``pytest-xdist`` changes. ``tests/logging_isolation.py`` lists what
+    is saved and restored.
     """
-    manager = logging.Logger.manager
-    root = logging.getLogger()
-    root_state = _logger_state(root)
-    saved = {
-        name: _logger_state(logger)
-        for name, logger in manager.loggerDict.items()
-        if isinstance(logger, logging.Logger)
-    }
-    disable_level = manager.disable
-    structlog_config = structlog.get_config()
-
+    snapshot = LoggingSnapshot.take()
     yield
-
-    if manager.disable != disable_level:
-        logging.disable(disable_level)
-    if structlog.get_config() != structlog_config:
-        structlog.configure(**structlog_config)
-    structlog.contextvars.clear_contextvars()
-
-    level, handlers, filters, propagate, disabled = root_state
-    pytest_handlers = [h for h in root.handlers if _is_pytest_handler(h)]
-    own_handlers = [h for h in handlers if not _is_pytest_handler(h)]
-    _restore_logger(
-        root, (level, own_handlers + pytest_handlers, filters, propagate, disabled)
-    )
-
-    default: _LoggerState = (logging.NOTSET, [], [], True, False)
-    for name, logger in list(manager.loggerDict.items()):
-        if isinstance(logger, logging.Logger):
-            _restore_logger(logger, saved.get(name, default))
+    snapshot.restore()
 
 
 @pytest.fixture(scope="session", autouse=True)
