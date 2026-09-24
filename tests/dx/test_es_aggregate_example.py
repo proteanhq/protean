@@ -11,6 +11,13 @@ item, so ``ItemAdded`` cannot describe a per-item currency and a stream cannot
 describe a mixed order. These tests pin that shape: the event has no currency
 field, replay prices every item in the order's currency, and the invariant that
 remains still nets an order assembled by hand.
+
+The same file has a second rule of the same kind. ``raise_()`` appends the event
+and then runs the apply handler, so a constraint that lives only on ``LineItem``
+is checked after the event is already pending: the caller sees the error and a
+rejected ``ItemAdded`` sits in ``_events`` waiting to be saved. ``ItemAdded``
+therefore carries the same constraints as the item it describes, and these tests
+pin that no rejected event is ever left pending.
 """
 
 from __future__ import annotations
@@ -101,21 +108,54 @@ def test_replay_prices_every_item_in_the_order_currency(asset):
     assert order.total.currency == "EUR"
 
 
-def test_replay_still_rejects_a_price_below_the_minimum(asset):
-    """The price rule sits on ``LineItem``, which replay constructs directly,
-    so it holds where the aggregate invariant would not."""
+def test_the_entity_rejects_a_price_below_the_minimum(asset):
+    """The price rule sits on ``LineItem``, which replay constructs directly, so
+    it holds where an aggregate invariant would not. Checked on the entity
+    itself, because ``ItemAdded`` can no longer express a price this low."""
     namespace, domain = asset
     with domain.domain_context(), pytest.raises(ValidationError) as error:
-        namespace["Order"].from_events(
-            [
-                namespace["OrderCreated"](order_id="ORD-R2", customer_id="C2"),
-                _item_added(
-                    namespace, "ORD-R2", product_id="Z", quantity=1, unit_price=0.0
-                ),
-            ]
+        namespace["LineItem"](
+            item_id=str(uuid.uuid4()),
+            product_id="Z",
+            quantity=1,
+            unit_price=namespace["Money"](amount=0.0, currency="USD"),
         )
 
     assert "unit_price" in error.value.messages
+
+
+@pytest.mark.parametrize(
+    ("label", "kwargs"),
+    [
+        ("a price of zero", {"unit_price": 0.0}),
+        ("a negative price", {"unit_price": -5.0}),
+        ("a quantity of zero", {"quantity": 0}),
+        ("an over-long product id", {"product_id": "X" * 60}),
+        # 250 characters: inside the 255 a bare String() allows by default, so
+        # this case only passes while ItemAdded declares max_length=200 itself.
+        ("an over-long description", {"description": "D" * 250}),
+    ],
+)
+def test_an_invalid_item_leaves_no_event_pending(asset, label, kwargs):
+    """Every constraint on ``LineItem`` is also on ``ItemAdded``, so an invalid
+    call fails while the event is built and ``raise_()`` is never reached.
+
+    Without this the event is appended first and the constraint is checked
+    afterwards. The caller sees the error and moves on, and the rejected event
+    is still in ``_events``: saving the order then persists it.
+    """
+    namespace, domain = asset
+    with domain.domain_context():
+        order = namespace["Order"].create(order_id=f"ORD-P-{label}", customer_id="C")
+        pending_before = len(order._events)
+
+        with pytest.raises(ValidationError):
+            order.add_item(**{"product_id": "P", "unit_price": 10.0, **kwargs})
+
+        assert len(order._events) == pending_before, (
+            f"{label} left a rejected ItemAdded pending"
+        )
+        assert len(order.items) == 0
 
 
 def test_the_invariant_nets_an_order_assembled_by_hand(asset):

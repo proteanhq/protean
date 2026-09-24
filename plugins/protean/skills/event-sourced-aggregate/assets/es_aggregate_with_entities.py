@@ -43,6 +43,11 @@ from protean.fields import (
 # Domain setup
 domain = Domain()
 
+# The smallest price a sold item may carry. Written once and applied twice: on
+# the event, so an invalid ItemAdded cannot be built, and on the entity, so an
+# item assembled any other way is rejected too.
+MINIMUM_UNIT_PRICE = 0.01
+
 
 # --- Value Object ---
 
@@ -72,8 +77,10 @@ class LineItem:
     def price_must_be_positive(self):
         """`min_value` cannot reach inside an embedded value object, so the
         rule that a sold item costs something lives here."""
-        if self.unit_price.amount < 0.01:
-            raise ValidationError({"unit_price": ["Unit price must be at least 0.01"]})
+        if self.unit_price.amount < MINIMUM_UNIT_PRICE:
+            raise ValidationError(
+                {"unit_price": [f"Unit price must be at least {MINIMUM_UNIT_PRICE}"]}
+            )
 
     @property
     def subtotal(self) -> float:
@@ -94,14 +101,22 @@ class OrderCreated:
 
 @domain.event(part_of="Order")
 class ItemAdded:
-    """Raised when an item is added to the order."""
+    """Raised when an item is added to the order.
+
+    The event carries the same constraints as the `LineItem` it describes.
+    `raise_()` appends the event and then runs the apply handler, so a
+    constraint that lives only on the entity is checked after the event is
+    already pending: the caller sees the error, and a rejected event sits in
+    `_events` waiting to be saved. Declaring the constraints here means an
+    invalid `ItemAdded` cannot be built at all, so `raise_()` is never reached.
+    """
 
     order_id: Identifier(required=True)
     item_id: Identifier(required=True)
-    product_id: String(required=True)
-    description: String()
-    quantity: Integer(required=True)
-    unit_price: Float(required=True)
+    product_id: String(required=True, max_length=50)
+    description: String(max_length=200)
+    quantity: Integer(required=True, min_value=1)
+    unit_price: Float(required=True, min_value=MINIMUM_UNIT_PRICE)
 
 
 @domain.event(part_of="Order")
