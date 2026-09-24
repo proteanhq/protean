@@ -796,7 +796,7 @@ def test(
             "--adapter",
             help=(
                 "PR category only: an adapter or leg from tests/adapters.toml to "
-                "run. Repeat it for more. Defaults to the adapters on every PR."
+                "run, in place of the adapters every PR runs. Repeat it for more."
             ),
         ),
     ] = None,

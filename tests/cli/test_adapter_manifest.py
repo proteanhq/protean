@@ -29,6 +29,9 @@ from protean.cli.test import (
     run_pr_lane,
 )
 
+# The manifest and the PR lane are file and CLI work; none of it loads a domain.
+pytestmark = pytest.mark.no_test_domain
+
 ADAPTERS_SRC = REPO_ROOT / "src" / "protean" / "adapters"
 TEST_SUITE_ACTION = REPO_ROOT / ".github" / "actions" / "test-suite" / "action.yml"
 
