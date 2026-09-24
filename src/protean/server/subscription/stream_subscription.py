@@ -369,6 +369,7 @@ class StreamSubscription(BaseSubscription):
                 if not await self._circuit_permits_reads():
                     continue
 
+                started = time.monotonic()
                 if self._lanes_enabled:
                     # PRIORITY LANES MODE
                     # Step 1: Non-blocking read on primary (production) stream
@@ -378,6 +379,7 @@ class StreamSubscription(BaseSubscription):
                         await self.process_batch(messages, stream=self.stream_category)
                         await self._maybe_trim(self.stream_category)
                         batches_processed += 1
+                        self._record_tick(started, True)
                         # Loop back immediately to check primary again
                         if batches_processed % 10 == 0:
                             await asyncio.sleep(0)
@@ -398,6 +400,7 @@ class StreamSubscription(BaseSubscription):
                         await self.process_batch(messages, stream=self.backfill_stream)
                         await self._maybe_trim(self.backfill_stream)
                         batches_processed += 1
+                    self._record_tick(started, bool(messages))
 
                     # Yield control before re-checking primary
                     await asyncio.sleep(0)
@@ -409,6 +412,7 @@ class StreamSubscription(BaseSubscription):
                         await self.process_batch(messages, stream=self.stream_category)
                         await self._maybe_trim(self.stream_category)
                         batches_processed += 1
+                        self._record_tick(started, True)
 
                         # Yield control only after processing a batch
                         # This maximizes throughput while maintaining responsiveness
@@ -417,6 +421,7 @@ class StreamSubscription(BaseSubscription):
                     else:
                         # No messages available, the blocking read timed out
                         # This is normal, just yield control
+                        self._record_tick(started, False)
                         await asyncio.sleep(0)
 
                 consecutive_errors = 0

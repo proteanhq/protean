@@ -56,6 +56,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# How often test mode (``Engine(test_mode=True).run()``) checks whether every
+# subscription has run out of work.
+TEST_MODE_IDLE_CHECK_INTERVAL = 0.01
+
 
 class CommandDispatcher:
     """Routes commands from a single stream to the correct command handler.
@@ -1162,6 +1166,49 @@ class Engine:
         if exc is not None:
             logger.warning("Health check server task failed: %s", exc)
 
+    async def _wait_for_test_mode_idle(self, timeout: float) -> bool:
+        """Wait up to ``timeout`` seconds for the engine to go idle (test mode)."""
+        deadline = self.loop.time() + timeout
+        while True:
+            await asyncio.sleep(TEST_MODE_IDLE_CHECK_INTERVAL)
+            if self._test_mode_idle():
+                return True
+            if self.loop.time() >= deadline:
+                return False
+
+    def _test_mode_idle(self) -> bool:
+        """Whether every subscription has run out of work, for test mode.
+
+        Idle means each poll loop has started a tick that found nothing after
+        the last tick anywhere that did find work finished. A handler that
+        raises a new message does so inside a tick that found work, so the
+        loop that consumes the new message has to tick once more before the
+        engine counts as idle.
+        """
+        if self.shutting_down:
+            return False
+        loops = [
+            *self._subscriptions.values(),
+            *self._broker_subscriptions.values(),
+            *self._outbox_processors.values(),
+        ]
+        if not all(getattr(loop, "reports_idle", False) for loop in loops):
+            return False
+        idle_starts = [loop.last_idle_tick_started for loop in loops]
+        if any(started is None for started in idle_starts):
+            return False
+        last_work = max(
+            (
+                loop.last_work_tick_finished
+                for loop in loops
+                if loop.last_work_tick_finished is not None
+            ),
+            default=None,
+        )
+        return last_work is None or all(
+            started is not None and started > last_work for started in idle_starts
+        )
+
     async def shutdown(
         self, signal: "signal.Signals | int | None" = None, exit_code: int = 0
     ) -> None:
@@ -1401,29 +1448,27 @@ class Engine:
                         + dlq_maintenance_tasks
                     )
 
-                    # Run enough cycles to allow message propagation across
-                    # all subscription types (events, commands, broker).
-                    # Each cycle yields control so poll() tasks can process
-                    # their next batch.
+                    # Run cycles until every poll loop has run out of work, so
+                    # multi-step flows (a handler raising a message another
+                    # handler consumes) settle before shutdown. A cycle ends
+                    # early as soon as the engine is idle.
                     #
-                    # The start() tasks complete immediately (they just spawn
-                    # poll loops as child tasks), so we always run at least
-                    # `min_cycles` to give poll loops time to process messages
-                    # before checking the early-exit condition.
+                    # When some subscription cannot report idleness, or keeps
+                    # finding work, stop after `min_cycles` once the start()
+                    # tasks are done. Wait up to `max_cycles` for a start()
+                    # that is still running.
                     # 50 cycles × 100ms = 5s max.
                     min_cycles = 10
                     max_cycles = 50
                     for cycle in range(max_cycles):
                         logger.debug(f"Test mode cycle {cycle + 1}/{max_cycles}")
-                        # Give tasks time to process messages
-                        await asyncio.sleep(0.1)
+                        idle = await self._wait_for_test_mode_idle(0.1)
 
-                        # Only check early exit after minimum cycles
-                        if cycle >= min_cycles:
-                            still_running = [t for t in all_tasks if not t.done()]
-                            if not still_running:
-                                logger.debug("All tasks completed")
-                                break
+                        if all(t.done() for t in all_tasks) and (
+                            idle or cycle >= min_cycles
+                        ):
+                            logger.debug("All tasks completed")
+                            break
 
                     # Cancel remaining tasks
                     for task in all_tasks:

@@ -291,7 +291,7 @@ class OutboxProcessor(BaseSubscription):
                 )
             return successful_count
 
-    async def tick(self) -> None:
+    async def tick(self) -> bool:
         """
         Override base tick method to add periodic cleanup and adaptive backoff.
 
@@ -318,6 +318,8 @@ class OutboxProcessor(BaseSubscription):
         if self.tick_count >= cleanup_check_interval:
             await self._perform_cleanup()
             self.tick_count = 0  # Reset counter
+
+        return bool(messages)
 
     async def _perform_cleanup(self) -> None:
         """

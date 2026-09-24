@@ -111,6 +111,10 @@ class PartitionedStreamSubscription(StreamSubscription):
     declares ``sequential_by`` on). See the module docstring for the design.
     """
 
+    # Partitions drain in per-partition worker tasks, outside the poll loop, so
+    # the loop cannot tell when the work is done.
+    reports_idle = False
+
     def __init__(
         self,
         engine: "Engine",
