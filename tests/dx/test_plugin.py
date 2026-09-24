@@ -28,6 +28,7 @@ from protean.dx.plugin import (
     PLUGIN_ROOT,
     PLUGIN_SKILLS_ROOT,
     PLUGIN_SOURCE,
+    _iter_pack_files,
     _prune_empty_dirs,
     marketplace_manifest,
     plugin_drift,
@@ -169,6 +170,31 @@ def test_no_package_marker_is_projected() -> None:
     """
     rendered = render_plugin_files(PACK_VERSION)
     assert not any(path.endswith("/__init__.py") for path in rendered)
+
+
+def test_no_bytecode_is_projected(tmp_path: Path) -> None:
+    """A ``__pycache__`` next to a pack file never reaches the plugin tree.
+
+    Running or importing an asset leaves bytecode beside it. The walk used to
+    descend into that directory, so the render picked up whatever .pyc happened
+    to be on the contributor's disk and the drift check then failed on a file
+    nobody wrote, under a Python version tag nobody chose.
+    """
+    skill = tmp_path / "demo"
+    (skill / "assets").mkdir(parents=True)
+    (skill / SKILL_FILE).write_text("# Demo\n")
+    (skill / "assets" / "sample.py").write_text("x = 1\n")
+    cache = skill / "assets" / "__pycache__"
+    cache.mkdir()
+    (cache / "sample.cpython-314.pyc").write_bytes(b"\x00bytecode")
+
+    assert dict(_iter_pack_files(tmp_path)).keys() == {
+        f"demo/{SKILL_FILE}",
+        "demo/assets/sample.py",
+    }
+
+    # And the real render carries none either, whatever is on this disk.
+    assert not any(path.endswith(".pyc") for path in render_plugin_files(PACK_VERSION))
 
 
 def test_skill_files_are_copied_verbatim() -> None:

@@ -78,6 +78,12 @@ PLUGIN_REFERENCES_ROOT = f"{PLUGIN_ROOT}/{REFERENCES_DIR}"
 # not part of a skill, so the plugin render drops every one.
 _PACKAGE_MARKER = "__init__.py"
 
+# Bytecode Python leaves next to a pack file once anything imports or runs it.
+# It is build residue, not pack content, so the render skips it. Without this a
+# contributor who runs an asset renders their own .pyc into the plugin tree and
+# the drift check fails on a file they never wrote.
+_BYTECODE_DIR = "__pycache__"
+
 # The plain-language descriptions the manifests carry. This cut ships skills
 # only: no commands, agents, or hooks, and the MCP registration stays with the
 # ``.mcp.json`` renderer.
@@ -146,10 +152,13 @@ def _iter_pack_files(root: Traversable) -> Iterator[tuple[str, bytes]]:
     """Yield ``(relative_posix_path, bytes)`` for every file under a pack subtree.
 
     Walks the subtree in sorted order (so the render is deterministic), reads
-    each file's exact bytes, and drops any ``__init__.py`` package marker.
+    each file's exact bytes, and drops any ``__init__.py`` package marker and any
+    ``__pycache__`` directory.
     """
     for child in sorted(root.iterdir(), key=lambda entry: entry.name):
         if child.is_dir():
+            if child.name == _BYTECODE_DIR:
+                continue
             for relative, data in _iter_pack_files(child):
                 yield f"{child.name}/{relative}", data
         elif child.name != _PACKAGE_MARKER:
