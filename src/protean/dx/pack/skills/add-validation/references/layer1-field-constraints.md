@@ -23,7 +23,7 @@ The complete implementation is in [assets/validation_layer1_field_constraints.py
 |-----------|------|-------------|
 | `max_length` | int | Maximum character count (default 255 for String) |
 | `min_length` | int | Minimum character count |
-| `sanitize` | bool | Strip unsafe HTML (default True for String) |
+| `sanitize` | bool | Clean unsafe HTML with `bleach.clean()`: it escapes disallowed tags and removes disallowed attributes and HTML comments (default: off; set `True` per field, or domain-wide via `[field_defaults] sanitize`) |
 
 ### Integer / Float fields
 
