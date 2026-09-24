@@ -3,7 +3,9 @@
 A field's ``validators=[...]`` run in list order, and validation stops at the
 first one that fails. Empty values skip the validators. The skill must say
 so, and must not claim that every validator runs and the errors are
-collected.
+collected. ``ValueObject`` and ``ValueObjectList`` fields are the exception:
+they run every validator and report each failure. The skill says so on lines
+that name those fields, so the text check skips such lines.
 
 ``tests/dx/test_plugin.py`` only checks that the render matches the pack, so
 a pack edit that brings back the "errors are collected" claim would keep it
@@ -16,25 +18,42 @@ fails here and forces the skill to change with it.
 # validator instances in their field annotations, which must resolve when the
 # class is built.
 import re
+import runpy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from protean import dx
 from protean.dx.pack import REFERENCES_DIR as REFERENCES_DIRNAME
 from protean.exceptions import ValidationError
-from protean.fields import String
+from protean.fields import Integer, String, ValueObject
 
 SKILL_DIR = Path(str(dx.pack_files())) / dx.SKILLS_DIR / "custom-validator"
 SKILL_MD = SKILL_DIR / "SKILL.md"
 COMPOSING = SKILL_DIR / REFERENCES_DIRNAME / "composing-validators.md"
 
 COLLECTING_CLAIM = re.compile(
-    r"errors are collected|errors from each are collected|run independently"
-    r"|all validation errors at once|error collection|all validators run",
+    r"(collect|aggregat|accumulat)\w*.{0,20}error"
+    r"|error.{0,20}(collect|aggregat|accumulat)"
+    r"|(all|every|each) (of the )?validators?\b.{0,15}(run|execut)"
+    r"|prevent others|run independently|all validation errors at once"
+    r"|reports? (all|every) errors?",
     re.IGNORECASE,
 )
 FIRST_FAILURE = re.compile(r"stops at the first fail", re.IGNORECASE)
+NEGATED_STOP = re.compile(
+    r"\b(never|not|doesn't|don't)\s+stops?\s+at the first", re.IGNORECASE
+)
+
+
+def _claim_lines(text: str) -> list[str]:
+    """Lines that speak about validators in general.
+
+    Lines naming ``ValueObject`` describe the documented exception, where
+    every validator runs, so they are left out.
+    """
+    return [line for line in text.splitlines() if "ValueObject" not in line]
 
 
 @pytest.mark.no_test_domain
@@ -42,14 +61,28 @@ def test_no_custom_validator_file_claims_errors_are_collected() -> None:
     files = sorted(p for p in SKILL_DIR.rglob("*") if p.suffix in {".md", ".py"})
     assert files
     for path in files:
-        match = COLLECTING_CLAIM.search(path.read_text())
-        assert match is None, f"{path}: {match.group(0) if match else ''}"
+        for line in _claim_lines(path.read_text()):
+            match = COLLECTING_CLAIM.search(line)
+            assert match is None, f"{path}: {line}"
 
 
 @pytest.mark.no_test_domain
 @pytest.mark.parametrize("path", [SKILL_MD, COMPOSING], ids=lambda p: p.name)
 def test_file_says_validation_stops_at_the_first_failure(path: Path) -> None:
-    assert FIRST_FAILURE.search(path.read_text()), path
+    text = path.read_text()
+    assert FIRST_FAILURE.search(text), path
+    assert NEGATED_STOP.search(text) is None, path
+
+
+@pytest.mark.no_test_domain
+@pytest.mark.parametrize("path", [SKILL_MD, COMPOSING], ids=lambda p: p.name)
+def test_file_names_the_value_object_exception(path: Path) -> None:
+    lines = [
+        line
+        for line in path.read_text().splitlines()
+        if "ValueObjectList" in line and COLLECTING_CLAIM.search(line)
+    ]
+    assert len(lines) == 1, path
 
 
 @pytest.mark.no_test_domain
@@ -61,10 +94,22 @@ def test_file_says_validation_stops_at_the_first_failure(path: Path) -> None:
         "Validators run independently",
         "the user gets all validation errors at once",
         "## Error Collection",
+        "Errors are aggregated per field.",
+        "Every validator runs, even after a failure.",
+        "All validators are run in order.",
+        "The field reports all errors.",
+        "A failure in one does NOT prevent others from running.",
+        "Errors are accumulated across the chain.",
     ],
 )
 def test_collecting_claim_pattern_catches_known_wordings(claim: str) -> None:
     assert COLLECTING_CLAIM.search(claim)
+
+
+@pytest.mark.no_test_domain
+def test_negated_stop_pattern_catches_the_opposite_claim() -> None:
+    assert NEGATED_STOP.search("Validation never stops at the first failure.")
+    assert not NEGATED_STOP.search("Validation stops at the first failure.")
 
 
 @pytest.mark.no_test_domain
@@ -134,7 +179,8 @@ def test_later_validator_runs_when_the_first_passes(test_domain) -> None:
     assert exc.value.messages["name"] == ["second rule"]
 
 
-def test_empty_value_skips_every_validator(test_domain) -> None:
+@pytest.mark.parametrize("empty", ["", None])
+def test_empty_value_skips_every_validator(test_domain, empty: Any) -> None:
     first = _Rejects("first rule")
     second = _Rejects("second rule")
 
@@ -144,8 +190,69 @@ def test_empty_value_skips_every_validator(test_domain) -> None:
 
     test_domain.init(traverse=False)
 
-    account = Account()
+    account = Account(name=empty)
+    account.name = empty
 
-    assert account.name is None
+    assert account.name == empty
     assert first.calls == []
     assert second.calls == []
+
+
+def test_builtin_constraint_failure_skips_custom_validators(test_domain) -> None:
+    first = _Rejects("first rule")
+
+    @test_domain.aggregate
+    class Account:
+        age: Integer(max_value=10, validators=[first])
+
+    test_domain.init(traverse=False)
+
+    with pytest.raises(ValidationError) as exc:
+        Account(age=50)
+
+    assert exc.value.messages["age"] != ["first rule"]
+    assert first.calls == []
+
+
+def test_value_object_field_runs_every_validator(test_domain) -> None:
+    first = _Rejects("first rule")
+    second = _Rejects("second rule")
+
+    @test_domain.value_object
+    class Email:
+        address: String()
+
+    @test_domain.aggregate
+    class Account:
+        email = ValueObject(Email, validators=[first, second])
+
+    test_domain.init(traverse=False)
+
+    email = Email(address="a@example.com")
+    with pytest.raises(ValidationError) as exc:
+        Account(email=email)
+
+    assert exc.value.messages["email"] == ["first rule", "second rule"]
+    assert first.calls == [email]
+    assert second.calls == [email]
+
+
+@pytest.mark.no_test_domain
+def test_composition_asset_reports_only_the_first_failure() -> None:
+    """The reference shows ``"spam__bot"`` reporting only the profanity error.
+
+    That value also breaks the consecutive-characters rule, which comes later
+    in the asset's list. Reordering the asset's validators fails this test.
+    """
+    asset = SKILL_DIR / "assets" / "custom_validator_composition.py"
+    if not asset.is_file():
+        pytest.skip("DX pack is not unpacked on disk")
+    namespace = runpy.run_path(str(asset), run_name="_dx_composition_asset_")
+    domain = namespace["domain"]
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        with pytest.raises(ValidationError) as exc:
+            namespace["UserAccount"](username="spam__bot", display_name="Spam Bot")
+
+    assert exc.value.messages["username"] == ["Value contains prohibited content"]
