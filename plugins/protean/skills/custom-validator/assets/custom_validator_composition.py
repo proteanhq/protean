@@ -4,7 +4,7 @@ Composing Multiple Validators
 This example demonstrates:
 - Chaining multiple validators on a single field
 - Combining built-in RegexValidator with custom validators
-- Error collection from multiple validators
+- First-failure short-circuiting across chained validators
 - Building layered validation (format + business rule + deny-list)
 - Custom error message patterns
 
@@ -105,12 +105,12 @@ username_reserved = ReservedWordValidator(
 username_profanity = NoProfanityValidator(blocked_words=["spam", "hack"])
 username_consecutive = NoConsecutiveSpecialCharsValidator()
 
-# Coupon code: prefix + format
-coupon_prefix = PrefixValidator(prefixes=["SAVE", "DISC", "FREE"], case_sensitive=True)
+# Coupon code: format first, then the prefix business rule
 coupon_format = RegexValidator(
     regex=r"^[A-Z]{4}-[A-Z0-9]{4,8}$",
     message="Coupon code must be in format XXXX-YYYY (4 letter prefix, dash, 4-8 alphanumeric)",
 )
+coupon_prefix = PrefixValidator(prefixes=["SAVE", "DISC", "FREE"], case_sensitive=True)
 
 
 @domain.aggregate
@@ -139,7 +139,7 @@ class Coupon:
         required=True,
         max_length=13,
         identifier=True,
-        validators=[coupon_prefix, coupon_format],
+        validators=[coupon_format, coupon_prefix],
     )
     description: String(max_length=200)
 
@@ -168,6 +168,12 @@ if __name__ == "__main__":  # pragma: no cover
             UserAccount(username="john__doe", display_name="John")
         except ValidationError as e:
             print(f"Consecutive specials rejected: {e}")
+
+        # Breaks profanity and consecutive specials: only the first failure is reported
+        try:
+            UserAccount(username="spam__bot", display_name="Spam Bot")
+        except ValidationError as e:
+            print(f"First failure only: {e}")
 
         # Valid coupon
         coupon = Coupon(code="SAVE-ABC123", description="10% off")

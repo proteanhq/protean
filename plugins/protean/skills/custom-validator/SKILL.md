@@ -46,10 +46,11 @@ class Phone:
 ## Key rules
 
 1. **Validators are callable classes** — Implement `__init__` and `__call__`. The `__call__` method receives the field value as its single argument.
-2. **Raise `ValidationError` on failure** — Import from `protean.exceptions`. The error message string gets wrapped into `{field_name: [message]}` automatically.
+2. **Raise `ValidationError` on failure** — Import from `protean.exceptions`. The error message string gets wrapped into `{field_name: [message]}` automatically. If the validator has an `error` attribute, that string is the message instead.
 3. **Return nothing on success** — If the value is valid, simply return (no return value needed).
 4. **Validators run AFTER type casting** — The value passed to `__call__` has already been cast to the field's native type (e.g., `str` for `String`, `int` for `Integer`).
-5. **Multiple validators are chained** — Use `validators=[V1(), V2()]`; all validators run, errors are collected.
+5. **Multiple validators are chained** — Use `validators=[V1(), V2()]`. They run in list order, and validation stops at the first failing validator. The user sees one error for the field at a time.
+   The exception is a `ValueObject` or `ValueObjectList` field. There, every validator in the list runs, and the field reports one error for each validator that failed.
 6. **Validators are for single-field rules** — For cross-field validation, use `@invariant.post` instead (see [add-validation](../add-validation/SKILL.md)).
 7. **Keep validators reusable** — Make them configurable via `__init__` parameters so they work across multiple fields and domain elements.
 
@@ -60,9 +61,10 @@ When a field value is set, Protean validates in this order:
 1. **Empty check** — `required` field without value raises error
 2. **Choices check** — Value must be in `choices` enum/list
 3. **Type casting** — `_cast_to_type()` converts to native type
-4. **Validators** — All validators in `validators=[]` list run sequentially
+4. **Built-in constraints** — `max_length`, `min_length`, `min_value`, `max_value`, and sanitization. A value that fails one of these never reaches the custom validators.
+5. **Validators** — Validators in the `validators=[]` list run in order. Validation stops at the first failure. Empty values (`None`, `""`, `[]`, `()`, `{}`) skip the validators.
 
-Custom validators execute at step 4, after the value is already type-cast and choice-validated.
+Custom validators execute at step 5, after the value is already type-cast, choice-validated, and within the built-in constraints.
 
 ## Built-in validators
 
@@ -128,7 +130,7 @@ partner_email: String(validators=[AllowedDomainValidator(["partner.org", "vendor
 
 ## Composing multiple validators
 
-Chain validators for layered validation — all validators run and errors are collected:
+Chain validators for layered validation. They run in list order, and validation stops at the first failing validator, so put the most basic check first:
 
 ```python
 @domain.value_object
