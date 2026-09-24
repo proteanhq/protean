@@ -46,12 +46,39 @@ def _write_skill(root, name: str, body: str) -> None:
 
 # --- Coverage guard: every coverable lint code has a teaching skill --------
 
-# Lint codes no skill teaches today, with the reason it is excluded rather than
-# required to gain one. #1558's Decisions block permits this explicitly: "If a
-# specific lint code should not require a skill, it is named on the same
-# exclusion list." A code that gains a skill must come off this list, and the
-# partition test below catches a code that is neither taught nor excluded.
-_UNCOVERED_LINT_CODES = {
+# Every code no DX-pack skill teaches, with the reason it is exempt rather than
+# required to gain one. The set is written out by hand on purpose. A new code of
+# any kind lands in neither this set nor the coverable set, so
+# test_the_catalog_is_fully_classified fails until someone puts it on one side
+# or the other. #1558's Decisions block: "the coverable set and the exclusion
+# list together account for every DiagnosticCode", and "If a specific lint code
+# should not require a skill, it is named on the same exclusion list."
+#
+# Deriving the non-lint half from the enum instead would make the partition
+# assertion hold by construction, and a new `raise` or `staleness` code would
+# slip in unclassified.
+_EXCLUDED_CODES = {
+    # kind="raise": raised at runtime when a domain is misconfigured or an
+    # invariant fails. The fix is in the offending call, not a convention a
+    # skill teaches.
+    "CONFIG_AMBIGUOUS_ELEMENT_NAME": "raised at runtime; not a modeling convention",
+    "CONFIG_ELEMENT_NOT_REGISTERED": "raised at runtime; not a modeling convention",
+    "CONFIG_EVENT_STORE_NOT_INITIALIZED": "raised at runtime; not a modeling convention",
+    "CONFIG_INVALID_FIELD_DEFAULTS": "raised at runtime; not a modeling convention",
+    "CONFIG_UNRESOLVED_ENV_VAR": "raised at runtime; not a modeling convention",
+    "INVARIANT_POST_FAILED": "raised at runtime; not a modeling convention",
+    "INVARIANT_PRE_FAILED": "raised at runtime; not a modeling convention",
+    "UNSUPPORTED_ELEMENT_CLASS": "raised at runtime; not a modeling convention",
+    "USAGE_CACHE_BACKED_NO_REPOSITORY": "raised at runtime; not a modeling convention",
+    "USAGE_DUPLICATE_DATABASE_MODEL": "raised at runtime; not a modeling convention",
+    "USAGE_ELEMENT_NOT_REGISTERED": "raised at runtime; not a modeling convention",
+    "USAGE_ENRICHER_NOT_CALLABLE": "raised at runtime; not a modeling convention",
+    "USAGE_NOT_A_PROJECTION": "raised at runtime; not a modeling convention",
+    "USAGE_UNKNOWN_ELEMENT_TYPE": "raised at runtime; not a modeling convention",
+    "VALUE_OBJECT_INVARIANT_FAILED": "raised at runtime; not a modeling convention",
+    # kind="staleness": the fix is to regenerate the IR, a tooling step.
+    "IR_STALE": "regenerate the IR; a tooling step, not a modeling convention",
+    # kind="lint", exempt for the reason given.
     # A deprecation notice's fix is specific to the API being deprecated, not a
     # reusable modeling convention a skill teaches.
     "DEPRECATED_CONFIG": "deprecation notice; fix is API-specific",
@@ -75,41 +102,41 @@ def _lint_codes() -> set[str]:
 def _coverable_codes() -> set[str]:
     """Lint codes a skill is required to teach: every lint code minus the
     documented exclusion list."""
-    return _lint_codes() - set(_UNCOVERED_LINT_CODES)
+    return _lint_codes() - _EXCLUDED_CODES.keys()
 
 
 class TestDiagnosticCodeCoverageGuard:
-    def test_exclusion_list_codes_are_really_lint(self):
-        # A typo-guard: an exclusion-list entry that is not actually a lint code
-        # (say, a `raise` code mistyped) would hide the real gap it claims to
-        # explain, rather than excusing it.
-        not_lint = {
-            code
-            for code in _UNCOVERED_LINT_CODES
-            if REGISTRY[DiagnosticCode[code]].kind != "lint"
-        }
-        assert not not_lint, (
-            f"exclusion-list entries are not kind='lint' codes: {sorted(not_lint)}"
+    def test_exclusion_list_entries_are_real_codes(self):
+        # A typo-guard. A misspelled entry would silently stop exempting the
+        # code it names, and the real code would then fail the coverage check
+        # with a confusing message.
+        unknown = _EXCLUDED_CODES.keys() - {code.value for code in DiagnosticCode}
+        assert not unknown, (
+            f"exclusion-list entries are not DiagnosticCode members: {sorted(unknown)}"
         )
 
-    def test_coverable_and_excluded_partition_the_whole_catalog(self):
-        # Guards that _coverable_codes() and _UNCOVERED_LINT_CODES stay
-        # consistent with each other: coverable is lint minus the exclusion
-        # list, excluded is everything else plus the exclusion list, so this
-        # holds by construction unless a refactor of one helper drifts from
-        # the other. The forcing check for a new untaught lint code is
-        # test_every_coverable_code_has_a_teaching_skill, below.
+    def test_every_exclusion_carries_a_reason(self):
+        blank = {code for code, reason in _EXCLUDED_CODES.items() if not reason.strip()}
+        assert not blank, f"exclusion-list entries with no reason: {sorted(blank)}"
+
+    def test_the_catalog_is_fully_classified(self):
+        # The forcing check. Every code is either coverable (a lint code a skill
+        # must teach) or named on _EXCLUDED_CODES with a reason. A new code of
+        # any kind fails here until it is classified.
         all_codes = {code.value for code in DiagnosticCode}
-        non_lint_codes = all_codes - _lint_codes()
-        excluded = non_lint_codes | set(_UNCOVERED_LINT_CODES)
         coverable = _coverable_codes()
+        excluded = set(_EXCLUDED_CODES)
 
         assert coverable.isdisjoint(excluded), (
             f"a code is both coverable and excluded: {sorted(coverable & excluded)}"
         )
-        assert coverable | excluded == all_codes, (
-            "coverable and excluded codes do not cover the whole catalog; "
-            f"missing: {sorted(all_codes - (coverable | excluded))}"
+
+        unclassified = all_codes - coverable - excluded
+        assert not unclassified, (
+            f"these diagnostic codes are unclassified: {sorted(unclassified)}. "
+            "Either a skill teaches the code (make it kind='lint' and declare "
+            "it on the skill), or name it in _EXCLUDED_CODES with the reason "
+            "no skill teaches it."
         )
 
     def test_every_coverable_code_has_a_teaching_skill(self):
@@ -124,8 +151,8 @@ class TestDiagnosticCodeCoverageGuard:
         assert not untaught, (
             "these lint codes are neither taught by a DX-pack skill nor on the "
             f"documented exclusion list: {sorted(untaught)}. Add a teaching "
-            "skill declaration, or add the code to _UNCOVERED_LINT_CODES with "
-            "a reason."
+            "skill declaration, or add the code to _EXCLUDED_CODES with a "
+            "reason."
         )
 
 

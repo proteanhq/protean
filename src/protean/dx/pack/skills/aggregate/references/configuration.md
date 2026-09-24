@@ -183,29 +183,29 @@ class Order:
 
 ---
 
-### `database_model`
+### Custom database models
 
-**Type:** Model class
 **Default:** Auto-generated
 
-Allows you to specify a custom database model instead of using the auto-generated one.
+Protean builds a database model for every aggregate. To control the mapping
+yourself, register your own model against the aggregate with
+`@domain.database_model`.
+
+Declare only the columns you want to control. Protean fills in the rest of the
+aggregate's fields, and `schema_name` sets the table name.
 
 ```python
-from sqlalchemy import Column, String, Integer, Table
-from protean.adapters.repository.sqlalchemy import SqlalchemyModel
+from sqlalchemy import Column, Text
+from protean.core.database_model import BaseDatabaseModel
 
-# Define custom SQLAlchemy model
-class CustomUserModel(SqlalchemyModel):
-    __tablename__ = "users"
-
-    user_id = Column(Integer, primary_key=True)
-    email = Column(String(255), unique=True)
-    full_name = Column(String(200))
-
-@domain.aggregate(database_model=CustomUserModel)
+@domain.aggregate
 class User:
     email: String(required=True, max_length=255)
     full_name: String(required=True, max_length=200)
+
+@domain.database_model(part_of=User, schema_name="users")
+class CustomUserModel(BaseDatabaseModel):
+    email = Column(Text, unique=True)
 ```
 
 **Use cases:**
@@ -215,9 +215,13 @@ class User:
 - Database-specific features
 
 **Important:**
-- Custom models are provider-specific (SQLAlchemy model won't work with Elasticsearch)
-- You must ensure field mappings are correct
-- Custom models bypass some Protean optimizations
+- Register the model with `@domain.database_model`. The `database_model` option
+  on `@domain.aggregate` is not read by anything, so passing your model there
+  leaves the auto-generated one in place.
+- Every column must match a field declared on the aggregate. A column for
+  anything else is rejected at registration with `IncorrectUsageError`.
+- Custom models are provider-specific (a SQLAlchemy model won't work with
+  Elasticsearch)
 
 ---
 
