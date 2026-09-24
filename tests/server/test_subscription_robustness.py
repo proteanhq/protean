@@ -341,6 +341,8 @@ async def test_broker_subscription_process_batch_exception_handling(
         "failure_stream",  # This stream has our failing subscriber
         FailingSubscriber,
         messages_per_tick=10,
+        # Retry at once: this test is about error handling, not the delay.
+        retry_delay_seconds=0,
     )
 
     # Create test broker messages - don't publish to the broker

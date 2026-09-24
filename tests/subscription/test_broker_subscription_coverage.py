@@ -161,6 +161,8 @@ async def test_broker_subscription_process_batch_nack_failure(test_domain, caplo
     """Test that BrokerSubscription.process_batch() logs warning when nack fails"""
     engine = Engine(test_domain, test_mode=True)
     subscription = engine._broker_subscriptions[fqn(FailingSubscriber)]
+    # Retry at once: this test is about the failed nack, not the retry delay.
+    subscription.retry_delay_seconds = 0
 
     # Mock broker nack to return False (failure)
     subscription.broker.nack = MagicMock(return_value=False)

@@ -1,5 +1,6 @@
 import contextlib
 import hashlib
+import inspect
 import json
 import logging
 from collections import defaultdict
@@ -395,7 +396,7 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         nested dicts.  This converts ``email = ValueObject(Email)`` to
         the equivalent of ``email: Email | None = None``.
         """
-        own_annots = getattr(cls, "__annotations__", {})
+        own_annots = inspect.get_annotations(cls)
         names_to_remove: list[str] = []
         defaults_to_set: dict[str, None] = {}
 

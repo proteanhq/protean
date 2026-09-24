@@ -2,6 +2,7 @@
 
 import copy
 import functools
+import inspect
 import logging
 import threading
 from collections import defaultdict
@@ -273,7 +274,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # scan ``vars(cls)`` for descriptors, so they must live there.
         # We also explicitly trigger ``__set_name__`` because ``setattr``
         # does NOT invoke it (only class-body execution does).
-        own_annots: dict[str, Any] = getattr(cls, "__annotations__", {})
+        own_annots: dict[str, Any] = inspect.get_annotations(cls)
         to_remove: list[str] = []
         for name, value in list(own_annots.items()):
             if isinstance(value, _DESCRIPTOR_TYPES):
@@ -308,7 +309,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         if vars(cls).get("__auto_id_handled__"):
             return
 
-        own_annots: dict[str, Any] = getattr(cls, "__annotations__", {})
+        own_annots: dict[str, Any] = inspect.get_annotations(cls)
 
         # Check if any class-level FieldInfo already declares an identifier
         for value in vars(cls).values():

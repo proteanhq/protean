@@ -40,10 +40,10 @@ class PersonSQLiteCustomRepository(BaseRepository):
 @pytest.mark.database
 class TestRepositoryConstructionAndRegistration:
     @pytest.fixture
-    def custom_test_domain(self, test_domain):
+    def custom_test_domain(self, test_domain, tmp_path):
         test_domain.config["databases"]["sqlite"] = {
             "provider": "sqlite",
-            "database_uri": "sqlite:///test.db",
+            "database_uri": f"sqlite:///{tmp_path / 'test.db'}",
         }
         test_domain._initialize()
         yield test_domain

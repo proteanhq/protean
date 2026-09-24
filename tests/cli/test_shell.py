@@ -1,3 +1,4 @@
+import atexit
 import os
 import sys
 from pathlib import Path
@@ -9,6 +10,39 @@ from protean.cli import app
 from tests.shared import change_working_directory_to, module_unavailable
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _close_shells(monkeypatch):
+    """Close every IPython shell a test starts, at the end of that test.
+
+    Each ``InteractiveShellEmbed`` registers an atexit hook that resets the
+    shell, and the reset runs a full ``gc.collect()``. Left to run at exit, the
+    hooks keep every shell and its domain alive for the rest of the session and
+    then collect the whole leftover heap once per shell, which added about a
+    second per shell to the suite's exit.
+    """
+    try:
+        from IPython.terminal.embed import InteractiveShellEmbed
+    except ImportError:
+        yield
+        return
+
+    created: list[InteractiveShellEmbed] = []
+    real_init = InteractiveShellEmbed.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        created.append(self)
+
+    monkeypatch.setattr(InteractiveShellEmbed, "__init__", tracking_init)
+
+    yield
+
+    for shell in created:
+        atexit.unregister(shell.atexit_operations)
+        shell.atexit_operations()
+    InteractiveShellEmbed.clear_instance()
 
 
 def test_shell_without_shell_extra_reports_actionable_error():

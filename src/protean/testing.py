@@ -676,10 +676,10 @@ def drain(
         until: Optional predicate. Draining stops early once it returns
             truthy. When omitted, a single engine pass is run.
         max_cycles: Upper bound on engine passes so a never-satisfied
-            *until* cannot hang the test. Must be at least 1. Each test-mode
-            engine pass takes at least ~1 second, so the bound is also a
-            worst-case latency budget. Raise it only for flows that
-            genuinely need more passes.
+            *until* cannot hang the test. Must be at least 1. A test-mode
+            engine pass stops once nothing is left to process, and takes at
+            most about a second, so the bound is also a worst-case latency
+            budget. Raise it only for flows that genuinely need more passes.
 
     Returns:
         The number of engine passes actually run. If *until* was supplied but

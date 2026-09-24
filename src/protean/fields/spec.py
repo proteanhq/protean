@@ -9,6 +9,7 @@ Pydantic's native machinery remains; FieldSpec itself is not stored on the class
 import contextlib
 import datetime as _dt
 import decimal
+import inspect
 import warnings
 from collections.abc import Callable, Iterable
 from enum import Enum
@@ -582,7 +583,7 @@ def resolve_fieldspecs(cls: type) -> None:
     - Assignment: ``name = String(max_length=50)``  → FieldSpec in ``vars(cls)``
     - Annotation: ``name: String(max_length=50)``   → FieldSpec in ``cls.__annotations__``
     """
-    own_annots = getattr(cls, "__annotations__", {})
+    own_annots = inspect.get_annotations(cls)
     resolved_annots = dict(own_annots)
 
     # Track original FieldSpecs for downstream metadata access

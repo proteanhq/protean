@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.cli.test import (
     CAPABILITY_MARKER_MAP,
+    PYTEST_BASE_CMD,
     TEST_CONFIGS,
     CapabilityResult,
     RunCategory,
@@ -18,6 +19,7 @@ from protean.cli.test import (
     _provider_has_capability_for_marker,
     _run_pytest_for_marker,
     validate_category,
+    validate_workers,
 )
 from protean.cli.test import (
     test_adapter as cli_test_adapter,
@@ -1431,3 +1433,107 @@ class TestFrameworkDevelopmentHelp:
         assert result.exit_code == 0
         output = self._strip_ansi(result.output)
         assert re.search(r"test-adapter\s+\[Framework development\]", output)
+
+
+@pytest.mark.no_test_domain
+class TestCoreWorkers:
+    """CORE runs on pytest-xdist; every other category stays in one process."""
+
+    def test_core_command_spreads_over_workers_by_file(self):
+        assert TestRunner().build_core_command("logical") == [
+            *PYTEST_BASE_CMD,
+            "-n",
+            "logical",
+            "--dist",
+            "loadfile",
+        ]
+
+    def test_zero_workers_runs_in_one_process(self):
+        assert TestRunner().build_core_command("0") == PYTEST_BASE_CMD
+
+    def _invoke(self, cli_runner, args, env=None):
+        with patch("protean.cli.test.TestRunner.run_command", return_value=0) as run:
+            result = cli_runner.invoke(
+                app, ["test", *args], env=env, standalone_mode=False
+            )
+        return result, run
+
+    def test_core_defaults_to_logical_workers(self, cli_runner, monkeypatch):
+        monkeypatch.delenv("PROTEAN_TEST_WORKERS", raising=False)
+        result, run = self._invoke(cli_runner, [])
+        assert result.exit_code == 0
+        run.assert_called_once_with(
+            [*PYTEST_BASE_CMD, "-n", "logical", "--dist", "loadfile"]
+        )
+
+    @pytest.mark.parametrize("flag", ["-n", "--workers"])
+    def test_workers_option_sets_the_count(self, cli_runner, flag):
+        result, run = self._invoke(cli_runner, [flag, "4"])
+        assert result.exit_code == 0
+        run.assert_called_once_with([*PYTEST_BASE_CMD, "-n", "4", "--dist", "loadfile"])
+
+    def test_workers_zero_turns_parallelism_off(self, cli_runner):
+        result, run = self._invoke(cli_runner, ["--workers", "0"])
+        assert result.exit_code == 0
+        run.assert_called_once_with(PYTEST_BASE_CMD)
+
+    def test_sequential_runs_core_in_one_process(self, cli_runner):
+        result, run = self._invoke(cli_runner, ["--sequential", "--workers", "4"])
+        assert result.exit_code == 0
+        run.assert_called_once_with(PYTEST_BASE_CMD)
+
+    def test_env_var_sets_the_count(self, cli_runner):
+        result, run = self._invoke(cli_runner, [], env={"PROTEAN_TEST_WORKERS": "0"})
+        assert result.exit_code == 0
+        run.assert_called_once_with(PYTEST_BASE_CMD)
+
+    @pytest.mark.parametrize("value", ["AUTO", " logical ", "007"])
+    def test_accepted_spellings_are_normalised(self, value):
+        assert validate_workers(value) in ("auto", "logical", "7")
+
+    @pytest.mark.parametrize("value", ["", "-1", "many", "2.5", "²", "٣"])
+    def test_invalid_worker_count_is_rejected(self, value):
+        with pytest.raises(typer.BadParameter, match="not a worker count"):
+            validate_workers(value)
+
+    @pytest.mark.parametrize("category", ["FULL", "COVERAGE"])
+    def test_full_suites_never_get_workers(self, cli_runner, category):
+        with (
+            patch("protean.cli.test.TestRunner.run_command", return_value=0) as run,
+            patch("protean.cli.test.TestRunner.generate_diff_coverage_report"),
+        ):
+            result = cli_runner.invoke(
+                app,
+                ["test", "-c", category, "--workers", "8", "--sequential"],
+                standalone_mode=False,
+            )
+        assert result.exit_code == 0
+        commands = [call.args[0] for call in run.call_args_list]
+        assert commands
+        assert not any("-n" in cmd or "--dist" in cmd for cmd in commands)
+
+    def test_core_rejects_a_bad_worker_count(self, cli_runner):
+        result, run = self._invoke(cli_runner, ["--workers", "many"])
+        assert isinstance(result.exception, typer.BadParameter)
+        assert "not a worker count" in str(result.exception)
+        run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "category", ["FULL", "COVERAGE", "DATABASE", "BROKER", "EVENTSTORE"]
+    )
+    def test_other_categories_ignore_a_bad_worker_count(self, cli_runner, category):
+        with patch("protean.cli.test.TestRunner.generate_diff_coverage_report"):
+            result, _ = self._invoke(
+                cli_runner,
+                ["-c", category, "--sequential"],
+                env={"PROTEAN_TEST_WORKERS": "many"},
+            )
+        assert result.exit_code == 0
+
+    @pytest.mark.parametrize("category", ["DATABASE", "BROKER", "EVENTSTORE"])
+    def test_category_suites_never_get_workers(self, cli_runner, category):
+        result, run = self._invoke(cli_runner, ["-c", category, "--workers", "8"])
+        assert result.exit_code == 0
+        commands = [call.args[0] for call in run.call_args_list]
+        assert commands
+        assert not any("-n" in cmd or "--dist" in cmd for cmd in commands)

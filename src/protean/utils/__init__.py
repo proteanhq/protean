@@ -6,6 +6,7 @@ to the maximum extent possible.
 
 import contextlib
 import importlib.metadata
+import inspect
 import keyword
 import logging
 import types
@@ -543,7 +544,7 @@ def _derive_element_class(
         # ensure meta_ has a ClassVar annotation so that Pydantic ignores it
         # during clone_class and other dynamic class operations.
         if issubclass(base_cls, BaseModel):
-            annots = element_cls.__annotations__.copy()
+            annots = inspect.get_annotations(element_cls)
             annots["meta_"] = ClassVar[Options]
             element_cls.__annotations__ = annots
 

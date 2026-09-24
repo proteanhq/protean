@@ -45,6 +45,9 @@ class StreamSubscription(BaseSubscription):
     This ensures production events are always processed before backfill events.
     """
 
+    # Set when a read helper swallowed a broker error during this loop turn.
+    _read_failed: bool = False
+
     def __init__(
         self,
         engine: "Engine",
@@ -369,6 +372,8 @@ class StreamSubscription(BaseSubscription):
                 if not await self._circuit_permits_reads():
                     continue
 
+                started = time.monotonic()
+                self._read_failed = False
                 if self._lanes_enabled:
                     # PRIORITY LANES MODE
                     # Step 1: Non-blocking read on primary (production) stream
@@ -378,6 +383,7 @@ class StreamSubscription(BaseSubscription):
                         await self.process_batch(messages, stream=self.stream_category)
                         await self._maybe_trim(self.stream_category)
                         batches_processed += 1
+                        self._record_tick(started, True)
                         # Loop back immediately to check primary again
                         if batches_processed % 10 == 0:
                             await asyncio.sleep(0)
@@ -398,6 +404,7 @@ class StreamSubscription(BaseSubscription):
                         await self.process_batch(messages, stream=self.backfill_stream)
                         await self._maybe_trim(self.backfill_stream)
                         batches_processed += 1
+                    self._record_tick(started, self._tick_outcome(messages))
 
                     # Yield control before re-checking primary
                     await asyncio.sleep(0)
@@ -409,6 +416,7 @@ class StreamSubscription(BaseSubscription):
                         await self.process_batch(messages, stream=self.stream_category)
                         await self._maybe_trim(self.stream_category)
                         batches_processed += 1
+                        self._record_tick(started, True)
 
                         # Yield control only after processing a batch
                         # This maximizes throughput while maintaining responsiveness
@@ -417,6 +425,7 @@ class StreamSubscription(BaseSubscription):
                     else:
                         # No messages available, the blocking read timed out
                         # This is normal, just yield control
+                        self._record_tick(started, self._tick_outcome(messages))
                         await asyncio.sleep(0)
 
                 consecutive_errors = 0
@@ -433,6 +442,16 @@ class StreamSubscription(BaseSubscription):
                 # Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
                 backoff = min(2 ** (consecutive_errors - 1), 30)
                 await asyncio.sleep(backoff)
+
+    def _tick_outcome(self, messages: list[Any]) -> bool | None:
+        """Whether a poll-loop turn found work, or ``None`` if a read failed.
+
+        The read helpers log a broker error and return no messages, so an
+        empty result after a failed read says nothing about pending work.
+        """
+        if messages:
+            return True
+        return None if self._read_failed else False
 
     async def _circuit_permits_reads(self) -> bool:
         """Decide whether the circuit breaker allows a read this loop turn.
@@ -613,6 +632,7 @@ class StreamSubscription(BaseSubscription):
             )
         except Exception as e:
             logger.error(f"Error reading primary stream {self.stream_category}: {e}")
+            self._read_failed = True
             return []
 
     async def _read_backfill_blocking(self) -> list[tuple[str, dict[str, Any]]]:
@@ -641,6 +661,7 @@ class StreamSubscription(BaseSubscription):
             )
         except Exception as e:
             logger.error(f"Error reading backfill stream {self.backfill_stream}: {e}")
+            self._read_failed = True
             return []
 
     async def get_next_batch_of_messages(self) -> list[tuple[str, dict[str, Any]]]:
@@ -672,6 +693,7 @@ class StreamSubscription(BaseSubscription):
             return messages
         except Exception as e:
             logger.error(f"Error reading messages from stream: {e}")
+            self._read_failed = True
             return []
 
     async def process_batch(

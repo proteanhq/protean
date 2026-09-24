@@ -61,6 +61,24 @@ class UserEventHandler(BaseEventHandler):
         pass
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff_wait():
+    """Return from every sleep at once.
+
+    After an error the poll loops back off for 1s, 2s, 4s, ... before the next
+    tick. These tests check that the loop survives the error and what it does
+    next, not how long it waits, so the waits are skipped. Tests that assert
+    the backoff durations patch ``asyncio.sleep`` again to record them.
+    """
+    real_sleep = asyncio.sleep
+
+    async def no_wait(delay: float, *args, **kwargs) -> None:
+        await real_sleep(0)
+
+    with patch("protean.server.subscription.asyncio.sleep", side_effect=no_wait):
+        yield
+
+
 @pytest.fixture
 def domain_setup(test_domain):
     test_domain.config["event_processing"] = Processing.ASYNC.value

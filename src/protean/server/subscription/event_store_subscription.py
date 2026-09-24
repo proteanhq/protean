@@ -713,7 +713,7 @@ class EventStoreSubscription(BaseSubscription):
         logger.debug(f"Filtered {len(filtered_messages)} out of {len(messages)}")
         return filtered_messages
 
-    async def tick(self) -> None:
+    async def tick(self) -> bool:
         """Process one batch, then step the cursor over any abandoned ``$all`` gaps.
 
         Extends the base tick: after ``process_batch`` has carried the present
@@ -731,6 +731,8 @@ class EventStoreSubscription(BaseSubscription):
 
         if self._gap_watermark > self.current_position:
             await self.update_read_position(self._gap_watermark)
+
+        return bool(messages)
 
     async def get_next_batch_of_messages(self) -> list[Message]:
         """
@@ -1478,24 +1480,29 @@ class EventStoreSubscription(BaseSubscription):
             try:
                 with self.engine.domain.domain_context():
                     # Process new messages
-                    await self.tick()
+                    started = time.monotonic()
+                    had_work = await self.tick()
 
                     # Periodically attempt recovery of failed positions.
                     # A recovery pass re-reads failed positions and dispatches
                     # handlers, so it is fresh intake, not in-flight work: skip
                     # it if a drain began while the tick above was running,
                     # rather than fanning out new handlers after the trigger.
-                    if not self._quiescing():
-                        await self.maybe_run_recovery()
+                    # A recovered position dispatched its handler, which may
+                    # have raised messages for other subscriptions.
+                    if not self._quiescing() and await self.maybe_run_recovery():
+                        had_work = True
+                    # A failed position waiting for its next retry is work
+                    # still to do, whether or not this pass recovered any.
+                    if self.enable_recovery and self._failed_positions:
+                        had_work = True
+                    self._record_tick(started, had_work)
 
                     # Reset error counter on successful tick
                     consecutive_errors = 0
 
                     # Use minimal sleep for cooperative multitasking
-                    if self.tick_interval > 0:
-                        await asyncio.sleep(self.tick_interval)
-                    else:
-                        await asyncio.sleep(0)
+                    await self._pause_between_ticks()
 
             except asyncio.CancelledError:
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")

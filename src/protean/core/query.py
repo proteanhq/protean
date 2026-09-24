@@ -5,6 +5,7 @@ projections -- the read-side counterpart of commands.
 """
 
 import contextlib
+import inspect
 import json
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, cast
@@ -132,7 +133,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
         This converts ``email = ValueObject(Email)`` to the equivalent of
         ``email: Email | None = None``.
         """
-        own_annots = dict(getattr(cls, "__annotations__", {}))
+        own_annots = inspect.get_annotations(cls)
         names_to_remove: list[str] = []
         defaults_to_set: dict[str, None] = {}
 

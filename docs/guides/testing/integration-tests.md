@@ -198,8 +198,9 @@ def test_order_ships_after_payment():
 `drain` is bounded by `max_cycles` (default 5) so a never-satisfied `until`
 cannot hang the test. If the budget is exhausted before the condition settles,
 `drain` returns and emits a `UserWarning`, so an unmet expectation is never
-silently swallowed. Each engine pass takes at least ~1 second, so raise
-`max_cycles` only for flows that genuinely need more passes.
+silently swallowed. An engine pass stops once nothing is left to process and
+takes at most about a second, so raise `max_cycles` only for flows that
+genuinely need more passes.
 
 ## Full-Flow Feature Files
 

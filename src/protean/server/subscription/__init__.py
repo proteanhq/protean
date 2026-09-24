@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +12,11 @@ if TYPE_CHECKING:
     from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
+
+# The longest a poll loop pauses between ticks when the engine runs in test
+# mode, whatever its ``tick_interval``. Test mode stops the engine as soon as
+# every loop runs out of work, so a loop must not sit out a long interval.
+TEST_MODE_MAX_TICK_PAUSE = 0.01
 
 
 class BaseSubscription(ABC):
@@ -32,6 +38,18 @@ class BaseSubscription(ABC):
     # flushing already-committed rows during the drain window instead of
     # freezing them until the replacement process starts.
     pauses_on_drain: bool = True
+
+    # Test-mode idle tracking, read by ``Engine.run``. The poll loop records
+    # when it last *started* a tick that found no work and when it last
+    # *finished* a tick that did (``time.monotonic()``, ``None`` until then).
+    # The engine is idle once every loop has started an empty tick after the
+    # last work finished anywhere. A tick that cannot tell (it returned
+    # ``None``, or its read failed) records nothing, so its loop never counts
+    # as idle. A subscription whose poll loop does not record ticks sets
+    # ``reports_idle`` to False.
+    reports_idle: bool = True
+    last_idle_tick_started: float | None = None
+    last_work_tick_finished: float | None = None
 
     def __init__(
         self,
@@ -104,18 +122,15 @@ class BaseSubscription(ABC):
             try:
                 with self.engine.domain.domain_context():
                     # Process messages
-                    await self.tick()
+                    started = time.monotonic()
+                    self._record_tick(started, await self.tick())
 
                     # Reset error counter on successful tick
                     consecutive_errors = 0
 
                     # Use minimal sleep for cooperative multitasking
                     # This ensures interleaving without blocking
-                    if self.tick_interval > 0:
-                        await asyncio.sleep(self.tick_interval)
-                    else:
-                        # Always yield control to allow other tasks to run
-                        await asyncio.sleep(0)
+                    await self._pause_between_ticks()
 
             except asyncio.CancelledError:
                 logger.info(
@@ -137,17 +152,43 @@ class BaseSubscription(ABC):
                 backoff = min(2 ** (consecutive_errors - 1), 30)
                 await asyncio.sleep(backoff)
 
-    async def tick(self) -> None:
+    async def _pause_between_ticks(self) -> None:
+        """Sleep ``tick_interval`` (shorter in test mode), always yielding control."""
+        pause = self.tick_interval
+        if self.engine.test_mode is True:
+            pause = min(pause, TEST_MODE_MAX_TICK_PAUSE)
+        await asyncio.sleep(pause if pause > 0 else 0)
+
+    def _record_tick(self, started: float, had_work: bool | None) -> None:
+        """Note one pass of the poll loop for the engine's test-mode idle check.
+
+        ``had_work`` is ``None`` when the tick cannot tell whether there was
+        work, for example a ``tick()`` override written before it returned a
+        bool, or a read that failed. An earlier empty tick no longer counts
+        then, so the loop is not idle until it completes another empty tick.
+        """
+        if had_work is None:
+            self.last_idle_tick_started = None
+            return
+        if had_work:
+            self.last_work_tick_finished = time.monotonic()
+        else:
+            self.last_idle_tick_started = started
+
+    async def tick(self) -> bool | None:
         """
         This method retrieves the next batch of messages to process and calls the `process_batch` method
         to handle each message.
 
         Returns:
-            None
+            bool | None: Whether the tick found any messages. An override may
+            return ``None`` when it cannot tell; the engine's test mode then
+            never counts this subscription as idle.
         """
         messages = await self.get_next_batch_of_messages()
         if messages:
             await self.process_batch(messages)
+        return bool(messages)
 
     async def shutdown(self) -> None:
         """

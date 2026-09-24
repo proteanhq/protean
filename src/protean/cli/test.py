@@ -21,6 +21,10 @@ REPORT_PATH = Path("diff_coverage_report.html")
 MAX_WORKERS = 3
 COVERAGE_BASE_CMD = ["coverage", "run", "--parallel-mode", "-m"]
 PYTEST_BASE_CMD = ["pytest", "--cache-clear", "--ignore=tests/support/"]
+# CORE runs on pytest-xdist by default. ``loadfile`` keeps every test in a file
+# on one worker, so a file's module-level caches (the mypy results in
+# tests/ext/test_mypy_plugin.py) are computed once.
+DEFAULT_CORE_WORKERS = "logical"
 
 # HTML styling for coverage reports
 STYLE_BLOCK = """
@@ -185,6 +189,16 @@ class TestRunner:
             cmd.append(config_flag)
         if extra_flags:
             cmd.extend(extra_flags)
+        return cmd
+
+    def build_core_command(self, workers: str) -> list[str]:
+        """Build the CORE pytest command, spread over ``workers`` processes.
+
+        ``"0"`` runs the suite in this one process.
+        """
+        cmd = PYTEST_BASE_CMD.copy()
+        if workers != "0":
+            cmd.extend(["-n", workers, "--dist", "loadfile"])
         return cmd
 
     def build_coverage_command(self, pytest_cmd: list[str]) -> list[str]:
@@ -500,6 +514,18 @@ class TestRunner:
 app = typer.Typer()
 
 
+def validate_workers(value: str) -> str:
+    """Accept a worker count, or a pytest-xdist keyword (``auto``, ``logical``)."""
+    value = value.strip().lower()
+    if value.isascii() and value.isdigit():
+        return str(int(value))
+    if value in ("auto", "logical"):
+        return value
+    raise typer.BadParameter(
+        f"'{value}' is not a worker count; use a number, 'auto' or 'logical'"
+    )
+
+
 def validate_category(value: str) -> str:
     """Validate and convert category string, returning the uppercase version."""
     if value is None:
@@ -531,6 +557,19 @@ def test(
             "--sequential", help="Run tests sequentially instead of in parallel"
         ),
     ] = False,
+    workers: Annotated[
+        str,
+        typer.Option(
+            "-n",
+            "--workers",
+            envvar="PROTEAN_TEST_WORKERS",
+            help=(
+                "Worker processes for the CORE category: a number, 'auto' or "
+                "'logical'. 0 runs the suite in one process. The other "
+                "categories never use pytest-xdist and ignore this option."
+            ),
+        ),
+    ] = DEFAULT_CORE_WORKERS,
 ) -> None:
     """[Framework development] Run tests with various configurations and coverage options.
 
@@ -556,7 +595,9 @@ def test(
 
         case _:  # CORE
             print("Running core tests…")
-            exit_code = runner.run_command(PYTEST_BASE_CMD)
+            core_workers = "0" if sequential else validate_workers(workers)
+            core_command = runner.build_core_command(core_workers)
+            exit_code = runner.run_command(core_command)
 
     if exit_code != 0:
         raise typer.Exit(code=exit_code)

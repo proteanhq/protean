@@ -247,6 +247,7 @@ class TestValueObjectFromEntityField:
 
         test_domain.register(Cart)
         test_domain.register(LineItem, part_of=Cart)
+        test_domain.register(ShippingDetail, part_of=Cart)
         test_domain.register(CreateCart, part_of=Cart)
         test_domain.init(traverse=False)
 
@@ -270,6 +271,7 @@ class TestValueObjectFromEntityField:
 
         test_domain.register(Cart)
         test_domain.register(LineItem, part_of=Cart)
+        test_domain.register(ShippingDetail, part_of=Cart)
         test_domain.register(CmdA, part_of=Cart)
         test_domain.register(CmdB, part_of=Cart)
         test_domain.init(traverse=False)

@@ -104,7 +104,10 @@ def test_that_trying_to_associate_an_event_with_multiple_aggregates_throws_an_er
 
 @pytest.mark.eventstore
 def test_an_unassociated_event_throws_error(test_domain):
-    user = User.register(user_id="1", name="<NAME>", email="<EMAIL>")
+    # Build the user directly: `User.register` raises `UserRegistered`, which
+    # needs `Domain.init()`, and the fixture's second event-sourced aggregate
+    # makes `init()` fail in this module.
+    user = User(user_id="1", name="<NAME>", email="<EMAIL>")
     with pytest.raises(ConfigurationError) as exc:
         user.raise_(UserArchived(user_id=user.user_id))
 
