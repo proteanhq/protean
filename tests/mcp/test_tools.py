@@ -159,6 +159,17 @@ class TestExplain:
         result = tools.explain("AGGREGATE_TOO_LARGE")
         assert "split-aggregate" in result["teaching_skills"]
 
+    def test_mutating_the_returned_list_does_not_poison_the_shared_cache(self):
+        # pack.diagnostic_code_skills() is lru_cache-d, so explain() must copy
+        # the list before returning it. Otherwise a caller mutating the result
+        # corrupts the cache for every later explain() and build_diagnostic()
+        # call.
+        result = tools.explain("AGGREGATE_TOO_LARGE")
+        result["teaching_skills"].append("POISON")
+
+        again = tools.explain("AGGREGATE_TOO_LARGE")
+        assert "POISON" not in again["teaching_skills"]
+
     def test_teaching_skills_is_an_empty_list_for_a_code_no_skill_teaches(self):
         # DEPRECATED_FIELD sits on the DX pack's coverage-guard exclusion list
         # (tests/dx/test_diagnostic_codes.py): no skill teaches it. The key must

@@ -93,10 +93,12 @@ class TestDiagnosticCodeCoverageGuard:
         )
 
     def test_coverable_and_excluded_partition_the_whole_catalog(self):
-        # Every DiagnosticCode is either coverable (a lint code a skill must
-        # teach) or excluded (a raise/staleness code, or a documented
-        # exclusion). A new code lands in neither set and reds here, forcing
-        # the choice the guard exists to force.
+        # Guards that _coverable_codes() and _UNCOVERED_LINT_CODES stay
+        # consistent with each other: coverable is lint minus the exclusion
+        # list, excluded is everything else plus the exclusion list, so this
+        # holds by construction unless a refactor of one helper drifts from
+        # the other. The forcing check for a new untaught lint code is
+        # test_every_coverable_code_has_a_teaching_skill, below.
         all_codes = {code.value for code in DiagnosticCode}
         non_lint_codes = all_codes - _lint_codes()
         excluded = non_lint_codes | set(_UNCOVERED_LINT_CODES)

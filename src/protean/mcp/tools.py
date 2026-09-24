@@ -203,7 +203,7 @@ def explain(code: str) -> ExplainResult:
     # here.
     from protean.dx import pack  # noqa: PLC0415
 
-    teaching_skills = pack.diagnostic_code_skills().get(resolved_code.value, [])
+    teaching_skills = list(pack.diagnostic_code_skills().get(resolved_code.value, []))
 
     return {
         "code": resolved_code.value,
