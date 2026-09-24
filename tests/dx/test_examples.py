@@ -514,10 +514,6 @@ def test_every_value_object_is_referenced():
 # the pack and rejects any that passes a bare `model=` keyword to an
 # `@domain.aggregate(...)` call, or gives a `model` option its own heading.
 
-# Any fenced block, in either of CommonMark's two fence characters, used to cut
-# the code out and leave the prose behind.
-_ANY_FENCE = re.compile(r"(?:```|~~~)[^\n]*\n.*?(?:```|~~~)", re.DOTALL)
-
 # Every `aggregate(` on the page, wherever it sits. The token scan reads forward
 # from each one, so no markdown block form can hide the call behind it.
 _AGGREGATE_CALL = re.compile(r"\baggregate\s*\(")
@@ -679,7 +675,7 @@ def _model_option_offences(text: str) -> list[str]:
             "so this sweep cannot check it"
         )
 
-    if _MODEL_AS_IDENTIFIER.search(_ANY_FENCE.sub("", text)):
+    if _MODEL_AS_IDENTIFIER.search(text):
         report(
             "names `model` as an option in prose or a heading; the "
             "custom-model option is `database_model`"
@@ -797,6 +793,14 @@ def test_the_indented_regression_cases_exercise_the_tokenizer():
         ),
         # And one nothing would have thought to enumerate.
         ("<!-- @domain.aggregate(model=M) -->\n", True),
+        # Prose inside a fence. The identifier search used to cut every fence
+        # out first, so this named the option where nothing was looking: there
+        # is no `aggregate(` call here for the other branch to find either.
+        (
+            "```text\n`model` is the custom-model option on "
+            "`@domain.aggregate`.\n```\n",
+            True,
+        ),
         ("Use `@domain.aggregate(database_model=M)` to override it.\n", False),
         # An inline span that is only a word still has to read as no call.
         ("The `aggregate` decorator takes a `database_model`.\n", False),

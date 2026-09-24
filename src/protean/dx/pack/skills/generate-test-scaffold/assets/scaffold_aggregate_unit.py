@@ -173,30 +173,37 @@ class Order:
         Business rules:
         - Order must have items (enforced by invariant)
         - Order must be in draft status
+
+        Builds the event before it touches `status`. Both steps can fail:
+        `total` refuses an order holding two currencies, and the event rejects
+        a missing field. Either one after the status changed would leave the
+        order placed with no `OrderPlaced` event, and a retry would then be
+        rejected for being placed already.
         """
         if self.status != "draft":
             raise ValueError(f"Cannot place order in '{self.status}' status")
-        self.status = "placed"
-        self.raise_(
-            OrderPlaced(
-                order_id=self.id,
-                customer_id=self.customer_id,
-                item_count=len(self.line_items),
-                total_amount=self.total.amount,
-            )
+
+        event = OrderPlaced(
+            order_id=self.id,
+            customer_id=self.customer_id,
+            item_count=len(self.line_items),
+            total_amount=self.total.amount,
         )
+        self.status = "placed"
+        self.raise_(event)
 
     def cancel(self, reason):
         """Cancel the order. Raises OrderCancelled event.
 
         Business rule: only placed orders can be cancelled.
+
+        Builds the event first, same as `place()`. `reason` is required, so an
+        empty one fails here; building after the status changed would leave the
+        order cancelled with no `OrderCancelled` event.
         """
         if self.status != "placed":
             raise ValueError(f"Cannot cancel order in '{self.status}' status")
+
+        event = OrderCancelled(order_id=self.id, reason=reason)
         self.status = "cancelled"
-        self.raise_(
-            OrderCancelled(
-                order_id=self.id,
-                reason=reason,
-            )
-        )
+        self.raise_(event)

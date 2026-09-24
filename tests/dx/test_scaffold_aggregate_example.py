@@ -28,6 +28,7 @@ import pytest
 
 from protean import dx
 from protean.domain import Domain
+from protean.exceptions import ValidationError
 
 # Builds a domain directly from package data; never touches the autouse
 # ``test_domain`` fixture, so skip it and its initialization cost.
@@ -136,6 +137,56 @@ def test_an_empty_order_totals_zero(asset):
     namespace, domain = asset
     with domain.domain_context():
         assert namespace["Order"].create(customer_id="c-4").total.amount == 0.0
+
+
+def test_place_builds_the_event_before_it_changes_status(asset):
+    """`total` can refuse, so reading it after the status changed would leave
+    the order placed with no event and no way to retry."""
+    namespace, domain = asset
+    with domain.domain_context():
+        order = namespace["Order"].create(customer_id="c-5")
+        for product_id, currency in (("p-1", "USD"), ("p-2", "EUR")):
+            order.add_line_items(
+                namespace["LineItem"](
+                    product_id=product_id,
+                    quantity=1,
+                    unit_price=namespace["Money"](amount=10.0, currency=currency),
+                )
+            )
+
+        with pytest.raises(ValueError, match="Cannot add USD and EUR"):
+            order.place()
+
+        assert order.status == "draft"
+        assert order._events == []
+
+        # Still placeable once the order holds one currency again.
+        order.remove_item("p-2")
+        order.place()
+        assert order.status == "placed"
+        assert [type(event).__name__ for event in order._events] == ["OrderPlaced"]
+
+
+@pytest.mark.parametrize("reason", ["", None])
+def test_cancel_builds_the_event_before_it_changes_status(asset, reason):
+    """`reason` is required, so the event rejects an empty one. Building it
+    after the status changed left the order cancelled with no event."""
+    namespace, domain = asset
+    with domain.domain_context():
+        order = namespace["Order"].create(customer_id="c-6")
+        order.add_item(product_id="p-1", quantity=1, unit_price=5.0)
+        order.place()
+        order._events.clear()
+
+        with pytest.raises(ValidationError):
+            order.cancel(reason=reason)
+
+        assert order.status == "placed"
+        assert order._events == []
+
+        order.cancel(reason="changed their mind")
+        assert order.status == "cancelled"
+        assert [type(event).__name__ for event in order._events] == ["OrderCancelled"]
 
 
 def test_money_still_refuses_to_add_across_currencies(asset):
