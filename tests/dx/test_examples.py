@@ -333,3 +333,158 @@ def test_creation_handler_sets_every_defaulted_field():
         "creation event's `@apply` handler does not set replays as `None`. "
         "These examples teach that bug:\n  " + "\n  ".join(unset)
     )
+
+
+# --- Every declared value object must actually be used -----------------------
+#
+# A teaching asset that defines a `@domain.value_object` and then never uses it
+# shows the reader a concept it never demonstrates. `es_aggregate_with_entities.py`
+# did exactly this: it declared `Money`, advertised "Value objects within ES
+# aggregates" in its header, and gave `LineItem` a plain `unit_price: Float`, so
+# `Money` sat orphaned. This sweep reads every asset and, for each value object it
+# declares, requires the class name to appear somewhere else in the same file
+# (embedded in an entity/aggregate via `ValueObject(...)`, constructed in a
+# handler, referenced in the demo). A name used only by its own class definition
+# is an orphan.
+
+
+def _is_value_object(class_node: ast.ClassDef) -> bool:
+    """True when the class is decorated with `@domain.value_object`.
+
+    Both forms are in the pack: the bare `@domain.value_object` and the called
+    `@domain.value_object(part_of="...")`.
+    """
+    for decorator in class_node.decorator_list:
+        node = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if isinstance(node, ast.Attribute) and node.attr == "value_object":
+            return True
+    return False
+
+
+def _value_objects() -> list[tuple[Path, ast.Module, ast.ClassDef]]:
+    found = []
+    for path in ASSETS:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        found.extend(
+            (path, tree, node)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and _is_value_object(node)
+        )
+    return found
+
+
+def _name_is_referenced(tree: ast.Module, declaration: ast.ClassDef, name: str) -> bool:
+    """True when `name` appears as a `Name` node outside its own declaration.
+
+    A class declaration stores its name as the `ClassDef.name` string, so the
+    `class Money:` line itself is never a `Name` node. Its body is a different
+    matter: a method that returns `Money(...)`, which is how a value object
+    writes an operation over its own type, puts a real `Name` node inside the
+    declaration. Counting those makes every such value object look used.
+
+    `scaffold_aggregate_unit.py` had that shape, so the declaring class
+    subtree is excluded.
+    """
+    own = {id(node) for node in ast.walk(declaration)}
+    return any(
+        isinstance(node, ast.Name) and node.id == name and id(node) not in own
+        for node in ast.walk(tree)
+    )
+
+
+def test_the_value_object_sweep_is_not_vacuous():
+    """A sweep that finds nothing would pass while checking nothing."""
+    value_objects = _value_objects()
+    assert len(value_objects) >= 40, (
+        "expected the pack's example value objects, found "
+        f"{sorted(node.name for _, _, node in value_objects)}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "source", "referenced"),
+    [
+        (
+            "an operation over its own type",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+    def add(self, other):
+        return Money(amount=self.amount + other.amount)
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    unit_price: Float(required=True)
+""",
+            False,
+        ),
+        (
+            "embedded in an entity",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    unit_price: ValueObject(Money, required=True)
+""",
+            True,
+        ),
+        (
+            "constructed in a handler",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+
+@domain.aggregate
+class Order:
+    def price(self):
+        return Money(amount=1.0)
+""",
+            True,
+        ),
+        (
+            "declared and nothing else",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+""",
+            False,
+        ),
+    ],
+)
+def test_the_value_object_sweep_ignores_the_declaration_itself(
+    label, source, referenced
+):
+    """A value object with a method over its own type is still an orphan."""
+    tree = ast.parse(source)
+    declaration = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "Money"
+    )
+
+    assert _name_is_referenced(tree, declaration, "Money") is referenced, label
+
+
+def test_every_value_object_is_referenced():
+    orphans = []
+    for path, tree, declaration in _value_objects():
+        if not _name_is_referenced(tree, declaration, declaration.name):
+            orphans.append(
+                f"{path.name}: value object {declaration.name} is declared but "
+                "never used"
+            )
+
+    assert not orphans, (
+        "a value object an asset declares but never uses shows the reader a "
+        "concept the asset does not actually demonstrate:\n  " + "\n  ".join(orphans)
+    )

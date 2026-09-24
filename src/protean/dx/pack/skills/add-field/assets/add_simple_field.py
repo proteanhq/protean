@@ -15,7 +15,16 @@ Usage:
 from datetime import UTC, date, datetime
 
 from protean import Domain
-from protean.fields import Boolean, Date, DateTime, Float, Integer, String, Text
+from protean.fields import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    Text,
+    ValueObject,
+)
 
 # Domain setup
 domain = Domain(__name__)
@@ -141,10 +150,8 @@ class Customer:
     customer_id: String(required=True, max_length=50, identifier=True)
     name: String(required=True, max_length=100)
 
-    # Embedded value object (added as ValueObject field in real code)
-    # For this example, we'll use primitive fields
-    email: String(required=True, max_length=254)
-    phone: String(max_length=20)
+    # Embedded value object: the ContactInfo fields live under `contact`
+    contact: ValueObject(ContactInfo, required=True)
 
 
 # ========================================
