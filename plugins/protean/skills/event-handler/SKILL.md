@@ -7,6 +7,10 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - EVENT_HANDLER_FOREIGN_EVENT
+    - HANDLER_TOO_BROAD
+    - HANDLER_PERSISTS_AND_CALLS_OUT
 ---
 
 # Event Handler
@@ -245,6 +249,14 @@ def reduce_stock(self, event):
 ```
 
 Instead: Keep business logic in the aggregate, handler only orchestrates
+
+### What `check` reports
+
+`check` inspects your event handlers and reports these diagnostics:
+
+- `EVENT_HANDLER_FOREIGN_EVENT`: the handler reacts to an event owned by another cluster, which couples the two clusters directly. Move the handler into the owning cluster, or introduce a `ProcessManager` that reacts to the source event and issues a command into this cluster.
+- `HANDLER_TOO_BROAD`: the handler handles more message types than the configured `[lint] handler_breadth_limit`, so it has grown into a catch-all. Split it into focused handlers, or raise the limit if the breadth is intentional.
+- `HANDLER_PERSISTS_AND_CALLS_OUT`: one handler method calls an external system after its first `repository_for(...)`, so the call runs with the Unit of Work's transaction open, holding row locks and a pooled connection for as long as the call takes, and a retry re-runs the method and re-issues the call. A call made before any repository access runs outside the transaction and is not flagged. Split the method into one that persists and one that calls out; when the call must follow the write, raise an event from the persisting side and handle that instead.
 
 ## Detailed references
 

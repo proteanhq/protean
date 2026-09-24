@@ -38,10 +38,10 @@ order = repo.get("ORD-001")
 @domain.repository(part_of=Order)
 class OrderRepository:
     def find_placed_orders(self):
-        return self._dao.query.filter(status="placed").all()
+        return self.query.filter(status="placed").all()
 
     def find_by_customer(self, customer_id):
-        return self._dao.query.filter(customer_id=customer_id).all()
+        return self.query.filter(customer_id=customer_id).all()
 ```
 
 ## Key rules
@@ -51,7 +51,7 @@ class OrderRepository:
 3. **Persist at the aggregate level** - Repositories save the entire aggregate including enclosed entities and value objects; never persist entities separately
 4. **Use `add()` for both create and update** - The repository's `add()` method handles both new and modified aggregates (collection semantics)
 5. **Use `get()` to load by identifier** - Loads the aggregate with all its children from the persistence store
-6. **Access DAO for custom queries** - Use `self._dao` inside custom repositories for filtering, raw queries, etc.
+6. **Use the query helpers for custom queries** - Inside a custom repository, use `self.query` for filtering, sorting, and paging, and `self.find_by()`, `self.find()`, and `self.exists()` for single lookups and existence checks. `self._dao` stays available as an internal escape hatch for infrastructure work
 7. **Repositories respect Unit of Work** - When inside a UoW (e.g., command handlers), changes are committed atomically at UoW commit
 8. **Database option controls provider binding** - Use `database` option to lock a repository to a specific database type (default is `"ALL"`)
 9. **Children are synced automatically** - HasMany/HasOne child entities are persisted/removed automatically when the aggregate is added
@@ -78,13 +78,13 @@ class Product:
 @domain.repository(part_of=Product)
 class ProductRepository:
     def find_by_category(self, category):
-        return self._dao.query.filter(category=category).all()
+        return self.query.filter(category=category).all()
 
     def find_active(self):
-        return self._dao.query.filter(is_active=True).all()
+        return self.query.filter(is_active=True).all()
 
     def find_affordable(self, max_price):
-        return self._dao.query.filter(price__lte=max_price).all()
+        return self.query.filter(price__lte=max_price).all()
 ```
 
 ## Counting and null-aware queries
@@ -96,23 +96,23 @@ When you only need *how many* rows match, use `count()` — it issues a flat
 @domain.repository(part_of=Order)
 class OrderRepository:
     def open_count(self) -> int:
-        return self._dao.query.filter(status="open").count()
+        return self.query.filter(status="open").count()
 ```
 
 Filter on whether a field is set with the `isnull` lookup:
 
 ```python
 # Orders with no assignee (assignee IS NULL)
-self._dao.query.filter(assignee__isnull=True).all().items
+self.query.filter(assignee__isnull=True).all().items
 # Orders that have an assignee (assignee IS NOT NULL)
-self._dao.query.filter(assignee__isnull=False).all().items
+self.query.filter(assignee__isnull=False).all().items
 ```
 
 When you need the page of items but not the total match count, pass
 `with_total=False` so the adapter can skip the separate count round-trip:
 
 ```python
-items = self._dao.query.filter(status="open").all(with_total=False).items
+items = self.query.filter(status="open").all(with_total=False).items
 ```
 
 ## Using repositories in handlers
