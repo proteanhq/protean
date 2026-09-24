@@ -197,15 +197,13 @@ def explain(code: str) -> ExplainResult:
 
     meta = resolve(resolved_code)
 
-    # Imported here for the same reason as the diagnostics import above, and
-    # wrapped so a stripped or broken pack degrades to no teaching skills rather
-    # than failing the whole `explain` call.
+    # Imported here for the same reason as the diagnostics import above.
+    # diagnostic_code_skills() is itself pack-tolerant (returns {} rather than
+    # raising when the pack is stripped or broken), so no extra guard is needed
+    # here.
     from protean.dx import pack  # noqa: PLC0415
 
-    try:
-        teaching_skills = pack.diagnostic_code_skills().get(resolved_code.value, [])
-    except Exception:
-        teaching_skills = []
+    teaching_skills = pack.diagnostic_code_skills().get(resolved_code.value, [])
 
     return {
         "code": resolved_code.value,
