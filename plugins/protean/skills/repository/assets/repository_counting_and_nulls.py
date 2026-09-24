@@ -53,11 +53,11 @@ class TicketRepository:
 
     def count_by_status(self, status: str) -> int:
         """Number of tickets in a status — a flat COUNT, no rows loaded."""
-        return self._dao.query.filter(status=status).count()
+        return self.query.filter(status=status).count()
 
     def open_count(self) -> int:
         """Convenience: number of open tickets."""
-        return self._dao.query.filter(status="open").count()
+        return self.query.filter(status="open").count()
 
     def unassigned(self):
         """Tickets with no assignee (assignee IS NULL).
@@ -65,17 +65,15 @@ class TicketRepository:
         Uses with_total=False: only the items are needed, so the adapter may
         skip the separate total-count query.
         """
-        return self._dao.query.filter(assignee__isnull=True).all(with_total=False).items
+        return self.query.filter(assignee__isnull=True).all(with_total=False).items
 
     def assigned(self):
         """Tickets that have an assignee (assignee IS NOT NULL)."""
-        return (
-            self._dao.query.filter(assignee__isnull=False).all(with_total=False).items
-        )
+        return self.query.filter(assignee__isnull=False).all(with_total=False).items
 
     def unassigned_count(self) -> int:
         """How many tickets are unassigned — COUNT over the isnull filter."""
-        return self._dao.query.filter(assignee__isnull=True).count()
+        return self.query.filter(assignee__isnull=True).count()
 
 
 # Example usage
