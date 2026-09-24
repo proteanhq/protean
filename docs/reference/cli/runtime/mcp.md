@@ -104,7 +104,8 @@ Explains one diagnostic code from the diagnostics registry.
 
 - **Input**: `code`, a diagnostic code such as `UNHANDLED_EVENT`.
 - **Output**: the `code` and its `category`, `level`, `meaning`, `rationale`,
-  `fix`, `kind`, and `resolution` (the command that clears it, when one exists).
+  `fix`, `kind`, `resolution` (the command that clears it, when one exists), and
+  `teaching_skills` (the DX-pack skills that teach the code, `[]` when none do).
   An unknown code returns an error naming the closest known codes.
 
 ### `scaffold`

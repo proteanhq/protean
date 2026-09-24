@@ -73,6 +73,9 @@ class ExplainResult(TypedDict):
 
     ``resolution`` is the wire form of the command that clears the diagnostic
     (``command``/``args``/``display``), or ``None`` when no command clears it.
+    ``teaching_skills`` names the DX-pack skills that teach the code, always
+    present (unlike ``build_diagnostic``'s ``teaching_skills``, which omits the
+    key when empty); a code no skill teaches, or a stripped pack, yields ``[]``.
     """
 
     code: str
@@ -83,6 +86,7 @@ class ExplainResult(TypedDict):
     fix: str
     kind: str
     resolution: dict[str, Any] | None
+    teaching_skills: list[str]
 
 
 def _derive(domain: str | None) -> Domain:
@@ -169,9 +173,10 @@ def explain(code: str) -> ExplainResult:
     """Explain one diagnostic code from the diagnostics registry.
 
     Returns the registry metadata for ``code``: its ``category``, ``level``,
-    ``meaning``, ``rationale``, ``fix``, ``kind``, and the ``resolution`` command
-    when one clears the diagnostic. An unknown code raises :exc:`McpToolError`
-    naming the closest known codes.
+    ``meaning``, ``rationale``, ``fix``, ``kind``, the ``resolution`` command
+    when one clears the diagnostic, and ``teaching_skills`` (the DX-pack skills
+    that teach it, ``[]`` when none do). An unknown code raises
+    :exc:`McpToolError` naming the closest known codes.
     """
     # Imported here so the diagnostics subsystem is pulled in only when a caller
     # actually asks to explain a code, keeping tool import cheap.
@@ -191,6 +196,17 @@ def explain(code: str) -> ExplainResult:
         raise McpToolError(f"Unknown diagnostic code {code!r}.{hint}") from exc
 
     meta = resolve(resolved_code)
+
+    # Imported here for the same reason as the diagnostics import above, and
+    # wrapped so a stripped or broken pack degrades to no teaching skills rather
+    # than failing the whole `explain` call.
+    from protean.dx import pack  # noqa: PLC0415
+
+    try:
+        teaching_skills = pack.diagnostic_code_skills().get(resolved_code.value, [])
+    except Exception:
+        teaching_skills = []
+
     return {
         "code": resolved_code.value,
         "category": meta.category,
@@ -200,6 +216,7 @@ def explain(code: str) -> ExplainResult:
         "fix": meta.fix,
         "kind": meta.kind,
         "resolution": dict(meta.resolution.as_wire()) if meta.resolution else None,
+        "teaching_skills": teaching_skills,
     }
 
 

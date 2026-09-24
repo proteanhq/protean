@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from protean.dx import pack
-from protean.ir.diagnostics import DiagnosticCode, build_diagnostic
+from protean.ir.diagnostics import REGISTRY, DiagnosticCode, build_diagnostic
 
 # These read package data and build diagnostics directly; they never touch a
 # Domain, so skip the autouse test_domain fixture and its initialization cost.
@@ -42,6 +42,89 @@ def _write_skill(root, name: str, body: str) -> None:
     skill_dir = root / pack.SKILLS_DIR / name
     skill_dir.mkdir(parents=True)
     (skill_dir / pack.SKILL_FILE).write_text(body, encoding="utf-8")
+
+
+# --- Coverage guard: every coverable lint code has a teaching skill --------
+
+# Lint codes no skill teaches today, with the reason it is excluded rather than
+# required to gain one. #1558's Decisions block permits this explicitly: "If a
+# specific lint code should not require a skill, it is named on the same
+# exclusion list." A code that gains a skill must come off this list, and the
+# partition test below catches a code that is neither taught nor excluded.
+_UNCOVERED_LINT_CODES = {
+    # A deprecation notice's fix is specific to the API being deprecated, not a
+    # reusable modeling convention a skill teaches.
+    "DEPRECATED_CONFIG": "deprecation notice; fix is API-specific",
+    "DEPRECATED_ELEMENT": "deprecation notice; fix is API-specific",
+    "DEPRECATED_EMAIL": "deprecation notice; fix is API-specific",
+    "DEPRECATED_FIELD": "deprecation notice; fix is API-specific",
+    "DEPRECATED_IMPORT": "deprecation notice; fix is API-specific",
+    "DEPRECATED_OPTION": "deprecation notice; fix is API-specific",
+    # No teaching skill exists in the pack for these conventions yet.
+    "ADAPTER_CALL_IN_DOMAIN": "no teaching skill in the pack yet",
+    "INFRA_IMPORT_IN_DOMAIN": "no teaching skill in the pack yet",
+    "LOW_POOL_SIZE": "no teaching skill in the pack yet",
+    "PUBLISHED_NO_EXTERNAL_BROKER": "no teaching skill in the pack yet",
+}
+
+
+def _lint_codes() -> set[str]:
+    return {code.value for code in DiagnosticCode if REGISTRY[code].kind == "lint"}
+
+
+def _coverable_codes() -> set[str]:
+    """Lint codes a skill is required to teach: every lint code minus the
+    documented exclusion list."""
+    return _lint_codes() - set(_UNCOVERED_LINT_CODES)
+
+
+class TestDiagnosticCodeCoverageGuard:
+    def test_exclusion_list_codes_are_really_lint(self):
+        # A typo-guard: an exclusion-list entry that is not actually a lint code
+        # (say, a `raise` code mistyped) would hide the real gap it claims to
+        # explain, rather than excusing it.
+        not_lint = {
+            code
+            for code in _UNCOVERED_LINT_CODES
+            if REGISTRY[DiagnosticCode[code]].kind != "lint"
+        }
+        assert not not_lint, (
+            f"exclusion-list entries are not kind='lint' codes: {sorted(not_lint)}"
+        )
+
+    def test_coverable_and_excluded_partition_the_whole_catalog(self):
+        # Every DiagnosticCode is either coverable (a lint code a skill must
+        # teach) or excluded (a raise/staleness code, or a documented
+        # exclusion). A new code lands in neither set and reds here, forcing
+        # the choice the guard exists to force.
+        all_codes = {code.value for code in DiagnosticCode}
+        non_lint_codes = all_codes - _lint_codes()
+        excluded = non_lint_codes | set(_UNCOVERED_LINT_CODES)
+        coverable = _coverable_codes()
+
+        assert coverable.isdisjoint(excluded), (
+            f"a code is both coverable and excluded: {sorted(coverable & excluded)}"
+        )
+        assert coverable | excluded == all_codes, (
+            "coverable and excluded codes do not cover the whole catalog; "
+            f"missing: {sorted(all_codes - (coverable | excluded))}"
+        )
+
+    def test_every_coverable_code_has_a_teaching_skill(self):
+        coverable = _coverable_codes()
+        # Vacuous-pass guard: an empty coverable set would make the check below
+        # pass with nothing actually asserted.
+        assert coverable, "no coverable lint codes found"
+
+        taught = set(pack.diagnostic_code_skills())
+        untaught = coverable - taught
+
+        assert not untaught, (
+            "these lint codes are neither taught by a DX-pack skill nor on the "
+            f"documented exclusion list: {sorted(untaught)}. Add a teaching "
+            "skill declaration, or add the code to _UNCOVERED_LINT_CODES with "
+            "a reason."
+        )
 
 
 # --- Bidirectional catalog over the real, shipped pack ----------------------
