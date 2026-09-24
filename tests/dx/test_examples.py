@@ -514,14 +514,13 @@ def test_every_value_object_is_referenced():
 # the pack and rejects any that passes a bare `model=` keyword to an
 # `@domain.aggregate(...)` call, or gives a `model` option its own heading.
 
-# Any fence, whatever its language tag. The tag says how the page renders the
-# block; it says nothing about whether the block shows a call, and a reader who
-# copies `@domain.aggregate(model=M)` out of a ```text block is just as wrong.
-_ANY_FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+# Any fenced block, in either of CommonMark's two fence characters, used to cut
+# the code out and leave the prose behind.
+_ANY_FENCE = re.compile(r"(?:```|~~~)[^\n]*\n.*?(?:```|~~~)", re.DOTALL)
 
-# Any inline code span: a page writes short calls in a sentence rather than in a
-# block, and `@domain.aggregate(model=CustomUserModel)` fits on one line.
-_INLINE_SPAN = re.compile(r"`([^`\n]+)`")
+# Every `aggregate(` on the page, wherever it sits. The token scan reads forward
+# from each one, so no markdown block form can hide the call behind it.
+_AGGREGATE_CALL = re.compile(r"\baggregate\s*\(")
 
 # `model` written as an identifier in prose or in a heading, which is how a page
 # names an option outside a code sample: "### The `model` option", "`model` is
@@ -573,14 +572,25 @@ def _model_kwarg_via_tokens(code: str) -> bool | None:
     indented excerpts lifted out of a class body. The tokenizer still reads
     those, and it knows a string literal from code, so the delimiters it
     reports are real ones.
+
+    Reads token by token and keeps whatever it got before the stream broke.
+    Callers hand it a slice of a markdown page starting at an `aggregate(`, and
+    that slice runs on into prose or a closing fence, which the tokenizer
+    cannot read. The call itself sits at the front, well before the break.
     """
-    try:
-        tokens = [
-            token
-            for token in tokenize.generate_tokens(io.StringIO(code).readline)
-            if token.type not in _SKIPPED_TOKENS
-        ]
-    except (tokenize.TokenError, IndentationError, SyntaxError):
+    tokens: list[tokenize.TokenInfo] = []
+    stream = tokenize.generate_tokens(io.StringIO(code).readline)
+    while True:
+        try:
+            token = next(stream)
+        except StopIteration:
+            break
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            break
+        if token.type not in _SKIPPED_TOKENS:
+            tokens.append(token)
+
+    if not tokens:
         return None
 
     for index, token in enumerate(tokens):
@@ -623,23 +633,25 @@ def test_the_docs_sweep_is_not_vacuous():
     assert len(DOCS) >= 100, f"expected the pack's markdown pages, found {len(DOCS)}"
 
 
-def _code_regions(text: str) -> list[str]:
-    """Every place on a markdown page that can show a call.
+def _model_kwarg_verdicts(text: str) -> list[bool | None]:
+    """One verdict per `aggregate(` on the page, read straight from the raw text.
 
-    Reading only ```python fences was the third way this sweep let a real
-    `model=` through. The first two were a nested call and a string literal,
-    both inside a fence it did read. This one is different in kind: the call was
-    written somewhere the reader never looked at all, in a fence tagged `text`
-    or inline in a sentence. Widening the reader's rules could not have caught
-    it, because the text never reached the reader.
+    This knows nothing about markdown, and that is the point. Three earlier
+    versions decided first *where* on a page code could sit and read only
+    there, and every version of that list was incomplete: python fences only,
+    then fences and inline spans, while CommonMark also has `~~~` fences and
+    four-space indented blocks, and a page can always hold the call in a shape
+    the list has not got to yet. Widening the list was never going to end.
 
-    So the fence tag stops deciding. Every fence and every inline span goes
-    through the same reader, and that reader still knows syntax from prose, so
-    a span that is only the word `model` reads as no call.
+    So the list is gone. Every `aggregate(` is a candidate and the token scan
+    reads forward from each one. The scan knows a string literal from code and
+    counts real delimiters, so it answers the same way whatever markup sits
+    around the call, and it stops at the closing paren either way.
     """
-    regions = _ANY_FENCE.findall(text)
-    regions.extend(_INLINE_SPAN.findall(_ANY_FENCE.sub("", text)))
-    return regions
+    return [
+        _model_kwarg_via_tokens(text[match.start() :])
+        for match in _AGGREGATE_CALL.finditer(text)
+    ]
 
 
 def _model_option_offences(text: str) -> list[str]:
@@ -655,18 +667,17 @@ def _model_option_offences(text: str) -> list[str]:
         if message not in offences:
             offences.append(message)
 
-    for code in _code_regions(text):
-        verdict = _names_a_model_kwarg(code)
-        if verdict:
-            report(
-                "passes `model=` to @domain.aggregate; the custom-model "
-                "option is `database_model`"
-            )
-        elif verdict is None and "aggregate(" in code:
-            report(
-                "a snippet calling aggregate(...) can be neither parsed nor "
-                "tokenized, so this sweep cannot check it"
-            )
+    verdicts = _model_kwarg_verdicts(text)
+    if any(verdict is True for verdict in verdicts):
+        report(
+            "passes `model=` to @domain.aggregate; the custom-model "
+            "option is `database_model`"
+        )
+    if any(verdict is None for verdict in verdicts):
+        report(
+            "an aggregate(...) call on this page cannot be tokenized at all, "
+            "so this sweep cannot check it"
+        )
 
     if _MODEL_AS_IDENTIFIER.search(_ANY_FENCE.sub("", text)):
         report(
@@ -771,12 +782,21 @@ def test_the_indented_regression_cases_exercise_the_tokenizer():
             "```python\n@domain.aggregate(database_model=M)\nclass User:\n    pass\n```\n",
             False,
         ),
-        # The three shapes that slipped past a python-fence-only reader. The
-        # language tag does not change what the page teaches, and a call
-        # written inline in a sentence is still the call.
+        # Every shape that slipped past a reader keyed to where code sits. Each
+        # of these passed some earlier version of this sweep. The markup around
+        # the call does not change what the page teaches.
         ("```text\n@domain.aggregate(model=M)\n```\n", True),
         ("```\n@domain.aggregate(model=M)\nclass User:\n    pass\n```\n", True),
         ("Use `@domain.aggregate(model=CustomUserModel)` to override it.\n", True),
+        ("~~~python\n@domain.aggregate(model=M)\nclass User:\n    pass\n~~~\n", True),
+        ("~~~\n@domain.aggregate(model=M)\n~~~\n", True),
+        # A four-space indented block, CommonMark's other code form.
+        (
+            "Example:\n\n    @domain.aggregate(model=M)\n    class User:\n        pass\n",
+            True,
+        ),
+        # And one nothing would have thought to enumerate.
+        ("<!-- @domain.aggregate(model=M) -->\n", True),
         ("Use `@domain.aggregate(database_model=M)` to override it.\n", False),
         # An inline span that is only a word still has to read as no call.
         ("The `aggregate` decorator takes a `database_model`.\n", False),

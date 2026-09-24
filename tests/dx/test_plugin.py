@@ -173,12 +173,14 @@ def test_no_package_marker_is_projected() -> None:
 
 
 def test_no_bytecode_is_projected(tmp_path: Path) -> None:
-    """A ``__pycache__`` next to a pack file never reaches the plugin tree.
+    """Bytecode beside a pack file never reaches the plugin tree.
 
     Running or importing an asset leaves bytecode beside it. The walk used to
-    descend into that directory, so the render picked up whatever .pyc happened
+    descend into ``__pycache__``, so the render picked up whatever .pyc happened
     to be on the contributor's disk and the drift check then failed on a file
-    nobody wrote, under a Python version tag nobody chose.
+    nobody wrote, under a Python version tag nobody chose. Skipping that
+    directory alone was not enough, because ``compileall -b`` writes the .pyc
+    beside the source with no ``__pycache__`` at all, so the suffix decides.
     """
     skill = tmp_path / "demo"
     (skill / "assets").mkdir(parents=True)
@@ -187,6 +189,8 @@ def test_no_bytecode_is_projected(tmp_path: Path) -> None:
     cache = skill / "assets" / "__pycache__"
     cache.mkdir()
     (cache / "sample.cpython-314.pyc").write_bytes(b"\x00bytecode")
+    # `compileall -b` writes this one, with no `__pycache__` anywhere.
+    (skill / "assets" / "sample.pyc").write_bytes(b"\x00bytecode")
 
     assert dict(_iter_pack_files(tmp_path)).keys() == {
         f"demo/{SKILL_FILE}",
