@@ -3,9 +3,9 @@
 Each asset's docstring tells the reader to run it with ``python <file>``. The
 example runner in ``tests/dx/test_examples.py`` skips the ``__main__`` demo
 block, so these tests run each file as a script in a child interpreter and
-check the demo finishes. A demo that catches an expected ``ValidationError``
-prints ``Should have failed!`` when the error does not come, so the output must
-not contain that line either.
+check the demo finishes. Some demos print ``Should have failed!`` when an
+expected error does not come, so the output must not contain that line. The
+check guards only the demos that print it.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ def test_demo_runs_to_completion(name):
     assert "Should have failed!" not in result.stdout, result.stdout
 
 
-def test_no_pack_file_imports_protean_skills():
+def test_no_pack_file_mentions_protean_skills():
     # ``protean_skills`` was never a real package, so a Usage line naming it
     # cannot be followed.
     offenders = [
