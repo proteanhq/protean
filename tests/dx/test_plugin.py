@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import posixpath
 import re
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -135,29 +135,45 @@ def test_pack_level_references_are_projected() -> None:
         assert rendered[path] == (source_root / name).read_bytes()
 
 
-def test_skill_relative_links_resolve_inside_the_render() -> None:
-    """Every relative link in a rendered ``SKILL.md`` points at a rendered file.
+def test_relative_links_resolve_inside_the_render() -> None:
+    """Every relative link in a rendered markdown file points at a rendered path.
 
-    The ``SKILL.md`` files are what Claude Code loads, and they link both within
-    their own skill and up into the shared ``references/``. Resolving each link
-    against the rendered paths catches a pack directory the render leaves behind,
-    which an installed plugin would show as a dead link.
+    Claude Code loads the ``SKILL.md`` files, and they and their references link
+    within their own skill and up into the shared ``references/``. Resolving each
+    link against the rendered paths catches a link to a file the render leaves
+    behind, or to one that never existed, which an installed plugin would show as
+    a dead link. A target ending in ``/`` names a directory and resolves when some
+    rendered file sits under it.
     """
     rendered = render_plugin_files(PACK_VERSION)
     link_pattern = re.compile(r"\]\(([^)]+)\)")
 
+    checked = 0
     dangling: list[str] = []
     for path, data in rendered.items():
-        if not path.endswith(f"/{SKILL_FILE}"):
+        if not path.endswith(".md"):
             continue
         for link in link_pattern.findall(data.decode("utf-8")):
-            target = link.split("#", 1)[0].strip()
-            if not target or "://" in target or target.startswith("mailto:"):
+            link = link.strip()
+            # "[a](<b c.md>)" wraps the target in angle brackets;
+            # "[a](b.md "title")" follows it with a title.
+            if link.startswith("<"):
+                link = link[1:].split(">", 1)[0]
+            else:
+                link = link.split(maxsplit=1)[0] if link else ""
+            target = link.split("#", 1)[0]
+            if not target or re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", target):
                 continue
-            resolved = PurePosixPath(posixpath.normpath(f"{path}/../{target}"))
-            if str(resolved) not in rendered:
+            checked += 1
+            resolved = posixpath.normpath(f"{path}/../{target}")
+            if target.endswith("/"):
+                found = any(p.startswith(f"{resolved}/") for p in rendered)
+            else:
+                found = resolved in rendered
+            if not found:
                 dangling.append(f"{path} -> {target}")
 
+    assert checked
     assert dangling == []
 
 

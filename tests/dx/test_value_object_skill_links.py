@@ -1,12 +1,12 @@
-"""Links from the value-object skill to the "Deciding Between Elements" page.
+"""Links from the DX pack to the published docs site.
 
-The page lives at ``docs/concepts/building-blocks/choosing-element-types.md``
-and publishes under ``https://docs.proteanhq.com``. The pack ships without the
-``docs/`` tree, so a skill must link to the published URL. A relative link into
-``docs/`` resolves to nothing once the pack is installed.
+The pack ships without the ``docs/`` tree, so a skill that points at a docs page
+must use its published URL under ``https://docs.proteanhq.com``. These tests pin
+the value-object skill's two "Deciding Between Elements" links and check that
+every docs URL in the pack maps to a page in ``docs/``.
 
-``tests/dx/test_plugin.py`` only checks that the render matches the pack, so a
-dead link in the pack keeps it green. This test checks the links themselves.
+Relative links between pack files are checked against the rendered plugin tree
+by ``tests/dx/test_plugin.py``.
 """
 
 from __future__ import annotations
@@ -25,16 +25,30 @@ from protean.dx.pack import REFERENCES_DIR as REFERENCES_DIRNAME
 pytestmark = pytest.mark.no_test_domain
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+_DOCS_ROOT = _REPO_ROOT / "docs"
 
 PACK_ROOT = Path(str(dx.pack_files()))
-SKILLS_ROOT = PACK_ROOT / dx.SKILLS_DIR
-VALUE_OBJECT = SKILLS_ROOT / "value-object"
+VALUE_OBJECT = PACK_ROOT / dx.SKILLS_DIR / "value-object"
 
 DOCS_SITE = "https://docs.proteanhq.com"
 CHOOSING_ELEMENTS_URL = f"{DOCS_SITE}/concepts/building-blocks/choosing-element-types/"
 
-# A markdown link target: the part inside "](...)".
-LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
+# A docs-site URL, up to the end of the markdown link or the surrounding text.
+DOCS_URL = re.compile(re.escape(DOCS_SITE) + r"/[^)\s\"'<>]*")
+
+
+def _pack_markdown() -> list[Path]:
+    files = sorted(PACK_ROOT.rglob("*.md"))
+    assert files
+    return files
+
+
+def _docs_source(url: str) -> Path | None:
+    """Return the ``docs/`` file that publishes at ``url``, or ``None``."""
+    page = urlparse(url).path.strip("/")
+    candidates = [_DOCS_ROOT / "index.md"] if not page else []
+    candidates += [_DOCS_ROOT / f"{page}.md", _DOCS_ROOT / page / "index.md"]
+    return next((c for c in candidates if c.is_file()), None)
 
 
 @pytest.mark.parametrize(
@@ -46,13 +60,8 @@ LINK_TARGET = re.compile(r"\]\(([^)\s]+)\)")
     ids=["SKILL.md", "anti-patterns.md"],
 )
 def test_value_object_skill_links_to_the_published_page(path: Path) -> None:
-    assert f"[Deciding Between Elements]({CHOOSING_ELEMENTS_URL})" in path.read_text()
-
-
-def test_published_url_maps_to_a_docs_source() -> None:
-    page = urlparse(CHOOSING_ELEMENTS_URL).path.strip("/")
-    assert page
-    assert (_REPO_ROOT / "docs" / f"{page}.md").is_file()
+    text = path.read_text(encoding="utf-8")
+    assert f"[Deciding Between Elements]({CHOOSING_ELEMENTS_URL})" in text
 
 
 def test_no_pack_file_uses_the_old_page_path() -> None:
@@ -61,24 +70,20 @@ def test_no_pack_file_uses_the_old_page_path() -> None:
     offenders = [
         str(p.relative_to(PACK_ROOT))
         for p in pack_files
-        if "deciding-between-elements" in p.read_text(errors="ignore")
+        if "deciding-between-elements" in p.read_text(encoding="utf-8", errors="ignore")
     ]
     assert offenders == []
 
 
-def test_every_relative_skill_link_resolves_inside_the_pack() -> None:
-    skill_files = sorted(SKILLS_ROOT.rglob("*.md"))
-    assert skill_files
-    pack_root = PACK_ROOT.resolve()
-    dead = []
-    checked = 0
-    for path in skill_files:
-        for target in LINK_TARGET.findall(path.read_text()):
-            if re.match(r"[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
-                continue
-            checked += 1
-            resolved = (path.parent / target.split("#", 1)[0]).resolve()
-            if not resolved.is_relative_to(pack_root) or not resolved.exists():
-                dead.append(f"{path.relative_to(PACK_ROOT)}: {target}")
-    assert checked
+def test_every_docs_url_in_the_pack_maps_to_a_docs_page() -> None:
+    urls = {
+        (path.relative_to(PACK_ROOT).as_posix(), url)
+        for path in _pack_markdown()
+        for url in DOCS_URL.findall(path.read_text(encoding="utf-8"))
+    }
+    assert (
+        "skills/value-object/SKILL.md",
+        CHOOSING_ELEMENTS_URL,
+    ) in urls
+    dead = sorted(f"{path}: {url}" for path, url in urls if _docs_source(url) is None)
     assert dead == []
