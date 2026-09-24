@@ -26,10 +26,12 @@ framework import validates the whole example corpus in a couple of seconds.
 from __future__ import annotations
 
 import ast
+import io
 import json
 import re
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 
 import pytest
@@ -425,56 +427,94 @@ def test_every_value_object_is_referenced():
 # A heading that documents an option literally named `model`, e.g. "### `model`".
 _MODEL_OPTION_HEADING = re.compile(r"(?m)^#+\s*`model`\s*$")
 
-# Brackets, and a `model=` keyword. The `\b` before `model` fails inside
-# `database_model`, where the preceding `_` is a word character, so the real
-# option is left alone.
-_BRACKET_OR_MODEL_KWARG = re.compile(r"[()\[\]{}]|\bmodel\s*=")
+# The Python code fences on a page. Only these can hold a real call.
+_PYTHON_FENCE = re.compile(r"```(?:python|py)[^\n]*\n(.*?)```", re.DOTALL)
+
+_OPENING = ("(", "[", "{")
+_CLOSING = (")", "]", "}")
+_SKIPPED_TOKENS = frozenset(
+    {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT}
+)
 
 
-def _aggregate_call_arguments(text: str) -> list[str]:
-    """The argument text of every `aggregate(...)` call, parentheses balanced.
+def _model_kwarg_via_ast(code: str) -> bool | None:
+    """Whether a fence passes `model=` to `aggregate(...)`, or None if unparsed.
 
-    Matching the arguments with `[^)]*` does not work: it stops at the first
-    `)`, which in `@domain.aggregate(indexes=[Index("email")], model=Custom)`
-    closes the nested `Index(...)` call, so the `model=` after it is never
-    reached. Counting brackets reads the whole argument list instead.
+    Reading the parsed call is the only way to answer this that cannot be
+    fooled by the text around it. Scanning characters kept getting the same
+    class of question wrong: first nested calls, whose `)` ended the scan
+    early, then a `)` or a `model=` inside a string literal, which is not
+    syntax at all. The parser settles all of them at once.
     """
-    arguments = []
-    for match in re.finditer(r"\baggregate\(", text):
-        depth = 0
-        start = match.end()
-        for index in range(start - 1, len(text)):
-            character = text[index]
-            if character in "([{":
-                depth += 1
-            elif character in ")]}":
-                depth -= 1
-                if depth == 0:
-                    arguments.append(text[start:index])
-                    break
-        else:
-            # An unclosed call, which a docs page can legitimately contain in an
-            # elided snippet. Scan what is there rather than skipping it.
-            arguments.append(text[start:])
-    return arguments
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
 
-
-def _names_a_model_kwarg(arguments: str) -> bool:
-    """True when `model=` is a keyword of this call rather than a nested one.
-
-    The depth count keeps a nested `Index(model=...)` from being read as an
-    argument of the `aggregate(...)` call that encloses it.
-    """
-    depth = 0
-    for match in _BRACKET_OR_MODEL_KWARG.finditer(arguments):
-        token = match.group()
-        if token in "([{":
-            depth += 1
-        elif token in ")]}":
-            depth -= 1
-        elif depth == 0:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        name = (
+            function.attr
+            if isinstance(function, ast.Attribute)
+            else getattr(function, "id", None)
+        )
+        if name == "aggregate" and any(kw.arg == "model" for kw in node.keywords):
             return True
     return False
+
+
+def _model_kwarg_via_tokens(code: str) -> bool | None:
+    """The same question for a fence the parser rejects, or None if unreadable.
+
+    Pages legitimately ship snippets that do not parse: the pack's are mostly
+    indented excerpts lifted out of a class body. The tokenizer still reads
+    those, and it knows a string literal from code, so the delimiters it
+    reports are real ones.
+    """
+    try:
+        tokens = [
+            token
+            for token in tokenize.generate_tokens(io.StringIO(code).readline)
+            if token.type not in _SKIPPED_TOKENS
+        ]
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return None
+
+    for index, token in enumerate(tokens):
+        if token.type != tokenize.NAME or token.string != "aggregate":
+            continue
+        if index + 1 >= len(tokens) or tokens[index + 1].string != "(":
+            continue
+        depth = 0
+        for offset in range(index + 1, len(tokens)):
+            current = tokens[offset]
+            if current.string in _OPENING:
+                depth += 1
+            elif current.string in _CLOSING:
+                depth -= 1
+                if depth == 0:
+                    break
+            elif (
+                depth == 1
+                and current.type == tokenize.NAME
+                and current.string == "model"
+                and offset + 1 < len(tokens)
+                and tokens[offset + 1].string == "="
+            ):
+                return True
+    return False
+
+
+def _names_a_model_kwarg(code: str) -> bool | None:
+    """True when the fence passes `model=` to an `aggregate(...)` call.
+
+    None means neither the parser nor the tokenizer could read the fence, which
+    the caller reports rather than skips.
+    """
+    verdict = _model_kwarg_via_ast(code)
+    return _model_kwarg_via_tokens(code) if verdict is None else verdict
 
 
 def test_the_docs_sweep_is_not_vacuous():
@@ -484,16 +524,28 @@ def test_the_docs_sweep_is_not_vacuous():
 
 def test_no_skill_page_names_a_model_option_on_aggregate():
     offenders = []
+
+    def report(message: str) -> None:
+        if message not in offenders:
+            offenders.append(message)
+
     for path in DOCS:
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(SKILLS_ROOT)
-        if any(map(_names_a_model_kwarg, _aggregate_call_arguments(text))):
-            offenders.append(
-                f"{rel}: passes `model=` to @domain.aggregate; the custom-model "
-                "option is `database_model`"
-            )
+        for code in _PYTHON_FENCE.findall(text):
+            verdict = _names_a_model_kwarg(code)
+            if verdict:
+                report(
+                    f"{rel}: passes `model=` to @domain.aggregate; the "
+                    "custom-model option is `database_model`"
+                )
+            elif verdict is None and "aggregate(" in code:
+                report(
+                    f"{rel}: a snippet calling aggregate(...) can be neither "
+                    "parsed nor tokenized, so this sweep cannot check it"
+                )
         if _MODEL_OPTION_HEADING.search(text):
-            offenders.append(
+            report(
                 f"{rel}: documents an option named `model`; the custom-model "
                 "option is `database_model`"
             )
@@ -505,23 +557,55 @@ def test_no_skill_page_names_a_model_option_on_aggregate():
     )
 
 
+CLASS_BODY = "\nclass User:\n    email = String(required=True, max_length=254)\n"
+
+
 @pytest.mark.parametrize(
     ("snippet", "names_a_model_kwarg"),
     [
-        ("@domain.aggregate(model=CustomUserModel)", True),
-        # The shape the `[^)]*` pattern missed: a nested call closes a paren
-        # before the bad keyword is reached. `add-field/SKILL.md` ships
-        # `@domain.aggregate(indexes=[Index("email")])`, so this is a real shape.
-        ('@domain.aggregate(indexes=[Index("email")], model=CustomModel)', True),
-        ('@domain.aggregate(indexes=[Index("email")], database_model=M)', False),
-        ('@domain.aggregate(\n    provider="sqlite",\n    model=M,\n)', True),
-        ("@domain.aggregate(database_model=CustomUserModel)", False),
-        ('@domain.aggregate(part_of="Order")', False),
+        ("@domain.aggregate(model=CustomUserModel)" + CLASS_BODY, True),
+        # A nested call closes a paren before the bad keyword is reached.
+        # `add-field/SKILL.md` ships `@domain.aggregate(indexes=[Index("email")])`,
+        # so this shape is real.
+        (
+            '@domain.aggregate(indexes=[Index("email")], model=M)' + CLASS_BODY,
+            True,
+        ),
+        (
+            '@domain.aggregate(indexes=[Index("email")], database_model=M)'
+            + CLASS_BODY,
+            False,
+        ),
+        # A `)` inside a string literal is not a delimiter.
+        ('@domain.aggregate(schema_name="archive)", model=M)' + CLASS_BODY, True),
+        # ... and a `model=` inside one is not a keyword.
+        ('@domain.aggregate(schema_name="model=x")' + CLASS_BODY, False),
+        (
+            "@domain.aggregate(\n    provider='sqlite',\n    model=M,\n)" + CLASS_BODY,
+            True,
+        ),
+        ("@domain.aggregate(database_model=CustomUserModel)" + CLASS_BODY, False),
+        ('@domain.aggregate(part_of="Order")' + CLASS_BODY, False),
         # `model=` belongs to the nested call, not to the aggregate.
-        ("@domain.aggregate(indexes=[Index(model=X)])", False),
+        ("@domain.aggregate(indexes=[Index(model=X)])" + CLASS_BODY, False),
+        # An indented excerpt the parser rejects; the tokenizer still reads it.
+        ("    @domain.aggregate(model=M)\n    class User:\n        pass\n", True),
+        (
+            '    @domain.aggregate(schema_name="a)", model=M)\n    class User:\n        pass\n',
+            True,
+        ),
+        (
+            "    @domain.aggregate(database_model=M)\n    class User:\n        pass\n",
+            False,
+        ),
     ],
 )
-def test_the_model_kwarg_scan_reads_nested_arguments(snippet, names_a_model_kwarg):
-    arguments = _aggregate_call_arguments(snippet)
-    assert arguments, f"found no aggregate(...) call in {snippet!r}"
-    assert any(map(_names_a_model_kwarg, arguments)) is names_a_model_kwarg
+def test_the_model_kwarg_scan_reads_real_syntax(snippet, names_a_model_kwarg):
+    assert _names_a_model_kwarg(snippet) is names_a_model_kwarg
+
+
+def test_the_indented_regression_cases_exercise_the_tokenizer():
+    """The indented snippets must be the ones the parser cannot read."""
+    indented = "    @domain.aggregate(model=M)\n    class User:\n        pass\n"
+    assert _model_kwarg_via_ast(indented) is None
+    assert _model_kwarg_via_tokens(indented) is True
