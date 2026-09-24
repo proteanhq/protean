@@ -38,6 +38,9 @@ class UserEventHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
+    global counter
+    counter = 0
+
     test_domain.config["event_processing"] = Processing.ASYNC.value
     test_domain.register(User, stream_category="authentication")
     test_domain.register(UserLoggedIn, part_of=User)
