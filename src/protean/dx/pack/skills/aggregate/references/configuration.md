@@ -183,7 +183,7 @@ class Order:
 
 ---
 
-### `model`
+### `database_model`
 
 **Type:** Model class
 **Default:** Auto-generated
@@ -202,7 +202,7 @@ class CustomUserModel(SqlalchemyModel):
     email = Column(String(255), unique=True)
     full_name = Column(String(200))
 
-@domain.aggregate(model=CustomUserModel)
+@domain.aggregate(database_model=CustomUserModel)
 class User:
     email: String(required=True, max_length=255)
     full_name: String(required=True, max_length=200)

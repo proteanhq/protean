@@ -13,7 +13,7 @@ class Comment:
     author: String(max_length=100)
 ```
 
-**Error:** `IncorrectUsageError: Entity 'Comment' needs to be associated with an Aggregate`
+**Error:** `IncorrectUsageError` with the message `` Entity `Comment` needs to be associated with an Aggregate ``
 
 ✅ **Correct: Always specify the parent aggregate**
 

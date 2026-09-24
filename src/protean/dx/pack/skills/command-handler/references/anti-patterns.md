@@ -22,7 +22,7 @@ class OrderCommandHandler:
         pass
 ```
 
-Protean raises `IncorrectUsageError: Command Handler 'OrderCommandHandler' needs to be associated with an Aggregate`.
+Protean raises `IncorrectUsageError` with the message `` Command Handler `OrderCommandHandler` needs to be associated with an Aggregate ``.
 
 ## 2. Command and Handler on Different Aggregates
 

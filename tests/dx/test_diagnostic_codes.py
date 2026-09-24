@@ -130,7 +130,11 @@ def test_family_skill_names_every_code_it_declares_in_its_body(skill, expected):
     # a code it never mentions. Scoped to this family for the same reason as the
     # tests above: the seed skill predates the rule and other passes land later.
     text = pack.read_pack_text(pack.SKILLS_DIR, skill, pack.SKILL_FILE)
-    _, _, body = text.partition("\n---\n")
+    # Strip leading blank lines first so the split lands on the closing fence,
+    # not the opening one. If a file gained a leading newline, `\n---\n` would
+    # first match the opening fence and pull the whole frontmatter (the declared
+    # codes) into `body`, passing the check vacuously.
+    _, _, body = text.lstrip().partition("\n---\n")
     assert body, f"{skill} has no body below its frontmatter"
 
     missing = [code for code in expected if code not in body]
@@ -184,13 +188,159 @@ def test_event_cqrs_skill_names_every_code_it_declares_in_its_body(skill, expect
     # code. Require the code to appear in the prose below the frontmatter, so
     # a skill cannot claim a code it never mentions.
     text = pack.read_pack_text(pack.SKILLS_DIR, skill, pack.SKILL_FILE)
-    _, _, body = text.partition("\n---\n")
+    # Strip leading blank lines first so the split lands on the closing fence,
+    # not the opening one. If a file gained a leading newline, `\n---\n` would
+    # first match the opening fence and pull the whole frontmatter (the declared
+    # codes) into `body`, passing the check vacuously.
+    _, _, body = text.lstrip().partition("\n---\n")
     assert body, f"{skill} has no body below its frontmatter"
 
     missing = [code for code in expected if code not in body]
     assert not missing, (
         f"{skill} declares {missing} but never names them below its frontmatter"
     )
+
+
+# The building-block element family. The six skills that teach a coded
+# fix pin to their exact declared codes; the six that teach none pin to an empty
+# list, mirroring the two families above. Scoped to this family's own skills for
+# the same reason: the other passes own the rest and must not collide here.
+_BUILDING_BLOCK_CODE_TEACHING_SKILLS = {
+    "aggregate": [
+        "AGGREGATE_NOT_NOUN",
+        "AGGREGATE_NO_INVARIANTS",
+        "AGGREGATE_TOO_LARGE",
+        "AGGREGATE_WITHOUT_COMMAND_HANDLER",
+        "CROSS_AGGREGATE_REFERENCE",
+    ],
+    "value-object": ["VALUE_OBJECT_MUTABLE_FIELD", "VALUE_OBJECT_INVARIANT_FAILED"],
+    "command": ["COMMAND_NOT_IMPERATIVE", "UNUSED_COMMAND"],
+    "event": [
+        "EVENT_NOT_PAST_TENSE",
+        "EVENT_WITHOUT_DATA",
+        "UNRAISED_EVENT",
+        "UNHANDLED_EVENT",
+    ],
+    "command-handler": [
+        "COMMAND_HANDLER_CROSS_CLUSTER",
+        "HANDLER_TOO_BROAD",
+        "HANDLER_PERSISTS_AND_CALLS_OUT",
+    ],
+    "event-handler": [
+        "EVENT_HANDLER_FOREIGN_EVENT",
+        "HANDLER_TOO_BROAD",
+        "HANDLER_PERSISTS_AND_CALLS_OUT",
+    ],
+}
+
+_BUILDING_BLOCK_NO_CODE_SKILLS = [
+    "entity",
+    "application-service",
+    "domain-service",
+    "repository",
+    "api-endpoint",
+    "custom-validator",
+]
+
+# The twelve skills the family covers, written out independently of the two lists
+# above. Without it, dropping a skill from both lists would leave the partition
+# check happy and the skill pinned by nothing.
+_BUILDING_BLOCK_FAMILY_SKILLS = frozenset(
+    {
+        "aggregate",
+        "api-endpoint",
+        "application-service",
+        "command",
+        "command-handler",
+        "custom-validator",
+        "domain-service",
+        "entity",
+        "event",
+        "event-handler",
+        "repository",
+        "value-object",
+    }
+)
+
+
+def test_building_block_family_lists_partition_real_skills():
+    # The two family lists are hand-maintained. Guard that they stay a clean
+    # partition of the twelve: no skill in both, no duplicates, every skill in the
+    # family named by exactly one list, and every named skill a real pack skill.
+    code_teaching = list(_BUILDING_BLOCK_CODE_TEACHING_SKILLS)
+    named = code_teaching + _BUILDING_BLOCK_NO_CODE_SKILLS
+
+    assert set(code_teaching).isdisjoint(_BUILDING_BLOCK_NO_CODE_SKILLS)
+    assert len(named) == len(set(named)), "a skill is listed twice"
+    assert set(named) == _BUILDING_BLOCK_FAMILY_SKILLS, (
+        "the two lists no longer cover exactly the twelve family skills"
+    )
+    assert set(pack.iter_skills()) >= _BUILDING_BLOCK_FAMILY_SKILLS, (
+        "a named skill is not in the pack"
+    )
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_BUILDING_BLOCK_CODE_TEACHING_SKILLS.items())
+)
+def test_building_block_skill_declares_its_exact_codes(skill, expected):
+    # Pin each code-teaching skill in this family to the exact list it declares,
+    # so dropping or mistyping a code in its frontmatter reds here rather than
+    # slipping through the "is a real DiagnosticCode" check above.
+    assert pack.skill_diagnostic_codes(skill) == expected
+
+
+@pytest.mark.parametrize("skill", _BUILDING_BLOCK_NO_CODE_SKILLS)
+def test_building_block_skill_that_teaches_no_code_declares_none(skill):
+    # The building-block skills with no coded convention (DiagnosticCode has no
+    # ENTITY_*, REPOSITORY_*, or service codes) declare nothing. Pin the negative
+    # direction so a stray declaration on one of them is caught.
+    assert pack.skill_diagnostic_codes(skill) == []
+
+
+@pytest.mark.parametrize(
+    ("skill", "expected"), sorted(_BUILDING_BLOCK_CODE_TEACHING_SKILLS.items())
+)
+def test_building_block_skill_names_every_code_it_declares_in_its_body(skill, expected):
+    # A declaration is a promise that the skill explains the fix for that code.
+    # Require the code to appear in the prose below the frontmatter, so a skill
+    # cannot claim a code it never mentions.
+    text = pack.read_pack_text(pack.SKILLS_DIR, skill, pack.SKILL_FILE)
+    # Strip leading blank lines first so the split lands on the closing fence,
+    # not the opening one. If a file gained a leading newline, `\n---\n` would
+    # first match the opening fence and pull the whole frontmatter (the declared
+    # codes) into `body`, passing the check vacuously.
+    _, _, body = text.lstrip().partition("\n---\n")
+    assert body, f"{skill} has no body below its frontmatter"
+
+    missing = [code for code in expected if code not in body]
+    assert not missing, (
+        f"{skill} declares {missing} but never names them below its frontmatter"
+    )
+
+
+_BUILDING_BLOCK_SKILL_CODE_PAIRS = sorted(
+    (skill, code)
+    for skill, codes in _BUILDING_BLOCK_CODE_TEACHING_SKILLS.items()
+    for code in codes
+)
+
+
+@pytest.mark.parametrize(("skill", "code"), _BUILDING_BLOCK_SKILL_CODE_PAIRS)
+def test_building_block_code_surfaces_its_skill(skill, code):
+    # The reverse contract: every code a building-block skill declares must route
+    # back to that skill, both in the reverse index and on a built diagnostic.
+    # This is what catches a code the builder emits for a skill that never
+    # declared it (a broad command handler raising HANDLER_TOO_BROAD would land
+    # the user on the event-handler skill instead of command-handler).
+    assert skill in pack.diagnostic_code_skills()[code]
+
+    diag = build_diagnostic(
+        DiagnosticCode[code],
+        element="my_app.Thing",
+        message=f"{code} fired.",
+    )
+    assert skill in diag["teaching_skills"]
 
 
 def test_reverse_index_maps_the_seed_code_to_the_seed_skill():
