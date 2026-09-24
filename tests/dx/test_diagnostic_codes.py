@@ -47,8 +47,12 @@ def _write_skill(root, name: str, body: str) -> None:
 # --- Coverage guard: every coverable lint code has a teaching skill --------
 
 # Codes that are not required to have a teaching skill, each with the reason.
-# Exempt means "not required to be taught", not "must not be taught": a skill is
-# free to teach one of these anyway, and several do.
+# Exempt always means "not required to be taught". Whether a skill may teach one
+# anyway depends on the code's kind. A non-lint exclusion is free to be taught,
+# and several are. A lint exclusion is not: `check` does emit it, so a skill
+# teaching it means the exemption is stale, and
+# test_no_lint_exclusion_is_already_taught fails. The lint block below repeats
+# this where those entries are listed.
 #
 # The set is written out by hand on purpose. Deriving the non-lint half from the
 # enum instead would make test_the_catalog_is_fully_classified hold by
