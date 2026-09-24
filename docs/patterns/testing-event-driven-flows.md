@@ -111,7 +111,9 @@ more work, then performs a graceful shutdown. Messages that handlers raise
 along the way are processed too. No `time.sleep()` guesswork.
 
 Test mode stops waiting after about a second if some subscription keeps
-finding work, for example while it retries a failing handler.
+finding work, for example while it retries a failing handler. A partitioned
+stream subscription cannot report that it is idle, so with one present test
+mode always waits the full second.
 
 ```python
 engine = Engine(domain, test_mode=True)

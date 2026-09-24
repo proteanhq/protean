@@ -595,7 +595,8 @@ def test(
 
         case _:  # CORE
             print("Running core tests…")
-            core_command = runner.build_core_command(validate_workers(workers))
+            core_workers = "0" if sequential else validate_workers(workers)
+            core_command = runner.build_core_command(core_workers)
             exit_code = runner.run_command(core_command)
 
     if exit_code != 0:

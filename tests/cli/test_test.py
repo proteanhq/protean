@@ -1476,6 +1476,11 @@ class TestCoreWorkers:
         assert result.exit_code == 0
         run.assert_called_once_with(PYTEST_BASE_CMD)
 
+    def test_sequential_runs_core_in_one_process(self, cli_runner):
+        result, run = self._invoke(cli_runner, ["--sequential", "--workers", "4"])
+        assert result.exit_code == 0
+        run.assert_called_once_with(PYTEST_BASE_CMD)
+
     def test_env_var_sets_the_count(self, cli_runner):
         result, run = self._invoke(cli_runner, [], env={"PROTEAN_TEST_WORKERS": "0"})
         assert result.exit_code == 0

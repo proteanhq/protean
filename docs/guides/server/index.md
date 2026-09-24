@@ -156,7 +156,9 @@ In test mode, the server:
 1. Starts all subscriptions and processors
 2. Processes messages, including the ones handlers raise along the way
 3. Shuts down as soon as no subscription finds more work, or after about a
-   second if some subscription keeps finding work
+   second if some subscription keeps finding work. A partitioned stream
+   subscription cannot report that it is idle, so with one present the server
+   always waits the full second.
 
 For examples of using test mode in your test suite, see
 [Integration Tests](../testing/integration-tests.md).
