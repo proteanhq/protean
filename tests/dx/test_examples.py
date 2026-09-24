@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -83,6 +84,9 @@ def _independent_asset_count() -> int:
 
 
 ASSETS = _discover_assets()
+
+# Every markdown page the pack ships, references pages included.
+DOCS = sorted(SKILLS_ROOT.glob("**/*.md"))
 
 # The child-interpreter runner. It discovers the same assets, runs each one's
 # definitions under its own run_name (so registrations do not collide and the
@@ -405,4 +409,50 @@ def test_every_value_object_is_referenced():
     assert not orphans, (
         "a value object an asset declares but never uses shows the reader a "
         "concept the asset does not actually demonstrate:\n  " + "\n  ".join(orphans)
+    )
+
+
+# --- No skill page may name a `model` option on @domain.aggregate ------------
+#
+# The custom-model option on `@domain.aggregate` is `database_model` (see
+# `protean/core/aggregate.py`). An earlier draft of
+# `aggregate/references/configuration.md` documented it as `model` and showed
+# `@domain.aggregate(model=CustomUserModel)`, which is not a real option: an
+# agent copying it gets a TypeError. This sweep reads every markdown page under
+# the pack and rejects any that passes a bare `model=` keyword to an
+# `@domain.aggregate(...)` call, or gives a `model` option its own heading.
+
+# `model=` inside an `aggregate(...)` call, but not `database_model=`: the `\b`
+# before `model` fails inside `database_model`, where the preceding `_` is a
+# word character, so that legitimate option is left alone.
+_BAD_AGGREGATE_MODEL_KWARG = re.compile(r"aggregate\([^)]*\bmodel\s*=")
+# A heading that documents an option literally named `model`, e.g. "### `model`".
+_MODEL_OPTION_HEADING = re.compile(r"(?m)^#+\s*`model`\s*$")
+
+
+def test_the_docs_sweep_is_not_vacuous():
+    """A sweep that finds no pages would pass while checking nothing."""
+    assert len(DOCS) >= 100, f"expected the pack's markdown pages, found {len(DOCS)}"
+
+
+def test_no_skill_page_names_a_model_option_on_aggregate():
+    offenders = []
+    for path in DOCS:
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(SKILLS_ROOT)
+        if _BAD_AGGREGATE_MODEL_KWARG.search(text):
+            offenders.append(
+                f"{rel}: passes `model=` to @domain.aggregate; the custom-model "
+                "option is `database_model`"
+            )
+        if _MODEL_OPTION_HEADING.search(text):
+            offenders.append(
+                f"{rel}: documents an option named `model`; the custom-model "
+                "option is `database_model`"
+            )
+
+    assert not offenders, (
+        "`@domain.aggregate` has no `model` option (it is `database_model`), so "
+        "a page that names one teaches code that raises a TypeError:\n  "
+        + "\n  ".join(offenders)
     )
