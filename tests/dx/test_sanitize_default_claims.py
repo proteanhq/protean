@@ -4,9 +4,9 @@
 domain-level ``[field_defaults] sanitize`` setting. Its framework default is
 ``False`` (``protean.domain.config``), so sanitization is opt-in. Every place
 the add-field and add-validation references document ``sanitize`` must say the
-default is off, name the domain-wide setting, and describe it as escaping
-(``bleach.clean()`` keeps disallowed tags as escaped text). No skill may claim
-the default is on.
+default is off and name the domain-wide setting. Each parameter entry must
+also say what ``bleach.clean()`` does: it escapes disallowed tags and removes
+disallowed attributes and HTML comments. No skill may claim the default is on.
 
 ``tests/dx/test_plugin.py`` only checks that the render matches the pack, so a
 pack edit that brings back a "default True" claim would keep it green. This
@@ -99,9 +99,18 @@ def test_site_names_the_domain_wide_setting(site: str, text: str) -> None:
     assert "[field_defaults] sanitize" in text, text
 
 
-@pytest.mark.parametrize(("site", "text"), _sites(), ids=[s for s, _ in _sites()])
-def test_site_says_sanitizing_escapes_rather_than_strips(site: str, text: str) -> None:
-    assert "strip" not in text.lower(), text
+def _parameter_site_ids() -> list[tuple[str, str]]:
+    return [(site, text) for site, text in _sites() if "sanitize=True" not in text]
+
+
+@pytest.mark.parametrize(
+    ("site", "text"), _parameter_site_ids(), ids=[s for s, _ in _parameter_site_ids()]
+)
+def test_parameter_site_describes_what_bleach_clean_does(site: str, text: str) -> None:
+    assert "`bleach.clean()`" in text, text
+    assert "escapes disallowed tags" in text, text
+    assert "removes disallowed attributes and HTML comments" in text, text
+    assert "strip unsafe html" not in text.lower(), text
 
 
 def test_no_skill_claims_sanitize_is_on_by_default() -> None:
