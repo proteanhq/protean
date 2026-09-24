@@ -142,6 +142,7 @@ class TestReadTools:
             tools.introspect(CLEAN_DOMAIN)
 
 
+@pytest.mark.no_test_domain
 class TestExplain:
     def test_explains_a_known_code(self):
         result = tools.explain("UNHANDLED_EVENT")
