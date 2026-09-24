@@ -1,6 +1,7 @@
 """Value Object module providing the base class for immutable value objects."""
 
 import contextlib
+import inspect
 import logging
 from collections import defaultdict
 from collections.abc import Callable
@@ -145,12 +146,12 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
                 )
 
         # Also check annotation-style FieldSpecs
-        for name, value in getattr(cls, "__annotations__", {}).items():
+        for name, value in inspect.get_annotations(cls).items():
             if isinstance(value, FieldSpec):
                 _validate_fieldspec(name, value)
 
         # Handle ValueObject() descriptors — convert to Pydantic annotations
-        own_annots = getattr(cls, "__annotations__", {})
+        own_annots = inspect.get_annotations(cls)
         processed: set[str] = set()
 
         # 1. Assignment style: descriptor in vars(cls)

@@ -1,5 +1,6 @@
 """Projection Functionality and Classes"""
 
+import inspect
 import logging
 import threading
 from typing import Any, ClassVar, TypeVar, cast
@@ -148,7 +149,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         # (not vars(cls)).  Pydantic and __pydantic_init_subclass__ scan vars(cls)
         # for descriptors, so they must live there.  We also explicitly trigger
         # __set_name__ because setattr does NOT invoke it.
-        own_annots = getattr(cls, "__annotations__", {})
+        own_annots = inspect.get_annotations(cls)
         to_remove: list[str] = []
         for name, value in list(own_annots.items()):
             if isinstance(value, ValueObject):
