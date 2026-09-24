@@ -27,7 +27,7 @@ import pytest
 from protean import dx
 from protean.dx.pack import REFERENCES_DIR as REFERENCES_DIRNAME
 from protean.exceptions import ValidationError
-from protean.fields import Integer, String, ValueObject
+from protean.fields import Integer, String, ValueObject, ValueObjectList
 
 SKILL_DIR = Path(str(dx.pack_files())) / dx.SKILLS_DIR / "custom-validator"
 SKILL_MD = SKILL_DIR / "SKILL.md"
@@ -235,6 +235,24 @@ def test_value_object_field_runs_every_validator(test_domain) -> None:
     assert exc.value.messages["email"] == ["first rule", "second rule"]
     assert first.calls == [email]
     assert second.calls == [email]
+
+
+def test_value_object_list_field_runs_every_validator(test_domain) -> None:
+    first = _Rejects("first rule")
+    second = _Rejects("second rule")
+
+    @test_domain.aggregate
+    class Account:
+        tags = ValueObjectList(content_type=str, validators=[first, second])
+
+    test_domain.init(traverse=False)
+
+    with pytest.raises(ValidationError) as exc:
+        Account(tags=["a", "b"])
+
+    assert exc.value.messages["tags"] == ["first rule", "second rule"]
+    assert first.calls == [["a", "b"]]
+    assert second.calls == [["a", "b"]]
 
 
 @pytest.mark.no_test_domain
