@@ -11,6 +11,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier
 from protean.server.engine import Engine
 from protean.server.subscription import TEST_MODE_MAX_TICK_PAUSE, BaseSubscription
@@ -331,3 +332,38 @@ class TestStreamReadOutcome:
 
         assert await sub.get_next_batch_of_messages() == []
         assert sub._tick_outcome([]) is None
+
+
+class TestBrokerRedelivery:
+    """Test mode does not wait for a broker to redeliver a nacked message."""
+
+    @pytest.fixture
+    def calls(self, test_domain) -> list[dict]:
+        received: list[dict] = []
+
+        class FailsOnce(BaseSubscriber):
+            def __call__(self, payload: dict) -> None:
+                received.append(payload)
+                if len(received) == 1:
+                    raise RuntimeError("fails once")
+
+        test_domain.register(FailsOnce, stream="parcels-external")
+        return received
+
+    def _run(self, test_domain) -> None:
+        test_domain.config["message_processing"] = Processing.ASYNC.value
+        test_domain.init(traverse=False)
+        test_domain.brokers["default"].publish("parcels-external", {"id": 1})
+        Engine(domain=test_domain, test_mode=True).run()
+
+    def test_a_delayed_redelivery_is_not_waited_for(self, test_domain, calls):
+        self._run(test_domain)
+        assert len(calls) == 1
+
+    def test_a_redelivery_with_no_delay_is_processed(self, test_domain, calls):
+        test_domain.config["server"]["broker_subscription"] = {"retry_delay_seconds": 0}
+        # A new dict, so ``init()`` rebuilds the broker instead of reusing it.
+        brokers = test_domain.config["brokers"]
+        brokers["default"] = {**brokers["default"], "retry_delay": 0}
+        self._run(test_domain)
+        assert len(calls) == 2
