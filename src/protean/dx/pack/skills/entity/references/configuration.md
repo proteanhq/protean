@@ -118,31 +118,43 @@ class LineItem:
 - Following specific naming conventions
 - Avoiding naming conflicts
 
-### `database_model`
+### Custom database models
 
-Explicitly associate a custom database model with the entity.
+Protean builds a database model for every entity. To control the mapping
+yourself, register your own model against the entity with
+`@domain.database_model`.
+
+Declare only the columns you want to control. Protean fills in the rest of the
+entity's fields, including the foreign key back to the aggregate, and
+`schema_name` sets the table name.
 
 ```python
-# Define custom model
-@domain.model(part_of="Order")
-class LineItemModel:
-    # Custom database representation
-    product_id: String(max_length=50, db_column_name="prod_id")
-    quantity: Integer()
-    unit_price: Float(db_column_name="price")
+from sqlalchemy import Column, Text
+from protean.core.database_model import BaseDatabaseModel
 
-# Associate model with entity
-@domain.entity(part_of="Order", database_model=LineItemModel)
+@domain.entity(part_of="Order")
 class LineItem:
     product_id: String(required=True, max_length=50)
     quantity: Integer(required=True)
     unit_price: Float(required=True)
+
+@domain.database_model(part_of=LineItem, schema_name="order_items")
+class LineItemModel(BaseDatabaseModel):
+    product_id = Column(Text)
 ```
 
 **Use cases:**
-- Custom database column names
 - Special database-specific configurations
 - Mapping to legacy database schemas
+
+**Important:**
+- Register the model with `@domain.database_model`. The `database_model` option
+  on `@domain.entity` is not read by anything, so passing your model there
+  leaves the auto-generated one in place.
+- Every column must match a field declared on the entity. A column for anything
+  else is rejected at registration with `IncorrectUsageError`.
+- Custom models are provider-specific (a SQLAlchemy model won't work with
+  Elasticsearch).
 
 **Note:** In most cases, Protean's auto-generated model is sufficient.
 

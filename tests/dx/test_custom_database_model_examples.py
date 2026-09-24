@@ -23,6 +23,7 @@ matching field really is rejected. Those are the claims the pages make in prose,
 so they are asserted here rather than left as assertions about wording.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -32,7 +33,7 @@ from protean import dx
 from protean.core.database_model import BaseDatabaseModel
 from protean.domain import Domain
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Identifier, String
+from protean.fields import Float, HasMany, Identifier, Integer, String
 
 # These build their own domains and read package data; they never touch the
 # autouse ``test_domain`` fixture, so skip it and its initialization cost.
@@ -42,7 +43,19 @@ PACK_ROOT = Path(str(dx.pack_files()))
 REFERENCES = PACK_ROOT / dx.SKILLS_DIR
 
 AGGREGATE_PAGE = "aggregate/references/configuration.md"
+ENTITY_PAGE = "entity/references/configuration.md"
 PROJECTION_PAGE = "projection/references/configuration-options.md"
+
+# The elements that declare a `database_model` option nothing reads. Each is a
+# way for a page to teach a model registration that is silently ignored.
+#
+# `database_model=` has to be matched anywhere in the call, not just right after
+# the paren: on the entity page it sat behind `part_of=`, so a check anchored to
+# the opening paren walked straight past the one real instance in the pack.
+# `[^)]*` spans newlines, so a decorator broken over several lines is covered.
+INERT_CALL = re.compile(
+    r"@domain\.(?:aggregate|entity|projection)\([^)]*\bdatabase_model\s*="
+)
 
 if not PACK_ROOT.is_dir():
     pytest.skip(
@@ -165,6 +178,42 @@ class TestAggregateCustomDatabaseModel:
         assert "user_id" in str(exc.value)
 
 
+class TestEntityCustomDatabaseModel:
+    def test_the_pages_snippet_runs_and_selects_the_custom_model(self):
+        domain = _sqlite_domain()
+
+        namespace = _run(
+            [_snippet(ENTITY_PAGE, "### Custom database models")],
+            domain=domain,
+            String=String,
+            Integer=Integer,
+            Float=Float,
+        )
+
+        assert "LineItemModel" in namespace, (
+            "the page's example no longer registers a custom database model"
+        )
+
+        # The snippet's entity says `part_of="Order"`, so the aggregate it hangs
+        # off has to exist for the string to resolve at init.
+        line_item = namespace["LineItem"]
+
+        @domain.aggregate
+        class Order:
+            items: HasMany(line_item)
+
+        domain.init(traverse=False)
+        with domain.domain_context():
+            model = domain.repository_for(line_item)._database_model
+
+            assert model.__tablename__ == "order_items"
+            assert isinstance(model.__table__.c.product_id.type, Text)
+            # Protean still fills in the other fields and the key back to Order.
+            assert {"quantity", "unit_price", "order_id"} <= set(
+                model.__table__.c.keys()
+            )
+
+
 class TestProjectionCustomDatabaseModel:
     def test_the_pages_snippet_runs_and_selects_the_custom_model(self):
         domain = _sqlite_domain()
@@ -196,26 +245,41 @@ class TestProjectionCustomDatabaseModel:
 
 
 class TestNoPageTeachesTheInertOption:
-    @pytest.mark.parametrize(
-        ("page", "inert_decorator"),
-        [
-            (AGGREGATE_PAGE, "@domain.aggregate("),
-            (PROJECTION_PAGE, "@domain.projection("),
-        ],
-    )
-    def test_no_code_block_passes_the_model_to_the_element_decorator(
-        self, page, inert_decorator
-    ):
-        # The executed snippets above cover the section that teaches this. This
-        # sweeps the page's other examples, where the inert form would run
-        # without error and so would not be caught by executing it.
+    """The pack-wide sweep, not a per-page check.
+
+    Executing the three snippets above only covers the sections that teach this
+    on purpose. The inert form runs without error, so anywhere else it appears it
+    would execute fine and teach the wrong thing. It has turned up twice in two
+    places the section-level check could not see: a projection option table
+    advertising `database_model` as supported, and an entity page whose whole
+    example used it. So this walks every markdown page in the pack.
+    """
+
+    def test_no_code_block_passes_the_model_to_an_element_decorator(self):
+        offenders = []
+        for page in sorted(REFERENCES.rglob("*.md")):
+            for block in _python_blocks(page.relative_to(REFERENCES).as_posix()):
+                offenders.extend(
+                    f"{page.relative_to(REFERENCES)}: {match.group(0).strip()}"
+                    for match in INERT_CALL.finditer(block)
+                )
+
+        assert not offenders, (
+            "these examples pass a model to an element decorator, where it is "
+            "accepted and ignored; register it with `@domain.database_model` "
+            "instead:\n" + "\n".join(offenders)
+        )
+
+    def test_no_option_table_advertises_database_model(self):
+        # A summary table is the first thing an agent reads, so a row here
+        # outranks any warning further down the page.
         offenders = [
-            block
-            for block in _python_blocks(page)
-            if f"{inert_decorator}database_model=" in block
+            page.relative_to(REFERENCES).as_posix()
+            for page in sorted(REFERENCES.rglob("*.md"))
+            if "| `database_model` |" in page.read_text()
         ]
 
         assert not offenders, (
-            f"{page} teaches the inert `database_model=` option again; passing a "
-            f"model there is accepted and ignored:\n{offenders}"
+            "these option tables list `database_model` as a supported option, "
+            f"but nothing reads it:\n{offenders}"
         )

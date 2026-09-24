@@ -68,7 +68,12 @@ class ProductInventory:
 | `order_by` | `()` | Default ordering for query results |
 | `limit` | `100` | Default query result limit; `None` for unlimited |
 | `abstract` | `False` | If `True`, projection is an abstract base class |
-| `database_model` | `None` | Custom model name for storage |
+
+To control the database mapping, register your own model with
+`@domain.database_model(part_of=...)`. There is a `database_model` option on
+`@domain.projection`, but nothing reads it, so a model passed there is ignored
+and the auto-generated one stays in place. See
+[Custom database models](references/configuration-options.md).
 
 ## Supported field types
 
