@@ -333,3 +333,254 @@ def test_creation_handler_sets_every_defaulted_field():
         "creation event's `@apply` handler does not set replays as `None`. "
         "These examples teach that bug:\n  " + "\n  ".join(unset)
     )
+
+
+# --- Every declared value object must actually be used -----------------------
+#
+# A teaching asset that defines a `@domain.value_object` and then never uses it
+# shows the reader a concept it never demonstrates. `es_aggregate_with_entities.py`
+# did exactly this: it declared `Money`, advertised "Value objects within ES
+# aggregates" in its header, and gave `LineItem` a plain `unit_price: Float`, so
+# `Money` sat orphaned. This sweep reads every asset and, for each value object it
+# declares, requires the class name to appear somewhere else in the same file
+# (embedded in an entity/aggregate via `ValueObject(...)`, constructed in a
+# handler, referenced in the demo). A name used only by its own class definition
+# is an orphan.
+
+
+def _is_value_object(class_node: ast.ClassDef) -> bool:
+    """True when the class is decorated with `@domain.value_object`.
+
+    Both forms are in the pack: the bare `@domain.value_object` and the called
+    `@domain.value_object(part_of="...")`.
+    """
+    for decorator in class_node.decorator_list:
+        node = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if isinstance(node, ast.Attribute) and node.attr == "value_object":
+            return True
+    return False
+
+
+def _value_objects() -> list[tuple[Path, ast.Module, ast.ClassDef]]:
+    found = []
+    for path in ASSETS:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        found.extend(
+            (path, tree, node)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and _is_value_object(node)
+        )
+    return found
+
+
+def _name_is_referenced(tree: ast.Module, declaration: ast.ClassDef, name: str) -> bool:
+    """True when `name` appears as a `Name` node outside its own declaration.
+
+    A class declaration stores its name as the `ClassDef.name` string, so the
+    `class Money:` line itself is never a `Name` node. Its body is a different
+    matter: a method that returns `Money(...)`, which is how a value object
+    writes an operation over its own type, puts a real `Name` node inside the
+    declaration. Counting those makes every such value object look used.
+
+    `scaffold_aggregate_unit.py` had that shape, so the declaring class
+    subtree is excluded.
+    """
+    own = {id(node) for node in ast.walk(declaration)}
+    return any(
+        isinstance(node, ast.Name) and node.id == name and id(node) not in own
+        for node in ast.walk(tree)
+    )
+
+
+def test_the_value_object_sweep_is_not_vacuous():
+    """A sweep that finds nothing would pass while checking nothing."""
+    value_objects = _value_objects()
+    assert len(value_objects) >= 40, (
+        "expected the pack's example value objects, found "
+        f"{sorted(node.name for _, _, node in value_objects)}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "source", "referenced"),
+    [
+        (
+            "an operation over its own type",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+    def add(self, other):
+        return Money(amount=self.amount + other.amount)
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    unit_price: Float(required=True)
+""",
+            False,
+        ),
+        (
+            "embedded in an entity",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    unit_price: ValueObject(Money, required=True)
+""",
+            True,
+        ),
+        (
+            "constructed in a handler",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+
+@domain.aggregate
+class Order:
+    def price(self):
+        return Money(amount=1.0)
+""",
+            True,
+        ),
+        (
+            "declared and nothing else",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+""",
+            False,
+        ),
+    ],
+)
+def test_the_value_object_sweep_ignores_the_declaration_itself(
+    label, source, referenced
+):
+    """A value object with a method over its own type is still an orphan."""
+    tree = ast.parse(source)
+    declaration = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "Money"
+    )
+
+    assert _name_is_referenced(tree, declaration, "Money") is referenced, label
+
+
+def test_every_value_object_is_referenced():
+    orphans = []
+    for path, tree, declaration in _value_objects():
+        if not _name_is_referenced(tree, declaration, declaration.name):
+            orphans.append(
+                f"{path.name}: value object {declaration.name} is declared but "
+                "never used"
+            )
+
+    assert not orphans, (
+        "a value object an asset declares but never uses shows the reader a "
+        "concept the asset does not actually demonstrate:\n  " + "\n  ".join(orphans)
+    )
+
+
+# --- The value objects the examples now use must work at runtime --------------
+#
+# The sweep above proves only that a value object's name appears in the source.
+# The example runner skips each `__main__` demo block, so it never executes the
+# code paths that now build and read those value objects. These tests run that
+# code for the three examples that were changed to use their value objects:
+# `Customer` holding `ContactInfo`, the scaffold `Order` pricing line items in
+# `Money`, and the event-sourced `Order` rebuilding `Money` on add and on replay.
+# Each runs in a child interpreter, like the runner, so the example domains stay
+# out of this test process.
+
+_ASSET_CHECK = """
+import pathlib
+import runpy
+import sys
+
+from protean.domain import Domain
+
+namespace = runpy.run_path(sys.argv[1], run_name="_dx_runtime_check_")
+domain = next(v for v in namespace.values() if isinstance(v, Domain))
+domain.init(traverse=False)
+with domain.domain_context():
+    exec(sys.argv[2], dict(namespace))
+print("ok")
+"""
+
+
+def _run_asset_check(asset: str, check: str) -> None:
+    """Load `asset`, initialize its domain, and run `check` against its names."""
+    path = SKILLS_ROOT / asset
+    result = subprocess.run(
+        [sys.executable, "-c", _ASSET_CHECK, str(path), check],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0 and result.stdout.strip().endswith("ok"), (
+        f"{asset} failed its runtime check (exit {result.returncode}):\n{result.stderr}"
+    )
+
+
+def test_customer_holds_its_contact_info():
+    _run_asset_check(
+        "add-field/assets/add_simple_field.py",
+        """
+customer = Customer(
+    customer_id="CUST-1",
+    name="Ada",
+    contact=ContactInfo(email="ada@example.com", phone="555-0100"),
+)
+assert isinstance(customer.contact, ContactInfo)
+assert customer.contact.email == "ada@example.com"
+assert customer.contact.phone == "555-0100"
+""",
+    )
+
+
+def test_scaffold_order_prices_line_items_in_money():
+    _run_asset_check(
+        "generate-test-scaffold/assets/scaffold_aggregate_unit.py",
+        """
+order = Order.create(customer_id="CUST-1")
+item = order.add_item("P1", quantity=2, unit_price=10.0)
+order.add_item("P2", quantity=1, unit_price=5.5)
+assert isinstance(item.unit_price, Money)
+assert item.unit_price == Money(amount=10.0, currency="USD")
+assert item.subtotal == 20.0
+assert order.total == 25.5
+assert Money(amount=1.0).add(Money(amount=2.0)) == Money(amount=3.0)
+""",
+    )
+
+
+def test_event_sourced_order_rebuilds_money_on_add_and_replay():
+    _run_asset_check(
+        "event-sourced-aggregate/assets/es_aggregate_with_entities.py",
+        """
+order = Order.create(
+    order_id="ORD-1",
+    customer_id="CUST-1",
+    items=[
+        {"product_id": "P1", "quantity": 2, "unit_price": 25.0},
+        {"product_id": "P2", "quantity": 1, "unit_price": 75.0},
+    ],
+)
+assert all(isinstance(item.unit_price, Money) for item in order.items)
+assert order.total == 125.0
+
+replayed = Order.from_events(order._events)
+assert sorted(item.unit_price.amount for item in replayed.items) == [25.0, 75.0]
+assert all(isinstance(item.unit_price, Money) for item in replayed.items)
+assert replayed.total == 125.0
+""",
+    )

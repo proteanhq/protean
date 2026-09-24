@@ -36,6 +36,7 @@ from protean.fields import (
     Identifier,
     Integer,
     String,
+    ValueObject,
 )
 
 # Domain setup
@@ -47,9 +48,9 @@ domain = Domain()
 
 @domain.value_object
 class Money:
-    """Immutable monetary amount."""
+    """Immutable monetary amount. This example keeps every order in USD."""
 
-    amount: Float(required=True)
+    amount: Float(required=True, min_value=0.01)
     currency: String(max_length=3, default="USD")
 
 
@@ -64,11 +65,11 @@ class LineItem:
     product_id: String(required=True, max_length=50)
     description: String(max_length=200)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.01)
+    unit_price: ValueObject(Money, required=True)
 
     @property
     def subtotal(self) -> float:
-        return self.quantity * self.unit_price
+        return self.quantity * self.unit_price.amount
 
 
 # --- Events ---
@@ -201,7 +202,8 @@ class Order:
             product_id=event.product_id,
             description=event.description,
             quantity=event.quantity,
-            unit_price=event.unit_price,
+            # The event carries the plain amount; the entity holds it as Money
+            unit_price=Money(amount=event.unit_price),
         )
         self.add_items(item)
 
