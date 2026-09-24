@@ -310,12 +310,11 @@ class TestEveryPollLoopReportsIdleness:
     def test_poll_records_ticks_or_opts_out(self, cls):
         if not cls.reports_idle or "poll" not in vars(cls):
             return
-        source = inspect.getsource(cls)
-        assert "_record_tick" in source, (
+        assert "_record_tick" in inspect.getsource(cls.poll), (
             f"{cls.__name__}.poll() does not record ticks; call _record_tick "
             "or set reports_idle = False"
         )
-        assert "create_task" not in source, (
+        assert "create_task" not in inspect.getsource(cls), (
             f"{cls.__name__} starts tasks; set reports_idle = False"
         )
 
