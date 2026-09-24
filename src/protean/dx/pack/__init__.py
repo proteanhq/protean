@@ -24,6 +24,7 @@ import protean
 __all__ = [
     "AGENTS_SOURCE",
     "PACK_VERSION",
+    "REFERENCES_DIR",
     "SKILLS_DIR",
     "SKILL_FILE",
     "diagnostic_code_skills",
@@ -41,11 +42,14 @@ __all__ = [
 # content it labels.
 PACK_VERSION = protean.__version__
 
-# Well-known names within the pack: the AGENTS.md source and the skills
-# directory sit at the pack root; each skill directory holds a SKILL.md.
+# Well-known names within the pack: the AGENTS.md source, the skills directory
+# and the shared references directory sit at the pack root; each skill directory
+# holds a SKILL.md. The skills link into ``references/`` from their own subtree,
+# so anything that projects the skills has to carry it along.
 AGENTS_SOURCE = "AGENTS.md"
 SKILLS_DIR = "skills"
 SKILL_FILE = "SKILL.md"
+REFERENCES_DIR = "references"
 
 
 def pack_files() -> Traversable:

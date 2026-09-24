@@ -257,7 +257,7 @@ mutation = [
 # Copied, unexecuted teaching assets (the dx pack and the scaffold templates) carry deliberate
 # anti-patterns and stay out of the lint gate. force-exclude keeps them excluded even when a file
 # is passed to ruff explicitly, which the loop's quality gate does (`ruff check <changed files>`).
-extend-exclude = ["src/protean/template", "src/protean/dx/pack"]
+extend-exclude = ["src/protean/template", "src/protean/dx/pack", "plugins/protean"]
 force-exclude = true
 
 [tool.ruff.lint]
