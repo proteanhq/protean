@@ -92,7 +92,10 @@ class LineItem:
 
 @domain.aggregate
 class Order:
-    """Order aggregate with business rules, invariants, and event raising."""
+    """Order aggregate with business rules, invariants, and event raising.
+
+    Every item is priced in one currency, so `total` can sum the amounts.
+    """
 
     customer_id: String(required=True, max_length=50)
     status: String(default="draft")
@@ -108,6 +111,17 @@ class Order:
                 {"_entity": ["Order must have at least one item to be placed"]}
             )
 
+    @invariant.post
+    def items_must_share_one_currency(self):
+        """`total` sums the item amounts, which is only meaningful while they
+        share a currency. `add_item` cannot mix them; this covers an order
+        assembled by hand."""
+        currencies = {item.unit_price.currency for item in self.line_items}
+        if len(currencies) > 1:
+            raise ValidationError(
+                {"line_items": [f"Order mixes currencies: {sorted(currencies)}"]}
+            )
+
     # --- Factory method ---
 
     @classmethod
@@ -120,16 +134,18 @@ class Order:
 
     # --- Business methods ---
 
-    def add_item(self, product_id, quantity, unit_price, currency="USD"):
+    def add_item(self, product_id, quantity, unit_price):
         """Add a line item to the order.
 
-        Takes the price as a plain number and wraps it in `Money`, so a caller
-        stays simple while the item holds the value object.
+        Takes the price as a plain number and wraps it in `Money`. There is no
+        currency argument: `total` sums the amounts, and `Money.add()` refuses
+        to add across currencies, so an order that mixed them would contradict
+        its own value object.
         """
         item = LineItem(
             product_id=product_id,
             quantity=quantity,
-            unit_price=Money(amount=unit_price, currency=currency),
+            unit_price=Money(amount=unit_price),
         )
         self.add_line_items(item)
         return item
