@@ -49,9 +49,14 @@ def test_only_commands_can_be_associated_with_command_handlers(test_domain):
 
 
 def test_commands_have_to_be_registered_with_an_aggregate(test_domain):
+    # Other tests register ``Register`` with ``User``, which associates the
+    # module-level class for the rest of the run, so use a command of its own.
+    class Deactivate(BaseCommand):
+        id: Identifier()
+
     class UserCommandHandlers(BaseCommandHandler):
-        @handle(Register)
-        def something(self, _: Register):
+        @handle(Deactivate)
+        def something(self, _: Deactivate):
             pass
 
     test_domain.register(User)
@@ -61,7 +66,7 @@ def test_commands_have_to_be_registered_with_an_aggregate(test_domain):
         test_domain.init(traverse=False)
 
     assert exc.value.args[0] == (
-        "Command `Register` in Command Handler `UserCommandHandlers` is not associated with an aggregate"
+        "Command `Deactivate` in Command Handler `UserCommandHandlers` is not associated with an aggregate"
     )
 
 

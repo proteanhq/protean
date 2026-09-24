@@ -49,6 +49,18 @@ class PlaceOrderHandler(BaseCommandHandler):
         pass
 
 
+@pytest.fixture(autouse=True)
+def _forget_handler_map():
+    """Clear ``PlaceOrderHandler``'s handler map before each test.
+
+    Every test builds its own ``Domain`` from these module-level classes. The
+    map is keyed by the command's ``__type__``, which includes the domain name,
+    and a domain does not rebuild a map that is already filled. Without this,
+    a test sees the keys of whichever domain ran first.
+    """
+    PlaceOrderHandler._handlers.clear()
+
+
 # ─── Tests ──────────────────────────────────────────────────────────────
 
 
