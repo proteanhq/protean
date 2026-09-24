@@ -62,7 +62,12 @@ def place_order(order_id: str):
 
 ## 2. Aggregates That Are Too Large
 
-**Problem:** Aggregates with hundreds of entities, causing performance issues and violating the 500-entity limit.
+**Problem:** An aggregate that holds too much. Two different things go wrong under that heading, and `check` only sees one of them.
+
+- **Too many entity types.** `check` counts the entity classes in the cluster and reports `AGGREGATE_TOO_LARGE` once the count goes past `[lint] aggregate_size_limit` (default 5).
+- **Too many rows behind a `HasMany`.** `check` reads the code, not the data, so it cannot see this one. You have to catch it while modelling.
+
+The example below is the second kind. It declares three entity types, so it stays under the default limit and `check` says nothing, but every `Customer` load pulls the whole history back.
 
 ❌ **Bad:**
 
@@ -109,8 +114,9 @@ class SupportTicket:
 - Hard to reason about consistency
 
 **Rule of thumb:**
-- Maximum 500 entities per aggregate
-- If exceeded, split into separate aggregates
+- `check` flags an aggregate declaring more entity types than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`
+- A clean `check` does not mean the aggregate is small. Judge row counts yourself
+- If the aggregate is genuinely too large, split it into separate aggregates
 - Reference by ID instead of containment
 
 ---
@@ -505,7 +511,7 @@ class LoyaltyAccount:
 ## Quick Reference: Aggregate Design Checklist
 
 - [ ] Aggregate has behavior, not just data
-- [ ] Aggregate is under 500 entities
+- [ ] Aggregate stays within `[lint] aggregate_size_limit` (default 5 entity types), or raises the limit deliberately
 - [ ] Entities accessed only through aggregate
 - [ ] Business rules enforced via invariants
 - [ ] Each aggregate is a transaction boundary

@@ -4,8 +4,8 @@ Custom repository with domain-specific query methods.
 This example demonstrates:
 - Defining a custom repository with @domain.repository decorator
 - Required part_of parameter associating repository with an aggregate
-- Custom query methods using self._dao for database access
-- Filtering with self._dao.query.filter()
+- Custom query methods using the public helpers self.query and self.find_by()
+- Filtering with self.query.filter()
 - Custom repository inherits add() and get() from BaseRepository
 - Domain-specific query naming (find_by_*, find_active, etc.)
 
@@ -48,25 +48,24 @@ class ProductRepository:
     """Custom repository for Product aggregate.
 
     Adds domain-specific query methods beyond the standard add/get.
-    The _dao property provides access to the underlying data access object
-    for building filtered queries.
+    The self.query QuerySet and self.find_by() helper build filtered queries.
     """
 
     def find_by_category(self, category: str):
         """Find all products in a given category."""
-        return self._dao.query.filter(category=category).all()
+        return self.query.filter(category=category).all()
 
     def find_active(self):
         """Find all active products."""
-        return self._dao.query.filter(is_active=True).all()
+        return self.query.filter(is_active=True).all()
 
     def find_affordable(self, max_price: float):
         """Find products at or below the given price."""
-        return self._dao.query.filter(price__lte=max_price).all()
+        return self.query.filter(price__lte=max_price).all()
 
     def find_by_name(self, name: str):
         """Find a product by exact name match."""
-        return self._dao.find_by(name=name)
+        return self.find_by(name=name)
 
 
 # Example usage

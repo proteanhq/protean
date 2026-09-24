@@ -36,6 +36,7 @@ from protean.fields import (
     Identifier,
     Integer,
     String,
+    ValueObject,
 )
 
 # Domain setup
@@ -64,11 +65,11 @@ class LineItem:
     product_id: String(required=True, max_length=50)
     description: String(max_length=200)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True, min_value=0.01)
+    unit_price: ValueObject(Money, required=True)
 
     @property
     def subtotal(self) -> float:
-        return self.quantity * self.unit_price
+        return self.quantity * self.unit_price.amount
 
 
 # --- Events ---
@@ -92,6 +93,7 @@ class ItemAdded:
     description: String()
     quantity: Integer(required=True)
     unit_price: Float(required=True)
+    currency: String(default="USD")
 
 
 @domain.event(part_of="Order")
@@ -148,7 +150,9 @@ class Order:
 
     # --- Business methods (validate then raise; @apply handles state) ---
 
-    def add_item(self, product_id, description="", quantity=1, unit_price=0.0):
+    def add_item(
+        self, product_id, description="", quantity=1, unit_price=0.0, currency="USD"
+    ):
         """Add an item to the order."""
         if self.status != "DRAFT":
             raise ValueError(f"Cannot add items to order in '{self.status}' status")
@@ -162,6 +166,7 @@ class Order:
                 description=description,
                 quantity=quantity,
                 unit_price=unit_price,
+                currency=currency,
             )
         )
 
@@ -201,7 +206,7 @@ class Order:
             product_id=event.product_id,
             description=event.description,
             quantity=event.quantity,
-            unit_price=event.unit_price,
+            unit_price=Money(amount=event.unit_price, currency=event.currency),
         )
         self.add_items(item)
 
