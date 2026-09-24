@@ -4,7 +4,7 @@ Chain multiple validators on a single field for layered validation.
 
 ## Overview
 
-When a single field needs to satisfy multiple rules (format, business logic, deny-list), compose validators by passing a list to the `validators=[]` parameter. All validators run, and errors from each are collected.
+When a single field needs to satisfy multiple rules (format, business logic, deny-list), compose validators by passing a list to the `validators=[]` parameter. Validators run in list order, and validation stops at the first failing validator.
 
 ## Code
 
@@ -32,11 +32,12 @@ class UserAccount:
 ```
 
 **Execution order**:
-1. All validators run in list order
-2. Each validator that fails adds its error to the collection
-3. After all validators run, collected errors are raised as one `ValidationError`
+1. Empty values (`None`, `""`, and the other empty values) skip the validators entirely. Use `required=True` to reject a missing value.
+2. Validators run in list order.
+3. Validation stops at the first failing validator. Later validators do not run.
+4. That validator's error is raised as a `ValidationError` for the field.
 
-**Important**: Validators run independently — a failure in one does NOT prevent others from running. This means the user gets all validation errors at once, not one at a time.
+**Important**: The user sees one error for the field at a time. A value that breaks several rules reports only the first rule it breaks. Once the user fixes that, the next rule reports its error on the next attempt.
 
 ## Layered Validation Strategy
 
@@ -67,23 +68,20 @@ coupon_validators = [
 code: String(validators=coupon_validators)
 ```
 
-## Error Collection
+## Only the First Failure Is Reported
 
-When multiple validators fail, all errors are collected:
+`"spam__bot"` breaks two rules: it contains a blocked word, and it has two underscores in a row. The profanity validator comes first in the list, so it is the only one that reports:
 
 ```python
-# If both format AND reserved word validators fail:
-# ValidationError: {
-#     "username": [
-#         "Must start with a letter, 3-30 chars...",
-#         "'admin' is reserved and cannot be used"
-#     ]
-# }
+UserAccount(username="spam__bot", display_name="Spam Bot")
+# ValidationError: {'username': ['Value contains prohibited content']}
 ```
+
+The consecutive-characters validator never runs for this value.
 
 ## Best Practices
 
-1. **Order matters for readability** — Put the most common/basic check first
+1. **Order decides which error the user sees** — Put the most basic or cheapest check first. Validation stops at the first failure, so the first rule a value breaks is the only one reported.
 2. **Keep each validator focused** — One rule per validator class
 3. **Name validators clearly** — `ReservedWordValidator` not `Validator2`
 4. **Pre-instantiate validators** — Create instances outside the class definition for clarity

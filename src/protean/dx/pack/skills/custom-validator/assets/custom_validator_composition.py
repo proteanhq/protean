@@ -4,7 +4,7 @@ Composing Multiple Validators
 This example demonstrates:
 - Chaining multiple validators on a single field
 - Combining built-in RegexValidator with custom validators
-- Error collection from multiple validators
+- First-failure short-circuiting across chained validators
 - Building layered validation (format + business rule + deny-list)
 - Custom error message patterns
 
