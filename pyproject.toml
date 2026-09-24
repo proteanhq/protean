@@ -395,6 +395,9 @@ source = [
 [tool.coverage.run]
 branch = true
 parallel = true
+# Measure subprocesses too, so `protean test -c PR` counts the pytest-xdist
+# workers that run CORE.
+patch = ["subprocess"]
 source = ["src/protean"]
 omit = [
     "*/__main__.py",

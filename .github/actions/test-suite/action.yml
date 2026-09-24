@@ -7,7 +7,7 @@
 #
 # The caller must `actions/checkout` before invoking this action.
 name: "Protean test suite"
-description: "Install and run the Protean test suite (CORE or FULL) at the chosen resolution."
+description: "Install and run the Protean test suite (CORE, FULL or a PR-lane leg) at the chosen resolution."
 
 inputs:
   python-version:
@@ -33,47 +33,77 @@ inputs:
     description: "Codecov upload token (required only when upload-coverage is 'true')."
     required: false
     default: ""
-  codecov-pr:
-    description: "PR number to attach the upload to, for a run that is not a pull_request event (the post-approval merge run). Empty lets Codecov infer it."
+  services:
+    description: "Space-separated service containers to start for a non-FULL leg (names as in tests/adapters.toml). A FULL leg starts all of them."
+    required: false
+    default: ""
+  test-args:
+    description: "Arguments for `protean test`, replacing the CORE or `-c FULL` default. The PR lane passes `-c PR ...`."
+    required: false
+    default: ""
+  coverage-artifact:
+    description: "When set, save the leg's coverage data as an artifact of this name, for ci.yml's `Coverage` job to combine."
     required: false
     default: ""
 
 runs:
   using: "composite"
   steps:
-    # Service setup (this step through "Wait for services") runs only for a FULL
-    # leg; CORE and floors legs need no Docker. Images are pulled from this org's
-    # public GHCR mirror (populated by mirror-images.yml), not Docker Hub, so
-    # there is no login step and fork PRs pull them with zero secrets.
+    # Service setup (this step through "Wait for services") runs only for a leg
+    # that needs containers: a FULL leg starts all of them, and an adapter leg
+    # (ci.yml's `Adapters` job) starts the ones its adapters list in
+    # tests/adapters.toml. CORE legs need no Docker. Images are pulled from this
+    # org's public GHCR mirror (populated by mirror-images.yml), not Docker Hub,
+    # so there is no login step and fork PRs pull them with zero secrets.
+    - name: Choose services
+      id: services
+      shell: bash
+      run: |
+        if [ "${{ inputs.full }}" == "true" ]; then
+          list="postgres redis message-db mssql mysql mariadb elasticsearch"
+        else
+          list="${{ inputs.services }}"
+        fi
+        echo "list=$list" >> "$GITHUB_OUTPUT"
+
+    # Only a FULL leg caches images: it pulls all seven. An adapter leg pulls
+    # one or two, which is quicker than loading a cache of all seven.
     - name: Cache Docker images
       id: docker-cache
       if: inputs.full == 'true'
       uses: actions/cache@v6
       with:
         path: /tmp/docker-images
-        # Bump when the IMAGES list below changes: a hit on an older key skips
+        # Bump when the image list below changes: a hit on an older key skips
         # the pull step entirely, so a newly added image would be missing from
         # the cache and pulled one container at a time instead.
         key: docker-images-${{ runner.os }}-v4
 
     - name: Load or pull Docker images
-      if: inputs.full == 'true'
+      if: steps.services.outputs.list != ''
       shell: bash
       run: |
-        IMAGES=(
-          "ghcr.io/proteanhq/mirror/postgres:16"
-          "ghcr.io/proteanhq/mirror/redis:7"
-          "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0"
-          "ghcr.io/proteanhq/mirror/message-db:1.2.6"
-          "ghcr.io/proteanhq/mirror/mssql-server:2022-latest"
-          # MySQL and MariaDB come from Docker Hub until the mirror carries
-          # them. mirror-images.yml lists them, but that workflow is
-          # dispatch-only and its new packages have to be made Public by hand
-          # before CI can pull them. Move these two to
-          # ghcr.io/proteanhq/mirror/ once that is done.
-          "mysql:8.4"
-          "mariadb:11.4"
-        )
+        image() {
+          case "$1" in
+            postgres) echo "ghcr.io/proteanhq/mirror/postgres:16" ;;
+            redis) echo "ghcr.io/proteanhq/mirror/redis:7" ;;
+            elasticsearch) echo "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0" ;;
+            message-db) echo "ghcr.io/proteanhq/mirror/message-db:1.2.6" ;;
+            mssql) echo "ghcr.io/proteanhq/mirror/mssql-server:2022-latest" ;;
+            # MySQL and MariaDB come from Docker Hub until the mirror carries
+            # them. mirror-images.yml lists them, but that workflow is
+            # dispatch-only and its new packages have to be made Public by hand
+            # before CI can pull them. Move these two to
+            # ghcr.io/proteanhq/mirror/ once that is done.
+            mysql) echo "mysql:8.4" ;;
+            mariadb) echo "mariadb:11.4" ;;
+            *) echo "Unknown service: $1" >&2; exit 1 ;;
+          esac
+        }
+        IMAGES=()
+        for svc in ${{ steps.services.outputs.list }}; do
+          IMAGES+=("$(image "$svc")")
+        done
 
         # A cache-hit with no tarballs (e.g. a cache saved by an interrupted
         # run) would otherwise iterate the literal glob and fail `docker load`;
@@ -94,17 +124,19 @@ runs:
           done
           wait
 
-          echo "Saving Docker images to cache..."
-          mkdir -p /tmp/docker-images
-          for img in "${IMAGES[@]}"; do
-            name=$(echo "$img" | tr '/:' '_')
-            docker save "$img" -o "/tmp/docker-images/${name}.tar" &
-          done
-          wait
+          if [ "${{ inputs.full }}" == "true" ]; then
+            echo "Saving Docker images to cache..."
+            mkdir -p /tmp/docker-images
+            for img in "${IMAGES[@]}"; do
+              name=$(echo "$img" | tr '/:' '_')
+              docker save "$img" -o "/tmp/docker-images/${name}.tar" &
+            done
+            wait
+          fi
         fi
 
     - name: Configure sysctl limits
-      if: inputs.full == 'true'
+      if: steps.services.outputs.list != ''
       shell: bash
       run: |
         sudo swapoff -a
@@ -113,7 +145,7 @@ runs:
         sudo sysctl -w vm.max_map_count=262144
 
     - name: Start service containers
-      if: inputs.full == 'true'
+      if: steps.services.outputs.list != ''
       shell: bash
       run: |
         # Free the host ports below before binding them. Remove ALL containers
@@ -141,81 +173,78 @@ runs:
           done
         done
 
-        docker run -d --name postgres \
-          -p 55432:5432 \
-          -e POSTGRES_PASSWORD=postgres \
-          ghcr.io/proteanhq/mirror/postgres:16
-
-        docker run -d --name redis \
-          -p 56379:6379 \
-          ghcr.io/proteanhq/mirror/redis:7
-
-        docker run -d --name message-db \
-          -p 55433:5432 \
-          ghcr.io/proteanhq/mirror/message-db:1.2.6
-
-        docker run -d --name mssql \
-          -p 51433:1433 \
-          -e ACCEPT_EULA=Y \
-          -e "SA_PASSWORD=Protean123!" \
-          ghcr.io/proteanhq/mirror/mssql-server:2022-latest
-
-        docker run -d --name mysql \
-          -p 53306:3306 \
-          -e MYSQL_ROOT_PASSWORD=protean \
-          -e MYSQL_DATABASE=protean \
-          mysql:8.4
-
-        docker run -d --name mariadb \
-          -p 53307:3306 \
-          -e MARIADB_ROOT_PASSWORD=protean \
-          -e MARIADB_DATABASE=protean \
-          mariadb:11.4
-
-        docker run -d --name elasticsearch \
-          -p 59200:9200 \
-          -p 59300:9300 \
-          -e "discovery.type=single-node" \
-          -e "xpack.security.enabled=false" \
-          -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-          ghcr.io/proteanhq/mirror/elasticsearch:8.7.0
+        for svc in ${{ steps.services.outputs.list }}; do
+          case "$svc" in
+            postgres)
+              docker run -d --name postgres \
+                -p 55432:5432 \
+                -e POSTGRES_PASSWORD=postgres \
+                ghcr.io/proteanhq/mirror/postgres:16 ;;
+            redis)
+              docker run -d --name redis \
+                -p 56379:6379 \
+                ghcr.io/proteanhq/mirror/redis:7 ;;
+            message-db)
+              docker run -d --name message-db \
+                -p 55433:5432 \
+                ghcr.io/proteanhq/mirror/message-db:1.2.6 ;;
+            mssql)
+              docker run -d --name mssql \
+                -p 51433:1433 \
+                -e ACCEPT_EULA=Y \
+                -e "SA_PASSWORD=Protean123!" \
+                ghcr.io/proteanhq/mirror/mssql-server:2022-latest ;;
+            mysql)
+              docker run -d --name mysql \
+                -p 53306:3306 \
+                -e MYSQL_ROOT_PASSWORD=protean \
+                -e MYSQL_DATABASE=protean \
+                mysql:8.4 ;;
+            mariadb)
+              docker run -d --name mariadb \
+                -p 53307:3306 \
+                -e MARIADB_ROOT_PASSWORD=protean \
+                -e MARIADB_DATABASE=protean \
+                mariadb:11.4 ;;
+            elasticsearch)
+              docker run -d --name elasticsearch \
+                -p 59200:9200 \
+                -p 59300:9300 \
+                -e "discovery.type=single-node" \
+                -e "xpack.security.enabled=false" \
+                -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+                ghcr.io/proteanhq/mirror/elasticsearch:8.7.0 ;;
+          esac
+        done
 
     - name: Wait for services
-      if: inputs.full == 'true'
+      if: steps.services.outputs.list != ''
       shell: bash
       run: |
-        echo "Waiting for PostgreSQL..."
-        timeout 60 bash -c 'until docker exec postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done'
-        echo "PostgreSQL is ready!"
-
-        echo "Waiting for Redis..."
-        timeout 30 bash -c 'until docker exec redis redis-cli ping 2>/dev/null; do sleep 2; done'
-        echo "Redis is ready!"
-
-        echo "Waiting for Message DB..."
-        timeout 60 bash -c 'until docker exec message-db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
-        echo "Message DB is ready!"
-
-        echo "Waiting for MSSQL..."
-        timeout 60 bash -c 'until docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Protean123!" -Q "SELECT 1" -b -C 2>/dev/null; do sleep 2; done'
-        echo "MSSQL is ready!"
-
-        # `mysqladmin ping` answers before the server finishes its first-run
-        # initialisation, so also wait for a real query to succeed.
-        echo "Waiting for MySQL..."
-        timeout 120 bash -c 'until docker exec mysql mysqladmin ping -h 127.0.0.1 -uroot -pprotean --silent 2>/dev/null; do sleep 2; done'
-        timeout 60 bash -c 'until docker exec mysql mysql -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean 2>/dev/null; do sleep 2; done'
-        echo "MySQL is ready!"
-
-        echo "Waiting for MariaDB..."
-        timeout 120 bash -c 'until docker exec mariadb mariadb-admin ping -h 127.0.0.1 -uroot -pprotean --silent 2>/dev/null; do sleep 2; done'
-        timeout 60 bash -c 'until docker exec mariadb mariadb -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean 2>/dev/null; do sleep 2; done'
-        echo "MariaDB is ready!"
-
-        echo "Waiting for Elasticsearch..."
-        timeout 120 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done'
-        echo "Elasticsearch is ready!"
-
+        for svc in ${{ steps.services.outputs.list }}; do
+          echo "Waiting for $svc..."
+          case "$svc" in
+            postgres)
+              timeout 60 bash -c 'until docker exec postgres pg_isready -U postgres 2>/dev/null; do sleep 2; done' ;;
+            redis)
+              timeout 30 bash -c 'until docker exec redis redis-cli ping 2>/dev/null; do sleep 2; done' ;;
+            message-db)
+              timeout 60 bash -c 'until docker exec message-db pg_isready -U postgres 2>/dev/null; do sleep 2; done' ;;
+            mssql)
+              timeout 60 bash -c 'until docker exec mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Protean123!" -Q "SELECT 1" -b -C 2>/dev/null; do sleep 2; done' ;;
+            # `mysqladmin ping` answers before the server finishes its first-run
+            # initialisation, so also wait for a real query to succeed.
+            mysql)
+              timeout 120 bash -c 'until docker exec mysql mysqladmin ping -h 127.0.0.1 -uroot -pprotean --silent 2>/dev/null; do sleep 2; done'
+              timeout 60 bash -c 'until docker exec mysql mysql -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean 2>/dev/null; do sleep 2; done' ;;
+            mariadb)
+              timeout 120 bash -c 'until docker exec mariadb mariadb-admin ping -h 127.0.0.1 -uroot -pprotean --silent 2>/dev/null; do sleep 2; done'
+              timeout 60 bash -c 'until docker exec mariadb mariadb -h 127.0.0.1 -uroot -pprotean -e "SELECT 1" protean 2>/dev/null; do sleep 2; done' ;;
+            elasticsearch)
+              timeout 120 bash -c 'until curl -s http://localhost:59200/_cluster/health | grep -q "yellow\|green"; do sleep 2; done' ;;
+          esac
+          echo "$svc is ready!"
+        done
         echo "All services are ready!"
 
     - name: Install uv
@@ -236,7 +265,7 @@ runs:
         allow-prereleases: ${{ inputs.python-version == '3.15' }}
 
     - name: Install Microsoft ODBC Driver 18 and tools
-      if: inputs.full == 'true'
+      if: contains(steps.services.outputs.list, 'mssql')
       shell: bash
       run: |
         sudo apt-get update
@@ -258,11 +287,12 @@ runs:
     - name: Install unixODBC headers (prerelease CORE leg)
       # The mssql extra pulls pyodbc, which has no cp315 wheel yet, so the 3.15
       # CORE sync builds it from source and that build needs the unixODBC headers
-      # (sql.h). The FULL leg already gets them from the MSSQL driver step above,
-      # and the stable Pythons pull a prebuilt pyodbc wheel and never compile it,
-      # so this is only needed on the non-FULL 3.15 leg. Widen the version check
-      # when a newer prerelease lands, or drop it once pyodbc ships a cp315 wheel.
-      if: inputs.full != 'true' && inputs.python-version == '3.15'
+      # (sql.h). A leg that starts MSSQL already gets them from the driver step
+      # above, and the stable Pythons pull a prebuilt pyodbc wheel and never
+      # compile it, so this is only needed on a 3.15 leg without MSSQL. Widen the
+      # version check when a newer prerelease lands, or drop it once pyodbc ships
+      # a cp315 wheel.
+      if: "!contains(steps.services.outputs.list, 'mssql') && inputs.python-version == '3.15'"
       shell: bash
       run: |
         sudo apt-get update
@@ -288,6 +318,7 @@ runs:
       # process. CORE and floors run the fast in-memory suite, spread over the
       # runner's CPUs with pytest-xdist (the POSTGRES/etc. env below is simply
       # unused there). Both runs include tests/ext, the mypy plugin tests.
+      # `test-args` replaces both, for the PR lane (`-c PR ...`).
       shell: bash
       env:
         POSTGRES_PASSWORD: postgres
@@ -306,7 +337,21 @@ runs:
         MYSQL_HOST: localhost
         MARIADB_PORT: 53307
         MARIADB_HOST: localhost
-      run: uv run protean test ${{ inputs.full == 'true' && '-c FULL' || '' }}
+      run: uv run protean test ${{ inputs.test-args != '' && inputs.test-args || (inputs.full == 'true' && '-c FULL' || '') }}
+
+    # The PR lane's legs each keep their coverage data, and ci.yml's `Coverage`
+    # job combines them into one upload. Saved even when tests fail (`-c PR`
+    # then leaves the raw `.coverage.*` files uncombined), so partial coverage
+    # still reaches Codecov.
+    - name: Save coverage data
+      if: ${{ !cancelled() && inputs.coverage-artifact != '' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.coverage-artifact }}
+        path: .coverage*
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 1
 
     # Project coverage floor. `protean test -c FULL` already ran `coverage
     # combine`, so the merged `.coverage` exists; re-report it with a hard
@@ -327,5 +372,4 @@ runs:
       with:
         files: coverage.xml
         token: ${{ inputs.codecov-token }}
-        override_pr: ${{ inputs.codecov-pr }}
         fail_ci_if_error: true

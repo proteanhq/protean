@@ -1,0 +1,49 @@
+# Opens or updates the one open `ci-failure` issue. Used by the nightly run
+# (nightly.yml) and the push-to-main run (ci.yml), so a red run on either shows
+# up in one place without anyone watching the Actions tab. The calling job needs
+# `issues: write`.
+name: "Report CI failure"
+description: "Comment on the open ci-failure issue, or open one."
+
+inputs:
+  run-name:
+    description: "What failed, for the comment and a new issue's title (e.g. 'Nightly CI', 'CI on main')."
+    required: true
+  details:
+    description: "One or two sentences for a new issue's body: what the run covers."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Open or update the ci-failure issue
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        RUN_NAME: ${{ inputs.run-name }}
+        DETAILS: ${{ inputs.details }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        # Ensure the label exists (idempotent: --force also updates color/desc).
+        gh label create ci-failure --color B60205 \
+          --description "Automated: a CI run on main failed" --force >/dev/null 2>&1 || true
+
+        now="$(date -u '+%Y-%m-%d %H:%M UTC')"
+
+        # Reuse the one open issue rather than filing one per run.
+        existing="$(gh issue list --repo "$REPO" --label ci-failure --state open \
+          --json number --jq '.[0].number // empty')"
+
+        if [ -n "$existing" ]; then
+          gh issue comment "$existing" --repo "$REPO" \
+            --body "$RUN_NAME failed as of $now on $SHA. Run: $RUN_URL"
+          echo "Commented on existing issue #$existing"
+        else
+          gh issue create --repo "$REPO" --title "$RUN_NAME is failing" --label ci-failure \
+            --body "$(printf '%s failed.\n\n- First seen: %s on %s\n- Run: %s\n\n%s Close it once the run is green again.' "$RUN_NAME" "$now" "$SHA" "$RUN_URL" "$DETAILS")"
+          echo "Opened a new ci-failure issue"
+        fi

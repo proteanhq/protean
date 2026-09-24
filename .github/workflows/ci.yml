@@ -1,27 +1,27 @@
 name: CI
 
+# Protean's CI lanes (a PR, a push to main, nightly):
+#
+# - A PR runs lint, mypy, the DX pack, CORE on every stable Python, and the
+#   `Adapters` job: Postgres and Redis on every PR, plus each adapter the PR
+#   touches (tests/adapters.toml). The `Coverage` job combines the CORE 3.14 leg
+#   and the adapter legs into one Codecov upload, which `codecov/patch` gates.
+# - A push to main or a release branch also runs the full adapter suite on 3.14
+#   (`Python 3.14 Full`), uploads its coverage and enforces the project floor.
+#   A red run on main opens or updates the `ci-failure` issue.
+# - nightly.yml runs the full suite on every Python.
+#
+# Every required check runs on the PR itself. A `workflow_dispatch` run never
+# counts toward a PR's checks, even when it runs on the PR's head commit.
 on:
   push:
     branches: [main, "release/**"]
   pull_request:
     branches: [main, "release/**"]
-  # The merge run. A same-repo PR gets only the fast legs on each push; the
-  # rest (the FULL adapter leg, coverage and the other CORE legs) run once, on
-  # the PR's branch, after the maintainer approves. The PR reconciler starts it
-  # with `gh workflow run ci.yml --ref <branch> -f pr=<number>`; a maintainer
-  # can start it the same way.
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: "PR number, so Codecov posts codecov/patch on the PR."
-        required: false
-        default: ""
 
-# Keyed by PR number, so a push to a PR cancels its in-flight merge run too.
-# A PR run's ref is refs/pull/<n>/merge and the merge run's is the branch, so
-# keying by ref alone would leave a stale merge run going on an old head.
+# A PR's runs share one group, so a new push cancels the run on the old head.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || inputs.pr || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -34,33 +34,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Which legs run. A push to a same-repo PR runs only the lowest-direct
-        # CORE leg (`Python 3.14 Tests`), the lint, mypy and DX-pack jobs: the
-        # review loop pushes many times, and each push used to wait on the
-        # 17-minute FULL leg. Every other leg is required for merge, so a PR
-        # cannot merge until the merge run (workflow_dispatch, above) has run
-        # them on its head. A push to main or a release branch, the merge run,
-        # and a PR from a fork run all five legs (a fork's branch cannot be
-        # dispatched, so its PR keeps the whole matrix).
+        # The CORE legs, on every PR: 3.11 to 3.13 at the locked versions, and
+        # 3.14 at the dependency floor (lowest-direct), which proves the floors
+        # resolve and install on the newest stable Python. On a PR the 3.14
+        # leg runs CORE under coverage (`-c PR --no-adapters`) and saves the
+        # data for the `Coverage` job.
         #
-        # Legs are dropped from the matrix, never skipped with `if:`: GitHub
-        # counts a skipped job as passing a required check, so a skipped
-        # `Python 3.11 Tests` would let a PR merge without running it.
+        # A push to main or a release branch adds `Python 3.14 Full`: the whole
+        # adapter suite (`-c FULL`, with Postgres, Redis, Elasticsearch, MSSQL,
+        # MySQL, MariaDB and MessageDB). It is the only leg that sees every
+        # adapter, so it alone uploads main's coverage and enforces the 94%
+        # project floor. The full suite on 3.11 to 3.13 runs nightly
+        # (nightly.yml). See ADR-0020.
         #
-        # Per-PR cost control. The FULL adapter suite (`-c FULL`, which starts
-        # Postgres/Redis/Elasticsearch/MSSQL/MySQL/MariaDB/MessageDB) is the
-        # expensive part, so
-        # only the newest stable Python runs it (check `Python 3.14 Full`); the
-        # other stable versions run the fast in-memory CORE suite with no Docker.
-        # The lowest-direct leg (`Python 3.14 Tests`) re-resolves the dependencies
-        # to their floor and runs CORE, proving the floors resolve/install on the
-        # newest stable Python without a Docker spin-up. The full `-c FULL` matrix
-        # across every Python runs nightly on `main` (nightly.yml), which is where
-        # a version-specific adapter regression on 3.11-3.13 is caught. See
-        # ADR-0020.
-        #
-        # 3.15 (prerelease) does NOT run per-PR. The ecosystem ships no cp315
-        # wheels yet, so a per-PR leg builds its native-extension dependencies
+        # 3.15 (prerelease) does NOT run here. The ecosystem ships no cp315
+        # wheels yet, so a 3.15 leg builds its native-extension dependencies
         # (grpcio, pydantic-core, psycopg2, pyodbc, and more) from source on every
         # run, which dominates the job. nightly.yml runs 3.15 with the full adapter
         # suite and files an issue on failure, the right cadence for a non-blocking
@@ -68,11 +56,11 @@ jobs:
         # and the build is fast; move the FULL/lowest-direct roles to it once 3.15
         # is the newest stable. The floor leg stays on 3.14: the floors are pinned
         # to first-cp314-wheel versions and need not have a cp315 wheel yet.
-        include: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && '[{"python-version":"3.14","full":false,"resolution":"lowest-direct"}]' || '[{"python-version":"3.11","full":false,"resolution":"highest"},{"python-version":"3.12","full":false,"resolution":"highest"},{"python-version":"3.13","full":false,"resolution":"highest"},{"python-version":"3.14","full":true,"resolution":"highest"},{"python-version":"3.14","full":false,"resolution":"lowest-direct"}]') }}
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"python-version":"3.11","full":false,"resolution":"highest"},{"python-version":"3.12","full":false,"resolution":"highest"},{"python-version":"3.13","full":false,"resolution":"highest"},{"python-version":"3.14","full":false,"resolution":"lowest-direct","pr-coverage":true}]' || '[{"python-version":"3.11","full":false,"resolution":"highest"},{"python-version":"3.12","full":false,"resolution":"highest"},{"python-version":"3.13","full":false,"resolution":"highest"},{"python-version":"3.14","full":true,"resolution":"highest"},{"python-version":"3.14","full":false,"resolution":"lowest-direct"}]') }}
     # Check names are branch-protection contexts. The CORE legs and the
-    # lowest-direct leg on 3.14 are `Python X Tests`; the FULL adapter leg is
-    # `Python 3.14 Full` (add it to the required checks so it gates merges).
-    name: ${{ matrix.full && 'Python 3.14 Full' || (matrix.resolution == 'lowest-direct' && 'Python 3.14 Tests') || format('Python {0} Tests', matrix.python-version) }}
+    # lowest-direct leg on 3.14 are `Python X Tests`; the full adapter leg on a
+    # push is `Python 3.14 Full`.
+    name: ${{ matrix.full && 'Python 3.14 Full' || format('Python {0} Tests', matrix.python-version) }}
 
     steps:
       - uses: actions/checkout@v7
@@ -84,13 +72,165 @@ jobs:
           python-version: ${{ matrix.python-version }}
           full: ${{ matrix.full }}
           resolution: ${{ matrix.resolution }}
-          # Enforce + upload coverage only from the FULL adapter leg (the only
-          # per-PR leg that reaches the full-suite figure the threshold assumes).
-          enforce-coverage: ${{ matrix.full && matrix.resolution == 'highest' }}
-          upload-coverage: ${{ matrix.full && matrix.resolution == 'highest' }}
+          test-args: ${{ matrix.pr-coverage && '-c PR --no-adapters' || '' }}
+          coverage-artifact: ${{ matrix.pr-coverage && 'coverage-core' || '' }}
+          # Only the full adapter leg (on a push) sees every adapter, so only it
+          # enforces the project floor and uploads main's coverage.
+          enforce-coverage: ${{ matrix.full }}
+          upload-coverage: ${{ matrix.full }}
           codecov-token: ${{ secrets.CODECOV_TOKEN }}
-          # A merge run is not a pull_request event, so name the PR for Codecov.
-          codecov-pr: ${{ github.event.inputs.pr }}
+
+  # Picks the PR's adapter legs from tests/adapters.toml and the files the PR
+  # changed: every `pr` adapter, plus each `touched` adapter whose paths changed.
+  adapter-select:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Select adapters
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      # A PR run checks out the PR's merge commit. Depth 2 brings its first
+      # parent, the base branch tip, so the diff between them is the PR's change.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: List the files the PR changed
+        run: |
+          git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed-files.txt"
+          cat "$RUNNER_TEMP/changed-files.txt"
+
+      - name: Build the adapter matrix
+        id: select
+        run: |
+          uv sync
+          matrix="$(uv run protean test select-adapters "$RUNNER_TEMP/changed-files.txt")"
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  # One leg per adapter group, on 3.14. A leg the PR does not need is left out
+  # of the matrix, never skipped with `if:`: GitHub counts a skipped job as
+  # passing a required check.
+  adapters:
+    needs: adapter-select
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.adapter-select.outputs.matrix) }}
+    name: Adapter ${{ matrix.leg }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/test-suite
+        with:
+          python-version: "3.14"
+          services: ${{ matrix.services }}
+          test-args: ${{ matrix.test-args }}
+          coverage-artifact: coverage-adapter-${{ matrix.leg }}
+
+  # The required check for the adapter legs. It always reports on a PR, and
+  # fails unless the selection and every leg passed, so the set of legs can
+  # change from PR to PR without changing branch protection.
+  adapters-gate:
+    needs: [adapter-select, adapters]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    name: Adapters
+    steps:
+      - name: Check the adapter legs
+        env:
+          SELECT: ${{ needs.adapter-select.result }}
+          LEGS: ${{ needs.adapters.result }}
+        run: |
+          echo "Select adapters: $SELECT, adapter legs: $LEGS"
+          [ "$SELECT" = "success" ] && [ "$LEGS" = "success" ]
+
+  # Combines the CORE 3.14 leg's coverage with every adapter leg's and uploads
+  # it once. One upload means Codecov never computes `codecov/patch` on a
+  # partial report. Runs when a leg failed too, so partial coverage is visible.
+  coverage:
+    needs: [test, adapters]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Coverage
+    steps:
+      # The source is needed to write coverage.xml.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: ${{ runner.temp }}/coverage
+
+      - name: Combine coverage
+        run: |
+          find "$RUNNER_TEMP/coverage" -type f -name '.coverage*' | sort > "$RUNNER_TEMP/coverage-files.txt"
+          cat "$RUNNER_TEMP/coverage-files.txt"
+          xargs uv run --only-group test coverage combine < "$RUNNER_TEMP/coverage-files.txt"
+          uv run --only-group test coverage xml
+          uv run --only-group test coverage report | tail -1
+
+      # `fail_ci_if_error` makes a rejected upload (missing/invalid token,
+      # Codecov outage) fail this job instead of silently leaving the required
+      # `codecov/patch` check unreported.
+      - name: CodeCOV
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
+  # A red push to main opens or updates the `ci-failure` issue, the same one
+  # the nightly run uses.
+  report-main-failure:
+    needs: [test, mypy, lint, dx-pack]
+    if: ${{ failure() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    name: Report main failure
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/report-ci-failure
+        with:
+          run-name: CI on main
+          details: >-
+            A job in the push-to-main run went red. It is the only per-commit run
+            of the full adapter suite and the project coverage floor, so a
+            failure here was not caught on the PR.
 
   mypy:
     runs-on: ubuntu-latest

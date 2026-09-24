@@ -14,8 +14,10 @@ protean test [OPTIONS]
 
 Options:
 
-- `-c, --category [CORE|EVENTSTORE|DATABASE|COVERAGE|FULL]`: Specifies which category of tests to run
+- `-c, --category [CORE|EVENTSTORE|DATABASE|BROKER|COVERAGE|FULL|PR]`: Specifies which category of tests to run
 - `-n, --workers TEXT`: Worker processes for the `CORE` category: a number, `auto`, or `logical` (the default, one per logical CPU). `0` runs the suite in one process. You can also set it with the `PROTEAN_TEST_WORKERS` environment variable.
+- `-a, --adapter TEXT`: `PR` only. An adapter, or a group of adapters, from `tests/adapters.toml` to run. Repeat it for more. The default is the adapters every pull request runs.
+- `--no-core`, `--no-adapters`: `PR` only. Skip the core suite, or the adapter suites.
 
 Categories:
 
@@ -28,6 +30,7 @@ Categories:
   Testing](../../reference/testing/conformance.md) for details.
 - `FULL`: Runs the complete test suite for all adapters
 - `COVERAGE`: Runs the complete test suite with all adapters and generates coverage report
+- `PR`: Runs what a pull request's CI runs: the core suite and the adapter suites from `tests/adapters.toml`, all under coverage. `protean test -c PR -a elasticsearch` runs one more adapter the way CI would when a pull request touches it.
 
 Example:
 
@@ -402,7 +405,7 @@ The `store_config` fixture does the same for event stores:
 
 Protean uses Coverage.py to track test coverage. `coverage` configuration is maintained in `pyproject.toml`.
 
-When running the full test suite with `protean test -c FULL`, coverage data is automatically collected and combined from tests across multiple adapters:
+When running the full test suite with `protean test -c FULL` (or the pull request lane with `protean test -c PR`), coverage data is automatically collected and combined from tests across multiple adapters:
 
 1. Each test run generates a `.coverage` file
 2. The `coverage combine` command merges these files
@@ -434,36 +437,11 @@ To avoid coverage failures:
 
 ## Github Actions
 
-Protean uses GitHub Actions to enforce code quality in pull requests (sample below):
+Protean's CI runs in three lanes, so a pull request's cost follows the size of the change rather than the number of adapters:
 
-```yaml
-name: CI
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    # Test configuration...
-    steps:
-      # Setup steps...
-      - name: Tests
-        run: protean test -c FULL
-
-      - name: CodeCOV
-        uses: codecov/codecov-action@v4.0.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-```
-
-The CI pipeline:
-
-- Runs on each pull request and push to main
-- Runs the in-memory core suite on every Python version (3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease; the 3.15 leg is experimental and non-blocking while 3.15 is a prerelease)
-- Runs the full adapter suite (PostgreSQL, Redis, Elasticsearch, Message-DB, MSSQL, MySQL, MariaDB) on the newest stable Python per PR, and across every version in the nightly run
-- Enforces the coverage floor and reports coverage to Codecov
+- **Pull request.** Lint, mypy, and the DX pack. The in-memory core suite on 3.11, 3.12, 3.13, and 3.14 (the 3.14 leg at the lowest supported dependency versions). The `Adapters` check: PostgreSQL and Redis on every pull request, plus each adapter whose files the pull request changes. `tests/adapters.toml` lists every adapter, its paths, and the services it needs; a test fails if an adapter module is missing from it. The `Coverage` job combines the core and adapter coverage into one upload, and Codecov's `codecov/patch` check requires 96% of the changed lines to be covered.
+- **Push to `main`.** The same, plus the full adapter suite (`protean test -c FULL`) on 3.14, which uploads `main`'s coverage and enforces the 94% project floor. A red run opens or updates a `ci-failure` issue.
+- **Nightly.** The full adapter suite on every Python version, including the 3.15 prerelease (non-blocking). A red run opens or updates the same `ci-failure` issue.
 
 Pull requests cannot be merged until the required checks pass. This ensures:
 

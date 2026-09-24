@@ -1,8 +1,10 @@
+import json
 import os
 import re
 import subprocess
 import sys
 import time
+import tomllib
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
@@ -79,6 +81,7 @@ class RunCategory(Enum):
     BROKER = "BROKER"
     COVERAGE = "COVERAGE"
     FULL = "FULL"
+    PR = "PR"
 
 
 @dataclass
@@ -511,6 +514,221 @@ class TestRunner:
             webbrowser.open(url)
 
 
+# --- The adapter manifest, for the PR lane ---
+
+# The repo root, found from this file the same way GENERIC_TEST_DIR is.
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+ADAPTER_MANIFEST = REPO_ROOT / "tests" / "adapters.toml"
+ADAPTER_LANES = ("core", "pr", "touched", "off")
+
+
+@dataclass
+class AdapterEntry:
+    """One adapter in tests/adapters.toml."""
+
+    __test__ = False  # Prevent pytest from collecting this as a test class
+
+    name: str
+    lane: str
+    leg: str
+    services: list[str]
+    paths: list[str]
+    markers: list[str]
+    databases: list[str]
+    brokers: list[str]
+    stores: list[str]
+
+    def matches(self, path: str) -> bool:
+        """Whether a changed file is one of this adapter's paths."""
+        return any(_path_matches(path, p) for p in self.paths)
+
+
+@dataclass
+class AdapterManifest:
+    __test__ = False  # Prevent pytest from collecting this as a test class
+
+    adapters: list[AdapterEntry]
+    trigger_all: list[str]
+
+    def resolve(self, names: list[str]) -> list[AdapterEntry]:
+        """Adapters by name. A leg name (``redis``) selects every adapter in it."""
+        runnable = [e for e in self.adapters if e.lane in ("pr", "touched")]
+        selected: list[AdapterEntry] = []
+        for name in names:
+            matched = [e for e in runnable if name in (e.name, e.leg)]
+            if not matched:
+                known = sorted({e.name for e in runnable} | {e.leg for e in runnable})
+                raise typer.BadParameter(
+                    f"'{name}' is not an adapter or leg; use one of {known}"
+                )
+            selected.extend(e for e in matched if e not in selected)
+        return selected
+
+    def pr_adapters(self) -> list[AdapterEntry]:
+        return [e for e in self.adapters if e.lane == "pr"]
+
+    def select(self, changed_files: list[str]) -> list[AdapterEntry]:
+        """The adapters a PR with these changed files runs.
+
+        Every ``pr`` adapter, plus each ``touched`` adapter whose paths the PR
+        changed. A change to a ``[triggers] all`` path runs every adapter that
+        has a leg.
+        """
+        run_all = any(
+            _path_matches(f, p) for f in changed_files for p in self.trigger_all
+        )
+        return [
+            e
+            for e in self.adapters
+            if e.lane == "pr"
+            or (
+                e.lane == "touched"
+                and (run_all or any(e.matches(f) for f in changed_files))
+            )
+        ]
+
+
+def _path_matches(path: str, pattern: str) -> bool:
+    """A pattern ending in "/" is a folder and matches anything under it."""
+    if pattern.endswith("/"):
+        return path.startswith(pattern)
+    return path == pattern
+
+
+def load_adapter_manifest(path: Path = ADAPTER_MANIFEST) -> AdapterManifest:
+    """Read tests/adapters.toml."""
+    with path.open("rb") as f:
+        data = tomllib.load(f)
+
+    adapters = []
+    for name, raw in data.get("adapters", {}).items():
+        lane = raw.get("lane", "")
+        if lane not in ADAPTER_LANES:
+            raise ValueError(
+                f"Adapter '{name}' in {path.name} has lane '{lane}'; "
+                f"use one of {list(ADAPTER_LANES)}"
+            )
+        adapters.append(
+            AdapterEntry(
+                name=name,
+                lane=lane,
+                leg=raw.get("leg", name),
+                services=list(raw.get("services", [])),
+                paths=list(raw.get("paths", [])),
+                markers=list(raw.get("markers", [])),
+                databases=list(raw.get("databases", [])),
+                brokers=list(raw.get("brokers", [])),
+                stores=list(raw.get("stores", [])),
+            )
+        )
+    return AdapterManifest(
+        adapters=adapters,
+        trigger_all=list(data.get("triggers", {}).get("all", [])),
+    )
+
+
+def build_adapter_matrix(
+    adapters: list[AdapterEntry],
+) -> dict[str, list[dict[str, str]]]:
+    """Group adapters into CI legs, one per ``leg``, for a GitHub Actions matrix.
+
+    Each leg carries the ``protean test`` arguments that run it.
+    """
+    legs: dict[str, dict[str, list[str]]] = {}
+    for entry in adapters:
+        leg = legs.setdefault(entry.leg, {"adapters": [], "services": []})
+        leg["adapters"].append(entry.name)
+        leg["services"].extend(s for s in entry.services if s not in leg["services"])
+    return {
+        "include": [
+            {
+                "leg": name,
+                "adapters": " ".join(leg["adapters"]),
+                "services": " ".join(leg["services"]),
+                "test-args": " ".join(
+                    ["-c", "PR", "--no-core"]
+                    + [arg for a in leg["adapters"] for arg in ("-a", a)]
+                ),
+            }
+            for name, leg in legs.items()
+        ]
+    }
+
+
+def build_adapter_suites(
+    runner: TestRunner, adapters: list[AdapterEntry]
+) -> list[TestSuite]:
+    """The coverage-wrapped pytest runs for these adapters, without repeats.
+
+    The same runs ``-c FULL`` makes for them: a marker run (``-m redis
+    --redis``) and the capability suites for each database, broker and store.
+    """
+    suites: list[TestSuite] = []
+    seen: set[str] = set()
+
+    def add(name: str, pytest_cmd: list[str]) -> None:
+        if name not in seen:
+            seen.add(name)
+            suites.append(TestSuite(name, runner.build_coverage_command(pytest_cmd)))
+
+    for entry in adapters:
+        for marker in entry.markers:
+            add(
+                f"Marker: {marker}",
+                runner.build_test_command(
+                    marker=marker, extra_flags=[f"--{marker}", "tests"]
+                ),
+            )
+        for db in entry.databases:
+            add(
+                f"Database: {db}",
+                runner.build_test_command(
+                    marker=runner.get_database_marker_expression(db),
+                    extra_flags=[f"--db={db}"],
+                ),
+            )
+        for broker in entry.brokers:
+            add(
+                f"Broker: {broker}",
+                runner.build_test_command(
+                    marker=runner.get_capability_marker_expression(broker),
+                    extra_flags=[f"--broker={broker}"],
+                ),
+            )
+        for store in entry.stores:
+            add(
+                f"Event Store: {store}",
+                runner.build_test_command("eventstore", f"--store={store}"),
+            )
+    return suites
+
+
+def run_pr_lane(
+    runner: TestRunner,
+    adapters: list[AdapterEntry],
+    core_workers: str | None,
+) -> int:
+    """Run the PR lane: CORE (unless ``core_workers`` is None) and the adapter
+    suites, all under coverage, one after another.
+
+    Coverage data is kept when a suite fails, so CI can still upload it.
+    """
+    start_time = time.time()
+    runner.track_exit_code(runner.run_command(["coverage", "erase"]))
+
+    suites = []
+    if core_workers is not None:
+        core = runner.build_coverage_command(runner.build_core_command(core_workers))
+        suites.append(TestSuite("CORE", core))
+    suites.extend(build_adapter_suites(runner, adapters))
+
+    for suite in suites:
+        runner.track_exit_code(runner.run_single_suite(suite))
+
+    runner._finalize_coverage_and_timing(start_time)
+    return runner.exit_status
+
+
 app = typer.Typer()
 
 
@@ -542,6 +760,7 @@ def validate_category(value: str) -> str:
 
 @app.callback(invoke_without_command=True)
 def test(
+    ctx: typer.Context,
     category: Annotated[
         str,
         typer.Option(
@@ -570,13 +789,41 @@ def test(
             ),
         ),
     ] = DEFAULT_CORE_WORKERS,
+    adapter: Annotated[
+        list[str] | None,
+        typer.Option(
+            "-a",
+            "--adapter",
+            help=(
+                "PR category only: an adapter or leg from tests/adapters.toml to "
+                "run. Repeat it for more. Defaults to the adapters on every PR."
+            ),
+        ),
+    ] = None,
+    no_core: Annotated[
+        bool,
+        typer.Option("--no-core", help="PR category only: skip the CORE suite."),
+    ] = False,
+    no_adapters: Annotated[
+        bool,
+        typer.Option(
+            "--no-adapters", help="PR category only: skip the adapter suites."
+        ),
+    ] = False,
 ) -> None:
     """[Framework development] Run tests with various configurations and coverage options.
 
     This command is for contributors working on Protean itself: it drives the
     framework's own pytest suite and hardcodes framework-repo paths. It is not
     intended for end-user application projects.
+
+    ``-c PR`` runs what a PR's CI runs: CORE and the adapter suites from
+    tests/adapters.toml, under coverage.
     """
+    # A subcommand (``test-adapter``, ``select-adapters``) runs on its own.
+    if ctx.invoked_subcommand is not None:
+        return
+
     runner = TestRunner()
 
     match category:
@@ -593,6 +840,18 @@ def test(
             else:
                 print("\n❌ Tests failed – skipping diff-cover report.")
 
+        case "PR":
+            manifest = load_adapter_manifest()
+            adapters = []
+            if not no_adapters:
+                adapters = (
+                    manifest.resolve(adapter) if adapter else manifest.pr_adapters()
+                )
+            core_workers = None
+            if not no_core:
+                core_workers = "0" if sequential else validate_workers(workers)
+            exit_code = run_pr_lane(runner, adapters, core_workers)
+
         case _:  # CORE
             print("Running core tests…")
             core_workers = "0" if sequential else validate_workers(workers)
@@ -601,6 +860,31 @@ def test(
 
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
+
+
+@app.command("select-adapters")
+def select_adapters(
+    changed_files: Annotated[
+        Path,
+        typer.Argument(
+            help="A file listing the PR's changed files, one path per line.",
+            exists=True,
+            dir_okay=False,
+        ),
+    ],
+) -> None:
+    """[Framework development] Print the CI adapter matrix for a PR, as JSON.
+
+    The ``Adapters`` job in ci.yml runs this on the files the PR changed. Every
+    ``pr`` adapter runs, plus each ``touched`` adapter whose paths changed.
+    """
+    files = [
+        line.strip()
+        for line in changed_files.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    manifest = load_adapter_manifest()
+    print(json.dumps(build_adapter_matrix(manifest.select(files))))
 
 
 # --- Capability-to-marker mapping for test-adapter ---

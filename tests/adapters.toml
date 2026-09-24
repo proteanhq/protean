@@ -1,0 +1,168 @@
+# The adapter manifest: which adapter suites a PR runs.
+#
+# Read by `protean test -c PR` and `protean test select-adapters`
+# (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
+# test tests/cli/test_adapter_manifest.py fails when a module under
+# src/protean/adapters/ is in no entry, so this list cannot go stale.
+#
+# Each [adapters.<name>] entry has:
+#
+# - lane: "core" (the in-memory CORE suite covers it, no leg of its own),
+#   "pr" (runs on every PR), "touched" (runs on a PR only when the PR changes
+#   one of its paths), or "off" (runs nowhere; say why in a comment).
+# - leg: the CI leg that runs it (defaults to the entry's name). Adapters that
+#   share a service share a leg, so the container starts once.
+# - services: the containers the leg needs (names from the test-suite action).
+# - paths: the files and folders that trigger the adapter. Its source, its
+#   tests, and the core files only its tests reach. A path ending in "/" is a
+#   folder.
+# - markers: pytest markers to enable and select (`-m <m> --<m>`).
+# - databases, brokers, stores: capability suites (`--db=`, `--broker=`,
+#   `--store=`), as `protean test -c FULL` runs them.
+#
+# Pushes to main and the nightly run still run every adapter (`-c FULL`).
+
+# A change to any of these runs every leg that is not "off".
+[triggers]
+all = [
+    ".github/actions/test-suite/",
+    ".github/workflows/ci.yml",
+    "pyproject.toml",
+    "src/protean/cli/test.py",
+    "tests/adapters.toml",
+    "tests/conftest.py",
+    "uv.lock",
+]
+
+[adapters.memory]
+lane = "core"
+paths = [
+    "src/protean/adapters/__init__.py",
+    "src/protean/adapters/broker/__init__.py",
+    "src/protean/adapters/broker/inline.py",
+    "src/protean/adapters/cache/__init__.py",
+    "src/protean/adapters/cache/memory.py",
+    "src/protean/adapters/email/__init__.py",
+    "src/protean/adapters/email/dummy.py",
+    "src/protean/adapters/event_store/__init__.py",
+    "src/protean/adapters/event_store/memory.py",
+    "src/protean/adapters/repository/__init__.py",
+    "src/protean/adapters/repository/memory.py",
+]
+
+[adapters.postgresql]
+lane = "pr"
+services = ["postgres"]
+paths = [
+    "src/protean/adapters/repository/sqlalchemy.py",
+    "src/protean/upgrade.py",
+    "tests/adapters/database_model/sqlalchemy_model/postgresql/",
+    "tests/adapters/repository/generic/",
+    "tests/adapters/repository/sqlalchemy_repo/",
+]
+markers = ["postgresql"]
+databases = ["POSTGRESQL"]
+
+[adapters.redis-broker]
+lane = "pr"
+leg = "redis"
+services = ["redis"]
+paths = [
+    "src/protean/adapters/broker/redis.py",
+    "src/protean/server/subscription/partitioned_stream_subscription.py",
+    "tests/adapters/broker/generic/",
+    "tests/adapters/broker/redis/",
+]
+markers = ["redis"]
+brokers = ["REDIS"]
+
+[adapters.redis-pubsub]
+lane = "pr"
+leg = "redis"
+services = ["redis"]
+paths = [
+    "src/protean/adapters/broker/redis_pubsub.py",
+    "tests/adapters/broker/redis_pubsub/",
+]
+markers = ["redis"]
+brokers = ["REDIS_PUBSUB"]
+
+[adapters.redis-cache]
+lane = "pr"
+leg = "redis"
+services = ["redis"]
+paths = [
+    "src/protean/adapters/cache/redis.py",
+    "tests/adapters/cache/",
+]
+markers = ["redis"]
+
+[adapters.sqlite]
+lane = "touched"
+paths = [
+    "src/protean/adapters/repository/sqlalchemy.py",
+    "src/protean/upgrade.py",
+    "tests/adapters/database_model/sqlalchemy_model/sqlite/",
+    "tests/adapters/repository/generic/",
+    "tests/adapters/repository/sqlalchemy_repo/",
+]
+markers = ["sqlite"]
+databases = ["SQLITE"]
+
+[adapters.mssql]
+lane = "touched"
+services = ["mssql"]
+paths = [
+    "src/protean/adapters/repository/sqlalchemy.py",
+    "src/protean/upgrade.py",
+    "tests/adapters/repository/generic/",
+    "tests/adapters/repository/sqlalchemy_repo/",
+]
+markers = ["mssql"]
+databases = ["MSSQL"]
+
+# One provider, two dialect names: every dialect branch has to accept both.
+[adapters.mysql]
+lane = "touched"
+services = ["mysql", "mariadb"]
+paths = [
+    "src/protean/adapters/repository/sqlalchemy.py",
+    "src/protean/upgrade.py",
+    "tests/adapters/repository/generic/",
+    "tests/adapters/repository/sqlalchemy_repo/",
+]
+markers = ["mysql"]
+databases = ["MYSQL", "MARIADB"]
+
+[adapters.elasticsearch]
+lane = "touched"
+services = ["elasticsearch"]
+paths = [
+    "src/protean/adapters/repository/elasticsearch.py",
+    "tests/adapters/database_model/elasticsearch_model/",
+    "tests/adapters/repository/elasticsearch_repo/",
+    "tests/adapters/repository/generic/",
+]
+markers = ["elasticsearch"]
+databases = ["ELASTICSEARCH"]
+
+[adapters.message-db]
+lane = "touched"
+services = ["message-db"]
+paths = [
+    "src/protean/adapters/event_store/message_db.py",
+    "src/protean/port/event_store.py",
+    "tests/adapters/event_store/",
+]
+markers = ["message_db"]
+stores = ["MESSAGE_DB"]
+
+# Off: no CI run has passed `--sendgrid` (it is not in `-c FULL` either), and
+# its two tests fail on a stale email setup. Give it a lane once they pass.
+[adapters.sendgrid]
+lane = "off"
+paths = [
+    "src/protean/adapters/email/sendgrid.py",
+    "tests/adapters/email/sendgrid_email/",
+]
+markers = ["sendgrid"]

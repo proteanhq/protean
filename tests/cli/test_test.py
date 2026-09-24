@@ -444,7 +444,7 @@ class TestCategoryValidation:
 
         assert "is not one of" in str(exc_info.value)
         assert (
-            "['CORE', 'EVENTSTORE', 'DATABASE', 'BROKER', 'COVERAGE', 'FULL']"
+            "['CORE', 'EVENTSTORE', 'DATABASE', 'BROKER', 'COVERAGE', 'FULL', 'PR']"
             in str(exc_info.value)
         )
 
@@ -667,6 +667,7 @@ class TestConfiguration:
             "BROKER",
             "COVERAGE",
             "FULL",
+            "PR",
         }
         actual_categories = {category.value for category in RunCategory}
         assert actual_categories == expected_categories
