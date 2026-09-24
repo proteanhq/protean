@@ -164,9 +164,11 @@ class BaseSubscription(ABC):
 
         ``had_work`` is ``None`` when the tick cannot tell whether there was
         work, for example a ``tick()`` override written before it returned a
-        bool. Nothing is recorded then.
+        bool, or a read that failed. An earlier empty tick no longer counts
+        then, so the loop is not idle until it completes another empty tick.
         """
         if had_work is None:
+            self.last_idle_tick_started = None
             return
         if had_work:
             self.last_work_tick_finished = time.monotonic()

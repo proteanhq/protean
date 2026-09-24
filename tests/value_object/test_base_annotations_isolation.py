@@ -18,6 +18,8 @@ from protean.core.value_object import BaseValueObject
 from protean.fields import String, ValueObject
 from protean.utils.reflection import declared_fields
 
+pytestmark = pytest.mark.no_test_domain
+
 
 @pytest.fixture
 def metaclass_annotations_read() -> Iterator[None]:

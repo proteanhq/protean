@@ -1435,6 +1435,7 @@ class TestFrameworkDevelopmentHelp:
         assert re.search(r"test-adapter\s+\[Framework development\]", output)
 
 
+@pytest.mark.no_test_domain
 class TestCoreWorkers:
     """CORE runs on pytest-xdist; every other category stays in one process."""
 

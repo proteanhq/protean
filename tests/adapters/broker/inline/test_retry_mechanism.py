@@ -178,6 +178,7 @@ def test_retry_with_multiple_messages(broker):
     identifiers = [broker.publish(stream, msg) for msg in messages]
 
     # Get and NACK all messages
+    nacked_at = time.time()
     for _i in range(3):
         result = broker.get_next(stream, consumer_group)
         assert result is not None
@@ -190,8 +191,7 @@ def test_retry_with_multiple_messages(broker):
     # Bring the retries forward instead of sleeping until they are due
     for identifier in identifiers:
         assert (
-            scheduled_retry_time(broker, stream, consumer_group, identifier)
-            > time.time()
+            scheduled_retry_time(broker, stream, consumer_group, identifier) > nacked_at
         )
         make_retry_due(broker, stream, consumer_group, identifier)
 

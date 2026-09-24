@@ -228,6 +228,12 @@ class TestTickTracking:
         assert sub.last_idle_tick_started is None
         assert sub.last_work_tick_finished is None
 
+    def test_a_tick_that_cannot_tell_forgets_an_earlier_empty_tick(self, test_domain):
+        sub = _Recording(Engine(domain=test_domain, test_mode=True))
+        sub._record_tick(3.0, False)
+        sub._record_tick(4.0, None)
+        assert sub.last_idle_tick_started is None
+
     async def test_a_tick_override_returning_none_never_counts_as_idle(
         self, test_domain
     ):
