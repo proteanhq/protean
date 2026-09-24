@@ -1485,7 +1485,7 @@ class TestCoreWorkers:
     def test_accepted_spellings_are_normalised(self, value):
         assert validate_workers(value) in ("auto", "logical", "7")
 
-    @pytest.mark.parametrize("value", ["", "-1", "many", "2.5"])
+    @pytest.mark.parametrize("value", ["", "-1", "many", "2.5", "²", "٣"])
     def test_invalid_worker_count_is_rejected(self, value):
         with pytest.raises(typer.BadParameter, match="not a worker count"):
             validate_workers(value)
@@ -1505,6 +1505,24 @@ class TestCoreWorkers:
         commands = [call.args[0] for call in run.call_args_list]
         assert commands
         assert not any("-n" in cmd or "--dist" in cmd for cmd in commands)
+
+    def test_core_rejects_a_bad_worker_count(self, cli_runner):
+        result, run = self._invoke(cli_runner, ["--workers", "many"])
+        assert isinstance(result.exception, typer.BadParameter)
+        assert "not a worker count" in str(result.exception)
+        run.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "category", ["FULL", "COVERAGE", "DATABASE", "BROKER", "EVENTSTORE"]
+    )
+    def test_other_categories_ignore_a_bad_worker_count(self, cli_runner, category):
+        with patch("protean.cli.test.TestRunner.generate_diff_coverage_report"):
+            result, _ = self._invoke(
+                cli_runner,
+                ["-c", category, "--sequential"],
+                env={"PROTEAN_TEST_WORKERS": "many"},
+            )
+        assert result.exit_code == 0
 
     @pytest.mark.parametrize("category", ["DATABASE", "BROKER", "EVENTSTORE"])
     def test_category_suites_never_get_workers(self, cli_runner, category):

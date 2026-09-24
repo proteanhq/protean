@@ -517,7 +517,7 @@ app = typer.Typer()
 def validate_workers(value: str) -> str:
     """Accept a worker count, or a pytest-xdist keyword (``auto``, ``logical``)."""
     value = value.strip().lower()
-    if value.isdigit():
+    if value.isascii() and value.isdigit():
         return str(int(value))
     if value in ("auto", "logical"):
         return value
@@ -565,10 +565,9 @@ def test(
             envvar="PROTEAN_TEST_WORKERS",
             help=(
                 "Worker processes for the CORE category: a number, 'auto' or "
-                "'logical'. 0 runs the suite in one process. Other categories "
-                "always run in one process."
+                "'logical'. 0 runs the suite in one process. The other "
+                "categories never use pytest-xdist and ignore this option."
             ),
-            callback=validate_workers,
         ),
     ] = DEFAULT_CORE_WORKERS,
 ) -> None:
@@ -596,7 +595,8 @@ def test(
 
         case _:  # CORE
             print("Running core tests…")
-            exit_code = runner.run_command(runner.build_core_command(workers))
+            core_command = runner.build_core_command(validate_workers(workers))
+            exit_code = runner.run_command(core_command)
 
     if exit_code != 0:
         raise typer.Exit(code=exit_code)

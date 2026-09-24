@@ -41,9 +41,9 @@ This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLI
 
 ### Parallel runs
 
-`CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. The other categories always run in one process, because their tests share databases, Redis keys, Elasticsearch indexes, and the Message-DB `$all` stream.
+`CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. The other categories never use pytest-xdist and ignore `--workers`. Within one adapter's suite the tests share a database, Redis keys, Elasticsearch indexes, and the Message-DB `$all` stream. `FULL` and `COVERAGE` do run separate adapter suites side by side, up to three at a time, unless you pass `--sequential`.
 
-A test that passes alone but fails in a parallel run depends on state that another test left behind. The root `conftest.py` already resets the domain, the adapters, and the global logging configuration after every test. Fix that shared state in the test or its fixtures. To run the suite in one process, for example to rule out ordering, run:
+A test that passes alone but fails in a parallel run depends on state that another test left behind. The root `conftest.py` already resets the domain, the adapters, the global logging configuration, and the structlog context after every test. Fix that shared state in the test or its fixtures. To run the suite in one process, for example to rule out ordering, run:
 
 ```shell
 protean test --workers 0

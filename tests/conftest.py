@@ -587,6 +587,29 @@ def _restore_logger(logger: logging.Logger, state: _LoggerState) -> None:
     logger.disabled = disabled
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _no_structlog_logger_cache():
+    """Keep structlog from caching loggers for the whole session.
+
+    ``configure_logging`` passes ``cache_logger_on_first_use=True``. A cached
+    module-level logger keeps the processor chain of the configuration that
+    was active the first time it logged, and restoring the configuration
+    afterwards does not reach it. Tests turn the cache off so every logger
+    follows the configuration of the test it runs in.
+    """
+    real_configure = structlog.configure
+
+    def configure_without_cache(*args: Any, **kwargs: Any) -> None:
+        kwargs["cache_logger_on_first_use"] = False
+        real_configure(*args, **kwargs)
+
+    structlog.configure = configure_without_cache
+    try:
+        yield
+    finally:
+        structlog.configure = real_configure
+
+
 @pytest.fixture(autouse=True)
 def _isolate_logging_state():
     """Put the global logging configuration back after every test.
@@ -595,7 +618,8 @@ def _isolate_logging_state():
     state: the root logger's level, handlers and filters, the level of named
     loggers such as ``protean.server.engine``, the ``disabled`` flag that
     ``dictConfig`` sets on loggers it does not mention, ``logging.disable``,
-    and the structlog configuration. A test that calls them would otherwise
+    the structlog configuration, and the structlog context variables that
+    ``add_context`` binds. A test that calls them would otherwise
     change what a later test's ``caplog`` sees, so the suite would pass or
     fail depending on test order, which ``pytest-xdist`` changes.
 
@@ -619,6 +643,7 @@ def _isolate_logging_state():
         logging.disable(disable_level)
     if structlog.get_config() != structlog_config:
         structlog.configure(**structlog_config)
+    structlog.contextvars.clear_contextvars()
 
     level, handlers, filters, propagate, disabled = root_state
     pytest_handlers = [h for h in root.handlers if _is_pytest_handler(h)]
