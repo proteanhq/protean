@@ -44,9 +44,12 @@ class BaseSubscription(ABC):
     # *finished* a tick that did (``time.monotonic()``, ``None`` until then).
     # The engine is idle once every loop has started an empty tick after the
     # last work finished anywhere. A tick that cannot tell (it returned
-    # ``None``, or its read failed) records nothing, so its loop never counts
-    # as idle. A subscription whose poll loop does not record ticks sets
-    # ``reports_idle`` to False.
+    # ``None``, its read failed, or it raised) forgets the loop's last empty
+    # tick, so the loop does not count as idle until it completes another.
+    # A message a broker holds back for a later redelivery is not work, so test
+    # mode does not wait for it.
+    # A subscription whose poll loop does not record ticks, or that hands its
+    # work to other tasks, sets ``reports_idle`` to False.
     reports_idle: bool = True
     last_idle_tick_started: float | None = None
     last_work_tick_finished: float | None = None
@@ -140,6 +143,7 @@ class BaseSubscription(ABC):
                 break
 
             except Exception:
+                self._forget_idle_tick()
                 consecutive_errors += 1
                 logger.exception(
                     "subscription.error",
@@ -168,12 +172,20 @@ class BaseSubscription(ABC):
         then, so the loop is not idle until it completes another empty tick.
         """
         if had_work is None:
-            self.last_idle_tick_started = None
+            self._forget_idle_tick()
             return
         if had_work:
             self.last_work_tick_finished = time.monotonic()
         else:
             self.last_idle_tick_started = started
+
+    def _forget_idle_tick(self) -> None:
+        """Stop counting the last empty tick, so the loop is not idle.
+
+        The poll loop calls this when a tick raises. The loop then backs off
+        and retries, and it must not count as idle in the meantime.
+        """
+        self.last_idle_tick_started = None
 
     async def tick(self) -> bool | None:
         """
