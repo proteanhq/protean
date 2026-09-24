@@ -68,15 +68,24 @@ Default behavior:
 
 Schema names are **not inherited** by subclasses - each subclass gets its own derived name.
 
-### database_model
+### Custom database models
 
-Custom model name for the storage layer:
+Protean builds a database model for every projection. To control the mapping
+yourself, register your own model with `@domain.database_model`. Declare only
+the columns you want to control; Protean fills in the rest of the projection's
+fields.
 
 ```python
-@domain.projection(database_model="custom_inventory_model")
-class ProductInventory:
-    ...
+from sqlalchemy import Column, Text
+from protean.core.database_model import BaseDatabaseModel
+
+@domain.database_model(part_of=ProductInventory, schema_name="inventory")
+class CustomInventoryModel(BaseDatabaseModel):
+    name = Column(Text)
 ```
+
+The `database_model` option on `@domain.projection` is not read by anything, so
+passing your model there leaves the auto-generated one in place.
 
 ## Query options
 
