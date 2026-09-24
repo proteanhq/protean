@@ -17,8 +17,12 @@ Two manifests frame the tree:
 
 The pack stays the single source: each skill's subtree (``SKILL.md`` plus any
 ``assets/`` and ``references/``) is copied verbatim into ``plugins/protean/skills/``.
-The Python ``__init__.py`` package markers the pack carries (it ships as package
-data under ``src/protean``) are dropped, since they are not part of a skill.
+The pack-level ``references/`` directory is copied too, into
+``plugins/protean/references/``: the skills link into it with paths like
+``../../references/verify-with-check.md``, so leaving it out would give the
+installed plugin a dead link in every skill that points there. The Python
+``__init__.py`` package markers the pack carries (it ships as package data under
+``src/protean``) are dropped, since they are not part of a skill.
 
 The render is deterministic: skills come in sorted order and every file is copied
 byte for byte, so the committed tree and a fresh render never disagree. A drift
@@ -36,13 +40,14 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
-from protean.dx.pack import SKILLS_DIR, iter_skills, pack_files
+from protean.dx.pack import REFERENCES_DIR, SKILLS_DIR, iter_skills, pack_files
 
 __all__ = [
     "MARKETPLACE_NAME",
     "MARKETPLACE_PATH",
     "PLUGIN_MANIFEST_PATH",
     "PLUGIN_NAME",
+    "PLUGIN_REFERENCES_ROOT",
     "PLUGIN_ROOT",
     "PLUGIN_SKILLS_ROOT",
     "PLUGIN_SOURCE",
@@ -67,6 +72,7 @@ MARKETPLACE_PATH = ".claude-plugin/marketplace.json"
 PLUGIN_ROOT = "plugins/protean"
 PLUGIN_MANIFEST_PATH = f"{PLUGIN_ROOT}/.claude-plugin/plugin.json"
 PLUGIN_SKILLS_ROOT = f"{PLUGIN_ROOT}/skills"
+PLUGIN_REFERENCES_ROOT = f"{PLUGIN_ROOT}/{REFERENCES_DIR}"
 
 # The Python package marker the pack carries so it ships as package data. It is
 # not part of a skill, so the plugin render drops every one.
@@ -136,15 +142,15 @@ def _dump_json(data: dict[str, Any]) -> bytes:
     return (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def _iter_skill_files(root: Traversable) -> Iterator[tuple[str, bytes]]:
-    """Yield ``(relative_posix_path, bytes)`` for every file under a skill.
+def _iter_pack_files(root: Traversable) -> Iterator[tuple[str, bytes]]:
+    """Yield ``(relative_posix_path, bytes)`` for every file under a pack subtree.
 
-    Walks the skill subtree in sorted order (so the render is deterministic),
-    reads each file's exact bytes, and drops any ``__init__.py`` package marker.
+    Walks the subtree in sorted order (so the render is deterministic), reads
+    each file's exact bytes, and drops any ``__init__.py`` package marker.
     """
     for child in sorted(root.iterdir(), key=lambda entry: entry.name):
         if child.is_dir():
-            for relative, data in _iter_skill_files(child):
+            for relative, data in _iter_pack_files(child):
                 yield f"{child.name}/{relative}", data
         elif child.name != _PACKAGE_MARKER:
             yield child.name, child.read_bytes()
@@ -153,19 +159,24 @@ def _iter_skill_files(root: Traversable) -> Iterator[tuple[str, bytes]]:
 def render_plugin_files(version: str) -> dict[str, bytes]:
     """Render the whole plugin tree for *version* as a path-to-bytes mapping.
 
-    Keys are repo-relative POSIX paths: the two manifests, then every skill file
-    under ``plugins/protean/skills/``. The skills are projected in sorted order
-    and copied byte for byte from the pack, so the result is deterministic and a
-    committed tree written from it round-trips exactly.
+    Keys are repo-relative POSIX paths: the two manifests, every skill file under
+    ``plugins/protean/skills/``, and the shared pack references under
+    ``plugins/protean/references/`` that those skills link into. Everything is
+    projected in sorted order and copied byte for byte from the pack, so the
+    result is deterministic and a committed tree written from it round-trips
+    exactly.
     """
     files: dict[str, bytes] = {
         MARKETPLACE_PATH: _dump_json(marketplace_manifest()),
         PLUGIN_MANIFEST_PATH: _dump_json(plugin_manifest(version)),
     }
-    skills_root = pack_files() / SKILLS_DIR
+    root = pack_files()
+    skills_root = root / SKILLS_DIR
     for name in iter_skills():
-        for relative, data in _iter_skill_files(skills_root / name):
+        for relative, data in _iter_pack_files(skills_root / name):
             files[f"{PLUGIN_SKILLS_ROOT}/{name}/{relative}"] = data
+    for relative, data in _iter_pack_files(root / REFERENCES_DIR):
+        files[f"{PLUGIN_REFERENCES_ROOT}/{relative}"] = data
     return files
 
 

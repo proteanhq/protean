@@ -154,6 +154,9 @@ It writes two manifests and the skill tree:
   the skills carry.
 - `plugins/protean/skills/<name>/` holds each skill's `SKILL.md` and any `assets/`
   and `references/`, copied byte for byte from the pack.
+- `plugins/protean/references/` holds the pack's shared reference pages, the ones
+  the skills link to from their own subtree, so those links still open in an
+  installed plugin.
 
 This cut carries skills only: no commands, agents, or hooks, and the MCP server
 registration stays with the `.mcp.json` file that `install` writes.

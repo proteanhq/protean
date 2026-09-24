@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import posixpath
+import re
+from pathlib import Path, PurePosixPath
 
 import pytest
 from typer.testing import CliRunner
@@ -12,6 +14,7 @@ import protean
 from protean.cli.dx import app
 from protean.dx.pack import (
     PACK_VERSION,
+    REFERENCES_DIR,
     SKILL_FILE,
     SKILLS_DIR,
     iter_skills,
@@ -21,6 +24,7 @@ from protean.dx.plugin import (
     MARKETPLACE_PATH,
     PLUGIN_MANIFEST_PATH,
     PLUGIN_NAME,
+    PLUGIN_REFERENCES_ROOT,
     PLUGIN_ROOT,
     PLUGIN_SKILLS_ROOT,
     PLUGIN_SOURCE,
@@ -111,6 +115,50 @@ def test_skill_with_assets_and_references_projects_them() -> None:
     assert f"{PLUGIN_SKILLS_ROOT}/projector/{SKILL_FILE}" in projector_files
     assert any("/assets/" in path for path in projector_files)
     assert any("/references/" in path for path in projector_files)
+
+
+def test_pack_level_references_are_projected() -> None:
+    """The pack's shared ``references/`` files land in the plugin, byte for byte.
+
+    The skills link into this directory from their own subtree, so a render that
+    carried only ``skills/`` would install a plugin whose reference links all
+    lead nowhere.
+    """
+    rendered = render_plugin_files(PACK_VERSION)
+    source_root = pack_files() / REFERENCES_DIR
+    names = sorted(entry.name for entry in source_root.iterdir() if entry.is_file())
+    assert names, "expected the pack to carry shared references"
+
+    for name in names:
+        path = f"{PLUGIN_REFERENCES_ROOT}/{name}"
+        assert path in rendered
+        assert rendered[path] == (source_root / name).read_bytes()
+
+
+def test_skill_relative_links_resolve_inside_the_render() -> None:
+    """Every relative link in a rendered ``SKILL.md`` points at a rendered file.
+
+    The ``SKILL.md`` files are what Claude Code loads, and they link both within
+    their own skill and up into the shared ``references/``. Resolving each link
+    against the rendered paths catches a pack directory the render leaves behind,
+    which an installed plugin would show as a dead link.
+    """
+    rendered = render_plugin_files(PACK_VERSION)
+    link_pattern = re.compile(r"\]\(([^)]+)\)")
+
+    dangling: list[str] = []
+    for path, data in rendered.items():
+        if not path.endswith(f"/{SKILL_FILE}"):
+            continue
+        for link in link_pattern.findall(data.decode("utf-8")):
+            target = link.split("#", 1)[0].strip()
+            if not target or "://" in target or target.startswith("mailto:"):
+                continue
+            resolved = PurePosixPath(posixpath.normpath(f"{path}/../{target}"))
+            if str(resolved) not in rendered:
+                dangling.append(f"{path} -> {target}")
+
+    assert dangling == []
 
 
 def test_no_package_marker_is_projected() -> None:
