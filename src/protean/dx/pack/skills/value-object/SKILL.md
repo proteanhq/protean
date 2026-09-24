@@ -32,7 +32,7 @@ A critical question: does this concept need identity?
 If identity matters → Use Entity or Aggregate instead.
 If values matter → Use Value Object.
 
-See [Deciding Between Elements](https://docs.proteanhq.com/guides/domain-definition/deciding-between-elements/) for comprehensive guidance.
+See [Deciding Between Elements](https://docs.proteanhq.com/concepts/building-blocks/choosing-element-types/) for comprehensive guidance.
 
 ## Basic structure
 

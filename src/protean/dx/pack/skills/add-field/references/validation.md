@@ -548,4 +548,4 @@ def shipped_order_must_have_tracking(self):
 
 - [Field Types Guide](field-types.md) - Available field types
 - [Complete validator example](../assets/add_field_with_custom_validator.py)
-- [Protean documentation on validators](https://docs.proteanhq.com/guides/domain-definition/fields/arguments/#validators)
+- [Protean documentation on validators](https://docs.proteanhq.com/reference/fields/arguments/#validators)
