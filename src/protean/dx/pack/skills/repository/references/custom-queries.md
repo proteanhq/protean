@@ -20,7 +20,7 @@ Key highlights:
 
 ## The query interface
 
-Inside a custom repository, `self.query` returns a `QuerySet` for fluent filtering, ordering, and pagination. Use `self.find_by()` to load a single aggregate, `self.find()` to run a composable `Q` expression, and `self.exists()` to test for a match without loading it. `self._dao` remains available as an internal escape hatch for infrastructure work (hard deletion, test teardown), so reach for the public helpers in routine domain queries.
+Inside a custom repository, `self.query` returns a `QuerySet` for fluent filtering, ordering, and pagination. Use `self.find_by()` to load a single aggregate, `self.find()` to run a composable `Q` expression, and `self.exists()` to test whether a match exists. `self._dao` remains available as an internal escape hatch for infrastructure work (hard deletion, test teardown), so reach for the public helpers in routine domain queries.
 
 ### Basic Filtering
 
@@ -103,7 +103,7 @@ repo.find_by_category("books") # Custom method
 
 ## Raw Queries
 
-For a database-specific filter that still returns whole aggregates, use `self.query.raw()`. It hydrates every row it gets back into a full aggregate, so the query has to select whole rows:
+For a database-specific filter that still returns whole aggregates, use `self.query.raw()`. It hydrates every row it gets back into a full aggregate, so the query has to select whole rows. The table you name is the aggregate's `schema_name`, which defaults to the underscored class name (`report` for `Report`):
 
 ```python
 @domain.repository(part_of=Report)
@@ -111,11 +111,11 @@ class ReportRepository:
     def find_high_value(self):
         """Use a raw query for a filter the query interface cannot express."""
         return self.query.raw(
-            "SELECT * FROM reports WHERE total_value > 10000"
+            "SELECT * FROM report WHERE total_value > 10000"
         )
 ```
 
-A result that cannot become an aggregate, such as an aggregation or a two-column summary, needs the provider-level `raw()` instead. It hands back the rows as the database returned them:
+A result that cannot become an aggregate, such as an aggregation or a two-column summary, needs the provider-level `raw()` instead. It hands back the rows as the database returned them. Look the provider up through the aggregate's own `meta_.provider`, so the query runs against the database the repository is wired to:
 
 ```python
 from protean.utils.globals import current_domain
@@ -124,8 +124,8 @@ from protean.utils.globals import current_domain
 class ReportRepository:
     def find_summary_stats(self):
         """Aggregate in the database and read the rows back as they come."""
-        return current_domain.providers["default"].raw(
-            "SELECT report_type, SUM(total_value) FROM reports GROUP BY report_type"
+        return current_domain.providers[Report.meta_.provider].raw(
+            "SELECT report_type, SUM(total_value) FROM report GROUP BY report_type"
         )
 ```
 

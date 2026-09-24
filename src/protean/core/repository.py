@@ -202,8 +202,9 @@ class BaseRepository(Element, OptionsMixin):
         """Check if any aggregate matches the given Q criteria.
 
         Returns ``True`` when at least one aggregate satisfies the
-        criteria, ``False`` otherwise.  Unlike ``find``, this method
-        does not load aggregate objects -- it only checks for existence::
+        criteria, ``False`` otherwise. It runs the same query as ``find``
+        and checks how many rows came back, so it reads the matching
+        aggregates rather than asking the database for existence alone::
 
             if repo.exists(Q(email="john@example.com")):
                 raise ValueError("Email already taken")

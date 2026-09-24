@@ -62,7 +62,12 @@ def place_order(order_id: str):
 
 ## 2. Aggregates That Are Too Large
 
-**Problem:** Aggregates with many entity types, causing performance issues and tripping the `AGGREGATE_TOO_LARGE` check once the cluster declares more entity classes than `[lint] aggregate_size_limit` (default 5).
+**Problem:** An aggregate that holds too much. Two different things go wrong under that heading, and `check` only sees one of them.
+
+- **Too many entity types.** `check` counts the entity classes in the cluster and reports `AGGREGATE_TOO_LARGE` once the count goes past `[lint] aggregate_size_limit` (default 5).
+- **Too many rows behind a `HasMany`.** `check` reads the code, not the data, so it cannot see this one. You have to catch it while modelling.
+
+The example below is the second kind. It declares three entity types, so it stays under the default limit and `check` says nothing, but every `Customer` load pulls the whole history back.
 
 ❌ **Bad:**
 
@@ -110,6 +115,7 @@ class SupportTicket:
 
 **Rule of thumb:**
 - `check` flags an aggregate declaring more entity types than the configured `[lint] aggregate_size_limit` (default 5) as `AGGREGATE_TOO_LARGE`
+- A clean `check` does not mean the aggregate is small. Judge row counts yourself
 - If the aggregate is genuinely too large, split it into separate aggregates
 - Reference by ID instead of containment
 
