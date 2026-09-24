@@ -28,8 +28,9 @@ Usage:
 
 import uuid
 
-from protean import Domain
+from protean import Domain, invariant
 from protean.core.aggregate import apply
+from protean.exceptions import ValidationError
 from protean.fields import (
     Float,
     HasMany,
@@ -66,6 +67,13 @@ class LineItem:
     description: String(max_length=200)
     quantity: Integer(required=True, min_value=1)
     unit_price: ValueObject(Money, required=True)
+
+    @invariant.post
+    def price_must_be_positive(self):
+        """`min_value` cannot reach inside an embedded value object, so the
+        rule that a sold item costs something lives here."""
+        if self.unit_price.amount < 0.01:
+            raise ValidationError({"unit_price": ["Unit price must be at least 0.01"]})
 
     @property
     def subtotal(self) -> float:
@@ -129,9 +137,27 @@ class Order:
     items: HasMany(LineItem)
 
     @property
-    def total(self) -> float:
-        """Calculate order total from line items."""
-        return sum(item.subtotal for item in self.items)
+    def currency(self) -> str:
+        """The order's currency, taken from its items."""
+        return self.items[0].unit_price.currency if self.items else "USD"
+
+    @property
+    def total(self) -> Money:
+        """Order total. One currency per order, so the amounts can be summed."""
+        return Money(
+            amount=sum(item.subtotal for item in self.items),
+            currency=self.currency,
+        )
+
+    @invariant.post
+    def items_share_one_currency(self):
+        """Summing amounts across currencies would be meaningless, so an order
+        holds items of exactly one currency."""
+        currencies = {item.unit_price.currency for item in self.items}
+        if len(currencies) > 1:
+            raise ValidationError(
+                {"items": [f"Order mixes currencies: {sorted(currencies)}"]}
+            )
 
     # --- Factory classmethod ---
 
@@ -151,11 +177,16 @@ class Order:
     # --- Business methods (validate then raise; @apply handles state) ---
 
     def add_item(
-        self, product_id, description="", quantity=1, unit_price=0.0, currency="USD"
+        self, product_id, unit_price, description="", quantity=1, currency="USD"
     ):
         """Add an item to the order."""
         if self.status != "DRAFT":
             raise ValueError(f"Cannot add items to order in '{self.status}' status")
+        if self.items and currency != self.currency:
+            raise ValueError(
+                f"Order {self.order_id} is in {self.currency}; "
+                f"cannot add a {currency} item"
+            )
 
         item_id = str(uuid.uuid4())
         self.raise_(
@@ -246,7 +277,8 @@ if __name__ == "__main__":  # pragma: no cover
         )
 
         print(
-            f"Order {order.order_id}: {len(order.items)} items, total=${order.total:.2f}"
+            f"Order {order.order_id}: {len(order.items)} items, "
+            f"total={order.total.amount:.2f} {order.total.currency}"
         )
         print(f"Status: {order.status}")
         print(f"Events: {len(order._events)}")

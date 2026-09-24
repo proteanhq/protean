@@ -422,12 +422,59 @@ def test_every_value_object_is_referenced():
 # the pack and rejects any that passes a bare `model=` keyword to an
 # `@domain.aggregate(...)` call, or gives a `model` option its own heading.
 
-# `model=` inside an `aggregate(...)` call, but not `database_model=`: the `\b`
-# before `model` fails inside `database_model`, where the preceding `_` is a
-# word character, so that legitimate option is left alone.
-_BAD_AGGREGATE_MODEL_KWARG = re.compile(r"aggregate\([^)]*\bmodel\s*=")
 # A heading that documents an option literally named `model`, e.g. "### `model`".
 _MODEL_OPTION_HEADING = re.compile(r"(?m)^#+\s*`model`\s*$")
+
+# Brackets, and a `model=` keyword. The `\b` before `model` fails inside
+# `database_model`, where the preceding `_` is a word character, so the real
+# option is left alone.
+_BRACKET_OR_MODEL_KWARG = re.compile(r"[()\[\]{}]|\bmodel\s*=")
+
+
+def _aggregate_call_arguments(text: str) -> list[str]:
+    """The argument text of every `aggregate(...)` call, parentheses balanced.
+
+    Matching the arguments with `[^)]*` does not work: it stops at the first
+    `)`, which in `@domain.aggregate(indexes=[Index("email")], model=Custom)`
+    closes the nested `Index(...)` call, so the `model=` after it is never
+    reached. Counting brackets reads the whole argument list instead.
+    """
+    arguments = []
+    for match in re.finditer(r"\baggregate\(", text):
+        depth = 0
+        start = match.end()
+        for index in range(start - 1, len(text)):
+            character = text[index]
+            if character in "([{":
+                depth += 1
+            elif character in ")]}":
+                depth -= 1
+                if depth == 0:
+                    arguments.append(text[start:index])
+                    break
+        else:
+            # An unclosed call, which a docs page can legitimately contain in an
+            # elided snippet. Scan what is there rather than skipping it.
+            arguments.append(text[start:])
+    return arguments
+
+
+def _names_a_model_kwarg(arguments: str) -> bool:
+    """True when `model=` is a keyword of this call rather than a nested one.
+
+    The depth count keeps a nested `Index(model=...)` from being read as an
+    argument of the `aggregate(...)` call that encloses it.
+    """
+    depth = 0
+    for match in _BRACKET_OR_MODEL_KWARG.finditer(arguments):
+        token = match.group()
+        if token in "([{":
+            depth += 1
+        elif token in ")]}":
+            depth -= 1
+        elif depth == 0:
+            return True
+    return False
 
 
 def test_the_docs_sweep_is_not_vacuous():
@@ -440,7 +487,7 @@ def test_no_skill_page_names_a_model_option_on_aggregate():
     for path in DOCS:
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(SKILLS_ROOT)
-        if _BAD_AGGREGATE_MODEL_KWARG.search(text):
+        if any(map(_names_a_model_kwarg, _aggregate_call_arguments(text))):
             offenders.append(
                 f"{rel}: passes `model=` to @domain.aggregate; the custom-model "
                 "option is `database_model`"
@@ -456,3 +503,25 @@ def test_no_skill_page_names_a_model_option_on_aggregate():
         "a page that names one teaches code that raises a TypeError:\n  "
         + "\n  ".join(offenders)
     )
+
+
+@pytest.mark.parametrize(
+    ("snippet", "names_a_model_kwarg"),
+    [
+        ("@domain.aggregate(model=CustomUserModel)", True),
+        # The shape the `[^)]*` pattern missed: a nested call closes a paren
+        # before the bad keyword is reached. `add-field/SKILL.md` ships
+        # `@domain.aggregate(indexes=[Index("email")])`, so this is a real shape.
+        ('@domain.aggregate(indexes=[Index("email")], model=CustomModel)', True),
+        ('@domain.aggregate(indexes=[Index("email")], database_model=M)', False),
+        ('@domain.aggregate(\n    provider="sqlite",\n    model=M,\n)', True),
+        ("@domain.aggregate(database_model=CustomUserModel)", False),
+        ('@domain.aggregate(part_of="Order")', False),
+        # `model=` belongs to the nested call, not to the aggregate.
+        ("@domain.aggregate(indexes=[Index(model=X)])", False),
+    ],
+)
+def test_the_model_kwarg_scan_reads_nested_arguments(snippet, names_a_model_kwarg):
+    arguments = _aggregate_call_arguments(snippet)
+    assert arguments, f"found no aggregate(...) call in {snippet!r}"
+    assert any(map(_names_a_model_kwarg, arguments)) is names_a_model_kwarg
