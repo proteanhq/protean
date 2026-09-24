@@ -106,14 +106,18 @@ testing tool.
 
 Use `Engine(domain, test_mode=True)` for tests that exercise the actual
 async processing infrastructure. The engine's `run()` method in test mode
-executes three deterministic processing cycles with 0.1-second sleeps between
-them, then performs a graceful shutdown. No `time.sleep()` guesswork.
+starts every subscription, lets them process messages until none of them finds
+more work, then performs a graceful shutdown. Messages that handlers raise
+along the way are processed too. No `time.sleep()` guesswork.
+
+Test mode stops waiting after about a second if some subscription keeps
+finding work, for example while it retries a failing handler.
 
 ```python
 engine = Engine(domain, test_mode=True)
 engine.run()
 
-# Engine has processed all pending messages across 3 cycles
+# Engine has processed all pending messages
 view = domain.view_for(OrderDashboard)
 dashboard = view.get("ord-123")
 assert dashboard.status == "placed"
@@ -396,7 +400,7 @@ class TestOrderFlowAsync:
             )
         )
 
-        # Run the engine in test mode: 3 deterministic cycles, then shutdown
+        # Run the engine in test mode until every subscription is idle
         engine = Engine(domain, test_mode=True)
         engine.run()
 
@@ -499,8 +503,8 @@ class TestPriorityLanes:
             priority=Priority.BACKFILL,
         )
 
-        # In test mode with 3 cycles, backfill events are still processed
-        # (the primary stream is empty, so the backfill stream is polled).
+        # In test mode, backfill events are still processed (the primary
+        # stream is empty, so the backfill stream is polled).
         engine = Engine(domain, test_mode=True)
         engine.run()
 

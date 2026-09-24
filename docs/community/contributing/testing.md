@@ -15,6 +15,7 @@ protean test [OPTIONS]
 Options:
 
 - `-c, --category [CORE|EVENTSTORE|DATABASE|COVERAGE|FULL]`: Specifies which category of tests to run
+- `-n, --workers TEXT`: Worker processes for the `CORE` category: a number, `auto`, or `logical` (the default, one per logical CPU). `0` runs the suite in one process. You can also set it with the `PROTEAN_TEST_WORKERS` environment variable.
 
 Categories:
 
@@ -37,6 +38,16 @@ protean test -c DATABASE
 > **Note**: Make sure that the underlying database services are running within Docker before executing tests in the `DATABASE`, `EVENTSTORE`, or `FULL` categories. Use the `make up` command to start the necessary services.
 
 This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
+
+### Parallel runs
+
+`CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. The other categories always run in one process, because their tests share databases, Redis keys, Elasticsearch indexes, and the Message-DB `$all` stream.
+
+A test that passes alone but fails in a parallel run depends on state that another test left behind. The root `conftest.py` already resets the domain, the adapters, and the global logging configuration after every test. Fix that shared state in the test or its fixtures. To run the suite in one process, for example to rule out ordering, run:
+
+```shell
+protean test --workers 0
+```
 
 ## Multi-Version Testing with Nox
 

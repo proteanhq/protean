@@ -154,9 +154,9 @@ protean server --domain=my_domain --test-mode
 In test mode, the server:
 
 1. Starts all subscriptions and processors
-2. Runs multiple processing cycles
-3. Allows message chain propagation
-4. Shuts down after processing completes
+2. Processes messages, including the ones handlers raise along the way
+3. Shuts down as soon as no subscription finds more work, or after about a
+   second if some subscription keeps finding work
 
 For examples of using test mode in your test suite, see
 [Integration Tests](../testing/integration-tests.md).
