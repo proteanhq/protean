@@ -514,9 +514,9 @@ def test_every_value_object_is_referenced():
 # the pack and rejects any that passes a bare `model=` keyword to an
 # `@domain.aggregate(...)` call, or gives a `model` option its own heading.
 
-# Every `aggregate(` on the page, wherever it sits. The token scan reads forward
-# from each one, so no markdown block form can hide the call behind it.
-_AGGREGATE_CALL = re.compile(r"\baggregate\s*\(")
+# The decorator's name, wherever it sits. Nothing here decides whether a call
+# follows it; the token scan reads forward from each hit and answers that.
+_AGGREGATE_NAME = re.compile(r"\baggregate\b")
 
 # `model` written as an identifier in prose or in a heading, which is how a page
 # names an option outside a code sample: "### The `model` option", "`model` is
@@ -630,23 +630,26 @@ def test_the_docs_sweep_is_not_vacuous():
 
 
 def _model_kwarg_verdicts(text: str) -> list[bool | None]:
-    """One verdict per `aggregate(` on the page, read straight from the raw text.
+    """One verdict per `aggregate` on the page, read straight from the raw text.
 
-    This knows nothing about markdown, and that is the point. Three earlier
-    versions decided first *where* on a page code could sit and read only
-    there, and every version of that list was incomplete: python fences only,
-    then fences and inline spans, while CommonMark also has `~~~` fences and
-    four-space indented blocks, and a page can always hold the call in a shape
-    the list has not got to yet. Widening the list was never going to end.
+    Every earlier version of this had one regex deciding what could be a call
+    site, and each time the regex turned out to be able to miss one. First it
+    was where on the page code may sit: python fences only, then fences and
+    inline spans, while CommonMark also has `~~~` fences and four-space
+    indented blocks. Then, with the page read raw, it was what may separate the
+    name from its paren: `aggregate\\s*\\(` does not match the backslash in
+    `@domain.aggregate \\` continued onto the next line.
 
-    So the list is gone. Every `aggregate(` is a candidate and the token scan
-    reads forward from each one. The scan knows a string literal from code and
-    counts real delimiters, so it answers the same way whatever markup sits
-    around the call, and it stops at the closing paren either way.
+    So the regex now matches the decorator's name and nothing else, and the
+    token scan decides whether a call follows. The tokenizer reads line
+    continuations, comments and string literals the way Python does, so there
+    is no separator left for a pattern here to get wrong. The name has to
+    appear for the page to name the decorator at all, which is what makes it
+    the one thing worth searching for.
     """
     return [
         _model_kwarg_via_tokens(text[match.start() :])
-        for match in _AGGREGATE_CALL.finditer(text)
+        for match in _AGGREGATE_NAME.finditer(text)
     ]
 
 
@@ -800,6 +803,21 @@ def test_the_indented_regression_cases_exercise_the_tokenizer():
             "```text\n`model` is the custom-model option on "
             "`@domain.aggregate`.\n```\n",
             True,
+        ),
+        # Explicit line continuation between the name and its arguments. This
+        # parses, and the candidate pattern used to require the paren right
+        # after the name, so nothing looked at it.
+        (
+            "```python\n@domain.aggregate \\\n(model=CustomUserModel)\n"
+            "class User:\n    pass\n```\n",
+            True,
+        ),
+        # The word in prose ahead of a correct call. Searching for the bare name
+        # makes both of these candidates, and neither may report.
+        (
+            "The aggregate is the consistency boundary.\n\n```python\n"
+            "@domain.aggregate(database_model=M)\nclass User:\n    pass\n```\n",
+            False,
         ),
         ("Use `@domain.aggregate(database_model=M)` to override it.\n", False),
         # An inline span that is only a word still has to read as no call.
