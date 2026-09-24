@@ -2,7 +2,11 @@
 
 import time
 
-from protean.adapters.broker.inline import CONSUMER_GROUP_SEPARATOR
+from tests.adapters.broker.inline.retry_queue import (
+    make_retry_due,
+    retry_group_key,
+    scheduled_retry_time,
+)
 
 # `nack` stores `time.time() + delay`. A wall-clock timestamp is around 1.8e9,
 # where a float carries only about 2e-7 seconds of absolute precision, so that
@@ -80,38 +84,13 @@ def test_exponential_backoff(broker):
         # Still withheld: its retry time has not arrived.
         assert broker.get_next(stream, consumer_group) is None
 
-        scheduled = _scheduled_retry_time(broker, stream, consumer_group, identifier)
+        scheduled = scheduled_retry_time(broker, stream, consumer_group, identifier)
         expected_delay = broker._retry_delay * broker._backoff_multiplier**attempt
         assert scheduled - after - _CLOCK_EPSILON <= expected_delay
         assert expected_delay <= scheduled - before + _CLOCK_EPSILON
 
-        _make_retry_due(broker, stream, consumer_group, identifier)
+        make_retry_due(broker, stream, consumer_group, identifier)
         assert broker.get_next(stream, consumer_group) is not None
-
-
-def _group_key(stream: str, consumer_group: str) -> str:
-    return f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
-
-
-def _retry_queue(broker, stream: str, consumer_group: str) -> list:
-    return broker._failed_messages[_group_key(stream, consumer_group)]
-
-
-def _scheduled_retry_time(broker, stream, consumer_group, identifier) -> float:
-    queue = _retry_queue(broker, stream, consumer_group)
-    times = [entry[3] for entry in queue if entry[0] == identifier]
-    assert len(times) == 1, f"expected one queued retry, found {len(times)}"
-    return times[0]
-
-
-def _make_retry_due(broker, stream, consumer_group, identifier) -> None:
-    """Bring a queued retry forward instead of sleeping until it is due."""
-    group_key = _group_key(stream, consumer_group)
-    queue = _retry_queue(broker, stream, consumer_group)
-    broker._failed_messages[group_key] = [
-        (msg_id, msg, count, 0.0 if msg_id == identifier else due)
-        for msg_id, msg, count, due in queue
-    ]
 
 
 def test_max_retries_enforcement(broker):
@@ -208,8 +187,13 @@ def test_retry_with_multiple_messages(broker):
     result = broker.get_next(stream, consumer_group)
     assert result is None
 
-    # Wait for retry delay
-    time.sleep(0.6)
+    # Bring the retries forward instead of sleeping until they are due
+    for identifier in identifiers:
+        assert (
+            scheduled_retry_time(broker, stream, consumer_group, identifier)
+            > time.time()
+        )
+        make_retry_due(broker, stream, consumer_group, identifier)
 
     # All messages should be available for retry
     retried = []
@@ -249,8 +233,8 @@ def test_retry_with_mixed_ack_nack(broker):
     result = broker.get_next(stream, consumer_group)
     assert result is None
 
-    # Wait for retry
-    time.sleep(0.6)
+    # Bring the retry forward instead of sleeping until it is due
+    make_retry_due(broker, stream, consumer_group, id2)
 
     # Only NACKed message should be available
     result = broker.get_next(stream, consumer_group)
@@ -312,7 +296,7 @@ def test_retry_failed_message_structure(broker):
     broker.nack(stream, identifier, consumer_group)
 
     # Check failed message structure
-    group_key = _group_key(stream, consumer_group)
+    group_key = retry_group_key(stream, consumer_group)
     assert len(broker._failed_messages[group_key]) == 1
 
     failed_msg = broker._failed_messages[group_key][0]
@@ -377,6 +361,6 @@ def test_cleanup_operations_during_nack(broker):
     assert not broker._is_in_flight_message(stream, consumer_group, identifier)
 
     # Verify message is in failed queue
-    group_key = _group_key(stream, consumer_group)
+    group_key = retry_group_key(stream, consumer_group)
     assert len(broker._failed_messages[group_key]) == 1
     assert broker._failed_messages[group_key][0][0] == identifier

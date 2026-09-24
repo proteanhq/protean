@@ -7,7 +7,7 @@ Verifies that when priority lanes are enabled, StreamSubscription:
 """
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -604,7 +604,17 @@ class TestErrorHandling:
 
         sub.process_batch = _fake_process_batch
 
-        await sub.poll()
+        # Skip the 1s backoff after the error; the test is about read order.
+        real_sleep = asyncio.sleep
+
+        async def _no_wait(delay):
+            await real_sleep(0)
+
+        with patch(
+            "protean.server.subscription.stream_subscription.asyncio.sleep",
+            side_effect=_no_wait,
+        ):
+            await sub.poll()
 
         # After backfill error, the loop should re-check primary first
         assert streams_read[0] == "orders"  # First primary check

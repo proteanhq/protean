@@ -5,6 +5,7 @@ import time
 from unittest.mock import patch
 
 from protean.port.broker import OperationState
+from tests.adapters.broker.inline.retry_queue import make_retry_due
 
 # ============= ACK Tests =============
 
@@ -209,8 +210,8 @@ def test_nack_with_retry_mechanism(broker):
     immediate_retry = broker.get_next(stream, consumer_group)
     assert immediate_retry is None
 
-    # Wait for first retry delay
-    time.sleep(0.15)
+    # Bring the first retry forward instead of sleeping until it is due
+    make_retry_due(broker, stream, consumer_group, identifier)
 
     # Message should be available for retry
     retry_message = broker.get_next(stream, consumer_group)
@@ -226,8 +227,8 @@ def test_nack_with_retry_mechanism(broker):
     immediate_retry = broker.get_next(stream, consumer_group)
     assert immediate_retry is None
 
-    # Wait for second retry delay (should be longer due to exponential backoff)
-    time.sleep(0.25)  # 0.1 * 2 = 0.2, plus buffer
+    # Bring the second retry forward instead of sleeping until it is due
+    make_retry_due(broker, stream, consumer_group, identifier)
 
     # Message should be available again
     retry_message_2 = broker.get_next(stream, consumer_group)

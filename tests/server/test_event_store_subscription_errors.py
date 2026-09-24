@@ -1292,6 +1292,8 @@ class TestPollAndCleanup:
         """poll() exits when engine.shutting_down is set."""
         sub = _make_subscription(test_domain, SucceedingEventHandler)
         sub.tick = AsyncMock()
+        # Check the flag after every tick, not once a second.
+        sub.tick_interval = 0
 
         async def stop_engine():
             await asyncio.sleep(0.05)
