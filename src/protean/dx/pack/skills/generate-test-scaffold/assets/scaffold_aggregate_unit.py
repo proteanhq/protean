@@ -15,7 +15,14 @@ OrderCancelled), with business rules guarding both transitions.
 
 from protean import Domain, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Identifier, Integer, String
+from protean.fields import (
+    Float,
+    HasMany,
+    Identifier,
+    Integer,
+    String,
+    ValueObject,
+)
 
 domain = Domain(__name__)
 domain.config["event_processing"] = "sync"
@@ -72,12 +79,12 @@ class LineItem:
 
     product_id: String(required=True, max_length=50)
     quantity: Integer(required=True, min_value=1)
-    unit_price: Float(required=True)
+    unit_price: ValueObject(Money, required=True)
 
     @property
     def subtotal(self) -> float:
         """Calculate line item subtotal."""
-        return self.quantity * self.unit_price
+        return self.quantity * self.unit_price.amount
 
 
 # --- Aggregate ---
@@ -113,12 +120,16 @@ class Order:
 
     # --- Business methods ---
 
-    def add_item(self, product_id, quantity, unit_price):
-        """Add a line item to the order."""
+    def add_item(self, product_id, quantity, unit_price, currency="USD"):
+        """Add a line item to the order.
+
+        Takes the price as a plain number and wraps it in `Money`, so a caller
+        stays simple while the item holds the value object.
+        """
         item = LineItem(
             product_id=product_id,
             quantity=quantity,
-            unit_price=unit_price,
+            unit_price=Money(amount=unit_price, currency=currency),
         )
         self.add_line_items(item)
         return item

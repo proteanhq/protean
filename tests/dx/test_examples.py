@@ -367,27 +367,36 @@ def _is_value_object(class_node: ast.ClassDef) -> bool:
     return False
 
 
-def _value_objects() -> list[tuple[Path, ast.Module, str]]:
+def _value_objects() -> list[tuple[Path, ast.Module, ast.ClassDef]]:
     found = []
     for path in ASSETS:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         found.extend(
-            (path, tree, node.name)
+            (path, tree, node)
             for node in ast.walk(tree)
             if isinstance(node, ast.ClassDef) and _is_value_object(node)
         )
     return found
 
 
-def _name_is_referenced(tree: ast.Module, name: str) -> bool:
-    """True when `name` appears as a `Name` node anywhere in the module.
+def _name_is_referenced(tree: ast.Module, declaration: ast.ClassDef, name: str) -> bool:
+    """True when `name` appears as a `Name` node outside its own declaration.
 
-    A class declaration stores its name as the `ClassDef.name` string, not as a
-    `Name` node, so the declaration itself never counts as a reference. Any
-    `Name` occurrence (`ValueObject(Money)`, `Money(amount=...)`) is a real use.
+    A class declaration stores its name as the `ClassDef.name` string, so the
+    `class Money:` line itself is never a `Name` node. Its body is a different
+    matter: a method that returns `Money(...)`, which is how a value object
+    writes an operation over its own type, puts a real `Name` node inside the
+    declaration. Counting those makes every such value object look used.
+
+    `scaffold_aggregate_unit.py` was exactly that. It declared `Money` with an
+    `add()` method returning `Money(...)`, while `LineItem.unit_price` stayed a
+    `Float`, so the orphan this sweep exists to catch walked straight through
+    it. The declaring class subtree is excluded for that reason.
     """
+    own = {id(node) for node in ast.walk(declaration)}
     return any(
-        isinstance(node, ast.Name) and node.id == name for node in ast.walk(tree)
+        isinstance(node, ast.Name) and node.id == name and id(node) not in own
+        for node in ast.walk(tree)
     )
 
 
@@ -396,16 +405,97 @@ def test_the_value_object_sweep_is_not_vacuous():
     value_objects = _value_objects()
     assert len(value_objects) >= 40, (
         "expected the pack's example value objects, found "
-        f"{sorted(name for _, _, name in value_objects)}"
+        f"{sorted(node.name for _, _, node in value_objects)}"
     )
+
+
+@pytest.mark.parametrize(
+    ("label", "source", "referenced"),
+    [
+        (
+            "an operation over its own type",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+    def add(self, other):
+        return Money(amount=self.amount + other.amount)
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    unit_price: Float(required=True)
+""",
+            False,
+        ),
+        (
+            "embedded in an entity",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+
+@domain.entity(part_of="Order")
+class LineItem:
+    unit_price: ValueObject(Money, required=True)
+""",
+            True,
+        ),
+        (
+            "constructed in a handler",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+
+
+@domain.aggregate
+class Order:
+    def price(self):
+        return Money(amount=1.0)
+""",
+            True,
+        ),
+        (
+            "declared and nothing else",
+            """
+@domain.value_object
+class Money:
+    amount: Float(required=True)
+""",
+            False,
+        ),
+    ],
+)
+def test_the_value_object_sweep_ignores_the_declaration_itself(
+    label, source, referenced
+):
+    """A value object with a method over its own type is still an orphan.
+
+    `scaffold_aggregate_unit.py` shipped exactly that shape: `Money` with an
+    `add()` returning `Money(...)`, while `LineItem.unit_price` stayed a
+    `Float`. The sweep walked the whole module, counted the `Name` nodes inside
+    `Money`'s own body, and passed the asset the sweep exists to catch.
+    """
+    tree = ast.parse(source)
+    declaration = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "Money"
+    )
+
+    assert _name_is_referenced(tree, declaration, "Money") is referenced, label
 
 
 def test_every_value_object_is_referenced():
     orphans = []
-    for path, tree, name in _value_objects():
-        if not _name_is_referenced(tree, name):
+    for path, tree, declaration in _value_objects():
+        if not _name_is_referenced(tree, declaration, declaration.name):
             orphans.append(
-                f"{path.name}: value object {name} is declared but never used"
+                f"{path.name}: value object {declaration.name} is declared but "
+                "never used"
             )
 
     assert not orphans, (
