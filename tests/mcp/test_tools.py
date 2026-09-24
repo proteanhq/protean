@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from protean.dx import pack
 from protean.mcp import tools
 from tests.shared import module_unavailable
 
@@ -141,6 +142,7 @@ class TestReadTools:
             tools.introspect(CLEAN_DOMAIN)
 
 
+@pytest.mark.no_test_domain
 class TestExplain:
     def test_explains_a_known_code(self):
         result = tools.explain("UNHANDLED_EVENT")
@@ -152,6 +154,49 @@ class TestExplain:
         assert result["fix"]
         assert result["kind"] in {"lint", "raise", "staleness"}
         assert "resolution" in result
+        assert "teaching_skills" in result
+
+    def test_teaching_skills_names_the_skill_that_teaches_the_code(self):
+        result = tools.explain("AGGREGATE_TOO_LARGE")
+        assert "split-aggregate" in result["teaching_skills"]
+
+    def test_mutating_the_returned_list_does_not_poison_the_shared_cache(self):
+        # pack.diagnostic_code_skills() is lru_cache-d, so explain() must copy
+        # the list before returning it. Otherwise a caller mutating the result
+        # corrupts the cache for every later explain() and build_diagnostic()
+        # call.
+        result = tools.explain("AGGREGATE_TOO_LARGE")
+        result["teaching_skills"].append("POISON")
+
+        again = tools.explain("AGGREGATE_TOO_LARGE")
+        assert "POISON" not in again["teaching_skills"]
+
+    def test_teaching_skills_is_an_empty_list_for_a_code_no_skill_teaches(self):
+        # DEPRECATED_FIELD sits on the DX pack's coverage-guard exclusion list
+        # (tests/dx/test_diagnostic_codes.py): no skill teaches it. The key must
+        # still be present and empty, not absent (unlike build_diagnostic, which
+        # omits the key for the same code).
+        result = tools.explain("DEPRECATED_FIELD")
+        assert result["teaching_skills"] == []
+
+    def test_teaching_skills_degrades_to_empty_when_the_pack_is_stripped(
+        self, monkeypatch
+    ):
+        def _stripped():
+            raise FileNotFoundError("pack data stripped from the install")
+
+        # Clear the cached reverse index around the monkeypatch, so neither a
+        # prior test's real-pack cache leaks in here, nor this stripped-pack
+        # answer leaks out to a later test.
+        pack.diagnostic_code_skills.cache_clear()
+        monkeypatch.setattr(pack, "pack_files", _stripped)
+
+        try:
+            result = tools.explain("AGGREGATE_TOO_LARGE")
+        finally:
+            pack.diagnostic_code_skills.cache_clear()
+
+        assert result["teaching_skills"] == []
 
     def test_a_code_is_matched_case_insensitively(self):
         assert tools.explain("unhandled_event")["code"] == "UNHANDLED_EVENT"

@@ -7,6 +7,10 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - COMMAND_HANDLER_CROSS_CLUSTER
+    - HANDLER_TOO_BROAD
+    - HANDLER_PERSISTS_AND_CALLS_OUT
 ---
 
 # Command Handler
@@ -181,6 +185,14 @@ def handle_place_order(self, command):
     order = Order(...)
     domain.repository_for(Order).add(order)
 ```
+
+### What `check` reports
+
+`check` inspects your command handlers and reports these diagnostics:
+
+- `COMMAND_HANDLER_CROSS_CLUSTER`: the handler processes a command that belongs to another cluster, which puts that aggregate's write path outside its own consistency boundary. Move the handler into the owning cluster, or model the interaction as an event reaction across the boundary.
+- `HANDLER_TOO_BROAD`: the handler handles more message types than the configured `[lint] handler_breadth_limit`, so it has grown into a catch-all. Split it into focused handlers, or raise the limit if the breadth is intentional.
+- `HANDLER_PERSISTS_AND_CALLS_OUT`: one handler method calls an external system after its first `repository_for(...)`, so the call runs with the Unit of Work's transaction open, holding row locks and a pooled connection for as long as the call takes, and a retry re-runs the method and re-issues the call. A call made before any repository access runs outside the transaction and is not flagged. Split the method into one that persists and one that calls out; when the call must follow the write, have the persisting method raise an event and handle that. If the write genuinely needs the call's result, keep both and pass the remote system's idempotency key so a retry does not duplicate the effect.
 
 ## Detailed references
 

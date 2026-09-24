@@ -7,6 +7,9 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - COMMAND_NOT_IMPERATIVE
+    - UNUSED_COMMAND
 ---
 
 # Command
@@ -176,6 +179,13 @@ Instead: Create a new command instance
 ```python
 command = PlaceOrder(order_id="ORD-001", customer_id="CUST-456")
 ```
+
+### What `check` reports
+
+`check` inspects your commands and reports these diagnostics:
+
+- `COMMAND_NOT_IMPERATIVE`: the command is named in a mood that is not imperative (`OrderPlacement`), so it reads like data or an event. Rename it to a verb-first imperative phrase (`PlaceOrder`).
+- `UNUSED_COMMAND`: the command has no registered handler, so nothing processes it. Add a command handler method for it, or remove the command if it is unused.
 
 ## Detailed references
 

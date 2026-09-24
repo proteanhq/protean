@@ -7,6 +7,11 @@ metadata:
   author: proteanhq
   version: "0.1"
   category: element
+  diagnostic_codes:
+    - EVENT_NOT_PAST_TENSE
+    - EVENT_WITHOUT_DATA
+    - UNRAISED_EVENT
+    - UNHANDLED_EVENT
 ---
 
 # Event
@@ -299,6 +304,15 @@ event.order_id = "789"  # Wrong! Events are immutable
 event = OrderPlaced(order_id="123", customer_id="456")
 # Cannot modify - event is immutable and represents what happened
 ```
+
+### What `check` reports
+
+`check` inspects your events and reports these diagnostics:
+
+- `EVENT_NOT_PAST_TENSE`: the event is named as a gerund (`OrderPlacing`), so it describes an in-flight action and reads like a command. Rename it to the past tense (`OrderPlaced`).
+- `EVENT_WITHOUT_DATA`: the event declares no fields, so it carries nothing about the state change. Add fields capturing what changed, or confirm the event is intentionally a bare signal.
+- `UNRAISED_EVENT`: no aggregate or entity method raises the event. The check reads only aggregate and entity method bodies, so an event raised from a command handler, subscriber, or module-level factory still shows here. Raise it from the aggregate or entity method that makes the change it records, or remove the event if nothing produces it.
+- `UNHANDLED_EVENT`: the event has no registered handler, projector, or process manager, so nothing reacts to it. Register a consumer for it, or mark it `published=True` if it is meant only for external subscribers.
 
 ## Detailed references
 

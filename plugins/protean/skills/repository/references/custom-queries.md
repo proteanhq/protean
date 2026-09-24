@@ -14,13 +14,13 @@ The complete implementation is in [assets/repository_custom.py](../assets/reposi
 
 Key highlights:
 - Custom repository defined with `@domain.repository(part_of=Aggregate)`
-- Query methods use `self._dao` for database access
-- `self._dao.query.filter()` for building queries
+- Query methods use the public helpers `self.query`, `self.find_by()`, `self.find()`, and `self.exists()`
+- `self.query.filter()` for building queries
 - Methods return domain objects, not raw database records
 
-## The DAO Interface
+## The query interface
 
-Inside a custom repository, `self._dao` provides access to the Data Access Object. The DAO is the low-level interface to the database.
+Inside a custom repository, `self.query` returns a `QuerySet` for fluent filtering, ordering, and pagination. Use `self.find_by()` to load a single aggregate, `self.find()` to run a composable `Q` expression, and `self.exists()` to test whether a match exists. `self._dao` remains available as an internal escape hatch for infrastructure work (hard deletion, test teardown), so reach for the public helpers in routine domain queries.
 
 ### Basic Filtering
 
@@ -28,12 +28,12 @@ Inside a custom repository, `self._dao` provides access to the Data Access Objec
 @domain.repository(part_of=Product)
 class ProductRepository:
     def find_by_category(self, category):
-        return self._dao.query.filter(category=category).all()
+        return self.query.filter(category=category).all()
 ```
 
 ### Filter Operators
 
-The DAO query interface supports Django-style lookups:
+The query interface supports Django-style lookups:
 
 | Operator | Example | SQL Equivalent |
 |----------|---------|----------------|
@@ -50,7 +50,7 @@ The DAO query interface supports Django-style lookups:
 ```python
 def find_active_electronics(self):
     return (
-        self._dao.query
+        self.query
         .filter(category="electronics")
         .filter(is_active=True)
         .all()
@@ -62,7 +62,7 @@ def find_active_electronics(self):
 ```python
 def find_cheapest(self, limit=10):
     return (
-        self._dao.query
+        self.query
         .order_by("price")
         .limit(limit)
         .all()
@@ -74,7 +74,7 @@ def find_cheapest(self, limit=10):
 ```python
 def find_by_email(self, email):
     """Find a user by email. Raises ObjectNotFoundError if not found."""
-    return self._dao.find_by(email=email)
+    return self.find_by(email=email)
 ```
 
 `find_by()` raises `ObjectNotFoundError` if no record matches and `TooManyObjectsError` if multiple records match.
@@ -103,19 +103,33 @@ repo.find_by_category("books") # Custom method
 
 ## Raw Queries
 
-For database-specific optimizations, use `self._dao` with raw queries:
+For a database-specific filter that still returns whole aggregates, use `self.query.raw()`. It hydrates every row it gets back into a full aggregate, so the query has to select whole rows. The table you name is the aggregate's `schema_name`, which defaults to the underscored class name (`report` for `Report`):
 
 ```python
 @domain.repository(part_of=Report)
 class ReportRepository:
-    def find_summary_stats(self):
-        """Use raw query for complex aggregation."""
-        return self._dao.query.raw(
-            "SELECT report_type, SUM(total_value) FROM reports GROUP BY report_type"
+    def find_high_value(self):
+        """Use a raw query for a filter the query interface cannot express."""
+        return self.query.raw(
+            "SELECT * FROM report WHERE total_value > 10000"
         )
 ```
 
-**Note**: Raw queries bypass the ORM and return provider-specific results. Use them sparingly and only when the standard query interface is insufficient.
+A result that cannot become an aggregate, such as an aggregation or a two-column summary, needs the provider-level `raw()` instead. It hands back the rows as the database returned them. Look the provider up through the aggregate's own `meta_.provider`, so the query runs against the database the repository is wired to:
+
+```python
+from protean.utils.globals import current_domain
+
+@domain.repository(part_of=Report)
+class ReportRepository:
+    def find_summary_stats(self):
+        """Aggregate in the database and read the rows back as they come."""
+        return current_domain.providers[Report.meta_.provider].raw(
+            "SELECT report_type, SUM(total_value) FROM report GROUP BY report_type"
+        )
+```
+
+**Note**: Raw queries bypass the query interface. Use them sparingly and only when the standard query interface is insufficient.
 
 ## Related
 - [Default Repository](./default-repository.md) - The auto-generated repository

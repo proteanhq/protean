@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from protean.dx import pack
-from protean.ir.diagnostics import DiagnosticCode, build_diagnostic
+from protean.ir.diagnostics import REGISTRY, DiagnosticCode, build_diagnostic
 
 # These read package data and build diagnostics directly; they never touch a
 # Domain, so skip the autouse test_domain fixture and its initialization cost.
@@ -42,6 +42,151 @@ def _write_skill(root, name: str, body: str) -> None:
     skill_dir = root / pack.SKILLS_DIR / name
     skill_dir.mkdir(parents=True)
     (skill_dir / pack.SKILL_FILE).write_text(body, encoding="utf-8")
+
+
+# --- Coverage guard: every coverable lint code has a teaching skill --------
+
+# Codes that are not required to have a teaching skill, each with the reason.
+# Exempt always means "not required to be taught". Whether a skill may teach one
+# anyway depends on the code's kind. A non-lint exclusion is free to be taught,
+# and several are. A lint exclusion is not: `check` does emit it, so a skill
+# teaching it means the exemption is stale, and
+# test_no_lint_exclusion_is_already_taught fails. The lint block below repeats
+# this where those entries are listed.
+#
+# The set is written out by hand on purpose. Deriving the non-lint half from the
+# enum instead would make test_the_catalog_is_fully_classified hold by
+# construction, and a new `raise` or `staleness` code would slip in
+# unclassified.
+#
+# A new code is forced onto one side or the other, by a different test depending
+# on its kind:
+#
+#   non-lint  lands in neither set, so test_the_catalog_is_fully_classified
+#             fails until it is named here or made a lint code.
+#   lint      joins _coverable_codes() automatically, so it passes that test
+#             and fails test_every_coverable_code_has_a_teaching_skill until a
+#             skill teaches it or it is named here.
+_EXCLUDED_CODES = {
+    # kind="raise": raised at runtime when a domain is misconfigured or an
+    # invariant fails, so `check` never emits it and no skill is required to
+    # teach the fix. Some skills teach these anyway, which is fine.
+    "CONFIG_AMBIGUOUS_ELEMENT_NAME": "raised at runtime; check never emits it",
+    "CONFIG_ELEMENT_NOT_REGISTERED": "raised at runtime; check never emits it",
+    "CONFIG_EVENT_STORE_NOT_INITIALIZED": "raised at runtime; check never emits it",
+    "CONFIG_INVALID_FIELD_DEFAULTS": "raised at runtime; check never emits it",
+    "CONFIG_UNRESOLVED_ENV_VAR": "raised at runtime; check never emits it",
+    "INVARIANT_POST_FAILED": "raised at runtime; check never emits it",
+    "INVARIANT_PRE_FAILED": "raised at runtime; check never emits it",
+    "UNSUPPORTED_ELEMENT_CLASS": "raised at runtime; check never emits it",
+    "USAGE_CACHE_BACKED_NO_REPOSITORY": "raised at runtime; check never emits it",
+    "USAGE_DUPLICATE_DATABASE_MODEL": "raised at runtime; check never emits it",
+    "USAGE_ELEMENT_NOT_REGISTERED": "raised at runtime; check never emits it",
+    "USAGE_ENRICHER_NOT_CALLABLE": "raised at runtime; check never emits it",
+    "USAGE_NOT_A_PROJECTION": "raised at runtime; check never emits it",
+    "USAGE_UNKNOWN_ELEMENT_TYPE": "raised at runtime; check never emits it",
+    "VALUE_OBJECT_INVARIANT_FAILED": "raised at runtime; check never emits it",
+    # kind="staleness": the fix is to regenerate the IR, a tooling step.
+    "IR_STALE": "regenerate the IR; a tooling step, not a modeling convention",
+    # kind="lint", exempt for the reason given. Unlike the codes above,
+    # these must stay untaught: `check` does emit them, so a skill that
+    # starts teaching one means it belongs in the coverable set instead.
+    # test_no_lint_exclusion_is_already_taught enforces that.
+    # A deprecation notice's fix is specific to the API being deprecated, not a
+    # reusable modeling convention a skill teaches.
+    "DEPRECATED_CONFIG": "deprecation notice; fix is API-specific",
+    "DEPRECATED_ELEMENT": "deprecation notice; fix is API-specific",
+    "DEPRECATED_EMAIL": "deprecation notice; fix is API-specific",
+    "DEPRECATED_FIELD": "deprecation notice; fix is API-specific",
+    "DEPRECATED_IMPORT": "deprecation notice; fix is API-specific",
+    "DEPRECATED_OPTION": "deprecation notice; fix is API-specific",
+    # No teaching skill exists in the pack for these conventions yet.
+    "ADAPTER_CALL_IN_DOMAIN": "no teaching skill in the pack yet",
+    "INFRA_IMPORT_IN_DOMAIN": "no teaching skill in the pack yet",
+    "LOW_POOL_SIZE": "no teaching skill in the pack yet",
+    "PUBLISHED_NO_EXTERNAL_BROKER": "no teaching skill in the pack yet",
+}
+
+
+def _lint_codes() -> set[str]:
+    return {code.value for code in DiagnosticCode if REGISTRY[code].kind == "lint"}
+
+
+def _coverable_codes() -> set[str]:
+    """Lint codes a skill is required to teach: every lint code minus the
+    documented exclusion list."""
+    return _lint_codes() - _EXCLUDED_CODES.keys()
+
+
+class TestDiagnosticCodeCoverageGuard:
+    def test_exclusion_list_entries_are_real_codes(self):
+        # A typo-guard. A misspelled entry would silently stop exempting the
+        # code it names, and the real code would then fail the coverage check
+        # with a confusing message.
+        unknown = _EXCLUDED_CODES.keys() - {code.value for code in DiagnosticCode}
+        assert not unknown, (
+            f"exclusion-list entries are not DiagnosticCode members: {sorted(unknown)}"
+        )
+
+    def test_every_exclusion_carries_a_reason(self):
+        blank = {code for code, reason in _EXCLUDED_CODES.items() if not reason.strip()}
+        assert not blank, f"exclusion-list entries with no reason: {sorted(blank)}"
+
+    def test_no_lint_exclusion_is_already_taught(self):
+        # A lint exclusion claims no skill teaches the code. If one starts to,
+        # the code belongs in the coverable set and the exemption is stale.
+        # Non-lint exclusions are exempt from this: `check` never emits them,
+        # so a skill teaching one is a bonus, not a contradiction.
+        taught = set(pack.diagnostic_code_skills())
+        lint_exclusions = _EXCLUDED_CODES.keys() & _lint_codes()
+        contradictory = lint_exclusions & taught
+
+        assert not contradictory, (
+            "these lint codes are on the exclusion list but a skill already "
+            f"teaches them: {sorted(contradictory)}. Take them off "
+            "_EXCLUDED_CODES so the coverage check covers them."
+        )
+
+    def test_the_catalog_is_fully_classified(self):
+        # Every code is either coverable (a lint code a skill must teach) or
+        # named on _EXCLUDED_CODES with a reason.
+        #
+        # This is the forcing check for a new NON-LINT code, which belongs to
+        # neither set until someone classifies it. A new lint code joins
+        # _coverable_codes() by construction and passes here;
+        # test_every_coverable_code_has_a_teaching_skill is what forces that
+        # case.
+        all_codes = {code.value for code in DiagnosticCode}
+        coverable = _coverable_codes()
+        excluded = set(_EXCLUDED_CODES)
+
+        assert coverable.isdisjoint(excluded), (
+            f"a code is both coverable and excluded: {sorted(coverable & excluded)}"
+        )
+
+        unclassified = all_codes - coverable - excluded
+        assert not unclassified, (
+            f"these diagnostic codes are unclassified: {sorted(unclassified)}. "
+            "Either a skill teaches the code (make it kind='lint' and declare "
+            "it on the skill), or name it in _EXCLUDED_CODES with the reason "
+            "no skill teaches it."
+        )
+
+    def test_every_coverable_code_has_a_teaching_skill(self):
+        coverable = _coverable_codes()
+        # Vacuous-pass guard: an empty coverable set would make the check below
+        # pass with nothing actually asserted.
+        assert coverable, "no coverable lint codes found"
+
+        taught = set(pack.diagnostic_code_skills())
+        untaught = coverable - taught
+
+        assert not untaught, (
+            "these lint codes are neither taught by a DX-pack skill nor on the "
+            f"documented exclusion list: {sorted(untaught)}. Add a teaching "
+            "skill declaration, or add the code to _EXCLUDED_CODES with a "
+            "reason."
+        )
 
 
 # --- Bidirectional catalog over the real, shipped pack ----------------------
