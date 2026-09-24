@@ -279,14 +279,11 @@ runs:
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (inputs.python-version == '3.13' || inputs.python-version == '3.14') && '1' || '' }}
       run: uv sync --all-extras --all-groups --no-group mutation ${{ inputs.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
 
-    - name: Mypy Plugin Tests
-      shell: bash
-      run: uv run pytest tests/ext/ -v
-
     - name: Tests
-      # FULL runs the adapter suite against the service containers; CORE and
-      # floors run the fast in-memory suite (the POSTGRES/etc. env below is
-      # simply unused there).
+      # FULL runs the adapter suite against the service containers, in one
+      # process. CORE and floors run the fast in-memory suite, spread over the
+      # runner's CPUs with pytest-xdist (the POSTGRES/etc. env below is simply
+      # unused there). Both runs include tests/ext, the mypy plugin tests.
       shell: bash
       env:
         POSTGRES_PASSWORD: postgres
