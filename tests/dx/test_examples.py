@@ -424,11 +424,19 @@ def test_every_value_object_is_referenced():
 # the pack and rejects any that passes a bare `model=` keyword to an
 # `@domain.aggregate(...)` call, or gives a `model` option its own heading.
 
-# A heading that documents an option literally named `model`, e.g. "### `model`".
-_MODEL_OPTION_HEADING = re.compile(r"(?m)^#+\s*`model`\s*$")
-
 # The Python code fences on a page. Only these can hold a real call.
 _PYTHON_FENCE = re.compile(r"```(?:python|py)[^\n]*\n(.*?)```", re.DOTALL)
+
+# Any fence, to cut the code out and leave the prose behind.
+_ANY_FENCE = re.compile(r"```.*?```", re.DOTALL)
+
+# `model` written as an identifier in prose or in a heading, which is how a page
+# names an option outside a code sample: "### The `model` option", "`model` is
+# the custom-model option". The bare word is deliberately not matched: these are
+# DDD pages, so "the domain model" and "model your aggregate" are everywhere,
+# and only the backticked form claims to be an identifier. `database_model` does
+# not match, because the backticks have to sit either side of `model` alone.
+_MODEL_AS_IDENTIFIER = re.compile(r"`model`")
 
 _OPENING = ("(", "[", "{")
 _CLOSING = (")", "]", "}")
@@ -522,33 +530,49 @@ def test_the_docs_sweep_is_not_vacuous():
     assert len(DOCS) >= 100, f"expected the pack's markdown pages, found {len(DOCS)}"
 
 
-def test_no_skill_page_names_a_model_option_on_aggregate():
-    offenders = []
+def _model_option_offences(text: str) -> list[str]:
+    """Every way one page names a `model` option, deduplicated.
+
+    A page can do it in a code sample or in its prose, so both are read. The
+    sweep checked only samples at first, which left "the `model` option" in a
+    heading or a sentence passing untouched.
+    """
+    offences: list[str] = []
 
     def report(message: str) -> None:
-        if message not in offenders:
-            offenders.append(message)
+        if message not in offences:
+            offences.append(message)
 
-    for path in DOCS:
-        text = path.read_text(encoding="utf-8")
-        rel = path.relative_to(SKILLS_ROOT)
-        for code in _PYTHON_FENCE.findall(text):
-            verdict = _names_a_model_kwarg(code)
-            if verdict:
-                report(
-                    f"{rel}: passes `model=` to @domain.aggregate; the "
-                    "custom-model option is `database_model`"
-                )
-            elif verdict is None and "aggregate(" in code:
-                report(
-                    f"{rel}: a snippet calling aggregate(...) can be neither "
-                    "parsed nor tokenized, so this sweep cannot check it"
-                )
-        if _MODEL_OPTION_HEADING.search(text):
+    for code in _PYTHON_FENCE.findall(text):
+        verdict = _names_a_model_kwarg(code)
+        if verdict:
             report(
-                f"{rel}: documents an option named `model`; the custom-model "
+                "passes `model=` to @domain.aggregate; the custom-model "
                 "option is `database_model`"
             )
+        elif verdict is None and "aggregate(" in code:
+            report(
+                "a snippet calling aggregate(...) can be neither parsed nor "
+                "tokenized, so this sweep cannot check it"
+            )
+
+    if _MODEL_AS_IDENTIFIER.search(_ANY_FENCE.sub("", text)):
+        report(
+            "names `model` as an option in prose or a heading; the "
+            "custom-model option is `database_model`"
+        )
+
+    return offences
+
+
+def test_no_skill_page_names_a_model_option_on_aggregate():
+    offenders = []
+    for path in DOCS:
+        rel = path.relative_to(SKILLS_ROOT)
+        offenders.extend(
+            f"{rel}: {offence}"
+            for offence in _model_option_offences(path.read_text(encoding="utf-8"))
+        )
 
     assert not offenders, (
         "`@domain.aggregate` has no `model` option (it is `database_model`), so "
@@ -609,3 +633,35 @@ def test_the_indented_regression_cases_exercise_the_tokenizer():
     indented = "    @domain.aggregate(model=M)\n    class User:\n        pass\n"
     assert _model_kwarg_via_ast(indented) is None
     assert _model_kwarg_via_tokens(indented) is True
+
+
+@pytest.mark.parametrize(
+    ("page", "is_offence"),
+    [
+        # In a code sample.
+        ("```python\n@domain.aggregate(model=M)\nclass User:\n    pass\n```\n", True),
+        # In a heading, exactly the option name.
+        ("### `model`\n\nUse it to override the table.\n", True),
+        # In a heading that says more than the option name. The first version of
+        # this sweep anchored on `^#+\s*`model`\s*$` and let this through.
+        ("### The `model` option\n\nUse it to override the table.\n", True),
+        # In a sentence, with no heading and no code sample at all.
+        ("`model` is the custom-model option on `@domain.aggregate`.\n", True),
+        # The real option, named in prose: the backticks sit either side of
+        # `database_model`, so the `model` pattern cannot match inside it.
+        ("`database_model` is the custom-model option.\n", False),
+        # The word in ordinary DDD prose, which must not fire.
+        (
+            "Model your aggregate before you write it. The domain model comes first.\n",
+            False,
+        ),
+        (
+            "```python\n@domain.aggregate(database_model=M)\nclass User:\n    pass\n```\n",
+            False,
+        ),
+        # A `model=` inside a fence that is not Python is not a call.
+        ("```text\n@domain.aggregate(model=M)\n```\n", False),
+    ],
+)
+def test_the_model_option_sweep_reads_prose_and_samples(page, is_offence):
+    assert bool(_model_option_offences(page)) is is_offence
