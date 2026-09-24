@@ -24,7 +24,7 @@ Protean provides field types in three categories:
 **Parameters**:
 - `max_length` (default: 255) - Maximum characters
 - `min_length` - Minimum characters
-- `sanitize` (default: True) - Remove unsafe content
+- `sanitize` (default: off; set `True` per field, or domain-wide via `[field_defaults] sanitize`) - Strip unsafe HTML
 
 **Examples**:
 ```python
@@ -57,7 +57,7 @@ order_id: String(required=True, identifier=True)
 - HTML/Markdown content
 
 **Parameters**:
-- `sanitize` (default: True) - Remove unsafe content
+- `sanitize` (default: off; set `True` per field, or domain-wide via `[field_defaults] sanitize`) - Strip unsafe HTML
 
 **Examples**:
 ```python

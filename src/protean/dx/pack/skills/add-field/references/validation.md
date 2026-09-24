@@ -44,8 +44,8 @@ class Product:
 name: String(max_length=100, min_length=3)
 description: Text()  # No length limit
 
-# Sanitization (remove unsafe content)
-user_input: String(sanitize=True)  # Default is True
+# Sanitization is opt-in per field, or domain-wide via [field_defaults] sanitize
+user_input: String(sanitize=True)  # Opt-in: the default is off
 ```
 
 **Integer/Float validation**:
