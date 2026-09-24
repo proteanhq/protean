@@ -488,3 +488,99 @@ def test_every_value_object_is_referenced():
         "a value object an asset declares but never uses shows the reader a "
         "concept the asset does not actually demonstrate:\n  " + "\n  ".join(orphans)
     )
+
+
+# --- The value objects the examples now use must work at runtime --------------
+#
+# The sweep above proves only that a value object's name appears in the source.
+# The example runner skips each `__main__` demo block, so it never executes the
+# code paths that now build and read those value objects. These tests run that
+# code for the three examples that were changed to use their value objects:
+# `Customer` holding `ContactInfo`, the scaffold `Order` pricing line items in
+# `Money`, and the event-sourced `Order` rebuilding `Money` on add and on replay.
+# Each runs in a child interpreter, like the runner, so the example domains stay
+# out of this test process.
+
+_ASSET_CHECK = """
+import pathlib
+import runpy
+import sys
+
+from protean.domain import Domain
+
+namespace = runpy.run_path(sys.argv[1], run_name="_dx_runtime_check_")
+domain = next(v for v in namespace.values() if isinstance(v, Domain))
+domain.init(traverse=False)
+with domain.domain_context():
+    exec(sys.argv[2], dict(namespace))
+print("ok")
+"""
+
+
+def _run_asset_check(asset: str, check: str) -> None:
+    """Load `asset`, initialize its domain, and run `check` against its names."""
+    path = SKILLS_ROOT / asset
+    result = subprocess.run(
+        [sys.executable, "-c", _ASSET_CHECK, str(path), check],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0 and result.stdout.strip().endswith("ok"), (
+        f"{asset} failed its runtime check (exit {result.returncode}):\n{result.stderr}"
+    )
+
+
+def test_customer_holds_its_contact_info():
+    _run_asset_check(
+        "add-field/assets/add_simple_field.py",
+        """
+customer = Customer(
+    customer_id="CUST-1",
+    name="Ada",
+    contact=ContactInfo(email="ada@example.com", phone="555-0100"),
+)
+assert isinstance(customer.contact, ContactInfo)
+assert customer.contact.email == "ada@example.com"
+assert customer.contact.phone == "555-0100"
+""",
+    )
+
+
+def test_scaffold_order_prices_line_items_in_money():
+    _run_asset_check(
+        "generate-test-scaffold/assets/scaffold_aggregate_unit.py",
+        """
+order = Order.create(customer_id="CUST-1")
+item = order.add_item("P1", quantity=2, unit_price=10.0)
+order.add_item("P2", quantity=1, unit_price=5.5)
+assert isinstance(item.unit_price, Money)
+assert item.unit_price == Money(amount=10.0, currency="USD")
+assert item.subtotal == 20.0
+assert order.total == 25.5
+assert Money(amount=1.0).add(Money(amount=2.0)) == Money(amount=3.0)
+""",
+    )
+
+
+def test_event_sourced_order_rebuilds_money_on_add_and_replay():
+    _run_asset_check(
+        "event-sourced-aggregate/assets/es_aggregate_with_entities.py",
+        """
+order = Order.create(
+    order_id="ORD-1",
+    customer_id="CUST-1",
+    items=[
+        {"product_id": "P1", "quantity": 2, "unit_price": 25.0},
+        {"product_id": "P2", "quantity": 1, "unit_price": 75.0},
+    ],
+)
+assert all(isinstance(item.unit_price, Money) for item in order.items)
+assert order.total == 125.0
+
+replayed = Order.from_events(order._events)
+assert sorted(item.unit_price.amount for item in replayed.items) == [25.0, 75.0]
+assert all(isinstance(item.unit_price, Money) for item in replayed.items)
+assert replayed.total == 125.0
+""",
+    )
