@@ -115,13 +115,16 @@ When combining events from multiple aggregates, be aware that:
 - Design handler methods to handle missing projection records gracefully
 
 ```python
+from protean.exceptions import ObjectNotFoundError
+
+
 @on(Transacted)
 def on_transacted(self, event: Transacted):
     repo = domain.repository_for(Balances)
     try:
         balance = repo.get(event.user_id)
         balance.balance += event.amount
-    except NotFoundError:
+    except ObjectNotFoundError:
         # User registration event hasn't arrived yet
         balance = Balances(user_id=event.user_id, name="", balance=event.amount)
     repo.add(balance)
