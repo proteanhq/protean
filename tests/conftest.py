@@ -587,6 +587,21 @@ def _restore_logger(logger: logging.Logger, state: _LoggerState) -> None:
     logger.disabled = disabled
 
 
+@pytest.fixture(autouse=True)
+def _restore_working_directory():
+    """Put the process's working directory back after every test.
+
+    Many tests ``os.chdir`` into a support domain (``change_working_directory_to``)
+    and not all of them change back. A later test that opens a path relative to
+    the repository root then fails, depending on which tests ran before it in
+    the same process, which ``pytest-xdist`` changes.
+    """
+    cwd = os.getcwd()
+    yield
+    if os.getcwd() != cwd:
+        os.chdir(cwd)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _no_structlog_logger_cache():
     """Keep structlog from caching loggers for the whole session.

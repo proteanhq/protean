@@ -644,14 +644,6 @@ class TestTraceEffectsEdgeCases:
 class TestBuildCausationTreeEdgeCases:
     """Tests for edge cases in build_causation_tree."""
 
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Order, event_sourced=True)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.register(PlaceOrder, part_of=Order)
-        test_domain.register(OrderCommandHandler, part_of=Order)
-        test_domain.init(traverse=False)
-
     def test_build_node_with_malformed_metadata_string(self, test_domain):
         """_build_node handles metadata that is a string, not a dict."""
         store = test_domain.event_store.store

@@ -173,13 +173,15 @@ class BaseSubscription(ABC):
         else:
             self.last_idle_tick_started = started
 
-    async def tick(self) -> bool:
+    async def tick(self) -> bool | None:
         """
         This method retrieves the next batch of messages to process and calls the `process_batch` method
         to handle each message.
 
         Returns:
-            bool: Whether the tick found any messages.
+            bool | None: Whether the tick found any messages. An override may
+            return ``None`` when it cannot tell; the engine's test mode then
+            never counts this subscription as idle.
         """
         messages = await self.get_next_batch_of_messages()
         if messages:

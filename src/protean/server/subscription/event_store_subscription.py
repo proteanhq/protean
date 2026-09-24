@@ -1488,8 +1488,10 @@ class EventStoreSubscription(BaseSubscription):
                     # handlers, so it is fresh intake, not in-flight work: skip
                     # it if a drain began while the tick above was running,
                     # rather than fanning out new handlers after the trigger.
-                    if not self._quiescing():
-                        await self.maybe_run_recovery()
+                    # A recovered position dispatched its handler, which may
+                    # have raised messages for other subscriptions.
+                    if not self._quiescing() and await self.maybe_run_recovery():
+                        had_work = True
                     # A failed position waiting for its next retry is work
                     # still to do, whether or not this pass recovered any.
                     if self.enable_recovery and self._failed_positions:

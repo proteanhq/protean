@@ -239,6 +239,31 @@ class TestTickTracking:
         await sub.poll()
         assert sub.last_idle_tick_started is None
 
+    @pytest.mark.parametrize("recovered,expected_work", [(1, True), (0, False)])
+    async def test_a_successful_recovery_counts_as_work(
+        self, test_domain, recovered, expected_work
+    ):
+        test_domain.register(Parcel, stream_category="parcels")
+        test_domain.register(ParcelLost, part_of=Parcel)
+        test_domain.register(FailingParcelHandler, stream_category="parcels")
+        test_domain.init(traverse=False)
+        engine = Engine(domain=test_domain, test_mode=True)
+        sub = next(iter(engine._subscriptions.values()))
+
+        async def empty_tick() -> bool:
+            return False
+
+        async def recover() -> int:
+            sub.keep_going = False
+            return recovered
+
+        sub.tick = empty_tick
+        sub.maybe_run_recovery = recover
+        await sub.poll()
+
+        assert (sub.last_work_tick_finished is not None) is expected_work
+        assert (sub.last_idle_tick_started is not None) is not expected_work
+
     def test_the_partitioned_subscription_cannot_report_idleness(self):
         assert PartitionedStreamSubscription.reports_idle is False
         assert BaseSubscription.reports_idle is True
