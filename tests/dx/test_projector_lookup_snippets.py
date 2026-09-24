@@ -20,8 +20,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from protean import dx
 from protean.dx.pack import REFERENCES_DIR as REFERENCES_DIRNAME
+
+# These tests read package data; they never touch a Domain, so skip the autouse
+# test_domain fixture and its initialization cost.
+pytestmark = pytest.mark.no_test_domain
 
 PACK_ROOT = Path(str(dx.pack_files()))
 REFERENCES_DIR = PACK_ROOT / dx.SKILLS_DIR / "projector" / REFERENCES_DIRNAME
