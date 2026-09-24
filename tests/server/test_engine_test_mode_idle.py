@@ -17,6 +17,7 @@ from protean.server.subscription import TEST_MODE_MAX_TICK_PAUSE, BaseSubscripti
 from protean.server.subscription.partitioned_stream_subscription import (
     PartitionedStreamSubscription,
 )
+from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
@@ -57,6 +58,20 @@ class ShipmentEventHandler(BaseEventHandler):
         shipped.append(event.order_id)
 
 
+class Parcel(BaseAggregate):
+    parcel_id: Identifier(identifier=True)
+
+
+class ParcelLost(BaseEvent):
+    parcel_id: Identifier(identifier=True)
+
+
+class FailingParcelHandler(BaseEventHandler):
+    @handle(ParcelLost)
+    def fail(self, event: ParcelLost) -> None:
+        raise RuntimeError("handler failed")
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     shipped.clear()
@@ -92,6 +107,22 @@ def test_an_engine_with_nothing_to_do_stops_early(test_domain, caplog):
         Engine(domain=test_domain, test_mode=True).run()
 
     assert 1 <= _cycles_run(caplog) < OLD_FIXED_CYCLES
+
+
+def test_a_failed_position_awaiting_retry_keeps_the_engine_busy(test_domain, caplog):
+    test_domain.register(Parcel, stream_category="parcels")
+    test_domain.register(ParcelLost, part_of=Parcel)
+    test_domain.register(FailingParcelHandler, stream_category="parcels")
+    test_domain.init(traverse=False)
+
+    parcel = Parcel(parcel_id=str(uuid4()))
+    parcel.raise_(ParcelLost(parcel_id=parcel.parcel_id))
+    test_domain.repository_for(Parcel).add(parcel)
+
+    with caplog.at_level(logging.DEBUG, logger="protean.server.engine"):
+        Engine(domain=test_domain, test_mode=True).run()
+
+    assert _cycles_run(caplog) == OLD_FIXED_CYCLES
 
 
 def test_a_subscription_that_cannot_report_idleness_gets_the_old_wait(
@@ -191,6 +222,23 @@ class TestTickTracking:
         assert sub.last_work_tick_finished == 9.0
         assert sub.last_idle_tick_started is None
 
+    def test_a_tick_that_cannot_tell_records_nothing(self, test_domain):
+        sub = _Recording(Engine(domain=test_domain, test_mode=True))
+        sub._record_tick(3.0, None)
+        assert sub.last_idle_tick_started is None
+        assert sub.last_work_tick_finished is None
+
+    async def test_a_tick_override_returning_none_never_counts_as_idle(
+        self, test_domain
+    ):
+        class LegacyTick(_Recording):
+            async def tick(self):
+                self.keep_going = False
+
+        sub = LegacyTick(Engine(domain=test_domain, test_mode=True), tick_interval=0)
+        await sub.poll()
+        assert sub.last_idle_tick_started is None
+
     def test_the_partitioned_subscription_cannot_report_idleness(self):
         assert PartitionedStreamSubscription.reports_idle is False
         assert BaseSubscription.reports_idle is True
@@ -221,3 +269,34 @@ class TestPauseBetweenTicks:
             await sub._pause_between_ticks()
 
         assert slept == [expected]
+
+
+class TestStreamReadOutcome:
+    """A stream read that swallowed a broker error is not an empty read."""
+
+    @pytest.fixture
+    def sub(self) -> StreamSubscription:
+        return object.__new__(StreamSubscription)
+
+    def test_messages_are_work(self, sub):
+        assert sub._tick_outcome([("1", {})]) is True
+
+    def test_an_empty_read_is_idle(self, sub):
+        assert sub._tick_outcome([]) is False
+
+    def test_an_empty_result_after_a_failed_read_is_unknown(self, sub):
+        sub._read_failed = True
+        assert sub._tick_outcome([]) is None
+
+    async def test_a_failing_broker_read_marks_the_turn(self, sub):
+        sub.broker = SimpleNamespace(
+            read_blocking=lambda **kwargs: (_ for _ in ()).throw(OSError("down"))
+        )
+        sub.stream_category = "orders"
+        sub.consumer_group = "group"
+        sub.consumer_name = "consumer"
+        sub.blocking_timeout_ms = 0
+        sub._current_batch_size = lambda: 1
+
+        assert await sub.get_next_batch_of_messages() == []
+        assert sub._tick_outcome([]) is None

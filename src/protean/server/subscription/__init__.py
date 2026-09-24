@@ -43,8 +43,10 @@ class BaseSubscription(ABC):
     # when it last *started* a tick that found no work and when it last
     # *finished* a tick that did (``time.monotonic()``, ``None`` until then).
     # The engine is idle once every loop has started an empty tick after the
-    # last work finished anywhere. A subscription whose poll loop does not
-    # record ticks sets ``reports_idle`` to False.
+    # last work finished anywhere. A tick that cannot tell (it returned
+    # ``None``, or its read failed) records nothing, so its loop never counts
+    # as idle. A subscription whose poll loop does not record ticks sets
+    # ``reports_idle`` to False.
     reports_idle: bool = True
     last_idle_tick_started: float | None = None
     last_work_tick_finished: float | None = None
@@ -157,8 +159,15 @@ class BaseSubscription(ABC):
             pause = min(pause, TEST_MODE_MAX_TICK_PAUSE)
         await asyncio.sleep(pause if pause > 0 else 0)
 
-    def _record_tick(self, started: float, had_work: bool) -> None:
-        """Note one pass of the poll loop for the engine's test-mode idle check."""
+    def _record_tick(self, started: float, had_work: bool | None) -> None:
+        """Note one pass of the poll loop for the engine's test-mode idle check.
+
+        ``had_work`` is ``None`` when the tick cannot tell whether there was
+        work, for example a ``tick()`` override written before it returned a
+        bool. Nothing is recorded then.
+        """
+        if had_work is None:
+            return
         if had_work:
             self.last_work_tick_finished = time.monotonic()
         else:
