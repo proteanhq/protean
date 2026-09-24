@@ -33,6 +33,10 @@ inputs:
     description: "Codecov upload token (required only when upload-coverage is 'true')."
     required: false
     default: ""
+  codecov-pr:
+    description: "PR number to attach the upload to, for a run that is not a pull_request event (the post-approval merge run). Empty lets Codecov infer it."
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -323,4 +327,5 @@ runs:
       with:
         files: coverage.xml
         token: ${{ inputs.codecov-token }}
+        override_pr: ${{ inputs.codecov-pr }}
         fail_ci_if_error: true
