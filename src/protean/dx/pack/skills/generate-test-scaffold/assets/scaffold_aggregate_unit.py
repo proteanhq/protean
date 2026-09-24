@@ -116,10 +116,18 @@ class Order:
 
     @classmethod
     def create(cls, customer_id, items=None):
-        """Factory: create a new draft order."""
+        """Factory: create a new draft order.
+
+        `items` takes dicts in `add_item`'s shape, or `LineItem`s already
+        built. Dicts go through `add_item`, so a caller who passes a plain
+        price gets the same `Money` wrapping a direct call gives them.
+        """
         order = cls(customer_id=customer_id)
-        if items:
-            order.add_line_items(items)
+        for item in items or []:
+            if isinstance(item, dict):
+                order.add_item(**item)
+            else:
+                order.add_line_items(item)
         return order
 
     # --- Business methods ---

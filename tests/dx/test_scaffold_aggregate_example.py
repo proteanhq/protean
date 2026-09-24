@@ -139,6 +139,37 @@ def test_an_empty_order_totals_zero(asset):
         assert namespace["Order"].create(customer_id="c-4").total.amount == 0.0
 
 
+def test_create_takes_item_dicts_and_built_line_items(asset):
+    """The dict form never worked: `add_line_items` wants entity instances, so
+    a dict reached `_set_root_and_owner` and failed there. Routing dicts
+    through `add_item` also gets them the `Money` wrapping."""
+    namespace, domain = asset
+    with domain.domain_context():
+        from_dicts = namespace["Order"].create(
+            customer_id="c-7",
+            items=[
+                {"product_id": "p-1", "quantity": 2, "unit_price": 10.0},
+                {"product_id": "p-2", "quantity": 1, "unit_price": 25.0},
+            ],
+        )
+        assert from_dicts.total.amount == 45.0
+        assert from_dicts.line_items[0].unit_price.currency == "USD"
+
+        prebuilt = namespace["Order"].create(
+            customer_id="c-8",
+            items=[
+                namespace["LineItem"](
+                    product_id="p-1",
+                    quantity=3,
+                    unit_price=namespace["Money"](amount=5.0),
+                )
+            ],
+        )
+        assert prebuilt.total.amount == 15.0
+
+        assert namespace["Order"].create(customer_id="c-9").line_items == []
+
+
 def test_place_builds_the_event_before_it_changes_status(asset):
     """`total` can refuse, so reading it after the status changed would leave
     the order placed with no event and no way to retry."""

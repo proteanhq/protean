@@ -819,6 +819,15 @@ def test_the_indented_regression_cases_exercise_the_tokenizer():
             "@domain.aggregate(database_model=M)\nclass User:\n    pass\n```\n",
             False,
         ),
+        # Deliberately over-broad, pinned so the trade is visible. Neither
+        # branch asks whose `aggregate` it is or whether the page discusses
+        # aggregates at all. Scoping them would need another guess about
+        # syntax or context, and every such guess here has turned out to be
+        # able to miss the real thing. A page this reports is named in the
+        # failure and takes one line to fix; a page it lets through ships the
+        # wrong option, which is the bug this sweep exists for.
+        ("```python\nstatistics.aggregate(model=M)\n```\n", True),
+        ("The `model` argument of an unrelated call.\n", True),
         ("Use `@domain.aggregate(database_model=M)` to override it.\n", False),
         # An inline span that is only a word still has to read as no call.
         ("The `aggregate` decorator takes a `database_model`.\n", False),
