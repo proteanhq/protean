@@ -56,9 +56,12 @@ def handle_error(cls, exc: Exception, message) -> None:
 1. **Log errors with context**: Include the event data and projection state in error logs
 2. **Don't re-raise in handle_error**: The engine handles the error lifecycle
 3. **Consider idempotency**: Design projector methods to handle duplicate events
-4. **Handle missing projections**: Use try/except for projection lookups that may fail
+4. **Handle missing projections**: Catch `ObjectNotFoundError` for a lookup that may miss; let other exceptions propagate so the engine can retry or record the failure
 
 ```python
+from protean.exceptions import ObjectNotFoundError
+
+
 @on(StockAdjusted)
 def on_stock_adjusted(self, event: StockAdjusted):
     repo = domain.repository_for(ProductInventory)
@@ -66,7 +69,7 @@ def on_stock_adjusted(self, event: StockAdjusted):
         inventory = repo.get(event.product_id)
         inventory.stock_quantity = event.new_stock_quantity
         repo.add(inventory)
-    except Exception:
+    except ObjectNotFoundError:
         # Log and handle gracefully
         logger.warning(f"Inventory not found for product {event.product_id}")
 ```
