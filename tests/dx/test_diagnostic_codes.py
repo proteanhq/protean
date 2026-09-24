@@ -46,39 +46,40 @@ def _write_skill(root, name: str, body: str) -> None:
 
 # --- Coverage guard: every coverable lint code has a teaching skill --------
 
-# Every code no DX-pack skill teaches, with the reason it is exempt rather than
-# required to gain one. The set is written out by hand on purpose. A new code of
-# any kind lands in neither this set nor the coverable set, so
-# test_the_catalog_is_fully_classified fails until someone puts it on one side
-# or the other. #1558's Decisions block: "the coverable set and the exclusion
-# list together account for every DiagnosticCode", and "If a specific lint code
-# should not require a skill, it is named on the same exclusion list."
+# Codes that are not required to have a teaching skill, each with the reason.
+# Exempt means "not required to be taught", not "must not be taught": a skill is
+# free to teach one of these anyway, and several do.
 #
-# Deriving the non-lint half from the enum instead would make the partition
-# assertion hold by construction, and a new `raise` or `staleness` code would
-# slip in unclassified.
+# The set is written out by hand on purpose. A new code of any kind lands in
+# neither this set nor the coverable set, so test_the_catalog_is_fully_classified
+# fails until someone puts it on one side or the other. Deriving the non-lint
+# half from the enum instead would make that assertion hold by construction, and
+# a new `raise` or `staleness` code would slip in unclassified.
 _EXCLUDED_CODES = {
     # kind="raise": raised at runtime when a domain is misconfigured or an
-    # invariant fails. The fix is in the offending call, not a convention a
-    # skill teaches.
-    "CONFIG_AMBIGUOUS_ELEMENT_NAME": "raised at runtime; not a modeling convention",
-    "CONFIG_ELEMENT_NOT_REGISTERED": "raised at runtime; not a modeling convention",
-    "CONFIG_EVENT_STORE_NOT_INITIALIZED": "raised at runtime; not a modeling convention",
-    "CONFIG_INVALID_FIELD_DEFAULTS": "raised at runtime; not a modeling convention",
-    "CONFIG_UNRESOLVED_ENV_VAR": "raised at runtime; not a modeling convention",
-    "INVARIANT_POST_FAILED": "raised at runtime; not a modeling convention",
-    "INVARIANT_PRE_FAILED": "raised at runtime; not a modeling convention",
-    "UNSUPPORTED_ELEMENT_CLASS": "raised at runtime; not a modeling convention",
-    "USAGE_CACHE_BACKED_NO_REPOSITORY": "raised at runtime; not a modeling convention",
-    "USAGE_DUPLICATE_DATABASE_MODEL": "raised at runtime; not a modeling convention",
-    "USAGE_ELEMENT_NOT_REGISTERED": "raised at runtime; not a modeling convention",
-    "USAGE_ENRICHER_NOT_CALLABLE": "raised at runtime; not a modeling convention",
-    "USAGE_NOT_A_PROJECTION": "raised at runtime; not a modeling convention",
-    "USAGE_UNKNOWN_ELEMENT_TYPE": "raised at runtime; not a modeling convention",
-    "VALUE_OBJECT_INVARIANT_FAILED": "raised at runtime; not a modeling convention",
+    # invariant fails, so `check` never emits it and no skill is required to
+    # teach the fix. Some skills teach these anyway, which is fine.
+    "CONFIG_AMBIGUOUS_ELEMENT_NAME": "raised at runtime; check never emits it",
+    "CONFIG_ELEMENT_NOT_REGISTERED": "raised at runtime; check never emits it",
+    "CONFIG_EVENT_STORE_NOT_INITIALIZED": "raised at runtime; check never emits it",
+    "CONFIG_INVALID_FIELD_DEFAULTS": "raised at runtime; check never emits it",
+    "CONFIG_UNRESOLVED_ENV_VAR": "raised at runtime; check never emits it",
+    "INVARIANT_POST_FAILED": "raised at runtime; check never emits it",
+    "INVARIANT_PRE_FAILED": "raised at runtime; check never emits it",
+    "UNSUPPORTED_ELEMENT_CLASS": "raised at runtime; check never emits it",
+    "USAGE_CACHE_BACKED_NO_REPOSITORY": "raised at runtime; check never emits it",
+    "USAGE_DUPLICATE_DATABASE_MODEL": "raised at runtime; check never emits it",
+    "USAGE_ELEMENT_NOT_REGISTERED": "raised at runtime; check never emits it",
+    "USAGE_ENRICHER_NOT_CALLABLE": "raised at runtime; check never emits it",
+    "USAGE_NOT_A_PROJECTION": "raised at runtime; check never emits it",
+    "USAGE_UNKNOWN_ELEMENT_TYPE": "raised at runtime; check never emits it",
+    "VALUE_OBJECT_INVARIANT_FAILED": "raised at runtime; check never emits it",
     # kind="staleness": the fix is to regenerate the IR, a tooling step.
     "IR_STALE": "regenerate the IR; a tooling step, not a modeling convention",
-    # kind="lint", exempt for the reason given.
+    # kind="lint", exempt for the reason given. Unlike the codes above,
+    # these must stay untaught: `check` does emit them, so a skill that
+    # starts teaching one means it belongs in the coverable set instead.
+    # test_no_lint_exclusion_is_already_taught enforces that.
     # A deprecation notice's fix is specific to the API being deprecated, not a
     # reusable modeling convention a skill teaches.
     "DEPRECATED_CONFIG": "deprecation notice; fix is API-specific",
@@ -118,6 +119,21 @@ class TestDiagnosticCodeCoverageGuard:
     def test_every_exclusion_carries_a_reason(self):
         blank = {code for code, reason in _EXCLUDED_CODES.items() if not reason.strip()}
         assert not blank, f"exclusion-list entries with no reason: {sorted(blank)}"
+
+    def test_no_lint_exclusion_is_already_taught(self):
+        # A lint exclusion claims no skill teaches the code. If one starts to,
+        # the code belongs in the coverable set and the exemption is stale.
+        # Non-lint exclusions are exempt from this: `check` never emits them,
+        # so a skill teaching one is a bonus, not a contradiction.
+        taught = set(pack.diagnostic_code_skills())
+        lint_exclusions = _EXCLUDED_CODES.keys() & _lint_codes()
+        contradictory = lint_exclusions & taught
+
+        assert not contradictory, (
+            "these lint codes are on the exclusion list but a skill already "
+            f"teaches them: {sorted(contradictory)}. Take them off "
+            "_EXCLUDED_CODES so the coverage check covers them."
+        )
 
     def test_the_catalog_is_fully_classified(self):
         # The forcing check. Every code is either coverable (a lint code a skill
