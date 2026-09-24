@@ -154,36 +154,32 @@ class Order:
 
     @property
     def total(self) -> Money:
-        """Order total. Every item is priced in the order's currency, so the
-        amounts can be summed."""
+        """Order total, in the order's currency.
+
+        Refuses to total an order holding an item priced in some other
+        currency. The rule lives here because neither other place can carry
+        it. `from_events()` turns post-invariants off for the whole replay, so
+        one would never run there. And outside replay, `HasMany.add()` caches
+        the item and then calls `_postcheck()`, and it does not undo the cache
+        when the check raises, so a caller who catches the error still holds
+        the item the rule rejected. Checking at the point the number is
+        produced means a wrong one never is.
+        """
+        mismatched = sorted(
+            {
+                item.unit_price.currency
+                for item in self.items
+                if item.unit_price.currency != self.currency
+            }
+        )
+        if mismatched:
+            raise ValueError(
+                f"Order is in {self.currency}; items priced in {mismatched}"
+            )
         return Money(
             amount=sum(item.subtotal for item in self.items),
             currency=self.currency,
         )
-
-    @invariant.post
-    def items_share_the_order_currency(self):
-        """A safety net for an order built by hand rather than from events.
-
-        Note what this invariant cannot do: `from_events()` suppresses
-        invariant checks for the whole replay, so it never runs there. That is
-        why the currency lives on the order and `ItemAdded` does not carry one.
-        A stream cannot describe a mixed order, so replay cannot build one.
-        """
-        mismatched = {
-            item.unit_price.currency
-            for item in self.items
-            if item.unit_price.currency != self.currency
-        }
-        if mismatched:
-            raise ValidationError(
-                {
-                    "items": [
-                        f"Order is in {self.currency}; items priced in "
-                        f"{sorted(mismatched)}"
-                    ]
-                }
-            )
 
     # --- Factory classmethod ---
 

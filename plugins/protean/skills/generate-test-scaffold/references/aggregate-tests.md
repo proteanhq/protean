@@ -109,7 +109,7 @@ def test_computed_properties(self):
     order = Order.create(customer_id="cust-1")
     order.add_item(product_id="p-1", quantity=2, unit_price=10.0)
     order.add_item(product_id="p-2", quantity=1, unit_price=25.0)
-    assert order.total == 45.0
+    assert order.total.amount == 45.0
 ```
 
 ## Testing value object custom operations

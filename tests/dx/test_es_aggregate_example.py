@@ -8,9 +8,13 @@ a post-invariant never runs there.
 
 The asset answers that by putting the currency on the order rather than on each
 item, so ``ItemAdded`` cannot describe a per-item currency and a stream cannot
-describe a mixed order. These tests pin that shape: the event has no currency
-field, replay prices every item in the order's currency, and the invariant that
-remains still nets an order assembled by hand.
+describe a mixed order. Outside replay an order can still be assembled by hand,
+and an ``@invariant.post`` does not cover that either: ``HasMany.add()`` caches
+the item and then calls ``_postcheck()``, and it does not undo the cache when
+the check raises, so a caller who catches the error still holds the item the
+rule rejected. ``Order.total`` carries the rule instead, at the point the number
+is produced. These tests pin that shape: the event has no currency field, replay
+prices every item in the order's currency, and a mixed order produces no total.
 
 The same file has a second rule of the same kind. ``raise_()`` appends the event
 and then runs the apply handler, so a constraint that lives only on ``LineItem``
@@ -158,10 +162,11 @@ def test_an_invalid_item_leaves_no_event_pending(asset, label, kwargs):
         assert len(order.items) == 0
 
 
-def test_the_invariant_nets_an_order_assembled_by_hand(asset):
-    """Outside replay the invariant does run, so it still guards the rule."""
+def test_a_mixed_order_assembled_by_hand_cannot_produce_a_total(asset):
+    """Adding the mismatched item does not raise, so an invariant reporting
+    here would leave the order holding it anyway. ``total`` refuses instead."""
     namespace, domain = asset
-    with domain.domain_context(), pytest.raises(ValidationError) as error:
+    with domain.domain_context():
         order = namespace["Order"](order_id="ORD-R3", customer_id="C3", currency="USD")
         order.add_items(
             namespace["LineItem"](
@@ -172,7 +177,11 @@ def test_the_invariant_nets_an_order_assembled_by_hand(asset):
             )
         )
 
-    assert "items" in error.value.messages
+        assert len(order.items) == 1
+        with pytest.raises(
+            ValueError, match=r"Order is in USD; items priced in \['EUR'\]"
+        ):
+            order.total
 
 
 def test_the_front_door_totals_in_the_order_currency(asset):

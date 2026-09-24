@@ -94,7 +94,8 @@ class LineItem:
 class Order:
     """Order aggregate with business rules, invariants, and event raising.
 
-    Every item is priced in one currency, so `total` can sum the amounts.
+    `total` folds the item prices with `Money.add()`, so an order holding two
+    currencies cannot produce one.
     """
 
     customer_id: String(required=True, max_length=50)
@@ -109,17 +110,6 @@ class Order:
         if self.status == "placed" and not self.line_items:
             raise ValidationError(
                 {"_entity": ["Order must have at least one item to be placed"]}
-            )
-
-    @invariant.post
-    def items_must_share_one_currency(self):
-        """`total` sums the item amounts, which is only meaningful while they
-        share a currency. `add_item` cannot mix them; this covers an order
-        assembled by hand."""
-        currencies = {item.unit_price.currency for item in self.line_items}
-        if len(currencies) > 1:
-            raise ValidationError(
-                {"line_items": [f"Order mixes currencies: {sorted(currencies)}"]}
             )
 
     # --- Factory method ---
@@ -158,11 +148,24 @@ class Order:
         self.remove_line_items(item)
 
     @property
-    def total(self) -> float:
-        """Calculate order total from line items."""
+    def total(self) -> Money:
+        """Order total, folded with `Money.add()`.
+
+        The fold is what holds an order to one currency. An `@invariant.post`
+        cannot do it: `HasMany.add()` caches the item and then calls
+        `_postcheck()`, and it does not undo the cache when the check raises,
+        so a caller who catches the error still holds the item the rule
+        rejected. `Money.add()` refuses across currencies, so an order holding
+        two of them produces no total at all.
+        """
         if not self.line_items:
-            return 0.0
-        return sum(item.subtotal for item in self.line_items)
+            return Money(amount=0.0)
+        running = Money(amount=0.0, currency=self.line_items[0].unit_price.currency)
+        for item in self.line_items:
+            running = running.add(
+                Money(amount=item.subtotal, currency=item.unit_price.currency)
+            )
+        return running
 
     def place(self):
         """Place the order. Raises OrderPlaced event.
@@ -179,7 +182,7 @@ class Order:
                 order_id=self.id,
                 customer_id=self.customer_id,
                 item_count=len(self.line_items),
-                total_amount=self.total,
+                total_amount=self.total.amount,
             )
         )
 
