@@ -50,11 +50,19 @@ def _write_skill(root, name: str, body: str) -> None:
 # Exempt means "not required to be taught", not "must not be taught": a skill is
 # free to teach one of these anyway, and several do.
 #
-# The set is written out by hand on purpose. A new code of any kind lands in
-# neither this set nor the coverable set, so test_the_catalog_is_fully_classified
-# fails until someone puts it on one side or the other. Deriving the non-lint
-# half from the enum instead would make that assertion hold by construction, and
-# a new `raise` or `staleness` code would slip in unclassified.
+# The set is written out by hand on purpose. Deriving the non-lint half from the
+# enum instead would make test_the_catalog_is_fully_classified hold by
+# construction, and a new `raise` or `staleness` code would slip in
+# unclassified.
+#
+# A new code is forced onto one side or the other, by a different test depending
+# on its kind:
+#
+#   non-lint  lands in neither set, so test_the_catalog_is_fully_classified
+#             fails until it is named here or made a lint code.
+#   lint      joins _coverable_codes() automatically, so it passes that test
+#             and fails test_every_coverable_code_has_a_teaching_skill until a
+#             skill teaches it or it is named here.
 _EXCLUDED_CODES = {
     # kind="raise": raised at runtime when a domain is misconfigured or an
     # invariant fails, so `check` never emits it and no skill is required to
@@ -136,9 +144,14 @@ class TestDiagnosticCodeCoverageGuard:
         )
 
     def test_the_catalog_is_fully_classified(self):
-        # The forcing check. Every code is either coverable (a lint code a skill
-        # must teach) or named on _EXCLUDED_CODES with a reason. A new code of
-        # any kind fails here until it is classified.
+        # Every code is either coverable (a lint code a skill must teach) or
+        # named on _EXCLUDED_CODES with a reason.
+        #
+        # This is the forcing check for a new NON-LINT code, which belongs to
+        # neither set until someone classifies it. A new lint code joins
+        # _coverable_codes() by construction and passes here;
+        # test_every_coverable_code_has_a_teaching_skill is what forces that
+        # case.
         all_codes = {code.value for code in DiagnosticCode}
         coverable = _coverable_codes()
         excluded = set(_EXCLUDED_CODES)
