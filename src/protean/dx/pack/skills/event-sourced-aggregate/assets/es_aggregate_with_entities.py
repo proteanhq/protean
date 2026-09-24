@@ -89,6 +89,7 @@ class OrderCreated:
 
     order_id: Identifier(required=True)
     customer_id: String(required=True)
+    currency: String(max_length=3, default="USD")
 
 
 @domain.event(part_of="Order")
@@ -101,7 +102,6 @@ class ItemAdded:
     description: String()
     quantity: Integer(required=True)
     unit_price: Float(required=True)
-    currency: String(default="USD")
 
 
 @domain.event(part_of="Order")
@@ -134,38 +134,53 @@ class Order:
     order_id: Identifier(identifier=True)
     customer_id: String(required=True, max_length=50)
     status: String(max_length=20, default="DRAFT")
+    currency: String(max_length=3, default="USD")
     items: HasMany(LineItem)
 
     @property
-    def currency(self) -> str:
-        """The order's currency, taken from its items."""
-        return self.items[0].unit_price.currency if self.items else "USD"
-
-    @property
     def total(self) -> Money:
-        """Order total. One currency per order, so the amounts can be summed."""
+        """Order total. Every item is priced in the order's currency, so the
+        amounts can be summed."""
         return Money(
             amount=sum(item.subtotal for item in self.items),
             currency=self.currency,
         )
 
     @invariant.post
-    def items_share_one_currency(self):
-        """Summing amounts across currencies would be meaningless, so an order
-        holds items of exactly one currency."""
-        currencies = {item.unit_price.currency for item in self.items}
-        if len(currencies) > 1:
+    def items_share_the_order_currency(self):
+        """A safety net for an order built by hand rather than from events.
+
+        Note what this invariant cannot do: `from_events()` suppresses
+        invariant checks for the whole replay, so it never runs there. That is
+        why the currency lives on the order and `ItemAdded` does not carry one.
+        A stream cannot describe a mixed order, so replay cannot build one.
+        """
+        mismatched = {
+            item.unit_price.currency
+            for item in self.items
+            if item.unit_price.currency != self.currency
+        }
+        if mismatched:
             raise ValidationError(
-                {"items": [f"Order mixes currencies: {sorted(currencies)}"]}
+                {
+                    "items": [
+                        f"Order is in {self.currency}; items priced in "
+                        f"{sorted(mismatched)}"
+                    ]
+                }
             )
 
     # --- Factory classmethod ---
 
     @classmethod
-    def create(cls, order_id, customer_id, items=None):
+    def create(cls, order_id, customer_id, currency="USD", items=None):
         """Create a new order and optionally add initial items."""
-        order = cls(order_id=order_id, customer_id=customer_id)
-        order.raise_(OrderCreated(order_id=order_id, customer_id=customer_id))
+        order = cls(order_id=order_id, customer_id=customer_id, currency=currency)
+        order.raise_(
+            OrderCreated(
+                order_id=order_id, customer_id=customer_id, currency=currency
+            )
+        )
 
         # Add initial items if provided
         if items:
@@ -176,17 +191,10 @@ class Order:
 
     # --- Business methods (validate then raise; @apply handles state) ---
 
-    def add_item(
-        self, product_id, unit_price, description="", quantity=1, currency="USD"
-    ):
-        """Add an item to the order."""
+    def add_item(self, product_id, unit_price, description="", quantity=1):
+        """Add an item to the order. Items are priced in the order's currency."""
         if self.status != "DRAFT":
             raise ValueError(f"Cannot add items to order in '{self.status}' status")
-        if self.items and currency != self.currency:
-            raise ValueError(
-                f"Order {self.order_id} is in {self.currency}; "
-                f"cannot add a {currency} item"
-            )
 
         item_id = str(uuid.uuid4())
         self.raise_(
@@ -197,7 +205,6 @@ class Order:
                 description=description,
                 quantity=quantity,
                 unit_price=unit_price,
-                currency=currency,
             )
         )
 
@@ -228,6 +235,7 @@ class Order:
     def order_created(self, event: OrderCreated):
         self.order_id = event.order_id
         self.customer_id = event.customer_id
+        self.currency = event.currency
         self.status = "DRAFT"
 
     @apply
@@ -237,7 +245,7 @@ class Order:
             product_id=event.product_id,
             description=event.description,
             quantity=event.quantity,
-            unit_price=Money(amount=event.unit_price, currency=event.currency),
+            unit_price=Money(amount=event.unit_price, currency=self.currency),
         )
         self.add_items(item)
 
