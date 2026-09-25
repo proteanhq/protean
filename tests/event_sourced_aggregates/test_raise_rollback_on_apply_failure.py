@@ -1,8 +1,9 @@
 """raise_() keeps a rejected event out of an event-sourced aggregate.
 
-When the ``@apply`` handler (or an invariant check around it) raises,
-``_events``, ``_version`` and ``_event_position`` must be left as they were
-before the call, and the error must reach the caller unchanged.
+When any step of ``raise_()`` raises (an enricher, the ``@apply`` handler,
+or an invariant check around it), ``_events``, ``_version`` and
+``_event_position`` must be left as they were before the call, and the error
+must reach the caller.
 """
 
 from uuid import uuid4
@@ -41,6 +42,18 @@ class LabelChanged(BaseEvent):
 
 class Unhandled(BaseEvent):
     wallet_id: Identifier(required=True)
+
+
+class ChainStarted(BaseEvent):
+    wallet_id: Identifier(required=True)
+
+
+class WalletAborted(BaseEvent):
+    wallet_id: Identifier(required=True)
+
+
+class Abort(BaseException):
+    pass
 
 
 class Wallet(BaseAggregate):
@@ -88,6 +101,16 @@ class Wallet(BaseAggregate):
     def label_changed(self, event: LabelChanged):
         self.label = event.label
 
+    @apply
+    def chain_started(self, event: ChainStarted):
+        # Raise a second event that its own handler accepts, then fail
+        self.raise_(NoteAdded(wallet_id=self.wallet_id, note="chained"))
+        raise ValueError("chain rejected")
+
+    @apply
+    def wallet_aborted(self, event: WalletAborted):
+        raise Abort("aborted")
+
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
@@ -98,6 +121,8 @@ def register_elements(test_domain):
     test_domain.register(WalletLocked, part_of=Wallet)
     test_domain.register(LabelChanged, part_of=Wallet)
     test_domain.register(Unhandled, part_of=Wallet)
+    test_domain.register(ChainStarted, part_of=Wallet)
+    test_domain.register(WalletAborted, part_of=Wallet)
     test_domain.init(traverse=False)
 
 
@@ -166,6 +191,45 @@ class TestRejectedEventIsNotRecorded:
         with pytest.raises(IncorrectUsageError, match="No @apply handler registered"):
             wallet.raise_(Unhandled(wallet_id=wallet.wallet_id))
 
+        assert wallet._events == events
+        assert wallet._version == version
+        assert wallet._event_position == position
+
+    def test_base_exception_in_handler(self):
+        wallet = Wallet.open(wallet_id=str(uuid4()))
+        events, version, position = _state(wallet)
+
+        with pytest.raises(Abort):
+            wallet.raise_(WalletAborted(wallet_id=wallet.wallet_id))
+
+        assert wallet._events == events
+        assert wallet._version == version
+        assert wallet._event_position == position
+
+    def test_event_raised_inside_failing_handler_is_dropped_too(self):
+        wallet = Wallet.open(wallet_id=str(uuid4()))
+        events, version, position = _state(wallet)
+
+        with pytest.raises(ValueError, match="chain rejected"):
+            wallet.raise_(ChainStarted(wallet_id=wallet.wallet_id))
+
+        assert wallet._events == events
+        assert wallet._version == version
+        assert wallet._event_position == position
+
+    def test_enricher_failure(self, test_domain):
+        wallet = Wallet.open(wallet_id=str(uuid4()))
+        events, version, position = _state(wallet)
+
+        def failing_enricher(event, aggregate):
+            raise RuntimeError("enricher failed")
+
+        test_domain.register_event_enricher(failing_enricher)
+
+        with pytest.raises(RuntimeError, match="enricher failed"):
+            wallet.raise_(NoteAdded(wallet_id=wallet.wallet_id, note="hello"))
+
+        assert wallet.note is None
         assert wallet._events == events
         assert wallet._version == version
         assert wallet._event_position == position
