@@ -9,11 +9,14 @@ Covers ``EventStoreSubscription.replay_exhausted`` and the purge path behind
 - Replay that fails again reopens the position with a fresh ``Failed`` record,
   so a rebuild tracks it instead of dropping it as ``Exhausted``.
 - Replay never moves the subscription read cursor.
+- Replay refuses a command whose deadline has passed: it dispatches nothing,
+  writes nothing, and returns ``ReplayOutcome.EXPIRED``.
 - Purge appends a terminal ``Purged`` marker: the position drops out of the
   rebuilt set, the history is kept, and the purge survives a rebuild.
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -30,12 +33,14 @@ from protean.server.engine import CommandDispatcher
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
     FailedPositionStatus,
+    ReplayOutcome,
     reconstruct_unresolved,
     write_recovery_status_record,
 )
 from protean.utils.dlq import collect_failed_streams
-from protean.utils.eventing import EventStoreMeta, Message, Metadata
+from protean.utils.eventing import EventStoreMeta, Message, MessageType, Metadata
 from protean.utils.mixins import handle
+from tests.shared import FrozenClock
 
 MAX_RETRIES = 2
 
@@ -219,7 +224,7 @@ class TestReplayExhausted:
         ToggleHandler.should_fail = False
         ToggleHandler.calls = 0
 
-        resolved = asyncio.run(
+        outcome = asyncio.run(
             sub.replay_exhausted(
                 msg,
                 1,
@@ -231,7 +236,7 @@ class TestReplayExhausted:
             )
         )
 
-        assert resolved is True
+        assert outcome is ReplayOutcome.RESOLVED
         assert ToggleHandler.calls == 1
         assert _latest_status(sub, 1) == FailedPositionStatus.RESOLVED.value
         # A resolved position is not tracked on restart.
@@ -250,7 +255,7 @@ class TestReplayExhausted:
         record = _exhausted_record(sub, 1)
         # The fault is not fixed; replay fails again.
         ToggleHandler.calls = 0
-        resolved = asyncio.run(
+        outcome = asyncio.run(
             sub.replay_exhausted(
                 msg,
                 1,
@@ -262,7 +267,7 @@ class TestReplayExhausted:
             )
         )
 
-        assert resolved is False
+        assert outcome is ReplayOutcome.REOPENED
         assert ToggleHandler.calls == 1
         assert _latest_status(sub, 1) == FailedPositionStatus.FAILED.value
 
@@ -465,7 +470,7 @@ class TestReplayCommandDispatcher:
             ToggleCommandHandler.should_fail = False
             ToggleCommandHandler.calls = 0
             record = _exhausted_record(sub, 1)
-            resolved = asyncio.run(
+            outcome = asyncio.run(
                 sub.replay_exhausted(
                     message,
                     1,
@@ -479,7 +484,7 @@ class TestReplayCommandDispatcher:
         finally:
             engine.loop.close()
 
-        assert resolved is True
+        assert outcome is ReplayOutcome.RESOLVED
         assert ToggleCommandHandler.calls == 1
         assert _latest_status(sub, 1) == FailedPositionStatus.RESOLVED.value
 
@@ -488,3 +493,170 @@ async def _run_to_exhaustion(sub: EventStoreSubscription, message: Message) -> N
     await sub.process_batch([message])
     for _ in range(MAX_RETRIES + 1):
         await sub.run_recovery_pass()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Expired-command replay
+# ──────────────────────────────────────────────────────────────────────
+
+NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _command_subscription(test_domain) -> EventStoreSubscription:
+    """Register the command elements and build a subscription on their stream."""
+    test_domain.register(Order)
+    test_domain.register(PlaceOrder, part_of=Order)
+    test_domain.register(ToggleCommandHandler, part_of=Order)
+    test_domain.init(traverse=False)
+
+    info, _failed_stream = next(
+        p for p in collect_failed_streams(test_domain) if p[0].is_command_handler
+    )
+    category = info.stream_category
+    dispatcher = CommandDispatcher(
+        category,
+        {PlaceOrder.__type__: ToggleCommandHandler},
+        ToggleCommandHandler,
+    )
+    return EventStoreSubscription(
+        Engine(domain=test_domain, test_mode=False),
+        category,
+        dispatcher,
+        messages_per_tick=10,
+        position_update_interval=1,
+        max_retries=MAX_RETRIES,
+        enable_recovery=True,
+        recovery_interval_seconds=0,
+        retry_delay_seconds=0,
+    )
+
+
+def _exhausted_command(
+    test_domain, sub: EventStoreSubscription, deadline: datetime
+) -> Message:
+    """Store a ``PlaceOrder`` with ``deadline`` and mark position 1 Exhausted.
+
+    The Exhausted record is written directly: an already-expired command cannot
+    be driven to exhaustion, because the engine skips it and reports success.
+    """
+    cmd_stream = f"{sub.stream_category}-{uuid4()}"
+    message = Message.from_domain_object(PlaceOrder(total="10"))
+    metadata_dict = message.metadata.to_dict()
+    metadata_dict["event_store"] = EventStoreMeta(position=0, global_position=1)
+    metadata_dict["domain"]["asynchronous"] = True
+    metadata_dict["headers"]["stream"] = cmd_stream
+    metadata_dict["headers"]["deadline"] = deadline
+    message.metadata = Metadata(**metadata_dict)
+    test_domain.event_store.store._write(
+        cmd_stream,
+        message.metadata.headers.type,
+        message.data,
+        metadata=message.metadata.to_dict(),
+    )
+    test_domain.event_store.store._write(
+        sub.failed_positions_stream,
+        FailedPositionStatus.EXHAUSTED.value,
+        {
+            "position": 1,
+            "message_type": message.metadata.headers.type,
+            "message_id": message.metadata.headers.id,
+            "retry_count": 3,
+            "stream_name": cmd_stream,
+            "stream_position": 0,
+        },
+        metadata={
+            "headers": {
+                "type": FailedPositionStatus.EXHAUSTED.value,
+                "stream": sub.failed_positions_stream,
+            },
+            "domain": {
+                "kind": MessageType.READ_POSITION.value,
+                "origin_stream": sub.stream_category,
+            },
+        },
+    )
+    assert _latest_status(sub, 1) == FailedPositionStatus.EXHAUSTED.value
+    return message
+
+
+def _replay(sub: EventStoreSubscription, message: Message) -> ReplayOutcome:
+    try:
+        return asyncio.run(
+            sub.replay_exhausted(
+                message,
+                1,
+                message_type=message.metadata.headers.type,
+                message_id=message.metadata.headers.id,
+                stream_name=message.metadata.headers.stream,
+                stream_position=0,
+                retry_count=3,
+            )
+        )
+    finally:
+        sub.engine.loop.close()
+
+
+def _failed_record_count(sub: EventStoreSubscription) -> int:
+    return len(list(sub.store.read_all(sub.failed_positions_stream)))
+
+
+class TestReplayExpiredCommand:
+    @pytest.fixture(autouse=True)
+    def _reset_command_toggle(self):
+        ToggleCommandHandler.should_fail = False
+        ToggleCommandHandler.calls = 0
+
+    def test_replay_of_expired_command_does_not_record_resolved(self, test_domain):
+        sub = _command_subscription(test_domain)
+        message = _exhausted_command(
+            test_domain, sub, deadline=datetime(2020, 1, 1, tzinfo=UTC)
+        )
+        assert message.metadata.headers.is_expired() is True
+
+        outcome = _replay(sub, message)
+
+        assert outcome is ReplayOutcome.EXPIRED
+        assert ToggleCommandHandler.calls == 0
+        assert _latest_status(sub, 1) == FailedPositionStatus.EXHAUSTED.value
+
+    def test_replay_of_expired_command_writes_no_record(self, test_domain):
+        """Neither ``Resolved`` nor ``Failed``: a reopened position would be
+        skipped by the recovery pass and resolved there instead."""
+        test_domain.clock = FrozenClock(NOW)
+        sub = _command_subscription(test_domain)
+        message = _exhausted_command(
+            test_domain, sub, deadline=NOW - timedelta(seconds=1)
+        )
+        records_before = _failed_record_count(sub)
+
+        outcome = _replay(sub, message)
+
+        assert outcome is ReplayOutcome.EXPIRED
+        assert _failed_record_count(sub) == records_before
+        # Still terminal: a rebuild does not pick the position up again.
+        assert 1 not in _rebuild(sub)
+
+    def test_replay_dispatches_a_command_whose_deadline_is_ahead(self, test_domain):
+        test_domain.clock = FrozenClock(NOW)
+        sub = _command_subscription(test_domain)
+        message = _exhausted_command(
+            test_domain, sub, deadline=NOW + timedelta(minutes=5)
+        )
+
+        outcome = _replay(sub, message)
+
+        assert outcome is ReplayOutcome.RESOLVED
+        assert ToggleCommandHandler.calls == 1
+        assert _latest_status(sub, 1) == FailedPositionStatus.RESOLVED.value
+
+    def test_replay_dispatches_a_command_whose_deadline_is_now(self, test_domain):
+        """A deadline equal to now has not passed yet."""
+        test_domain.clock = FrozenClock(NOW)
+        sub = _command_subscription(test_domain)
+        message = _exhausted_command(test_domain, sub, deadline=NOW)
+
+        outcome = _replay(sub, message)
+
+        assert outcome is ReplayOutcome.RESOLVED
+        assert ToggleCommandHandler.calls == 1
+        assert _latest_status(sub, 1) == FailedPositionStatus.RESOLVED.value

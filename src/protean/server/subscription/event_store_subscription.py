@@ -35,6 +35,21 @@ class FailedPositionStatus(StrEnum):
     PURGED = "Purged"
 
 
+class ReplayOutcome(StrEnum):
+    """What ``EventStoreSubscription.replay_exhausted`` did with a position.
+
+    ``RESOLVED``: the handler ran and succeeded, and a ``Resolved`` record was
+    written. ``REOPENED``: the handler ran and failed again, and a fresh
+    ``Failed`` record was written. ``EXPIRED``: the event is a command whose
+    deadline has passed, so it was not dispatched and nothing was written; the
+    position stays ``Exhausted`` for the operator to purge.
+    """
+
+    RESOLVED = "resolved"
+    REOPENED = "reopened"
+    EXPIRED = "expired"
+
+
 def reconstruct_unresolved(
     store: BaseEventStore,
     recovery_checkpoint_stream: str,
@@ -1400,7 +1415,7 @@ class EventStoreSubscription(BaseSubscription):
         stream_name: str | None,
         stream_position: int | None,
         retry_count: int,
-    ) -> bool:
+    ) -> ReplayOutcome:
         """Re-drive one exhausted position out-of-band, then record the outcome.
 
         Reuses the recovery re-drive primitive: dispatch the already re-read
@@ -1419,9 +1434,26 @@ class EventStoreSubscription(BaseSubscription):
         recovery pass: replay re-runs handler side effects, which is why the
         CLI confirms first (see ``protean eventstore dlq replay``).
 
-        Returns True when the handler succeeded (the position resolved), False
-        when it failed again (the position reopened).
+        A command whose deadline has passed is refused before dispatch. The
+        engine skips an expired command and still reports it handled, so
+        dispatching it would record ``Resolved`` although the handler never ran.
+        On this path nothing is written: no ``Resolved``, and no ``Failed``
+        either, because a reopened position would be skipped the same way by the
+        recovery pass and resolved there. The position stays ``Exhausted`` so the
+        operator can purge it. The engine re-checks the deadline against a
+        slightly later clock reading, so a deadline that falls between the two
+        checks is still skipped and recorded ``Resolved``. That window is the
+        gap between two adjacent calls.
+
+        Returns ``ReplayOutcome.RESOLVED`` when the handler succeeded,
+        ``ReplayOutcome.REOPENED`` when it failed again, and
+        ``ReplayOutcome.EXPIRED`` when the command's deadline had passed and
+        nothing was dispatched.
         """
+        headers = event.metadata.headers if event.metadata else None
+        if headers and headers.is_expired():
+            return ReplayOutcome.EXPIRED
+
         is_successful = await self.engine.handle_message(
             self.handler, event, worker_id=self.subscription_id
         )
@@ -1449,7 +1481,7 @@ class EventStoreSubscription(BaseSubscription):
                 stream_position=stream_position,
             )
 
-        return is_successful
+        return ReplayOutcome.RESOLVED if is_successful else ReplayOutcome.REOPENED
 
     async def maybe_run_recovery(self) -> int:
         """Run a recovery pass if enough time has elapsed since the last one.

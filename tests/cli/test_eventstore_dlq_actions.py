@@ -19,6 +19,7 @@ from typer.testing import CliRunner
 
 from protean import apply
 from protean.cli import app
+from protean.cli import eventstore as eventstore_cli
 from protean.cli.result import EXIT_FAILURE, EXIT_USAGE
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -754,6 +755,51 @@ class TestReplay:
         assert result.exit_code == EXIT_USAGE
         assert "deadline has passed" in result.output
         # Nothing was dispatched, so nothing was recorded either.
+        assert ToggleCommandHandler.calls == 0
+        assert len(list(store.read_all(stream))) == records_before
+
+    def test_replay_refuses_a_command_whose_deadline_passes_before_dispatch(
+        self, test_domain
+    ):
+        # The deadline passes after the CLI's last check but before
+        # replay_exhausted runs. The method refuses the command itself, and
+        # replay maps that outcome to the same deadline message.
+        clock = FrozenClock(datetime(2026, 1, 1, tzinfo=UTC))
+        test_domain.clock = clock
+        position = _exhaust_command_position(
+            test_domain, deadline=clock.now() + timedelta(minutes=5)
+        )
+        store = test_domain.event_store.store
+        _info, stream = next(
+            p for p in collect_failed_streams(test_domain) if p[0].is_command_handler
+        )
+        records_before = len(list(store.read_all(stream)))
+        still_exhausted = eventstore_cli._still_exhausted_or_abort
+
+        def _expire_after_the_last_check(*args, **kwargs):
+            still_exhausted(*args, **kwargs)
+            clock.advance(timedelta(minutes=10))
+
+        with patch.object(
+            eventstore_cli,
+            "_still_exhausted_or_abort",
+            side_effect=_expire_after_the_last_check,
+        ):
+            result = _invoke(
+                [
+                    "eventstore",
+                    "dlq",
+                    "replay",
+                    str(position),
+                    "--domain",
+                    "x.py",
+                    "--yes",
+                ],
+                domain=test_domain,
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "deadline has passed" in result.output
         assert ToggleCommandHandler.calls == 0
         assert len(list(store.read_all(stream))) == records_before
 
