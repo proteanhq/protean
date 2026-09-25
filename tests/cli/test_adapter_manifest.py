@@ -2,7 +2,8 @@
 
 The first class is the guard: it fails when an adapter module is in no manifest
 entry, when a test marked for a "touched" adapter is outside that adapter's
-paths, or when an entry names a path, service or suite that does not exist, so
+paths, when a database or event-store entry leaves out a shared module it loads
+through, or when an entry names a path, service or suite that does not exist, so
 the PR lane cannot silently stop testing an adapter.
 """
 
@@ -91,6 +92,44 @@ class TestManifestIsCurrent:
         assert not missing, (
             f"Add these tests to their entry's paths in {ADAPTER_MANIFEST.name}, "
             f"so a PR that changes them runs them: {missing}"
+        )
+
+    @pytest.mark.parametrize(
+        "suite, shared",
+        [
+            (
+                "databases",
+                [
+                    "src/protean/adapters/repository/__init__.py",
+                    "src/protean/port/dao.py",
+                    "src/protean/port/provider.py",
+                ],
+            ),
+            (
+                "stores",
+                [
+                    "src/protean/adapters/event_store/__init__.py",
+                    "src/protean/port/event_store.py",
+                ],
+            ),
+        ],
+    )
+    def test_every_adapter_includes_the_shared_modules_it_runs_on(
+        self, manifest, suite, shared
+    ):
+        # Every database adapter loads through Providers and the DAO and
+        # provider ports, and every event store through the EventStore wrapper
+        # and its port. A change to one of them must run every such adapter.
+        missing = [
+            f"{entry.name}: {path}"
+            for entry in manifest.adapters
+            if getattr(entry, suite)
+            for path in shared
+            if not entry.matches(path)
+        ]
+        assert not missing, (
+            f"Add these shared modules to their entry's paths in "
+            f"{ADAPTER_MANIFEST.name}: {missing}"
         )
 
     def test_every_path_exists(self, manifest):

@@ -3,8 +3,9 @@
 # Read by `protean test -c PR` and `protean test select-adapters`
 # (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
 # test tests/cli/test_adapter_manifest.py fails when a module under
-# src/protean/adapters/ is in no entry, or when a test marked for a "touched"
-# adapter is outside that adapter's paths, so this list cannot go stale.
+# src/protean/adapters/ is in no entry, when a test marked for a "touched"
+# adapter is outside that adapter's paths, or when a database or event-store
+# entry leaves out the shared modules it loads through.
 #
 # Each [adapters.<name>] entry has:
 #
@@ -15,8 +16,8 @@
 #   share a service share a leg, so the container starts once.
 # - services: the containers the leg needs (names from the test-suite action).
 # - paths: the files and folders that trigger the adapter. Its source, its
-#   tests, and the core files only its tests reach. A path ending in "/" is a
-#   folder.
+#   tests, the shared modules it loads through, and the core files only its
+#   tests reach. A path ending in "/" is a folder.
 # - markers: pytest markers to enable and select (`-m <m> --<m>`).
 # - databases, brokers, stores: capability suites (`--db=`, `--broker=`,
 #   `--store=`), as `protean test -c FULL` runs them.
@@ -56,6 +57,9 @@ paths = [
 lane = "pr"
 services = ["postgres"]
 paths = [
+    "src/protean/adapters/repository/__init__.py",
+    "src/protean/port/dao.py",
+    "src/protean/port/provider.py",
     "src/protean/adapters/repository/sqlalchemy.py",
     "src/protean/upgrade.py",
     "tests/adapters/database_model/sqlalchemy_model/postgresql/",
@@ -102,6 +106,9 @@ markers = ["redis"]
 [adapters.sqlite]
 lane = "touched"
 paths = [
+    "src/protean/adapters/repository/__init__.py",
+    "src/protean/port/dao.py",
+    "src/protean/port/provider.py",
     "src/protean/adapters/repository/sqlalchemy.py",
     "src/protean/upgrade.py",
     "tests/adapters/database_model/sqlalchemy_model/sqlite/",
@@ -121,6 +128,9 @@ databases = ["SQLITE"]
 lane = "touched"
 services = ["mssql"]
 paths = [
+    "src/protean/adapters/repository/__init__.py",
+    "src/protean/port/dao.py",
+    "src/protean/port/provider.py",
     "src/protean/adapters/repository/sqlalchemy.py",
     "src/protean/upgrade.py",
     "tests/adapters/repository/generic/",
@@ -134,6 +144,9 @@ databases = ["MSSQL"]
 lane = "touched"
 services = ["mysql", "mariadb"]
 paths = [
+    "src/protean/adapters/repository/__init__.py",
+    "src/protean/port/dao.py",
+    "src/protean/port/provider.py",
     "src/protean/adapters/repository/sqlalchemy.py",
     "src/protean/upgrade.py",
     "tests/adapters/repository/generic/",
@@ -146,6 +159,9 @@ databases = ["MYSQL", "MARIADB"]
 lane = "touched"
 services = ["elasticsearch"]
 paths = [
+    "src/protean/adapters/repository/__init__.py",
+    "src/protean/port/dao.py",
+    "src/protean/port/provider.py",
     "src/protean/adapters/repository/elasticsearch.py",
     "tests/adapters/database_model/elasticsearch_model/",
     "tests/adapters/repository/elasticsearch_repo/",
@@ -161,6 +177,7 @@ databases = ["ELASTICSEARCH"]
 lane = "touched"
 services = ["message-db"]
 paths = [
+    "src/protean/adapters/event_store/__init__.py",
     "src/protean/adapters/event_store/message_db.py",
     "src/protean/port/event_store.py",
     "tests/adapters/event_store/",
