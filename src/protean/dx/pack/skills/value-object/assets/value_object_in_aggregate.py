@@ -9,7 +9,7 @@ This example demonstrates:
 - Complete real-world scenario
 
 Usage:
-    from protean_skills.value_object.assets.value_object_in_aggregate import Order
+    python value_object_in_aggregate.py
 """
 
 from protean import Domain
@@ -171,99 +171,102 @@ class Order:
 
 
 if __name__ == "__main__":
-    # Create an order with value objects
-    order = Order(
-        order_number="ORD-2024-001",
-        customer_id="CUST-123",
-        shipping_address=Address(
-            street="123 Main Street",
-            city="Springfield",
-            state="IL",
-            postal_code="62701",
-            country="USA",
-        ),
-        total_amount=Money(currency="USD", amount=0),  # Will be calculated
-    )
+    domain.init(traverse=False)
 
-    print(f"Order: {order.order_number}")
-    print(f"Customer: {order.customer_id}")
-    print(f"Shipping to: {order.shipping_address.full_address}")
-    print(f"Status: {order.status}")
-
-    # Add line items (entities with value objects)
-    order.add_line_items(
-        OrderLine(
-            product_id="PROD-001",
-            product_name="Laptop",
-            quantity=1,
-            unit_price=Money(currency="USD", amount=1200),
-        )
-    )
-    order.add_line_items(
-        OrderLine(
-            product_id="PROD-002",
-            product_name="Mouse",
-            quantity=2,
-            unit_price=Money(currency="USD", amount=25),
-        )
-    )
-
-    print("\n--- Line Items ---")
-    for item in order.line_items:
-        print(
-            f"  {item.product_name}: {item.quantity} x {item.unit_price.amount} = {item.line_total.amount}"
-        )
-
-    # Confirm order (calculates total)
-    order.confirm_order()
-    print("\nOrder confirmed!")
-    print(f"Total: {order.total_amount.currency} {order.total_amount.amount}")
-    print(f"Status: {order.status}")
-
-    # Try to update address (allowed for confirmed orders)
-    new_address = Address(
-        street="456 Oak Avenue",
-        city="Springfield",
-        state="IL",
-        postal_code="62702",
-        country="USA",
-    )
-    order.update_shipping_address(new_address)
-    print(f"\nAddress updated to: {order.shipping_address.full_address}")
-
-    # Ship order
-    order.ship_order()
-    print(f"Order shipped! Status: {order.status}")
-
-    # Try to update address after shipping (not allowed)
-    print("\n--- Testing business rules ---")
-    try:
-        order.update_shipping_address(
-            Address(
-                street="999 New Street",
-                city="Other City",
-                state="CA",
-                postal_code="90001",
+    with domain.domain_context():
+        # Create an order with value objects
+        order = Order(
+            order_number="ORD-2024-001",
+            customer_id="CUST-123",
+            shipping_address=Address(
+                street="123 Main Street",
+                city="Springfield",
+                state="IL",
+                postal_code="62701",
                 country="USA",
+            ),
+            total_amount=Money(currency="USD", amount=0),  # Will be calculated
+        )
+
+        print(f"Order: {order.order_number}")
+        print(f"Customer: {order.customer_id}")
+        print(f"Shipping to: {order.shipping_address.full_address}")
+        print(f"Status: {order.status}")
+
+        # Add line items (entities with value objects)
+        order.add_line_items(
+            OrderLine(
+                product_id="PROD-001",
+                product_name="Laptop",
+                quantity=1,
+                unit_price=Money(currency="USD", amount=1200),
             )
         )
-        print("Should have failed!")
-    except ValueError as e:
-        print(f"Business rule enforced: {e}")
+        order.add_line_items(
+            OrderLine(
+                product_id="PROD-002",
+                product_name="Mouse",
+                quantity=2,
+                unit_price=Money(currency="USD", amount=25),
+            )
+        )
 
-    # Create order with attribute initialization
-    print("\n--- Alternative initialization ---")
-    order2 = Order(
-        order_number="ORD-2024-002",
-        customer_id="CUST-456",
-        shipping_address_street="789 Elm Street",
-        shipping_address_city="Boston",
-        shipping_address_state="MA",
-        shipping_address_postal_code="02101",
-        shipping_address_country="USA",
-        total_amount_currency="USD",
-        total_amount_amount=500,
-    )
-    print(f"Order 2: {order2.order_number}")
-    print(f"Shipping to: {order2.shipping_address.full_address}")
-    print(f"Total: {order2.total_amount.currency} {order2.total_amount.amount}")
+        print("\n--- Line Items ---")
+        for item in order.line_items:
+            print(
+                f"  {item.product_name}: {item.quantity} x {item.unit_price.amount} = {item.line_total.amount}"
+            )
+
+        # Confirm order (calculates total)
+        order.confirm_order()
+        print("\nOrder confirmed!")
+        print(f"Total: {order.total_amount.currency} {order.total_amount.amount}")
+        print(f"Status: {order.status}")
+
+        # Try to update address (allowed for confirmed orders)
+        new_address = Address(
+            street="456 Oak Avenue",
+            city="Springfield",
+            state="IL",
+            postal_code="62702",
+            country="USA",
+        )
+        order.update_shipping_address(new_address)
+        print(f"\nAddress updated to: {order.shipping_address.full_address}")
+
+        # Ship order
+        order.ship_order()
+        print(f"Order shipped! Status: {order.status}")
+
+        # Try to update address after shipping (not allowed)
+        print("\n--- Testing business rules ---")
+        try:
+            order.update_shipping_address(
+                Address(
+                    street="999 New Street",
+                    city="Other City",
+                    state="CA",
+                    postal_code="90001",
+                    country="USA",
+                )
+            )
+            print("Should have failed!")
+        except ValueError as e:
+            print(f"Business rule enforced: {e}")
+
+        # Create order with attribute initialization
+        print("\n--- Alternative initialization ---")
+        order2 = Order(
+            order_number="ORD-2024-002",
+            customer_id="CUST-456",
+            shipping_address_street="789 Elm Street",
+            shipping_address_city="Boston",
+            shipping_address_state="MA",
+            shipping_address_postal_code="02101",
+            shipping_address_country="USA",
+            total_amount_currency="USD",
+            total_amount_amount=500,
+        )
+        print(f"Order 2: {order2.order_number}")
+        print(f"Shipping to: {order2.shipping_address.full_address}")
+        print(f"Total: {order2.total_amount.currency} {order2.total_amount.amount}")

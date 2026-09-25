@@ -8,7 +8,7 @@ This example demonstrates:
 - Use in aggregate
 
 Usage:
-    from protean_skills.value_object.assets.value_object_simple import Balance
+    python value_object_simple.py
 """
 
 from protean import Domain

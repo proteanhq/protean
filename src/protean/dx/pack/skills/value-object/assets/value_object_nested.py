@@ -8,7 +8,7 @@ This example demonstrates:
 - Real-world example: Address with Coordinates
 
 Usage:
-    from protean_skills.value_object.assets.value_object_nested import Address
+    python value_object_nested.py
 """
 
 from protean import Domain, invariant
@@ -132,85 +132,88 @@ class Store:
 
 
 if __name__ == "__main__":
-    # Create nested value objects
-    coords = Coordinates(latitude=40.7128, longitude=-74.0060)
-    print(f"Coordinates: {coords.as_text}")
+    domain.init(traverse=False)
 
-    # Create address with nested coordinates
-    address = Address(
-        street="123 Broadway",
-        city="New York",
-        state="NY",
-        postal_code="10012",
-        country="USA",
-        coordinates=coords,
-    )
-    print(f"\nAddress: {address.full_address}")
-    print(f"Location: {address.coordinates.as_text}")
+    with domain.domain_context():
+        # Create nested value objects
+        coords = Coordinates(latitude=40.7128, longitude=-74.0060)
+        print(f"Coordinates: {coords.as_text}")
 
-    # Can also initialize nested value objects by dict
-    address2 = Address(
-        street="456 Market Street",
-        city="San Francisco",
-        state="CA",
-        postal_code="94102",
-        country="USA",
-        coordinates={"latitude": 37.7749, "longitude": -122.4194},
-    )
-    print(f"\nAddress 2: {address2.full_address}")
-    print(f"Location 2: {address2.coordinates.as_text}")
+        # Create address with nested coordinates
+        address = Address(
+            street="123 Broadway",
+            city="New York",
+            state="NY",
+            postal_code="10012",
+            country="USA",
+            coordinates=coords,
+        )
+        print(f"\nAddress: {address.full_address}")
+        print(f"Location: {address.coordinates.as_text}")
 
-    # Multiple levels of nesting
-    contact = ContactInfo(
-        email="john@example.com", phone="+1-555-0123", address=address
-    )
-    print(f"\nContact: {contact.email}, {contact.phone}")
-    print(f"Contact address: {contact.address.full_address}")
+        # Can also initialize nested value objects by dict
+        address2 = Address(
+            street="456 Market Street",
+            city="San Francisco",
+            state="CA",
+            postal_code="94102",
+            country="USA",
+            coordinates={"latitude": 37.7749, "longitude": -122.4194},
+        )
+        print(f"\nAddress 2: {address2.full_address}")
+        print(f"Location 2: {address2.coordinates.as_text}")
 
-    # Multiple nested value objects of same type
-    usd_base = Money(currency="USD", amount=100.0)
-    usd_tax = Money(currency="USD", amount=8.75)
+        # Multiple levels of nesting
+        contact = ContactInfo(
+            email="john@example.com", phone="+1-555-0123", address=address
+        )
+        print(f"\nContact: {contact.email}, {contact.phone}")
+        print(f"Contact address: {contact.address.full_address}")
 
-    price_breakdown = PriceWithTax(base_price=usd_base, tax_amount=usd_tax)
-    print("\nPrice breakdown:")
-    print(
-        f"  Base: {price_breakdown.base_price.currency} {price_breakdown.base_price.amount}"
-    )
-    print(
-        f"  Tax: {price_breakdown.tax_amount.currency} {price_breakdown.tax_amount.amount}"
-    )
-    print(f"  Total: {price_breakdown.total.currency} {price_breakdown.total.amount}")
+        # Multiple nested value objects of same type
+        usd_base = Money(currency="USD", amount=100.0)
+        usd_tax = Money(currency="USD", amount=8.75)
 
-    # Use in aggregates
-    store = Store(
-        store_name="Downtown Electronics",
-        address=Address(
-            street="789 Main St",
+        price_breakdown = PriceWithTax(base_price=usd_base, tax_amount=usd_tax)
+        print("\nPrice breakdown:")
+        print(
+            f"  Base: {price_breakdown.base_price.currency} {price_breakdown.base_price.amount}"
+        )
+        print(
+            f"  Tax: {price_breakdown.tax_amount.currency} {price_breakdown.tax_amount.amount}"
+        )
+        print(f"  Total: {price_breakdown.total.currency} {price_breakdown.total.amount}")
+
+        # Use in aggregates
+        store = Store(
+            store_name="Downtown Electronics",
+            address=Address(
+                street="789 Main St",
+                city="Boston",
+                state="MA",
+                postal_code="02101",
+                country="USA",
+                coordinates=Coordinates(latitude=42.3601, longitude=-71.0589),
+            ),
+        )
+        print(f"\nStore: {store.store_name}")
+        print(f"Address: {store.address.full_address}")
+        print(f"Coordinates: {store.address.coordinates.as_text}")
+
+        # Immutability cascades through nesting
+        print("\n--- Testing immutability ---")
+        try:
+            address.coordinates.latitude = 50.0  # Will raise IncorrectUsageError
+        except Exception as e:
+            print(f"Nested value object is also immutable: {type(e).__name__}")
+
+        # To change nested value, replace the entire parent
+        store.address = Address(
+            street="999 New Street",
             city="Boston",
             state="MA",
-            postal_code="02101",
+            postal_code="02102",
             country="USA",
             coordinates=Coordinates(latitude=42.3601, longitude=-71.0589),
-        ),
-    )
-    print(f"\nStore: {store.store_name}")
-    print(f"Address: {store.address.full_address}")
-    print(f"Coordinates: {store.address.coordinates.as_text}")
-
-    # Immutability cascades through nesting
-    print("\n--- Testing immutability ---")
-    try:
-        address.coordinates.latitude = 50.0  # Will raise IncorrectUsageError
-    except Exception as e:
-        print(f"Nested value object is also immutable: {type(e).__name__}")
-
-    # To change nested value, replace the entire parent
-    store.address = Address(
-        street="999 New Street",
-        city="Boston",
-        state="MA",
-        postal_code="02102",
-        country="USA",
-        coordinates=Coordinates(latitude=42.3601, longitude=-71.0589),
-    )
-    print(f"Updated store address: {store.address.street}")
+        )
+        print(f"Updated store address: {store.address.street}")

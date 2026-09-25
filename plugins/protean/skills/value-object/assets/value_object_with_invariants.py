@@ -8,7 +8,7 @@ This example demonstrates:
 - ValidationError on invariant violation
 
 Usage:
-    from protean_skills.value_object.assets.value_object_with_invariants import Balance
+    python value_object_with_invariants.py
 """
 
 from protean import Domain, invariant
@@ -95,61 +95,64 @@ class Account:
 
 
 if __name__ == "__main__":
-    # Valid USD balance (positive)
-    bal1 = Balance(currency="USD", amount=100.0)
-    print(f"Valid USD balance: {bal1.currency} {bal1.amount}")
+    domain.init(traverse=False)
 
-    # Valid non-USD balance (can be negative)
-    bal2 = Balance(currency="EUR", amount=-50.0)
-    print(f"Valid EUR balance: {bal2.currency} {bal2.amount}")
+    with domain.domain_context():
+        # Valid USD balance (positive)
+        bal1 = Balance(currency="USD", amount=100.0)
+        print(f"Valid USD balance: {bal1.currency} {bal1.amount}")
 
-    # Invalid USD balance (negative) - will raise ValidationError
-    print("\nTrying to create negative USD balance:")
-    try:
-        Balance(currency="USD", amount=-100.0)
-        print("Should have failed!")
-    except ValidationError as e:
-        print(f"Invariant enforced: {e}")
+        # Valid non-USD balance (can be negative)
+        bal2 = Balance(currency="EUR", amount=-50.0)
+        print(f"Valid EUR balance: {bal2.currency} {bal2.amount}")
 
-    # Valid date range
-    date_range1 = DateRange(start_date="2024-01-01", end_date="2024-12-31")
-    print(f"\nValid date range: {date_range1.start_date} to {date_range1.end_date}")
+        # Invalid USD balance (negative) - will raise ValidationError
+        print("\nTrying to create negative USD balance:")
+        try:
+            Balance(currency="USD", amount=-100.0)
+            print("Should have failed!")
+        except ValidationError as e:
+            print(f"Invariant enforced: {e}")
 
-    # Invalid date range (end before start)
-    print("Trying to create invalid date range:")
-    try:
-        DateRange(start_date="2024-12-31", end_date="2024-01-01")
-        print("Should have failed!")
-    except ValidationError as e:
-        print(f"Invariant enforced: {e}")
+        # Valid date range
+        date_range1 = DateRange(start_date="2024-01-01", end_date="2024-12-31")
+        print(f"\nValid date range: {date_range1.start_date} to {date_range1.end_date}")
 
-    # Valid discounts
-    discount1 = DiscountPercentage(percentage=30.0, customer_type="regular")
-    print(f"\nValid regular customer discount: {discount1.percentage}%")
+        # Invalid date range (end before start)
+        print("Trying to create invalid date range:")
+        try:
+            DateRange(start_date="2024-12-31", end_date="2024-01-01")
+            print("Should have failed!")
+        except ValidationError as e:
+            print(f"Invariant enforced: {e}")
 
-    discount2 = DiscountPercentage(percentage=75.0, customer_type="premium")
-    print(f"Valid premium customer discount: {discount2.percentage}%")
+        # Valid discounts
+        discount1 = DiscountPercentage(percentage=30.0, customer_type="regular")
+        print(f"\nValid regular customer discount: {discount1.percentage}%")
 
-    # Invalid discount (too high for regular customer)
-    print("\nTrying to create high discount for regular customer:")
-    try:
-        DiscountPercentage(percentage=60.0, customer_type="regular")
-        print("Should have failed!")
-    except ValidationError as e:
-        print(f"Invariant enforced: {e}")
+        discount2 = DiscountPercentage(percentage=75.0, customer_type="premium")
+        print(f"Valid premium customer discount: {discount2.percentage}%")
 
-    # Invalid discount (out of range)
-    print("\nTrying to create out-of-range discount:")
-    try:
-        DiscountPercentage(percentage=150.0, customer_type="premium")
-        print("Should have failed!")
-    except ValidationError as e:
-        print(f"Invariant enforced: {e}")
+        # Invalid discount (too high for regular customer)
+        print("\nTrying to create high discount for regular customer:")
+        try:
+            DiscountPercentage(percentage=60.0, customer_type="regular")
+            print("Should have failed!")
+        except ValidationError as e:
+            print(f"Invariant enforced: {e}")
 
-    # Use in aggregate
-    account = Account(
-        balance=Balance(currency="USD", amount=1000.0), account_number="ACC-12345"
-    )
-    print(
-        f"\nAccount created: {account.account_number}, Balance: {account.balance.amount}"
-    )
+        # Invalid discount (out of range)
+        print("\nTrying to create out-of-range discount:")
+        try:
+            DiscountPercentage(percentage=150.0, customer_type="premium")
+            print("Should have failed!")
+        except ValidationError as e:
+            print(f"Invariant enforced: {e}")
+
+        # Use in aggregate
+        account = Account(
+            balance=Balance(currency="USD", amount=1000.0), name="Checking"
+        )
+        print(
+            f"\nAccount created: {account.name}, Balance: {account.balance.amount}"
+        )

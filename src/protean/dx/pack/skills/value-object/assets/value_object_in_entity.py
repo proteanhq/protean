@@ -8,7 +8,7 @@ This example demonstrates:
 - Real-world scenario: Order with LineItems containing Money
 
 Usage:
-    from protean_skills.value_object.assets.value_object_in_entity import Order
+    python value_object_in_entity.py
 """
 
 from protean import Domain, invariant
@@ -186,108 +186,111 @@ class Invoice:
 
 
 if __name__ == "__main__":
-    # Create order with line items containing value objects
-    order = Order(order_number="ORD-001", customer_id="CUST-123")
+    domain.init(traverse=False)
 
-    # Add line item with value objects
-    order.add_line_items(
-        LineItem(
-            product_id="PROD-001",
-            product_name="Laptop",
-            quantity=2,
-            unit_price=Money(currency="USD", amount=1200.0),
-            dimensions=Dimensions(length=35.0, width=25.0, height=2.0, weight=2.5),
-        )
-    )
+    with domain.domain_context():
+        # Create order with line items containing value objects
+        order = Order(order_number="ORD-001", customer_id="CUST-123")
 
-    order.add_line_items(
-        LineItem(
-            product_id="PROD-002",
-            product_name="Mouse",
-            quantity=3,
-            unit_price=Money(currency="USD", amount=25.0),
-            dimensions=Dimensions(length=10.0, width=6.0, height=4.0, weight=0.1),
-        )
-    )
-
-    print(f"Order: {order.order_number}")
-    print(f"Customer: {order.customer_id}")
-    print("\n--- Line Items ---")
-
-    for item in order.line_items:
-        print(f"  {item.product_name}:")
-        print(f"    Quantity: {item.quantity}")
-        print(f"    Unit Price: {item.unit_price.currency} {item.unit_price.amount}")
-        print(f"    Line Total: {item.line_total.currency} {item.line_total.amount}")
-        if item.dimensions:
-            print(
-                f"    Dimensions: {item.dimensions.length}x{item.dimensions.width}x{item.dimensions.height} cm"
+        # Add line item with value objects
+        order.add_line_items(
+            LineItem(
+                product_id="PROD-001",
+                product_name="Laptop",
+                quantity=2,
+                unit_price=Money(currency="USD", amount=1200.0),
+                dimensions=Dimensions(length=35.0, width=25.0, height=2.0, weight=2.5),
             )
-            print(f"    Volume per unit: {item.dimensions.volume:.2f} cm³")
-            print(f"    Total volume: {item.total_volume:.2f} cm³")
-
-    # Calculate order totals
-    order_total = order.total()
-    order_volume = order.total_volume()
-    print(f"\nOrder Total: {order_total.currency} {order_total.amount}")
-    print(f"Total Volume: {order_volume:.2f} cm³")
-
-    # Initialize entity value objects by attributes
-    print("\n--- Alternative Initialization ---")
-    order2 = Order(order_number="ORD-002", customer_id="CUST-456")
-
-    order2.add_line_items(
-        LineItem(
-            product_id="PROD-003",
-            product_name="Keyboard",
-            quantity=1,
-            unit_price_currency="USD",
-            unit_price_amount=75.0,
-            dimensions_length=45.0,
-            dimensions_width=15.0,
-            dimensions_height=3.0,
-            dimensions_weight=0.8,
         )
-    )
 
-    item = order2.line_items[0]
-    print(f"Item: {item.product_name}")
-    print(f"Price: {item.unit_price.currency} {item.unit_price.amount}")
-    print(f"Volume: {item.dimensions.volume:.2f} cm³")
-
-    # Invoice example with discounts
-    print("\n--- Invoice Example ---")
-    invoice = Invoice(invoice_number="INV-001", customer_id="CUST-123")
-
-    invoice.add_invoice_lines(
-        InvoiceLine(
-            description="Consulting Services - 10 hours",
-            quantity=10,
-            unit_price=Money(currency="USD", amount=150.0),
-            discount=Money(currency="USD", amount=100.0),  # Bulk discount
+        order.add_line_items(
+            LineItem(
+                product_id="PROD-002",
+                product_name="Mouse",
+                quantity=3,
+                unit_price=Money(currency="USD", amount=25.0),
+                dimensions=Dimensions(length=10.0, width=6.0, height=4.0, weight=0.1),
+            )
         )
-    )
 
-    invoice.add_invoice_lines(
-        InvoiceLine(
-            description="Software License",
-            quantity=1,
-            unit_price=Money(currency="USD", amount=500.0),
-            # No discount
+        print(f"Order: {order.order_number}")
+        print(f"Customer: {order.customer_id}")
+        print("\n--- Line Items ---")
+
+        for item in order.line_items:
+            print(f"  {item.product_name}:")
+            print(f"    Quantity: {item.quantity}")
+            print(f"    Unit Price: {item.unit_price.currency} {item.unit_price.amount}")
+            print(f"    Line Total: {item.line_total.currency} {item.line_total.amount}")
+            if item.dimensions:
+                print(
+                    f"    Dimensions: {item.dimensions.length}x{item.dimensions.width}x{item.dimensions.height} cm"
+                )
+                print(f"    Volume per unit: {item.dimensions.volume:.2f} cm³")
+                print(f"    Total volume: {item.total_volume:.2f} cm³")
+
+        # Calculate order totals
+        order_total = order.total()
+        order_volume = order.total_volume
+        print(f"\nOrder Total: {order_total.currency} {order_total.amount}")
+        print(f"Total Volume: {order_volume:.2f} cm³")
+
+        # Initialize entity value objects by attributes
+        print("\n--- Alternative Initialization ---")
+        order2 = Order(order_number="ORD-002", customer_id="CUST-456")
+
+        order2.add_line_items(
+            LineItem(
+                product_id="PROD-003",
+                product_name="Keyboard",
+                quantity=1,
+                unit_price_currency="USD",
+                unit_price_amount=75.0,
+                dimensions_length=45.0,
+                dimensions_width=15.0,
+                dimensions_height=3.0,
+                dimensions_weight=0.8,
+            )
         )
-    )
 
-    print(f"Invoice: {invoice.invoice_number}")
-    print("\n--- Invoice Lines ---")
+        item = order2.line_items[0]
+        print(f"Item: {item.product_name}")
+        print(f"Price: {item.unit_price.currency} {item.unit_price.amount}")
+        print(f"Volume: {item.dimensions.volume:.2f} cm³")
 
-    for line in invoice.invoice_lines:
-        print(f"  {line.description}:")
-        print(f"    Quantity: {line.quantity}")
-        print(f"    Unit Price: {line.unit_price.currency} {line.unit_price.amount}")
-        print(f"    Subtotal: {line.subtotal.currency} {line.subtotal.amount}")
-        if line.discount:
-            print(f"    Discount: {line.discount.currency} {line.discount.amount}")
-        print(f"    Total: {line.total.currency} {line.total.amount}")
+        # Invoice example with discounts
+        print("\n--- Invoice Example ---")
+        invoice = Invoice(invoice_number="INV-001", customer_id="CUST-123")
 
-    invoice_total = invoice.total()
-    print(f"\nInvoice Total: {invoice_total.currency} {invoice_total.amount}")
+        invoice.add_invoice_lines(
+            InvoiceLine(
+                description="Consulting Services - 10 hours",
+                quantity=10,
+                unit_price=Money(currency="USD", amount=150.0),
+                discount=Money(currency="USD", amount=100.0),  # Bulk discount
+            )
+        )
+
+        invoice.add_invoice_lines(
+            InvoiceLine(
+                description="Software License",
+                quantity=1,
+                unit_price=Money(currency="USD", amount=500.0),
+                # No discount
+            )
+        )
+
+        print(f"Invoice: {invoice.invoice_number}")
+        print("\n--- Invoice Lines ---")
+
+        for line in invoice.invoice_lines:
+            print(f"  {line.description}:")
+            print(f"    Quantity: {line.quantity}")
+            print(f"    Unit Price: {line.unit_price.currency} {line.unit_price.amount}")
+            print(f"    Subtotal: {line.subtotal.currency} {line.subtotal.amount}")
+            if line.discount:
+                print(f"    Discount: {line.discount.currency} {line.discount.amount}")
+            print(f"    Total: {line.total.currency} {line.total.amount}")
+
+        invoice_total = invoice.total()
+        print(f"\nInvoice Total: {invoice_total.currency} {invoice_total.amount}")
