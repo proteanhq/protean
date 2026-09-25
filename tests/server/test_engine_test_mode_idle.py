@@ -84,6 +84,8 @@ class FailingParcelHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
+    if test_domain is None:  # The test builds its own domain.
+        return
     shipped.clear()
     test_domain.config["event_processing"] = Processing.ASYNC.value
     test_domain.register(Order, stream_category="orders")
@@ -421,6 +423,7 @@ class TestBrokerRedelivery:
         self._run(test_domain)
         assert len(calls) == 1
 
+    @pytest.mark.no_test_domain
     def test_the_documented_config_gets_the_redelivery_processed(self, tmp_path):
         """Load the TOML the testing guide gives, from a real ``domain.toml``."""
         guide = DOCS / "patterns" / "testing-event-driven-flows.md"
