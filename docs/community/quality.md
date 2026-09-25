@@ -169,11 +169,12 @@ between per-PR CI and a nightly run:
     - MessageDB 1.2.6
     - MSSQL Server 2022
 
-Each pull request runs the in-memory core suite on every version and the full
-adapter suite on the newest stable Python. The nightly run exercises the full
-adapter suite across all five versions. The stable versions gate every merge;
-the 3.15 prerelease leg runs alongside them as a non-blocking early-warning
-check while 3.15 is a prerelease.
+Each pull request runs the in-memory core suite on every stable version, and
+the PostgreSQL and Redis adapters plus any adapter the pull request changes. A
+push to `main` adds the full adapter suite on the newest stable Python, and the
+nightly run exercises the full adapter suite across all five versions. The
+stable versions gate every merge; the 3.15 prerelease leg runs nightly as a
+non-blocking early-warning check while 3.15 is a prerelease.
 
 ### Pipeline Steps
 
@@ -183,13 +184,15 @@ missing pre-commit hook, a `--no-verify`, or a web edit:
 1. **Lint**: `ruff check` and `ruff format --check`, the same checks as the
    pre-commit hook.
 2. **Type check**: `mypy --strict` over `src/protean`.
-3. **Test suite**: the in-memory core suite (`protean test`) on every Python
-   version, and the full adapter suite (`protean test -c FULL`) with all 5
-   backing service containers on the newest stable Python. The nightly run
-   extends the full adapter suite to every version.
-4. **Coverage floor**: Overall coverage must stay at or above 94%
-   (`coverage report --fail-under=94`); patch coverage is enforced separately by
-   Codecov, and results are uploaded to Codecov on every run.
+3. **Test suite**: the in-memory core suite (`protean test`) on every stable
+   Python version, and the `Adapters` check: PostgreSQL and Redis always, plus
+   each adapter whose files the pull request changes (`tests/adapters.toml`).
+   A push to `main` runs the full adapter suite (`protean test -c FULL`) on the
+   newest stable Python, and the nightly run extends it to every version.
+4. **Coverage**: Codecov requires 96% of a pull request's changed lines to be
+   covered (`codecov/patch`). The overall floor of 94%
+   (`coverage report --fail-under=94`) is enforced on every push to `main`,
+   the only run that sees every adapter.
 5. **Security scanning**: CodeQL (SAST) and a dependency-review check on any
    changed dependencies.
 
