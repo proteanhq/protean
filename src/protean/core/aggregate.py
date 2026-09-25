@@ -179,6 +179,12 @@ class BaseAggregate(BaseEntity):
 
         Enriches the event with metadata (identity, stream, sequence,
         checksum) and appends it to ``self._events``.
+
+        On an event-sourced aggregate, the event's ``@apply`` handler then
+        runs. If the handler or an invariant check raises, ``_events``,
+        ``_version`` and ``_event_position`` go back to their values from
+        before the call and the error propagates. Field changes the handler
+        made before raising are not undone.
         """
         # Guard: temporal aggregates are read-only
         if self._is_temporal:
@@ -205,6 +211,11 @@ class BaseAggregate(BaseEntity):
             stream = f"{self.meta_.stream_category}-fact-{identifier}"
         else:
             stream = f"{self.meta_.stream_category}-{identifier}"
+
+        # Snapshot so a rejected event can be dropped again below
+        version_before = self._version
+        position_before = self._event_position
+        events_count_before = len(self._events)
 
         if self.meta_.is_event_sourced:
             if not event.__class__.meta_.is_fact_event:
@@ -288,9 +299,16 @@ class BaseAggregate(BaseEntity):
         # the same code path used during live processing and event replay.
         # We use atomic_change so that invariants are checked before and
         # after the handler runs, preserving the "always valid" guarantee.
+        # The event stays pending only once its handler accepts it.
         if self.meta_.is_event_sourced and not event.__class__.meta_.is_fact_event:
-            with atomic_change(self):
-                self._apply_handler(event_with_metadata)
+            try:
+                with atomic_change(self):
+                    self._apply_handler(event_with_metadata)
+            except BaseException:
+                self._version = version_before
+                self._event_position = position_before
+                del self._events[events_count_before:]
+                raise
 
     @staticmethod
     def _warn_if_deprecated(event_cls: type[BaseEvent]) -> None:

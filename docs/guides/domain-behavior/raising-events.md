@@ -170,6 +170,10 @@ Key points for ES aggregates:
   **invariants are checked** before and after the state change.
 - Every event raised **must** have a corresponding `@apply` handler.
   Raising an event without one throws `IncorrectUsageError`.
+- If the `@apply` handler or an invariant check raises, the event is not
+  recorded. `raise_()` leaves the pending events and the version as they
+  were and passes the error on to you. Field changes the handler made
+  before it raised are not undone.
 - Factory methods use `_create_new()` to create a blank aggregate
   with identity. The creation event's `@apply` handler populates
   all remaining state.
