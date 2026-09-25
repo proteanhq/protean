@@ -8,7 +8,7 @@ This example demonstrates:
 - ValidationError on invalid data
 
 Usage:
-    from protean_skills.value_object.assets.value_object_with_validation import Email
+    python value_object_with_validation.py
 """
 
 from protean import Domain
@@ -76,35 +76,38 @@ class User:
 
 
 if __name__ == "__main__":
-    # Valid email
-    email1 = Email(address="john.doe@example.com")
-    print(f"Valid email: {email1.address}")
+    domain.init(traverse=False)
 
-    # Use in aggregate
-    user = User(
-        email=Email(address="jane.smith@company.io"),
-        name="Jane Smith",
-        timezone="America/New_York",
-    )
-    print(f"User: {user.name}, Email: {user.email.address}")
+    with domain.domain_context():
+        # Valid email
+        email1 = Email(address="john.doe@example.com")
+        print(f"Valid email: {email1.address}")
 
-    # Can also initialize by attributes
-    user2 = User(email_address="bob.jones@test.org", name="Bob Jones")
-    print(f"User 2: {user2.name}, Email: {user2.email.address}")
+        # Use in aggregate
+        user = User(
+            email=Email(address="jane.smith@company.io"),
+            name="Jane Smith",
+            timezone="America/New_York",
+        )
+        print(f"User: {user.name}, Email: {user.email.address}")
 
-    # Invalid emails - each will raise ValidationError
-    invalid_emails = [
-        "john.doe",  # Missing @
-        "@example.com",  # Starts with @
-        "john.doe@",  # Ends with @
-        "john..doe@example.com",  # Consecutive dots
-        "a" * 65 + "@example.com",  # Local part too long
-    ]
+        # Can also initialize by attributes
+        user2 = User(email_address="bob.jones@test.org", name="Bob Jones")
+        print(f"User 2: {user2.name}, Email: {user2.email.address}")
 
-    print("\nTesting invalid emails:")
-    for invalid in invalid_emails:
-        try:
-            Email(address=invalid)
-            print(f"  '{invalid}' - Should have failed!")
-        except ValidationError as e:
-            print(f"  '{invalid}' - Correctly rejected: {e}")
+        # Invalid emails - each will raise ValidationError
+        invalid_emails = [
+            "john.doe",  # Missing @
+            "@example.com",  # Starts with @
+            "john.doe@",  # Ends with @
+            "john..doe@example.com",  # Consecutive dots
+            "a" * 65 + "@example.com",  # Local part too long
+        ]
+
+        print("\nTesting invalid emails:")
+        for invalid in invalid_emails:
+            try:
+                Email(address=invalid)
+                print(f"  '{invalid}' - Should have failed!")
+            except ValidationError as e:
+                print(f"  '{invalid}' - Correctly rejected: {e}")

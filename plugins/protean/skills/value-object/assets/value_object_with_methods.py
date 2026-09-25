@@ -8,7 +8,7 @@ This example demonstrates:
 - Computed properties
 
 Usage:
-    from protean_skills.value_object.assets.value_object_with_methods import Money
+    python value_object_with_methods.py
 """
 
 from protean import Domain
@@ -97,55 +97,58 @@ class Order:
 
 
 if __name__ == "__main__":
-    # Create Money instances
-    price1 = Money(currency="USD", amount=float("10.00"))
-    price2 = Money(currency="USD", amount=float("20.00"))
+    domain.init(traverse=False)
 
-    print(f"Price 1: {price1.currency} {price1.amount}")
-    print(f"Price 2: {price2.currency} {price2.amount}")
+    with domain.domain_context():
+        # Create Money instances
+        price1 = Money(currency="USD", amount=float("10.00"))
+        price2 = Money(currency="USD", amount=float("20.00"))
 
-    # Add money
-    total = price1.add(price2)
-    print(f"Total: {total.currency} {total.amount}")
+        print(f"Price 1: {price1.currency} {price1.amount}")
+        print(f"Price 2: {price2.currency} {price2.amount}")
 
-    # Subtract money
-    difference = price2.subtract(price1)
-    print(f"Difference: {difference.currency} {difference.amount}")
+        # Add money
+        total = price1.add(price2)
+        print(f"Total: {total.currency} {total.amount}")
 
-    # Multiply money
-    doubled = price1.multiply(float("2"))
-    print(f"Doubled: {doubled.currency} {doubled.amount}")
+        # Subtract money
+        difference = price2.subtract(price1)
+        print(f"Difference: {difference.currency} {difference.amount}")
 
-    # Check properties
-    print(f"Is positive: {price1.is_positive}")
-    zero_money = Money(currency="USD", amount=float("0.00"))
-    print(f"Zero money is zero: {zero_money.is_zero}")
+        # Multiply money
+        doubled = price1.multiply(float("2"))
+        print(f"Doubled: {doubled.currency} {doubled.amount}")
 
-    # Cannot add different currencies
-    euro_price = Money(currency="EUR", amount=float("10.00"))
-    try:
-        price1.add(euro_price)
-    except ValueError as e:
-        print(f"\nCurrency mismatch prevented: {e}")
+        # Check properties
+        print(f"Is positive: {price1.is_positive}")
+        zero_money = Money(currency="USD", amount=float("0.00"))
+        print(f"Zero money is zero: {zero_money.is_zero}")
 
-    # Use in entities
-    print("\n--- Line Item Example ---")
-    item1 = LineItem(
-        product_id="PROD-001",
-        quantity=float("3"),
-        unit_price=Money(currency="USD", amount=float("15.50")),
-    )
-    item2 = LineItem(
-        product_id="PROD-002",
-        quantity=float("2"),
-        unit_price=Money(currency="USD", amount=float("25.00")),
-    )
+        # Cannot add different currencies
+        euro_price = Money(currency="EUR", amount=float("10.00"))
+        try:
+            price1.add(euro_price)
+        except ValueError as e:
+            print(f"\nCurrency mismatch prevented: {e}")
 
-    print(f"Item 1 total: {item1.total.currency} {item1.total.amount}")
-    print(f"Item 2 total: {item2.total.currency} {item2.total.amount}")
+        # Use in entities
+        print("\n--- Line Item Example ---")
+        item1 = LineItem(
+            product_id="PROD-001",
+            quantity=float("3"),
+            unit_price=Money(currency="USD", amount=float("15.50")),
+        )
+        item2 = LineItem(
+            product_id="PROD-002",
+            quantity=float("2"),
+            unit_price=Money(currency="USD", amount=float("25.00")),
+        )
 
-    # Calculate order total
-    order = Order(order_number="ORD-001", customer_id="CUST-123")
-    order.add_line_items([item1, item2])
-    order_total = order.order_total
-    print(f"Order total: {order_total.currency} {order_total.amount}")
+        print(f"Item 1 total: {item1.total.currency} {item1.total.amount}")
+        print(f"Item 2 total: {item2.total.currency} {item2.total.amount}")
+
+        # Calculate order total
+        order = Order(order_number="ORD-001", customer_id="CUST-123")
+        order.add_line_items([item1, item2])
+        order_total = order.order_total
+        print(f"Order total: {order_total.currency} {order_total.amount}")
