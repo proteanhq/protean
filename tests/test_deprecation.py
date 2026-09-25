@@ -11,6 +11,7 @@ import warnings
 
 import pytest
 
+import protean._deprecation
 import protean.exceptions
 from protean._deprecation import (
     ProteanDeprecationWarning,
@@ -225,9 +226,12 @@ class TestDeprecatedDecorator:
             assert known in str(exc.value)
         assert "0.18.0" not in str(exc.value)
 
+    def test_removed_0_18_warning_class_is_gone(self):
+        assert not hasattr(protean._deprecation, "RemovedInProtean018Warning")
+
     def test_closed_0_18_window_is_no_longer_a_known_version(self):
-        """The 0.18.0 removal window closed with the removal of the last API
-        that cited it, so a new deprecation cannot target it."""
+        """No warning class exists for 0.18.0, so a new deprecation cannot
+        target it."""
         with pytest.raises(ValueError, match="No Protean deprecation warning class"):
 
             @deprecated(removal="0.18.0")
