@@ -3,9 +3,12 @@
 import logging
 from uuid import uuid4
 
+import pytest
 import structlog
 
 from tests.logging_isolation import LoggingSnapshot
+
+pytestmark = pytest.mark.no_test_domain
 
 
 def _name() -> str:

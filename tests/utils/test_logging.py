@@ -40,6 +40,7 @@ class TestConfigureLogging:
         assert len(root.handlers) == 1
         assert isinstance(root.handlers[0], logging.StreamHandler)
 
+    @pytest.mark.no_test_domain
     def test_asks_structlog_to_cache_loggers(self, monkeypatch):
         """Each structlog logger is cached after its first use.
 

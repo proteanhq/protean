@@ -5,12 +5,15 @@ import importlib
 import inspect
 import logging
 import pkgutil
+import re
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
+from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
@@ -26,6 +29,8 @@ from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
+
+DOCS = Path(__file__).parents[2] / "docs"
 
 # The old test mode always ran this many 0.1s cycles before it could stop.
 OLD_FIXED_CYCLES = 11
@@ -308,15 +313,16 @@ class TestEveryPollLoopReportsIdleness:
         "cls", _framework_subscription_classes(), ids=lambda cls: cls.__name__
     )
     def test_poll_records_ticks_or_opts_out(self, cls):
-        if not cls.reports_idle or "poll" not in vars(cls):
+        if not cls.reports_idle:
             return
-        assert "_record_tick" in inspect.getsource(cls.poll), (
-            f"{cls.__name__}.poll() does not record ticks; call _record_tick "
-            "or set reports_idle = False"
-        )
         assert "create_task" not in inspect.getsource(cls), (
             f"{cls.__name__} starts tasks; set reports_idle = False"
         )
+        if "poll" in vars(cls):
+            assert "_record_tick" in inspect.getsource(cls.poll), (
+                f"{cls.__name__}.poll() does not record ticks; call _record_tick "
+                "or set reports_idle = False"
+            )
 
     def test_the_scan_finds_the_poll_loop_overrides(self):
         overrides = {
@@ -415,10 +421,26 @@ class TestBrokerRedelivery:
         self._run(test_domain)
         assert len(calls) == 1
 
-    def test_a_redelivery_with_no_delay_is_processed(self, test_domain, calls):
-        test_domain.config["server"]["broker_subscription"] = {"retry_delay_seconds": 0}
-        # A new dict, so ``init()`` rebuilds the broker instead of reusing it.
-        brokers = test_domain.config["brokers"]
-        brokers["default"] = {**brokers["default"], "retry_delay": 0}
-        self._run(test_domain)
-        assert len(calls) == 2
+    def test_the_documented_config_gets_the_redelivery_processed(self, tmp_path):
+        """Load the TOML the testing guide gives, from a real ``domain.toml``."""
+        guide = DOCS / "patterns" / "testing-event-driven-flows.md"
+        blocks = re.findall(r"```toml\n(.*?)```", guide.read_text(), re.DOTALL)
+        (snippet,) = [block for block in blocks if "retry_delay_seconds" in block]
+        (tmp_path / "domain.toml").write_text(snippet)
+
+        domain = Domain(name="Redelivery", root_path=str(tmp_path))
+        received: list[dict] = []
+
+        @domain.subscriber(stream="parcels-external")
+        class FailsOnce:
+            def __call__(self, payload: dict) -> None:
+                received.append(payload)
+                if len(received) == 1:
+                    raise RuntimeError("fails once")
+
+        domain.init(traverse=False)
+        with domain.domain_context():
+            domain.brokers["default"].publish("parcels-external", {"id": 1})
+            Engine(domain=domain, test_mode=True).run()
+
+        assert len(received) == 2
