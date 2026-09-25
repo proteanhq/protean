@@ -1,5 +1,7 @@
 """`protean.testing.__all__` freezes the public testing DSL surface, keeping
-incidental imports and the deprecated invariant helpers out of `import *`."""
+incidental imports out of `import *`."""
+
+import pytest
 
 
 def _star_import():
@@ -36,12 +38,11 @@ def test_all_lists_the_public_dsl():
     assert set(testing.__all__) == EXPECTED
 
 
-def test_deprecated_helpers_are_not_exported():
-    # `assert_valid`/`assert_invalid` remain importable by name but must not be
-    # dragged in by `import *`.
-    exported = _star_import()
-    assert "assert_valid" not in exported
-    assert "assert_invalid" not in exported
+@pytest.mark.parametrize("name", ["assert_valid", "assert_invalid"])
+def test_removed_invariant_helpers_are_not_importable(name):
+    # Both helpers were removed in 0.18.0 after their deprecation window.
+    with pytest.raises(ImportError, match=name):
+        exec(f"from protean.testing import {name}", {})
 
 
 def test_incidental_imports_are_not_exported():

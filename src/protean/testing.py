@@ -84,7 +84,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
-from protean._deprecation import deprecated_from_registry
 from protean.core.process_manager import (
     BaseProcessManager,
     _resolve_correlation_value,
@@ -92,7 +91,6 @@ from protean.core.process_manager import (
 from protean.exceptions import (
     ObjectNotFoundError,
     ProteanExceptionWithMessage,
-    ValidationError,
 )
 
 if TYPE_CHECKING:
@@ -114,8 +112,8 @@ from protean.utils.reflection import _ID_FIELD_NAME
 from protean.utils.sync_dispatch import dispatch_events_sync
 
 # The public testing DSL surface. ``import *`` yields exactly these names,
-# keeping incidental imports (``Message``, ``fqn``, ``warnings``, …) and the
-# deprecated ``assert_valid``/``assert_invalid`` shims out of the star-export.
+# keeping incidental imports (``Message``, ``fqn``, ``warnings``, …) out of the
+# star-export.
 # The returned ``*Result``/``EventLog``/``EventSequence`` types stay in because
 # callers type-annotate against them.
 __all__ = [
@@ -1372,72 +1370,3 @@ def get_generic_test_dir() -> Path:
         "To run conformance tests, install Protean from source: "
         "pip install -e 'protean[dev]' or use a source checkout."
     )
-
-
-# ---------------------------------------------------------------------------
-# Invariant testing helpers (deprecated)
-# ---------------------------------------------------------------------------
-#
-# These were removed in 0.16.0 without a deprecation cycle, breaking downstream
-# test suites at import time. They are restored here as deprecated shims so the
-# 0.16.0 removal honours the breaking-change policy (ADR-0004: minimum two
-# minor versions). Prefer ``pytest.raises(ValidationError, match=...)``.
-
-
-@deprecated_from_registry("assert_invalid")
-def assert_invalid(
-    operation: Callable[[], Any],
-    *,
-    message: str | None = None,
-) -> ValidationError:
-    """Assert that an operation raises a ``ValidationError``.
-
-    .. deprecated:: 0.16.1
-        Use ``pytest.raises(ValidationError, match=...)`` instead. Will be
-        removed in v0.18.0.
-
-    Args:
-        operation: A callable (typically a lambda) wrapping the code that
-            should fail validation.
-        message: If provided, asserts that this string appears in at least one
-            of the flattened validation error messages.
-
-    Returns:
-        The caught ``ValidationError`` for further assertions.
-    """
-    try:
-        operation()
-    except ValidationError as exc:
-        if message is not None:
-            flat_messages = _flatten_messages(exc.messages)
-            if not any(message in m for m in flat_messages):
-                raise AssertionError(
-                    f"Expected validation message containing {message!r}, "
-                    f"got: {flat_messages}"
-                ) from None
-        return exc
-
-    raise AssertionError("Expected ValidationError but no exception was raised")
-
-
-@deprecated_from_registry("assert_valid")
-def assert_valid(operation: Callable[[], Any]) -> Any:
-    """Assert that an operation completes without raising a ``ValidationError``.
-
-    .. deprecated:: 0.16.1
-        Call the operation directly instead. Will be removed in v0.18.0.
-
-    Args:
-        operation: A callable (typically a lambda) wrapping the code that
-            should pass validation.
-
-    Returns:
-        The return value of the operation.
-    """
-    try:
-        return operation()
-    except ValidationError as exc:
-        flat_messages = _flatten_messages(exc.messages)
-        raise AssertionError(
-            f"Expected no ValidationError but got: {flat_messages}"
-        ) from exc

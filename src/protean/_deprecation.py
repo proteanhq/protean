@@ -8,7 +8,7 @@ single place that machinery lives, so the policy cannot drift site by site:
   version (mirroring Django's ``RemovedInDjangoXXWarning`` classes). The
   per-version class makes filtering trivial — a downstream project can promote a
   specific window to an error with
-  ``-W error::protean._deprecation.RemovedInProtean018Warning``.
+  ``-W error::protean._deprecation.RemovedInProtean10Warning``.
 - :func:`warn_deprecated` — emit a consistently formatted warning from inside a
   deprecated code path (e.g. a conditional branch).
 - :func:`deprecated` — a decorator for a whole function/method that is going
@@ -39,10 +39,6 @@ class RemovedInProtean017Warning(ProteanDeprecationWarning):
     """Marks API scheduled for removal in v0.17.0."""
 
 
-class RemovedInProtean018Warning(ProteanDeprecationWarning):
-    """Marks API scheduled for removal in v0.18.0."""
-
-
 class RemovedInProtean10Warning(ProteanDeprecationWarning):
     """Marks API deprecated during the 0.x series and removed at v1.0.0."""
 
@@ -52,7 +48,6 @@ class RemovedInProtean10Warning(ProteanDeprecationWarning):
 # adding a subclass here so ``-W`` filtering keeps working per-window.
 _REMOVAL_WARNINGS: dict[str, type[ProteanDeprecationWarning]] = {
     "0.17.0": RemovedInProtean017Warning,
-    "0.18.0": RemovedInProtean018Warning,
     "1.0.0": RemovedInProtean10Warning,
 }
 
@@ -86,7 +81,7 @@ def warn_deprecated(
 
     Args:
         subject: What is deprecated, phrased as it should read at the start of
-            the sentence (e.g. ``"--debug"`` or ``"assert_valid()"``).
+            the sentence (e.g. ``"--debug"`` or ``"old_helper()"``).
         removal: Canonical ``X.Y.Z`` version the API is removed in, or ``None``
             when no removal is scheduled yet. A recognized version selects its
             per-version warning class; ``None`` or an unrecognized version
@@ -152,8 +147,8 @@ def deprecated(
 
     Example::
 
-        @deprecated(removal="0.18.0", alternative="Call the operation directly.")
-        def assert_valid(operation): ...
+        @deprecated(removal="1.0.0", alternative="Use new_helper() instead.")
+        def old_helper(value): ...
     """
     _warning_for_removal(removal)  # fail fast on an unknown version
 
@@ -384,30 +379,6 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "An imperative method call has no static declaration site for a "
                 "rule to read off a built domain; the per-call "
                 "RemovedInProtean10Warning is the only detector."
-            ),
-        ),
-        Deprecation(
-            slug="assert_valid",
-            name="`assert_valid()`",
-            since="0.16.1",
-            removal="0.18.0",
-            detection="runtime",
-            alternative="Call the operation directly instead.",
-            reason=(
-                "A test-only helper; `protean check` scans domain source, not "
-                "test suites (ADR-0019), so it never sees the call site."
-            ),
-        ),
-        Deprecation(
-            slug="assert_invalid",
-            name="`assert_invalid()`",
-            since="0.16.1",
-            removal="0.18.0",
-            detection="runtime",
-            alternative="Use pytest.raises(ValidationError, match=...) instead.",
-            reason=(
-                "A test-only helper; `protean check` scans domain source, not "
-                "test suites (ADR-0019), so it never sees the call site."
             ),
         ),
         Deprecation(
