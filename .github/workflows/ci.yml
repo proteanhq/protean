@@ -211,7 +211,7 @@ jobs:
   # A red push to main opens or updates the `ci-failure` issue, the same one
   # the nightly run uses.
   report-main-failure:
-    needs: [test, mypy, lint, dx-pack]
+    needs: [test, mypy, lint, dx-pack, docs-deploy]
     if: ${{ failure() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

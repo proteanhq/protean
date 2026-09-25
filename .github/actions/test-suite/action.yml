@@ -66,8 +66,8 @@ runs:
         fi
         echo "list=$list" >> "$GITHUB_OUTPUT"
 
-    # Only a FULL leg caches images: it pulls all seven. An adapter leg pulls
-    # one or two, which is quicker than loading a cache of all seven.
+    # Only a FULL leg caches images: it pulls every service image. An adapter
+    # leg pulls one or two, which is quicker than loading a cache of them all.
     - name: Cache Docker images
       id: docker-cache
       if: inputs.full == 'true'

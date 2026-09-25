@@ -30,7 +30,7 @@ runs:
 
         # Ensure the label exists (idempotent: --force also updates color/desc).
         gh label create ci-failure --color B60205 \
-          --description "Automated: a CI run on main failed" --force >/dev/null 2>&1 || true
+          --description "Automated: a CI run on main or nightly failed" --force >/dev/null 2>&1 || true
 
         now="$(date -u '+%Y-%m-%d %H:%M UTC')"
 

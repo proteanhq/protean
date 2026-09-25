@@ -31,6 +31,7 @@ all = [
     "src/protean/cli/test.py",
     "tests/adapters.toml",
     "tests/conftest.py",
+    "tests/shared.py",
     "uv.lock",
 ]
 
@@ -158,7 +159,7 @@ markers = ["message_db"]
 stores = ["MESSAGE_DB"]
 
 # Off: no CI run has passed `--sendgrid` (it is not in `-c FULL` either), and
-# its two tests fail on a stale email setup. Give it a lane once they pass.
+# its tests fail on a stale email setup. Give it a lane once they pass.
 [adapters.sendgrid]
 lane = "off"
 paths = [
