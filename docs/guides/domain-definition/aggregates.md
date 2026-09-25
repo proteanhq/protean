@@ -377,8 +377,8 @@ The `Reference` field (`comment.post`) provides access to the full parent object
 |---|---|
 | `ValidationError` | Field validation fails during construction or mutation (e.g. missing `required` field, value exceeds `max_length`). Contains a `messages` dict mapping field names to error lists. |
 | `ValidationError` | An `@invariant.post` or `@invariant.pre` check raises a validation error. |
-| `IncorrectUsageError` | Trying to instantiate an abstract aggregate directly. |
-| `IncorrectUsageError` | Raising an event that is not associated with this aggregate (`part_of` mismatch). |
+| `NotSupportedError` | Trying to instantiate an abstract aggregate directly. |
+| `ConfigurationError` | Raising an event that is not associated with this aggregate (`part_of` mismatch). |
 | `IncorrectUsageError` | Event-sourced aggregate raises or replays an event with no matching `@apply` handler. |
 
 ---

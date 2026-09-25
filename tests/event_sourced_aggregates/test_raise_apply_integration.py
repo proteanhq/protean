@@ -575,6 +575,32 @@ class TestMissingApplyHandler:
         with pytest.raises(IncorrectUsageError, match="No @apply handler registered"):
             orphan.raise_(OrphanEvent(data="boom"))
 
+    def test_replay_without_handler_raises_incorrect_usage_error(self, test_domain):
+        """Replaying an event with no @apply handler fails the same way."""
+
+        class Opened(BaseEvent):
+            data: String()
+
+        class OrphanEvent(BaseEvent):
+            data: String()
+
+        class Orphan(BaseAggregate):
+            data: String()
+
+            @apply
+            def opened(self, event: Opened) -> None:
+                self.data = event.data
+
+        test_domain.register(Orphan, event_sourced=True)
+        test_domain.register(Opened, part_of=Orphan)
+        test_domain.register(OrphanEvent, part_of=Orphan)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(
+            IncorrectUsageError, match="No @apply handler registered for event"
+        ):
+            Orphan.from_events([Opened(data="first"), OrphanEvent(data="boom")])
+
 
 # ---------------------------------------------------------------------------
 # Test: fact events are excluded from @apply

@@ -262,7 +262,8 @@ it is unused.
 | **Level** | `warning` |
 
 **Why.** An event-sourced aggregate rebuilds its state by applying events; an
-event without an `@apply` handler is never folded into state.
+event without an `@apply` handler cannot be applied. Raising or replaying it
+raises `IncorrectUsageError` at runtime.
 
 **Fix.** Add an `@apply` method on the aggregate for this event.
 
