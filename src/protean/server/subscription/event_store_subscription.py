@@ -38,8 +38,10 @@ class FailedPositionStatus(StrEnum):
 class ReplayOutcome(StrEnum):
     """What ``EventStoreSubscription.replay_exhausted`` did with a position.
 
-    ``RESOLVED``: the handler ran and succeeded, and a ``Resolved`` record was
-    written. ``REOPENED``: the handler ran and failed again, and a fresh
+    ``RESOLVED``: the engine reported the message handled, and a ``Resolved``
+    record was written. That is normally a handler success, but see
+    ``replay_exhausted`` for the narrow case where the engine skipped the
+    command instead. ``REOPENED``: the handler ran and failed again, and a fresh
     ``Failed`` record was written. ``EXPIRED``: the event is a command whose
     deadline has passed, so it was not dispatched and nothing was written; the
     position stays ``Exhausted`` for the operator to purge.
@@ -1438,12 +1440,14 @@ class EventStoreSubscription(BaseSubscription):
         engine skips an expired command and still reports it handled, so
         dispatching it would record ``Resolved`` although the handler never ran.
         On this path nothing is written: no ``Resolved``, and no ``Failed``
-        either, because a reopened position would be skipped the same way by the
-        recovery pass and resolved there. The position stays ``Exhausted`` so the
-        operator can purge it. The engine re-checks the deadline against a
-        slightly later clock reading, so a deadline that falls between the two
-        checks is still skipped and recorded ``Resolved``. That window is the
-        gap between two adjacent calls.
+        either. A ``Failed`` record would hand the position to the recovery
+        pass, which dispatches through the same engine path and would record the
+        expired command ``Resolved`` too. The position stays ``Exhausted`` so the
+        operator can purge it. The check reads the engine domain's clock, the
+        clock ``handle_message`` uses. ``handle_message`` checks the deadline
+        again with its own, later clock reading, after it has entered the domain
+        context and resolved the handler. A deadline that falls between the two
+        readings is still skipped by the engine and recorded ``Resolved``.
 
         Returns ``ReplayOutcome.RESOLVED`` when the handler succeeded,
         ``ReplayOutcome.REOPENED`` when it failed again, and
@@ -1451,7 +1455,7 @@ class EventStoreSubscription(BaseSubscription):
         nothing was dispatched.
         """
         headers = event.metadata.headers if event.metadata else None
-        if headers and headers.is_expired():
+        if headers and headers.is_expired(now=self.engine.domain.clock.now()):
             return ReplayOutcome.EXPIRED
 
         is_successful = await self.engine.handle_message(

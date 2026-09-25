@@ -389,7 +389,7 @@ def _unexpired_or_abort(event: Message, position: int) -> None:
     expired command itself and returns ``ReplayOutcome.EXPIRED``, which
     ``replay`` maps to the same message. ``replay`` also checks here twice, once
     before the confirmation prompt so the operator hears about it early, and
-    again just before the dispatch. The engine re-checks the deadline after
+    again right before the dispatch. The engine re-checks the deadline after
     ``replay_exhausted`` does, so a deadline that passes between those two
     checks can still be skipped and recorded ``Resolved``. Closing that last gap
     needs the engine to report a skipped dispatch apart from a successful one.

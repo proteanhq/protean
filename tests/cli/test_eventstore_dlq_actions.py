@@ -723,6 +723,22 @@ class TestReplay:
         assert result.exit_code == EXIT_USAGE
         assert "deadline has passed" in result.output
 
+    def test_replay_refuses_an_expired_command_before_the_prompt(self, test_domain):
+        # Without --yes: the operator hears about the expired deadline before
+        # being asked to confirm, not after.
+        past = datetime(2020, 1, 1, tzinfo=UTC)
+        position = _exhaust_command_position(test_domain, deadline=past)
+
+        with patch("typer.confirm") as confirm:
+            result = _invoke(
+                ["eventstore", "dlq", "replay", str(position), "--domain", "x.py"],
+                domain=test_domain,
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "deadline has passed" in result.output
+        confirm.assert_not_called()
+
     def test_replay_refuses_a_command_whose_deadline_passes_at_the_prompt(
         self, test_domain
     ):

@@ -16,6 +16,7 @@ Covers ``EventStoreSubscription.replay_exhausted`` and the purge path behind
 """
 
 import asyncio
+import contextvars
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -620,8 +621,8 @@ class TestReplayExpiredCommand:
         assert _latest_status(sub, 1) == FailedPositionStatus.EXHAUSTED.value
 
     def test_replay_of_expired_command_writes_no_record(self, test_domain):
-        """Neither ``Resolved`` nor ``Failed``: a reopened position would be
-        skipped by the recovery pass and resolved there instead."""
+        """Neither ``Resolved`` nor ``Failed``: a ``Failed`` record would hand
+        the position to the recovery pass, which dispatches it the same way."""
         test_domain.clock = FrozenClock(NOW)
         sub = _command_subscription(test_domain)
         message = _exhausted_command(
@@ -660,3 +661,24 @@ class TestReplayExpiredCommand:
         assert outcome is ReplayOutcome.RESOLVED
         assert ToggleCommandHandler.calls == 1
         assert _latest_status(sub, 1) == FailedPositionStatus.RESOLVED.value
+
+    def test_replay_reads_the_engine_domains_clock(self, test_domain):
+        """The check uses the clock the engine uses, not the caller's context.
+
+        The replay runs with no domain context active, so an ambient check would
+        read the real clock, which is long before the deadline. The engine's
+        domain clock is already past it, so the engine would skip the command:
+        the replay must refuse it.
+        """
+        engine_now = datetime(2100, 1, 1, tzinfo=UTC)
+        test_domain.clock = FrozenClock(engine_now)
+        sub = _command_subscription(test_domain)
+        message = _exhausted_command(
+            test_domain, sub, deadline=engine_now - timedelta(days=1)
+        )
+
+        outcome = contextvars.Context().run(_replay, sub, message)
+
+        assert outcome is ReplayOutcome.EXPIRED
+        assert ToggleCommandHandler.calls == 0
+        assert _latest_status(sub, 1) == FailedPositionStatus.EXHAUSTED.value
