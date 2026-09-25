@@ -94,11 +94,13 @@ class TestRebuildAllSkipsInternalProjections:
     def register_elements(self, test_domain):
         test_domain.register(User)
         test_domain.register(Registered, part_of=User)
+        test_domain.register(Transaction)
+        test_domain.register(Transacted, part_of=Transaction)
         test_domain.register(Balances)
         test_domain.register(
             TransactionProjector,
             projector_for=Balances,
-            aggregates=[User],
+            aggregates=[Transaction, User],
         )
         test_domain.init(traverse=False)
 

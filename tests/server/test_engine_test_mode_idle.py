@@ -1,17 +1,25 @@
 """Test mode stops the engine once every subscription has run out of work."""
 
 import asyncio
+import importlib
+import inspect
 import logging
+import pkgutil
+import re
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
+from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier
+from protean.server import subscription as subscription_package
 from protean.server.engine import Engine
 from protean.server.subscription import TEST_MODE_MAX_TICK_PAUSE, BaseSubscription
 from protean.server.subscription.partitioned_stream_subscription import (
@@ -21,6 +29,8 @@ from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
+
+DOCS = Path(__file__).parents[2] / "docs"
 
 # The old test mode always ran this many 0.1s cycles before it could stop.
 OLD_FIXED_CYCLES = 11
@@ -74,6 +84,8 @@ class FailingParcelHandler(BaseEventHandler):
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
+    if test_domain is None:  # The test builds its own domain.
+        return
     shipped.clear()
     test_domain.config["event_processing"] = Processing.ASYNC.value
     test_domain.register(Order, stream_category="orders")
@@ -275,6 +287,58 @@ class TestTickTracking:
         assert BaseSubscription.reports_idle is True
 
 
+def _framework_subscription_classes() -> list[type[BaseSubscription]]:
+    for module in pkgutil.iter_modules(subscription_package.__path__):
+        importlib.import_module(f"{subscription_package.__name__}.{module.name}")
+    importlib.import_module("protean.server.outbox_processor")
+
+    found: list[type[BaseSubscription]] = []
+    pending = [BaseSubscription]
+    while pending:
+        cls = pending.pop()
+        for sub in cls.__subclasses__():
+            if sub.__module__.startswith("protean."):
+                found.append(sub)
+                pending.append(sub)
+    return found
+
+
+class TestEveryPollLoopReportsIdleness:
+    """A framework subscription either records its ticks or opts out.
+
+    A ``poll()`` override that never calls ``_record_tick`` leaves its loop
+    never idle, and one that hands messages to other tasks finds its work done
+    before the work finishes. Either must set ``reports_idle = False``.
+    """
+
+    @pytest.mark.parametrize(
+        "cls", _framework_subscription_classes(), ids=lambda cls: cls.__name__
+    )
+    def test_poll_records_ticks_or_opts_out(self, cls):
+        if not cls.reports_idle:
+            return
+        assert "create_task" not in inspect.getsource(cls), (
+            f"{cls.__name__} starts tasks; set reports_idle = False"
+        )
+        if "poll" in vars(cls):
+            assert "_record_tick" in inspect.getsource(cls.poll), (
+                f"{cls.__name__}.poll() does not record ticks; call _record_tick "
+                "or set reports_idle = False"
+            )
+
+    def test_the_scan_finds_the_poll_loop_overrides(self):
+        overrides = {
+            cls.__name__
+            for cls in _framework_subscription_classes()
+            if "poll" in vars(cls)
+        }
+        assert {
+            "EventStoreSubscription",
+            "StreamSubscription",
+            "PartitionedStreamSubscription",
+        } <= overrides
+
+
 class TestPauseBetweenTicks:
     @pytest.mark.parametrize(
         "test_mode,tick_interval,expected",
@@ -331,3 +395,55 @@ class TestStreamReadOutcome:
 
         assert await sub.get_next_batch_of_messages() == []
         assert sub._tick_outcome([]) is None
+
+
+class TestBrokerRedelivery:
+    """Test mode does not wait for a broker to redeliver a nacked message."""
+
+    @pytest.fixture
+    def calls(self, test_domain) -> list[dict]:
+        received: list[dict] = []
+
+        class FailsOnce(BaseSubscriber):
+            def __call__(self, payload: dict) -> None:
+                received.append(payload)
+                if len(received) == 1:
+                    raise RuntimeError("fails once")
+
+        test_domain.register(FailsOnce, stream="parcels-external")
+        return received
+
+    def _run(self, test_domain) -> None:
+        test_domain.config["message_processing"] = Processing.ASYNC.value
+        test_domain.init(traverse=False)
+        test_domain.brokers["default"].publish("parcels-external", {"id": 1})
+        Engine(domain=test_domain, test_mode=True).run()
+
+    def test_a_delayed_redelivery_is_not_waited_for(self, test_domain, calls):
+        self._run(test_domain)
+        assert len(calls) == 1
+
+    @pytest.mark.no_test_domain
+    def test_the_documented_config_gets_the_redelivery_processed(self, tmp_path):
+        """Load the TOML the testing guide gives, from a real ``domain.toml``."""
+        guide = DOCS / "patterns" / "testing-event-driven-flows.md"
+        blocks = re.findall(r"```toml\n(.*?)```", guide.read_text(), re.DOTALL)
+        (snippet,) = [block for block in blocks if "retry_delay_seconds" in block]
+        (tmp_path / "domain.toml").write_text(snippet)
+
+        domain = Domain(name="Redelivery", root_path=str(tmp_path))
+        received: list[dict] = []
+
+        @domain.subscriber(stream="parcels-external")
+        class FailsOnce:
+            def __call__(self, payload: dict) -> None:
+                received.append(payload)
+                if len(received) == 1:
+                    raise RuntimeError("fails once")
+
+        domain.init(traverse=False)
+        with domain.domain_context():
+            domain.brokers["default"].publish("parcels-external", {"id": 1})
+            Engine(domain=domain, test_mode=True).run()
+
+        assert len(received) == 2

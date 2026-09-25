@@ -1509,6 +1509,7 @@ class EventStoreSubscription(BaseSubscription):
                 break
 
             except Exception as exc:
+                self._forget_idle_tick()
                 consecutive_errors += 1
                 logger.exception(
                     f"Error in subscription {self.subscriber_name} "

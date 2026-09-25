@@ -434,6 +434,7 @@ class StreamSubscription(BaseSubscription):
                 logger.info(f"Subscription cancelled: {self.subscriber_name}")
                 break
             except Exception as e:
+                self._forget_idle_tick()
                 consecutive_errors += 1
                 logger.exception(
                     f"Error in subscription {self.subscriber_name} "

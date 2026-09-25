@@ -130,5 +130,11 @@ class TestHasMany:
 
 
 class TestReference:
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(Author, part_of=Account)
+        test_domain.init(traverse=False)
+
     def test_that_reference_field_attribute_name_is_set_properly(self):
         assert attributes(Author)["account_email"].attribute_name is not None

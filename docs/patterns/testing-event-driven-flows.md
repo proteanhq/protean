@@ -115,6 +115,21 @@ finding work, for example while it retries a failing handler. A partitioned
 stream subscription cannot report that it is idle, so with one present test
 mode always waits the full second.
 
+Test mode does not wait for a broker to redeliver a failed message. A broker
+subscription waits `retry_delay_seconds` before it nacks the message, and the
+inline broker then holds it back for its own `retry_delay`. Test mode stops
+before the redelivery. To test a handler that fails and then succeeds on retry, set
+both delays to 0:
+
+```toml
+[server.broker_subscription]
+retry_delay_seconds = 0
+
+[brokers.default]
+provider = "inline"
+retry_delay = 0
+```
+
 ```python
 engine = Engine(domain, test_mode=True)
 engine.run()

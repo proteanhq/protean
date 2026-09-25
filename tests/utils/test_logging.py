@@ -40,6 +40,18 @@ class TestConfigureLogging:
         assert len(root.handlers) == 1
         assert isinstance(root.handlers[0], logging.StreamHandler)
 
+    @pytest.mark.no_test_domain
+    def test_asks_structlog_to_cache_loggers(self, monkeypatch):
+        """Each structlog logger is cached after its first use.
+
+        The suite turns the cache off (see ``tests/conftest.py``), so this
+        test puts the real ``structlog.configure`` back to see what is asked.
+        """
+        monkeypatch.setattr(structlog, "configure", structlog.configure.__wrapped__)
+        configure_logging(level="INFO")
+
+        assert structlog.get_config()["cache_logger_on_first_use"] is True
+
     def test_production_env_sets_info_level(self):
         """PROTEAN_ENV=production sets INFO level."""
         with patch.dict(os.environ, {"PROTEAN_ENV": "production"}, clear=True):

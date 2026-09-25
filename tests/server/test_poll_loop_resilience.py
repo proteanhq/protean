@@ -850,3 +850,83 @@ class TestPollLoopDraining:
         await sub.poll()
 
         assert recovery_passes == 0
+
+
+class TestAFailedTickIsNotIdle:
+    """A loop backing off after an error must not count as idle in test mode.
+
+    Each test runs an empty tick (which records idleness), then a failing one,
+    and reads the idle mark at the start of the next tick.
+    """
+
+    @pytest.mark.asyncio
+    async def test_base_poll(self, domain_setup):
+        engine = Engine(domain=domain_setup, test_mode=True)
+        seen: list[float | None] = []
+
+        class Flaky(BaseSubscription):
+            subscriber_name = "flaky"
+
+            async def get_next_batch_of_messages(self):
+                return []
+
+            async def process_batch(self, messages):
+                return 0
+
+            async def tick(self):
+                seen.append(self.last_idle_tick_started)
+                if len(seen) == 2:
+                    raise RuntimeError("read failed")
+                if len(seen) == 3:
+                    self.keep_going = False
+                return False
+
+        await Flaky(engine, tick_interval=0).poll()
+
+        assert seen[1] is not None
+        assert seen[2] is None
+
+    @pytest.mark.asyncio
+    async def test_stream_subscription_poll(self, domain_setup):
+        sub = _make_stream_subscription(domain_setup)
+        seen: list[float | None] = []
+
+        async def flaky_read():
+            seen.append(sub.last_idle_tick_started)
+            if len(seen) == 2:
+                raise ConnectionError("Redis connection lost")
+            if len(seen) == 3:
+                sub.keep_going = False
+            return []
+
+        sub.get_next_batch_of_messages = flaky_read
+        await sub.poll()
+
+        assert seen[1] is not None
+        assert seen[2] is None
+
+    @pytest.mark.asyncio
+    async def test_event_store_subscription_poll(self, domain_setup):
+        engine = Engine(domain=domain_setup, test_mode=True)
+        sub = EventStoreSubscription(
+            engine=engine,
+            stream_category="user",
+            handler=UserEventHandler,
+            tick_interval=0,
+        )
+        seen: list[float | None] = []
+
+        async def flaky_tick():
+            seen.append(sub.last_idle_tick_started)
+            if len(seen) == 2:
+                raise ConnectionError("Event store connection lost")
+            if len(seen) == 3:
+                sub.keep_going = False
+            return False
+
+        sub.tick = flaky_tick
+        sub.maybe_run_recovery = AsyncMock(return_value=0)
+        await sub.poll()
+
+        assert seen[1] is not None
+        assert seen[2] is None

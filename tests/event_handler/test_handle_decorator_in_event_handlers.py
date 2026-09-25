@@ -82,6 +82,7 @@ def test_that_multiple_handlers_can_be_recorded_against_the_same_event(test_doma
             pass
 
     test_domain.register(User)
+    test_domain.register(Registered, part_of=User)
     test_domain.register(UserEventHandlers, part_of=User)
     test_domain.init(traverse=False)
 

@@ -492,16 +492,6 @@ class TestResolveAndLoadGroupEdgeCases:
 class TestTraceCausationEdgeCases:
     """Tests for edge cases in trace_causation."""
 
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Order, event_sourced=True)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.register(OrderConfirmed, part_of=Order)
-        test_domain.register(PlaceOrder, part_of=Order)
-        test_domain.register(ConfirmOrder, part_of=Order)
-        test_domain.register(OrderCommandHandler, part_of=Order)
-        test_domain.init(traverse=False)
-
     @pytest.mark.eventstore
     def test_causation_id_pointing_outside_group(self, test_domain):
         """When causation_id points to a message outside the group, chain stops.
@@ -585,14 +575,6 @@ class TestTraceCausationEdgeCases:
 
 class TestTraceEffectsEdgeCases:
     """Tests for edge cases in trace_effects."""
-
-    @pytest.fixture(autouse=True)
-    def register_elements(self, test_domain):
-        test_domain.register(Order, event_sourced=True)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.register(PlaceOrder, part_of=Order)
-        test_domain.register(OrderCommandHandler, part_of=Order)
-        test_domain.init(traverse=False)
 
     @pytest.mark.eventstore
     def test_child_with_no_headers_id_skipped_in_bfs(self, test_domain):
