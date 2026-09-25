@@ -287,7 +287,7 @@ For comprehensive relationship documentation, see [Expressing Relationships](./r
 | `IncorrectUsageError` | Entity defined without `part_of`; every entity must be associated with an aggregate. |
 | `ValidationError` | Field validation fails during construction (e.g. missing `required` field). Contains a `messages` dict. |
 | `ValidationError` | An `@invariant.post` check on the entity raises a validation error. |
-| `IncorrectUsageError` | Trying to instantiate an abstract entity directly. |
+| `NotSupportedError` | Trying to instantiate an abstract entity directly. |
 | `ConfigurationError` | Entity raises an event not associated with its aggregate root (`part_of` mismatch). |
 
 ---

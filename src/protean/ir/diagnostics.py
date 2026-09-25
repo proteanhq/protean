@@ -509,7 +509,8 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         meaning="An event on an event-sourced aggregate has no @apply handler.",
         rationale=(
             "An event-sourced aggregate rebuilds its state by applying events; "
-            "an event without an @apply handler is never folded into state."
+            "an event without an @apply handler cannot be applied. Raising or "
+            "replaying it raises IncorrectUsageError at runtime."
         ),
         fix="Add an @apply method on the aggregate for this event.",
     ),
