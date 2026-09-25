@@ -3,7 +3,8 @@
 # Read by `protean test -c PR` and `protean test select-adapters`
 # (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
 # test tests/cli/test_adapter_manifest.py fails when a module under
-# src/protean/adapters/ is in no entry, so this list cannot go stale.
+# src/protean/adapters/ is in no entry, or when a test marked for a "touched"
+# adapter is outside that adapter's paths, so this list cannot go stale.
 #
 # Each [adapters.<name>] entry has:
 #
@@ -106,6 +107,12 @@ paths = [
     "tests/adapters/database_model/sqlalchemy_model/sqlite/",
     "tests/adapters/repository/generic/",
     "tests/adapters/repository/sqlalchemy_repo/",
+    "tests/outbox/test_outbox_indexes.py",
+    "tests/projections/test_view_for.py",
+    "tests/projector/test_consume_idempotency.py",
+    "tests/test_coverage_guards.py",
+    "tests/unit_of_work/test_no_persistence_no_transaction.py",
+    "tests/upgrade/test_upgrade_checks.py",
 ]
 markers = ["sqlite"]
 databases = ["SQLITE"]
@@ -143,6 +150,9 @@ paths = [
     "tests/adapters/database_model/elasticsearch_model/",
     "tests/adapters/repository/elasticsearch_repo/",
     "tests/adapters/repository/generic/",
+    "tests/dao/test_lookup_initialization.py",
+    "tests/repository/test_repository_registration.py",
+    "tests/test_coverage_guards.py",
 ]
 markers = ["elasticsearch"]
 databases = ["ELASTICSEARCH"]
@@ -154,6 +164,10 @@ paths = [
     "src/protean/adapters/event_store/message_db.py",
     "src/protean/port/event_store.py",
     "tests/adapters/event_store/",
+    "tests/adapters/test_pool_configuration.py",
+    "tests/event_sourced_repository/test_all_default_vo_roundtrip.py",
+    "tests/outbox/test_reconciliation.py",
+    "tests/workflows/test_event_flows.py",
 ]
 markers = ["message_db"]
 stores = ["MESSAGE_DB"]

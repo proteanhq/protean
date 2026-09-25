@@ -841,6 +841,10 @@ def test(
                 print("\n❌ Tests failed – skipping diff-cover report.")
 
         case "PR":
+            if no_core and no_adapters:
+                raise typer.BadParameter(
+                    "--no-core and --no-adapters together leave nothing to run"
+                )
             manifest = load_adapter_manifest()
             adapters = []
             if not no_adapters:

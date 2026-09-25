@@ -1,11 +1,13 @@
 """The adapter manifest (tests/adapters.toml) and the PR lane that reads it.
 
 The first class is the guard: it fails when an adapter module is in no manifest
-entry, or when an entry names a path, service or suite that does not exist, so
+entry, when a test marked for a "touched" adapter is outside that adapter's
+paths, or when an entry names a path, service or suite that does not exist, so
 the PR lane cannot silently stop testing an adapter.
 """
 
 import json
+import re
 import tomllib
 from pathlib import Path
 from unittest.mock import patch
@@ -33,6 +35,7 @@ from protean.cli.test import (
 pytestmark = pytest.mark.no_test_domain
 
 ADAPTERS_SRC = REPO_ROOT / "src" / "protean" / "adapters"
+TESTS_DIR = REPO_ROOT / "tests"
 TEST_SUITE_ACTION = REPO_ROOT / ".github" / "actions" / "test-suite" / "action.yml"
 
 
@@ -66,6 +69,28 @@ class TestManifestIsCurrent:
         assert not missing, (
             f"Add these to an entry in {ADAPTER_MANIFEST.name}, so a PR that "
             f"changes them runs their tests: {missing}"
+        )
+
+    def test_every_marked_test_is_in_its_adapters_paths(self, manifest):
+        # A "touched" leg runs only when the PR changes one of its paths, and
+        # CORE skips its marked tests. So a marked test outside the paths would
+        # run on no PR that edits it.
+        test_files = sorted(TESTS_DIR.rglob("*.py"))
+        missing = []
+        for entry in manifest.adapters:
+            if entry.lane != "touched":
+                continue
+            for marker in entry.markers:
+                mark = re.compile(rf"pytest\.mark\.{marker}\b")
+                missing += [
+                    f"{entry.name}: {rel}"
+                    for f in test_files
+                    if not entry.matches(rel := f.relative_to(REPO_ROOT).as_posix())
+                    and mark.search(f.read_text(encoding="utf-8"))
+                ]
+        assert not missing, (
+            f"Add these tests to their entry's paths in {ADAPTER_MANIFEST.name}, "
+            f"so a PR that changes them runs them: {missing}"
         )
 
     def test_every_path_exists(self, manifest):
@@ -333,6 +358,15 @@ class TestPrCategoryCli:
 
     def test_no_adapters(self):
         assert self.invoke("--no-adapters")[0] == []
+
+    def test_no_core_and_no_adapters_is_rejected(self):
+        with patch("protean.cli.test.run_pr_lane", return_value=0) as lane:
+            result = CliRunner().invoke(
+                app, ["test", "-c", "PR", "--no-core", "--no-adapters"]
+            )
+        assert result.exit_code != 0
+        assert "nothing to run" in result.output
+        lane.assert_not_called()
 
     def test_sequential_runs_core_in_one_process(self):
         assert self.invoke("--sequential")[1] == "0"

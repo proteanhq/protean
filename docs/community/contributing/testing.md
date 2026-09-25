@@ -17,7 +17,7 @@ Options:
 - `-c, --category [CORE|EVENTSTORE|DATABASE|BROKER|COVERAGE|FULL|PR]`: Specifies which category of tests to run
 - `-n, --workers TEXT`: Worker processes for the `CORE` category: a number, `auto`, or `logical` (the default, one per logical CPU). `0` runs the suite in one process. You can also set it with the `PROTEAN_TEST_WORKERS` environment variable.
 - `-a, --adapter TEXT`: `PR` only. An adapter, or a group of adapters, from `tests/adapters.toml` to run. Repeat it for more. Without it, `PR` runs the adapters every pull request runs; with it, only the ones you name.
-- `--no-core`, `--no-adapters`: `PR` only. Skip the core suite, or the adapter suites.
+- `--no-core`, `--no-adapters`: `PR` only. Skip the core suite, or the adapter suites (not both).
 
 Categories:
 
@@ -30,7 +30,7 @@ Categories:
   Testing](../../reference/testing/conformance.md) for details.
 - `FULL`: Runs the complete test suite for all adapters
 - `COVERAGE`: Runs the complete test suite with all adapters and generates coverage report
-- `PR`: Runs what a pull request's CI runs: the core suite and the adapter suites from `tests/adapters.toml`, all under coverage. `protean test -c PR -a elasticsearch` runs the core suite and the Elasticsearch suites only, the way CI runs a pull request that touches Elasticsearch.
+- `PR`: Runs what a pull request's CI runs: the core suite and the adapter suites from `tests/adapters.toml`, all under coverage. `protean test -c PR -a elasticsearch` runs the core suite and the Elasticsearch suites only. A pull request that touches Elasticsearch runs the PostgreSQL and Redis suites too; `protean test -c PR -a postgresql -a redis -a elasticsearch` runs what its CI runs.
 
 Example:
 
