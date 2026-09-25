@@ -34,12 +34,29 @@ steps in order:
 Step 5 is the key difference from non-ES aggregates, where `raise_()` only
 collects events without calling handlers.
 
+If any of steps 2 to 5 raises, `raise_()` sets `_version` and
+`_event_position` back to their values from before the call, removes the
+event from `_events`, and re-raises the error. That covers a failing event
+enricher as well as the `@apply` handler and the invariant checks around it.
+Events the handler raised itself are removed too. Field changes the handler
+made stay in place.
+
 ```python
-# Inside raise_(), for ES aggregates:
-if self.meta_.is_event_sourced:
-    if not event.__class__.meta_.is_fact_event:
-        with atomic_change(self):
-            self._apply_handler(event_with_metadata)
+# Inside raise_():
+version_before = self._version
+position_before = self._event_position
+events_count_before = len(self._events)
+
+try:
+    # Steps 2 to 5. For ES aggregates and non-fact events, this ends with:
+    #     with atomic_change(self):
+    #         self._apply_handler(event_with_metadata)
+    self._record_event(event, stream)
+except BaseException:
+    self._version = version_before
+    self._event_position = position_before
+    del self._events[events_count_before:]
+    raise
 ```
 
 Fact events are excluded because they are auto-generated snapshots that don't
