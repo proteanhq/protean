@@ -1001,7 +1001,9 @@ def classify_changes(
     - **Reserved mitigation**: a field removed from an event-sourced aggregate
       that declares the name in ``reserved`` is downgraded to safe (see
       :func:`_apply_reserved_mitigation`). The declaration does the migration:
-      replay drops assignments to the reserved name instead of raising.
+      replay drops assignments to the reserved name, and calls to its
+      ``add_``/``remove_`` helpers, instead of raising. Child entities those
+      calls would have added are dropped with them.
     """
     report = CompatibilityReport()
 
@@ -1019,7 +1021,8 @@ def classify_changes(
 
     # Downgrade a removed field on an event-sourced aggregate that declares the
     # field name in `reserved` (the declaration does the migration: replay drops
-    # assignments to the name), citing the reserved declaration.
+    # assignments to the name and calls to its `add_`/`remove_` helpers),
+    # citing the reserved declaration.
     _apply_reserved_mitigation(report, left_ir, right_ir)
 
     return report
@@ -1153,9 +1156,13 @@ def _apply_reserved_mitigation(
     Removing a field from an event-sourced aggregate is safe only when the
     aggregate declares the field name in ``reserved``. The declaration does the
     migration: at replay a retained ``@apply`` handler's assignment to that name
-    is dropped instead of raising. So a ``field_removed`` change downgrades to
-    safe, cited ``reserved``, when the aggregate is event-sourced in both
-    snapshots and the removed name is reserved in the new snapshot.
+    is dropped instead of raising, and so is its call to the ``add_<name>`` or
+    ``remove_<name>`` helper of a removed association. Child entities those
+    calls would have added are dropped with them, and a handler that reads the
+    removed collection (``get_one_from_<name>``, ``filter_<name>``) still
+    raises. So a ``field_removed`` change downgrades to safe, cited
+    ``reserved``, when the aggregate is event-sourced in both snapshots and the
+    removed name is reserved in the new snapshot.
 
     Only the aggregate's own field removal matches: the mitigation is keyed by
     ``(element_fqn, field_name)``, and a child entity or value object in the

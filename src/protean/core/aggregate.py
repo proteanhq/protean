@@ -52,6 +52,12 @@ from protean.utils.telemetry import inject_traceparent_from_context
 logger = logging.getLogger(__name__)
 
 
+def _dropped_helper(*args: Any, **kwargs: Any) -> None:
+    """Stand-in for the ``add_``/``remove_`` helper of a reserved association
+    during replay. It accepts any arguments and does nothing."""
+    return None
+
+
 class BaseAggregate(BaseEntity):
     """Base class for aggregate root entities -- the primary building block for
     modeling domain concepts.
@@ -71,7 +77,7 @@ class BaseAggregate(BaseEntity):
     | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
     | ``schema_name`` | ``str`` | The storage table/collection name. |
     | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
-    | ``reserved`` | ``tuple[str, ...]`` | Field names that once existed and must never be reused. Removing a field from an event-sourced aggregate is safe only when its name is reserved. |
+    | ``reserved`` | ``tuple[str, ...]`` | Field names that once existed and must never be reused. Removing a field from an event-sourced aggregate is safe only when its name is reserved. During replay, an assignment to a reserved name is dropped, and so is a call to its ``add_<name>``/``remove_<name>`` helper. Child entities those calls would have added are dropped with them. |
     """
 
     element_type: ClassVar[str] = DomainObjects.AGGREGATE
@@ -382,10 +388,14 @@ class BaseAggregate(BaseEntity):
 
         Sets ``_replaying`` for the duration of the handler so that an
         assignment to a reserved (removed) field name is dropped instead of
-        raising. This is the replay-only signal: the live ``raise_`` path calls
-        ``_apply_handler`` directly and never sets the flag, so a live write to
-        a removed field still raises. Reset in ``finally`` so an exception in a
-        handler cannot leave a live aggregate stuck in replay mode.
+        raising. A call to the ``add_<name>`` or ``remove_<name>`` helper of a
+        reserved association is dropped too, and any child entities it would
+        have added are dropped with it. ``get_one_from_<name>`` and
+        ``filter_<name>`` still raise. This is the replay-only signal: the live
+        ``raise_`` path calls ``_apply_handler`` directly and never sets the
+        flag, so a live write or helper call on a removed field still raises.
+        Reset in ``finally`` so an exception in a handler cannot leave a live
+        aggregate stuck in replay mode.
         """
         self._replaying = True
         try:
@@ -393,6 +403,35 @@ class BaseAggregate(BaseEntity):
         finally:
             self._replaying = False
         self._version += 1
+
+    if not TYPE_CHECKING:
+        # Kept out of static checkers' view, like Pydantic's own
+        # ``__getattr__``: a visible override would let mypy and pyright accept
+        # any attribute name on every aggregate.
+        def __getattr__(self, name: str) -> Any:
+            # Python calls this only after normal lookup fails, so live fields
+            # and the ``add_``/``remove_`` helpers bound for a real association
+            # never reach it. During replay only, the ``add_<name>`` and
+            # ``remove_<name>`` helpers of a reserved (removed) association
+            # become no-ops, the same way ``__setattr__`` drops an assignment
+            # to a reserved name. Child entities those calls would have added
+            # are dropped with them. ``get_one_from_``/``filter_`` still raise:
+            # a handler that reads a removed collection depends on it.
+            #
+            # The replay flag is read straight from the private-attribute dict,
+            # not through ``getattr``, so a half-built instance (no
+            # ``__pydantic_private__`` yet) cannot recurse back in here.
+            try:
+                private = object.__getattribute__(self, "__pydantic_private__")
+            except AttributeError:
+                private = None
+            if private and private.get("_replaying", False):
+                for prefix in ("add_", "remove_"):
+                    if name.startswith(prefix):
+                        if name[len(prefix) :] in type(self).meta_.reserved:
+                            return _dropped_helper
+                        break
+            return super().__getattr__(name)
 
     @classmethod
     def _create_for_reconstitution(cls) -> "BaseAggregate":

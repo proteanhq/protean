@@ -76,7 +76,10 @@ The checker understands three evolution mechanisms:
   event-sourced aggregate is safe only when the aggregate declares the field name
   in `reserved`. The declaration does the migration: during replay an assignment
   to a reserved name (from a retained `@apply` handler for a retired event) is
-  dropped instead of raising, so the aggregate still rebuilds. Only the
+  dropped instead of raising, so the aggregate still rebuilds. A call to the
+  `add_<name>` or `remove_<name>` helper of a removed association is dropped
+  too, so the child entities it would have added are not rebuilt.
+  `get_one_from_<name>` and `filter_<name>` still raise. Only the
   aggregate's own field removal is earned this way, and only when the aggregate is
   event-sourced on both sides. A type change or a newly required field stays
   breaking (a stored snapshot can survive a type change and skip replay, and

@@ -98,9 +98,12 @@ def _apply(self, event):
 
 `_replaying` is the replay-only signal that lets an assignment to a
 [`reserved`](../../reference/domain-elements/element-decorators.md) (removed)
-field name drop instead of raising. The live `raise_()` path calls
-`_apply_handler()` directly and never sets the flag, so a live write to a
-removed field still raises.
+field name drop instead of raising. It also turns a call to the `add_<name>` or
+`remove_<name>` helper of a reserved association into a no-op, so the child
+entities that call would have added are not rebuilt. `get_one_from_<name>` and
+`filter_<name>` still raise. The live `raise_()` path calls `_apply_handler()`
+directly and never sets the flag, so a live write or helper call on a removed
+field still raises.
 
 ## Aggregate Construction
 

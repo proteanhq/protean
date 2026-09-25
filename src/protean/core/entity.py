@@ -224,7 +224,9 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     _disable_invariant_checks: bool = PrivateAttr(default=False)
     # Set True only for the duration of an ``@apply`` handler during event
     # replay (by ``BaseAggregate._apply``). While set, ``__setattr__`` drops an
-    # assignment to a reserved (removed) field name instead of raising.
+    # assignment to a reserved (removed) field name instead of raising, and
+    # ``BaseAggregate.__getattr__`` turns the ``add_``/``remove_`` helpers of a
+    # reserved name into no-ops.
     _replaying: bool = PrivateAttr(default=False)
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "BaseEntity":
@@ -950,7 +952,9 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # live ``raise_`` path never sets ``_replaying``, so a live write to a
         # removed field still falls through to ``extra="forbid"`` and raises. A
         # name that is neither a field nor reserved also falls through and
-        # raises, so a typo in a retained handler stays an error.
+        # raises, so a typo in a retained handler stays an error. Calls to the
+        # ``add_``/``remove_`` helpers of a reserved name are dropped in
+        # ``BaseAggregate.__getattr__``.
         if getattr(self, "_replaying", False) and name in getattr(
             type(self).meta_, "reserved", ()
         ):
