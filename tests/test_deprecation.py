@@ -15,7 +15,6 @@ import protean.exceptions
 from protean._deprecation import (
     ProteanDeprecationWarning,
     RemovedInProtean017Warning,
-    RemovedInProtean018Warning,
     RemovedInProtean10Warning,
     deprecated,
     warn_deprecated,
@@ -60,7 +59,6 @@ class TestWarningHierarchy:
         "cls",
         [
             RemovedInProtean017Warning,
-            RemovedInProtean018Warning,
             RemovedInProtean10Warning,
         ],
     )
@@ -87,7 +85,6 @@ class TestWarnDeprecated:
         "removal, expected_cls",
         [
             ("0.17.0", RemovedInProtean017Warning),
-            ("0.18.0", RemovedInProtean018Warning),
             ("1.0.0", RemovedInProtean10Warning),
         ],
     )
@@ -150,25 +147,25 @@ class TestWarnDeprecated:
 
 class TestDeprecatedDecorator:
     def test_call_emits_the_warning(self):
-        @deprecated(removal="0.18.0", alternative="Use the new thing instead.")
+        @deprecated(removal="1.0.0", alternative="Use the new thing instead.")
         def old_helper():
             return "value"
 
-        with pytest.warns(RemovedInProtean018Warning) as record:
+        with pytest.warns(RemovedInProtean10Warning) as record:
             result = old_helper()
 
         assert result == "value"
         assert str(record[0].message) == (
             "old_helper() is deprecated. Use the new thing instead. "
-            "Will be removed in v0.18.0."
+            "Will be removed in v1.0.0."
         )
 
     def test_arguments_are_forwarded_unchanged(self):
-        @deprecated(removal="0.18.0")
+        @deprecated(removal="1.0.0")
         def add(a, b, *, c=0):
             return a + b + c
 
-        with pytest.warns(RemovedInProtean018Warning):
+        with pytest.warns(RemovedInProtean10Warning):
             assert add(1, 2, c=3) == 6
 
     def test_warning_is_attributed_to_the_call_site_not_internals(self):
@@ -188,7 +185,7 @@ class TestDeprecatedDecorator:
         assert caught[0].filename == __file__
 
     def test_functools_wraps_preserves_identity(self):
-        @deprecated(removal="0.18.0")
+        @deprecated(removal="1.0.0")
         def documented():
             """Original docstring."""
 
@@ -201,7 +198,7 @@ class TestDeprecatedDecorator:
         with warnings.catch_warnings():
             warnings.simplefilter("error", ProteanDeprecationWarning)
 
-            @deprecated(removal="0.18.0")
+            @deprecated(removal="1.0.0")
             def never_called():  # pragma: no cover - body intentionally unused
                 return None
 
@@ -224,5 +221,15 @@ class TestDeprecatedDecorator:
             def _f():  # pragma: no cover - never defined; decoration raises
                 return None
 
-        for known in ("0.17.0", "0.18.0", "1.0.0"):
+        for known in ("0.17.0", "1.0.0"):
             assert known in str(exc.value)
+        assert "0.18.0" not in str(exc.value)
+
+    def test_closed_0_18_window_is_no_longer_a_known_version(self):
+        """The 0.18.0 removal window closed with the removal of the last API
+        that cited it, so a new deprecation cannot target it."""
+        with pytest.raises(ValueError, match="No Protean deprecation warning class"):
+
+            @deprecated(removal="0.18.0")
+            def _f():  # pragma: no cover - never defined; decoration raises
+                return None

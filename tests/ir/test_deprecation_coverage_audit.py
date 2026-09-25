@@ -29,10 +29,8 @@ from protean._deprecation import (
     DEPRECATIONS,
     Deprecation,
 )
-from protean.exceptions import ValidationError
 from protean.fields import List, String
 from protean.ir.builder import IRBuilder
-from protean.testing import assert_invalid, assert_valid
 from tests.ir.support import deprecated_usage_domain, infra_import_domain
 
 # Every test here builds the domains it needs. Skip the autouse ``test_domain``
@@ -91,8 +89,8 @@ def _deprecation_diagnostics(ir: dict) -> list[dict]:
 
 
 class TestRegistryCompleteness:
-    def test_registry_holds_fourteen_active_deprecations(self) -> None:
-        assert len(DEPRECATIONS) == 14
+    def test_registry_holds_twelve_active_deprecations(self) -> None:
+        assert len(DEPRECATIONS) == 12
 
     def test_every_entry_is_well_formed(self) -> None:
         for slug, entry in DEPRECATIONS.items():
@@ -370,17 +368,6 @@ def _trigger_send_email() -> None:
         domain.send_email(object())
 
 
-def _trigger_assert_valid() -> None:
-    assert_valid(lambda: None)
-
-
-def _trigger_assert_invalid() -> None:
-    def _raises() -> None:
-        raise ValidationError({"field": ["bad"]})
-
-    assert_invalid(_raises)
-
-
 def _runtime_arm_update_domain() -> tuple[Domain, type]:
     """A tiny built domain with one persistable aggregate for the update arms."""
     domain = Domain(name="RuntimeArmUpdate")
@@ -416,8 +403,6 @@ def _trigger_queryset_update() -> None:
 _RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
     "get_email_provider": _trigger_get_email_provider,
     "send_email": _trigger_send_email,
-    "assert_valid": _trigger_assert_valid,
-    "assert_invalid": _trigger_assert_invalid,
     "dao_update": _trigger_dao_update,
     "queryset_update": _trigger_queryset_update,
 }
