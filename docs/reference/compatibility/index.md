@@ -59,8 +59,9 @@ Turning event sourcing on or off changes where state lives, and the old state
 cannot be read the new way. Dropping an `@apply` handler while its event survives leaves
 historical events of that type with nothing to apply them, and the rebuild
 raises. Dropping a name from `reserved` takes back the field removal that
-declaration earned: replay stops dropping an assignment to the name, so a
-retained handler that still writes it raises again.
+declaration earned: replay stops dropping an assignment to the name and a call
+to its `add_<name>` or `remove_<name>` helper, so a retained handler that still
+makes either raises again.
 
 Some related cases are already covered by the general rules above and are not
 reported again here: a change to the identity field's *type* is a
@@ -76,7 +77,13 @@ The checker understands three evolution mechanisms:
   event-sourced aggregate is safe only when the aggregate declares the field name
   in `reserved`. The declaration does the migration: during replay an assignment
   to a reserved name (from a retained `@apply` handler for a retired event) is
-  dropped instead of raising, so the aggregate still rebuilds. Only the
+  dropped instead of raising, so the aggregate still rebuilds. A call to the
+  `add_<name>` or `remove_<name>` helper of a removed association is dropped
+  too, so the child entities it would have added are not rebuilt.
+  `get_one_from_<name>` and `filter_<name>` still raise. The safe rating
+  assumes the retained handlers only write the removed name: a handler that
+  reads the removed collection still breaks replay, and a handler that builds a
+  child entity needs that entity class to stay in the domain. Only the
   aggregate's own field removal is earned this way, and only when the aggregate is
   event-sourced on both sides. A type change or a newly required field stays
   breaking (a stored snapshot can survive a type change and skip replay, and
