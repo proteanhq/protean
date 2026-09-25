@@ -406,7 +406,7 @@ class BaseAggregate(BaseEntity):
             self._replaying = previous
         self._version += 1
 
-    if not TYPE_CHECKING:
+    if not TYPE_CHECKING:  # pragma: no branch
         # Kept out of static checkers' view, like Pydantic's own
         # ``__getattr__``: a visible override would let mypy and pyright accept
         # any attribute name on every aggregate.
