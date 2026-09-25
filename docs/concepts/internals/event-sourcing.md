@@ -82,25 +82,28 @@ if no handler is registered.
 ### `_apply(event)`
 
 The replay-specific method. Sets `_replaying` for the duration of the handler,
-calls `_apply_handler()`, resets `_replaying` in a `finally` block, then
+calls `_apply_handler()`, restores the previous `_replaying` value in a
+`finally` block, then
 increments `_version`. Used exclusively during aggregate reconstitution from
 events:
 
 ```python
 def _apply(self, event):
+    previous = self._replaying
     self._replaying = True
     try:
         self._apply_handler(event)
     finally:
-        self._replaying = False
+        self._replaying = previous
     self._version += 1
 ```
 
 `_replaying` is the replay-only signal that lets an assignment to a
 [`reserved`](../../reference/domain-elements/element-decorators.md) (removed)
-field name drop instead of raising. It also turns a call to the `add_<name>` or
-`remove_<name>` helper of a reserved association into a no-op, so the child
-entities that call would have added are not rebuilt. `get_one_from_<name>` and
+field name drop instead of raising. `BaseAggregate.__getattr__` reads the same
+flag: while it is set, a call to the `add_<name>` or `remove_<name>` helper of a
+reserved association does nothing, so the child entities that call would have
+added are not rebuilt. `get_one_from_<name>` and
 `filter_<name>` still raise. The live `raise_()` path calls `_apply_handler()`
 directly and never sets the flag, so a live write or helper call on a removed
 field still raises.

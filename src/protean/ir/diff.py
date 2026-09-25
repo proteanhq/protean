@@ -1158,11 +1158,16 @@ def _apply_reserved_mitigation(
     migration: at replay a retained ``@apply`` handler's assignment to that name
     is dropped instead of raising, and so is its call to the ``add_<name>`` or
     ``remove_<name>`` helper of a removed association. Child entities those
-    calls would have added are dropped with them, and a handler that reads the
-    removed collection (``get_one_from_<name>``, ``filter_<name>``) still
-    raises. So a ``field_removed`` change downgrades to safe, cited
+    calls would have added are dropped with them. So a ``field_removed``
+    change downgrades to safe, cited
     ``reserved``, when the aggregate is event-sourced in both snapshots and the
     removed name is reserved in the new snapshot.
+
+    The safe rating assumes the retained handlers only write the removed name.
+    A handler that reads the removed collection (``self.<name>``,
+    ``get_one_from_<name>``, ``filter_<name>``) still raises during replay,
+    and a handler that builds a child entity needs that entity class to stay
+    in the domain. Neither is visible in the IR, so neither is checked here.
 
     Only the aggregate's own field removal matches: the mitigation is keyed by
     ``(element_fqn, field_name)``, and a child entity or value object in the
@@ -1248,9 +1253,12 @@ def _classify_replay_hazards(
       report for it.
     - **A name was dropped from ``reserved``.** The reservation is what makes
       replay drop an assignment to a removed field's name
-      (``BaseEntity.__setattr__``), so taking it back takes back the removal it
-      earned: a retained ``@apply`` handler for a retired event that still
-      writes the name hits ``extra="forbid"`` again and the rebuild raises. The
+      (``BaseEntity.__setattr__``) and a call to its ``add_<name>`` or
+      ``remove_<name>`` helper (``BaseAggregate.__getattr__``), so taking it
+      back takes back the removal it earned: a retained ``@apply`` handler for
+      a retired event that still writes the name hits ``extra="forbid"``
+      again, a helper call raises ``AttributeError`` again, and the rebuild
+      fails. The
       removal itself was reported in the diff that made it, so without this
       nothing has anything to say about the reservation going away.
 
@@ -1372,9 +1380,9 @@ def _classify_replay_hazards(
                     change_type="reservation_removed",
                     message=(
                         f"AGGREGATE '{fqn}' no longer reserves '{name}'; replay "
-                        f"stops dropping an assignment to that name, which a "
-                        f"retained @apply handler for a retired event can still "
-                        f"make"
+                        f"stops dropping an assignment to that name or a call "
+                        f"to its add_/remove_ helper, which a retained @apply "
+                        f"handler for a retired event can still make"
                     ),
                     field_name=name,
                 )

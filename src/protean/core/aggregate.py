@@ -394,14 +394,16 @@ class BaseAggregate(BaseEntity):
         ``filter_<name>`` still raise. This is the replay-only signal: the live
         ``raise_`` path calls ``_apply_handler`` directly and never sets the
         flag, so a live write or helper call on a removed field still raises.
-        Reset in ``finally`` so an exception in a handler cannot leave a live
-        aggregate stuck in replay mode.
+        Restored in ``finally`` so an exception in a handler cannot leave a
+        live aggregate stuck in replay mode, and a nested ``_apply`` inside a
+        handler does not end replay mode for the rest of the outer handler.
         """
+        previous = self._replaying
         self._replaying = True
         try:
             self._apply_handler(event)
         finally:
-            self._replaying = False
+            self._replaying = previous
         self._version += 1
 
     if not TYPE_CHECKING:
@@ -411,26 +413,31 @@ class BaseAggregate(BaseEntity):
         def __getattr__(self, name: str) -> Any:
             # Python calls this only after normal lookup fails, so live fields
             # and the ``add_``/``remove_`` helpers bound for a real association
-            # never reach it. During replay only, the ``add_<name>`` and
-            # ``remove_<name>`` helpers of a reserved (removed) association
-            # become no-ops, the same way ``__setattr__`` drops an assignment
-            # to a reserved name. Child entities those calls would have added
-            # are dropped with them. ``get_one_from_``/``filter_`` still raise:
-            # a handler that reads a removed collection depends on it.
+            # never reach it. Pydantic private attributes (``_version``,
+            # ``_state``, ``_replaying``) do reach it on every read, so the
+            # prefix check comes first to keep that path cheap.
+            #
+            # During replay only, the ``add_<name>`` and ``remove_<name>``
+            # helpers of a reserved (removed) association become no-ops, much
+            # as ``__setattr__`` drops an assignment to a reserved name. Child
+            # entities those calls would have added are dropped with them.
+            # ``get_one_from_``/``filter_`` still raise: a handler that reads a
+            # removed collection depends on it. A method the class itself
+            # defines under such a name is found by normal lookup and still
+            # runs.
             #
             # The replay flag is read straight from the private-attribute dict,
             # not through ``getattr``, so a half-built instance (no
             # ``__pydantic_private__`` yet) cannot recurse back in here.
-            try:
-                private = object.__getattribute__(self, "__pydantic_private__")
-            except AttributeError:
-                private = None
-            if private and private.get("_replaying", False):
-                for prefix in ("add_", "remove_"):
-                    if name.startswith(prefix):
-                        if name[len(prefix) :] in type(self).meta_.reserved:
-                            return _dropped_helper
-                        break
+            if name.startswith(("add_", "remove_")):
+                try:
+                    private = object.__getattribute__(self, "__pydantic_private__")
+                except AttributeError:
+                    private = None
+                if private and private.get("_replaying", False):
+                    rest = name.partition("_")[2]
+                    if rest in type(self).meta_.reserved:
+                        return _dropped_helper
             return super().__getattr__(name)
 
     @classmethod
@@ -764,7 +771,8 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     # Normalize the `reserved` option to a tuple of field names and forbid
     # reusing any of them for a live field. `reserved` names fields that once
     # existed and must never be declared again; replay drops assignments to
-    # them (see `_apply` / `BaseEntity.__setattr__`).
+    # them and calls to their `add_`/`remove_` helpers (see `_apply`,
+    # `BaseEntity.__setattr__` and `BaseAggregate.__getattr__`).
     reserved = aggregate_cls.meta_.reserved
     if isinstance(reserved, str):
         reserved = (reserved,)

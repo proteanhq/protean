@@ -59,6 +59,11 @@ class AddOnAdded(BaseEvent):
     name: String(required=True)
 
 
+class NestedItemAdded(BaseEvent):
+    cart_id: Identifier(required=True)
+    name: String(required=True)
+
+
 class CartItem(BaseEntity):
     name: String(max_length=50)
 
@@ -104,6 +109,13 @@ class Cart(BaseAggregate):
         # The reserved name ``add_on`` itself starts with ``add_``.
         helper_results.append(self.add_add_on(CartItem(name=event.name)))
 
+    @apply
+    def nested_item_added(self, event: NestedItemAdded):
+        # Applies another event from inside this handler, then calls a
+        # reserved helper. Replay mode must still hold for that call.
+        self._apply(ItemRemoved(cart_id=event.cart_id, name=event.name))
+        helper_results.append(self.add_items(CartItem(name=event.name)))
+
 
 class LiveCart(BaseAggregate):
     """A cart that still has its ``items`` association."""
@@ -123,6 +135,7 @@ def register_elements(test_domain):
         ItemsFiltered,
         GhostAdded,
         AddOnAdded,
+        NestedItemAdded,
     ):
         test_domain.register(event_cls, part_of=Cart)
     test_domain.register(LiveCart, event_sourced=True)
@@ -146,8 +159,8 @@ def test_replay_drops_add_and_remove_helper_calls_on_a_reserved_name():
     assert cart._version == 2
     # Both helper calls ran and returned None.
     assert helper_results == [None, None]
-    # The removed association never lands on the rebuilt aggregate.
-    assert "items" not in cart.__dict__
+    # No child entity was rebuilt for the removed association.
+    assert "items" not in cart.to_dict()
     assert cart._replaying is False
 
 
@@ -169,10 +182,11 @@ def test_a_reserved_name_that_starts_with_add_is_matched_exactly():
         cart._replaying = False
 
 
-def test_snapshot_catchup_replay_also_drops_helper_calls():
-    """The snapshot-catchup path applies events through ``_apply`` on a live
-    aggregate, where invariant checks are on. The helper drop is keyed on the
-    replay flag, so it still applies."""
+def test_apply_on_a_live_aggregate_also_drops_helper_calls():
+    """Snapshot catch-up calls ``_apply`` on an aggregate that is already
+    built, with invariant checks on. This calls ``_apply`` the same way on an
+    aggregate from ``from_events``. The helper drop is keyed on the replay
+    flag, so it still applies."""
     opened = _opened()
     cart = Cart.from_events([opened])
     assert cart._disable_invariant_checks is False
@@ -203,6 +217,34 @@ def test_replay_still_raises_on_a_helper_for_a_name_neither_field_nor_reserved()
 
     with pytest.raises(AttributeError, match="has no attribute 'add_ghosts'"):
         Cart.from_events([opened, GhostAdded(cart_id=opened.cart_id, name="boo")])
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["add_itemsx", "remove_items_old", "add_item", "add_xitems", "add_", "remove_"],
+)
+def test_replay_still_raises_on_a_near_miss_of_a_reserved_name(name):
+    """Only an exact reserved name after the prefix is dropped. A typo in a
+    retained handler still fails replay."""
+    cart = Cart.from_events([_opened()])
+
+    cart._replaying = True
+    try:
+        with pytest.raises(AttributeError, match=f"has no attribute '{name}'"):
+            getattr(cart, name)
+    finally:
+        cart._replaying = False
+
+
+def test_a_nested_apply_does_not_end_replay_mode_for_the_outer_handler():
+    opened = _opened()
+    cart = Cart.from_events(
+        [opened, NestedItemAdded(cart_id=opened.cart_id, name="pen")]
+    )
+
+    # The inner ``remove_items`` and the outer ``add_items`` were both dropped.
+    assert helper_results == [None, None]
+    assert cart._replaying is False
 
 
 def test_replay_still_raises_on_get_one_from_a_reserved_name():
@@ -354,4 +396,4 @@ def test_removing_a_reserved_has_many_is_safe_and_old_streams_still_load():
     assert loaded.basket_id == basket_id
     assert loaded._version == 1
     # The item added through the removed association is not rebuilt.
-    assert "items" not in loaded.__dict__
+    assert "items" not in loaded.to_dict()
