@@ -43,7 +43,7 @@ import asyncio
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
 from rich import print
@@ -369,29 +369,35 @@ def _still_exhausted_or_abort(
         )
 
 
+def _expired_command_abort(position: int) -> NoReturn:
+    """Abort ``replay`` for a command whose deadline has passed."""
+    emit_usage_error(
+        as_json=False,
+        message=(
+            f"Position {position} targets a command whose deadline has "
+            f"passed; the engine would skip its handler. Purge it instead."
+        ),
+    )
+
+
 def _unexpired_or_abort(event: Message, position: int) -> None:
     """Abort when ``event`` is a command whose deadline has passed.
 
     The engine skips an expired command: the handler never runs, yet
     ``handle_message`` reports the message handled, so a replay would write a
-    ``Resolved`` record with nothing having run. ``replay`` checks this twice,
-    once before the confirmation prompt so the operator hears about it early,
-    and again immediately before the dispatch, because a deadline close to now
-    elapses while the operator sits at the prompt or while the engine is being
-    built. The second check and the dispatch are still two steps, so this
-    narrows the window rather than closing it; closing it needs the engine to
-    report a skipped dispatch apart from a successful one. Events carry no
-    deadline, so this is a no-op for them.
+    ``Resolved`` record with nothing having run. ``replay_exhausted`` refuses an
+    expired command itself and returns ``ReplayOutcome.EXPIRED``, which
+    ``replay`` maps to the same message. ``replay`` also checks here twice, once
+    before the confirmation prompt so the operator hears about it early, and
+    again right before the dispatch. The engine re-checks the deadline after
+    ``replay_exhausted`` does, so a deadline that passes between those two
+    checks can still be skipped and recorded ``Resolved``. Closing that last gap
+    needs the engine to report a skipped dispatch apart from a successful one.
+    Events carry no deadline, so this is a no-op for them.
     """
     headers = event.metadata.headers if event.metadata else None
     if headers and headers.is_expired():
-        emit_usage_error(
-            as_json=False,
-            message=(
-                f"Position {position} targets a command whose deadline has "
-                f"passed; the engine would skip its handler. Purge it instead."
-            ),
-        )
+        _expired_command_abort(position)
 
 
 @contextmanager
@@ -722,6 +728,10 @@ def replay(
     is no longer registered is refused too: dispatching it would report success
     without running anything.
     """
+    from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
+        ReplayOutcome,
+    )
+
     derived_domain = load_domain(domain)
 
     with derived_domain.domain_context():
@@ -761,7 +771,7 @@ def replay(
             _routable_or_abort(owner_sub, event, position)
             _unexpired_or_abort(event, position)
             _still_exhausted_or_abort(store, failed_stream, position)
-            resolved = asyncio.run(
+            outcome = asyncio.run(
                 owner_sub.replay_exhausted(
                     event,
                     position,
@@ -773,7 +783,9 @@ def replay(
                 )
             )
 
-    if resolved:
+    if outcome == ReplayOutcome.EXPIRED:
+        _expired_command_abort(position)
+    if outcome == ReplayOutcome.RESOLVED:
         print(f"Replayed position {position}: handler succeeded, position resolved.")
         return
     # Reopened: the handler failed again. Exit non-zero so a script can tell a

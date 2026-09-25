@@ -170,7 +170,11 @@ stay idempotent.
 A command whose deadline has passed is refused, because the engine would skip an
 expired command; purge it instead. The deadline is checked again right before the
 dispatch, so a command whose deadline ran out while the prompt was open is
-refused too. A command whose handler is no longer registered is refused as well:
+refused too. `EventStoreSubscription.replay_exhausted`, the method that
+dispatches, checks the deadline once more and refuses with the same error. The
+engine then checks it a last time with a later clock reading, so a deadline that
+runs out between those two checks is still skipped and the position recorded
+resolved. A command whose handler is no longer registered is refused as well:
 the dispatcher would find nothing to route it to, and the replay would report the
 position resolved without running anything. A handler-level idempotency
 declaration that would let replay refuse a non-idempotent target does not exist
