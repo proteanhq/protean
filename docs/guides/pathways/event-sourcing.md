@@ -186,7 +186,7 @@ When `place()` calls `raise_()`, the framework automatically invokes
 `placed()` to apply the state change. The same `placed()` method runs
 during replay when the aggregate is loaded from the event store. Every
 event raised by an ES aggregate **must** have a corresponding `@apply`
-handler, raising an event without one will throw `NotImplementedError`.
+handler. Raising an event without one raises `IncorrectUsageError`.
 
 ### Fact Events
 

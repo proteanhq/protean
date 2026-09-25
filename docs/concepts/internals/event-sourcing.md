@@ -59,7 +59,8 @@ touching `_version`. This is the shared core used by both paths:
 - Called by `_apply()` during replay (version incremented by `_apply()`
   after the handler runs)
 
-Raises `NotImplementedError` if no handler is registered.
+Raises `IncorrectUsageError` (`No @apply handler registered for event ...`)
+if no handler is registered.
 
 ### `_apply(event)`
 

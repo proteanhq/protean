@@ -379,7 +379,7 @@ The `Reference` field (`comment.post`) provides access to the full parent object
 | `ValidationError` | An `@invariant.post` or `@invariant.pre` check raises a validation error. |
 | `IncorrectUsageError` | Trying to instantiate an abstract aggregate directly. |
 | `IncorrectUsageError` | Raising an event that is not associated with this aggregate (`part_of` mismatch). |
-| `NotImplementedError` | Event-sourced aggregate raises an event with no matching `@apply` handler. |
+| `IncorrectUsageError` | Event-sourced aggregate raises or replays an event with no matching `@apply` handler. |
 
 ---
 
