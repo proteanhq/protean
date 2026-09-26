@@ -435,6 +435,17 @@ class UnitOfWork:
             # winner's ids, so saving its rows first would hit the outbox unique
             # check (on autoflush, or in the in-memory provider) before the
             # append could report the real conflict as ExpectedVersionError.
+            #
+            # Flush the relational sessions before the append, so a stale
+            # version-guarded UPDATE on a state-based aggregate fails here,
+            # before any event is durable, and not on the outbox save's
+            # autoflush after the append. Sessions without a flush (in-memory,
+            # Elasticsearch) check versions at commit.
+            for session in self._sessions.values():
+                flush = getattr(session, "flush", None)
+                if flush is not None:
+                    flush()
+
             event_store = current_domain.event_store.store
             assert event_store is not None
             for events in all_events.values():

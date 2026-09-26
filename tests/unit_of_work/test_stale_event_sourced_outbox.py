@@ -13,6 +13,7 @@ fails after the append is reported as ``TransactionError``, never as a version
 conflict.
 """
 
+import threading
 from uuid import uuid4
 
 import pytest
@@ -26,7 +27,7 @@ from protean.exceptions import (
     TransactionError,
     ValidationError,
 )
-from protean.fields import Identifier, Integer
+from protean.fields import Identifier, Integer, String
 from protean.utils.globals import current_uow
 from tests.shared import MESSAGE_DB_URI, POSTGRES_URI
 
@@ -63,6 +64,22 @@ class Account(BaseAggregate):
         self.balance += event.amount
 
 
+class Renamed(BaseEvent):
+    wallet_id = Identifier(required=True)
+    name = String(required=True)
+
+
+class Wallet(BaseAggregate):
+    """A state-based aggregate, so its stale write is caught by the relational
+    version guard and not by the event store."""
+
+    name = String(max_length=50)
+
+    def rename(self, name):
+        self.name = name
+        self.raise_(Renamed(wallet_id=self.id, name=name))
+
+
 def _make_domain(databases=None, event_store=None, external_brokers=None):
     domain = Domain(name="StaleOutbox")
     if databases is not None:
@@ -78,6 +95,8 @@ def _make_domain(databases=None, event_store=None, external_brokers=None):
     domain.register(Account, event_sourced=True)
     domain.register(Opened, part_of=Account)
     domain.register(Deposited, part_of=Account, published=True)
+    domain.register(Wallet)
+    domain.register(Renamed, part_of=Wallet)
     domain.init(traverse=False)
     return domain
 
@@ -113,6 +132,7 @@ def make_domain(request, tmp_path):
         if backend != "memory":
             provider = domain.providers["default"]
             domain._get_outbox_repo("default")._dao  # register the outbox table
+            domain.repository_for(Wallet)._dao  # and the wallet table
             provider._metadata.drop_all(provider._engine)
             provider._metadata.create_all(provider._engine)
         return domain
@@ -328,3 +348,34 @@ class TestStaleWriteWithOutbox:
         # One internal row and one external row for the published event.
         assert len(seen_uows) == 2
         assert all(seen is uow for seen in seen_uows)
+
+    def test_stale_state_based_write_appends_no_event(self, make_domain):
+        """A state-based write that goes stale between its ``add`` and its
+        commit fails on the relational version guard before its event is
+        appended, even when the winner raised no event."""
+        domain = make_domain()
+        repo = domain.repository_for(Wallet)
+        wallet = Wallet(name="start")
+        repo.add(wallet)
+        winner, loser = repo.get(wallet.id), repo.get(wallet.id)
+        stream = f"{Wallet.meta_.stream_category}-{wallet.id}"
+        outbox_before = _outbox_ids(domain)
+
+        def commit_winner():
+            # A separate thread, so the winner commits on its own session while
+            # the loser's unit of work is still open.
+            with domain.domain_context():
+                winner.name = "winner"
+                domain.repository_for(Wallet).add(winner)
+
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                loser.rename("loser")
+                repo.add(loser)
+                thread = threading.Thread(target=commit_winner)
+                thread.start()
+                thread.join()
+
+        assert domain.event_store.store.read(stream) == []
+        assert _outbox_ids(domain) == outbox_before
+        assert repo.get(wallet.id).name == "winner"
