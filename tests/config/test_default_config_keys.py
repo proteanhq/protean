@@ -47,7 +47,9 @@ def _scan() -> dict[str, list[str]]:
 def test_scan_finds_known_reads():
     found = _scan()
 
-    assert {"lint", "observatory", "databases"} <= found.keys()
+    # ``snapshot_threshold`` is read only by subscript, so it pins the ``[``
+    # branch of the scan.
+    assert {"lint", "observatory", "databases", "snapshot_threshold"} <= found.keys()
 
 
 def test_every_read_key_is_a_default_key():

@@ -60,6 +60,18 @@ class TestLintOptionTypeValidation:
                 r"\[lint\]\.aggregate_size_limit must be a non-negative integer",
             ),
             (
+                {"aggregate_size_limit": -1},
+                r"\[lint\]\.aggregate_size_limit must be a non-negative integer",
+            ),
+            (
+                {"aggregate_size_limit": 5.0},
+                r"\[lint\]\.aggregate_size_limit must be a non-negative integer",
+            ),
+            (
+                {"handler_breadth_limit": "5"},
+                r"\[lint\]\.handler_breadth_limit must be a non-negative integer",
+            ),
+            (
                 {"handler_breadth_limit": -1},
                 r"\[lint\]\.handler_breadth_limit must be a non-negative integer",
             ),
@@ -152,3 +164,20 @@ class TestDomainCheckRaisesOnBadLintOption:
             match=r"\[lint\]\.suppressions\.UNHANDLED_EVENT must be a non-negative",
         ):
             domain.check(traverse=False)
+
+    def test_other_ir_build_failure_leaves_diagnostics_empty(self, monkeypatch):
+        domain = Domain(name="CheckIRBuildFails", root_path=".")
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        def _fail() -> dict:
+            raise RuntimeError("IR build failed")
+
+        monkeypatch.setattr(domain, "to_ir", _fail)
+
+        result = domain.check(traverse=False)
+
+        assert result["status"] == "pass"
+        assert result["diagnostics"] == []

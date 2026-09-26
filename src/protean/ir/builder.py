@@ -205,7 +205,8 @@ def validate_lint_table(lint_config: Any) -> str | None:
     It also checks the types of the options the IR builder reads. Without the
     check, a wrong type fails in one of several ways: ``rules = 5`` or
     ``aggregate_size_limit = "5"`` raises a ``TypeError`` inside the build,
-    ``rules = "my.module"`` is logged and skipped, and ``check_infra_imports =
+    ``rules = "my.module"`` is iterated one character at a time, so each
+    character is logged and skipped as a rule path, and ``check_infra_imports =
     "no"`` is truthy and turns the scan on.
     """
     if not isinstance(lint_config, dict):

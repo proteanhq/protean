@@ -321,3 +321,48 @@ class TestCheckReadsLintTableFromDomainToml:
             e["message"] for e in data["data"]["stages"]["check"]["errors"]
         )
         assert "[lint].aggregate_size_limit must be a non-negative integer" in messages
+
+    @pytest.mark.parametrize(("kind", "level"), [("list", "[]"), ("table", "{}")])
+    def test_unhashable_level_is_a_usage_error(
+        self, tmp_path, monkeypatch, kind, level
+    ):
+        result = self._run_check(
+            tmp_path, monkeypatch, f"lint_{kind}_level", f"[lint]\nlevel = {level}\n"
+        )
+
+        assert result.exit_code == 2, result.output
+        assert "Invalid [lint].level" in result.output
+
+    @pytest.mark.parametrize(("kind", "level"), [("list", "[]"), ("table", "{}")])
+    def test_unhashable_level_fails_verify_check_stage(
+        self, tmp_path, monkeypatch, kind, level
+    ):
+        module_name = f"lint_{kind}_level_verify"
+        _write(tmp_path / "domain.toml", f"[lint]\nlevel = {level}\n")
+        (tmp_path / f"{module_name}.py").write_text(
+            _INFO_ONLY_DOMAIN.format(name=module_name)
+        )
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        result = runner.invoke(
+            app,
+            [
+                "verify",
+                "-d",
+                f"{module_name}.py:domain",
+                "--path",
+                str(empty),
+                "--json",
+            ],
+        )
+
+        assert result.exit_code == 4, result.output
+        lines = result.stdout.splitlines()
+        data = json.loads("\n".join(lines[lines.index("{") :]))
+        messages = " ".join(
+            e["message"] for e in data["data"]["stages"]["check"]["errors"]
+        )
+        assert "[lint].level" in messages

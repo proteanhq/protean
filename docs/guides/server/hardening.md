@@ -37,9 +37,10 @@ URI = "${REDIS_URL}"
 max_connections = 50
 ```
 
-Run `protean check` before deploying. It surfaces a `LOW_POOL_SIZE`
-warning for SQLAlchemy databases configured below the production
-default, and catches other misconfigurations at the same time.
+Run `protean check` before deploying to catch misconfigurations. A SQLAlchemy
+database configured below the production pool size is reported separately:
+`Domain.init()` logs a `LOW_POOL_SIZE` warning at startup, and `protean check`
+does not report it.
 
 ### Size the pool against your database's ceiling
 

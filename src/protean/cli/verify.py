@@ -319,7 +319,7 @@ def verify(
 def _validate_lint_level(lint_config: dict[str, Any]) -> str | None:
     """Return an error message if ``[lint].level`` is not a valid floor, else ``None``."""
     level = lint_config.get("level", "warn")
-    if level not in _LINT_LEVELS:
+    if not isinstance(level, str) or level not in _LINT_LEVELS:
         return f"[lint].level: {level!r} is invalid. Use 'error', 'warn', or 'info'."
     return None
 

@@ -763,7 +763,8 @@ class Domain:
 
         Raises:
             ConfigurationError: If the ``[lint]`` table holds a value the IR
-                builder rejects, such as ``rules = 5``. Any other IR build
+                builder rejects, such as ``rules = 5``. This holds even when
+                validation errors skip the IR build. Any other IR build
                 failure leaves ``diagnostics`` empty.
         """
         self._prepare(traverse=traverse, validate=False)

@@ -180,7 +180,9 @@ class TraceEmitter:
 
             # Persist to time-bounded Redis Stream for dashboard history
             if self._persist:
-                min_id = str(int(time.time() * 1000) - self._retention_ms)
+                # A retention longer than the epoch would give a negative
+                # MINID, which Redis rejects, so trim from 0 (keep everything).
+                min_id = str(max(0, int(time.time() * 1000) - self._retention_ms))
                 self._redis.xadd(
                     TRACE_STREAM,
                     {"data": json_str},
