@@ -26,6 +26,10 @@ from rich import print
 from protean import __version__
 from protean.cli._helpers import (
     CTX_LOG_CONFIGURED,
+    CTX_LOG_DICT_CONFIG,
+    CTX_LOG_FORMAT,
+    CTX_LOG_LEVEL,
+    apply_domain_logging,
     cli_exception_handler,
     handle_cli_exceptions,  # noqa: F401 — re-exported
 )
@@ -133,7 +137,9 @@ def main(
     # Resolve effective logging configuration per the documented precedence:
     #   1. --log-config PATH  →  dictConfig
     #   2. --log-level / --log-format  →  configure_logging(level=..., format=...)
-    #   3. Otherwise  →  defer to Domain.init() auto-configuration
+    #   3. `server` and `observatory` then call Domain.configure_logging() on the
+    #      loaded domain, passing --log-level / --log-format as overrides so the
+    #      rest of [logging] still applies. --log-config skips that call.
     ctx.ensure_object(dict)
 
     if log_config is not None:
@@ -147,6 +153,7 @@ def main(
             raise typer.Exit(code=2) from exc
         configure_logging(dict_config=payload)
         ctx.obj[CTX_LOG_CONFIGURED] = True
+        ctx.obj[CTX_LOG_DICT_CONFIG] = True
     elif log_level is not None or log_format is not None:
         kwargs: dict[str, Any] = {}
         if log_level is not None:
@@ -168,6 +175,8 @@ def main(
             kwargs["format"] = log_format
         configure_logging(**kwargs)
         ctx.obj[CTX_LOG_CONFIGURED] = True
+        ctx.obj[CTX_LOG_LEVEL] = kwargs.get("level")
+        ctx.obj[CTX_LOG_FORMAT] = kwargs.get("format")
 
 
 @app.command()
@@ -200,12 +209,10 @@ def server(
 
     parent_obj = getattr(ctx, "obj", None) or {}
     if not parent_obj.get(CTX_LOG_CONFIGURED):
-        # Honor PROTEAN_LOG_LEVEL for the bootstrap default so it reaches the
-        # supervisor's QueueListener too: in multi-worker mode the listener
-        # copies these handlers, and (with respect_handler_level) an INFO
-        # listener would drop DEBUG records the workers forward. This makes
-        # `PROTEAN_LOG_LEVEL=DEBUG` a working replacement for the removed
-        # `--debug` flag across single-worker, multi-worker, and reload runs.
+        # Bootstrap handlers so errors raised while the domain loads reach the
+        # console. Once the domain loads, its [logging] configuration replaces
+        # them (see apply_domain_logging below). The --reload path keeps these
+        # handlers in the outer process; its worker configures its own logging.
         configure_logging(level=os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
 
     with cli_exception_handler("server"):
@@ -258,6 +265,10 @@ def server(
             raise typer.Abort() from exc
 
         assert derived_domain is not None
+
+        # Apply [logging] before init() and before the Supervisor is built, so
+        # the supervisor's QueueListener copies handlers at the configured level.
+        apply_domain_logging(derived_domain, parent_obj)
 
         if workers == 1:
             # Single-worker path: identical to previous behavior, zero overhead.

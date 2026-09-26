@@ -255,18 +255,17 @@ class TestRemovedDebugFlag:
             assert logging.getLogger().level == logging.DEBUG
 
     def test_bootstrap_defaults_to_info_without_env(self, monkeypatch):
-        """Without PROTEAN_LOG_LEVEL, the server bootstrap stays at INFO."""
-        change_working_directory_to("test7")
+        """Without PROTEAN_LOG_LEVEL, the server bootstrap is at INFO.
+
+        The domain fails to load, so the command stops before the domain's
+        own logging configuration replaces the bootstrap handlers.
+        """
         monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
 
-        with patch("protean.cli.Engine") as MockEngine:
-            mock_engine = MockEngine.return_value
-            mock_engine.exit_code = 0
+        result = runner.invoke(app, ["server", "--domain", "foobar"])
 
-            result = runner.invoke(app, ["server", "--domain", "publishing7.py"])
-
-            assert result.exit_code == 0
-            assert logging.getLogger().level == logging.INFO
+        assert result.exit_code != 0
+        assert logging.getLogger().level == logging.INFO
 
 
 class TestGlobalFlagsInHelpText:

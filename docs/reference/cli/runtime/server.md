@@ -82,3 +82,8 @@ You can combine it with other options as needed:
 ```shell
 protean --log-level DEBUG server --domain auth
 ```
+
+Once the domain loads, the server applies the domain's `[logging]` section from
+`domain.toml`. `--log-level` and `--log-format` override its level and format;
+the rest of the section still applies. `--log-config` replaces the section
+entirely. See [Logging](../../logging.md#cli-flags) for the precedence rules.

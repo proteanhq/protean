@@ -35,6 +35,31 @@ logger = get_logger(__name__)
 # own logging setup (server, observatory) to avoid double-configuration.
 CTX_LOG_CONFIGURED = "_protean_log_configured"
 
+# Keys holding the root callback's logging flags, so ``server`` and
+# ``observatory`` can pass them to ``Domain.configure_logging()`` as overrides.
+CTX_LOG_LEVEL = "_protean_log_level"
+CTX_LOG_FORMAT = "_protean_log_format"
+CTX_LOG_DICT_CONFIG = "_protean_log_dict_config"
+
+
+def apply_domain_logging(domain: "Domain", parent_obj: dict[str, Any]) -> None:
+    """Apply the domain's ``[logging]`` configuration for a long-running command.
+
+    ``--log-level`` and ``--log-format`` from the root callback override the
+    level and format; the rest of ``[logging]`` still applies. A
+    ``--log-config`` file replaces everything, so the domain's configuration
+    is skipped when one was given.
+    """
+    if parent_obj.get(CTX_LOG_DICT_CONFIG):
+        return
+
+    kwargs: dict[str, Any] = {}
+    if parent_obj.get(CTX_LOG_LEVEL) is not None:
+        kwargs["level"] = parent_obj[CTX_LOG_LEVEL]
+    if parent_obj.get(CTX_LOG_FORMAT) is not None:
+        kwargs["format"] = parent_obj[CTX_LOG_FORMAT]
+    domain.configure_logging(**kwargs)
+
 
 @contextmanager
 def cli_exception_handler(command: str) -> Iterator[None]:

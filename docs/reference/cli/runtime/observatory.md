@@ -82,6 +82,13 @@ You can combine options as needed:
 protean --log-level DEBUG observatory --domain identity --domain catalogue --host 127.0.0.1 --port 3000 --title "ShopStream Observatory"
 ```
 
+Once the domains load, the Observatory applies the `[logging]` section from the
+first `--domain`'s `domain.toml`. Logging is configured once per process, so the
+other domains' `[logging]` sections are not applied. `--log-level` and
+`--log-format` override the level and format; `--log-config` replaces the
+section entirely. See [Logging](../../logging.md#cli-flags) for the precedence
+rules.
+
 ## Endpoints
 
 ### Pages

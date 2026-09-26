@@ -132,16 +132,22 @@ protean --log-format json server
 protean --log-config ./logging.json server      # full dictConfig JSON
 ```
 
-`--log-config` bypasses the environment-aware setup and applies the supplied
-JSON via `logging.config.dictConfig()`. The correlation filter is still
-installed on the root logger afterwards.
+`--log-level` and `--log-format` override only the level and the format. The
+rest of `[logging]` still applies, so redaction, `per_logger` levels, and the
+correlation filter stay in place while you raise the verbosity.
+
+`--log-config` replaces everything. It applies the supplied JSON via
+`logging.config.dictConfig()`, and `server` and `observatory` then skip the
+domain's `[logging]` section entirely. Add the correlation and redaction
+filters to your `dictConfig` yourself if you need them.
 
 The `--debug` flag on `protean server` and `protean observatory` was removed in
 v0.17.0. Use `protean --log-level DEBUG server` instead for the single-process
 server. For multi-worker (`--workers N`) or `--reload` runs, set
 `PROTEAN_LOG_LEVEL=DEBUG` instead: it is honored by both the supervisor (so the
 worker log listener passes DEBUG records through) and each spawned worker (which
-configures its own logging on startup).
+configures its own logging on startup). `--log-level` and `--log-format` do not
+reach those worker processes yet.
 
 ---
 
