@@ -321,8 +321,8 @@ export PROTEAN_NO_AUTO_LOGGING=1
 
 Single-worker `protean server` and `protean observatory` honor it too: they
 leave any logging your domain module sets up on import in place. The worker
-processes of a multi-worker or `--reload` run do not read it, and always apply
-`[logging]`.
+processes of a multi-worker or `--reload` run do not read it. They apply
+`[logging]`, or the `--log-config` file when you pass one.
 
 You can then wire whichever parts of Protean's integration you want
 manually:
