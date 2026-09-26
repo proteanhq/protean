@@ -24,6 +24,8 @@ from protean.integrations.logging import (
 )
 from protean.server.supervisor import _build_queue_listener
 
+pytestmark = pytest.mark.no_test_domain
+
 runner = CliRunner()
 
 OBSERVATORY_CLS = "protean.server.observatory.Observatory"
