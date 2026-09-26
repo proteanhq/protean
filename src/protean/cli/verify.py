@@ -354,8 +354,8 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
     check gates. Returns ``(check_failed, stage_dict)``.
 
     ``Domain.check()`` does not validate ``[lint].level``, and it reports a
-    malformed ``[lint]`` value only by raising ``ConfigurationError`` from its
-    IR build. Run the same validation ``protean check`` runs, up front, so every
+    malformed ``[lint]`` value only by raising ``ConfigurationError``. Run the
+    same validation ``protean check`` runs, up front, so every
     bad ``[lint]`` value (a non-table ``[lint]``, an invalid ``level``, a bad
     ``suppressions`` count) surfaces as an ``INVALID_LINT_CONFIG`` check-stage
     error (exit 4).
