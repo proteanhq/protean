@@ -575,6 +575,22 @@ class TestReloaderLoggingArguments:
             assert call.kwargs["kwargs"]["log_format"] == "json"
 
 
+class TestReloaderLoggingArgumentValidation:
+    def test_invalid_log_level_raises(self):
+        with pytest.raises(ValueError, match="Invalid log_level 'VERBOSE'"):
+            Reloader(domain_path="d", log_level="VERBOSE")
+
+    def test_invalid_log_format_raises(self):
+        with pytest.raises(ValueError, match="Invalid log_format 'xml'"):
+            Reloader(domain_path="d", log_format="xml")
+
+    def test_empty_log_level_does_not_hide_debug(self):
+        with pytest.warns(RemovedInProtean020Warning):
+            reloader = Reloader(domain_path="d", debug=True, log_level="")
+
+        assert reloader.log_level == "DEBUG"
+
+
 class TestReloaderDebugDeprecation:
     def test_debug_true_warns_and_maps_to_debug_level(self):
         with pytest.warns(RemovedInProtean020Warning, match="v0.20.0") as record:

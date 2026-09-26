@@ -165,10 +165,25 @@ supervisor.run()  # Blocks until all workers exit
 print(f"Exit code: {supervisor.exit_code}")
 ```
 
-`log_level`, `log_format` and `log_config` do what the CLI's `--log-level`,
-`--log-format` and `--log-config` flags do. Each worker applies them when it
-loads the domain. `log_config` takes the `dictConfig` dict itself, not a file
-path.
+`log_level`, `log_format` and `log_config` set up logging in each worker the way
+the CLI's `--log-level`, `--log-format` and `--log-config` flags do. `log_config`
+takes a `dictConfig` dict. `log_level` must be one of `DEBUG`, `INFO`,
+`WARNING`, `ERROR` or `CRITICAL`, and `log_format` one of `auto`, `console` or
+`json`. Any other value raises `ValueError`.
+
+The arguments do not set up logging in your own process. With more than one
+worker, every worker sends its records to the supervisor, and the supervisor
+writes them with the handlers on its root logger. Their levels and formatters
+decide what you see. With no handlers there, the supervisor writes to stdout at
+INFO, so worker DEBUG records are dropped. Set up logging before you call
+`run()`:
+
+```python
+from protean.utils.logging import configure_logging
+
+configure_logging(level="DEBUG")
+Supervisor("my_package.domain", num_workers=4, log_level="DEBUG").run()
+```
 
 The `debug` argument is deprecated and is removed in 0.20.0. Pass
 `log_level="DEBUG"` instead. `Reloader` takes the same arguments and has the

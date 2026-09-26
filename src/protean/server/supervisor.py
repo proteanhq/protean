@@ -18,7 +18,9 @@ Usage:
     # From Protean CLI
     protean server --domain my.domain --workers 4
 
-    # Programmatic
+    # Programmatic. Worker records are written by the supervisor's own root
+    # handlers, so set those up first.
+    configure_logging(level="DEBUG")
     supervisor = Supervisor("my.domain", num_workers=4, log_level="DEBUG")
     supervisor.run()
 """
@@ -40,6 +42,33 @@ from protean._deprecation import warn_from_registry
 logger = logging.getLogger(__name__)
 
 _SHUTDOWN_TIMEOUT_SECONDS = 30
+
+# The values the CLI's ``--log-level`` and ``--log-format`` flags accept.
+_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+_LOG_FORMATS = ("auto", "console", "json")
+
+
+def _check_log_arguments(
+    log_level: str | None, log_format: str | None
+) -> tuple[str | None, str | None]:
+    """Validate ``log_level`` and ``log_format`` the way the CLI flags are.
+
+    An empty string counts as not given. The level is upper-cased.
+
+    Raises:
+        ValueError: If a value is not one the CLI flags accept.
+    """
+    level = log_level.upper() if log_level else None
+    if level is not None and level not in _LOG_LEVELS:
+        raise ValueError(
+            f"Invalid log_level {log_level!r}. Choose from: {', '.join(_LOG_LEVELS)}"
+        )
+    fmt = log_format or None
+    if fmt is not None and fmt not in _LOG_FORMATS:
+        raise ValueError(
+            f"Invalid log_format {log_format!r}. Choose from: {', '.join(_LOG_FORMATS)}"
+        )
+    return level, fmt
 
 
 class Supervisor:
@@ -89,6 +118,10 @@ class Supervisor:
                 ``Domain.configure_logging()`` in place of ``[logging].format``.
             log_config: A ``logging.config.dictConfig`` dict. Each worker
                 applies it and skips ``Domain.configure_logging()``.
+
+        Raises:
+            ValueError: If ``num_workers`` is below 1, or ``log_level`` or
+                ``log_format`` is not a value the CLI flags accept.
         """
         if num_workers < 1:
             raise ValueError("num_workers must be >= 1")
@@ -96,6 +129,7 @@ class Supervisor:
         self.domain_path = domain_path
         self.num_workers = num_workers
         self.test_mode = test_mode
+        log_level, log_format = _check_log_arguments(log_level, log_format)
         if debug:
             warn_from_registry("supervisor_debug", "Supervisor(debug=...)")
             if log_level is None:
@@ -412,11 +446,17 @@ def _worker_entry(
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
     from protean.utils.logging import configure_logging  # noqa: PLC0415
 
-    # Bootstrap logging so the worker has *some* output for derive/init errors.
-    # This is replaced below by the domain's own configuration (which carries
-    # ``[logging].redact``, per-logger overrides, etc.) once the domain is
-    # available.
-    configure_logging(level=log_level or "INFO")
+    # A dictConfig from ``--log-config`` replaces ``[logging]`` entirely, as it
+    # does in the parent process. It is applied first, before the worker's own
+    # logger exists, so its ``disable_existing_loggers`` cannot silence that
+    # logger, and no bootstrap handler is left on the root beside it.
+    # Otherwise, bootstrap logging so the worker has *some* output for
+    # derive/init errors. The domain's own configuration (which carries
+    # ``[logging].redact``, per-logger overrides, etc.) replaces it below.
+    if log_config is not None:
+        configure_logging(dict_config=log_config)
+    else:
+        configure_logging(level=log_level or "INFO")
 
     worker_logger = logging.getLogger(f"protean.server.worker-{worker_id}")
     worker_logger.info(f"Worker {worker_id} (PID {os.getpid()}) starting...")
@@ -434,11 +474,7 @@ def _worker_entry(
         # run BEFORE installing the QueueHandler so we know which handlers the
         # listener should mirror, and so filters attached to root by
         # ``Domain.configure_logging`` survive into the queue path.
-        # A dictConfig from ``--log-config`` replaces ``[logging]`` entirely,
-        # as it does in the parent process.
-        if log_config is not None:
-            configure_logging(dict_config=log_config)
-        else:
+        if log_config is None:
             log_overrides: dict[str, str] = {}
             if log_level is not None:
                 log_overrides["level"] = log_level

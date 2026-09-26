@@ -361,6 +361,24 @@ class TestFlagsReachWorkerProcesses:
             {"log_level": "DEBUG", "log_format": None, "log_config": None}
         ]
 
+    def test_log_config_dict_reaches_the_reload_worker(self, tmp_path):
+        domain = _write_domain(tmp_path, '[logging]\nlevel = "ERROR"\n')
+        payload = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "root": {"level": "WARNING"},
+        }
+        config = tmp_path / "logging.json"
+        config.write_text(json.dumps(payload))
+
+        spawned = _spawned_worker_kwargs(
+            "--log-config", str(config), "server", "--domain", domain, "--reload"
+        )
+
+        assert spawned == [
+            {"log_level": None, "log_format": None, "log_config": payload}
+        ]
+
     def test_log_format_reaches_the_reload_worker(self, tmp_path):
         domain = _write_domain(tmp_path, '[logging]\nlevel = "INFO"\n')
 

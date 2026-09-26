@@ -722,6 +722,76 @@ class TestWorkerEntryLoggingFlags:
 
         engine.assert_called_once_with(domain, test_mode=True)
 
+    def test_log_config_does_not_silence_the_worker_failure_message(self):
+        records: list[logging.LogRecord] = []
+
+        class _ListHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        # No ``disable_existing_loggers`` key, so dictConfig disables every
+        # logger that exists when it runs.
+        log_config = {
+            "version": 1,
+            "handlers": {"capture": {"()": _ListHandler}},
+            "root": {"level": "INFO", "handlers": ["capture"]},
+        }
+        domain = _mock_domain()
+        domain.init.side_effect = RuntimeError("db unreachable")
+
+        with (
+            patch("protean.utils.domain_discovery.derive_domain", return_value=domain),
+            pytest.raises(SystemExit, match="1"),
+        ):
+            _worker_entry("my.domain", False, 41, log_config=log_config)
+
+        assert logging.getLogger("protean.server.worker-41").disabled is False
+        messages = [r.getMessage() for r in records]
+        assert "Worker 41 failed: db unreachable" in messages
+
+    def test_log_config_without_root_leaves_no_bootstrap_handler(self):
+        root = logging.getLogger()
+        # A spawned worker starts with no root handlers.
+        root.handlers = []
+        domain = _mock_domain()
+
+        _run_worker_entry(
+            domain, log_config={"version": 1, "disable_existing_loggers": False}
+        )
+
+        assert root.handlers == []
+
+
+class TestLoggingArgumentValidation:
+    def test_invalid_log_level_raises(self):
+        with pytest.raises(ValueError, match="Invalid log_level 'VERBOSE'"):
+            Supervisor(domain_path="d", num_workers=1, log_level="VERBOSE")
+
+    def test_invalid_log_format_raises(self):
+        with pytest.raises(ValueError, match="Invalid log_format 'xml'"):
+            Supervisor(domain_path="d", num_workers=1, log_format="xml")
+
+    def test_log_level_is_upper_cased(self):
+        supervisor = Supervisor(domain_path="d", num_workers=1, log_level="debug")
+
+        assert supervisor.log_level == "DEBUG"
+
+    def test_empty_values_count_as_not_given(self):
+        supervisor = Supervisor(
+            domain_path="d", num_workers=1, log_level="", log_format=""
+        )
+
+        assert supervisor.log_level is None
+        assert supervisor.log_format is None
+
+    def test_empty_log_level_does_not_hide_debug(self):
+        with pytest.warns(RemovedInProtean020Warning):
+            supervisor = Supervisor(
+                domain_path="d", num_workers=1, debug=True, log_level=""
+            )
+
+        assert supervisor.log_level == "DEBUG"
+
 
 def _spawned_kwargs(supervisor: Supervisor) -> list[dict[str, object]]:
     """Run the supervisor with a mocked spawn context; return each Process kwargs."""

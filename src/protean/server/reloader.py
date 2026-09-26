@@ -46,7 +46,7 @@ from typing import Any
 from watchfiles import PythonFilter, watch
 
 from protean._deprecation import warn_from_registry
-from protean.server.supervisor import _worker_entry
+from protean.server.supervisor import _check_log_arguments, _worker_entry
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,7 @@ class Reloader:
             log_config: A ``logging.config.dictConfig`` dict. The inner worker
                 applies it and skips ``Domain.configure_logging()``.
         """
+        log_level, log_format = _check_log_arguments(log_level, log_format)
         if debug:
             warn_from_registry("reloader_debug", "Reloader(debug=...)")
             if log_level is None:

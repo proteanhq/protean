@@ -181,6 +181,13 @@ every worker process. Each worker applies them the same way the parent does:
 `[logging]`, and `--log-config` replaces `[logging]`. A worker started after a
 reload gets the same flags.
 
+With `--workers N`, each worker sends the records that reach its root logger to
+the supervisor, which writes them with its own handlers. A `dictConfig` that
+puts handlers on a named logger is different: every worker opens those handlers
+itself. Do not put a file handler on a named logger in a multi-worker run,
+because every worker then writes to and rotates the same file. Put file
+handlers on the root logger.
+
 ---
 
 ## Environment variables
